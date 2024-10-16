@@ -40,7 +40,11 @@ pub mod proto {
 use cedar_policy_core::ast::{Policy, PolicySet, Template};
 use serde::Serialize;
 use std::collections::HashSet;
+#[cfg(feature = "level-validate")]
+mod level_validate;
 
+#[cfg(feature = "entity-manifest")]
+pub mod entity_manifest;
 mod err;
 pub use err::*;
 mod coreschema;
@@ -60,6 +64,7 @@ pub use str_checks::confusable_string_checks;
 pub mod cedar_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
+
 pub mod types;
 
 /// Used to select how a policy will be validated.
@@ -151,6 +156,34 @@ impl Validator {
         )
     }
 
+    #[cfg(feature = "level-validate")]
+    /// Validate all templates, links, and static policies in a policy set.
+    /// If validation passes, also run level validation with `max_deref_level`
+    /// (see RFC 76).
+    /// Return a `ValidationResult`.
+    pub fn validate_with_level(
+        &self,
+        policies: &PolicySet,
+        mode: ValidationMode,
+        max_deref_level: u32,
+    ) -> ValidationResult {
+        let validate_policy_results: (Vec<_>, Vec<_>) = policies
+            .all_templates()
+            .map(|p| self.validate_policy_with_level(p, mode, max_deref_level))
+            .unzip();
+        let template_and_static_policy_errs = validate_policy_results.0.into_iter().flatten();
+        let template_and_static_policy_warnings = validate_policy_results.1.into_iter().flatten();
+        let link_errs = policies
+            .policies()
+            .filter_map(|p| self.validate_slots(p, mode))
+            .flatten();
+        ValidationResult::new(
+            template_and_static_policy_errs.chain(link_errs),
+            template_and_static_policy_warnings
+                .chain(confusable_string_checks(policies.all_templates())),
+        )
+    }
+
     /// Run all validations against a single static policy or template (note
     /// that Core `Template` includes static policies as well), gathering all
     /// validation errors and warnings in the returned iterators.
@@ -181,8 +214,8 @@ impl Validator {
         }
         .into_iter()
         .flatten();
-        let (type_errors, warnings) = self.typecheck_policy(p, mode);
-        (validation_errors.chain(type_errors), warnings)
+        let (errors, warnings) = self.typecheck_policy(p, mode);
+        (validation_errors.chain(errors), warnings)
     }
 
     /// Run relevant validations against a single template-linked policy,
@@ -225,10 +258,10 @@ impl Validator {
         impl Iterator<Item = ValidationWarning> + 'a,
     ) {
         let typecheck = Typechecker::new(&self.schema, mode, t.id().clone());
-        let mut type_errors = HashSet::new();
+        let mut errors = HashSet::new();
         let mut warnings = HashSet::new();
-        typecheck.typecheck_policy(t, &mut type_errors, &mut warnings);
-        (type_errors.into_iter(), warnings.into_iter())
+        typecheck.typecheck_policy(t, &mut errors, &mut warnings);
+        (errors.into_iter(), warnings.into_iter())
     }
 }
 
@@ -238,6 +271,7 @@ mod test {
     use std::{collections::HashMap, sync::Arc};
 
     use crate::types::Type;
+    use crate::validation_errors::UnrecognizedActionIdHelp;
     use crate::Result;
 
     use super::*;
@@ -258,14 +292,16 @@ mod test {
                     foo_type.parse().unwrap(),
                     json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: json_schema::EntityAttributes::default(),
+                        shape: json_schema::AttributesOrContext::default(),
+                        tags: None,
                     },
                 ),
                 (
                     bar_type.parse().unwrap(),
                     json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: json_schema::EntityAttributes::default(),
+                        shape: json_schema::AttributesOrContext::default(),
+                        tags: None,
                     },
                 ),
             ],
@@ -275,7 +311,7 @@ mod test {
                     applies_to: Some(json_schema::ApplySpec {
                         principal_types: vec!["foo_type".parse().unwrap()],
                         resource_types: vec!["bar_type".parse().unwrap()],
-                        context: json_schema::RecordOrContextAttributes::default(),
+                        context: json_schema::AttributesOrContext::default(),
                     }),
                     member_of: None,
                     attributes: None,
@@ -314,7 +350,9 @@ mod test {
             Some(Loc::new(45..60, Arc::from(policy_a_src))),
             PolicyID::from_string("pola"),
             "Action::\"actin\"".to_string(),
-            Some("Action::\"action\"".to_string()),
+            Some(UnrecognizedActionIdHelp::SuggestAlternative(
+                "Action::\"action\"".to_string(),
+            )),
         );
 
         assert!(!result.validation_passed());

@@ -19,13 +19,14 @@
 
 use miette::Diagnostic;
 use thiserror::Error;
+use validation_errors::UnrecognizedActionIdHelp;
 
 use std::collections::BTreeSet;
 
-use cedar_policy_core::ast::{EntityType, PolicyID};
+use cedar_policy_core::ast::{EntityType, Expr, PolicyID};
 use cedar_policy_core::parser::Loc;
 
-use crate::types::Type;
+use crate::types::{EntityLUB, Type};
 
 pub mod validation_errors;
 pub mod validation_warnings;
@@ -87,6 +88,8 @@ impl ValidationResult {
 /// policy. The error contains a enumeration that specifies the kind of problem,
 /// and provides details specific to that kind of problem. The error also records
 /// where the problem was encountered.
+//
+// This is NOT a publicly exported error type.
 #[derive(Clone, Debug, Diagnostic, Error, Hash, Eq, PartialEq)]
 pub enum ValidationError {
     /// A policy contains an entity type that is not declared in the schema.
@@ -122,6 +125,14 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnsafeOptionalAttributeAccess(#[from] validation_errors::UnsafeOptionalAttributeAccess),
+    /// The typechecker could not conclude that an access to a tag was safe.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnsafeTagAccess(#[from] validation_errors::UnsafeTagAccess),
+    /// `.getTag()` on an entity type which cannot have tags according to the schema.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NoTagsAllowed(#[from] validation_errors::NoTagsAllowed),
     /// Undefined extension function.
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -150,6 +161,17 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     HierarchyNotRespected(#[from] validation_errors::HierarchyNotRespected),
+    /// Returned when an internal invariant is violated (should not happen; if
+    /// this is ever returned, please file an issue)
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InternalInvariantViolation(#[from] validation_errors::InternalInvariantViolation),
+    #[cfg(feature = "level-validate")]
+    /// If a entity dereference level was provided, the policies cannot deref
+    /// more than `level` hops away from PARX
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    EntityDerefLevelViolation(#[from] validation_errors::EntityDerefLevelViolation),
 }
 
 impl ValidationError {
@@ -173,13 +195,13 @@ impl ValidationError {
 
         policy_id: PolicyID,
         actual_action_id: String,
-        suggested_action_id: Option<String>,
+        hint: Option<UnrecognizedActionIdHelp>,
     ) -> Self {
         validation_errors::UnrecognizedActionId {
             source_loc,
             policy_id,
             actual_action_id,
-            suggested_action_id,
+            hint,
         }
         .into()
     }
@@ -266,6 +288,34 @@ impl ValidationError {
         .into()
     }
 
+    pub(crate) fn unsafe_tag_access(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        entity_ty: Option<EntityLUB>,
+        tag: Expr<Option<Type>>,
+    ) -> Self {
+        validation_errors::UnsafeTagAccess {
+            source_loc,
+            policy_id,
+            entity_ty,
+            tag,
+        }
+        .into()
+    }
+
+    pub(crate) fn no_tags_allowed(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        entity_ty: Option<EntityType>,
+    ) -> Self {
+        validation_errors::NoTagsAllowed {
+            source_loc,
+            policy_id,
+            entity_ty,
+        }
+        .into()
+    }
+
     pub(crate) fn undefined_extension(
         source_loc: Option<Loc>,
         policy_id: PolicyID,
@@ -281,7 +331,6 @@ impl ValidationError {
 
     pub(crate) fn wrong_number_args(
         source_loc: Option<Loc>,
-
         policy_id: PolicyID,
         expected: usize,
         actual: usize,
@@ -326,7 +375,6 @@ impl ValidationError {
 
     pub(crate) fn hierarchy_not_respected(
         source_loc: Option<Loc>,
-
         policy_id: PolicyID,
         in_lhs: Option<EntityType>,
         in_rhs: Option<EntityType>,
@@ -336,6 +384,17 @@ impl ValidationError {
             policy_id,
             in_lhs,
             in_rhs,
+        }
+        .into()
+    }
+
+    pub(crate) fn internal_invariant_violation(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+    ) -> Self {
+        validation_errors::InternalInvariantViolation {
+            source_loc,
+            policy_id,
         }
         .into()
     }

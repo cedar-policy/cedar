@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::ast::{EntityType, EntityUID};
+use cedar_policy_core::ast::{EntityType, EntityUID, RequestType};
 
 use crate::ValidatorSchema;
 
@@ -49,6 +49,26 @@ pub enum RequestEnv<'a> {
 }
 
 impl<'a> RequestEnv<'a> {
+    /// Return the types of each of the elements of this request.
+    /// Returns [`None`] when the request is not fully concrete.
+    pub fn to_request_type(&self) -> Option<RequestType> {
+        match self {
+            RequestEnv::DeclaredAction {
+                principal,
+                action,
+                resource,
+                context: _,
+                principal_slot: _,
+                resource_slot: _,
+            } => Some(RequestType {
+                principal: (*principal).clone(),
+                action: (*action).clone(),
+                resource: (*resource).clone(),
+            }),
+            RequestEnv::UndeclaredAction => None,
+        }
+    }
+
     /// The principal type for this request environment, as an [`EntityType`].
     /// `None` indicates we don't know (only possible in partial schema validation).
     pub fn principal_entity_type(&self) -> Option<&'a EntityType> {

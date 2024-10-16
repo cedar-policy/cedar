@@ -1126,3 +1126,31 @@ fn test_translate_policy() {
         "\noriginal:\n{cedar}\n\ttranslated:\n{translated}",
     );
 }
+
+#[test]
+fn test_translate_schema() {
+    let cedar_filename = "sample-data/tiny_sandboxes/translate-schema/tinytodo.cedarschema";
+    let json_filename = "sample-data/tiny_sandboxes/translate-schema/tinytodo.cedarschema.json";
+
+    // json -> cedar
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("translate-schema")
+        .arg("--direction")
+        .arg("cedar-to-json")
+        .arg("-s")
+        .arg(cedar_filename)
+        .assert()
+        .code(0);
+
+    // cedar -> json
+    assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("translate-schema")
+        .arg("--direction")
+        .arg("json-to-cedar")
+        .arg("-s")
+        .arg(json_filename)
+        .assert()
+        .code(0);
+}

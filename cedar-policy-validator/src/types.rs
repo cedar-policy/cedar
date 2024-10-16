@@ -36,9 +36,9 @@ use cedar_policy_core::{
     },
     entities::{
         conformance::typecheck_restricted_expr_against_schematype,
-        AttributeType as CoreAttributeType, GetSchemaTypeError, SchemaType as CoreSchemaType,
+        AttributeType as CoreAttributeType, SchemaType as CoreSchemaType,
     },
-    extensions::Extensions,
+    extensions::{ExtensionFunctionLookupError, Extensions},
 };
 
 use crate::{validation_errors::LubHelp, ValidationMode};
@@ -265,12 +265,14 @@ impl Type {
 
             // `None` as an element type represents the top type for the set
             // element, so every other set is a subtype of set<None>, making a
-            // least upper bound containing  set<None> and another set type
+            // least upper bound containing set<None> and another set type
             // equal to set<None>. This case should be impossible due to the
             // subtype checks in the first two match cases, but we handle it
             // explicitly as an alternative to panicking if it occurs.
-            (ty_lub @ Type::Set { element_type: None }, Type::Set { .. })
-            | (Type::Set { .. }, ty_lub @ Type::Set { element_type: None }) => Ok(ty_lub.clone()),
+            (Type::Set { element_type: None }, Type::Set { .. })
+            | (Type::Set { .. }, Type::Set { element_type: None }) => {
+                Ok(Type::Set { element_type: None })
+            }
 
             // The least upper bound of two set types is a set with
             // an element type that is the element type least upper bound.
@@ -304,33 +306,44 @@ impl Type {
     // the other hand, cause soundness errors in the typechecker.
     pub(crate) fn are_types_disjoint(ty1: &Type, ty2: &Type) -> bool {
         match (ty1, ty2) {
-            // Entity types least-upper-bounds that have no entity types in
-            // common.
             (Type::EntityOrRecord(k1), Type::EntityOrRecord(k2)) => {
-                match (k1.as_entity_lub(), k2.as_entity_lub()) {
-                    (Some(lub1), Some(lub2)) => lub1.is_disjoint(&lub2),
-                    _ => false,
+                if let (Some(lub1), Some(lub2)) = (k1.as_entity_lub(), k2.as_entity_lub()) {
+                    // Entity types least-upper-bounds that have no entity types in
+                    // common, are disjoint types.
+                    // Entity types least-upper-bounds that have entity types in
+                    // common, are not disjoint types.
+                    lub1.is_disjoint(&lub2)
+                } else {
+                    false // conservatively false, not promising disjointness; see notes on this function
                 }
             }
-            _ => false,
+            _ => false, // conservatively false, not promising disjointness; see notes on this function
         }
     }
 
     /// Given a list of types, compute the least upper bound of all types in the
     /// list. The least upper bound of an empty list is Never.
-    pub(crate) fn reduce_to_least_upper_bound(
+    pub(crate) fn reduce_to_least_upper_bound<'a>(
         schema: &ValidatorSchema,
-        tys: &[Type],
+        tys: impl IntoIterator<Item = &'a Type>,
         mode: ValidationMode,
     ) -> Result<Type, LubHelp> {
-        tys.iter().try_fold(Type::Never, |lub, next| {
+        tys.into_iter().try_fold(Type::Never, |lub, next| {
             Type::least_upper_bound(schema, &lub, next, mode)
         })
     }
 
-    /// Get the type of the specified attribute of an entity or record type.
-    /// If the type is not an entity or record type, or does not have the
-    /// required attribute, then `None` is returned.
+    /// Get the type of the specified attribute of an entity or record type,
+    /// if it is known.
+    ///
+    /// - If `ty` is not an entity or record type, returns `None`.
+    /// - If the attribute is known to not exist on `ty`, returns `None`.
+    /// - If the attribute is known to be optional on `ty`, returns `Some` with
+    ///   the type.
+    ///   (Note that [`AttributeType`] contains an `is_required` flag, so you can
+    ///   distinguish this case.)
+    /// - If the attribute may exist, but multiple types are possible for the
+    ///   attribute (e.g., `AnyEntity`), returns `None`.
     pub(crate) fn lookup_attribute_type(
         schema: &ValidatorSchema,
         ty: &Type,
@@ -346,7 +359,7 @@ impl Type {
     /// Returns an empty vector if no attributes or type is not an entity or record type.
     pub fn all_attributes(&self, schema: &ValidatorSchema) -> Vec<SmolStr> {
         match self {
-            Type::EntityOrRecord(e) => e.all_attrs(schema),
+            Type::EntityOrRecord(e) => e.all_known_attrs(schema),
             _ => vec![],
         }
     }
@@ -387,6 +400,7 @@ impl Type {
             Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
                 attrs.get_attr(attr).is_some()
             }
+            // `AnyEntity` is handled by the open-attribute match case.
             // No other types may have attributes.
             _ => false,
         }
@@ -507,7 +521,7 @@ impl Type {
         &self,
         value: &PartialValue,
         extensions: &Extensions<'_>,
-    ) -> Result<bool, GetSchemaTypeError> {
+    ) -> Result<bool, ExtensionFunctionLookupError> {
         match value {
             PartialValue::Value(value) => self.typecheck_value(value, extensions),
             PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
@@ -522,7 +536,7 @@ impl Type {
         &self,
         value: &Value,
         extensions: &Extensions<'_>,
-    ) -> Result<bool, GetSchemaTypeError> {
+    ) -> Result<bool, ExtensionFunctionLookupError> {
         // we accept the overhead of cloning the `Value` and converting to
         // `RestrictedExpr` in order to improve code reuse and maintainability
         let rexpr = RestrictedExpr::from(value.clone());
@@ -537,7 +551,7 @@ impl Type {
         &self,
         restricted_expr: BorrowedRestrictedExpr<'_>,
         extensions: &Extensions<'_>,
-    ) -> Result<bool, GetSchemaTypeError> {
+    ) -> Result<bool, ExtensionFunctionLookupError> {
         match self {
             Type::Never => Ok(false), // no expr has type Never
             Type::Primitive {
@@ -695,10 +709,12 @@ impl Display for Type {
                 write!(f, "{{")?;
                 for (name, ty) in attrs.iter() {
                     write!(f, "{name}")?;
-                    if !ty.is_required {
+                    if !ty.is_required() {
                         write!(f, "?")?;
                     }
-                    write!(f, ": {},", ty.attr_type)?;
+                    write!(f, ": ")?;
+                    ty.display_type(f)?;
+                    write!(f, ",")?;
                 }
                 write!(f, "}}")
             }
@@ -990,19 +1006,18 @@ pub struct Attributes {
 }
 
 impl Attributes {
-    /// Construct an Attributes with some required attributes.
+    /// Construct an [`Attributes`] with some required attributes.
     pub(crate) fn with_required_attributes(
         required_attrs: impl IntoIterator<Item = (SmolStr, Type)>,
     ) -> Self {
-        Self {
-            attrs: required_attrs
+        Self::with_attributes(
+            required_attrs
                 .into_iter()
-                .map(|(attr, ty)| (attr, AttributeType::required_attribute(ty)))
-                .collect(),
-        }
+                .map(|(attr, ty)| (attr, AttributeType::required_attribute(ty))),
+        )
     }
 
-    /// Construct an Attributes with some attributes that may be required or
+    /// Construct a [`Attributes`] with some attributes that may be required or
     /// optional.
     pub(crate) fn with_attributes(
         attrs: impl IntoIterator<Item = (SmolStr, AttributeType)>,
@@ -1023,8 +1038,8 @@ impl Attributes {
     }
 
     /// Get a tuple containing a boolean flag specifying if a attribute is
-    /// required in the record and the type of the attribute. Returns None when
-    /// the attribute is not in the record.
+    /// required and the type of the attribute.
+    /// Returns `None` when the attribute is not in the record or entity.
     pub(crate) fn get_attr(&self, attr: &str) -> Option<&AttributeType> {
         self.attrs.get(attr)
     }
@@ -1043,13 +1058,7 @@ impl Attributes {
         other.attrs.iter().all(|(k, other_ty)| {
             self.attrs
                 .get(k)
-                .map(|self_ty| {
-                    (if mode.is_strict() {
-                        self_ty.is_required == other_ty.is_required
-                    } else {
-                        self_ty.is_required || !other_ty.is_required
-                    }) && Type::is_subtype(schema, &self_ty.attr_type, &other_ty.attr_type, mode)
-                })
+                .map(|self_ty| AttributeType::is_subtype(schema, self_ty, other_ty, mode))
                 .unwrap_or(false)
         })
     }
@@ -1085,17 +1094,13 @@ impl Attributes {
         attrs0: &'a Attributes,
         attrs1: &'a Attributes,
         mode: ValidationMode,
-    ) -> impl Iterator<Item = Result<(SmolStr, AttributeType), LubHelp>> + 'a {
+    ) -> impl Iterator<Item = Result<(&'a SmolStr, AttributeType), LubHelp>> + 'a {
         attrs0.attrs.iter().map(move |(attr, ty0)| {
             let ty1 = attrs1.attrs.get(attr).ok_or(LubHelp::RecordWidth)?;
-            Type::least_upper_bound(schema, &ty0.attr_type, &ty1.attr_type, mode).and_then(|lub| {
-                let is_lub_required = ty0.is_required && ty1.is_required;
-                if mode.is_strict() && ty0.is_required != ty1.is_required {
-                    Err(LubHelp::AttributeQualifier)
-                } else {
-                    Ok((attr.clone(), AttributeType::new(lub, is_lub_required)))
-                }
-            })
+            Ok((
+                attr,
+                AttributeType::least_upper_bound(schema, ty0, ty1, mode)?,
+            ))
         })
     }
 
@@ -1108,6 +1113,7 @@ impl Attributes {
             return Err(LubHelp::RecordWidth);
         }
         Self::attributes_lub_iter(schema, attrs0, attrs1, ValidationMode::Strict)
+            .map(|r| r.map(|(k, v)| (k.clone(), v)))
             .collect::<Result<Vec<_>, _>>()
             .map(Attributes::with_attributes)
     }
@@ -1118,7 +1124,8 @@ impl Attributes {
         attrs1: &Attributes,
     ) -> Attributes {
         Attributes::with_attributes(
-            Self::attributes_lub_iter(schema, attrs0, attrs1, ValidationMode::Permissive).flatten(),
+            Self::attributes_lub_iter(schema, attrs0, attrs1, ValidationMode::Permissive)
+                .flat_map(|r| r.map(|(k, v)| (k.clone(), v))),
         )
     }
 }
@@ -1203,7 +1210,7 @@ impl From<&OpenTag> for proto::OpenTag {
 /// `Entity` <: `AnyEntity`. `Record` does not subtype anything.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 pub enum EntityRecordKind {
-    /// A record type, with these attributes
+    /// A record type
     Record {
         /// The attributes that we know must exist (or may exist in the case of
         /// optional attributes) for a record with this type along with the
@@ -1212,6 +1219,7 @@ pub enum EntityRecordKind {
         /// Encodes whether the attributes for this record are open or closed.
         open_attributes: OpenTag,
     },
+
     /// Any entity type
     AnyEntity,
     /// An entity reference type. An entity reference might be a reference to one
@@ -1276,21 +1284,40 @@ impl EntityRecordKind {
         }
     }
 
-    /// Get the type of the given attribute in this entity or record, or `None`
-    /// if it doesn't exist (or not known to exist)
+    /// Get the type of the given attribute in this entity or record.
+    ///
+    /// - If the attribute is known to not exist on this entity or record, returns
+    ///   `None`.
+    /// - If the attribute is known to be optional on tihs entity or record,
+    ///   returns `Some` with the type.
+    ///   (Note that [`AttributeType`] contains an `is_required` flag, so you can
+    ///   distinguish this case.)
+    /// - If the attribute may exist, but multiple types are possible for the
+    ///   attribute (e.g., `AnyEntity`), returns `None`.
     pub(crate) fn get_attr(&self, schema: &ValidatorSchema, attr: &str) -> Option<AttributeType> {
         match self {
-            EntityRecordKind::Record { attrs, .. } => attrs.get_attr(attr).cloned(),
-            EntityRecordKind::ActionEntity { attrs, .. } => attrs.get_attr(attr).cloned(),
-            EntityRecordKind::AnyEntity => None,
+            EntityRecordKind::Record { attrs, .. } => attrs.get_attr(attr).cloned().map(Into::into),
             EntityRecordKind::Entity(lub) => {
                 lub.get_attribute_types(schema).get_attr(attr).cloned()
+            }
+            EntityRecordKind::ActionEntity { attrs, .. } => {
+                attrs.get_attr(attr).cloned().map(Into::into)
+            }
+            EntityRecordKind::AnyEntity => {
+                // the attribute may exist, but multiple types for it are possible
+                None
             }
         }
     }
 
-    /// Get all the attribute names for this entity or record
-    pub fn all_attrs(&self, schema: &ValidatorSchema) -> Vec<SmolStr> {
+    /// Get all the attribute names _known to exist_ for this entity or record
+    ///
+    /// For `AnyEntity`, this will return an empty vec, as there are no
+    /// attribute names we _know_ must exist (even though `AnyEntity` types may
+    /// clearly have attributes).
+    /// For LUB types, this will return only the attribute names known to exist
+    /// in the LUB.
+    pub fn all_known_attrs(&self, schema: &ValidatorSchema) -> Vec<SmolStr> {
         // Wish the clone here could be avoided, but `get_attribute_types` returns an owned `Attributes`.
         match self {
             EntityRecordKind::Record { attrs, .. } => attrs.attrs.keys().cloned().collect(),
@@ -1468,11 +1495,11 @@ impl EntityRecordKind {
             (AnyEntity, AnyEntity) => true,
             (Entity(_) | ActionEntity { .. }, AnyEntity) => !mode.is_strict(),
 
-            // Entities cannot subtype records because their LUB is undefined to
-            // avoid a non-terminating case.
+            // Entities cannot subtype records or vice-versa because their LUB
+            // is undefined to avoid a non-terminating case.
             (Entity(_) | AnyEntity | ActionEntity { .. }, Record { .. }) => false,
-
             (Record { .. }, Entity(_) | AnyEntity | ActionEntity { .. }) => false,
+
             (ActionEntity { .. }, Entity(_)) => false,
             (AnyEntity, Entity(_)) => false,
             (Entity(_) | AnyEntity, ActionEntity { .. }) => false,
@@ -1562,10 +1589,57 @@ impl AttributeType {
         }
     }
 
-    /// Construct an [`AttributeType`] for an attribute that must be present given
-    /// the type of the attribute.
+    /// Construct an [`AttributeType`] for an attribute that is required.
     pub fn required_attribute(attr_type: Type) -> Self {
         Self::new(attr_type, true)
+    }
+
+    /// Construct an [`AttributeType`] for an attribute that is optional.
+    pub fn optional_attribute(attr_type: Type) -> Self {
+        Self::new(attr_type, false)
+    }
+
+    /// Is the attribute required?
+    pub fn is_required(&self) -> bool {
+        self.is_required
+    }
+
+    /// Display just the type portion of the [`AttributeType`], ignoring the
+    /// `is_required` flag
+    fn display_type(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.attr_type.fmt(f)
+    }
+
+    /// Get the least upper bound of two [`AttributeType`]s
+    fn least_upper_bound(
+        schema: &ValidatorSchema,
+        ty0: &AttributeType,
+        ty1: &AttributeType,
+        mode: ValidationMode,
+    ) -> Result<AttributeType, LubHelp> {
+        Type::least_upper_bound(schema, &ty0.attr_type, &ty1.attr_type, mode).and_then(|lub| {
+            let is_lub_required = ty0.is_required() && ty1.is_required();
+            if mode.is_strict() && ty0.is_required() != ty1.is_required() {
+                Err(LubHelp::AttributeQualifier)
+            } else {
+                Ok(AttributeType::new(lub, is_lub_required))
+            }
+        })
+    }
+
+    /// Is `ty0` a subtype of `ty1`?
+    fn is_subtype(
+        schema: &ValidatorSchema,
+        ty0: &AttributeType,
+        ty1: &AttributeType,
+        mode: ValidationMode,
+    ) -> bool {
+        let qualifier_subtype = if mode.is_strict() {
+            ty0.is_required() == ty1.is_required()
+        } else {
+            ty0.is_required() || !ty1.is_required()
+        };
+        qualifier_subtype && Type::is_subtype(schema, &ty0.attr_type, &ty1.attr_type, mode)
     }
 }
 
@@ -1999,7 +2073,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -2110,7 +2184,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -2236,7 +2310,7 @@ mod test {
             }}))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .expect("Expected valid schema");
 
@@ -2278,7 +2352,7 @@ mod test {
             ))
             .expect("Expected valid schema"),
             ActionBehavior::PermitAttributes,
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .expect("Expected valid schema")
     }
@@ -2323,7 +2397,7 @@ mod test {
         let type_str = format!("type T = {ty}; entity E {{ foo: T }};");
         println!("{type_str}");
         let (schema, _) =
-            ValidatorSchema::from_cedarschema_str(&type_str, &Extensions::all_available()).unwrap();
+            ValidatorSchema::from_cedarschema_str(&type_str, Extensions::all_available()).unwrap();
         assert_eq!(
             &schema
                 .get_entity_type(&EntityType::from_normalized_str("E").unwrap())
@@ -2331,7 +2405,7 @@ mod test {
                 .attr("foo")
                 .unwrap()
                 .attr_type,
-            &ty
+            &ty,
         );
     }
 

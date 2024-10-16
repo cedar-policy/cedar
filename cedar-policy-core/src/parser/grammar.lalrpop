@@ -32,7 +32,6 @@ extern {
     type Error = RawUserError;
 }
 
-// New tokens should be reflected in the `FRIENDLY_TOKEN_NAMES` map in err.rs.
 match {
     // Whitespace and comments
     r"\s*" => { }, // The default whitespace skipping is disabled an `ignore pattern` is specified
@@ -99,7 +98,7 @@ pub Policies: Node<Option<cst::Policies>> = {
 
 // Annotations := {'@' Ident '(' String ')'}
 Annotation: Node<Option<cst::Annotation>> = {
-    <l:@L> "@" <key:AnyIdent> "(" <value:Str> ")" <r:@R> => Node::with_source_loc(Some(cst::Annotation{key,value}), Loc::new(l..r, Arc::clone(src)))
+    <l:@L> "@" <key:AnyIdent> <value: ("(" <Str> ")")?> <r:@R> => Node::with_source_loc(Some(cst::Annotation{key,value}), Loc::new(l..r, Arc::clone(src)))
 }
 
 // Policy := "label" ('permit' | 'forbid') '(' {VariableDef} ')' {Cond} ;

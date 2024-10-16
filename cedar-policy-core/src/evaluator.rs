@@ -531,6 +531,54 @@ impl<'e> Evaluator<'e> {
                             }
                         }
                     }
+                    // GetTag and HasTag, which require an Entity on the left and a String on the right
+                    BinaryOp::GetTag | BinaryOp::HasTag => {
+                        let uid = arg1.get_as_entity()?;
+                        let tag = arg2.get_as_string()?;
+                        match op {
+                            BinaryOp::GetTag => {
+                                match self.entities.entity(uid) {
+                                    Dereference::NoSuchEntity => {
+                                        // intentionally using the location of the euid (the LHS) and not the entire GetTag expression
+                                        Err(EvaluationError::entity_does_not_exist(
+                                            Arc::new(uid.clone()),
+                                            arg1.source_loc().cloned(),
+                                        ))
+                                    }
+                                    Dereference::Residual(r) => Ok(PartialValue::Residual(
+                                        Expr::get_tag(r, Expr::val(tag.clone())),
+                                    )),
+                                    Dereference::Data(entity) => entity
+                                        .get_tag(tag)
+                                        .ok_or_else(|| {
+                                            EvaluationError::entity_tag_does_not_exist(
+                                                Arc::new(uid.clone()),
+                                                tag.clone(),
+                                                entity.tag_keys(),
+                                                entity.get(tag).is_some(),
+                                                entity.tags_len(),
+                                                loc.cloned(), // intentionally using the location of the entire `GetTag` expression
+                                            )
+                                        })
+                                        .cloned(),
+                                }
+                            }
+                            BinaryOp::HasTag => match self.entities.entity(uid) {
+                                Dereference::NoSuchEntity => Ok(false.into()),
+                                Dereference::Residual(r) => Ok(PartialValue::Residual(
+                                    Expr::has_tag(r, Expr::val(tag.clone())),
+                                )),
+                                Dereference::Data(entity) => {
+                                    Ok(entity.get_tag(tag).is_some().into())
+                                }
+                            },
+                            // PANIC SAFETY `op` is checked to be one of these two above
+                            #[allow(clippy::unreachable)]
+                            _ => {
+                                unreachable!("Should have already checked that op was one of these")
+                            }
+                        }
+                    }
                 }
             }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
@@ -772,6 +820,7 @@ impl<'e> Evaluator<'e> {
                             uid,
                             attr.clone(),
                             entity.keys(),
+                            entity.get_tag(attr).is_some(),
                             entity.attrs_len(),
                             source_loc.cloned(),
                         )
@@ -911,6 +960,7 @@ pub mod test {
     use crate::{
         entities::{EntityJsonParser, NoEntitiesSchema, TCComputation},
         parser::{self, parse_expr, parse_policy_or_template, parse_policyset},
+        test_utils::{expect_err, ExpectedErrorMessageBuilder},
     };
 
     use cool_asserts::assert_matches;
@@ -962,9 +1012,17 @@ pub mod test {
     pub fn rich_entities() -> Entities {
         let entity_no_attrs_no_parents =
             Entity::with_uid(EntityUID::with_eid("entity_no_attrs_no_parents"));
+
         let mut entity_with_attrs = Entity::with_uid(EntityUID::with_eid("entity_with_attrs"));
         entity_with_attrs
             .set_attr("spoon".into(), RestrictedExpr::val(787), Extensions::none())
+            .unwrap();
+        entity_with_attrs
+            .set_attr(
+                "fork".into(),
+                RestrictedExpr::val("spoon"),
+                Extensions::none(),
+            )
             .unwrap();
         entity_with_attrs
             .set_attr(
@@ -989,6 +1047,26 @@ pub mod test {
                 Extensions::none(),
             )
             .unwrap();
+
+        let mut entity_with_tags = Entity::with_uid(EntityUID::with_eid("entity_with_tags"));
+        entity_with_tags
+            .set_tag(
+                "spoon".into(),
+                RestrictedExpr::val(-121),
+                Extensions::none(),
+            )
+            .unwrap();
+
+        let mut entity_with_tags_and_attrs = entity_with_attrs.clone();
+        entity_with_tags_and_attrs.set_uid(EntityUID::with_eid("entity_with_tags_and_attrs"));
+        entity_with_tags_and_attrs
+            .set_tag(
+                "spoon".into(),
+                RestrictedExpr::val(-121),
+                Extensions::none(),
+            )
+            .unwrap();
+
         let mut child = Entity::with_uid(EntityUID::with_eid("child"));
         let mut parent = Entity::with_uid(EntityUID::with_eid("parent"));
         let grandparent = Entity::with_uid(EntityUID::with_eid("grandparent"));
@@ -1003,10 +1081,13 @@ pub mod test {
         );
         child_diff_type.add_ancestor(parent.uid().clone());
         child_diff_type.add_ancestor(grandparent.uid().clone());
+
         Entities::from_entities(
             vec![
                 entity_no_attrs_no_parents,
                 entity_with_attrs,
+                entity_with_tags,
+                entity_with_tags_and_attrs,
                 child,
                 child_diff_type,
                 parent,
@@ -1290,20 +1371,47 @@ pub mod test {
             )),
             Ok(Value::from(true))
         );
-        // get_attr on an attr which doesn't exist
+        // get_attr on an attr which doesn't exist (and no tags exist)
         assert_matches!(
             eval.interpret_inline_policy(&Expr::get_attr(
                 Expr::val(EntityUID::with_eid("entity_with_attrs")),
                 "doesnotexist".into()
             )),
             Err(EvaluationError::EntityAttrDoesNotExist(e)) => {
+                let report = miette::Report::new(e.clone());
                 assert_eq!(e.entity.as_ref(), &EntityUID::with_eid("entity_with_attrs"));
-                assert_eq!(&e.attr, "doesnotexist");
-                let available_attrs = e.available_attrs;
-                assert_eq!(available_attrs.len(), 3);
+                assert_eq!(&e.attr_or_tag, "doesnotexist");
+                let available_attrs = e.available_attrs_or_tags;
+                assert_eq!(available_attrs.len(), 4);
                 assert!(available_attrs.contains(&"spoon".into()));
                 assert!(available_attrs.contains(&"address".into()));
                 assert!(available_attrs.contains(&"tags".into()));
+                expect_err(
+                    "",
+                    &report,
+                    &ExpectedErrorMessageBuilder::error(r#"`test_entity_type::"entity_with_attrs"` does not have the attribute `doesnotexist`"#)
+                        .help("available attributes: [address,fork,spoon,tags]")
+                        .build()
+                );
+            }
+        );
+        // get_attr on an attr which doesn't exist (but the corresponding tag does)
+        assert_matches!(
+            eval.interpret_inline_policy(&Expr::get_attr(
+                Expr::val(EntityUID::with_eid("entity_with_tags")),
+                "spoon".into()
+            )),
+            Err(EvaluationError::EntityAttrDoesNotExist(e)) => {
+                let report = miette::Report::new(e.clone());
+                assert_eq!(e.entity.as_ref(), &EntityUID::with_eid("entity_with_tags"));
+                assert_eq!(&e.attr_or_tag, "spoon");
+                let available_attrs = e.available_attrs_or_tags;
+                assert_eq!(available_attrs.len(), 0);
+                let expected_error_message =
+                    ExpectedErrorMessageBuilder::error(r#"`test_entity_type::"entity_with_tags"` does not have the attribute `spoon`"#)
+                        .help(r#"`test_entity_type::"entity_with_tags"` does not have any attributes; note that a tag (not an attribute) named `spoon` does exist"#)
+                        .build();
+                expect_err("", &report, &expected_error_message);
             }
         );
         // get_attr on an attr which does exist (and has integer type)
@@ -1318,7 +1426,7 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::contains(
                 Expr::get_attr(
-                    Expr::val(EntityUID::with_eid("entity_with_attrs")),
+                    Expr::val(EntityUID::with_eid("entity_with_tags_and_attrs")),
                     "tags".into()
                 ),
                 Expr::val("useful")
@@ -1343,6 +1451,224 @@ pub mod test {
                 Arc::new(EntityUID::with_eid("doesnotexist")),
                 None
             ))
+        );
+    }
+
+    #[test]
+    fn interpret_entity_tags() {
+        let request = basic_request();
+        let entities = rich_entities();
+        let eval = Evaluator::new(request, &entities, Extensions::none());
+        // hasTag on an entity with no tags
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::has_tag(
+                Expr::val(EntityUID::with_eid("entity_no_attrs_no_parents")),
+                Expr::val("doesnotexist"),
+            )),
+            Ok(Value::from(false))
+        );
+        // hasTag on an entity that has tags, but not that one (and no attrs exist)
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::has_tag(
+                Expr::val(EntityUID::with_eid("entity_with_tags")),
+                Expr::val("doesnotexist"),
+            )),
+            Ok(Value::from(false))
+        );
+        // hasTag on an entity that has tags, but not that one (but does have an attr of that name)
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::has_tag(
+                Expr::val(EntityUID::with_eid("entity_with_tags_and_attrs")),
+                Expr::val("address"),
+            )),
+            Ok(Value::from(false))
+        );
+        // hasTag where the response is true
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::has_tag(
+                Expr::val(EntityUID::with_eid("entity_with_tags")),
+                Expr::val("spoon"),
+            )),
+            Ok(Value::from(true))
+        );
+        // hasTag, with a computed key, where the response is true
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::has_tag(
+                Expr::val(EntityUID::with_eid("entity_with_tags")),
+                Expr::get_attr(
+                    Expr::val(EntityUID::with_eid("entity_with_tags_and_attrs")),
+                    "fork".into()
+                ),
+            )),
+            Ok(Value::from(true))
+        );
+        // getTag on a tag which doesn't exist (and no attrs exist)
+        assert_matches!(
+            eval.interpret_inline_policy(&Expr::get_tag(
+                Expr::val(EntityUID::with_eid("entity_with_tags")),
+                Expr::val("doesnotexist"),
+            )),
+            Err(EvaluationError::EntityAttrDoesNotExist(e)) => {
+                let report = miette::Report::new(e.clone());
+                assert_eq!(e.entity.as_ref(), &EntityUID::with_eid("entity_with_tags"));
+                assert_eq!(&e.attr_or_tag, "doesnotexist");
+                let available_attrs = e.available_attrs_or_tags;
+                assert_eq!(available_attrs.len(), 1);
+                assert!(available_attrs.contains(&"spoon".into()));
+                expect_err(
+                    "",
+                    &report,
+                    &ExpectedErrorMessageBuilder::error(r#"`test_entity_type::"entity_with_tags"` does not have the tag `doesnotexist`"#)
+                        .help("available tags: [spoon]")
+                        .build()
+                );
+            }
+        );
+        // getTag on a tag which doesn't exist (but the corresponding attr does)
+        assert_matches!(
+            eval.interpret_inline_policy(&Expr::get_tag(
+                Expr::val(EntityUID::with_eid("entity_with_tags_and_attrs")),
+                Expr::val("address"),
+            )),
+            Err(EvaluationError::EntityAttrDoesNotExist(e)) => {
+                let report = miette::Report::new(e.clone());
+                assert_eq!(e.entity.as_ref(), &EntityUID::with_eid("entity_with_tags_and_attrs"));
+                assert_eq!(&e.attr_or_tag, "address");
+                let available_attrs = e.available_attrs_or_tags;
+                assert_eq!(available_attrs.len(), 1);
+                assert!(available_attrs.contains(&"spoon".into()));
+                expect_err(
+                    "",
+                    &report,
+                    &ExpectedErrorMessageBuilder::error(r#"`test_entity_type::"entity_with_tags_and_attrs"` does not have the tag `address`"#)
+                        .help("available tags: [spoon]; note that an attribute (not a tag) named `address` does exist")
+                        .build()
+                );
+            }
+        );
+        // getTag on a tag which does exist (and has integer type)
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::get_tag(
+                Expr::val(EntityUID::with_eid("entity_with_tags")),
+                Expr::val("spoon"),
+            )),
+            Ok(Value::from(-121))
+        );
+        // getTag with a computed key on a tag which does exist
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::get_tag(
+                Expr::val(EntityUID::with_eid("entity_with_tags")),
+                Expr::get_attr(
+                    Expr::val(EntityUID::with_eid("entity_with_attrs")),
+                    "fork".into()
+                ),
+            )),
+            Ok(Value::from(-121))
+        );
+        // getTag with a computed key on a tag which doesn't exist
+        assert_matches!(
+            eval.interpret_inline_policy(&Expr::get_tag(
+                Expr::val(EntityUID::with_eid("entity_with_tags")),
+                Expr::get_attr(
+                    Expr::get_attr(
+                        Expr::val(EntityUID::with_eid("entity_with_attrs")),
+                        "address".into()
+                    ),
+                    "country".into()
+                ),
+            )),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"`test_entity_type::"entity_with_tags"` does not have the tag `amazonia`"#)
+                        .help("available tags: [spoon]")
+                        .build(),
+                )
+            }
+        );
+        // hasTag on an entity which doesn't exist
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::has_tag(
+                Expr::val(EntityUID::with_eid("doesnotexist")),
+                Expr::val("foo"),
+            )),
+            Ok(Value::from(false))
+        );
+        // getTag on an entity which doesn't exist
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::get_tag(
+                Expr::val(EntityUID::with_eid("doesnotexist")),
+                Expr::val("foo"),
+            )),
+            Err(EvaluationError::entity_does_not_exist(
+                Arc::new(EntityUID::with_eid("doesnotexist")),
+                None
+            ))
+        );
+        // getTag on something that's not an entity
+        assert_matches!(
+            eval.interpret_inline_policy(&Expr::get_tag(
+                Expr::record([
+                    ("spoon".into(), Expr::val(78)),
+                ]).unwrap(),
+                Expr::val("spoon"),
+            )),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("type error: expected (entity of type `any_entity_type`), got record")
+                        .build()
+                );
+            }
+        );
+        // hasTag on something that's not an entity
+        assert_matches!(
+            eval.interpret_inline_policy(&Expr::has_tag(
+                Expr::record([
+                    ("spoon".into(), Expr::val(78)),
+                ]).unwrap(),
+                Expr::val("spoon"),
+            )),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("type error: expected (entity of type `any_entity_type`), got record")
+                        .build()
+                );
+            }
+        );
+        // getTag with a computed key that doesn't evaluate to a String
+        assert_matches!(
+            eval.interpret_inline_policy(&Expr::get_tag(
+                Expr::val(EntityUID::with_eid("entity_with_tags")),
+                Expr::get_attr(Expr::val(EntityUID::with_eid("entity_with_attrs")), "spoon".into()),
+            )),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("type error: expected string, got long")
+                        .build()
+                );
+            }
+        );
+        // hasTag with a computed key that doesn't evaluate to a String
+        assert_matches!(
+            eval.interpret_inline_policy(&Expr::has_tag(
+                Expr::val(EntityUID::with_eid("entity_with_tags")),
+                Expr::get_attr(Expr::val(EntityUID::with_eid("entity_with_attrs")), "spoon".into()),
+            )),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("type error: expected string, got long")
+                        .build()
+                );
+            }
         );
     }
 
@@ -2078,6 +2404,7 @@ pub mod test {
             r#"Foo::"bar""#.parse().unwrap(),
             attrs.clone(),
             HashSet::new(),
+            [],
             Extensions::none(),
         )
         .unwrap();
@@ -2100,6 +2427,7 @@ pub mod test {
             Arc::new(r#"Foo::"bar""#.parse().unwrap()),
             "foo".into(),
             expected_keys.iter(),
+            false,
             7,
             None,
         );

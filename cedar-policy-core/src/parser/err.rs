@@ -123,6 +123,8 @@ const POLICY_SCOPE_HELP: &str =
     "policy scopes must contain a `principal`, `action`, and `resource` element in that order";
 
 /// Details about a particular kind of `ToASTError`.
+//
+// This is NOT a publicly exported error type.
 #[derive(Debug, Diagnostic, Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ToASTErrorKind {

@@ -23,7 +23,7 @@ use crate::ast::{BorrowedRestrictedExpr, Entity, EntityUID, PartialValue, Restri
 use crate::entities::conformance::EntitySchemaConformanceChecker;
 use crate::entities::{
     conformance::err::{EntitySchemaConformanceError, UnexpectedEntityTypeError},
-    schematype_of_partialvalue, Entities, EntitiesError, GetSchemaTypeError, TCComputation,
+    Entities, EntitiesError, TCComputation,
 };
 use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
@@ -56,6 +56,12 @@ pub struct EntityJson {
     attrs: HashMap<SmolStr, JsonValueWithNoDuplicateKeys>,
     /// Parents of the entity, specified in any form accepted by `EntityUidJson`
     parents: Vec<EntityUidJson>,
+    #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
+    #[serde(default)]
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, CedarValueJson>"))]
+    // the annotation covers duplicates in this `HashMap` itself, while the `JsonValueWithNoDuplicateKeys` covers duplicates in any records contained in tag values (including recursively)
+    tags: HashMap<SmolStr, JsonValueWithNoDuplicateKeys>,
 }
 
 /// Struct used to parse entities from JSON.
@@ -79,11 +85,10 @@ pub struct EntityJsonParser<'e, 's, S: Schema = NoEntitiesSchema> {
 /// Schema information about a single entity can take one of these forms:
 #[derive(Debug)]
 enum EntitySchemaInfo<E: EntityTypeDescription> {
-    /// There is no schema, i.e. we're not doing schema-based parsing
+    /// There is no schema, i.e. we're not doing schema-based parsing. We don't
+    /// have attribute type information in the schema for action entities, so
+    /// these are also parsed without schema-based parsing.
     NoSchema,
-    /// The entity is an action, and here's the schema's copy of the
-    /// `Entity` object for it
-    Action(Arc<Entity>),
     /// The entity is a non-action, and here's the schema's information
     /// about its type
     NonAction(E),
@@ -274,11 +279,8 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
             None => EntitySchemaInfo::NoSchema,
             Some(schema) => {
                 if etype.is_action() {
-                    EntitySchemaInfo::Action(schema.action(&uid).ok_or(
-                        JsonDeserializationError::EntitySchemaConformance(
-                            EntitySchemaConformanceError::undeclared_action(uid.clone()),
-                        ),
-                    )?)
+                    // Action entities do not have attribute type information in the schema.
+                    EntitySchemaInfo::NoSchema
                 } else {
                     EntitySchemaInfo::NonAction(schema.entity_type(etype).ok_or_else(|| {
                         let suggested_types = schema
@@ -343,57 +345,41 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                     };
                     Ok((k.clone(), rexpr))
                 }
-                EntitySchemaInfo::Action(action) => {
-                    // We'll do schema-based parsing assuming optimistically that
-                    // the type in the JSON is the same as the type in the schema.
-                    // (As of this writing, the schema doesn't actually tell us
-                    // what type each action attribute is supposed to be)
-                    let expected_val = match action.get(&k) {
-                        // `None` indicates the attribute isn't in the schema's
-                        // copy of the action entity
+            })
+            .collect::<Result<_, JsonDeserializationError>>()?;
+        let tags: HashMap<SmolStr, RestrictedExpr> = ejson
+            .tags
+            .into_iter()
+            .map(|(k, v)| match &entity_schema_info {
+                EntitySchemaInfo::NoSchema => Ok((
+                    k.clone(),
+                    vparser.val_into_restricted_expr(v.into(), None, || {
+                        JsonDeserializationErrorContext::EntityTag {
+                            uid: uid.clone(),
+                            tag: k.clone(),
+                        }
+                    })?,
+                )),
+                EntitySchemaInfo::NonAction(desc) => {
+                    // Depending on the expected type, we may parse the contents
+                    // of the tag differently.
+                    let rexpr = match desc.tag_type() {
+                        // `None` indicates no tags should exist -- see docs on
+                        // the `tag_type()` trait method
                         None => {
                             return Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::action_declaration_mismatch(
-                                    uid.clone(),
-                                ),
-                            ))
+                                EntitySchemaConformanceError::unexpected_entity_tag(uid.clone(), k),
+                            ));
                         }
-                        Some(v) => v,
-                    };
-                    let expected_ty =
-                        match schematype_of_partialvalue(expected_val, self.extensions) {
-                            Ok(ty) => Ok(Some(ty)),
-                            Err(GetSchemaTypeError::HeterogeneousSet(err)) => {
-                                Err(JsonDeserializationError::EntitySchemaConformance(
-                                    EntitySchemaConformanceError::heterogeneous_set(
-                                        uid.clone(),
-                                        k.clone(),
-                                        err,
-                                    ),
-                                ))
-                            }
-                            Err(GetSchemaTypeError::ExtensionFunctionLookup(err)) => {
-                                Err(JsonDeserializationError::EntitySchemaConformance(
-                                    EntitySchemaConformanceError::extension_function_lookup(
-                                        uid.clone(),
-                                        k.clone(),
-                                        err,
-                                    ),
-                                ))
-                            }
-                            Err(GetSchemaTypeError::UnknownInsufficientTypeInfo { .. })
-                            | Err(GetSchemaTypeError::NontrivialResidual { .. }) => {
-                                // In these cases, we'll just do ordinary non-schema-based parsing.
-                                Ok(None)
-                            }
-                        }?;
-                    let rexpr =
-                        vparser.val_into_restricted_expr(v.into(), expected_ty.as_ref(), || {
-                            JsonDeserializationErrorContext::EntityAttribute {
+                        Some(expected_ty) => vparser.val_into_restricted_expr(
+                            v.into(),
+                            Some(&expected_ty),
+                            || JsonDeserializationErrorContext::EntityTag {
                                 uid: uid.clone(),
-                                attr: k.clone(),
-                            }
-                        })?;
+                                tag: k.clone(),
+                            },
+                        )?,
+                    };
                     Ok((k, rexpr))
                 }
             })
@@ -430,7 +416,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 })
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
-        Ok(Entity::new(uid, attrs, parents, self.extensions)?)
+        Ok(Entity::new(uid, attrs, parents, tags, self.extensions)?)
     }
 }
 
@@ -439,29 +425,36 @@ impl EntityJson {
     ///
     /// (for the reverse transformation, use `EntityJsonParser`)
     pub fn from_entity(entity: &Entity) -> Result<Self, JsonSerializationError> {
+        let serialize_kpvalue = |(k, pvalue): (&SmolStr, &PartialValue)| -> Result<_, _> {
+            match pvalue {
+                PartialValue::Value(value) => {
+                    let cedarvaluejson = CedarValueJson::from_value(value.clone())?;
+                    Ok((k.clone(), serde_json::to_value(cedarvaluejson)?.into()))
+                }
+                PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
+                    Ok(expr) => {
+                        let cedarvaluejson = CedarValueJson::from_expr(expr)?;
+                        Ok((k.clone(), serde_json::to_value(cedarvaluejson)?.into()))
+                    }
+                    Err(_) => Err(JsonSerializationError::residual(expr.clone())),
+                },
+            }
+        };
         Ok(Self {
             // for now, we encode `uid` and `parents` using an implied `__entity` escape
             uid: EntityUidJson::ImplicitEntityEscape(TypeAndId::from(entity.uid())),
             attrs: entity
                 .attrs()
-                .map(|(k, pvalue)| match pvalue {
-                    PartialValue::Value(value) => {
-                        let cedarvaluejson = CedarValueJson::from_value(value.clone())?;
-                        Ok((k.clone(), serde_json::to_value(cedarvaluejson)?.into()))
-                    }
-                    PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
-                        Ok(expr) => {
-                            let cedarvaluejson = CedarValueJson::from_expr(expr)?;
-                            Ok((k.clone(), serde_json::to_value(cedarvaluejson)?.into()))
-                        }
-                        Err(_) => Err(JsonSerializationError::residual(expr.clone())),
-                    },
-                })
+                .map(serialize_kpvalue)
                 .collect::<Result<_, JsonSerializationError>>()?,
             parents: entity
                 .ancestors()
                 .map(|euid| EntityUidJson::ImplicitEntityEscape(TypeAndId::from(euid.clone())))
                 .collect(),
+            tags: entity
+                .tags()
+                .map(serialize_kpvalue)
+                .collect::<Result<_, JsonSerializationError>>()?,
         })
     }
 }

@@ -23,6 +23,13 @@
 )]
 
 mod id;
+#[cfg(feature = "entity-manifest")]
+use cedar_policy_validator::entity_manifest;
+// TODO (#1157) implement wrappers for these structs before they become public
+#[cfg(feature = "entity-manifest")]
+pub use cedar_policy_validator::entity_manifest::{
+    AccessTrie, EntityManifest, EntityRoot, Fields, RootAccessTrie,
+};
 use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;
 
@@ -52,13 +59,36 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Read;
 use std::str::FromStr;
 
+// PANIC SAFETY: `CARGO_PKG_VERSION` should return a valid SemVer version string
+#[allow(clippy::unwrap_used)]
+pub(crate) mod version {
+    use lazy_static::lazy_static;
+    use semver::Version;
+
+    lazy_static! {
+        // Cedar Rust SDK Semantic Versioning version
+        static ref SDK_VERSION: Version = env!("CARGO_PKG_VERSION").parse().unwrap();
+        // Cedar language version
+        // The patch version field may be unnecessary
+        static ref LANG_VERSION: Version = Version::new(4, 0, 0);
+    }
+    /// Get the Cedar SDK Semantic Versioning version
+    pub fn get_sdk_version() -> Version {
+        SDK_VERSION.clone()
+    }
+    /// Get the Cedar language version
+    pub fn get_lang_version() -> Version {
+        LANG_VERSION.clone()
+    }
+}
+
 /// Entity datatype
 #[repr(transparent)]
-#[derive(Debug, Clone, PartialEq, Eq, RefCast)]
+#[derive(Debug, Clone, PartialEq, Eq, RefCast, Hash)]
 pub struct Entity(ast::Entity);
 
 impl Entity {
-    /// Create a new `Entity` with this Uid, attributes, and parents.
+    /// Create a new `Entity` with this Uid, attributes, and parents (and no tags).
     ///
     /// Attribute values are specified here as "restricted expressions".
     /// See docs on `RestrictedExpression`
@@ -88,11 +118,9 @@ impl Entity {
         // the `Entities` object is created
         Ok(Self(ast::Entity::new(
             uid.into(),
-            attrs
-                .into_iter()
-                .map(|(k, v)| (SmolStr::from(k), v.0))
-                .collect(),
+            attrs.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
             parents.into_iter().map(EntityUid::into).collect(),
+            [],
             Extensions::all_available(),
         )?))
     }
@@ -106,7 +134,7 @@ impl Entity {
         // the `Entities` object is created
         Self(ast::Entity::new_with_attr_partial_value(
             uid.into(),
-            HashMap::new(),
+            [],
             parents.into_iter().map(EntityUid::into).collect(),
         ))
     }
@@ -175,7 +203,7 @@ impl Entity {
         HashMap<String, RestrictedExpression>,
         HashSet<EntityUid>,
     ) {
-        let (uid, attrs, ancestors) = self.0.into_inner();
+        let (uid, attrs, ancestors, _) = self.0.into_inner();
 
         let attrs = attrs
             .into_iter()
@@ -338,6 +366,10 @@ impl Entities {
     /// error if attributes have the wrong types (e.g., string instead of
     /// integer), or if required attributes are missing or superfluous
     /// attributes are provided.
+    /// ## Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
         schema: Option<&Schema>,
@@ -364,6 +396,10 @@ impl Entities {
     ///
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
+    /// ## Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
     pub fn add_entities(
         self,
         entities: impl IntoIterator<Item = Entity>,
@@ -394,6 +430,11 @@ impl Entities {
     ///
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
+    /// ## Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
+    /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
     pub fn add_entities_from_json_str(
         self,
         json: &str,
@@ -427,6 +468,11 @@ impl Entities {
     ///
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
+    /// ## Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
+    /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
     pub fn add_entities_from_json_value(
         self,
         json: serde_json::Value,
@@ -460,6 +506,12 @@ impl Entities {
     ///
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
+    ///
+    /// ## Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
+    /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
     pub fn add_entities_from_json_file(
         self,
         json: impl std::io::Read,
@@ -496,6 +548,12 @@ impl Entities {
     /// instance, it will error if attributes have the wrong types (e.g., string
     /// instead of integer), or if required attributes are missing or
     /// superfluous attributes are provided.
+    ///
+    /// ## Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
+    /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
     ///
     /// ```
     /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, EvalResult, Request,PolicySet};
@@ -552,6 +610,12 @@ impl Entities {
     /// instead of integer), or if required attributes are missing or
     /// superfluous attributes are provided.
     ///
+    /// ## Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::InvalidEntity`]if `schema` is not none and any entities do not conform
+    ///   to the schema
+    /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
+    ///
     /// ```
     /// # use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, EvalResult, Request,PolicySet};
     /// let data =serde_json::json!(
@@ -603,6 +667,12 @@ impl Entities {
     /// instance, it will error if attributes have the wrong types (e.g., string
     /// instead of integer), or if required attributes are missing or
     /// superfluous attributes are provided.
+    ///
+    /// ## Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
+    /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
     pub fn from_json_file(
         json: impl std::io::Read,
         schema: Option<&Schema>,
@@ -921,7 +991,7 @@ impl PartialResponse {
         es: &Entities,
     ) -> Result<Self, ReauthorizationError> {
         let exts = Extensions::all_available();
-        let evaluator = RestrictedEvaluator::new(&exts);
+        let evaluator = RestrictedEvaluator::new(exts);
         let mapping = mapping
             .into_iter()
             .map(|(name, expr)| {
@@ -1185,6 +1255,26 @@ impl Validator {
     pub fn validate(&self, pset: &PolicySet, mode: ValidationMode) -> ValidationResult {
         ValidationResult::from(self.0.validate(&pset.ast, mode.into()))
     }
+
+    #[cfg(feature = "level-validate")]
+    /// Validate all policies in a policy set, collecting all validation errors
+    /// found into the returned `ValidationResult`. If validation passes, run level
+    /// validation (RFC 76). Each error is returned together with the policy id of the policy
+    /// where the error was found. If a policy id included in the input policy set does not
+    /// appear in the output iterator, then that policy passed the validator. If the function
+    /// `validation_passed` returns true, then there were no validation errors found, so
+    /// all policies in the policy set have passed the validator.
+    pub fn validate_with_level(
+        &self,
+        pset: &PolicySet,
+        mode: ValidationMode,
+        max_deref_level: u32,
+    ) -> ValidationResult {
+        ValidationResult::from(
+            self.0
+                .validate_with_level(&pset.ast, mode.into(), max_deref_level),
+        )
+    }
 }
 
 /// Contains all the type information used to construct a `Schema` that can be
@@ -1314,7 +1404,7 @@ impl TryInto<Schema> for SchemaFragment {
         Ok(Schema(
             cedar_policy_validator::ValidatorSchema::from_schema_fragments(
                 [self.value],
-                &Extensions::all_available(),
+                Extensions::all_available(),
             )?,
         ))
     }
@@ -1485,7 +1575,7 @@ impl Schema {
 
     /// Returns an iterator over every entity type that can be a principal for `action` in this schema
     ///
-    /// # Errors
+    /// ## Errors
     ///
     /// Returns [`None`] if `action` is not found in the schema
     pub fn principals_for_action(
@@ -1499,7 +1589,7 @@ impl Schema {
 
     /// Returns an iterator over every entity type that can be a resource for `action` in this schema
     ///
-    /// # Errors
+    /// ## Errors
     ///
     /// Returns [`None`] if `action` is not found in the schema
     pub fn resources_for_action(
@@ -1513,7 +1603,7 @@ impl Schema {
 
     /// Returns an iterator over all the entity types that can be an ancestor of `ty`
     ///
-    /// # Errors
+    /// ## Errors
     ///
     /// Returns [`None`] if the `ty` is not found in the schema
     pub fn ancestors<'a>(
@@ -2025,7 +2115,10 @@ impl PolicySet {
         self.policies.get(id)
     }
 
-    /// Extract annotation data from a `Policy` by its `PolicyId` and annotation key
+    /// Extract annotation data from a `Policy` by its `PolicyId` and annotation key.
+    /// If the annotation is present without an explicit value (e.g., `@annotation`),
+    /// then this function returns `Some("")`. It returns `None` only when the
+    /// annotation is not present.
     pub fn annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .get(id.as_ref())?
@@ -2034,6 +2127,9 @@ impl PolicySet {
     }
 
     /// Extract annotation data from a `Template` by its `PolicyId` and annotation key.
+    /// If the annotation is present without an explicit value (e.g., `@annotation`),
+    /// then this function returns `Some("")`. It returns `None` only when the
+    /// annotation is not present.
     pub fn template_annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .get_template(id.as_ref())?
@@ -2048,6 +2144,18 @@ impl PolicySet {
             self.policies.is_empty() && self.templates.is_empty()
         );
         self.ast.is_empty()
+    }
+
+    /// Returns the number of `Policy`s in the `PolicySet`.
+    ///
+    /// This will include both static and template-linked policies.
+    pub fn num_of_policies(&self) -> usize {
+        self.policies.len()
+    }
+
+    /// Returns the number of `Template`s in the `PolicySet`.
+    pub fn num_of_templates(&self) -> usize {
+        self.templates.len()
     }
 
     /// Attempt to link a template and add the new template-linked policy to the policy set.
@@ -2265,7 +2373,9 @@ fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item
                     },
                     //PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
                     #[allow(clippy::unreachable)]
-                    _ => unreachable!("used unsupported feature"),
+                    cedar_policy_validator::types::RequestEnv::UndeclaredAction => {
+                        unreachable!("used unsupported feature")
+                    }
                 })
             } else {
                 None
@@ -2340,7 +2450,10 @@ impl Template {
         self.ast.effect()
     }
 
-    /// Get an annotation value of this `Template`
+    /// Get an annotation value of this `Template`.
+    /// If the annotation is present without an explicit value (e.g., `@annotation`),
+    /// then this function returns `Some("")`. It returns `None` only when the
+    /// annotation is not present.
     pub fn annotation(&self, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .annotation(&key.as_ref().parse().ok()?)
@@ -2348,6 +2461,8 @@ impl Template {
     }
 
     /// Iterate through annotation data of this `Template` as key-value pairs
+    /// Annotations which do not have an explicit value (e.g., `@annotation`),
+    /// are included in the iterator with the value `""`.
     pub fn annotations(&self) -> impl Iterator<Item = (&str, &str)> {
         self.ast
             .annotations()
@@ -2638,6 +2753,9 @@ impl Policy {
     }
 
     /// Get an annotation value of this template-linked or static policy
+    /// If the annotation is present without an explicit value (e.g., `@annotation`),
+    /// then this function returns `Some("")`. It returns `None` only when the
+    /// annotation is not present.
     pub fn annotation(&self, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .annotation(&key.as_ref().parse().ok()?)
@@ -2645,6 +2763,8 @@ impl Policy {
     }
 
     /// Iterate through annotation data of this template-linked or static policy
+    /// Annotations which do not have an explicit value (e.g., `@annotation`),
+    /// are included in the iterator with the value `""`.
     pub fn annotations(&self) -> impl Iterator<Item = (&str, &str)> {
         self.ast
             .annotations()
@@ -2847,6 +2967,52 @@ impl Policy {
     /// that satisfy it.
     pub fn get_valid_request_envs(&self, s: &Schema) -> impl Iterator<Item = RequestEnv> {
         get_valid_request_envs(self.ast.template(), s)
+    }
+
+    /// Get all entity literals occuring in a `Policy`
+    pub fn entity_literals(&self) -> Vec<EntityUid> {
+        self.ast
+            .condition()
+            .subexpressions()
+            .filter_map(|e| match e.expr_kind() {
+                cedar_policy_core::ast::ExprKind::Lit(
+                    cedar_policy_core::ast::Literal::EntityUID(euid),
+                ) => Some(EntityUid((*euid).as_ref().clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Return a new policy where all occurences of key `EntityUid`s are replaced by value `EntityUid`
+    /// (as a single, non-sequential substitution).
+    pub fn sub_entity_literals(
+        &self,
+        mapping: BTreeMap<EntityUid, EntityUid>,
+    ) -> Result<Self, PolicyFromJsonError> {
+        // PANIC SAFETY: This can't fail for a policy that was already constructed
+        #[allow(clippy::expect_used)]
+        let cloned_est = self
+            .lossless
+            .est()
+            .expect("Internal error, failed to construct est.");
+
+        let mapping = mapping.into_iter().map(|(k, v)| (k.0, v.0)).collect();
+
+        // PANIC SAFETY: This can't fail for a policy that was already constructed
+        #[allow(clippy::expect_used)]
+        let est = cloned_est
+            .sub_entity_literals(&mapping)
+            .expect("Internal error, failed to sub entity literals.");
+
+        let ast = match est.clone().try_into_ast_policy(Some(self.ast.id().clone())) {
+            Ok(ast) => ast,
+            Err(e) => return Err(e.into()),
+        };
+
+        Ok(Self {
+            ast,
+            lossless: LosslessPolicy::Est(est),
+        })
     }
 
     fn from_est(id: Option<PolicyId>, est: est::Policy) -> Result<Self, PolicyFromJsonError> {
@@ -3914,8 +4080,8 @@ action CreateList in Create appliesTo {
     #[test]
     fn empty_schema_principals_and_resources() {
         let empty: Schema = "".parse().unwrap();
-        assert!(empty.principals().collect::<Vec<_>>().is_empty());
-        assert!(empty.resources().collect::<Vec<_>>().is_empty());
+        assert!(empty.principals().next().is_none());
+        assert!(empty.resources().next().is_none());
     }
 
     #[test]
@@ -4124,8 +4290,8 @@ action CreateList in Create appliesTo {
     #[test]
     fn empty_schema_principals_and_resources() {
         let empty: Schema = "".parse().unwrap();
-        assert!(empty.principals().collect::<Vec<_>>().is_empty());
-        assert!(empty.resources().collect::<Vec<_>>().is_empty());
+        assert!(empty.principals().next().is_none());
+        assert!(empty.resources().next().is_none());
     }
 
     #[test]
@@ -4270,4 +4436,18 @@ action CreateList in Create appliesTo {
         .collect::<HashSet<EntityTypeName>>();
         assert_eq!(entities, expected);
     }
+}
+
+/// Given a schema and policy set, compute an entity manifest.
+/// The policies must validate against the schema in strict mode,
+/// otherwise an error is returned.
+/// The manifest describes the data required to answer requests
+/// for each action.
+#[doc = include_str!("../experimental_warning.md")]
+#[cfg(feature = "entity-manifest")]
+pub fn compute_entity_manifest(
+    schema: &Schema,
+    pset: &PolicySet,
+) -> Result<EntityManifest, EntityManifestError> {
+    entity_manifest::compute_entity_manifest(&schema.0, &pset.ast).map_err(Into::into)
 }

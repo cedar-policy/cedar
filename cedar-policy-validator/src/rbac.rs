@@ -28,6 +28,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     expr_iterator::{policy_entity_type_names, policy_entity_uids},
+    validation_errors::unrecognized_action_id_help,
     ValidationError,
 };
 
@@ -76,11 +77,6 @@ impl Validator {
     ) -> impl Iterator<Item = ValidationError> + 'a {
         // Valid action id names that will be used to generate suggestions if an
         // action id is not found
-        let known_action_ids = self
-            .schema
-            .known_action_ids()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>();
         policy_entity_uids(template).filter_map(move |euid| {
             let entity_type = euid.entity_type();
             if entity_type.is_action() && !self.schema.is_known_action_id(euid) {
@@ -88,7 +84,7 @@ impl Validator {
                     euid.loc().cloned(),
                     template.id().clone(),
                     euid.to_string(),
-                    fuzzy_search(euid.eid().as_ref(), known_action_ids.as_slice()),
+                    unrecognized_action_id_help(euid, &self.schema),
                 ))
             } else {
                 None
@@ -487,7 +483,8 @@ mod test {
                 foo_type.parse().unwrap(),
                 json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: json_schema::EntityAttributes::default(),
+                    shape: json_schema::AttributesOrContext::default(),
+                    tags: None,
                 },
             )],
             [],
@@ -521,7 +518,8 @@ mod test {
                 "foo_type".parse().unwrap(),
                 json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: json_schema::EntityAttributes::default(),
+                    shape: json_schema::AttributesOrContext::default(),
+                    tags: None,
                 },
             )],
             [],
@@ -606,7 +604,8 @@ mod test {
                 p_name.parse().unwrap(),
                 json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: json_schema::EntityAttributes::default(),
+                    shape: json_schema::AttributesOrContext::default(),
+                    tags: None,
                 },
             )],
             [],
@@ -630,7 +629,8 @@ mod test {
                 p_name.parse().unwrap(),
                 json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: json_schema::EntityAttributes::default(),
+                    shape: json_schema::AttributesOrContext::default(),
+                    tags: None,
                 },
             )],
             [],
@@ -654,7 +654,8 @@ mod test {
                 p_name.parse().unwrap(),
                 json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: json_schema::EntityAttributes::default(),
+                    shape: json_schema::AttributesOrContext::default(),
+                    tags: None,
                 },
             )],
             [],
@@ -717,6 +718,71 @@ mod test {
             )
             .exactly_one_underline(r#"Action::"bar_name""#)
             .help(r#"did you mean `Action::"foo_name"`?"#)
+            .build(),
+        );
+        assert_eq!(notes.len(), 1, "{:?}", notes);
+    }
+
+    #[test]
+    fn validate_action_id_with_action_type() {
+        let schema_file = json_schema::NamespaceDefinition::new(
+            [],
+            [(
+                "Action::view".into(),
+                json_schema::ActionType {
+                    applies_to: None,
+                    member_of: None,
+                    attributes: None,
+                },
+            )],
+        );
+        let singleton_schema = schema_file.try_into().unwrap();
+
+        let src = r#"permit(principal, action == Action::"view", resource);"#;
+        let policy = parse_policy_or_template(None, src).unwrap();
+        let validate = Validator::new(singleton_schema);
+        let notes: Vec<ValidationError> = validate.validate_action_ids(&policy).collect();
+        expect_err(
+            src,
+            &Report::new(notes.first().unwrap().clone()),
+            &ExpectedErrorMessageBuilder::error(
+                r#"for policy `policy0`, unrecognized action `Action::"view"`"#,
+            )
+            .exactly_one_underline(r#"Action::"view""#)
+            .help(r#"did you intend to include the type in action `Action::"Action::view"`?"#)
+            .build(),
+        );
+        assert_eq!(notes.len(), 1, "{:?}", notes);
+    }
+
+    #[test]
+    fn validate_action_id_with_action_type_namespace() {
+        let schema_src = r#"
+        {
+            "foo::foo::bar::baz": {
+                "entityTypes": {},
+                "actions": {
+                    "Action::view": {}
+                }
+            }
+        }"#;
+
+        let schema_fragment: json_schema::Fragment<RawName> =
+            serde_json::from_str(schema_src).expect("Parse Error");
+        let schema = schema_fragment.try_into().unwrap();
+
+        let src = r#"permit(principal, action == Action::"view", resource);"#;
+        let policy = parse_policy_or_template(None, src).unwrap();
+        let validate = Validator::new(schema);
+        let notes: Vec<ValidationError> = validate.validate_action_ids(&policy).collect();
+        expect_err(
+            src,
+            &Report::new(notes.first().unwrap().clone()),
+            &ExpectedErrorMessageBuilder::error(
+                r#"for policy `policy0`, unrecognized action `Action::"view"`"#,
+            )
+            .exactly_one_underline(r#"Action::"view""#)
+            .help(r#"did you intend to include the type in action `foo::foo::bar::baz::Action::"Action::view"`?"#)
             .build(),
         );
         assert_eq!(notes.len(), 1, "{:?}", notes);
@@ -944,7 +1010,8 @@ mod test {
                 foo_type.parse().unwrap(),
                 json_schema::EntityType {
                     member_of_types: vec![],
-                    shape: json_schema::EntityAttributes::default(),
+                    shape: json_schema::AttributesOrContext::default(),
+                    tags: None,
                 },
             )],
             [],
@@ -977,14 +1044,16 @@ mod test {
                     principal_type.parse().unwrap(),
                     json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: json_schema::EntityAttributes::default(),
+                        shape: json_schema::AttributesOrContext::default(),
+                        tags: None,
                     },
                 ),
                 (
                     resource_type.parse().unwrap(),
                     json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: json_schema::EntityAttributes::default(),
+                        shape: json_schema::AttributesOrContext::default(),
+                        tags: None,
                     },
                 ),
             ],
@@ -994,7 +1063,7 @@ mod test {
                     applies_to: Some(json_schema::ApplySpec {
                         resource_types: vec![resource_type.parse().unwrap()],
                         principal_types: vec![principal_type.parse().unwrap()],
-                        context: json_schema::RecordOrContextAttributes::default(),
+                        context: json_schema::AttributesOrContext::default(),
                     }),
                     member_of: Some(vec![]),
                     attributes: None,
@@ -1366,28 +1435,32 @@ mod test {
                     principal_type.parse().unwrap(),
                     json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: json_schema::EntityAttributes::default(),
+                        shape: json_schema::AttributesOrContext::default(),
+                        tags: None,
                     },
                 ),
                 (
                     resource_type.parse().unwrap(),
                     json_schema::EntityType {
                         member_of_types: vec![resource_parent_type.parse().unwrap()],
-                        shape: json_schema::EntityAttributes::default(),
+                        shape: json_schema::AttributesOrContext::default(),
+                        tags: None,
                     },
                 ),
                 (
                     resource_parent_type.parse().unwrap(),
                     json_schema::EntityType {
                         member_of_types: vec![resource_grandparent_type.parse().unwrap()],
-                        shape: json_schema::EntityAttributes::default(),
+                        shape: json_schema::AttributesOrContext::default(),
+                        tags: None,
                     },
                 ),
                 (
                     resource_grandparent_type.parse().unwrap(),
                     json_schema::EntityType {
                         member_of_types: vec![],
-                        shape: json_schema::EntityAttributes::default(),
+                        shape: json_schema::AttributesOrContext::default(),
+                        tags: None,
                     },
                 ),
             ],
@@ -1398,7 +1471,7 @@ mod test {
                         applies_to: Some(json_schema::ApplySpec {
                             resource_types: vec![resource_type.parse().unwrap()],
                             principal_types: vec![principal_type.parse().unwrap()],
-                            context: json_schema::RecordOrContextAttributes::default(),
+                            context: json_schema::AttributesOrContext::default(),
                         }),
                         member_of: Some(vec![json_schema::ActionEntityUID::new(
                             None,

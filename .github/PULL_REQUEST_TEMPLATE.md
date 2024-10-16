@@ -24,3 +24,8 @@ I confirm that [`cedar-spec`](https://github.com/cedar-policy/cedar-spec) (choos
 - [ ] Requires updates, but I do not plan to make them in the near future. (Make sure that your changes are hidden behind a feature flag to mark them as experimental.)
 - [ ] I'm not sure how my change impacts `cedar-spec`. (Post your PR anyways, and we'll discuss in the comments.)
 
+I confirm that [`docs.cedarpolicy.com`](https://docs.cedarpolicy.com/) (choose one, and delete the other options):
+
+- [ ] Does not require updates because my change does not impact the Cedar language specification.
+- [ ] Requires updates, and I have made / will make these updates myself. (Please include in your description a timeline or link to the relevant PR in [`cedar-docs`](https://github.com/cedar-policy/cedar-docs). PRs should be targeted at a `staging-X.Y` branch, not `main`.)
+- [ ] I'm not sure how my change impacts the documentation. (Post your PR anyways, and we'll discuss in the comments.)

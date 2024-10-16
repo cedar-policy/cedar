@@ -349,7 +349,7 @@ pub struct Entity {
     uid: EntityUID,
 
     /// Internal BTreMap of attributes.
-    /// We use a btreemap so that the keys have a determenistic order.
+    /// We use a btreemap so that the keys have a deterministic order.
     ///
     /// In the serialized form of `Entity`, attribute values appear as
     /// `RestrictedExpr`s, for mostly historical reasons.
@@ -358,54 +358,84 @@ pub struct Entity {
     /// Set of ancestors of this `Entity` (i.e., all direct and transitive
     /// parents), as UIDs
     ancestors: HashSet<EntityUID>,
+
+    /// Tags on this entity (RFC 82)
+    ///
+    /// Like for `attrs`, we use a `BTreeMap` so that the tags have a
+    /// deterministic order.
+    /// And like in `attrs`, the values in `tags` appear as `RestrictedExpr` in
+    /// the serialized form of `Entity`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    tags: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
+}
+
+impl std::hash::Hash for Entity {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.uid.hash(state);
+    }
 }
 
 impl Entity {
-    /// Create a new `Entity` with this UID, attributes, and ancestors
+    /// Create a new `Entity` with this UID, attributes, ancestors, and tags
+    ///
+    /// # Errors
+    /// - Will error if any of the [`RestrictedExpr]`s in `attrs` or `tags` error when evaluated
     pub fn new(
         uid: EntityUID,
-        attrs: HashMap<SmolStr, RestrictedExpr>,
+        attrs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
         ancestors: HashSet<EntityUID>,
+        tags: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
         extensions: &Extensions<'_>,
     ) -> Result<Self, EntityAttrEvaluationError> {
         let evaluator = RestrictedEvaluator::new(extensions);
+        let evaluate_kvs = |(k, v): (SmolStr, RestrictedExpr), was_attr: bool| {
+            let attr_val = evaluator
+                .partial_interpret(v.as_borrowed())
+                .map_err(|err| EntityAttrEvaluationError {
+                    uid: uid.clone(),
+                    attr_or_tag: k.clone(),
+                    was_attr,
+                    err,
+                })?;
+            Ok((k, attr_val.into()))
+        };
         let evaluated_attrs = attrs
             .into_iter()
-            .map(|(k, v)| {
-                let attr_val = evaluator
-                    .partial_interpret(v.as_borrowed())
-                    .map_err(|err| EntityAttrEvaluationError {
-                        uid: uid.clone(),
-                        attr: k.clone(),
-                        err,
-                    })?;
-                Ok((k, attr_val.into()))
-            })
+            .map(|kv| evaluate_kvs(kv, true))
+            .collect::<Result<_, EntityAttrEvaluationError>>()?;
+        let evaluated_tags = tags
+            .into_iter()
+            .map(|kv| evaluate_kvs(kv, false))
             .collect::<Result<_, EntityAttrEvaluationError>>()?;
         Ok(Entity {
             uid,
             attrs: evaluated_attrs,
             ancestors,
+            tags: evaluated_tags,
         })
     }
 
-    /// Create a new `Entity` with this UID, attributes, and ancestors.
+    /// Create a new `Entity` with this UID, attributes, and ancestors (and no tags)
     ///
     /// Unlike in `Entity::new()`, in this constructor, attributes are expressed
     /// as `PartialValue`.
+    ///
+    /// Callers should consider directly using [`Entity::new_with_attr_partial_value_serialized_as_expr`]
+    /// if they would call this method by first building a map, as it will
+    /// deconstruct and re-build the map perhaps unnecessarily.
     pub fn new_with_attr_partial_value(
         uid: EntityUID,
-        attrs: HashMap<SmolStr, PartialValue>,
+        attrs: impl IntoIterator<Item = (SmolStr, PartialValue)>,
         ancestors: HashSet<EntityUID>,
     ) -> Self {
-        Entity {
+        Self::new_with_attr_partial_value_serialized_as_expr(
             uid,
-            attrs: attrs.into_iter().map(|(k, v)| (k, v.into())).collect(), // TODO(#540): can we do this without disassembling and reassembling the HashMap
+            attrs.into_iter().map(|(k, v)| (k, v.into())).collect(),
             ancestors,
-        }
+        )
     }
 
-    /// Create a new `Entity` with this UID, attributes, and ancestors.
+    /// Create a new `Entity` with this UID, attributes, and ancestors (and no tags)
     ///
     /// Unlike in `Entity::new()`, in this constructor, attributes are expressed
     /// as `PartialValueSerializedAsExpr`.
@@ -418,6 +448,7 @@ impl Entity {
             uid,
             attrs,
             ancestors,
+            tags: BTreeMap::new(),
         }
     }
 
@@ -429,6 +460,11 @@ impl Entity {
     /// Get the value for the given attribute, or `None` if not present
     pub fn get(&self, attr: &str) -> Option<&PartialValue> {
         self.attrs.get(attr).map(|v| v.as_ref())
+    }
+
+    /// Get the value for the given tag, or `None` if not present
+    pub fn get_tag(&self, tag: &str) -> Option<&PartialValue> {
+        self.tags.get(tag).map(|v| v.as_ref())
     }
 
     /// Is this `Entity` a descendant of `e` in the entity hierarchy?
@@ -446,9 +482,19 @@ impl Entity {
         self.attrs.len()
     }
 
+    /// Get the number of tags on this entity
+    pub fn tags_len(&self) -> usize {
+        self.tags.len()
+    }
+
     /// Iterate over this entity's attribute names
     pub fn keys(&self) -> impl Iterator<Item = &SmolStr> {
         self.attrs.keys()
+    }
+
+    /// Iterate over this entity's tag names
+    pub fn tag_keys(&self) -> impl Iterator<Item = &SmolStr> {
+        self.tags.keys()
     }
 
     /// Iterate over this entity's attributes
@@ -456,12 +502,18 @@ impl Entity {
         self.attrs.iter().map(|(k, v)| (k, v.as_ref()))
     }
 
-    /// Create an `Entity` with the given UID, no attributes, and no parents.
+    /// Iterate over this entity's tags
+    pub fn tags(&self) -> impl Iterator<Item = (&SmolStr, &PartialValue)> {
+        self.tags.iter().map(|(k, v)| (k, v.as_ref()))
+    }
+
+    /// Create an `Entity` with the given UID, no attributes, no parents, and no tags.
     pub fn with_uid(uid: EntityUID) -> Self {
         Self {
             uid,
             attrs: BTreeMap::new(),
             ancestors: HashSet::new(),
+            tags: BTreeMap::new(),
         }
     }
 
@@ -470,6 +522,13 @@ impl Entity {
     /// attributes, attribute values, and ancestors.
     pub(crate) fn deep_eq(&self, other: &Self) -> bool {
         self.uid == other.uid && self.attrs == other.attrs && self.ancestors == other.ancestors
+    }
+
+    /// Set the UID to the given value.
+    // Only used for convenience in some tests
+    #[cfg(test)]
+    pub fn set_uid(&mut self, uid: EntityUID) {
+        self.uid = uid;
     }
 
     /// Set the given attribute to the given value.
@@ -486,6 +545,20 @@ impl Entity {
         Ok(())
     }
 
+    /// Set the given tag to the given value.
+    // Only used for convenience in some tests and when fuzzing
+    #[cfg(any(test, fuzzing))]
+    pub fn set_tag(
+        &mut self,
+        tag: SmolStr,
+        val: RestrictedExpr,
+        extensions: &Extensions<'_>,
+    ) -> Result<(), EvaluationError> {
+        let val = RestrictedEvaluator::new(extensions).partial_interpret(val.as_borrowed())?;
+        self.tags.insert(tag, val.into());
+        Ok(())
+    }
+
     /// Mark the given `UID` as an ancestor of this `Entity`.
     // When fuzzing, `add_ancestor()` is fully `pub`.
     #[cfg(not(fuzzing))]
@@ -498,23 +571,26 @@ impl Entity {
         self.ancestors.insert(uid);
     }
 
-    /// Consume the entity and return the entity's owned Uid, attributes and parents.
+    /// Consume the entity and return the entity's owned Uid, attributes, parents, and tags.
     pub fn into_inner(
         self,
     ) -> (
         EntityUID,
         HashMap<SmolStr, PartialValue>,
         HashSet<EntityUID>,
+        HashMap<SmolStr, PartialValue>,
     ) {
         let Self {
             uid,
             attrs,
             ancestors,
+            tags,
         } = self;
         (
             uid,
             attrs.into_iter().map(|(k, v)| (k, v.0)).collect(),
             ancestors,
+            tags.into_iter().map(|(k, v)| (k, v.0)).collect(),
         )
     }
 
@@ -679,16 +755,20 @@ impl std::fmt::Display for PartialValueSerializedAsExpr {
     }
 }
 
-/// Error type for evaluation errors when evaluating an entity attribute.
+/// Error type for evaluation errors when evaluating an entity attribute or tag.
 /// Contains some extra contextual information and the underlying
 /// `EvaluationError`.
+//
+// This is NOT a publicly exported error type.
 #[derive(Debug, Diagnostic, Error)]
-#[error("failed to evaluate attribute `{attr}` of `{uid}`: {err}")]
+#[error("failed to evaluate {} `{attr_or_tag}` of `{uid}`: {err}", if *.was_attr { "attribute" } else { "tag" })]
 pub struct EntityAttrEvaluationError {
     /// UID of the entity where the error was encountered
     pub uid: EntityUID,
-    /// Attribute of the entity where the error was encountered
-    pub attr: SmolStr,
+    /// Attribute or tag of the entity where the error was encountered
+    pub attr_or_tag: SmolStr,
+    /// If `attr_or_tag` was an attribute (`true`) or tag (`false`)
+    pub was_attr: bool,
     /// Underlying evaluation error
     #[diagnostic(transparent)]
     pub err: EvaluationError,

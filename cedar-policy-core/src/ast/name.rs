@@ -647,8 +647,14 @@ impl AsRef<InternalName> for Name {
 #[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for Name {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        // Computing hash of long id strings can be expensive
+        // Hence we limit the size of `path` such that DRT does not report slow
+        // units
+        let path_size = u.int_in_range(0..=8)?;
         let basename: UnreservedId = u.arbitrary()?;
-        let path: Vec<UnreservedId> = u.arbitrary()?;
+        let path: Vec<UnreservedId> = (0..path_size)
+            .map(|_| u.arbitrary())
+            .collect::<Result<Vec<_>, _>>()?;
         let name = InternalName::new(basename.into(), path.into_iter().map(|id| id.into()), None);
         // PANIC SAFETY: `name` is made of `UnreservedId`s and thus should be a valid `Name`
         #[allow(clippy::unwrap_used)]

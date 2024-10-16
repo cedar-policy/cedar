@@ -21,18 +21,27 @@ pub use cedar_policy_core::ast::{
     expression_construction_errors, restricted_expr_errors, ContainsUnknown,
     ExpressionConstructionError, PartialValueToValueError, RestrictedExpressionError,
 };
+#[cfg(feature = "entity-manifest")]
+use cedar_policy_core::entities::err::EntitiesError;
 pub use cedar_policy_core::evaluator::{evaluation_errors, EvaluationError};
 pub use cedar_policy_core::extensions::{
     extension_function_lookup_errors, ExtensionFunctionLookupError,
 };
 use cedar_policy_core::{ast, authorizer, est};
 pub use cedar_policy_validator::cedar_schema::{schema_warnings, SchemaWarning};
+#[cfg(feature = "entity-manifest")]
+use cedar_policy_validator::entity_manifest::{
+    self, FailedAnalysisError, PartialExpressionError, PartialRequestError,
+};
 pub use cedar_policy_validator::{schema_errors, SchemaError};
 use miette::Diagnostic;
 use ref_cast::RefCast;
 use smol_str::SmolStr;
 use thiserror::Error;
 use to_cedar_syntax_errors::NameCollisionsError;
+
+#[cfg(feature = "entity-manifest")]
+use super::ValidationResult;
 
 /// Errors related to [`crate::Entities`]
 pub mod entities_errors {
@@ -43,11 +52,9 @@ pub mod entities_errors {
 pub mod entities_json_errors {
     pub use cedar_policy_core::entities::json::err::{
         ActionParentIsNotAction, DuplicateKey, ExpectedExtnValue, ExpectedLiteralEntityRef,
-        ExtensionFunctionLookup, ExtnCall0Arguments, ExtnCall2OrMoreArguments, HeterogeneousSet,
-        JsonDeserializationError, JsonError, JsonSerializationError, MissingImpliedConstructor,
-        MissingRequiredRecordAttr, ParseEscape, ReservedKey, Residual, TypeMismatch,
-        TypeMismatchError, UnexpectedRecordAttr, UnexpectedRestrictedExprKind,
-        UnknownInImplicitConstructorArg,
+        ExtnCall0Arguments, ExtnCall2OrMoreArguments, JsonDeserializationError, JsonError,
+        JsonSerializationError, MissingImpliedConstructor, MissingRequiredRecordAttr, ParseEscape,
+        ReservedKey, Residual, TypeMismatch, UnexpectedRecordAttr, UnexpectedRestrictedExprKind,
     };
 }
 
@@ -55,8 +62,8 @@ pub mod entities_json_errors {
 pub mod conformance_errors {
     pub use cedar_policy_core::entities::conformance::err::{
         ActionDeclarationMismatch, EntitySchemaConformanceError, ExtensionFunctionLookup,
-        HeterogeneousSet, InvalidAncestorType, MissingRequiredEntityAttr, TypeMismatch,
-        UndeclaredAction, UnexpectedEntityAttr, UnexpectedEntityTypeError,
+        InvalidAncestorType, MissingRequiredEntityAttr, TypeMismatch, UndeclaredAction,
+        UnexpectedEntityAttr, UnexpectedEntityTag, UnexpectedEntityTypeError,
     };
 }
 
@@ -249,14 +256,16 @@ impl From<cedar_policy_validator::CedarSchemaError> for CedarSchemaError {
     }
 }
 
-/// Error when evaluating an entity attribute
+/// Error when evaluating an entity attribute or tag
 #[derive(Debug, Diagnostic, Error)]
-#[error("in attribute `{attr}` of `{uid}`: {err}")]
+#[error("in {} `{attr_or_tag}` of `{uid}`: {err}", if *.was_attr { "attribute" } else { "tag" })]
 pub struct EntityAttrEvaluationError {
-    /// Action that had the attribute with the error
+    /// Action that had the attribute or tag with the error
     uid: EntityUid,
-    /// Attribute that had the error
-    attr: SmolStr,
+    /// Attribute or tag that had the error
+    attr_or_tag: SmolStr,
+    /// Is `attr_or_tag` an attribute (`true`) or a tag (`false`)
+    was_attr: bool,
     /// Underlying evaluation error
     #[diagnostic(transparent)]
     err: EvaluationError,
@@ -268,9 +277,11 @@ impl EntityAttrEvaluationError {
         &self.uid
     }
 
-    /// Get the name of the attribute that had the error
+    /// Get the name of the attribute or tag that had the error
+    //
+    // Method is named `.attr()` and not `.attr_or_tag()` for historical / backwards-compatibility reasons
     pub fn attr(&self) -> &SmolStr {
-        &self.attr
+        &self.attr_or_tag
     }
 
     /// Get the underlying evaluation error
@@ -284,7 +295,8 @@ impl From<ast::EntityAttrEvaluationError> for EntityAttrEvaluationError {
     fn from(err: ast::EntityAttrEvaluationError) -> Self {
         Self {
             uid: err.uid.into(),
-            attr: err.attr,
+            attr_or_tag: err.attr_or_tag,
+            was_attr: err.was_attr,
             err: err.err,
         }
     }
@@ -368,6 +380,14 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnsafeOptionalAttributeAccess(#[from] validation_errors::UnsafeOptionalAttributeAccess),
+    /// The typechecker could not conclude that an access to a tag was safe.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnsafeTagAccess(#[from] validation_errors::UnsafeTagAccess),
+    /// `.getTag()` on an entity type which cannot have tags according to the schema.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NoTagsAllowed(#[from] validation_errors::NoTagsAllowed),
     /// Undefined extension function.
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -394,6 +414,15 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     HierarchyNotRespected(#[from] validation_errors::HierarchyNotRespected),
+    /// Returned when an internal invariant is violated (should not happen; if
+    /// this is ever returned, please file an issue)
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InternalInvariantViolation(#[from] validation_errors::InternalInvariantViolation),
+    /// Entity level violation
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    EntityDerefLevelViolation(#[from] validation_errors::EntityDerefLevelViolation),
 }
 
 impl ValidationError {
@@ -407,12 +436,16 @@ impl ValidationError {
             Self::IncompatibleTypes(e) => e.policy_id(),
             Self::UnsafeAttributeAccess(e) => e.policy_id(),
             Self::UnsafeOptionalAttributeAccess(e) => e.policy_id(),
+            Self::UnsafeTagAccess(e) => e.policy_id(),
+            Self::NoTagsAllowed(e) => e.policy_id(),
             Self::UndefinedFunction(e) => e.policy_id(),
             Self::WrongNumberArguments(e) => e.policy_id(),
             Self::FunctionArgumentValidation(e) => e.policy_id(),
             Self::EmptySetForbidden(e) => e.policy_id(),
             Self::NonLitExtConstructor(e) => e.policy_id(),
             Self::HierarchyNotRespected(e) => e.policy_id(),
+            Self::InternalInvariantViolation(e) => e.policy_id(),
+            Self::EntityDerefLevelViolation(e) => e.policy_id(),
         }
     }
 }
@@ -442,6 +475,12 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             cedar_policy_validator::ValidationError::UnsafeOptionalAttributeAccess(e) => {
                 Self::UnsafeOptionalAttributeAccess(e.into())
             }
+            cedar_policy_validator::ValidationError::UnsafeTagAccess(e) => {
+                Self::UnsafeTagAccess(e.into())
+            }
+            cedar_policy_validator::ValidationError::NoTagsAllowed(e) => {
+                Self::NoTagsAllowed(e.into())
+            }
             cedar_policy_validator::ValidationError::UndefinedFunction(e) => {
                 Self::UndefinedFunction(e.into())
             }
@@ -459,6 +498,13 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             }
             cedar_policy_validator::ValidationError::HierarchyNotRespected(e) => {
                 Self::HierarchyNotRespected(e.into())
+            }
+            cedar_policy_validator::ValidationError::InternalInvariantViolation(e) => {
+                Self::InternalInvariantViolation(e.into())
+            }
+            #[cfg(feature = "level-validate")]
+            cedar_policy_validator::ValidationError::EntityDerefLevelViolation(e) => {
+                Self::EntityDerefLevelViolation(e.into())
             }
         }
     }
@@ -947,6 +993,7 @@ pub mod context_json_errors {
 
 /// Error type for parsing a `RestrictedExpression`
 #[derive(Debug, Diagnostic, Error)]
+#[non_exhaustive]
 pub enum RestrictedExpressionParseError {
     /// Failed to parse the expression
     #[error(transparent)]
@@ -1042,6 +1089,7 @@ impl From<cedar_policy_validator::RequestValidationError> for RequestValidationE
 
 /// Error subtypes for [`RequestValidationError`]
 pub mod request_validation_errors {
+    use cedar_policy_core::extensions::ExtensionFunctionLookupError;
     use miette::Diagnostic;
     use ref_cast::RefCast;
     use thiserror::Error;
@@ -1159,5 +1207,55 @@ pub mod request_validation_errors {
     #[derive(Debug, Diagnostic, Error)]
     #[error(transparent)]
     #[diagnostic(transparent)]
-    pub struct TypeOfContextError(#[from] cedar_policy_core::entities::json::GetSchemaTypeError);
+    pub struct TypeOfContextError(#[from] ExtensionFunctionLookupError);
+}
+
+/// An error generated by entity slicing.
+/// See [`FailedAnalysisError`] for details on the fragment
+/// of Cedar handled by entity slicing.
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
+#[derive(Debug, Error, Diagnostic)]
+#[non_exhaustive]
+#[cfg(feature = "entity-manifest")]
+pub enum EntityManifestError {
+    /// A validation error was encountered
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Validation(#[from] ValidationResult),
+    /// A entities error was encountered
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Entities(#[from] EntitiesError),
+
+    /// The request was partial
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    PartialRequest(#[from] PartialRequestError),
+    /// A policy was partial
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    PartialExpression(#[from] PartialExpressionError),
+
+    /// A policy was not analyzable because it used unsupported operators.
+    /// See [`FailedAnalysisError`] for more details.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    FailedAnalysis(#[from] FailedAnalysisError),
+}
+
+#[cfg(feature = "entity-manifest")]
+impl From<entity_manifest::EntityManifestError> for EntityManifestError {
+    fn from(e: entity_manifest::EntityManifestError) -> Self {
+        match e {
+            entity_manifest::EntityManifestError::Validation(e) => Self::Validation(e.into()),
+            entity_manifest::EntityManifestError::Entities(e) => Self::Entities(e),
+            entity_manifest::EntityManifestError::PartialRequest(e) => Self::PartialRequest(e),
+            entity_manifest::EntityManifestError::PartialExpression(e) => {
+                Self::PartialExpression(e)
+            }
+            entity_manifest::EntityManifestError::FailedAnalysis(e) => Self::FailedAnalysis(e),
+        }
+    }
 }

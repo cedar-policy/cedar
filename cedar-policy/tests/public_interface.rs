@@ -416,6 +416,30 @@ fn policy_annotations() {
 }
 
 #[test]
+fn policy_annotation_without_value() {
+    let p: Policy = r#"@anno permit(principal, action, resource);"#.parse().unwrap();
+    assert_eq!(p.annotation("anno"), Some(""));
+    assert_eq!(p.annotations().next(), Some(("anno", "")));
+
+    // and on templates
+    let t: Template = r#"@tanno permit(principal == ?principal, action, resource);"#
+        .parse()
+        .unwrap();
+    let t = t.new_id(PolicyId::new("new_template_id"));
+    assert_eq!(t.annotation("tanno"), Some(""));
+    assert_eq!(t.annotations().next(), Some(("tanno", "")));
+
+    // and on policy sets
+    let pid = p.id().clone();
+    let tid = t.id().clone();
+    let mut s = PolicySet::new();
+    s.add(p).unwrap();
+    s.add_template(t).unwrap();
+    assert_eq!(s.annotation(&pid, "anno"), Some(""));
+    assert_eq!(s.template_annotation(&tid, "tanno"), Some(""));
+}
+
+#[test]
 fn change_ids() {
     let ps: PolicySet = r#"
         @id("first")

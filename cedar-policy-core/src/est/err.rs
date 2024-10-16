@@ -24,6 +24,8 @@ use smol_str::SmolStr;
 use thiserror::Error;
 
 /// Errors arising while converting a policy from its JSON representation (aka EST) into an AST
+//
+// This is NOT a publicly exported error type.
 #[derive(Debug, Diagnostic, Error)]
 pub enum FromJsonError {
     /// Error while deserializing JSON

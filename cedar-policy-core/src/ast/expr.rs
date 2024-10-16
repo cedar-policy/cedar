@@ -14,11 +14,16 @@
  * limitations under the License.
  */
 
-use crate::{ast::*, parser::err::ParseErrors, parser::Loc};
+use crate::{
+    ast::*,
+    extensions::Extensions,
+    parser::{err::ParseErrors, Loc},
+};
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::{
+    borrow::Cow,
     collections::{btree_map, BTreeMap, HashMap},
     hash::{Hash, Hasher},
     mem,
@@ -180,6 +185,30 @@ impl From<PartialValue> for Expr {
     }
 }
 
+impl<T> ExprKind<T> {
+    /// Describe this operator for error messages.
+    pub fn operator_description(self: &ExprKind<T>) -> String {
+        match self {
+            ExprKind::Lit(_) => "literal".to_string(),
+            ExprKind::Var(_) => "variable".to_string(),
+            ExprKind::Slot(_) => "slot".to_string(),
+            ExprKind::Unknown(_) => "unknown".to_string(),
+            ExprKind::If { .. } => "if".to_string(),
+            ExprKind::And { .. } => "&&".to_string(),
+            ExprKind::Or { .. } => "||".to_string(),
+            ExprKind::UnaryApp { op, .. } => op.to_string(),
+            ExprKind::BinaryApp { op, .. } => op.to_string(),
+            ExprKind::ExtensionFunctionApp { fn_name, .. } => fn_name.to_string(),
+            ExprKind::GetAttr { .. } => "get attribute".to_string(),
+            ExprKind::HasAttr { .. } => "has attribute".to_string(),
+            ExprKind::Like { .. } => "like".to_string(),
+            ExprKind::Is { .. } => "is".to_string(),
+            ExprKind::Set(_) => "set".to_string(),
+            ExprKind::Record(_) => "record".to_string(),
+        }
+    }
+}
+
 impl<T> Expr<T> {
     fn new(expr_kind: ExprKind<T>, source_loc: Option<Loc>, data: T) -> Self {
         Self {
@@ -286,6 +315,86 @@ impl<T> Expr<T> {
                     | ExprKind::Record(_)
             )
         })
+    }
+
+    /// Try to compute the runtime type of this expression. This operation may
+    /// fail (returning `None`), for example, when asked to get the type of any
+    /// variables, any attributes of entities or records, or an `unknown`
+    /// without an explicitly annotated type.
+    ///
+    /// Also note that this is _not_ typechecking the expression. It does not
+    /// check that the expression actually evaluates to a value (as opposed to
+    /// erroring).
+    ///
+    /// Because of these limitations, this function should only be used to
+    /// obtain a type for use in diagnostics such as error strings.
+    pub fn try_type_of(&self, extensions: &Extensions<'_>) -> Option<Type> {
+        match &self.expr_kind {
+            ExprKind::Lit(l) => Some(l.type_of()),
+            ExprKind::Var(_) => None,
+            ExprKind::Slot(_) => None,
+            ExprKind::Unknown(u) => u.type_annotation.clone(),
+            ExprKind::If {
+                then_expr,
+                else_expr,
+                ..
+            } => {
+                let type_of_then = then_expr.try_type_of(extensions);
+                let type_of_else = else_expr.try_type_of(extensions);
+                if type_of_then == type_of_else {
+                    type_of_then
+                } else {
+                    None
+                }
+            }
+            ExprKind::And { .. } => Some(Type::Bool),
+            ExprKind::Or { .. } => Some(Type::Bool),
+            ExprKind::UnaryApp {
+                op: UnaryOp::Neg, ..
+            } => Some(Type::Long),
+            ExprKind::UnaryApp {
+                op: UnaryOp::Not, ..
+            } => Some(Type::Bool),
+            ExprKind::BinaryApp {
+                op: BinaryOp::Add | BinaryOp::Mul | BinaryOp::Sub,
+                ..
+            } => Some(Type::Long),
+            ExprKind::BinaryApp {
+                op:
+                    BinaryOp::Contains
+                    | BinaryOp::ContainsAll
+                    | BinaryOp::ContainsAny
+                    | BinaryOp::Eq
+                    | BinaryOp::In
+                    | BinaryOp::Less
+                    | BinaryOp::LessEq,
+                ..
+            } => Some(Type::Bool),
+            ExprKind::BinaryApp {
+                op: BinaryOp::HasTag,
+                ..
+            } => Some(Type::Bool),
+            ExprKind::ExtensionFunctionApp { fn_name, .. } => extensions
+                .func(fn_name)
+                .ok()?
+                .return_type()
+                .map(|rty| rty.clone().into()),
+            // We could try to be more complete here, but we can't do all that
+            // much better without evaluating the argument. Even if we know it's
+            // a record `Type::Record` tells us nothing about the type of the
+            // attribute.
+            ExprKind::GetAttr { .. } => None,
+            // similarly to `GetAttr`
+            ExprKind::BinaryApp {
+                op: BinaryOp::GetTag,
+                ..
+            } => None,
+            ExprKind::HasAttr { .. } => Some(Type::Bool),
+            ExprKind::Like { .. } => Some(Type::Bool),
+            ExprKind::Is { .. } => Some(Type::Bool),
+            ExprKind::Set(_) => Some(Type::Set),
+            ExprKind::Record(_) => Some(Type::Record),
+        }
     }
 }
 
@@ -400,20 +509,32 @@ impl Expr {
         ExprBuilder::new().is_in(e1, e2)
     }
 
-    /// Create a 'contains' expression.
+    /// Create a `contains` expression.
     /// First argument must have Set type.
     pub fn contains(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().contains(e1, e2)
     }
 
-    /// Create a 'contains_all' expression. Arguments must evaluate to Set type
+    /// Create a `containsAll` expression. Arguments must evaluate to Set type
     pub fn contains_all(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().contains_all(e1, e2)
     }
 
-    /// Create an 'contains_any' expression. Arguments must evaluate to Set type
+    /// Create a `containsAny` expression. Arguments must evaluate to Set type
     pub fn contains_any(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().contains_any(e1, e2)
+    }
+
+    /// Create a `getTag` expression.
+    /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
+    pub fn get_tag(expr: Expr, tag: Expr) -> Self {
+        ExprBuilder::new().get_tag(expr, tag)
+    }
+
+    /// Create a `hasTag` expression.
+    /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
+    pub fn has_tag(expr: Expr, tag: Expr) -> Self {
+        ExprBuilder::new().has_tag(expr, tag)
     }
 
     /// Create an `Expr` which evaluates to a Set of the given `Expr`s
@@ -457,8 +578,7 @@ impl Expr {
         ExprBuilder::new().binary_app(op, arg1, arg2)
     }
 
-    /// Create an `Expr` which gets the attribute of some `Entity` or the field
-    /// of some record.
+    /// Create an `Expr` which gets a given attribute of a given `Entity` or record.
     ///
     /// `expr` must evaluate to either Entity or Record type
     pub fn get_attr(expr: Expr, attr: SmolStr) -> Self {
@@ -466,7 +586,7 @@ impl Expr {
     }
 
     /// Create an `Expr` which tests for the existence of a given
-    /// attribute on a given `Entity`, or field on a given record.
+    /// attribute on a given `Entity` or record.
     ///
     /// `expr` must evaluate to either Entity or Record type
     pub fn has_attr(expr: Expr, attr: SmolStr) -> Self {
@@ -652,7 +772,7 @@ impl SubstitutionFunction for UntypedSubstitution {
     }
 }
 
-impl std::fmt::Display for Expr {
+impl<T: Clone> std::fmt::Display for Expr<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // To avoid code duplication between pretty-printers for AST Expr and EST Expr,
         // we just convert to EST and use the EST pretty-printer.
@@ -1211,6 +1331,26 @@ impl<T> ExprBuilder<T> {
         })
     }
 
+    /// Create a 'getTag' expression.
+    /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
+    pub fn get_tag(self, expr: Expr<T>, tag: Expr<T>) -> Expr<T> {
+        self.with_expr_kind(ExprKind::BinaryApp {
+            op: BinaryOp::GetTag,
+            arg1: Arc::new(expr),
+            arg2: Arc::new(tag),
+        })
+    }
+
+    /// Create a 'hasTag' expression.
+    /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
+    pub fn has_tag(self, expr: Expr<T>, tag: Expr<T>) -> Expr<T> {
+        self.with_expr_kind(ExprKind::BinaryApp {
+            op: BinaryOp::HasTag,
+            arg1: Arc::new(expr),
+            arg2: Arc::new(tag),
+        })
+    }
+
     /// Create an `Expr` which evaluates to a Set of the given `Expr`s
     pub fn set(self, exprs: impl IntoIterator<Item = Expr<T>>) -> Expr<T> {
         self.with_expr_kind(ExprKind::Set(Arc::new(exprs.into_iter().collect())))
@@ -1281,8 +1421,7 @@ impl<T> ExprBuilder<T> {
         })
     }
 
-    /// Create an `Expr` which gets the attribute of some `Entity` or the field
-    /// of some record.
+    /// Create an `Expr` which gets a given attribute of a given `Entity` or record.
     ///
     /// `expr` must evaluate to either Entity or Record type
     pub fn get_attr(self, expr: Expr<T>, attr: SmolStr) -> Expr<T> {
@@ -1293,7 +1432,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an `Expr` which tests for the existence of a given
-    /// attribute on a given `Entity`, or field on a given record.
+    /// attribute on a given `Entity` or record.
     ///
     /// `expr` must evaluate to either Entity or Record type
     pub fn has_attr(self, expr: Expr<T>, attr: SmolStr) -> Expr<T> {
@@ -1422,24 +1561,31 @@ pub mod expression_construction_errors {
 /// implementations that ignore any source information or other generic data
 /// used to annotate the `Expr`.
 #[derive(Eq, Debug, Clone)]
-pub struct ExprShapeOnly<'a, T = ()>(&'a Expr<T>);
+pub struct ExprShapeOnly<'a, T: Clone = ()>(Cow<'a, Expr<T>>);
 
-impl<'a, T> ExprShapeOnly<'a, T> {
-    /// Construct an `ExprShapeOnly` from an `Expr`. The `Expr` is not modified,
-    /// but any comparisons on the resulting `ExprShapeOnly` will ignore source
-    /// information and generic data.
-    pub fn new(e: &'a Expr<T>) -> ExprShapeOnly<'a, T> {
-        ExprShapeOnly(e)
+impl<'a, T: Clone> ExprShapeOnly<'a, T> {
+    /// Construct an `ExprShapeOnly` from a borrowed `Expr`. The `Expr` is not
+    /// modified, but any comparisons on the resulting `ExprShapeOnly` will
+    /// ignore source information and generic data.
+    pub fn new_from_borrowed(e: &'a Expr<T>) -> ExprShapeOnly<'a, T> {
+        ExprShapeOnly(Cow::Borrowed(e))
+    }
+
+    /// Construct an `ExprShapeOnly` from an owned `Expr`. The `Expr` is not
+    /// modified, but any comparisons on the resulting `ExprShapeOnly` will
+    /// ignore source information and generic data.
+    pub fn new_from_owned(e: Expr<T>) -> ExprShapeOnly<'a, T> {
+        ExprShapeOnly(Cow::Owned(e))
     }
 }
 
-impl<'a, T> PartialEq for ExprShapeOnly<'a, T> {
+impl<'a, T: Clone> PartialEq for ExprShapeOnly<'a, T> {
     fn eq(&self, other: &Self) -> bool {
-        self.0.eq_shape(other.0)
+        self.0.eq_shape(&other.0)
     }
 }
 
-impl<'a, T> Hash for ExprShapeOnly<'a, T> {
+impl<'a, T: Clone> Hash for ExprShapeOnly<'a, T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.hash_shape(state);
     }
@@ -2082,7 +2228,10 @@ mod test {
     fn expr_shape_only_not_eq() {
         let expr1 = ExprBuilder::with_data(1).val(1);
         let expr2 = ExprBuilder::with_data(1).val(2);
-        assert_ne!(ExprShapeOnly::new(&expr1), ExprShapeOnly::new(&expr2));
+        assert_ne!(
+            ExprShapeOnly::new_from_borrowed(&expr1),
+            ExprShapeOnly::new_from_borrowed(&expr2)
+        );
     }
 
     #[test]

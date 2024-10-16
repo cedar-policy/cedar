@@ -18,6 +18,10 @@ use super::{
     err::{JsonDeserializationError, JsonDeserializationErrorContext, JsonSerializationError},
     SchemaType,
 };
+use crate::entities::{
+    conformance::err::EntitySchemaConformanceError,
+    json::err::{EscapeKind, TypeMismatchError},
+};
 use crate::extensions::Extensions;
 use crate::FromNormalizedStr;
 use crate::{
@@ -26,14 +30,6 @@ use crate::{
         ExpressionConstructionError, Literal, RestrictedExpr, Unknown, Value, ValueKind,
     },
     entities::Name,
-};
-use crate::{
-    entities::{
-        conformance::err::EntitySchemaConformanceError,
-        json::err::{EscapeKind, TypeMismatchError},
-        schematype_of_restricted_expr, GetSchemaTypeError,
-    },
-    extensions::ExtensionConstructorSignature,
 };
 use either::Either;
 use serde::{Deserialize, Serialize};
@@ -393,6 +389,53 @@ impl CedarValueJson {
             },
         }
     }
+
+    /// Substitute entity literals
+    pub fn sub_entity_literals(
+        self,
+        mapping: &BTreeMap<EntityUID, EntityUID>,
+    ) -> Result<Self, JsonDeserializationError> {
+        match self.clone() {
+            // Since we are modifying an already legal policy, this should be unreachable.
+            CedarValueJson::ExprEscape { __expr } => Err(JsonDeserializationError::ExprTag(
+                Box::new(JsonDeserializationErrorContext::Unknown),
+            )),
+            CedarValueJson::EntityEscape { __entity } => {
+                let euid = EntityUID::try_from(__entity);
+                match euid {
+                    Ok(euid) => match mapping.get(&euid) {
+                        Some(new_euid) => Ok(CedarValueJson::EntityEscape {
+                            __entity: new_euid.into(),
+                        }),
+                        None => Ok(self.clone()),
+                    },
+                    Err(_) => Ok(self.clone()),
+                }
+            }
+            CedarValueJson::ExtnEscape { __extn } => Ok(CedarValueJson::ExtnEscape {
+                __extn: FnAndArg {
+                    ext_fn: __extn.ext_fn,
+                    arg: Box::new((*__extn.arg).sub_entity_literals(mapping)?),
+                },
+            }),
+            CedarValueJson::Bool(_) => Ok(self.clone()),
+            CedarValueJson::Long(_) => Ok(self.clone()),
+            CedarValueJson::String(_) => Ok(self.clone()),
+            CedarValueJson::Set(v) => Ok(CedarValueJson::Set(
+                v.into_iter()
+                    .map(|e| e.sub_entity_literals(mapping))
+                    .collect::<Result<Vec<_>, _>>()?,
+            )),
+            CedarValueJson::Record(r) => {
+                let mut new_m = BTreeMap::new();
+                for (k, v) in r.values {
+                    new_m.insert(k, v.sub_entity_literals(mapping)?);
+                }
+                Ok(CedarValueJson::Record(JsonRecord { values: new_m }))
+            }
+            CedarValueJson::Null => Ok(self.clone()),
+        }
+    }
 }
 
 /// helper function to check if the given keys contain any reserved keys,
@@ -502,21 +545,15 @@ impl<'e> ValueParser<'e> {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
                         jvalue.into_expr(ctx.clone())?
                     };
-                    let err = TypeMismatchError {
-                        expected: Box::new(expected_ty.clone()),
-                        actual_ty: match schematype_of_restricted_expr(
-                            actual_val.as_borrowed(),
-                            self.extensions,
-                        ) {
-                            Ok(actual_ty) => Some(Box::new(actual_ty)),
-                            Err(_) => None, // just don't report the type if there was an error computing it
-                        },
-                        actual_val: Either::Right(Box::new(actual_val)),
-                    };
+                    let err = TypeMismatchError::type_mismatch(
+                        expected_ty.clone(),
+                        actual_val.try_type_of(self.extensions),
+                        actual_val,
+                    );
                     match ctx() {
                         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                             Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::type_mistmatch(uid, attr, err),
+                                EntitySchemaConformanceError::type_mismatch(uid, attr, err),
                             ))
                         }
                         ctx => Err(JsonDeserializationError::type_mismatch(ctx, err)),
@@ -577,21 +614,15 @@ impl<'e> ValueParser<'e> {
                         let jvalue: CedarValueJson = serde_json::from_value(val)?;
                         jvalue.into_expr(ctx.clone())?
                     };
-                    let err = TypeMismatchError {
-                        expected: Box::new(expected_ty.clone()),
-                        actual_ty: match schematype_of_restricted_expr(
-                            actual_val.as_borrowed(),
-                            self.extensions,
-                        ) {
-                            Ok(actual_ty) => Some(Box::new(actual_ty)),
-                            Err(_) => None, // just don't report the type if there was an error computing it
-                        },
-                        actual_val: Either::Right(Box::new(actual_val)),
-                    };
+                    let err = TypeMismatchError::type_mismatch(
+                        expected_ty.clone(),
+                        actual_val.try_type_of(self.extensions),
+                        actual_val,
+                    );
                     match ctx() {
                         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                             Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::type_mistmatch(uid, attr, err),
+                                EntitySchemaConformanceError::type_mismatch(uid, attr, err),
                             ))
                         }
                         ctx => Err(JsonDeserializationError::type_mismatch(ctx, err)),
@@ -637,51 +668,19 @@ impl<'e> ValueParser<'e> {
                 }
             }
             ExtnValueJson::ImplicitConstructor(val) => {
-                let arg = val.into_expr(ctx.clone())?;
-                let argty = schematype_of_restricted_expr(arg.as_borrowed(), self.extensions)
-                    .map_err(|e| match e {
-                        GetSchemaTypeError::HeterogeneousSet(err) => match ctx() {
-                            JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
-                                JsonDeserializationError::EntitySchemaConformance(
-                                    EntitySchemaConformanceError::heterogeneous_set(uid, attr, err),
-                                )
-                            }
-                            ctx => JsonDeserializationError::heterogeneous_set(ctx, err),
-                        },
-                        GetSchemaTypeError::ExtensionFunctionLookup(err) => match ctx() {
-                            JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
-                                JsonDeserializationError::EntitySchemaConformance(
-                                    EntitySchemaConformanceError::extension_function_lookup(
-                                        uid, attr, err,
-                                    ),
-                                )
-                            }
-                            ctx => JsonDeserializationError::extension_function_lookup(ctx, err),
-                        },
-                        GetSchemaTypeError::UnknownInsufficientTypeInfo { .. }
-                        | GetSchemaTypeError::NontrivialResidual { .. } => {
-                            JsonDeserializationError::unknown_in_implicit_constructor_arg(
-                                ctx(),
-                                arg.clone(),
-                            )
-                        }
-                    })?;
                 let expected_return_type = SchemaType::Extension {
                     name: expected_typename,
                 };
                 let func = self
                     .extensions
-                    .lookup_single_arg_constructor(&ExtensionConstructorSignature {
-                        argument_type: &argty,
-                        return_type: &expected_return_type,
-                    })
+                    .lookup_single_arg_constructor(&expected_return_type)
                     .ok_or_else(|| {
                         JsonDeserializationError::missing_implied_constructor(
                             ctx(),
                             expected_return_type,
-                            argty.clone(),
                         )
                     })?;
+                let arg = val.into_expr(ctx.clone())?;
                 Ok(RestrictedExpr::call_extension_fn(
                     func.name().clone(),
                     vec![arg],

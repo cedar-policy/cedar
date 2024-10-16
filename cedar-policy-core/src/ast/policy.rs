@@ -20,7 +20,7 @@ use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::BTreeMap;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
@@ -1330,6 +1330,19 @@ pub struct Annotation {
     /// Source location. Note this is the location of _the entire key-value
     /// pair_ for the annotation, not just `val` above
     pub loc: Option<Loc>,
+}
+
+impl Annotation {
+    /// Construct an Annotation with an optional value.  This function is used
+    /// to construct annotations from the CST and EST representation where a
+    /// value is not required, but an absent value is equivalent to `""`.
+    /// Here, a `None` constructs an annotation containing the value `""`.`
+    pub fn with_optional_value(val: Option<SmolStr>, loc: Option<Loc>) -> Self {
+        Self {
+            val: val.unwrap_or_else(|| "".to_smolstr()),
+            loc,
+        }
+    }
 }
 
 impl AsRef<str> for Annotation {

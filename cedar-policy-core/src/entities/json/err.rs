@@ -16,14 +16,13 @@
 
 use std::fmt::Display;
 
-use super::{HeterogeneousSetError, SchemaType};
+use super::SchemaType;
 use crate::ast::{
-    BorrowedRestrictedExpr, EntityAttrEvaluationError, EntityUID, Expr, ExprKind, PartialValue,
-    PolicyID, RestrictedExpr, RestrictedExpressionError,
+    BorrowedRestrictedExpr, EntityAttrEvaluationError, EntityUID, Expr, ExprKind, PolicyID,
+    RestrictedExpr, RestrictedExpressionError, Type,
 };
 use crate::entities::conformance::err::EntitySchemaConformanceError;
 use crate::entities::{Name, ReservedNameError};
-use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
 use either::Either;
 use itertools::Itertools;
@@ -50,6 +49,10 @@ impl Display for EscapeKind {
 }
 
 /// Errors thrown during deserialization from JSON
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Diagnostic, Error)]
 #[non_exhaustive]
 pub enum JsonDeserializationError {
@@ -117,37 +120,6 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     TypeMismatch(TypeMismatch),
-    /// During schema-based parsing, found a set whose elements don't all have
-    /// the same type.  This doesn't match any possible schema.
-    ///
-    /// (This is used in all cases except inside entity attributes;
-    /// heterogeneous sets in entity attributes are reported as
-    /// `Self::EntitySchemaConformance`. As of this writing, that means this
-    /// should only be used for schema-based parsing of the `Context`. Note that
-    /// for non-schema-based parsing, heterogeneous sets are not an error.)
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    HeterogeneousSet(HeterogeneousSet),
-    /// During schema-based parsing, error looking up an extension function.
-    /// This error can occur during schema-based parsing because that may
-    /// require getting information about any extension functions referenced in
-    /// the JSON.
-    ///
-    /// (This is used in all cases except inside entity attributes; extension
-    /// function lookup errors in entity attributes are reported as
-    /// `Self::EntitySchemaConformance`. As of this writing, that means this
-    /// should only be used for schema-based parsing of the `Context`.)
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ExtensionFunctionLookup(ExtensionFunctionLookup),
-    /// During schema-based parsing, found an unknown in an _argument_ to an
-    /// extension function being processed in implicit-constructor form. This is
-    /// not currently supported.
-    /// To pass an unknown to an extension function, use the
-    /// explicit-constructor form.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnknownInImplicitConstructorArg(UnknownInImplicitConstructorArg),
     /// Raised when a JsonValue contains the no longer supported `__expr` escape
     #[error("{0}, the `__expr` escape is no longer supported")]
     #[diagnostic(help("to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly"))]
@@ -159,6 +131,15 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ReservedName(#[from] ReservedNameError),
+    /// Never returned as of 4.2.0 (entity tags are now stable), but this error
+    /// variant not removed because that would be a breaking change on this
+    /// publicly-exported type.
+    #[deprecated(
+        since = "4.2.0",
+        note = "entity-tags is now stable and fully supported, so this error never occurs"
+    )]
+    #[error("entity tags are not supported in this build; to use entity tags, you must enable the `entity-tags` experimental feature")]
+    UnsupportedEntityTags,
 }
 
 impl JsonDeserializationError {
@@ -201,12 +182,10 @@ impl JsonDeserializationError {
     pub(crate) fn missing_implied_constructor(
         ctx: JsonDeserializationErrorContext,
         return_type: SchemaType,
-        arg_type: SchemaType,
     ) -> Self {
         Self::MissingImpliedConstructor(MissingImpliedConstructor {
             ctx: Box::new(ctx),
             return_type: Box::new(return_type),
-            arg_type: Box::new(arg_type),
         })
     }
 
@@ -249,75 +228,6 @@ impl JsonDeserializationError {
             err,
         })
     }
-
-    pub(crate) fn heterogeneous_set(
-        ctx: JsonDeserializationErrorContext,
-        err: HeterogeneousSetError,
-    ) -> Self {
-        Self::HeterogeneousSet(HeterogeneousSet {
-            ctx: Box::new(ctx),
-            err,
-        })
-    }
-
-    pub(crate) fn extension_function_lookup(
-        ctx: JsonDeserializationErrorContext,
-        err: ExtensionFunctionLookupError,
-    ) -> Self {
-        Self::ExtensionFunctionLookup(ExtensionFunctionLookup {
-            ctx: Box::new(ctx),
-            err,
-        })
-    }
-
-    pub(crate) fn unknown_in_implicit_constructor_arg(
-        ctx: JsonDeserializationErrorContext,
-        arg: RestrictedExpr,
-    ) -> Self {
-        Self::UnknownInImplicitConstructorArg(UnknownInImplicitConstructorArg {
-            ctx: Box::new(ctx),
-            arg: Box::new(arg),
-        })
-    }
-}
-
-#[derive(Debug, Error, Diagnostic)]
-#[error("{}, argument `{}` to implicit constructor contains an unknown; this is not currently supported", .ctx, .arg)]
-#[diagnostic(help(
-        r#"expected an extension value here because of the schema. To pass an unknown to an extension function, use the explicit constructor form: `{{ "fn": "SomeFn", "arg": "SomeArg" }}`"#
-    ))]
-/// Error type for constructors containing an unknown
-pub struct UnknownInImplicitConstructorArg {
-    /// Context of this error
-    ctx: Box<JsonDeserializationErrorContext>,
-    /// Argument which contains an unknown
-    arg: Box<RestrictedExpr>,
-}
-#[derive(Debug, Error, Diagnostic)]
-#[error("{ctx}, {err}")]
-/// Error type for heterogeneous sets
-pub struct HeterogeneousSet {
-    /// Context of this error, which will be something other than `EntityAttribute`.
-    /// (Heterogeneous sets in entity attributes are reported as
-    /// `Self::EntitySchemaConformance`.)
-    ctx: Box<JsonDeserializationErrorContext>,
-    /// Underlying error
-    #[diagnostic(transparent)]
-    err: HeterogeneousSetError,
-}
-
-#[derive(Debug, Error, Diagnostic)]
-#[error("{ctx}, {err}")]
-/// Error type for extension function lookup errors
-pub struct ExtensionFunctionLookup {
-    /// Context of this error, which will be something other than
-    /// `EntityAttribute`.
-    /// (Extension function lookup errors in entity attributes are reported
-    /// as `Self::EntitySchemaConformance`.)
-    ctx: Box<JsonDeserializationErrorContext>,
-    /// Underlying error
-    #[diagnostic(transparent)]
-    err: ExtensionFunctionLookupError,
 }
 
 #[derive(Debug, Error, Diagnostic)]
@@ -364,16 +274,14 @@ pub struct DuplicateKey {
 }
 
 #[derive(Debug, Error, Diagnostic)]
-#[error("{}, missing extension constructor for {} -> {}", .ctx, .arg_type, .return_type)]
+#[error("{}, missing extension constructor for {}", .ctx, .return_type)]
 #[diagnostic(help("expected a value of type {} because of the schema", .return_type))]
-/// Error type for missing extesnsion contructors
+/// Error type for missing extension constructors
 pub struct MissingImpliedConstructor {
     /// Context of this error
     ctx: Box<JsonDeserializationErrorContext>,
     /// return type of the constructor we were looking for
     return_type: Box<SchemaType>,
-    /// argument type of the constructor we were looking for
-    arg_type: Box<SchemaType>,
 }
 
 #[derive(Debug, Error, Diagnostic)]
@@ -565,6 +473,13 @@ pub enum JsonDeserializationErrorContext {
         /// Attribute where the error occurred
         attr: SmolStr,
     },
+    /// The error occurred while deserializing the tag `tag` of an entity.
+    EntityTag {
+        /// Entity where the error occurred
+        uid: EntityUID,
+        /// Tag where the error occurred
+        tag: SmolStr,
+    },
     /// The error occurred while deserializing the `parents` field of an entity.
     EntityParents {
         /// Entity where the error occurred
@@ -587,33 +502,83 @@ pub enum JsonDeserializationErrorContext {
 
 /// Type mismatch error (in terms of `SchemaType`)
 #[derive(Debug, Diagnostic, Error)]
-#[error("type mismatch: value was expected to have type {expected}, but {}: `{}`",
-    match .actual_ty {
-        Some(actual_ty) => format!("actually has type {actual_ty}"),
-        None => "it does not".to_string(),
-    },
-    match .actual_val {
-        Either::Left(pval) => format!("{pval}"),
-        Either::Right(expr) => display_restricted_expr(expr.as_borrowed()),
-    }
+#[error("type mismatch: value was expected to have type {expected}, but it {mismatch_reason}: `{}`",
+    display_restricted_expr(.actual_val.as_borrowed()),
 )]
 pub struct TypeMismatchError {
     /// Type which was expected
-    pub expected: Box<SchemaType>,
-    /// Type which was encountered instead. May be `None` in the case that
-    /// the encountered value was an `Unknown` with insufficient type
-    /// information to produce a `SchemaType`
-    pub actual_ty: Option<Box<SchemaType>>,
-    /// Value which doesn't have the expected type; represented as either a
-    /// PartialValue or RestrictedExpr, whichever is more convenient for the
-    /// caller
-    pub actual_val: Either<PartialValue, Box<RestrictedExpr>>,
+    expected: Box<SchemaType>,
+    /// Reason for the type mismatch
+    mismatch_reason: TypeMismatchReason,
+    /// Value which doesn't have the expected type
+    actual_val: Box<RestrictedExpr>,
+}
+
+#[derive(Debug, Error)]
+enum TypeMismatchReason {
+    /// We saw this dynamic type which is not compatible with the expected
+    /// schema type.
+    #[error("actually has type {0}")]
+    UnexpectedType(Type),
+    /// We saw a record type expression as expected, but it contains an
+    /// attribute we didn't expect.
+    #[error("contains an unexpected attribute `{0}`")]
+    UnexpectedAttr(SmolStr),
+    /// We saw a record type expression as expected, but it did not contain an
+    /// attribute we expected.
+    #[error("is missing the required attribute `{0}`")]
+    MissingRequiredAtr(SmolStr),
+    /// No further detail available.
+    #[error("does not")]
+    None,
+}
+
+impl TypeMismatchError {
+    pub(crate) fn type_mismatch(
+        expected: SchemaType,
+        actual_ty: Option<Type>,
+        actual_val: RestrictedExpr,
+    ) -> Self {
+        Self {
+            expected: Box::new(expected),
+            mismatch_reason: match actual_ty {
+                Some(ty) => TypeMismatchReason::UnexpectedType(ty),
+                None => TypeMismatchReason::None,
+            },
+            actual_val: Box::new(actual_val),
+        }
+    }
+
+    pub(crate) fn unexpected_attr(
+        expected: SchemaType,
+        unexpected_attr: SmolStr,
+        actual_val: RestrictedExpr,
+    ) -> Self {
+        Self {
+            expected: Box::new(expected),
+            mismatch_reason: TypeMismatchReason::UnexpectedAttr(unexpected_attr),
+            actual_val: Box::new(actual_val),
+        }
+    }
+
+    pub(crate) fn missing_required_attr(
+        expected: SchemaType,
+        missing_attr: SmolStr,
+        actual_val: RestrictedExpr,
+    ) -> Self {
+        Self {
+            expected: Box::new(expected),
+            mismatch_reason: TypeMismatchReason::MissingRequiredAtr(missing_attr),
+            actual_val: Box::new(actual_val),
+        }
+    }
 }
 
 impl std::fmt::Display for JsonDeserializationErrorContext {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::EntityAttribute { uid, attr } => write!(f, "in attribute `{attr}` on `{uid}`"),
+            Self::EntityTag { uid, tag } => write!(f, "in tag `{tag}` on `{uid}`"),
             Self::EntityParents { uid } => write!(f, "in parents field of `{uid}`"),
             Self::EntityUid => write!(f, "in uid field of <unknown entity>"),
             Self::Context => write!(f, "while parsing context"),

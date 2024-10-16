@@ -20,7 +20,6 @@ use cedar_policy_core::{
     ast::{Eid, EntityUID, InternalName, Name, UnreservedId},
     entities::CedarValueJson,
     extensions::Extensions,
-    jsonvalue::JsonValueWithNoDuplicateKeys,
     FromNormalizedStr,
 };
 use nonempty::nonempty;
@@ -37,6 +36,7 @@ use std::{
     marker::PhantomData,
     str::FromStr,
 };
+use thiserror::Error;
 
 use crate::{
     cedar_schema::{
@@ -77,19 +77,19 @@ pub struct Fragment<N>(
         feature = "wasm",
         tsify(type = "Record<string, NamespaceDefinition<N>>")
     )]
-    pub HashMap<Option<Name>, NamespaceDefinition<N>>,
+    pub BTreeMap<Option<Name>, NamespaceDefinition<N>>,
 );
 
 /// Custom deserializer to ensure that the empty namespace is mapped to `None`
 fn deserialize_schema_fragment<'de, D, N: Deserialize<'de> + From<RawName>>(
     deserializer: D,
-) -> std::result::Result<HashMap<Option<Name>, NamespaceDefinition<N>>, D::Error>
+) -> std::result::Result<BTreeMap<Option<Name>, NamespaceDefinition<N>>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let raw: HashMap<SmolStr, NamespaceDefinition<N>> =
+    let raw: BTreeMap<SmolStr, NamespaceDefinition<N>> =
         serde_with::rust::maps_duplicate_key_is_error::deserialize(deserializer)?;
-    Ok(HashMap::from_iter(
+    Ok(BTreeMap::from_iter(
         raw.into_iter()
             .map(|(key, value)| {
                 let key = if key.is_empty() {
@@ -174,7 +174,7 @@ impl<N: Display> Fragment<N> {
 
 /// An [`UnreservedId`] that cannot be reserved JSON schema keywords
 /// like `Set`, `Long`, and etc.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct CommonTypeId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] UnreservedId);
@@ -185,11 +185,51 @@ impl From<CommonTypeId> for UnreservedId {
     }
 }
 
+impl AsRef<UnreservedId> for CommonTypeId {
+    fn as_ref(&self) -> &UnreservedId {
+        &self.0
+    }
+}
+
 impl CommonTypeId {
+    /// Create a [`CommonTypeId`] from an [`UnreservedId`], failing if it is a reserved basename
+    pub fn new(id: UnreservedId) -> std::result::Result<Self, ReservedCommonTypeBasenameError> {
+        if Self::is_reserved_schema_keyword(&id) {
+            Err(ReservedCommonTypeBasenameError { id })
+        } else {
+            Ok(Self(id))
+        }
+    }
+
     /// Create a [`CommonTypeId`] based on an [`UnreservedId`] but do not check
     /// if the latter is valid or not
     pub fn unchecked(id: UnreservedId) -> Self {
         Self(id)
+    }
+
+    // Test if this id is a reserved JSON schema keyword.
+    // Issues:
+    // https://github.com/cedar-policy/cedar/issues/1070
+    // https://github.com/cedar-policy/cedar/issues/1139
+    fn is_reserved_schema_keyword(id: &UnreservedId) -> bool {
+        matches!(
+            id.as_ref(),
+            "Bool" | "Boolean" | "Entity" | "Extension" | "Long" | "Record" | "Set" | "String"
+        )
+    }
+
+    /// Make a valid [`CommonTypeId`] from this [`UnreservedId`], modifying the
+    /// id if needed to avoid reserved basenames
+    #[cfg(feature = "arbitrary")]
+    fn make_into_valid_common_type_id(id: UnreservedId) -> Self {
+        Self::new(id.clone()).unwrap_or_else(|_| {
+            // PANIC SAFETY: `_Bool`, `_Record`, and etc are valid unreserved names.
+            #[allow(clippy::unwrap_used)]
+            let new_id = format!("_{id}").parse().unwrap();
+            // PANIC SAFETY: `_Bool`, `_Record`, and etc are valid common type basenames.
+            #[allow(clippy::unwrap_used)]
+            Self::new(new_id).unwrap()
+        })
     }
 }
 
@@ -203,30 +243,12 @@ impl Display for CommonTypeId {
 impl<'a> arbitrary::Arbitrary<'a> for CommonTypeId {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         let id: UnreservedId = u.arbitrary()?;
-        if is_reserved_schema_keyword(&id) {
-            // PANIC SAFETY: `_Bool`, `_Record`, and etc are valid common type names as well as valid unreserved names.
-            #[allow(clippy::unwrap_used)]
-            let new_id = format!("_{id}").parse().unwrap();
-            Ok(CommonTypeId::unchecked(new_id))
-        } else {
-            Ok(CommonTypeId::unchecked(id))
-        }
+        Ok(CommonTypeId::make_into_valid_common_type_id(id))
     }
 
     fn size_hint(depth: usize) -> (usize, Option<usize>) {
         <UnreservedId as arbitrary::Arbitrary>::size_hint(depth)
     }
-}
-
-// Test if this id is a reserved JSON schema keyword.
-// Issues:
-// https://github.com/cedar-policy/cedar/issues/1070
-// https://github.com/cedar-policy/cedar/issues/1139
-pub(crate) fn is_reserved_schema_keyword(id: &UnreservedId) -> bool {
-    matches!(
-        id.as_ref(),
-        "Bool" | "Boolean" | "Entity" | "Extension" | "Long" | "Record" | "Set" | "String"
-    )
 }
 
 /// Deserialize a [`CommonTypeId`]
@@ -236,15 +258,17 @@ impl<'de> Deserialize<'de> for CommonTypeId {
         D: Deserializer<'de>,
     {
         UnreservedId::deserialize(deserializer).and_then(|id| {
-            if is_reserved_schema_keyword(&id) {
-                Err(serde::de::Error::custom(format!(
-                    "Used reserved schema keyword: {id} "
-                )))
-            } else {
-                Ok(Self(id))
-            }
+            CommonTypeId::new(id).map_err(|e| serde::de::Error::custom(format!("{e}")))
         })
     }
+}
+
+/// Error when a common-type basename is reserved
+#[derive(Debug, Error, PartialEq, Clone)]
+#[error("this is reserved and cannot be the basename of a common-type declaration: {id}")]
+pub struct ReservedCommonTypeBasenameError {
+    /// `id` that is a reserved common-type basename
+    pub(crate) id: UnreservedId,
 }
 
 /// A single namespace definition from a Fragment.
@@ -267,13 +291,13 @@ impl<'de> Deserialize<'de> for CommonTypeId {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct NamespaceDefinition<N> {
     #[serde(default)]
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub common_types: HashMap<CommonTypeId, Type<N>>,
+    pub common_types: BTreeMap<CommonTypeId, Type<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub entity_types: HashMap<UnreservedId, EntityType<N>>,
+    pub entity_types: BTreeMap<UnreservedId, EntityType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub actions: HashMap<SmolStr, ActionType<N>>,
+    pub actions: BTreeMap<SmolStr, ActionType<N>>,
 }
 
 impl<N> NamespaceDefinition<N> {
@@ -282,7 +306,7 @@ impl<N> NamespaceDefinition<N> {
         actions: impl IntoIterator<Item = (SmolStr, ActionType<N>)>,
     ) -> Self {
         Self {
-            common_types: HashMap::new(),
+            common_types: BTreeMap::new(),
             entity_types: entity_types.into_iter().collect(),
             actions: actions.into_iter().collect(),
         }
@@ -368,8 +392,12 @@ pub struct EntityType<N> {
     pub member_of_types: Vec<N>,
     /// Description of the attributes for entities of this [`EntityType`].
     #[serde(default)]
-    #[serde(skip_serializing_if = "EntityAttributes::is_empty_record")]
-    pub shape: EntityAttributes<N>,
+    #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
+    pub shape: AttributesOrContext<N>,
+    /// Tag type for entities of this [`EntityType`]; `None` means entities of this [`EntityType`] do not have tags.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Type<N>>,
 }
 
 impl EntityType<RawName> {
@@ -385,6 +413,9 @@ impl EntityType<RawName> {
                 .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // Only entity, not common, here for now; see #1064
                 .collect(),
             shape: self.shape.conditionally_qualify_type_references(ns),
+            tags: self
+                .tags
+                .map(|ty| ty.conditionally_qualify_type_references(ns)),
         }
     }
 }
@@ -407,70 +438,74 @@ impl EntityType<ConditionalName> {
                 .map(|cname| cname.resolve(all_defs))
                 .collect::<std::result::Result<_, _>>()?,
             shape: self.shape.fully_qualify_type_references(all_defs)?,
+            tags: self
+                .tags
+                .map(|ty| ty.fully_qualify_type_references(all_defs))
+                .transpose()?,
         })
     }
 }
 
-/// Declaration of record attributes, or of an action context.
+/// Declaration of entity or record attributes, or of an action context.
 /// These share a JSON format.
 ///
 /// The parameter `N` is the type of entity type names and common type names in
-/// this [`RecordOrContextAttributes`], including recursively.
+/// this [`AttributesOrContext`], including recursively.
 /// See notes on [`Fragment`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-pub struct RecordOrContextAttributes<N>(
+pub struct AttributesOrContext<N>(
     // We use the usual `Type` deserialization, but it will ultimately need to
     // be a `Record` or common-type reference which resolves to a `Record`.
     pub Type<N>,
 );
 
-impl<N> RecordOrContextAttributes<N> {
-    /// Convert the [`RecordOrContextAttributes`] into its [`Type`].
+impl<N> AttributesOrContext<N> {
+    /// Convert the [`AttributesOrContext`] into its [`Type`].
     pub fn into_inner(self) -> Type<N> {
         self.0
     }
 
-    /// Is this [`RecordOrContextAttributes`] an empty record?
+    /// Is this `AttributesOrContext` an empty record?
     pub fn is_empty_record(&self) -> bool {
         self.0.is_empty_record()
     }
 }
 
-impl<N> Default for RecordOrContextAttributes<N> {
+impl<N> Default for AttributesOrContext<N> {
     fn default() -> Self {
         Self::from(RecordType::default())
     }
 }
 
-impl<N: Display> Display for RecordOrContextAttributes<N> {
+impl<N: Display> Display for AttributesOrContext<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
     }
 }
 
-impl<N> From<RecordType<RecordAttributeType<N>>> for RecordOrContextAttributes<N> {
-    fn from(rty: RecordType<RecordAttributeType<N>>) -> RecordOrContextAttributes<N> {
+impl<N> From<RecordType<N>> for AttributesOrContext<N> {
+    fn from(rty: RecordType<N>) -> AttributesOrContext<N> {
         Self(Type::Type(TypeVariant::Record(rty)))
     }
 }
 
-impl RecordOrContextAttributes<RawName> {
+impl AttributesOrContext<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
         ns: Option<&InternalName>,
-    ) -> RecordOrContextAttributes<ConditionalName> {
-        RecordOrContextAttributes(self.0.conditionally_qualify_type_references(ns))
+    ) -> AttributesOrContext<ConditionalName> {
+        AttributesOrContext(self.0.conditionally_qualify_type_references(ns))
     }
 }
 
-impl RecordOrContextAttributes<ConditionalName> {
-    /// Convert this [`RecordOrContextAttributes<ConditionalName>`] into a
-    /// [`RecordOrContextAttributes<InternalName>`] by fully-qualifying all typenames
+impl AttributesOrContext<ConditionalName> {
+    /// Convert this [`AttributesOrContext<ConditionalName>`] into an
+    /// [`AttributesOrContext<InternalName>`] by fully-qualifying all typenames
     /// that appear anywhere in any definitions.
     ///
     /// `all_defs` needs to contain the full set of all fully-qualified typenames
@@ -478,263 +513,10 @@ impl RecordOrContextAttributes<ConditionalName> {
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> std::result::Result<RecordOrContextAttributes<InternalName>, TypeNotDefinedError> {
-        Ok(RecordOrContextAttributes(
+    ) -> std::result::Result<AttributesOrContext<InternalName>, TypeNotDefinedError> {
+        Ok(AttributesOrContext(
             self.0.fully_qualify_type_references(all_defs)?,
         ))
-    }
-}
-
-/// Declaration of entity attributes
-///
-/// The parameter `N` is the type of entity type names and common type names in
-/// this [`EntityAttributes`], including recursively.
-/// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
-#[serde(untagged)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-pub enum EntityAttributes<N> {
-    /// Anything valid as record attributes is valid as entity attributes.
-    /// Notably, this includes the possibility that we have a single common-type
-    /// reference, and not actually a record declaration.
-    RecordAttributes(RecordOrContextAttributes<N>),
-    /// [`EntityAttributesInternal`] is an analogue of
-    /// [`RecordOrContextAttributes`] that covers the JSON forms accepted for
-    /// entity attributes but not record attributes
-    EntityAttributes(EntityAttributesInternal<N>),
-}
-
-/// Helper struct containing the contents of
-/// `EntityAttributes::EntityAttributes`.
-/// This doesn't cover all possible legal JSON forms for entity attributes
-/// (use [`EntityAttributes`] for that) -- in particular this struct doesn't
-/// accept a single common-type reference; it requires a record declaration.
-/// But, this struct does cover all legal JSON forms for entity attributes that
-/// aren't accepted as legal JSON forms for record attributes.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
-#[serde(deny_unknown_fields)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-#[allow(clippy::manual_non_exhaustive)] // a clippy false positive; that's not the reason we're using the `type_placeholder_hack`
-pub struct EntityAttributesInternal<N> {
-    /// a hack for the derived serializer/deserializer.
-    /// We need to require `"type": "Record"` here (it is required for the
-    /// corresponding struct [`RecordOrContextAttributes`] by virtue of using
-    /// the [`Type`] serialization/deserialization).
-    /// The `serialize_with` and `deserialize_with` accomplish this.
-    #[serde(rename = "type")]
-    #[serde(serialize_with = "record_string")]
-    #[serde(deserialize_with = "require_record_string")]
-    #[cfg_attr(feature = "wasm", tsify(type = "\"Record\""))]
-    type_placeholder_hack: (),
-    /// Entity attribute types, as a [`RecordType`]. These may include `EAMap`s.
-    #[serde(flatten)]
-    pub attrs: RecordType<EntityAttributeType<N>>,
-}
-
-fn record_string<S: Serializer>(
-    _type_placeholder_hack: &(),
-    ser: S,
-) -> std::result::Result<S::Ok, S::Error> {
-    ser.serialize_str("Record")
-}
-
-fn require_record_string<'de, D: Deserializer<'de>>(deser: D) -> std::result::Result<(), D::Error> {
-    /// Simple local visitor struct used only by this function
-    struct LocalVisitor;
-
-    impl<'de> Visitor<'de> for LocalVisitor {
-        type Value = ();
-        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(formatter, "the string `Record`")
-        }
-        fn visit_str<E: serde::de::Error>(self, s: &str) -> std::result::Result<(), E> {
-            if s == "Record" {
-                Ok(())
-            } else {
-                Err(serde::de::Error::invalid_value(
-                    serde::de::Unexpected::Str(s),
-                    &self,
-                ))
-            }
-        }
-    }
-
-    deser.deserialize_str(LocalVisitor)
-}
-
-impl<N> EntityAttributes<N> {
-    /// Is this [`EntityAttributes`] an empty record?
-    pub fn is_empty_record(&self) -> bool {
-        match self {
-            Self::RecordAttributes(attrs) => attrs.is_empty_record(),
-            Self::EntityAttributes(internal) => internal.is_empty_record(),
-        }
-    }
-}
-
-impl<N> EntityAttributesInternal<N> {
-    /// Is this [`EntityAttributesInternal`] an empty record?
-    pub fn is_empty_record(&self) -> bool {
-        self.attrs.is_empty_record()
-    }
-}
-
-impl<N> Default for EntityAttributes<N> {
-    fn default() -> Self {
-        Self::RecordAttributes(RecordOrContextAttributes::default())
-    }
-}
-
-impl<N: Display> Display for EntityAttributes<N> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::RecordAttributes(attrs) => attrs.fmt(f),
-            Self::EntityAttributes(internal) => internal.fmt(f),
-        }
-    }
-}
-
-impl<N: Display> Display for EntityAttributesInternal<N> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.attrs.fmt(f)
-    }
-}
-
-impl<N> From<RecordType<RecordAttributeType<N>>> for EntityAttributes<N> {
-    fn from(rty: RecordType<RecordAttributeType<N>>) -> EntityAttributes<N> {
-        Self::RecordAttributes(rty.into())
-    }
-}
-
-impl<N> From<RecordType<EntityAttributeType<N>>> for EntityAttributes<N> {
-    fn from(rty: RecordType<EntityAttributeType<N>>) -> EntityAttributes<N> {
-        Self::EntityAttributes(EntityAttributesInternal {
-            type_placeholder_hack: (),
-            attrs: rty,
-        })
-    }
-}
-
-impl EntityAttributes<RawName> {
-    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
-    pub fn conditionally_qualify_type_references(
-        self,
-        ns: Option<&InternalName>,
-    ) -> EntityAttributes<ConditionalName> {
-        match self {
-            Self::RecordAttributes(attrs) => {
-                EntityAttributes::RecordAttributes(attrs.conditionally_qualify_type_references(ns))
-            }
-            Self::EntityAttributes(internal) => EntityAttributes::EntityAttributes(
-                internal.conditionally_qualify_type_references(ns),
-            ),
-        }
-    }
-}
-
-impl EntityAttributesInternal<RawName> {
-    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
-    pub fn conditionally_qualify_type_references(
-        self,
-        ns: Option<&InternalName>,
-    ) -> EntityAttributesInternal<ConditionalName> {
-        EntityAttributesInternal {
-            type_placeholder_hack: self.type_placeholder_hack,
-            attrs: self.attrs.conditionally_qualify_type_references(ns),
-        }
-    }
-}
-
-impl EntityAttributes<ConditionalName> {
-    /// Convert this [`EntityAttributes<ConditionalName>`] into a
-    /// [`EntityAttributes<InternalName>`] by fully-qualifying all typenames
-    /// that appear anywhere in any definitions.
-    ///
-    /// `all_defs` needs to contain the full set of all fully-qualified typenames
-    /// and actions that are defined in the schema (in all schema fragments).
-    pub fn fully_qualify_type_references(
-        self,
-        all_defs: &AllDefs,
-    ) -> std::result::Result<EntityAttributes<InternalName>, TypeNotDefinedError> {
-        match self {
-            Self::RecordAttributes(attrs) => Ok(EntityAttributes::RecordAttributes(
-                attrs.fully_qualify_type_references(all_defs)?,
-            )),
-            Self::EntityAttributes(internal) => Ok(EntityAttributes::EntityAttributes(
-                internal.fully_qualify_type_references(all_defs)?,
-            )),
-        }
-    }
-}
-
-impl EntityAttributesInternal<ConditionalName> {
-    /// Convert this [`EntityAttributes<ConditionalName>`] into a
-    /// [`EntityAttributes<InternalName>`] by fully-qualifying all typenames
-    /// that appear anywhere in any definitions.
-    ///
-    /// `all_defs` needs to contain the full set of all fully-qualified typenames
-    /// and actions that are defined in the schema (in all schema fragments).
-    pub fn fully_qualify_type_references(
-        self,
-        all_defs: &AllDefs,
-    ) -> std::result::Result<EntityAttributesInternal<InternalName>, TypeNotDefinedError> {
-        Ok(EntityAttributesInternal {
-            type_placeholder_hack: self.type_placeholder_hack,
-            attrs: self.attrs.fully_qualify_type_references(all_defs)?,
-        })
-    }
-}
-
-impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityAttributes<N> {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        use serde::de::IntoDeserializer;
-        // This deserialization attempts to mimic what `serde(untagged)` would
-        // do, but if the process fails, it gives the error message for the
-        // `EntityAttributesInternal` case, assuming that that error message is
-        // usually the most helpful one.
-        // (The only case it doesn't cover is if you tried, but failed, to use a
-        // single common-type reference to represent the entity attributes.)
-
-        // Ideally we'd want to "try deserializing" as `RecordOrContextAttributes`
-        // and if that fails, restore the deserializer state to try
-        // `EntityAttributesInternal`.
-        // I'm not sure how `serde(untagged)` does that, and I can't easily
-        // figure it out from reading the serde source.
-        // Note that `D` isn't `Clone`.
-        // As a workaround, we deserialize into `serde_json::Value` first, then
-        // determine which variant we have, then deserialize the appropriate
-        // variant.
-        let value: serde_json::Value =
-            <JsonValueWithNoDuplicateKeys as Deserialize<'de>>::deserialize(deserializer)?.into();
-        match value.get("type") {
-            Some(s) if s != "Record" => {
-                // This is the only case where we need the `Self::RecordAttributes` variant;
-                // all other cases can deserialize as `Self::EntityAttributes`, or will have
-                // an error such that we want the error from the `Self::EntityAttributes`
-                // deserialization attempt.
-                let attrs = <RecordOrContextAttributes<N> as Deserialize<'de>>::deserialize(
-                    value.into_deserializer(),
-                )
-                .map_err(|e| serde::de::Error::custom(format!("{e}")))?;
-                Ok(Self::RecordAttributes(attrs))
-            }
-            _ => {
-                // In all other cases, we deserialize as `EntityAttributesInternal` or want the
-                // error message from trying to deserialize as `EntityAttributesInternal`.
-                let attrs = <EntityAttributesInternal<N> as Deserialize<'de>>::deserialize(
-                    value.into_deserializer(),
-                )
-                .map_err(|e| serde::de::Error::custom(format!("{e}")))?;
-                Ok(Self::EntityAttributes(attrs))
-            }
-        }
     }
 }
 
@@ -839,8 +621,8 @@ pub struct ApplySpec<N> {
     pub principal_types: Vec<N>,
     /// Context type that this action expects
     #[serde(default)]
-    #[serde(skip_serializing_if = "RecordOrContextAttributes::is_empty_record")]
-    pub context: RecordOrContextAttributes<N>,
+    #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
+    pub context: AttributesOrContext<N>,
 }
 
 impl ApplySpec<RawName> {
@@ -1014,7 +796,7 @@ impl ActionEntityUID<ConditionalName> {
                 }
             }
         }
-        Err(ActionNotDefinedError(nonempty!(self)).into())
+        Err(ActionNotDefinedError(nonempty!(self)))
     }
 
     /// Get the possible fully-qualified [`ActionEntityUID<InternalName>`]s
@@ -1236,7 +1018,6 @@ enum TypeFields {
     Attributes,
     AdditionalAttributes,
     Name,
-    Default,
 }
 
 // This macro is used to avoid duplicating the fields names when calling
@@ -1258,9 +1039,6 @@ macro_rules! type_field_name {
     (Name) => {
         "name"
     };
-    (Default) => {
-        "default"
-    };
 }
 
 impl TypeFields {
@@ -1271,106 +1049,8 @@ impl TypeFields {
             TypeFields::Attributes => type_field_name!(Attributes),
             TypeFields::AdditionalAttributes => type_field_name!(AdditionalAttributes),
             TypeFields::Name => type_field_name!(Name),
-            TypeFields::Default => type_field_name!(Default),
         }
     }
-}
-
-/// The fields for a `SchemaType`, with their accompanying data.
-/// Used for implementing deserialization.
-///
-/// We keep field values wrapped in `Result` here so that we do not report
-/// errors due to the contents of a field when the field is not expected/allowed
-/// for a particular type variant.
-/// We instead report that the field should not exist at all, so that the schema
-/// author can delete the field without wasting time fixing errors in the value.
-#[derive(Debug)]
-struct TypeFieldsWithData<N, E> {
-    /// If this is `Some`, the `type` field is present, with the given value
-    type_name: Option<std::result::Result<SmolStr, E>>,
-    /// If this is `Some`, the `element` field is present, with the given value
-    element: Option<std::result::Result<Type<N>, E>>,
-    /// If this is `Some`, the `attributes` field is present, with the given value
-    attributes: Option<std::result::Result<AttributesTypeMap, E>>,
-    /// If this is `Some`, the `additional_attributes` field is present, with the given value
-    additional_attributes: Option<std::result::Result<bool, E>>,
-    /// If this is `Some`, the `name` field is present, with the given value
-    name: Option<std::result::Result<SmolStr, E>>,
-    /// If this is `Some`, the `default` field is present, with the given value
-    default: Option<std::result::Result<Type<N>, E>>,
-}
-
-/// Manual impl of `Default` (rather than `derive(Default)`) because the derived
-/// impl of `Default` requires `N: Default`, but this manual impl works for all `N`
-impl<N, E> Default for TypeFieldsWithData<N, E> {
-    fn default() -> Self {
-        Self {
-            type_name: None,
-            element: None,
-            attributes: None,
-            additional_attributes: None,
-            name: None,
-            default: None,
-        }
-    }
-}
-
-/// Helper function to collect the [`TypeFieldsWithData`] from a map type during deserialization.
-/// Shared by [`SchemaTypeVisitor`] and [`EntityAttributeTypeInternalVisitor`].
-fn collect_type_fields_data<'de, N: Deserialize<'de> + From<RawName>, M: MapAccess<'de>>(
-    mut map: M,
-) -> std::result::Result<TypeFieldsWithData<N, M::Error>, M::Error> {
-    use TypeFields::*;
-
-    let mut fields: TypeFieldsWithData<N, M::Error> = TypeFieldsWithData::default();
-
-    // Gather all the fields in the object. Any fields that are not one of
-    // the possible fields for some schema type will have been reported by
-    // serde already.
-    while let Some(key) = map.next_key()? {
-        match key {
-            Type => {
-                if fields.type_name.is_some() {
-                    return Err(serde::de::Error::duplicate_field(Type.as_str()));
-                }
-                fields.type_name = Some(map.next_value());
-            }
-            Element => {
-                if fields.element.is_some() {
-                    return Err(serde::de::Error::duplicate_field(Element.as_str()));
-                }
-                fields.element = Some(map.next_value());
-            }
-            Attributes => {
-                if fields.attributes.is_some() {
-                    return Err(serde::de::Error::duplicate_field(Attributes.as_str()));
-                }
-                fields.attributes = Some(map.next_value());
-            }
-            AdditionalAttributes => {
-                if fields.additional_attributes.is_some() {
-                    return Err(serde::de::Error::duplicate_field(
-                        AdditionalAttributes.as_str(),
-                    ));
-                }
-                fields.additional_attributes = Some(map.next_value());
-            }
-            Name => {
-                if fields.name.is_some() {
-                    return Err(serde::de::Error::duplicate_field(Name.as_str()));
-                }
-                fields.name = Some(map.next_value());
-            }
-            Default => {
-                if fields.default.is_some() {
-                    return Err(serde::de::Error::duplicate_field(Default.as_str()));
-                }
-                fields.default = Some(map.next_value());
-            }
-        }
-    }
-
-    Ok(fields)
 }
 
 /// Used during deserialization to deserialize the attributes type map while
@@ -1380,7 +1060,7 @@ fn collect_type_fields_data<'de, N: Deserialize<'de> + From<RawName>, M: MapAcce
 #[derive(Debug, Deserialize)]
 struct AttributesTypeMap(
     #[serde(with = "serde_with::rust::maps_duplicate_key_is_error")]
-    BTreeMap<SmolStr, RecordAttributeType<RawName>>,
+    BTreeMap<SmolStr, TypeOfAttribute<RawName>>,
 );
 
 struct TypeVisitor<N> {
@@ -1394,18 +1074,59 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Visitor<'de> for TypeVisitor<N> {
         formatter.write_str("builtin type or reference to type defined in commonTypes")
     }
 
-    fn visit_map<M>(self, map: M) -> std::result::Result<Self::Value, M::Error>
+    fn visit_map<M>(self, mut map: M) -> std::result::Result<Self::Value, M::Error>
     where
         M: MapAccess<'de>,
     {
-        let fields = collect_type_fields_data(map)?;
-        let eatype = Self::build_schema_type::<M>(fields)?;
-        // Here, in the deserializer for `Type`, we do not allow EAMap
-        // types (because `Type` does not allow EAMap types).
-        match eatype {
-            EntityAttributeTypeInternal::EAMap { .. } => Err(serde::de::Error::custom("found an embedded attribute map type, but embedded attribute maps are not allowed in this position")),
-            EntityAttributeTypeInternal::Type(ty) => Ok(ty),
+        use TypeFields::{AdditionalAttributes, Attributes, Element, Name, Type as TypeField};
+
+        let mut type_name: Option<SmolStr> = None;
+        let mut element: Option<Type<N>> = None;
+        let mut attributes: Option<AttributesTypeMap> = None;
+        let mut additional_attributes: Option<bool> = None;
+        let mut name: Option<SmolStr> = None;
+
+        // Gather all the fields in the object. Any fields that are not one of
+        // the possible fields for some schema type will have been reported by
+        // serde already.
+        while let Some(key) = map.next_key()? {
+            match key {
+                TypeField => {
+                    if type_name.is_some() {
+                        return Err(serde::de::Error::duplicate_field(TypeField.as_str()));
+                    }
+                    type_name = Some(map.next_value()?);
+                }
+                Element => {
+                    if element.is_some() {
+                        return Err(serde::de::Error::duplicate_field(Element.as_str()));
+                    }
+                    element = Some(map.next_value()?);
+                }
+                Attributes => {
+                    if attributes.is_some() {
+                        return Err(serde::de::Error::duplicate_field(Attributes.as_str()));
+                    }
+                    attributes = Some(map.next_value()?);
+                }
+                AdditionalAttributes => {
+                    if additional_attributes.is_some() {
+                        return Err(serde::de::Error::duplicate_field(
+                            AdditionalAttributes.as_str(),
+                        ));
+                    }
+                    additional_attributes = Some(map.next_value()?);
+                }
+                Name => {
+                    if name.is_some() {
+                        return Err(serde::de::Error::duplicate_field(Name.as_str()));
+                    }
+                    name = Some(map.next_value()?);
+                }
+            }
         }
+
+        Self::build_schema_type::<M>(type_name, element, attributes, additional_attributes, name)
     }
 }
 
@@ -1414,38 +1135,31 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
     /// Fields which were not present are `None`. It is an error for a field
     /// which is not used for a particular type to be `Some` when building that
     /// type.
-    ///
-    /// This method accepts `EAMap` types, and will construct one if it is
-    /// encountered.
-    /// Thus it returns [`EntityAttributeTypeInternal`] rather than [`SchemaType`]
-    /// directly.
-    /// If `EAMap` types should not be accepted in this position, it is the
-    /// caller's responsibility to check that the [`EntityAttributeTypeInternal`]
-    /// is an acceptable variant.
     fn build_schema_type<M>(
-        fields: TypeFieldsWithData<N, M::Error>,
-    ) -> std::result::Result<EntityAttributeTypeInternal<N>, M::Error>
+        type_name: Option<SmolStr>,
+        element: Option<Type<N>>,
+        attributes: Option<AttributesTypeMap>,
+        additional_attributes: Option<bool>,
+        name: Option<SmolStr>,
+    ) -> std::result::Result<Type<N>, M::Error>
     where
         M: MapAccess<'de>,
     {
-        use TypeFields::{
-            AdditionalAttributes, Attributes, Default, Element, Name, Type as TypeField,
-        };
+        use TypeFields::{AdditionalAttributes, Attributes, Element, Name, Type as TypeField};
         // Fields that remain to be parsed
         let mut remaining_fields = [
-            (TypeField, fields.type_name.is_some()),
-            (Element, fields.element.is_some()),
-            (Attributes, fields.attributes.is_some()),
-            (AdditionalAttributes, fields.additional_attributes.is_some()),
-            (Name, fields.name.is_some()),
-            (Default, fields.default.is_some()),
+            (TypeField, type_name.is_some()),
+            (Element, element.is_some()),
+            (Attributes, attributes.is_some()),
+            (AdditionalAttributes, additional_attributes.is_some()),
+            (Name, name.is_some()),
         ]
         .into_iter()
         .filter(|(_, present)| *present)
         .map(|(field, _)| field)
         .collect::<HashSet<_>>();
 
-        match fields.type_name.transpose()?.as_ref() {
+        match type_name.as_ref() {
             Some(s) => {
                 // We've concluded that type exists
                 remaining_fields.remove(&TypeField);
@@ -1462,42 +1176,31 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                     Ok(())
                 };
                 let error_if_any_fields = || -> std::result::Result<(), M::Error> {
-                    error_if_fields(
-                        &[Element, Attributes, AdditionalAttributes, Name, Default],
-                        &[],
-                    )
+                    error_if_fields(&[Element, Attributes, AdditionalAttributes, Name], &[])
                 };
                 match s.as_str() {
                     "String" => {
                         error_if_any_fields()?;
-                        Ok(EntityAttributeTypeInternal::Type(Type::Type(
-                            TypeVariant::String,
-                        )))
+                        Ok(Type::Type(TypeVariant::String))
                     }
                     "Long" => {
                         error_if_any_fields()?;
-                        Ok(EntityAttributeTypeInternal::Type(Type::Type(
-                            TypeVariant::Long,
-                        )))
+                        Ok(Type::Type(TypeVariant::Long))
                     }
                     "Boolean" => {
                         error_if_any_fields()?;
-                        Ok(EntityAttributeTypeInternal::Type(Type::Type(
-                            TypeVariant::Boolean,
-                        )))
+                        Ok(Type::Type(TypeVariant::Boolean))
                     }
                     "Set" => {
                         error_if_fields(
-                            &[Attributes, AdditionalAttributes, Default, Name],
+                            &[Attributes, AdditionalAttributes, Name],
                             &[type_field_name!(Element)],
                         )?;
 
-                        match fields.element {
-                            Some(element) => Ok(EntityAttributeTypeInternal::Type(Type::Type(
-                                TypeVariant::Set {
-                                    element: Box::new(element?),
-                                },
-                            ))),
+                        match element {
+                            Some(element) => Ok(Type::Type(TypeVariant::Set {
+                                element: Box::new(element),
+                            })),
                             None => Err(serde::de::Error::missing_field(Element.as_str())),
                         }
                     }
@@ -1507,121 +1210,88 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                             &[
                                 type_field_name!(Attributes),
                                 type_field_name!(AdditionalAttributes),
-                                type_field_name!(Default),
                             ],
                         )?;
 
-                        if let Some(attributes) = fields.attributes {
-                            if fields.default.is_some() {
-                                return Err(serde::de::Error::custom("fields `default` and `attributes` cannot exist on the same record type"));
-                            }
-                            let additional_attributes = fields
-                                .additional_attributes
-                                .unwrap_or(Ok(partial_schema_default()));
-                            Ok(EntityAttributeTypeInternal::Type(Type::Type(
-                                TypeVariant::Record(RecordType {
-                                    attributes: attributes?
-                                        .0
-                                        .into_iter()
-                                        .map(|(k, RecordAttributeType { ty, required })| {
-                                            (
-                                                k,
-                                                RecordAttributeType {
-                                                    ty: ty.into_n(),
-                                                    required,
-                                                },
-                                            )
-                                        })
-                                        .collect(),
-                                    additional_attributes: additional_attributes?,
-                                }),
-                            )))
-                        } else if let Some(default) = fields.default {
-                            if fields.attributes.is_some() {
-                                return Err(serde::de::Error::custom("fields `default` and `attributes` cannot exist on the same record type"));
-                            } else if fields.additional_attributes.is_some() {
-                                return Err(serde::de::Error::custom("fields `default` and `additionalAttributes` cannot exist on the same record type"));
-                            }
-                            Ok(EntityAttributeTypeInternal::EAMap {
-                                value_type: default?,
-                            })
+                        if let Some(attributes) = attributes {
+                            let additional_attributes =
+                                additional_attributes.unwrap_or(partial_schema_default());
+                            Ok(Type::Type(TypeVariant::Record(RecordType {
+                                attributes: attributes
+                                    .0
+                                    .into_iter()
+                                    .map(|(k, TypeOfAttribute { ty, required })| {
+                                        (
+                                            k,
+                                            TypeOfAttribute {
+                                                ty: ty.into_n(),
+                                                required,
+                                            },
+                                        )
+                                    })
+                                    .collect(),
+                                additional_attributes: additional_attributes,
+                            })))
                         } else {
                             Err(serde::de::Error::missing_field(Attributes.as_str()))
                         }
                     }
                     "Entity" => {
                         error_if_fields(
-                            &[Element, Attributes, AdditionalAttributes, Default],
+                            &[Element, Attributes, AdditionalAttributes],
                             &[type_field_name!(Name)],
                         )?;
-                        match fields.name {
-                            Some(name) => {
-                                let name = name?;
-                                Ok(EntityAttributeTypeInternal::Type(Type::Type(
-                                    TypeVariant::Entity {
-                                        name: RawName::from_normalized_str(&name)
-                                            .map_err(|err| {
-                                                serde::de::Error::custom(format!(
-                                                    "invalid entity type `{name}`: {err}"
-                                                ))
-                                            })?
-                                            .into(),
-                                    },
-                                )))
-                            }
+                        match name {
+                            Some(name) => Ok(Type::Type(TypeVariant::Entity {
+                                name: RawName::from_normalized_str(&name)
+                                    .map_err(|err| {
+                                        serde::de::Error::custom(format!(
+                                            "invalid entity type `{name}`: {err}"
+                                        ))
+                                    })?
+                                    .into(),
+                            })),
                             None => Err(serde::de::Error::missing_field(Name.as_str())),
                         }
                     }
                     "EntityOrCommon" => {
                         error_if_fields(
-                            &[Element, Attributes, AdditionalAttributes, Default],
+                            &[Element, Attributes, AdditionalAttributes],
                             &[type_field_name!(Name)],
                         )?;
-                        match fields.name {
-                            Some(name) => {
-                                let name = name?;
-                                Ok(EntityAttributeTypeInternal::Type(Type::Type(
-                                    TypeVariant::EntityOrCommon {
-                                        type_name: RawName::from_normalized_str(&name)
-                                            .map_err(|err| {
-                                                serde::de::Error::custom(format!(
-                                                    "invalid entity or common type `{name}`: {err}"
-                                                ))
-                                            })?
-                                            .into(),
-                                    },
-                                )))
-                            }
+                        match name {
+                            Some(name) => Ok(Type::Type(TypeVariant::EntityOrCommon {
+                                type_name: RawName::from_normalized_str(&name)
+                                    .map_err(|err| {
+                                        serde::de::Error::custom(format!(
+                                            "invalid entity or common type `{name}`: {err}"
+                                        ))
+                                    })?
+                                    .into(),
+                            })),
                             None => Err(serde::de::Error::missing_field(Name.as_str())),
                         }
                     }
                     "Extension" => {
                         error_if_fields(
-                            &[Element, Attributes, AdditionalAttributes, Default],
+                            &[Element, Attributes, AdditionalAttributes],
                             &[type_field_name!(Name)],
                         )?;
 
-                        match fields.name {
-                            Some(name) => {
-                                let name = name?;
-                                Ok(EntityAttributeTypeInternal::Type(Type::Type(
-                                    TypeVariant::Extension {
-                                        name: UnreservedId::from_normalized_str(&name).map_err(
-                                            |err| {
-                                                serde::de::Error::custom(format!(
-                                                    "invalid extension type `{name}`: {err}"
-                                                ))
-                                            },
-                                        )?,
-                                    },
-                                )))
-                            }
+                        match name {
+                            Some(name) => Ok(Type::Type(TypeVariant::Extension {
+                                name: UnreservedId::from_normalized_str(&name).map_err(|err| {
+                                    serde::de::Error::custom(format!(
+                                        "invalid extension type `{name}`: {err}"
+                                    ))
+                                })?,
+                            })),
                             None => Err(serde::de::Error::missing_field(Name.as_str())),
                         }
                     }
                     type_name => {
                         error_if_any_fields()?;
-                        Ok(EntityAttributeTypeInternal::Type(Type::CommonTypeRef {
+                        Ok(Type::CommonTypeRef {
                             type_name: N::from(RawName::from_normalized_str(type_name).map_err(
                                 |err| {
                                     serde::de::Error::custom(format!(
@@ -1629,7 +1299,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                                     ))
                                 },
                             )?),
-                        }))
+                        })
                     }
                 }
             }
@@ -1646,29 +1316,24 @@ impl<N> From<TypeVariant<N>> for Type<N> {
 
 /// Represents the type-level information about a record type.
 ///
-/// `V` is the type of attribute values in the record.
-/// For instance, when `V` is [`RecordAttributeType`], this [`RecordType`]
-/// represents the associated information for [`TypeVariant::Record`].
-/// Entity attribute values are also allowed to be `EAMap`s, so in that
-/// case `V` is [`EntityAttributeType`].
+/// The parameter `N` is the type of entity type names and common type names in
+/// this [`RecordType`], including recursively.
+/// See notes on [`Fragment`].
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(rename_all = "camelCase")]
-#[serde(deny_unknown_fields)]
-#[serde(bound(deserialize = "V: Deserialize<'de>"))]
-#[serde(bound(serialize = "V: Serialize"))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-pub struct RecordType<V> {
+pub struct RecordType<N> {
     /// Attribute names and types for the record
-    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub attributes: BTreeMap<SmolStr, V>,
+    pub attributes: BTreeMap<SmolStr, TypeOfAttribute<N>>,
     /// Whether "additional attributes" are possible on this record
     #[serde(default = "partial_schema_default")]
     #[serde(skip_serializing_if = "is_partial_schema_default")]
     pub additional_attributes: bool,
 }
 
-impl<V> Default for RecordType<V> {
+impl<N> Default for RecordType<N> {
     fn default() -> Self {
         Self {
             attributes: BTreeMap::new(),
@@ -1677,19 +1342,19 @@ impl<V> Default for RecordType<V> {
     }
 }
 
-impl<V> RecordType<V> {
+impl<N> RecordType<N> {
     /// Is this [`RecordType`] an empty record?
     pub fn is_empty_record(&self) -> bool {
         self.additional_attributes == partial_schema_default() && self.attributes.is_empty()
     }
 }
 
-impl RecordType<RecordAttributeType<RawName>> {
+impl RecordType<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
         ns: Option<&InternalName>,
-    ) -> RecordType<RecordAttributeType<ConditionalName>> {
+    ) -> RecordType<ConditionalName> {
         RecordType {
             attributes: self
                 .attributes
@@ -1701,58 +1366,17 @@ impl RecordType<RecordAttributeType<RawName>> {
     }
 }
 
-impl RecordType<EntityAttributeType<RawName>> {
-    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
-    pub fn conditionally_qualify_type_references(
-        self,
-        ns: Option<&InternalName>,
-    ) -> RecordType<EntityAttributeType<ConditionalName>> {
-        RecordType {
-            attributes: self
-                .attributes
-                .into_iter()
-                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
-                .collect(),
-            additional_attributes: self.additional_attributes,
-        }
-    }
-}
-
-impl RecordType<RecordAttributeType<ConditionalName>> {
-    /// Convert this [`RecordType<RecordAttributeType<ConditionalName>>`] into a
-    /// [`RecordType<RecordAttributeType<InternalName>>`] by fully-qualifying
-    /// all typenames that appear anywhere in any definitions.
+impl RecordType<ConditionalName> {
+    /// Convert this [`RecordType<ConditionalName>`] into a
+    /// [`RecordType<InternalName>`] by fully-qualifying all typenames that
+    /// appear anywhere in any definitions.
     ///
     /// `all_defs` needs to contain the full set of all fully-qualified typenames
     /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> std::result::Result<RecordType<RecordAttributeType<InternalName>>, TypeNotDefinedError>
-    {
-        Ok(RecordType {
-            attributes: self
-                .attributes
-                .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
-            additional_attributes: self.additional_attributes,
-        })
-    }
-}
-
-impl RecordType<EntityAttributeType<ConditionalName>> {
-    /// Convert this [`RecordType<EntityAttributeType<ConditionalName>>`] into a
-    /// [`RecordType<EntityAttributeType<InternalName>>`] by fully-qualifying
-    /// all typenames that appear anywhere in any definitions.
-    ///
-    /// `all_defs` needs to contain the full set of all fully-qualified typenames
-    /// and actions that are defined in the schema (in all schema fragments).
-    pub fn fully_qualify_type_references(
-        self,
-        all_defs: &AllDefs,
-    ) -> std::result::Result<RecordType<EntityAttributeType<InternalName>>, TypeNotDefinedError>
-    {
+    ) -> std::result::Result<RecordType<InternalName>, TypeNotDefinedError> {
         Ok(RecordType {
             attributes: self
                 .attributes
@@ -1789,7 +1413,7 @@ pub enum TypeVariant<N> {
         element: Box<Type<N>>,
     },
     /// Record
-    Record(RecordType<RecordAttributeType<N>>),
+    Record(RecordType<N>),
     /// Entity
     Entity {
         /// Name of the entity type.
@@ -1855,10 +1479,10 @@ impl TypeVariant<RawName> {
                 additional_attributes,
             }) => TypeVariant::Record(RecordType {
                 attributes: BTreeMap::from_iter(attributes.into_iter().map(
-                    |(attr, RecordAttributeType { ty, required })| {
+                    |(attr, TypeOfAttribute { ty, required })| {
                         (
                             attr,
-                            RecordAttributeType {
+                            TypeOfAttribute {
                                 ty: ty.conditionally_qualify_type_references(ns),
                                 required,
                             },
@@ -1928,10 +1552,10 @@ impl TypeVariant<ConditionalName> {
             }) => Ok(TypeVariant::Record(RecordType {
                 attributes: attributes
                     .into_iter()
-                    .map(|(attr, RecordAttributeType { ty, required })| {
+                    .map(|(attr, TypeOfAttribute { ty, required })| {
                         Ok((
                             attr,
-                            RecordAttributeType {
+                            TypeOfAttribute {
                                 ty: ty.fully_qualify_type_references(all_defs)?,
                                 required,
                             },
@@ -1997,192 +1621,13 @@ impl<'a> arbitrary::Arbitrary<'a> for Type<RawName> {
     }
 }
 
-/// Describes the underlying type of an entity attribute (not including the
-/// required/optional flag).
-///
-/// The allowed types for an entity attribute are different from the allowed
-/// types for a record attribute. See
-/// [RFC 68](https://github.com/cedar-policy/rfcs/blob/main/text/0068-entity-tags.md).
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-pub enum EntityAttributeTypeInternal<N> {
-    /// A normal type. Attributes can be `String`, an entity type, a common type, a record type, etc
-    Type(Type<N>),
-    /// An embedded attribute map (RFC 68)
-    ///
-    /// That is, a map from String to the given value type.
-    EAMap {
-        /// The `EAMap` is a map from String to this value type.
-        ///
-        /// Note that this value type may not itself be (or contain) `EAMap`s.
-        value_type: Type<N>,
-    },
-}
-
-impl EntityAttributeTypeInternal<RawName> {
-    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
-    pub fn conditionally_qualify_type_references(
-        self,
-        ns: Option<&InternalName>,
-    ) -> EntityAttributeTypeInternal<ConditionalName> {
-        match self {
-            Self::Type(ty) => {
-                EntityAttributeTypeInternal::Type(ty.conditionally_qualify_type_references(ns))
-            }
-            Self::EAMap { value_type } => EntityAttributeTypeInternal::EAMap {
-                value_type: value_type.conditionally_qualify_type_references(ns),
-            },
-        }
-    }
-}
-
-impl EntityAttributeTypeInternal<ConditionalName> {
-    /// Convert this [`EntityAttributeTypeInternal<ConditionalName>`] into a
-    /// [`EntityAttributeTypeInternal<InternalName>`] by fully-qualifying all
-    /// typenames that appear anywhere in any definitions.
-    ///
-    /// `all_defs` needs to contain the full set of all fully-qualified typenames
-    /// and actions that are defined in the schema (in all schema fragments).
-    pub fn fully_qualify_type_references(
-        self,
-        all_defs: &AllDefs,
-    ) -> std::result::Result<EntityAttributeTypeInternal<InternalName>, TypeNotDefinedError> {
-        match self {
-            Self::Type(ty) => Ok(EntityAttributeTypeInternal::Type(
-                ty.fully_qualify_type_references(all_defs)?,
-            )),
-            Self::EAMap { value_type } => Ok(EntityAttributeTypeInternal::EAMap {
-                value_type: value_type.fully_qualify_type_references(all_defs)?,
-            }),
-        }
-    }
-}
-
-impl<N: Serialize> Serialize for EntityAttributeTypeInternal<N> {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match self {
-            Self::Type(ty) => ty.serialize(serializer),
-            Self::EAMap { value_type } => {
-                serde_json::json!({"type": "Record", "default": value_type}).serialize(serializer)
-            }
-        }
-    }
-}
-
-struct EntityAttributeTypeInternalVisitor<N> {
-    _phantom: PhantomData<N>,
-}
-
-impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityAttributeTypeInternal<N> {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        deserializer.deserialize_any(EntityAttributeTypeInternalVisitor {
-            _phantom: PhantomData,
-        })
-    }
-}
-
-impl<'de, N: Deserialize<'de> + From<RawName>> Visitor<'de>
-    for EntityAttributeTypeInternalVisitor<N>
-{
-    type Value = EntityAttributeTypeInternal<N>;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("any valid type, including an embedded attribute map type")
-    }
-
-    fn visit_map<M>(self, map: M) -> std::result::Result<Self::Value, M::Error>
-    where
-        M: MapAccess<'de>,
-    {
-        let fields = collect_type_fields_data(map)?;
-        TypeVisitor::build_schema_type::<M>(fields)
-    }
-}
-
-/// Describes the type of an entity attribute. It contains the type of the
-/// attribute and whether the attribute is required. The type is flattened for
-/// serialization, so, in JSON format, this appears as a regular type with one
-/// extra property `required`.
+/// Used to describe the type of a record or entity attribute. It contains a the
+/// type of the attribute and whether the attribute is required. The type is
+/// flattened for serialization, so, in JSON format, this appears as a regular
+/// type with one extra property `required`.
 ///
 /// The parameter `N` is the type of entity type names and common type names in
-/// this [`EntityAttributeType`], including recursively.
-/// See notes on [`Fragment`].
-///
-/// Note that we can't add `#[serde(deny_unknown_fields)]` here because we are
-/// using `#[serde(tag = "type")]` in [`Type`] which is (eventually) flattened
-/// here.
-/// The way `serde(flatten)` is implemented means it may be possible to access
-/// fields incorrectly if a struct contains two structs that are flattened
-/// (`<https://github.com/serde-rs/serde/issues/1547>`). This shouldn't apply to
-/// us as we're using `flatten` only once
-/// (`<https://github.com/serde-rs/serde/issues/1600>`). This should be ok because
-/// unknown fields for [`EntityAttributeType`] should be passed to [`Type`]
-/// where they will be denied
-/// (`<https://github.com/serde-rs/serde/issues/1600>`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, PartialOrd, Ord)]
-#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-pub struct EntityAttributeType<N> {
-    /// Underlying type of the attribute
-    #[serde(flatten)]
-    // without this explicit `tsify` type, as of this writing, tsify produces a declaration
-    // `export interface EntityAttributeType<N> extends EntityAttributeTypeInternal<N> { required?: boolean; }`
-    // which `tsc` fails with `error TS2312: An interface can only extend an object
-    // type or intersection of object types with statically known members.`
-    #[cfg_attr(feature = "wasm", tsify(type = "EntityAttributeTypeInternal<N>"))]
-    pub ty: EntityAttributeTypeInternal<N>,
-    /// Whether the attribute is required
-    #[serde(default = "record_attribute_required_default")]
-    #[serde(skip_serializing_if = "is_record_attribute_required_default")]
-    pub required: bool,
-}
-
-impl EntityAttributeType<RawName> {
-    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
-    pub fn conditionally_qualify_type_references(
-        self,
-        ns: Option<&InternalName>,
-    ) -> EntityAttributeType<ConditionalName> {
-        EntityAttributeType {
-            ty: self.ty.conditionally_qualify_type_references(ns),
-            required: self.required,
-        }
-    }
-}
-
-impl EntityAttributeType<ConditionalName> {
-    /// Convert this [`EntityAttributeType<ConditionalName>`] into a
-    /// [`EntityAttributeType<InternalName>`] by fully-qualifying
-    /// all typenames that appear anywhere in any definitions.
-    ///
-    /// `all_defs` needs to contain the full set of all fully-qualified typenames
-    /// and actions that are defined in the schema (in all schema fragments).
-    pub fn fully_qualify_type_references(
-        self,
-        all_defs: &AllDefs,
-    ) -> std::result::Result<EntityAttributeType<InternalName>, TypeNotDefinedError> {
-        Ok(EntityAttributeType {
-            ty: self.ty.fully_qualify_type_references(all_defs)?,
-            required: self.required,
-        })
-    }
-}
-
-/// Describes the type of a record attribute. It contains the type of the
-/// attribute and whether the attribute is required. The type is flattened for
-/// serialization, so, in JSON format, this appears as a regular type with one
-/// extra property `required`.
-///
-/// The parameter `N` is the type of entity type names and common type names in
-/// this [`RecordAttributeType`], including recursively.
+/// this [`TypeOfAttribute`], including recursively.
 /// See notes on [`Fragment`].
 ///
 /// Note that we can't add `#[serde(deny_unknown_fields)]` here because we are
@@ -2192,20 +1637,13 @@ impl EntityAttributeType<ConditionalName> {
 /// (`<https://github.com/serde-rs/serde/issues/1547>`). This shouldn't apply to
 /// us as we're using `flatten` only once
 /// (`<https://github.com/serde-rs/serde/issues/1600>`). This should be ok because
-/// unknown fields for [`RecordAttributeType`] should be passed to [`Type`] where
+/// unknown fields for [`TypeOfAttribute`] should be passed to [`Type`] where
 /// they will be denied (`<https://github.com/serde-rs/serde/issues/1600>`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, PartialOrd, Ord)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-pub struct RecordAttributeType<N> {
+pub struct TypeOfAttribute<N> {
     /// Underlying type of the attribute
     #[serde(flatten)]
-    // without this explicit `tsify` type, as of this writing, tsify produces a declaration
-    // `export interface RecordAttributeType<N> extends Type<N> { required?: boolean; }`
-    // which `tsc` fails with `error TS2312: An interface can only extend an object
-    // type or intersection of object types with statically known members.`
-    #[cfg_attr(feature = "wasm", tsify(type = "Type<N>"))]
     pub ty: Type<N>,
     /// Whether the attribute is required
     #[serde(default = "record_attribute_required_default")]
@@ -2213,9 +1651,9 @@ pub struct RecordAttributeType<N> {
     pub required: bool,
 }
 
-impl RecordAttributeType<RawName> {
-    fn into_n<N: From<RawName>>(self) -> RecordAttributeType<N> {
-        RecordAttributeType {
+impl TypeOfAttribute<RawName> {
+    fn into_n<N: From<RawName>>(self) -> TypeOfAttribute<N> {
+        TypeOfAttribute {
             ty: self.ty.into_n(),
             required: self.required,
         }
@@ -2225,26 +1663,26 @@ impl RecordAttributeType<RawName> {
     pub fn conditionally_qualify_type_references(
         self,
         ns: Option<&InternalName>,
-    ) -> RecordAttributeType<ConditionalName> {
-        RecordAttributeType {
+    ) -> TypeOfAttribute<ConditionalName> {
+        TypeOfAttribute {
             ty: self.ty.conditionally_qualify_type_references(ns),
             required: self.required,
         }
     }
 }
 
-impl RecordAttributeType<ConditionalName> {
-    /// Convert this [`RecordAttributeType<ConditionalName>`] into a
-    /// [`RecordAttributeType<InternalName>`] by fully-qualifying
-    /// all typenames that appear anywhere in any definitions.
+impl TypeOfAttribute<ConditionalName> {
+    /// Convert this [`TypeOfAttribute<ConditionalName>`] into a
+    /// [`TypeOfAttribute<InternalName>`] by fully-qualifying all typenames that
+    /// appear anywhere in any definitions.
     ///
     /// `all_defs` needs to contain the full set of all fully-qualified typenames
     /// and actions that are defined in the schema (in all schema fragments).
     pub fn fully_qualify_type_references(
         self,
         all_defs: &AllDefs,
-    ) -> std::result::Result<RecordAttributeType<InternalName>, TypeNotDefinedError> {
-        Ok(RecordAttributeType {
+    ) -> std::result::Result<TypeOfAttribute<InternalName>, TypeNotDefinedError> {
+        Ok(TypeOfAttribute {
             ty: self.ty.fully_qualify_type_references(all_defs)?,
             required: self.required,
         })
@@ -2252,7 +1690,7 @@ impl RecordAttributeType<ConditionalName> {
 }
 
 #[cfg(feature = "arbitrary")]
-impl<'a> arbitrary::Arbitrary<'a> for RecordAttributeType<RawName> {
+impl<'a> arbitrary::Arbitrary<'a> for TypeOfAttribute<RawName> {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
             ty: u.arbitrary()?,
@@ -2307,12 +1745,10 @@ mod test {
         assert_eq!(et.member_of_types, vec!["UserGroup".parse().unwrap()]);
         assert_eq!(
             et.shape,
-            EntityAttributes::RecordAttributes(RecordOrContextAttributes(Type::Type(
-                TypeVariant::Record(RecordType {
-                    attributes: BTreeMap::new(),
-                    additional_attributes: false
-                })
-            ))),
+            AttributesOrContext(Type::Type(TypeVariant::Record(RecordType {
+                attributes: BTreeMap::new(),
+                additional_attributes: false
+            }))),
         );
     }
 
@@ -2325,12 +1761,10 @@ mod test {
         assert_eq!(et.member_of_types.len(), 0);
         assert_eq!(
             et.shape,
-            EntityAttributes::RecordAttributes(RecordOrContextAttributes(Type::Type(
-                TypeVariant::Record(RecordType {
-                    attributes: BTreeMap::new(),
-                    additional_attributes: false
-                })
-            ))),
+            AttributesOrContext(Type::Type(TypeVariant::Record(RecordType {
+                attributes: BTreeMap::new(),
+                additional_attributes: false
+            }))),
         );
     }
 
@@ -2349,7 +1783,7 @@ mod test {
         let spec = ApplySpec {
             resource_types: vec!["Album".parse().unwrap()],
             principal_types: vec!["User".parse().unwrap()],
-            context: RecordOrContextAttributes::default(),
+            context: AttributesOrContext::default(),
         };
         assert_eq!(at.applies_to, Some(spec));
         assert_eq!(
@@ -2440,7 +1874,7 @@ mod test {
                 "actions": {}
             }
         }"#;
-        let schema = Fragment::from_json_str(src).expect("Parse Error");
+        let schema: Fragment<RawName> = serde_json::from_str(src).expect("Parse Error");
         let (namespace, _descriptor) = schema.0.into_iter().next().unwrap();
         assert_eq!(namespace, Some("foo::foo::bar::baz".parse().unwrap()));
     }
@@ -2564,7 +1998,7 @@ mod test {
                 "actions": {}
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), &Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
         assert_matches!(schema, Err(e) => {
             expect_err(
                 &src,
@@ -2591,10 +2025,9 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "unknown field `attributes`")]
     fn schema_file_unexpected_malformed_attribute() {
         let src = serde_json::json!(
-        {
+        { "": {
             "entityTypes": {
                 "User": {
                     "shape": {
@@ -2611,9 +2044,84 @@ mod test {
                 }
             },
             "actions": {}
+        }});
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                "",
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"unknown field `foo`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`"#).build()
+            );
         });
-        let schema: NamespaceDefinition<RawName> = serde_json::from_value(src).unwrap();
-        println!("{:#?}", schema);
+    }
+
+    #[test]
+    fn error_in_nested_attribute_fails_fast_top_level_attr() {
+        let src = serde_json::json!(
+            {
+                "": {
+                  "entityTypes": {
+                    "User": {
+                      "shape": {
+                        "type": "Record",
+                        "attributes": {
+                          "foo": {
+                            "type": "Record",
+                            // Parsing should fail here when `element` is not expected instead of failing later on `"bar"`
+                            "element": { "type": "Long" }
+                          },
+                          "bar": { "type": "Long" }
+                        }
+                      }
+                    }
+                  },
+                  "actions": {}
+                }
+              }
+        );
+
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                "",
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"unknown field `element`, expected `attributes` or `additionalAttributes`"#).build()
+            );
+        });
+    }
+
+    #[test]
+    fn error_in_nested_attribute_fails_fast_nested_attr() {
+        let src = serde_json::json!(
+            { "": {
+                "entityTypes": {
+                    "a": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                 "foo": { "type": "Entity", "name": "b" },
+                                 "baz": { "type": "Record",
+                                    "attributes": {
+                                        // Parsing should fail here instead of continuing and failing on the `"b"` as in #417
+                                        "z": "Boolean"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "b": {}
+                }
+             } }
+        );
+
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
+        assert_matches!(schema, Err(e) => {
+            expect_err(
+                "",
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"invalid type: string "Boolean", expected struct TypeOfAttribute"#).build()
+            );
+        });
     }
 
     #[test]
@@ -2994,434 +2502,144 @@ mod strengthened_types {
     }
 }
 
-/// Tests involving `EAMap`s (RFC 68)
+/// Tests involving entity tags (RFC 82)
 #[cfg(test)]
-mod ea_maps {
+mod entity_tags {
     use super::*;
-    use crate::cedar_schema::test::assert_entity_attr_has_type;
     use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use cool_asserts::assert_matches;
+    use serde_json::json;
 
+    /// This schema taken directly from the RFC 82 text
     #[test]
-    fn entity_attribute() {
-        // This schema taken directly from the RFC 68 text
-        let src = serde_json::json!({
-            "": {
-                "entityTypes": {
-                    "User": {
-                        "shape": {
-                            "type": "Record",
-                            "attributes": {
-                                "jobLevel": {
-                                    "type": "Long",
-                                },
-                                "authTags": {
-                                    "type": "Record",
-                                    "default": {
-                                        "type": "Set",
-                                        "element": { "type": "String" },
-                                    }
-                                }
-                            }
+    fn basic() {
+        let json = json!({"": {
+            "entityTypes": {
+                "User" : {
+                    "shape" : {
+                        "type" : "Record",
+                        "attributes" : {
+                            "jobLevel" : {
+                                "type" : "Long"
+                            },
                         }
                     },
-                    "Document": {
-                        "shape": {
-                            "type": "Record",
-                            "attributes": {
-                                "owner": {
-                                    "type": "Entity",
-                                    "name": "User",
-                                },
-                                "policyTags": {
-                                    "type": "Record",
-                                    "default": {
-                                        "type": "Set",
-                                        "element": { "type": "String" },
-                                    }
-                                }
-                            }
-                        }
+                    "tags" : {
+                        "type" : "Set",
+                        "element": { "type": "String" }
                     }
                 },
-                "actions": {}
-            }
-        });
-        assert_matches!(Fragment::from_json_value(src), Ok(frag) => {
+                "Document" : {
+                    "shape" : {
+                        "type" : "Record",
+                        "attributes" : {
+                            "owner" : {
+                                "type" : "Entity",
+                                "name" : "User"
+                            },
+                        }
+                    },
+                    "tags" : {
+                      "type" : "Set",
+                      "element": { "type": "String" }
+                    }
+                }
+            },
+            "actions": {}
+        }});
+        assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
             let user = frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
-            assert_matches!(&user.shape, EntityAttributes::EntityAttributes(EntityAttributesInternal { attrs, .. }) => {
-                assert_entity_attr_has_type(
-                    attrs.attributes.get("jobLevel").unwrap(),
-                    &EntityAttributeTypeInternal::Type(Type::Type(TypeVariant::Long)),
-                );
-                assert_entity_attr_has_type(
-                    attrs.attributes.get("authTags").unwrap(),
-                    &EntityAttributeTypeInternal::EAMap { value_type: Type::Type(TypeVariant::Set { element: Box::new(Type::Type(TypeVariant::String)) }) },
-                );
+            assert_matches!(&user.tags, Some(Type::Type(TypeVariant::Set { element })) => {
+                assert_matches!(&**element, Type::Type(TypeVariant::String)); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
             });
             let doc = frag.0.get(&None).unwrap().entity_types.get(&"Document".parse().unwrap()).unwrap();
-            assert_matches!(&doc.shape, EntityAttributes::EntityAttributes(EntityAttributesInternal { attrs, .. }) => {
-                assert_entity_attr_has_type(
-                    attrs.attributes.get("owner").unwrap(),
-                    &EntityAttributeTypeInternal::Type(Type::Type(TypeVariant::Entity { name: "User".parse().unwrap() })),
-                );
-                assert_entity_attr_has_type(
-                    attrs.attributes.get("policyTags").unwrap(),
-                    &EntityAttributeTypeInternal::EAMap { value_type: Type::Type(TypeVariant::Set { element: Box::new(Type::Type(TypeVariant::String)) }) },
-                );
+            assert_matches!(&doc.tags, Some(Type::Type(TypeVariant::Set { element })) => {
+                assert_matches!(&**element, Type::Type(TypeVariant::String)); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
             });
-        });
+        })
     }
 
+    /// In this schema, the tag type is a common type
     #[test]
-    fn record_attribute_inside_entity_attribute() {
-        let src = serde_json::json!({
-            "": {
-                "entityTypes": {
-                    "User": {
-                        "shape": {
-                            "type": "Record",
-                            "attributes": {
-                                "userDetails": {
-                                    "type": "Record",
-                                    "attributes": {
-                                        "tags": {
-                                            "type": "Record",
-                                            "default": {
-                                                "type": "String"
-                                            }
-                                        },
-                                    },
-                                }
-                            }
-                        }
-                    }
-                },
-                "actions": {}
-            }
-        });
-        assert_matches!(Fragment::from_json_value(src.clone()), Err(e) => {
-            expect_err(
-                &src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("found an embedded attribute map type, but embedded attribute maps are not allowed in this position")
-                    .build(),
-            );
-        });
-    }
-
-    #[test]
-    fn context_attribute() {
-        let src = serde_json::json!({
-            "": {
-                "actions": {
-                    "read": {
-                        "appliesTo": {
-                            "principalTypes": ["E"],
-                            "resourceTypes": ["E"],
-                            "context": {
-                                "type": "Record",
-                                "attributes": {
-                                    "operationDetails": {
-                                        "type": "Record",
-                                        "default": {
-                                            "type": "String"
-                                        },
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                "entityTypes": {}
-            }
-        });
-        assert_matches!(Fragment::from_json_value(src.clone()), Err(e) => {
-            expect_err(
-                &src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("found an embedded attribute map type, but embedded attribute maps are not allowed in this position")
-                    .build(),
-            );
-        });
-    }
-
-    #[test]
-    fn toplevel_entity() {
-        let src = serde_json::json!({
-            "": {
-                "entityTypes": {
-                    "User": {
-                        "shape": {
-                            "type": "Record",
-                            "default": {
-                                "type": "String"
-                            }
-                        }
-                    }
-                },
-                "actions": {}
-            }
-        });
-        assert_matches!(Fragment::from_json_value(src.clone()), Err(e) => {
-            expect_err(
-                &src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("missing field `attributes`").build(),
-            );
-        });
-    }
-
-    #[test]
-    fn toplevel_context() {
-        let src = serde_json::json!({
-            "": {
-                "actions": {
-                    "read": {
-                        "appliesTo": {
-                            "principalTypes": ["E"],
-                            "resourceTypes": ["E"],
-                            "context": {
-                                "type": "Record",
-                                "default": {
-                                    "type": "String"
-                                },
-                            }
-                        }
-                    }
-                },
-                "entityTypes": {}
-            }
-        });
-        assert_matches!(Fragment::from_json_value(src.clone()), Err(e) => {
-            expect_err(
-                &src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("found an embedded attribute map type, but embedded attribute maps are not allowed in this position")
-                    .build(),
-            );
-        });
-    }
-
-    #[test]
-    fn common_type() {
-        let src = serde_json::json!({
-            "": {
-                "commonTypes": {
-                    "blah": {
-                        "type": "Record",
-                        "default": {
-                            "type": "String"
+    fn tag_type_is_common_type() {
+        let json = json!({"": {
+            "commonTypes": {
+                "T": { "type": "String" },
+            },
+            "entityTypes": {
+                "User" : {
+                    "shape" : {
+                        "type" : "Record",
+                        "attributes" : {
+                            "jobLevel" : {
+                                "type" : "Long"
+                            },
                         }
                     },
+                    "tags" : { "type" : "T" },
                 },
-                "entityTypes": {
-                    "User": {
-                        "shape": {
-                            "type": "Record",
-                            "attributes": {
-                                "blah": {
-                                    "type": "blah"
-                                },
-                            }
-                        }
-                    },
-                },
-                "actions": {}
-            }
-        });
-        assert_matches!(Fragment::from_json_value(src.clone()), Err(e) => {
-            expect_err(
-                &src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("found an embedded attribute map type, but embedded attribute maps are not allowed in this position")
-                    .build(),
-            );
-        });
+            },
+            "actions": {}
+        }});
+        assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
+            let user = frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
+            assert_matches!(&user.tags, Some(Type::CommonTypeRef { type_name }) => {
+                assert_eq!(&format!("{type_name}"), "T");
+            });
+        })
     }
 
+    /// In this schema, the tag type is an entity type
     #[test]
-    fn value_type_is_common_type() {
-        let src = serde_json::json!({
-            "": {
-                "commonTypes": {
-                    "blah": {
+    fn tag_type_is_entity_type() {
+        let json = json!({"": {
+            "entityTypes": {
+                "User" : {
+                    "shape" : {
+                        "type" : "Record",
+                        "attributes" : {
+                            "jobLevel" : {
+                                "type" : "Long"
+                            },
+                        }
+                    },
+                    "tags" : { "type" : "Entity", "name": "User" },
+                },
+            },
+            "actions": {}
+        }});
+        assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
+            let user = frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
+            assert_matches!(&user.tags, Some(Type::Type(TypeVariant::Entity{ name })) => {
+                assert_eq!(&format!("{name}"), "User");
+            });
+        })
+    }
+
+    /// This schema has `tags` inside `shape` instead of parallel to it
+    #[test]
+    fn bad_tags() {
+        let json = json!({"": {
+            "entityTypes": {
+                "User": {
+                    "shape": {
                         "type": "Record",
                         "attributes": {
-                            "foo": { "type": "String" },
-                        }
-                    },
-                },
-                "entityTypes": {
-                    "User": {
-                        "shape": {
-                            "type": "Record",
-                            "attributes": {
-                                "blah": {
-                                    "type": "Record",
-                                    "default": {
-                                        "type": "blah"
-                                    }
-                                },
-                            }
-                        }
-                    },
-                },
-                "actions": {}
-            }
-        });
-        assert_matches!(Fragment::from_json_value(src), Ok(frag) => {
-            let user = frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
-            assert_matches!(&user.shape, EntityAttributes::EntityAttributes(EntityAttributesInternal { attrs, .. }) => {
-                assert_entity_attr_has_type(
-                    attrs.attributes.get("blah").unwrap(),
-                    &EntityAttributeTypeInternal::EAMap { value_type: Type::CommonTypeRef { type_name: "blah".parse().unwrap() } },
-                );
-            });
-        });
-    }
-
-    #[test]
-    fn nested_ea_map() {
-        let src = serde_json::json!({
-            "": {
-                "entityTypes": {
-                    "User": {
-                        "shape": {
-                            "type": "Record",
-                            "attributes": {
-                                "userDetails": {
-                                    "type": "Record",
-                                    "default": {
-                                        "type": "Record",
-                                        "default": {
-                                            "type": "String"
-                                        }
-                                    }
-                                },
-                            }
-                        }
+                            "jobLevel": {
+                                "type": "Long"
+                            },
+                        },
+                        "tags": { "type": "String" },
                     }
                 },
-                "actions": {}
-            }
-        });
-        assert_matches!(Fragment::from_json_value(src.clone()), Err(e) => {
+            },
+            "actions": {}
+        }});
+        assert_matches!(Fragment::from_json_value(json.clone()), Err(e) => {
             expect_err(
-                &src,
+                &json,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("found an embedded attribute map type, but embedded attribute maps are not allowed in this position")
-                    .build(),
-            );
-        });
-    }
-
-    #[test]
-    fn bad_default() {
-        let src = serde_json::json!({
-            "": {
-                "entityTypes": {
-                    "User": {
-                        "shape": {
-                            "type": "Record",
-                            "attributes": {
-                                "jobLevel": {
-                                    "type": "Long",
-                                },
-                                "authTags": {
-                                    "type": "Foo",
-                                    "default": {
-                                        "type": "Set",
-                                        "element": "String",
-                                    }
-                                }
-                            }
-                        }
-                    },
-                },
-                "actions": {}
-            }
-        });
-        assert_matches!(Fragment::from_json_value(src.clone()), Err(e) => {
-            expect_err(
-                &src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("unknown field `default`, there are no fields")
-                    .build(),
-            );
-        });
-    }
-
-    #[test]
-    fn missing_type_record() {
-        let src = serde_json::json!({
-            "": {
-                "entityTypes": {
-                    "User": {
-                        "shape": {
-                            "type": "Record",
-                            "attributes": {
-                                "jobLevel": {
-                                    "type": "Long",
-                                },
-                                "authTags": {
-                                    "default": {
-                                        "type": "Set",
-                                        "element": "String",
-                                    }
-                                }
-                            }
-                        }
-                    },
-                },
-                "actions": {}
-            }
-        });
-        assert_matches!(Fragment::from_json_value(src.clone()), Err(e) => {
-            expect_err(
-                &src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("missing field `type`").build(),
-            );
-        });
-    }
-
-    #[test]
-    fn both_default_and_attributes() {
-        let src = serde_json::json!({
-            "": {
-                "entityTypes": {
-                    "User": {
-                        "shape": {
-                            "type": "Record",
-                            "attributes": {
-                                "jobLevel": {
-                                    "type": "Long",
-                                },
-                                "authTags": {
-                                    "type": "Record",
-                                    "attributes": {
-                                        "foo": {
-                                            "type": "String",
-                                        },
-                                    },
-                                    "default": {
-                                        "type": "Set",
-                                        "element": "String",
-                                    }
-                                }
-                            }
-                        }
-                    },
-                },
-                "actions": {}
-            }
-        });
-        assert_matches!(Fragment::from_json_value(src.clone()), Err(e) => {
-            expect_err(
-                &src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("fields `default` and `attributes` cannot exist on the same record type")
+                &ExpectedErrorMessageBuilder::error("unknown field `tags`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`")
                     .build(),
             );
         });
@@ -3442,12 +2660,12 @@ mod test_json_roundtrip {
 
     #[test]
     fn empty_namespace() {
-        let fragment = Fragment(HashMap::from([(
+        let fragment = Fragment(BTreeMap::from([(
             None,
             NamespaceDefinition {
-                common_types: HashMap::new(),
-                entity_types: HashMap::new(),
-                actions: HashMap::new(),
+                common_types: BTreeMap::new(),
+                entity_types: BTreeMap::new(),
+                actions: BTreeMap::new(),
             },
         )]));
         roundtrip(fragment);
@@ -3455,12 +2673,12 @@ mod test_json_roundtrip {
 
     #[test]
     fn nonempty_namespace() {
-        let fragment = Fragment(HashMap::from([(
+        let fragment = Fragment(BTreeMap::from([(
             Some("a".parse().unwrap()),
             NamespaceDefinition {
-                common_types: HashMap::new(),
-                entity_types: HashMap::new(),
-                actions: HashMap::new(),
+                common_types: BTreeMap::new(),
+                entity_types: BTreeMap::new(),
+                actions: BTreeMap::new(),
             },
         )]));
         roundtrip(fragment);
@@ -3468,30 +2686,34 @@ mod test_json_roundtrip {
 
     #[test]
     fn nonempty_entity_types() {
-        let fragment = Fragment(HashMap::from([(
+        let fragment = Fragment(BTreeMap::from([(
             None,
             NamespaceDefinition {
-                common_types: HashMap::new(),
-                entity_types: HashMap::from([(
+                common_types: BTreeMap::new(),
+                entity_types: BTreeMap::from([(
                     "a".parse().unwrap(),
                     EntityType {
                         member_of_types: vec!["a".parse().unwrap()],
-                        shape: EntityAttributes::RecordAttributes(RecordOrContextAttributes(
-                            Type::Type(TypeVariant::Record(RecordType {
-                                attributes: BTreeMap::new(),
-                                additional_attributes: false,
-                            })),
-                        )),
+                        shape: AttributesOrContext(Type::Type(TypeVariant::Record(RecordType {
+                            attributes: BTreeMap::new(),
+                            additional_attributes: false,
+                        }))),
+                        tags: None,
                     },
                 )]),
-                actions: HashMap::from([(
+                actions: BTreeMap::from([(
                     "action".into(),
                     ActionType {
                         attributes: None,
                         applies_to: Some(ApplySpec {
                             resource_types: vec!["a".parse().unwrap()],
                             principal_types: vec!["a".parse().unwrap()],
-                            context: RecordOrContextAttributes::default(),
+                            context: AttributesOrContext(Type::Type(TypeVariant::Record(
+                                RecordType {
+                                    attributes: BTreeMap::new(),
+                                    additional_attributes: false,
+                                },
+                            ))),
                         }),
                         member_of: None,
                     },
@@ -3503,34 +2725,45 @@ mod test_json_roundtrip {
 
     #[test]
     fn multiple_namespaces() {
-        let fragment = Fragment(HashMap::from([
+        let fragment = Fragment(BTreeMap::from([
             (
                 Some("foo".parse().unwrap()),
                 NamespaceDefinition {
-                    common_types: HashMap::new(),
-                    entity_types: HashMap::from([(
+                    common_types: BTreeMap::new(),
+                    entity_types: BTreeMap::from([(
                         "a".parse().unwrap(),
                         EntityType {
                             member_of_types: vec!["a".parse().unwrap()],
-                            shape: EntityAttributes::default(),
+                            shape: AttributesOrContext(Type::Type(TypeVariant::Record(
+                                RecordType {
+                                    attributes: BTreeMap::new(),
+                                    additional_attributes: false,
+                                },
+                            ))),
+                            tags: None,
                         },
                     )]),
-                    actions: HashMap::new(),
+                    actions: BTreeMap::new(),
                 },
             ),
             (
                 None,
                 NamespaceDefinition {
-                    common_types: HashMap::new(),
-                    entity_types: HashMap::new(),
-                    actions: HashMap::from([(
+                    common_types: BTreeMap::new(),
+                    entity_types: BTreeMap::new(),
+                    actions: BTreeMap::from([(
                         "action".into(),
                         ActionType {
                             attributes: None,
                             applies_to: Some(ApplySpec {
                                 resource_types: vec!["foo::a".parse().unwrap()],
                                 principal_types: vec!["foo::a".parse().unwrap()],
-                                context: RecordOrContextAttributes::default(),
+                                context: AttributesOrContext(Type::Type(TypeVariant::Record(
+                                    RecordType {
+                                        attributes: BTreeMap::new(),
+                                        additional_attributes: false,
+                                    },
+                                ))),
                             }),
                             member_of: None,
                         },
@@ -3613,7 +2846,7 @@ mod test_duplicates_error {
     }
 
     #[test]
-    #[should_panic(expected = "the key `Baz` occurs two or more times in the same JSON object")]
+    #[should_panic(expected = "invalid entry: found duplicate key")]
     fn record_type() {
         let src = r#"{
             "Foo": {

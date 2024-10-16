@@ -106,6 +106,8 @@ pub enum Commands {
     New(NewArgs),
     /// Partially evaluate an authorization request
     PartiallyAuthorize(PartiallyAuthorizeArgs),
+    /// Print Cedar language version
+    LanguageVersion,
 }
 
 #[derive(Args, Debug)]
@@ -622,7 +624,7 @@ struct RequestJSON {
 #[cfg(feature = "partial-eval")]
 /// This struct is the serde structure expected for --request-json
 #[derive(Deserialize)]
-pub(self) struct PartialRequestJSON {
+struct PartialRequestJSON {
     /// Principal for the request
     pub(self) principal: Option<String>,
     /// Action for the request
@@ -857,7 +859,7 @@ fn format_policies_inner(args: &FormatArgs) -> Result<bool> {
                     "failed to write formatted policies to {policies_file}"
                 ))?;
         }
-        _ => println!("{}", formatted_policy),
+        _ => print!("{}", formatted_policy),
     }
     Ok(are_policies_equivalent)
 }
@@ -900,7 +902,7 @@ pub fn translate_policy(args: &TranslatePolicyArgs) -> CedarExitCode {
 }
 
 fn translate_schema_to_cedar(json_src: impl AsRef<str>) -> Result<String> {
-    let fragment = SchemaFragment::from_str(json_src.as_ref())?;
+    let fragment = SchemaFragment::from_json_str(json_src.as_ref())?;
     let output = fragment.to_cedarschema()?;
     Ok(output)
 }
@@ -1033,6 +1035,15 @@ pub fn new(args: &NewArgs) -> CedarExitCode {
     } else {
         CedarExitCode::Success
     }
+}
+
+pub fn language_version() -> CedarExitCode {
+    let version = get_lang_version();
+    println!(
+        "Cedar language version: {}.{}",
+        version.major, version.minor
+    );
+    CedarExitCode::Success
 }
 
 fn create_slot_env(data: &HashMap<SlotId, String>) -> Result<HashMap<SlotId, EntityUid>> {
@@ -1251,27 +1262,24 @@ pub fn partial_authorize(args: &PartiallyAuthorizeArgs) -> CedarExitCode {
         args.timing,
     );
     match ans {
-        Ok(ans) => {
-            let status = match ans.decision() {
-                Some(Decision::Allow) => {
-                    println!("ALLOW");
-                    CedarExitCode::Success
+        Ok(ans) => match ans.decision() {
+            Some(Decision::Allow) => {
+                println!("ALLOW");
+                CedarExitCode::Success
+            }
+            Some(Decision::Deny) => {
+                println!("DENY");
+                CedarExitCode::AuthorizeDeny
+            }
+            None => {
+                println!("UNKNOWN");
+                println!("All policy residuals:");
+                for p in ans.nontrivial_residuals() {
+                    println!("{p}");
                 }
-                Some(Decision::Deny) => {
-                    println!("DENY");
-                    CedarExitCode::AuthorizeDeny
-                }
-                None => {
-                    println!("UNKNOWN");
-                    println!("All policy residuals:");
-                    for p in ans.nontrivial_residuals() {
-                        println!("{p}");
-                    }
-                    CedarExitCode::Unknown
-                }
-            };
-            status
-        }
+                CedarExitCode::Unknown
+            }
+        },
         Err(errs) => {
             for err in errs {
                 println!("{err:?}");

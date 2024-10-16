@@ -27,7 +27,7 @@ pub fn add_brackets<'a>(d: RcDoc<'a>, leftp: RcDoc<'a>, rightp: RcDoc<'a>) -> Rc
 }
 
 /// Convert a leading comment to an `RcDoc`, adding leading and trailing newlines.
-pub fn get_leading_comment_doc_from_str<'a>(leading_comment: &str) -> RcDoc<'a> {
+pub fn get_leading_comment_doc_from_str<'src>(leading_comment: &[&'src str]) -> RcDoc<'src> {
     if leading_comment.is_empty() {
         RcDoc::nil()
     } else {
@@ -41,84 +41,84 @@ pub fn get_leading_comment_doc_from_str<'a>(leading_comment: &str) -> RcDoc<'a> 
 /// `RcDoc::text` allow newlines in the text (although the official
 /// documentation says they don't), but the resulting text will maintain its
 /// original indentation instead of the new "pretty" indentation.
-fn create_multiline_doc<'a>(str: &str) -> RcDoc<'a> {
-    RcDoc::intersperse(
-        str.trim().split('\n').map(|c| RcDoc::text(c.to_owned())),
-        RcDoc::hardline(),
-    )
+fn create_multiline_doc<'src>(text: &[&'src str]) -> RcDoc<'src> {
+    RcDoc::intersperse(text.iter().map(|c| RcDoc::text(*c)), RcDoc::hardline())
 }
 
 /// Convert a trailing comment to an `RcDoc`, adding a trailing newline.
 /// There is no need to use `create_multiline_doc` because a trailing comment
 /// cannot contain newlines.
-pub fn get_trailing_comment_doc_from_str<'a>(
-    trailing_comment: &str,
-    next_doc: RcDoc<'a>,
-) -> RcDoc<'a> {
-    if trailing_comment.is_empty() {
-        next_doc
-    } else {
+pub fn get_trailing_comment_doc_from_str<'src>(
+    trailing_comment: &'src str,
+    next_doc: RcDoc<'src>,
+) -> RcDoc<'src> {
+    if !trailing_comment.is_empty() {
         RcDoc::space()
-            .append(RcDoc::text(trailing_comment.trim().to_owned()))
+            .append(RcDoc::text(trailing_comment))
             .append(RcDoc::hardline())
+    } else {
+        next_doc
     }
 }
 
-fn get_token_at_start(
+fn get_token_at_start<'a, 'src>(
     span: miette::SourceSpan,
-    tokens: &mut [WrappedToken],
-) -> Option<&mut WrappedToken> {
+    tokens: &'a mut [WrappedToken<'src>],
+) -> Option<&'a mut WrappedToken<'src>> {
     tokens
         .as_mut()
         .iter_mut()
         .find(|t| t.span.start == span.offset())
 }
 
-pub fn get_comment_at_start(
+pub fn get_comment_at_start<'src>(
     span: miette::SourceSpan,
-    tokens: &mut [WrappedToken],
-) -> Option<Comment> {
+    tokens: &mut [WrappedToken<'src>],
+) -> Option<Comment<'src>> {
     Some(get_token_at_start(span, tokens)?.consume_comment())
 }
 
-pub fn get_leading_comment_at_start(
+pub fn get_leading_comment_at_start<'src>(
     span: miette::SourceSpan,
-    tokens: &mut [WrappedToken],
-) -> Option<String> {
+    tokens: &mut [WrappedToken<'src>],
+) -> Option<Vec<&'src str>> {
     Some(get_token_at_start(span, tokens)?.consume_leading_comment())
 }
 
-fn get_token_after_end(
+fn get_token_after_end<'a, 'src>(
     span: miette::SourceSpan,
-    tokens: &mut [WrappedToken],
-) -> Option<&mut WrappedToken> {
+    tokens: &'a mut [WrappedToken<'src>],
+) -> Option<&'a mut WrappedToken<'src>> {
     let end = span.offset() + span.len();
     tokens.iter_mut().find_or_first(|t| t.span.start >= end)
 }
 
-fn get_token_at_end(
+fn get_token_at_end<'a, 'src>(
     span: miette::SourceSpan,
-    tokens: &mut [WrappedToken],
-) -> Option<&mut WrappedToken> {
+    tokens: &'a mut [WrappedToken<'src>],
+) -> Option<&'a mut WrappedToken<'src>> {
     let end = span.offset() + span.len();
     tokens.iter_mut().find(|t| t.span.end == end)
 }
 
-pub fn get_comment_at_end(
+pub fn get_comment_at_end<'src>(
     span: miette::SourceSpan,
-    tokens: &mut [WrappedToken],
-) -> Option<Comment> {
+    tokens: &mut [WrappedToken<'src>],
+) -> Option<Comment<'src>> {
     Some(get_token_at_end(span, tokens)?.consume_comment())
 }
 
-pub fn get_comment_after_end(
+pub fn get_comment_after_end<'src>(
     span: miette::SourceSpan,
-    tokens: &mut [WrappedToken],
-) -> Option<Comment> {
+    tokens: &mut [WrappedToken<'src>],
+) -> Option<Comment<'src>> {
     Some(get_token_after_end(span, tokens)?.consume_comment())
 }
 
-pub fn get_comment_in_range(span: miette::SourceSpan, tokens: &mut [WrappedToken]) -> Vec<Comment> {
+pub fn get_comment_in_range<'src>(
+    span: miette::SourceSpan,
+    tokens: &mut [WrappedToken<'src>],
+) -> Vec<Comment<'src>> {
     tokens
         .iter_mut()
         .skip_while(|t| t.span.start < span.offset())
@@ -130,7 +130,11 @@ pub fn get_comment_in_range(span: miette::SourceSpan, tokens: &mut [WrappedToken
 /// Wrap an `RcDoc` with comments. If there is a leading comment, then this
 /// will introduce a newline bat the start of the `RcDoc`. If there is a
 /// trailing comment, then it will introduce a newline at the end.
-pub fn add_comment<'a>(d: RcDoc<'a>, comment: Comment, next_doc: RcDoc<'a>) -> RcDoc<'a> {
+pub fn add_comment<'src>(
+    d: RcDoc<'src>,
+    comment: Comment<'src>,
+    next_doc: RcDoc<'src>,
+) -> RcDoc<'src> {
     let leading_comment = comment.leading_comment();
     let trailing_comment = comment.trailing_comment();
     let leading_comment_doc = get_leading_comment_doc_from_str(leading_comment);
