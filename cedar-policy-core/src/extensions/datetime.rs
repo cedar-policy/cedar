@@ -23,7 +23,16 @@ use regex::Regex;
 // Unix time, represented internally as an integer.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 struct DateTime {
-    epoch: NaiveDateTime,
+    epoch: i64,
+}
+
+impl From<NaiveDateTime> for DateTime {
+    fn from(value: NaiveDateTime) -> Self {
+        let delta = value - NaiveDateTime::UNIX_EPOCH;
+        Self {
+            epoch: delta.num_milliseconds(),
+        }
+    }
 }
 
 fn get_d4(d1: &char, d2: &char, d3: &char, d4: &char) -> Option<u16> {
@@ -114,30 +123,38 @@ fn get_offset(hh1: &char, hh2: &char, mmm1: &char, mmm2: &char) -> Option<TimeDe
     }
 }
 
-fn parse_duration(s: &str) -> Option<TimeDelta> {
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct Duration {
+    ms: i64,
+}
+
+fn parse_duration(s: &str) -> Option<Duration> {
     if s.len() < 2 {
         None
     } else {
         let duration_pattern =
-            Regex::new(r"^-?([0-9]+d)?([0-9]+h)?([0-9]+m)?([0-9]+s)?([0-9]+ms)?$").unwrap();
+            Regex::new(r"^-?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?$")
+                .unwrap();
         let captures = duration_pattern.captures(s)?;
-        let d: u64 = captures.get(1).map_or("0", |m| m.as_str()).parse().ok()?;
-        let h: u64 = captures.get(2).map_or("0", |m| m.as_str()).parse().ok()?;
-        let m: u64 = captures.get(3).map_or("0", |m| m.as_str()).parse().ok()?;
-        let sec: u64 = captures.get(4).map_or("0", |m| m.as_str()).parse().ok()?;
-        let ms: u16 = captures.get(5).map_or("0", |m| m.as_str()).parse().ok()?;
-        let mut second: i64 = i64::checked_mul(d.try_into().ok()?, 24 * 3600)?;
-        second = i64::checked_add(second, i64::checked_mul(h.try_into().ok()?, 3600)?)?;
-        second = i64::checked_add(second, i64::checked_mul(m.try_into().ok()?, 60)?)?;
-        second = i64::checked_add(second, sec.try_into().ok()?)?;
-        if ms < 1000 {
-            if s.starts_with('-') {
-                Some(TimeDelta::new(-second, ms as u32 * 1_000_000)?)
-            } else {
-                Some(TimeDelta::new(second, ms as u32 * 1_000_000)?)
-            }
+        let d: u64 = captures.get(2).map_or("0", |m| m.as_str()).parse().ok()?;
+        let h: u64 = captures.get(4).map_or("0", |m| m.as_str()).parse().ok()?;
+        let m: u64 = captures.get(6).map_or("0", |m| m.as_str()).parse().ok()?;
+        let sec: u64 = captures.get(8).map_or("0", |m| m.as_str()).parse().ok()?;
+        let ms: u16 = captures.get(10).map_or("0", |m| m.as_str()).parse().ok()?;
+        if s.starts_with('-') {
+            let mut ms = i64::try_from(-(ms as i128)).ok()?;
+            ms = ms.checked_sub(i64::checked_mul(sec.try_into().ok()?, 1000)?)?;
+            ms = ms.checked_sub(i64::checked_mul(m.try_into().ok()?, 1000 * 60)?)?;
+            ms = ms.checked_sub(i64::checked_mul(h.try_into().ok()?, 1000 * 60 * 60)?)?;
+            ms = ms.checked_sub(i64::checked_mul(d.try_into().ok()?, 1000 * 60 * 60 * 24)?)?;
+            Some(Duration { ms })
         } else {
-            None
+            let mut ms = i64::try_from(ms).ok()?;
+            ms = ms.checked_add(i64::checked_mul(sec.try_into().ok()?, 1000)?)?;
+            ms = ms.checked_add(i64::checked_mul(m.try_into().ok()?, 1000 * 60)?)?;
+            ms = ms.checked_add(i64::checked_mul(h.try_into().ok()?, 1000 * 60 * 60)?)?;
+            ms = ms.checked_add(i64::checked_mul(d.try_into().ok()?, 1000 * 60 * 60 * 24)?)?;
+            Some(Duration { ms })
         }
     }
 }
@@ -203,7 +220,7 @@ fn parse_datetime(s: &str) -> Option<NaiveDateTime> {
 mod tests {
     use cool_asserts::assert_matches;
 
-    use crate::extensions::datetime::parse_datetime;
+    use crate::extensions::datetime::{parse_datetime, parse_duration, Duration};
 
     #[test]
     fn test_parse_pos() {
@@ -241,6 +258,50 @@ mod tests {
         }
     }
 
+    #[track_caller]
+    fn milliseconds_to_duration(ms: i128) -> String {
+        let sign = if ms < 0 { "-" } else { "" };
+        let mut ms = ms.abs();
+        let milliseconds = ms % 1000;
+        ms /= 1000;
+        let seconds = ms % 60;
+        ms /= 60;
+        let minutes = ms % 60;
+        ms /= 60;
+        let hours = ms % 24;
+        ms /= 24;
+        let days = ms;
+        format!("{sign}{days}d{hours}h{minutes}m{seconds}s{milliseconds}ms")
+    }
+
     #[test]
-    fn parse_duration_pos() {}
+    fn parse_duration_pos() {
+        assert_eq!(parse_duration("1h"), Some(Duration { ms: 3600 * 1000 }));
+        assert_eq!(
+            parse_duration("-10h"),
+            Some(Duration {
+                ms: -3600 * 10 * 1000
+            })
+        );
+        assert_eq!(
+            parse_duration("5d3ms"),
+            Some(Duration {
+                ms: 3600 * 24 * 5 * 1000 + 3
+            })
+        );
+        assert_eq!(
+            parse_duration("-3h5m"),
+            Some(Duration {
+                ms: -3600 * 3 * 1000 - 300 * 1000
+            })
+        );
+        assert!(parse_duration(&milliseconds_to_duration(i64::MAX.into())).is_some());
+        assert!(parse_duration(&milliseconds_to_duration(i64::MIN.into())).is_some());
+    }
+
+    #[test]
+    fn parse_duration_neg() {
+        assert!(parse_duration(&milliseconds_to_duration(i64::MAX as i128 + 1)).is_none());
+        assert!(parse_duration(&milliseconds_to_duration(i64::MIN as i128 - 1)).is_none());
+    }
 }
