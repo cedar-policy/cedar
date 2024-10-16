@@ -20,10 +20,39 @@ use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta};
 use itertools::Itertools;
 use regex::Regex;
 
-// Unix time, represented internally as an integer.
+// The `datetime` type, represented internally as an `i64`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 struct DateTime {
+    // The number of non-leap milliseconds from the Unix epoch
     epoch: i64,
+}
+
+impl DateTime {
+    const DAY_IN_MILLISECONDS: i64 = 1000 * 3600 * 24;
+
+    fn offset(&self, duration: Duration) -> Option<Self> {
+        self.epoch
+            .checked_add(duration.ms)
+            .map(|epoch| Self { epoch })
+    }
+
+    fn durationSince(&self, other: DateTime) -> Option<Duration> {
+        self.epoch
+            .checked_sub(other.epoch)
+            .map(|ms| Duration { ms })
+    }
+
+    fn toDate(&self) -> Self {
+        Self {
+            epoch: self.epoch / Self::DAY_IN_MILLISECONDS,
+        }
+    }
+
+    fn toTime(&self) -> Self {
+        Self {
+            epoch: self.epoch % Self::DAY_IN_MILLISECONDS,
+        }
+    }
 }
 
 impl From<NaiveDateTime> for DateTime {
@@ -123,9 +152,33 @@ fn get_offset(hh1: &char, hh2: &char, mmm1: &char, mmm2: &char) -> Option<TimeDe
     }
 }
 
+// The `duration` type
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct Duration {
+    // The number of milliseconds
     ms: i64,
+}
+
+impl Duration {
+    fn toMilliseconds(&self) -> i64 {
+        self.ms
+    }
+
+    fn toSeconds(&self) -> i64 {
+        self.toMilliseconds() / 1000
+    }
+
+    fn toMinutes(&self) -> i64 {
+        self.toSeconds() / 60
+    }
+
+    fn toHours(&self) -> i64 {
+        self.toMinutes() / 60
+    }
+
+    fn toDays(&self) -> i64 {
+        self.toHours() / 24
+    }
 }
 
 fn parse_duration(s: &str) -> Option<Duration> {
