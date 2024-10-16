@@ -26,6 +26,7 @@ arbitrary = { version = "1", features = ["derive"], optional = true }
 lalrpop-util = { version = "0.22.0", features = ["lexer", "unicode"] }
 lazy_static = "1.4.0"
 nonempty = "0.10.0"
+prost = "0.12"
 
 # wasm dependencies
 serde-wasm-bindgen = { version = "0.6", optional = true }
@@ -34,7 +35,7 @@ wasm-bindgen = { version = "0.2.82", optional = true }
 
 [features]
 # by default, enable all Cedar extensions
-default = ["ipaddr", "decimal"]
+default = ["ipaddr", "decimal", "protobufs"]
 # when enabling a feature, make sure that the Core feature is also enabled
 ipaddr = ["cedar-policy-core/ipaddr"]
 decimal = ["cedar-policy-core/decimal"]
@@ -47,6 +48,7 @@ arbitrary = ["dep:arbitrary", "cedar-policy-core/arbitrary"]
 partial-validate = []
 level-validate = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
+protobufs = []
 entity-manifest = []
 
 [dev-dependencies]
@@ -57,3 +59,4 @@ miette = { version = "7.1.0", features = ["fancy"] }
 
 [build-dependencies]
 lalrpop = "0.22.0"
+prost-build = "0.5"

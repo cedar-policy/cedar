@@ -28,6 +28,7 @@ stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
 miette = { version = "7.1.0", features = ["serde"] }
 nonempty = "0.10.0"
+prost = "0.12"
 
 # decimal extension requires regex
 regex = { version = "1.8", features = ["unicode"], optional = true }
@@ -39,7 +40,7 @@ wasm-bindgen = { version = "0.2.82", optional = true }
 
 [features]
 # by default, enable all Cedar extensions
-default = ["ipaddr", "decimal"]
+default = ["ipaddr", "decimal", "protobufs"]
 ipaddr = []
 decimal = ["dep:regex"]
 
@@ -52,9 +53,11 @@ test-util = []
 # Experimental features.
 partial-eval = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
+protobufs = []
 
 [build-dependencies]
 lalrpop = "0.22.0"
+prost-build = "0.5"
 
 [dev-dependencies]
 cool_asserts = "2.0"
