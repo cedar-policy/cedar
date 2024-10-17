@@ -17,7 +17,24 @@
 //! This module contains the Cedar 'datetime' extension.
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta};
-use regex::Regex;
+use constants::{DATE_PATTERN, DURATION_PATTERN, HMS_PATTERN, MS_AND_OFFSET_PATTERN};
+
+// PANIC SAFETY The `Name`s and `Regex` here are valid
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod constants {
+    use regex::Regex;
+
+    // Global regex, initialized at first use
+    // PANIC SAFETY: These are valid `Regex`
+    lazy_static::lazy_static! {
+        pub static ref DURATION_PATTERN: Regex =
+        Regex::new(r"^-?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?$").unwrap();
+        pub static ref DATE_PATTERN: Regex = Regex::new(r"^([0-9]{4})-([0-9]{2})-([0-9]{2})").unwrap();
+        pub static ref HMS_PATTERN: Regex = Regex::new(r"^T([0-9]{2}):([0-9]{2}):([0-9]{2})").unwrap();
+        pub static ref MS_AND_OFFSET_PATTERN: Regex =
+        Regex::new(r"^(\.([0-9]{3}))?(Z|((\+|-)([0-9]{2})([0-9]{2})))$").unwrap();
+    }
+}
 
 // The `datetime` type, represented internally as an `i64`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -96,37 +113,41 @@ fn parse_duration(s: &str) -> Option<Duration> {
     if s.len() < 2 {
         None
     } else {
-        let duration_pattern =
-            Regex::new(r"^-?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?$")
-                .unwrap();
-        let captures = duration_pattern.captures(s)?;
-        let d: u64 = captures.get(2).map_or("0", |m| m.as_str()).parse().ok()?;
-        let h: u64 = captures.get(4).map_or("0", |m| m.as_str()).parse().ok()?;
-        let m: u64 = captures.get(6).map_or("0", |m| m.as_str()).parse().ok()?;
-        let sec: u64 = captures.get(8).map_or("0", |m| m.as_str()).parse().ok()?;
-        let ms: u16 = captures.get(10).map_or("0", |m| m.as_str()).parse().ok()?;
-        if s.starts_with('-') {
-            let mut ms = i64::try_from(-(ms as i128)).ok()?;
-            ms = ms.checked_sub(i64::checked_mul(sec.try_into().ok()?, 1000)?)?;
-            ms = ms.checked_sub(i64::checked_mul(m.try_into().ok()?, 1000 * 60)?)?;
-            ms = ms.checked_sub(i64::checked_mul(h.try_into().ok()?, 1000 * 60 * 60)?)?;
-            ms = ms.checked_sub(i64::checked_mul(d.try_into().ok()?, 1000 * 60 * 60 * 24)?)?;
-            Some(Duration { ms })
+        let captures = DURATION_PATTERN.captures(s)?;
+        let get_number = |idx| {
+            captures
+                .get(idx)
+                .map_or(Some(0), |m| m.as_str().parse().ok())
+        };
+        let d: u64 = get_number(2)?;
+        let h: u64 = get_number(4)?;
+        let m: u64 = get_number(6)?;
+        let sec: u64 = get_number(8)?;
+        let ms: u64 = get_number(10)?;
+        let checked_op = if s.starts_with('-') {
+            i64::checked_sub
         } else {
-            let mut ms = i64::try_from(ms).ok()?;
-            ms = ms.checked_add(i64::checked_mul(sec.try_into().ok()?, 1000)?)?;
-            ms = ms.checked_add(i64::checked_mul(m.try_into().ok()?, 1000 * 60)?)?;
-            ms = ms.checked_add(i64::checked_mul(h.try_into().ok()?, 1000 * 60 * 60)?)?;
-            ms = ms.checked_add(i64::checked_mul(d.try_into().ok()?, 1000 * 60 * 60 * 24)?)?;
-            Some(Duration { ms })
-        }
+            i64::checked_add
+        };
+        let mut ms = if s.starts_with('-') {
+            i64::try_from(-(ms as i128)).ok()?
+        } else {
+            i64::try_from(ms).ok()?
+        };
+        ms = checked_op(ms, i64::checked_mul(sec.try_into().ok()?, 1000)?)?;
+        ms = checked_op(ms, i64::checked_mul(m.try_into().ok()?, 1000 * 60)?)?;
+        ms = checked_op(ms, i64::checked_mul(h.try_into().ok()?, 1000 * 60 * 60)?)?;
+        ms = checked_op(
+            ms,
+            i64::checked_mul(d.try_into().ok()?, 1000 * 60 * 60 * 24)?,
+        )?;
+        Some(Duration { ms })
     }
 }
 
 fn parse_datetime(s: &str) -> Option<NaiveDateTime> {
     // Get date first
-    let date_pattern = Regex::new(r"^([0-9]{4})-([0-9]{2})-([0-9]{2})").unwrap();
-    let (date_str, [year, month, day]) = date_pattern.captures(s)?.extract();
+    let (date_str, [year, month, day]) = DATE_PATTERN.captures(s)?.extract();
     let date = NaiveDate::from_ymd_opt(
         year.parse().unwrap(),
         month.parse().unwrap(),
@@ -143,17 +164,16 @@ fn parse_datetime(s: &str) -> Option<NaiveDateTime> {
 
     // Get hour, minute, and second
     let s = &s[date_str.len()..];
-    let hms_pattern = Regex::new(r"^T([0-9]{2}):([0-9]{2}):([0-9]{2})").unwrap();
-    let (hms_str, [h, m, sec]) = hms_pattern.captures(s)?.extract();
+
+    let (hms_str, [h, m, sec]) = HMS_PATTERN.captures(s)?.extract();
     let h: u32 = h.parse().unwrap();
     let m: u32 = m.parse().unwrap();
     let sec: u32 = sec.parse().unwrap();
 
     // Get millisecond and offset
     let s = &s[hms_str.len()..];
-    let ms_and_offset_pattern =
-        Regex::new(r"^(\.([0-9]{3}))?(Z|((\+|-)([0-9]{2})([0-9]{2})))$").unwrap();
-    let captures = ms_and_offset_pattern.captures(s)?;
+
+    let captures = MS_AND_OFFSET_PATTERN.captures(s)?;
     let ms: u32 = if captures.get(1).is_some() {
         captures[2].parse().unwrap()
     } else {
