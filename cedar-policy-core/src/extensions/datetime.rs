@@ -17,7 +17,6 @@
 //! This module contains the Cedar 'datetime' extension.
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta};
-use itertools::Itertools;
 use regex::Regex;
 
 // The `datetime` type, represented internally as an `i64`.
@@ -61,94 +60,6 @@ impl From<NaiveDateTime> for DateTime {
         Self {
             epoch: delta.num_milliseconds(),
         }
-    }
-}
-
-fn get_d4(d1: &char, d2: &char, d3: &char, d4: &char) -> Option<u16> {
-    Some(
-        (d1.to_digit(10)? * 1000
-            + d2.to_digit(10)? * 100
-            + d3.to_digit(10)? * 10
-            + d4.to_digit(10)?)
-        .try_into()
-        .unwrap(),
-    )
-}
-
-fn get_d3(d1: &char, d2: &char, d3: &char) -> Option<u16> {
-    Some(
-        (d1.to_digit(10)? * 100 + d2.to_digit(10)? * 10 + d3.to_digit(10)?)
-            .try_into()
-            .unwrap(),
-    )
-}
-
-fn get_d2(d1: &char, d2: &char) -> Option<u8> {
-    Some(
-        (d1.to_digit(10)? * 10 + d2.to_digit(10)?)
-            .try_into()
-            .unwrap(),
-    )
-}
-
-fn get_date(
-    y1: &char,
-    y2: &char,
-    y3: &char,
-    y4: &char,
-    m1: &char,
-    m2: &char,
-    d1: &char,
-    d2: &char,
-) -> Option<NaiveDate> {
-    NaiveDate::from_ymd_opt(
-        get_d4(y1, y2, y3, y4)?.into(),
-        get_d2(m1, m2)?.into(),
-        get_d2(d1, d2)?.into(),
-    )
-}
-
-fn get_time_hms(
-    h1: &char,
-    h2: &char,
-    mm1: &char,
-    mm2: &char,
-    s1: &char,
-    s2: &char,
-) -> Option<NaiveTime> {
-    NaiveTime::from_hms_opt(
-        get_d2(h1, h2)?.into(),
-        get_d2(mm1, mm2)?.into(),
-        get_d2(s1, s2)?.into(),
-    )
-}
-
-fn get_time_hms_milli(
-    h1: &char,
-    h2: &char,
-    mm1: &char,
-    mm2: &char,
-    s1: &char,
-    s2: &char,
-    ss1: &char,
-    ss2: &char,
-    ss3: &char,
-) -> Option<NaiveTime> {
-    NaiveTime::from_hms_micro_opt(
-        get_d2(h1, h2)?.into(),
-        get_d2(mm1, mm2)?.into(),
-        get_d2(s1, s2)?.into(),
-        get_d3(ss1, ss2, ss3)?.into(),
-    )
-}
-
-fn get_offset(hh1: &char, hh2: &char, mmm1: &char, mmm2: &char) -> Option<TimeDelta> {
-    let hour = get_d2(hh1, hh2)?;
-    let minute = get_d2(mmm1, mmm2)?;
-    if hour < 24 && minute < 60 {
-        Some(TimeDelta::new(hour as i64 * 3600 + minute as i64 * 60, 0).unwrap())
-    } else {
-        None
     }
 }
 
@@ -213,60 +124,66 @@ fn parse_duration(s: &str) -> Option<Duration> {
 }
 
 fn parse_datetime(s: &str) -> Option<NaiveDateTime> {
-    if s.len() > 28 {
-        return None;
+    // Get date first
+    let date_pattern = Regex::new(r"^([0-9]{4})-([0-9]{2})-([0-9]{2})").unwrap();
+    let (date_str, [year, month, day]) = date_pattern.captures(s)?.extract();
+    let date = NaiveDate::from_ymd_opt(
+        year.parse().unwrap(),
+        month.parse().unwrap(),
+        day.parse().unwrap(),
+    )?;
+
+    // A complete match; simply return
+    if date_str.len() == s.len() {
+        return Some(NaiveDateTime::new(
+            date,
+            NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
+        ));
     }
-    match s.chars().collect_vec().as_slice() {
-        [y1, y2, y3, y4, '-', m1, m2, '-', d1, d2] => Some(NaiveDateTime::new(
-            get_date(y1, y2, y3, y4, m1, m2, d1, d2)?,
-            NaiveTime::from_hms_opt(0, 0, 0)?,
-        )),
-        [y1, y2, y3, y4, '-', m1, m2, '-', d1, d2, 'T', h1, h2, ':', mm1, mm2, ':', s1, s2, 'Z'] => {
-            Some(NaiveDateTime::new(
-                get_date(y1, y2, y3, y4, m1, m2, d1, d2)?,
-                get_time_hms(h1, h2, mm1, mm2, s1, s2)?,
-            ))
-        }
-        [y1, y2, y3, y4, '-', m1, m2, '-', d1, d2, 'T', h1, h2, ':', mm1, mm2, ':', s1, s2, '.', ss1, ss2, ss3, 'Z'] => {
-            Some(NaiveDateTime::new(
-                get_date(y1, y2, y3, y4, m1, m2, d1, d2)?,
-                get_time_hms_milli(h1, h2, mm1, mm2, s1, s2, ss1, ss2, ss3)?,
-            ))
-        }
-        [y1, y2, y3, y4, '-', m1, m2, '-', d1, d2, 'T', h1, h2, ':', mm1, mm2, ':', s1, s2, '+', hh1, hh2, mmm1, mmm2] => {
+
+    // Get hour, minute, and second
+    let s = &s[date_str.len()..];
+    let hms_pattern = Regex::new(r"^T([0-9]{2}):([0-9]{2}):([0-9]{2})").unwrap();
+    let (hms_str, [h, m, sec]) = hms_pattern.captures(s)?.extract();
+    let h: u32 = h.parse().unwrap();
+    let m: u32 = m.parse().unwrap();
+    let sec: u32 = sec.parse().unwrap();
+
+    // Get millisecond and offset
+    let s = &s[hms_str.len()..];
+    let ms_and_offset_pattern =
+        Regex::new(r"^(\.([0-9]{3}))?(Z|((\+|-)([0-9]{2})([0-9]{2})))$").unwrap();
+    let captures = ms_and_offset_pattern.captures(s)?;
+    let ms: u32 = if captures.get(1).is_some() {
+        captures[2].parse().unwrap()
+    } else {
+        0
+    };
+    let offset: Option<TimeDelta> = if captures.get(4).is_some() {
+        let sign = &captures[5] == "+";
+        let offset_hour: u32 = captures[6].parse().unwrap();
+        let offset_min: u32 = captures[7].parse().unwrap();
+        if offset_hour < 24 && offset_min < 60 {
+            let offset_in_secs = (offset_hour * 3600 + offset_min * 60) as i64;
             Some(
-                NaiveDateTime::new(
-                    get_date(y1, y2, y3, y4, m1, m2, d1, d2)?,
-                    get_time_hms(h1, h2, mm1, mm2, s1, s2)?,
-                ) + get_offset(hh1, hh2, mmm1, mmm2)?,
+                TimeDelta::new(
+                    if sign {
+                        offset_in_secs
+                    } else {
+                        -offset_in_secs
+                    },
+                    0,
+                )
+                .unwrap(),
             )
+        } else {
+            None
         }
-        [y1, y2, y3, y4, '-', m1, m2, '-', d1, d2, 'T', h1, h2, ':', mm1, mm2, ':', s1, s2, '-', hh1, hh2, mmm1, mmm2] => {
-            Some(
-                NaiveDateTime::new(
-                    get_date(y1, y2, y3, y4, m1, m2, d1, d2)?,
-                    get_time_hms(h1, h2, mm1, mm2, s1, s2)?,
-                ) - get_offset(hh1, hh2, mmm1, mmm2)?,
-            )
-        }
-        [y1, y2, y3, y4, '-', m1, m2, '-', d1, d2, 'T', h1, h2, ':', mm1, mm2, ':', s1, s2, '.', ss1, ss2, ss3, '+', hh1, hh2, mmm1, mmm2] => {
-            Some(
-                NaiveDateTime::new(
-                    get_date(y1, y2, y3, y4, m1, m2, d1, d2)?,
-                    get_time_hms_milli(h1, h2, mm1, mm2, s1, s2, ss1, ss2, ss3)?,
-                ) + get_offset(hh1, hh2, mmm1, mmm2)?,
-            )
-        }
-        [y1, y2, y3, y4, '-', m1, m2, '-', d1, d2, 'T', h1, h2, ':', mm1, mm2, ':', s1, s2, '.', ss1, ss2, ss3, '-', hh1, hh2, mmm1, mmm2] => {
-            Some(
-                NaiveDateTime::new(
-                    get_date(y1, y2, y3, y4, m1, m2, d1, d2)?,
-                    get_time_hms_milli(h1, h2, mm1, mm2, s1, s2, ss1, ss2, ss3)?,
-                ) - get_offset(hh1, hh2, mmm1, mmm2)?,
-            )
-        }
-        _ => None,
-    }
+    } else {
+        Some(TimeDelta::default())
+    };
+    let time = NaiveTime::from_hms_milli_opt(h, m, sec, ms)? + offset?;
+    Some(NaiveDateTime::new(date, time))
 }
 
 #[cfg(test)]
