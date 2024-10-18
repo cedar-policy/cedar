@@ -1062,4 +1062,66 @@ mod test {
         assert_eq!(lps.templates, lps_roundtrip.templates);
         assert_eq!(lps.links, lps_roundtrip.links);
     }
+
+    #[cfg(feature = "protobufs")]
+    #[test]
+    fn protobuf_roundtrip_forbids() {
+        let annotation1: Annotation = Annotation {
+            val: "".into(),
+            loc: None,
+        };
+        let pc: PrincipalConstraint =
+            PrincipalConstraint::is_eq(EntityUID::with_eid("friend").into());
+        let ac: ActionConstraint = ActionConstraint::Eq(EntityUID::with_eid("read").into());
+        let rc: ResourceConstraint = ResourceConstraint {
+            constraint: PrincipalOrResourceConstraint::is_entity_type(
+                EntityType::from(Name::from_normalized_str("photo").unwrap()).into(),
+            ),
+        };
+
+        let tb: TemplateBody = TemplateBody::new(
+            PolicyID::from_string("template"),
+            None,
+            Annotations::from_iter(vec![(AnyId::from_str("read").expect(""), annotation1)]),
+            Effect::Forbid,
+            pc,
+            ac,
+            rc,
+            Expr::val(true),
+        );
+
+        let policy: Policy = Policy::from_when_clause(
+            Effect::Permit,
+            Expr::val(true),
+            PolicyID::from_string("alice"),
+            None,
+        );
+
+        let mut ps: PolicySet = PolicySet::new();
+        ps.add_template(Template::from(tb))
+            .expect("Failed to add template to policy set.");
+        ps.add(policy.clone())
+            .expect("Failed to add policy to policy set.");
+        let lps: LiteralPolicySet = LiteralPolicySet::from(ps.clone());
+        let lps_roundtrip: LiteralPolicySet =
+            LiteralPolicySet::from(&proto::LiteralPolicySet::from(&lps));
+
+        // Can't compare LiteralPolicySets directly, so we compare their fields
+        assert_eq!(lps.templates, lps_roundtrip.templates);
+        assert_eq!(lps.links, lps_roundtrip.links);
+
+        ps.remove_static(policy.id()).unwrap();
+        let policy: Policy = Policy::from_when_clause(
+            Effect::Forbid,
+            Expr::val(true),
+            PolicyID::from_string("alice"),
+            None,
+        );
+        ps.add(policy).expect("Failed to add policy to policy set.");
+        let lps: LiteralPolicySet = LiteralPolicySet::from(ps);
+        // Static policies have templates, so not equal
+        assert_ne!(lps.templates, lps_roundtrip.templates);
+        // The static policies are identical except for the template, so links are equal
+        assert_eq!(lps.links, lps_roundtrip.links);
+    }
 }
