@@ -363,10 +363,13 @@ impl From<&proto::Entities> for Entities {
     fn from(v: &proto::Entities) -> Self {
         let entities: Vec<Entity> = v.entities.iter().map(Entity::from).collect();
 
+        #[cfg(not(feature = "partial-eval"))]
         let result = Entities::new();
 
         #[cfg(feature = "partial-eval")]
-        if v.mode == proto::entities::Mode::Partial {
+        let mut result = Entities::new();
+        #[cfg(feature = "partial-eval")]
+        if v.mode == crate::entities::proto::Mode::Partial as i32 {
             result = result.partial();
         }
 
@@ -393,7 +396,7 @@ impl From<&Entities> for proto::Entities {
         if v.mode == Mode::Partial {
             return Self {
                 entities: entities,
-                mode: proto::entities::Mode::Partial.into(),
+                mode: crate::entities::proto::Mode::Partial.into(),
             };
         }
 

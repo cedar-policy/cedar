@@ -109,6 +109,8 @@ impl From<&ValidationMode> for proto::ValidationMode {
         match v {
             ValidationMode::Strict => proto::ValidationMode::Strict,
             ValidationMode::Permissive => proto::ValidationMode::Permissive,
+            #[cfg(feature = "partial-validate")]
+            ValidationMode::Partial => unimplemented!(),
         }
     }
 }
