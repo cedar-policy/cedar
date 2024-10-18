@@ -114,8 +114,6 @@ impl From<&EntityType> for proto::EntityType {
     }
 }
 
-// Note: the characters '<' and '>' are not allowed in `Name`s, so the display for
-// `Unspecified` never conflicts with `Specified(name)`.
 impl std::fmt::Display for EntityType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -666,8 +664,7 @@ impl std::fmt::Display for Entity {
 #[cfg(feature = "protobufs")]
 impl From<&proto::Entity> for Entity {
     fn from(v: &proto::Entity) -> Self {
-        let extensions_none = Extensions::none();
-        let eval = RestrictedEvaluator::new(&extensions_none);
+        let eval = RestrictedEvaluator::new(&Extensions::none());
 
         let attrs: BTreeMap<SmolStr, PartialValueSerializedAsExpr> = v
             .attrs
@@ -695,8 +692,8 @@ impl From<&proto::Entity> for Entity {
 
         Self {
             uid: EntityUID::from(v.uid.as_ref().unwrap()),
-            attrs: attrs,
-            ancestors: ancestors,
+            attrs,
+            ancestors,
             tags,
         }
     }
@@ -728,8 +725,8 @@ impl From<&Entity> for proto::Entity {
 
         Self {
             uid: Some(proto::EntityUid::from(&v.uid)),
-            attrs: attrs,
-            ancestors: ancestors,
+            attrs,
+            ancestors,
             tags,
         }
     }

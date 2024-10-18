@@ -107,7 +107,7 @@ impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
     fn from(v: &ValidatorEntityType) -> Self {
         let tags = match &v.tags {
             Some(tags) => Some(proto::Tag {
-                my_optional_type: Some(proto::tag::OptionalType::Type(proto::Type::from(tags))),
+                optional_type: Some(proto::tag::OptionalType::Type(proto::Type::from(tags))),
             }),
             None => None,
         };
@@ -129,7 +129,7 @@ impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
 impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
     fn from(v: &proto::ValidatorEntityType) -> Self {
         let tags = match &v.tags {
-            Some(tags) => match &tags.my_optional_type {
+            Some(tags) => match &tags.optional_type {
                 Some(proto::tag::OptionalType::Type(ty)) => Some(Type::from(ty)),
                 _ => None,
             },
