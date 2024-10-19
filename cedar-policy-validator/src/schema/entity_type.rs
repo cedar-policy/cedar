@@ -127,6 +127,8 @@ impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::ValidatorEntityType) -> Self {
         let tags = match &v.tags {
             Some(tags) => match &tags.optional_type {
@@ -136,10 +138,18 @@ impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
             None => None,
         };
         Self {
-            name: ast::EntityType::from(v.name.as_ref().unwrap()),
+            name: ast::EntityType::from(
+                v.name.as_ref().expect("as_ref() for field that will exist"),
+            ),
             descendants: v.descendants.iter().map(ast::EntityType::from).collect(),
-            attributes: Attributes::from(v.attributes.as_ref().unwrap()),
-            open_attributes: OpenTag::from(&proto::OpenTag::try_from(v.open_attributes).unwrap()),
+            attributes: Attributes::from(
+                v.attributes
+                    .as_ref()
+                    .expect("as_ref() for field that will exist"),
+            ),
+            open_attributes: OpenTag::from(
+                &proto::OpenTag::try_from(v.open_attributes).expect("decode should succeed"),
+            ),
             tags,
         }
     }

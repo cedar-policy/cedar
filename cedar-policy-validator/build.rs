@@ -34,6 +34,8 @@ fn generate_parsers() {
 fn generate_schemas() {
     let mut config = prost_build::Config::new();
     config.extern_path(".cedar_policy_core", "cedar_policy-core::ast::proto");
+    // PANIC SAFETY: static file compiled at build time
+    #[allow(clippy::expect_used)]
     config
         .compile_protos(
             &["./schema/Validator.proto"],

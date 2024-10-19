@@ -360,6 +360,8 @@ impl std::fmt::Display for Entities {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::Entities> for Entities {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::Entities) -> Self {
         let entities: Vec<Entity> = v.entities.iter().map(Entity::from).collect();
 
@@ -380,7 +382,7 @@ impl From<&proto::Entities> for Entities {
                 TCComputation::AssumeAlreadyComputed,
                 Extensions::none(),
             )
-            .unwrap()
+            .expect("Should be able to add entities")
     }
 }
 

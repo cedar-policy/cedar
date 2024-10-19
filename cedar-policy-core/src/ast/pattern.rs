@@ -33,14 +33,18 @@ pub enum PatternElem {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::expr::like::PatternElem> for PatternElem {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::expr::like::PatternElem) -> Self {
-        match v.data.as_ref().unwrap() {
+        match v.data.as_ref().expect("as_ref() for field that will exist") {
             proto::expr::like::pattern_elem::Data::C(c) => {
-                PatternElem::Char(c.chars().next().unwrap())
+                PatternElem::Char(c.chars().next().expect("c is non-empty"))
             }
 
             proto::expr::like::pattern_elem::Data::Ty(ty) => {
-                match proto::expr::like::pattern_elem::Ty::try_from(ty.to_owned()).unwrap() {
+                match proto::expr::like::pattern_elem::Ty::try_from(ty.to_owned())
+                    .expect("decode should succeed")
+                {
                     proto::expr::like::pattern_elem::Ty::Wildcard => PatternElem::Wildcard,
                 }
             }

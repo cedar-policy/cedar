@@ -104,12 +104,14 @@ impl miette::SourceCode for &Loc {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::Loc> for Loc {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::Loc) -> Self {
-        let offset_usize: usize = v.offset.try_into().unwrap();
+        let offset_usize: usize = v.offset.try_into().expect("Should be usize");
         Loc::new(
             miette::SourceSpan::new(
                 miette::SourceOffset::from(offset_usize),
-                v.length.try_into().unwrap(),
+                v.length.try_into().expect("Should be valid length"),
             ),
             v.src.clone().into(),
         )
@@ -119,8 +121,12 @@ impl From<&proto::Loc> for Loc {
 #[cfg(feature = "protobufs")]
 impl From<&Loc> for proto::Loc {
     fn from(v: &Loc) -> Self {
-        let offset_u32: u32 = v.span.offset().try_into().unwrap();
-        let length_u32: u32 = v.span.len().try_into().unwrap();
+        // PANIC SAFETY: experimental feature
+        #[allow(clippy::expect_used)]
+        let offset_u32: u32 = v.span.offset().try_into().expect("offset should be u32");
+        // PANIC SAFETY: experimental feature
+        #[allow(clippy::expect_used)]
+        let length_u32: u32 = v.span.len().try_into().expect("length should be u32");
         Self {
             offset: offset_u32,
             length: length_u32,

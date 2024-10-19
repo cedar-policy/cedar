@@ -32,6 +32,8 @@ fn generate_parsers() {
 #[cfg(feature = "protobufs")]
 /// Reads protobuf schema files (.proto) and generates Rust modules
 fn generate_schemas() {
+    // PANIC SAFETY: static file compiled at build time
+    #[allow(clippy::expect_used)]
     prost_build::compile_protos(&["./schema/AST.proto"], &["./schema"])
         .expect("Prost protobuf compilation error;");
 }

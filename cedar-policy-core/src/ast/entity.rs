@@ -100,8 +100,12 @@ impl FromStr for EntityType {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::EntityType> for EntityType {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::EntityType) -> Self {
-        Self(Name::from(v.name.as_ref().unwrap()))
+        Self(Name::from(
+            v.name.as_ref().expect("as_ref() for field that will exist"),
+        ))
     }
 }
 
@@ -273,10 +277,12 @@ impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::EntityUid> for EntityUID {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::EntityUid) -> Self {
         let loc: Option<Loc> = v.loc.as_ref().map(Loc::from);
         Self {
-            ty: EntityType::from(v.ty.as_ref().unwrap()),
+            ty: EntityType::from(v.ty.as_ref().expect("as_ref() for field that will exist")),
             eid: Eid::new(v.eid.clone()),
             loc: loc,
         }
@@ -663,6 +669,8 @@ impl std::fmt::Display for Entity {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::Entity> for Entity {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::Entity) -> Self {
         let eval = RestrictedEvaluator::new(&Extensions::none());
 
@@ -671,8 +679,10 @@ impl From<&proto::Entity> for Entity {
             .iter()
             .map(|(key, value)| {
                 let pval = eval
-                    .partial_interpret(BorrowedRestrictedExpr::new(&Expr::from(value)).unwrap())
-                    .unwrap();
+                    .partial_interpret(
+                        BorrowedRestrictedExpr::new(&Expr::from(value)).expect("RestrictedExpr"),
+                    )
+                    .expect("interpret on RestrictedExpr");
                 (key.into(), pval.into())
             })
             .collect();
@@ -684,14 +694,16 @@ impl From<&proto::Entity> for Entity {
             .iter()
             .map(|(key, value)| {
                 let pval = eval
-                    .partial_interpret(BorrowedRestrictedExpr::new(&Expr::from(value)).unwrap())
-                    .unwrap();
+                    .partial_interpret(
+                        BorrowedRestrictedExpr::new(&Expr::from(value)).expect("RestrictedExpr"),
+                    )
+                    .expect("interpret on RestrictedExpr");
                 (key.into(), pval.into())
             })
             .collect();
 
         Self {
-            uid: EntityUID::from(v.uid.as_ref().unwrap()),
+            uid: EntityUID::from(v.uid.as_ref().expect("as_ref() for field that will exist")),
             attrs,
             ancestors,
             tags,

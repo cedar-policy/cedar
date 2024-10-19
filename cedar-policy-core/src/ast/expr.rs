@@ -842,10 +842,18 @@ impl std::fmt::Display for Unknown {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::Expr> for Expr {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::Expr) -> Self {
         let source_loc: Option<Loc> = v.source_loc.as_ref().map(Loc::from);
-        let pdata = v.expr_kind.as_ref().unwrap();
-        let ety = pdata.data.as_ref().unwrap();
+        let pdata = v
+            .expr_kind
+            .as_ref()
+            .expect("as_ref() for field that will exist");
+        let ety = pdata
+            .data
+            .as_ref()
+            .expect("as_ref() for field that will exist");
 
         match ety {
             proto::expr::expr_kind::Data::Lit(lit) => {
@@ -853,19 +861,33 @@ impl From<&proto::Expr> for Expr {
             }
 
             proto::expr::expr_kind::Data::Var(var) => {
-                let pvar = proto::expr::Var::try_from(var.to_owned()).unwrap();
+                let pvar =
+                    proto::expr::Var::try_from(var.to_owned()).expect("decode should succeed");
                 Expr::var(Var::from(&pvar)).with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::Data::Slot(slot) => {
-                let pslot = proto::SlotId::try_from(slot.to_owned()).unwrap();
+                let pslot =
+                    proto::SlotId::try_from(slot.to_owned()).expect("decode should succeed");
                 Expr::slot(SlotId::from(&pslot)).with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::Data::If(msg) => {
-                let test_expr = msg.test_expr.as_ref().unwrap().as_ref();
-                let then_expr = msg.then_expr.as_ref().unwrap().as_ref();
-                let else_expr = msg.else_expr.as_ref().unwrap().as_ref();
+                let test_expr = msg
+                    .test_expr
+                    .as_ref()
+                    .expect("as_ref() for field that will exist")
+                    .as_ref();
+                let then_expr = msg
+                    .then_expr
+                    .as_ref()
+                    .expect("as_ref() for field that will exist")
+                    .as_ref();
+                let else_expr = msg
+                    .else_expr
+                    .as_ref()
+                    .expect("as_ref() for field that will exist")
+                    .as_ref();
                 Expr::ite(
                     Expr::from(test_expr),
                     Expr::from(then_expr),
@@ -875,28 +897,56 @@ impl From<&proto::Expr> for Expr {
             }
 
             proto::expr::expr_kind::Data::And(msg) => {
-                let left = msg.left.as_ref().unwrap().as_ref();
-                let right = msg.right.as_ref().unwrap().as_ref();
+                let left = msg
+                    .left
+                    .as_ref()
+                    .expect("as_ref() for field that will exist")
+                    .as_ref();
+                let right = msg
+                    .right
+                    .as_ref()
+                    .expect("as_ref() for field that will exist")
+                    .as_ref();
                 Expr::and(Expr::from(left), Expr::from(right)).with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::Data::Or(msg) => {
-                let left = msg.left.as_ref().unwrap().as_ref();
-                let right = msg.right.as_ref().unwrap().as_ref();
+                let left = msg
+                    .left
+                    .as_ref()
+                    .expect("as_ref() for field that will exist")
+                    .as_ref();
+                let right = msg
+                    .right
+                    .as_ref()
+                    .expect("as_ref() for field that will exist")
+                    .as_ref();
                 Expr::or(Expr::from(left), Expr::from(right)).with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::Data::UApp(msg) => {
-                let arg = msg.expr.as_ref().unwrap().as_ref();
-                let puop = proto::expr::unary_app::Op::try_from(msg.op).unwrap();
+                let arg = msg
+                    .expr
+                    .as_ref()
+                    .expect("as_ref() for field that will exist")
+                    .as_ref();
+                let puop =
+                    proto::expr::unary_app::Op::try_from(msg.op).expect("decode should succeed");
                 Expr::unary_app(UnaryOp::from(&puop), Expr::from(arg))
                     .with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::Data::BApp(msg) => {
-                let pbop = proto::expr::binary_app::Op::try_from(msg.op).unwrap();
-                let left = msg.left.as_ref().unwrap();
-                let right = msg.right.as_ref().unwrap();
+                let pbop =
+                    proto::expr::binary_app::Op::try_from(msg.op).expect("decode should succeed");
+                let left = msg
+                    .left
+                    .as_ref()
+                    .expect("as_ref() for field that will exist");
+                let right = msg
+                    .right
+                    .as_ref()
+                    .expect("as_ref() for field that will exist");
                 Expr::binary_app(
                     BinaryOp::from(&pbop),
                     Expr::from(left.as_ref()),
@@ -906,34 +956,58 @@ impl From<&proto::Expr> for Expr {
             }
 
             proto::expr::expr_kind::Data::ExtApp(msg) => Expr::call_extension_fn(
-                Name::from(msg.fn_name.as_ref().unwrap()),
+                Name::from(
+                    msg.fn_name
+                        .as_ref()
+                        .expect("as_ref() for field that will exist"),
+                ),
                 msg.args.iter().map(Expr::from).collect(),
             )
             .with_maybe_source_loc(source_loc),
 
             proto::expr::expr_kind::Data::GetAttr(msg) => {
-                let arg = msg.expr.as_ref().unwrap().as_ref();
+                let arg = msg
+                    .expr
+                    .as_ref()
+                    .expect("as_ref() for field that will exist")
+                    .as_ref();
                 Expr::get_attr(Expr::from(arg), msg.attr.clone().into())
                     .with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::Data::HasAttr(msg) => {
-                let arg = msg.expr.as_ref().unwrap().as_ref();
+                let arg = msg
+                    .expr
+                    .as_ref()
+                    .expect("as_ref() for field that will exist")
+                    .as_ref();
                 Expr::has_attr(Expr::from(arg), msg.attr.clone().into())
                     .with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::Data::Like(msg) => {
-                let arg = msg.expr.as_ref().unwrap().as_ref();
+                let arg = msg
+                    .expr
+                    .as_ref()
+                    .expect("as_ref() for field that will exist")
+                    .as_ref();
                 Expr::like(Expr::from(arg), msg.pattern.iter().map(PatternElem::from))
                     .with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::Data::Is(msg) => {
-                let arg = msg.expr.as_ref().unwrap().as_ref();
+                let arg = msg
+                    .expr
+                    .as_ref()
+                    .expect("as_ref() for field that will exist")
+                    .as_ref();
                 Expr::is_entity_type(
                     Expr::from(arg),
-                    EntityType::from(msg.entity_type.as_ref().unwrap()),
+                    EntityType::from(
+                        msg.entity_type
+                            .as_ref()
+                            .expect("as_ref() for field that will exist"),
+                    ),
                 )
                 .with_maybe_source_loc(source_loc)
             }
@@ -947,7 +1021,7 @@ impl From<&proto::Expr> for Expr {
                     .iter()
                     .map(|(key, value)| (key.into(), Expr::from(value))),
             )
-            .unwrap()
+            .expect("Expr should be valid")
             .with_maybe_source_loc(source_loc),
         }
     }
@@ -965,7 +1039,9 @@ impl From<&Expr> for proto::Expr {
             }
 
             ExprKind::Unknown(_u) => {
-                panic!("Protobuffer interface does not support Unknown expressions")
+                // PANIC SAFETY: experimental feature
+                #[allow(clippy::unimplemented)]
+                unimplemented!("Protobuffer interface does not support Unknown expressions")
             }
             ExprKind::If {
                 test_expr,

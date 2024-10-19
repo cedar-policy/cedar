@@ -159,24 +159,41 @@ impl From<&ValidatorActionId> for proto::ValidatorActionId {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::ValidatorActionId> for ValidatorActionId {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::ValidatorActionId) -> Self {
         let extensions_none = Extensions::none();
         let eval = RestrictedEvaluator::new(&extensions_none);
         Self {
-            name: ast::EntityUID::from(v.name.as_ref().unwrap()),
-            applies_to: ValidatorApplySpec::from(v.applies_to.as_ref().unwrap()),
+            name: ast::EntityUID::from(
+                v.name.as_ref().expect("as_ref() for field that will exist"),
+            ),
+            applies_to: ValidatorApplySpec::from(
+                v.applies_to
+                    .as_ref()
+                    .expect("as_ref() for field that will exist"),
+            ),
             descendants: v.descendants.iter().map(ast::EntityUID::from).collect(),
-            context: Type::from(v.context.as_ref().unwrap()),
-            attribute_types: Attributes::from(v.attribute_types.as_ref().unwrap()),
+            context: Type::from(
+                v.context
+                    .as_ref()
+                    .expect("as_ref() for field that will exist"),
+            ),
+            attribute_types: Attributes::from(
+                v.attribute_types
+                    .as_ref()
+                    .expect("as_ref() for field that will exist"),
+            ),
             attributes: v
                 .attributes
                 .iter()
                 .map(|(k, v)| {
                     let pval = eval
                         .partial_interpret(
-                            ast::BorrowedRestrictedExpr::new(&ast::Expr::from(v)).unwrap(),
+                            ast::BorrowedRestrictedExpr::new(&ast::Expr::from(v))
+                                .expect("RestrictedExpr"),
                         )
-                        .unwrap();
+                        .expect("interpret on RestrictedExpr");
                     (k.into(), pval.into())
                 })
                 .collect(),

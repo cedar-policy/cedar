@@ -725,10 +725,12 @@ impl Display for Type {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::Type> for Type {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::Type) -> Self {
-        match v.data.as_ref().unwrap() {
+        match v.data.as_ref().expect("as_ref() for field that will exist") {
             proto::r#type::Data::Ty(vt) => {
-                match proto::r#type::Ty::try_from(vt.to_owned()).unwrap() {
+                match proto::r#type::Ty::try_from(vt.to_owned()).expect("decode should succeed") {
                     proto::r#type::Ty::Never => Type::Never,
                     proto::r#type::Ty::True => Type::True,
                     proto::r#type::Ty::False => Type::False,
@@ -759,6 +761,8 @@ impl From<&proto::Type> for Type {
 
 #[cfg(feature = "protobufs")]
 impl From<&Type> for proto::Type {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &Type) -> Self {
         match v {
             Type::Never => Self {
@@ -784,7 +788,10 @@ impl From<&Type> for proto::Type {
             },
             Type::Set { element_type } => Self {
                 data: Some(proto::r#type::Data::SetType(Box::new(proto::Type::from(
-                    element_type.as_ref().unwrap().as_ref(),
+                    element_type
+                        .as_ref()
+                        .expect("as_ref() for field that will exist")
+                        .as_ref(),
                 )))),
             },
             Type::EntityOrRecord(er) => Self {
@@ -1508,25 +1515,50 @@ impl EntityRecordKind {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::EntityRecordKind> for EntityRecordKind {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::EntityRecordKind) -> Self {
-        match v.data.as_ref().unwrap() {
+        match v.data.as_ref().expect("as_ref() for field that will exist") {
             proto::entity_record_kind::Data::Ty(ty) => {
-                match proto::entity_record_kind::Ty::try_from(ty.to_owned()).unwrap() {
+                match proto::entity_record_kind::Ty::try_from(ty.to_owned())
+                    .expect("decode should succeed")
+                {
                     proto::entity_record_kind::Ty::AnyEntity => Self::AnyEntity,
                 }
             }
             proto::entity_record_kind::Data::Record(p_record) => Self::Record {
-                attrs: Attributes::from(p_record.attrs.as_ref().unwrap()),
+                attrs: Attributes::from(
+                    p_record
+                        .attrs
+                        .as_ref()
+                        .expect("as_ref() for field that will exist"),
+                ),
                 open_attributes: OpenTag::from(
-                    &proto::OpenTag::try_from(p_record.open_attributes).unwrap(),
+                    &proto::OpenTag::try_from(p_record.open_attributes)
+                        .expect("decode should succeed"),
                 ),
             },
-            proto::entity_record_kind::Data::Entity(p_entity) => Self::Entity(
-                EntityLUB::single_entity(ast::EntityType::from(p_entity.e.as_ref().unwrap())),
-            ),
+            proto::entity_record_kind::Data::Entity(p_entity) => {
+                Self::Entity(EntityLUB::single_entity(ast::EntityType::from(
+                    p_entity
+                        .e
+                        .as_ref()
+                        .expect("as_ref() for field that will exist"),
+                )))
+            }
             proto::entity_record_kind::Data::ActionEntity(p_action_entity) => Self::ActionEntity {
-                name: ast::EntityType::from(p_action_entity.name.as_ref().unwrap()),
-                attrs: Attributes::from(p_action_entity.attrs.as_ref().unwrap()),
+                name: ast::EntityType::from(
+                    p_action_entity
+                        .name
+                        .as_ref()
+                        .expect("as_ref() for field that will exist"),
+                ),
+                attrs: Attributes::from(
+                    p_action_entity
+                        .attrs
+                        .as_ref()
+                        .expect("as_ref() for field that will exist"),
+                ),
             },
         }
     }
@@ -1534,6 +1566,8 @@ impl From<&proto::EntityRecordKind> for EntityRecordKind {
 
 #[cfg(feature = "protobufs")]
 impl From<&EntityRecordKind> for proto::EntityRecordKind {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &EntityRecordKind) -> Self {
         let data = match v {
             EntityRecordKind::Record {
@@ -1549,7 +1583,9 @@ impl From<&EntityRecordKind> for proto::EntityRecordKind {
             EntityRecordKind::Entity(e) => {
                 proto::entity_record_kind::Data::Entity(proto::entity_record_kind::Entity {
                     e: Some(ast::proto::EntityType::from(
-                        &e.clone().into_single_entity().unwrap(),
+                        &e.clone()
+                            .into_single_entity()
+                            .expect("will be single EntityType"),
                     )),
                 })
             }
@@ -1644,9 +1680,15 @@ impl AttributeType {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::AttributeType> for AttributeType {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::AttributeType) -> Self {
         Self {
-            attr_type: Type::from(v.attr_type.as_ref().unwrap()),
+            attr_type: Type::from(
+                v.attr_type
+                    .as_ref()
+                    .expect("as_ref() for field that will exist"),
+            ),
             is_required: v.is_required,
         }
     }

@@ -572,6 +572,8 @@ pub struct LiteralPolicy {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::LiteralPolicy> for LiteralPolicy {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::LiteralPolicy) -> Self {
         let link_id: &str = v.link_id.as_ref();
         let link: Option<PolicyID> = if v.link_id_specified {
@@ -584,13 +586,21 @@ impl From<&proto::LiteralPolicy> for LiteralPolicy {
         if v.principal_euid.is_some() {
             values.insert(
                 SlotId::principal(),
-                EntityUID::from(v.principal_euid.as_ref().unwrap()),
+                EntityUID::from(
+                    v.principal_euid
+                        .as_ref()
+                        .expect("as_ref() for field that will exist"),
+                ),
             );
         }
         if v.resource_euid.is_some() {
             values.insert(
                 SlotId::resource(),
-                EntityUID::from(v.resource_euid.as_ref().unwrap()),
+                EntityUID::from(
+                    v.resource_euid
+                        .as_ref()
+                        .expect("as_ref() for field that will exist"),
+                ),
             );
         }
 
@@ -1202,6 +1212,8 @@ impl From<&proto::TemplateBody> for Template {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::TemplateBody> for TemplateBody {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::TemplateBody) -> Self {
         let loc: Option<Loc> = v.loc.as_ref().map(Loc::from);
         let annotations: Annotations = Annotations::from_iter(
@@ -1209,7 +1221,8 @@ impl From<&proto::TemplateBody> for TemplateBody {
                 .iter()
                 .map(|(key, value)| (AnyId::new_unchecked(key), Annotation::from(value))),
         );
-        let effect = Effect::from(&proto::Effect::try_from(v.effect).unwrap());
+        let effect =
+            Effect::from(&proto::Effect::try_from(v.effect).expect("decode should succeed"));
         let policy_id: &str = v.id.as_ref();
 
         let body: TemplateBody = TemplateBody::new(
@@ -1217,10 +1230,26 @@ impl From<&proto::TemplateBody> for TemplateBody {
             loc,
             annotations,
             effect,
-            PrincipalConstraint::from(v.principal_constraint.as_ref().unwrap()),
-            ActionConstraint::from(v.action_constraint.as_ref().unwrap()),
-            ResourceConstraint::from(v.resource_constraint.as_ref().unwrap()),
-            Expr::from(v.non_scope_constraints.as_ref().unwrap()),
+            PrincipalConstraint::from(
+                v.principal_constraint
+                    .as_ref()
+                    .expect("as_ref() for field that will exist"),
+            ),
+            ActionConstraint::from(
+                v.action_constraint
+                    .as_ref()
+                    .expect("as_ref() for field that will exist"),
+            ),
+            ResourceConstraint::from(
+                v.resource_constraint
+                    .as_ref()
+                    .expect("as_ref() for field that will exist"),
+            ),
+            Expr::from(
+                v.non_scope_constraints
+                    .as_ref()
+                    .expect("as_ref() for field that will exist"),
+            ),
         );
         body
     }
@@ -1480,9 +1509,15 @@ impl std::fmt::Display for PrincipalConstraint {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::PrincipalConstraint> for PrincipalConstraint {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::PrincipalConstraint) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::from(v.constraint.as_ref().unwrap()),
+            constraint: PrincipalOrResourceConstraint::from(
+                v.constraint
+                    .as_ref()
+                    .expect("as_ref() for field that will exist"),
+            ),
         }
     }
 }
@@ -1605,9 +1640,15 @@ impl std::fmt::Display for ResourceConstraint {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::ResourceConstraint> for ResourceConstraint {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::ResourceConstraint) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::from(v.constraint.as_ref().unwrap()),
+            constraint: PrincipalOrResourceConstraint::from(
+                v.constraint
+                    .as_ref()
+                    .expect("as_ref() for field that will exist"),
+            ),
         }
     }
 }
@@ -1651,10 +1692,14 @@ impl EntityReference {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::EntityReference> for EntityReference {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::EntityReference) -> Self {
-        match v.data.as_ref().unwrap() {
+        match v.data.as_ref().expect("as_ref() for field that will exist") {
             proto::entity_reference::Data::Ty(ty) => {
-                match proto::entity_reference::Ty::try_from(ty.to_owned()).unwrap() {
+                match proto::entity_reference::Ty::try_from(ty.to_owned())
+                    .expect("decode should succeed")
+                {
                     proto::entity_reference::Ty::Slot => EntityReference::Slot,
                 }
             }
@@ -1867,10 +1912,13 @@ impl PrincipalOrResourceConstraint {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::PrincipalOrResourceConstraint> for PrincipalOrResourceConstraint {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::PrincipalOrResourceConstraint) -> Self {
-        match v.data.as_ref().unwrap() {
+        match v.data.as_ref().expect("as_ref() for field that will exist") {
             proto::principal_or_resource_constraint::Data::Ty(ty) => {
-                match proto::principal_or_resource_constraint::Ty::try_from(ty.to_owned()).unwrap()
+                match proto::principal_or_resource_constraint::Ty::try_from(ty.to_owned())
+                    .expect("decode should succeed")
                 {
                     proto::principal_or_resource_constraint::Ty::Any => {
                         PrincipalOrResourceConstraint::Any
@@ -1878,18 +1926,28 @@ impl From<&proto::PrincipalOrResourceConstraint> for PrincipalOrResourceConstrai
                 }
             }
             proto::principal_or_resource_constraint::Data::In(msg) => {
-                PrincipalOrResourceConstraint::In(EntityReference::from(msg.er.as_ref().unwrap()))
+                PrincipalOrResourceConstraint::In(EntityReference::from(
+                    msg.er.as_ref().expect("as_ref() for field that will exist"),
+                ))
             }
             proto::principal_or_resource_constraint::Data::Eq(msg) => {
-                PrincipalOrResourceConstraint::Eq(EntityReference::from(msg.er.as_ref().unwrap()))
+                PrincipalOrResourceConstraint::Eq(EntityReference::from(
+                    msg.er.as_ref().expect("as_ref() for field that will exist"),
+                ))
             }
             proto::principal_or_resource_constraint::Data::Is(msg) => {
-                PrincipalOrResourceConstraint::Is(EntityType::from(msg.et.as_ref().unwrap()).into())
+                PrincipalOrResourceConstraint::Is(
+                    EntityType::from(msg.et.as_ref().expect("as_ref() for field that will exist"))
+                        .into(),
+                )
             }
             proto::principal_or_resource_constraint::Data::IsIn(msg) => {
                 PrincipalOrResourceConstraint::IsIn(
-                    EntityType::from(msg.et.as_ref().unwrap()).into(),
-                    EntityReference::from(msg.er.as_ref().unwrap()),
+                    EntityType::from(msg.et.as_ref().expect("as_ref() for field that will exist"))
+                        .into(),
+                    EntityReference::from(
+                        msg.er.as_ref().expect("as_ref() for field that will exist"),
+                    ),
                 )
             }
         }
@@ -2041,10 +2099,14 @@ impl ActionConstraint {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::ActionConstraint> for ActionConstraint {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::ActionConstraint) -> Self {
-        match v.data.as_ref().unwrap() {
+        match v.data.as_ref().expect("data.as_ref()") {
             proto::action_constraint::Data::Ty(ty) => {
-                match proto::action_constraint::Ty::try_from(ty.to_owned()).unwrap() {
+                match proto::action_constraint::Ty::try_from(ty.to_owned())
+                    .expect("decode should succeed")
+                {
                     proto::action_constraint::Ty::Any => ActionConstraint::Any,
                 }
             }
@@ -2054,9 +2116,9 @@ impl From<&proto::ActionConstraint> for ActionConstraint {
                     .map(|value| EntityUID::from(value).into())
                     .collect(),
             ),
-            proto::action_constraint::Data::Eq(msg) => {
-                ActionConstraint::Eq(EntityUID::from(msg.euid.as_ref().unwrap()).into())
-            }
+            proto::action_constraint::Data::Eq(msg) => ActionConstraint::Eq(
+                EntityUID::from(msg.euid.as_ref().expect("euid.as_ref()")).into(),
+            ),
         }
     }
 }

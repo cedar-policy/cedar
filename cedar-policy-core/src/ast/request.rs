@@ -119,7 +119,12 @@ impl EntityUIDEntry {
 impl From<&proto::EntityUidEntry> for EntityUIDEntry {
     fn from(v: &proto::EntityUidEntry) -> Self {
         let loc: Option<Loc> = v.loc.as_ref().map(Loc::from);
-        EntityUIDEntry::known(EntityUID::from(v.euid.as_ref().unwrap()), loc)
+        // PANIC SAFETY: experimental feature
+        #[allow(clippy::expect_used)]
+        EntityUIDEntry::known(
+            EntityUID::from(v.euid.as_ref().expect("euid.as_ref()")),
+            loc,
+        )
     }
 }
 
@@ -128,7 +133,11 @@ impl From<&EntityUIDEntry> for proto::EntityUidEntry {
     fn from(v: &EntityUIDEntry) -> Self {
         match v {
             EntityUIDEntry::Unknown { loc: _ } => {
-                panic!("Unknown EntityUID is not currently supported by the Protobuf interface");
+                // PANIC SAFETY: experimental feature
+                #[allow(clippy::unimplemented)]
+                unimplemented!(
+                    "Unknown EntityUID is not currently supported by the Protobuf interface"
+                );
             }
             EntityUIDEntry::Known { euid, loc } => Self {
                 euid: Some(proto::EntityUid::from(euid.as_ref())),
@@ -261,11 +270,13 @@ impl std::fmt::Display for Request {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::Request> for Request {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::Request) -> Self {
         Request::new_unchecked(
-            EntityUIDEntry::from(v.principal.as_ref().unwrap()),
-            EntityUIDEntry::from(v.action.as_ref().unwrap()),
-            EntityUIDEntry::from(v.resource.as_ref().unwrap()),
+            EntityUIDEntry::from(v.principal.as_ref().expect("principal.as_ref()")),
+            EntityUIDEntry::from(v.action.as_ref().expect("action.as_ref()")),
+            EntityUIDEntry::from(v.resource.as_ref().expect("resource.as_ref()")),
             v.context.as_ref().map(Context::from),
         )
     }
@@ -550,11 +561,14 @@ impl std::fmt::Display for Context {
 #[cfg(feature = "protobufs")]
 impl From<&proto::Context> for Context {
     fn from(v: &proto::Context) -> Self {
+        // PANIC SAFETY: experimental feature
+        #[allow(clippy::expect_used)]
         Context::from_expr(
-            BorrowedRestrictedExpr::new(&Expr::from(v.context.as_ref().unwrap())).unwrap(),
+            BorrowedRestrictedExpr::new(&Expr::from(v.context.as_ref().expect("context.as_ref")))
+                .expect("Expr::from"),
             Extensions::none(),
         )
-        .unwrap()
+        .expect("Context::from_expr")
     }
 }
 

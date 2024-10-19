@@ -877,14 +877,24 @@ impl From<&ValidatorSchema> for proto::ValidatorSchema {
 
 #[cfg(feature = "protobufs")]
 impl From<&proto::ValidatorSchema> for ValidatorSchema {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &proto::ValidatorSchema) -> Self {
         Self {
             entity_types: v
                 .entity_types
                 .iter()
                 .map(|kvp| {
-                    let k = ast::EntityType::from(kvp.key.as_ref().unwrap());
-                    let v = ValidatorEntityType::from(kvp.value.as_ref().unwrap());
+                    let k = ast::EntityType::from(
+                        kvp.key
+                            .as_ref()
+                            .expect("as_ref() for field that will exist"),
+                    );
+                    let v = ValidatorEntityType::from(
+                        kvp.value
+                            .as_ref()
+                            .expect("as_ref() for field that will exist"),
+                    );
                     (k, v)
                 })
                 .collect(),
@@ -892,8 +902,16 @@ impl From<&proto::ValidatorSchema> for ValidatorSchema {
                 .action_ids
                 .iter()
                 .map(|kvp| {
-                    let k = ast::EntityUID::from(kvp.key.as_ref().unwrap());
-                    let v = ValidatorActionId::from(kvp.value.as_ref().unwrap());
+                    let k = ast::EntityUID::from(
+                        kvp.key
+                            .as_ref()
+                            .expect("as_ref() for field that will exist"),
+                    );
+                    let v = ValidatorActionId::from(
+                        kvp.value
+                            .as_ref()
+                            .expect("as_ref() for field that will exist"),
+                    );
                     (k, v)
                 })
                 .collect(),
