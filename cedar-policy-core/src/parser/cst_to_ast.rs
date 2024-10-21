@@ -44,6 +44,7 @@ use crate::ast::{
     PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
 };
 use crate::est::extract_single_argument;
+use crate::fuzzy_match::fuzzy_search;
 use itertools::Either;
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
@@ -1508,7 +1509,13 @@ impl ast::Name {
         if EXTENSION_STYLES.functions.contains(&self) {
             Ok(construct_ext_func(self, args, loc))
         } else {
-            Err(ToASTError::new(ToASTErrorKind::UnknownFunction(self), loc).into())
+            fn suggest_function(name: &ast::Name, funs: &HashSet<&ast::Name>) -> Option<String> {
+                let fnames = funs.iter().map(ToString::to_string).collect::<Vec<_>>();
+                let suggested_function = fuzzy_search(&name.to_string(), fnames.as_slice());
+                suggested_function.map(|f| format!("did you mean `{f}`?"))
+            }
+            let hint = suggest_function(&self, &EXTENSION_STYLES.functions);
+            Err(ToASTError::new(ToASTErrorKind::UnknownFunction { id: self, hint }, loc).into())
         }
     }
 }
@@ -4011,6 +4018,14 @@ mod tests {
                 "bar([])",
                 ExpectedErrorMessageBuilder::error("`bar` is not a valid function")
                     .exactly_one_underline("bar([])")
+                    .help("did you mean `ip`?")
+                    .build(),
+            ),
+            (
+                r#"Ip("1.1.1.1/24")"#,
+                ExpectedErrorMessageBuilder::error("`Ip` is not a valid function")
+                    .exactly_one_underline(r#"Ip("1.1.1.1/24")"#)
+                    .help("did you mean `ip`?")
                     .build(),
             ),
             (

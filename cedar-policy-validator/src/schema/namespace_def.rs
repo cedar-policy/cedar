@@ -20,6 +20,7 @@
 use std::collections::{hash_map::Entry, BTreeMap, HashMap, HashSet};
 
 use cedar_policy_core::{
+    fuzzy_match::fuzzy_search,
     ast::{
         EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name,
         PartialValueSerializedAsExpr, UnreservedId,
@@ -35,7 +36,6 @@ use smol_str::{SmolStr, ToSmolStr};
 use super::{internal_name_to_entity_type, AllDefs, ValidatorApplySpec};
 use crate::{
     err::{schema_errors::*, SchemaError},
-    fuzzy_match::fuzzy_search,
     json_schema::{self, CommonTypeId},
     types::{AttributeType, Attributes, OpenTag, Type},
     ActionBehavior, ConditionalName, RawName, ReferenceType,
