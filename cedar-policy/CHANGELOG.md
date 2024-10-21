@@ -12,6 +12,11 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ## [Unreleased]
 Cedar Language Version: TBD
 
+### Changed
+
+- The error associated with parsing a non-existent extension function additionally
+  includes a suggestion based on available extension functions (#1279, resolving #332).
+
 ### Fixed
 
 - Some misleading parser errors for JSON schema with mistakes in nested attribute definitions (#1270, resolving #417)
