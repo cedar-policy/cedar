@@ -6443,10 +6443,12 @@ mod reserved_keywords_in_policies {
         }
 
         for id in OTHER_SPECIAL_IDENTS.into_iter() {
-            assert_invalid_expression(
+            // Note: We always get `decimal` as the suggestion
+            assert_invalid_expression_with_help(
                 format!("extension::function::{id}(\"foo\")"),
                 format!("`extension::function::{id}` is not a valid function"),
                 format!("extension::function::{id}(\"foo\")"),
+                format!("did you mean `decimal`?"),
             );
             assert_invalid_expression(
                 format!("context.{id}(1)"),
