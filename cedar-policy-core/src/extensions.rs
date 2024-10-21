@@ -21,6 +21,9 @@ pub mod ipaddr;
 
 #[cfg(feature = "decimal")]
 pub mod decimal;
+
+#[cfg(feature = "datetime")]
+pub mod datetime;
 pub mod partial_evaluation;
 
 use std::collections::HashMap;
