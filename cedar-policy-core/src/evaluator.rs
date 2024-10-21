@@ -393,11 +393,35 @@ impl<'e> Evaluator<'e> {
                 match op {
                     BinaryOp::Eq => Ok((arg1 == arg2).into()),
                     // comparison and arithmetic operators, which only work on Longs
-                    BinaryOp::Less
-                    | BinaryOp::LessEq
-                    | BinaryOp::Add
-                    | BinaryOp::Sub
-                    | BinaryOp::Mul => {
+                    BinaryOp::Less | BinaryOp::LessEq => {
+                        let long_op = if matches!(op, BinaryOp::Less) {
+                            |x, y| x < y
+                        } else {
+                            |x, y| x <= y
+                        };
+                        let ext_op = if matches!(op, BinaryOp::Less) {
+                            |x, y| x < y
+                        } else {
+                            |x, y| x <= y
+                        };
+                        match (arg1.value_kind(), arg2.value_kind()) {
+                            (
+                                ValueKind::Lit(Literal::Long(x)),
+                                ValueKind::Lit(Literal::Long(y)),
+                            ) => Ok(long_op(x, y).into()),
+                            (ValueKind::ExtensionValue(x), ValueKind::ExtensionValue(y))
+                                if x.typename() == "datetime".parse().unwrap()
+                                    && y.typename() == "datetime".parse().unwrap()
+                                    || x.typename() == "duration".parse().unwrap()
+                                        && y.typename() == "duration".parse().unwrap() =>
+                            {
+                                Ok(ext_op(x, y).into())
+                            }
+                            // throw a type error
+                            _ => todo!(),
+                        }
+                    }
+                    BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
                         let i1 = arg1.get_as_long()?;
                         let i2 = arg2.get_as_long()?;
                         match op {

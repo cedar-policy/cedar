@@ -1244,20 +1244,25 @@ impl<'a> Typechecker<'a> {
             }
 
             BinaryOp::Less | BinaryOp::LessEq => {
-                let ans_arg1 = self.expect_type(
+                let ans_arg1 = self.expect_one_of_types(
                     request_env,
                     prior_capability,
                     arg1,
-                    Type::primitive_long(),
+                    &[
+                        Type::primitive_long(),
+                        Type::extension("datetime".parse().unwrap()),
+                        Type::extension("duration".parse().unwrap()),
+                    ],
                     type_errors,
                     |_| None,
                 );
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
+                    let expected_type = expr_ty_arg1.data().as_ref().unwrap();
                     let ans_arg2 = self.expect_type(
                         request_env,
                         prior_capability,
                         arg2,
-                        Type::primitive_long(),
+                        expected_type.clone(),
                         type_errors,
                         |_| None,
                     );
