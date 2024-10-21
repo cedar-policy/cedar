@@ -15,7 +15,7 @@ Cedar Language Version: TBD
 ### Changed
 
 - The error associated with parsing a non-existent extension function additionally
-  includes a suggestion based on available extension functions (#1279, resolving #332).
+  includes a suggestion based on available extension functions (#1280, resolving #332).
 
 ### Fixed
 
