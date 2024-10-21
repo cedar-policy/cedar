@@ -913,6 +913,7 @@ pub struct Response {
 }
 
 /// A partially evaluated authorization response.
+///
 /// Splits the results into several categories: satisfied, false, and residual for each policy effect.
 /// Also tracks all the errors that were encountered during evaluation.
 #[doc = include_str!("../experimental_warning.md")]
@@ -4442,6 +4443,7 @@ action CreateList in Create appliesTo {
 }
 
 /// Given a schema and policy set, compute an entity manifest.
+///
 /// The policies must validate against the schema in strict mode,
 /// otherwise an error is returned.
 /// The manifest describes the data required to answer requests
