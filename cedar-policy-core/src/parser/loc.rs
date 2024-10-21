@@ -17,6 +17,9 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+#[cfg(feature = "protobufs")]
+use crate::ast::proto;
+
 /// Represents a source location: index/range, and a reference to the source
 /// code which that index/range indexes into
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
@@ -96,5 +99,59 @@ impl miette::SourceCode for &Loc {
     ) -> Result<Box<dyn miette::SpanContents<'a> + 'a>, miette::MietteError> {
         self.src
             .read_span(span, context_lines_before, context_lines_after)
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::Loc> for Loc {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::Loc) -> Self {
+        let offset_usize: usize = v.offset.try_into().expect("Should be usize");
+        Loc::new(
+            miette::SourceSpan::new(
+                miette::SourceOffset::from(offset_usize),
+                v.length.try_into().expect("Should be valid length"),
+            ),
+            v.src.clone().into(),
+        )
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&Loc> for proto::Loc {
+    fn from(v: &Loc) -> Self {
+        // PANIC SAFETY: experimental feature
+        #[allow(clippy::expect_used)]
+        let offset_u32: u32 = v.span.offset().try_into().expect("offset should be u32");
+        // PANIC SAFETY: experimental feature
+        #[allow(clippy::expect_used)]
+        let length_u32: u32 = v.span.len().try_into().expect("length should be u32");
+        Self {
+            offset: offset_u32,
+            length: length_u32,
+            src: v.src.to_string(),
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    #[test]
+    fn protobuf_roundtrip() {
+        let loc: Loc = Loc::new(
+            miette::SourceSpan::new(miette::SourceOffset::from(0), 5),
+            "test".into(),
+        );
+        assert_eq!(loc, Loc::from(&proto::Loc::from(&loc)));
+
+        let loc2: Loc = Loc::new(
+            miette::SourceSpan::new(miette::SourceOffset::from(1000), 500000),
+            "test".into(),
+        );
+        assert_eq!(loc2, Loc::from(&proto::Loc::from(&loc2)));
     }
 }
