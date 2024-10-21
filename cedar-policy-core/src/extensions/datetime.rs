@@ -20,8 +20,9 @@ use std::{fmt::Display, i64, sync::Arc};
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta};
 use constants::{
-    DATETIME_CONSTRUCTOR_NAME, DATE_PATTERN, DURATION_CONSTRUCTOR_NAME, DURATION_PATTERN,
-    DURATION_SINCE_NAME, HMS_PATTERN, MS_AND_OFFSET_PATTERN, OFFSET_METHOD_NAME,
+    DATETIME_LONG_CONSTRUCTOR_NAME, DATETIME_STR_CONSTRUCTOR_NAME, DATE_PATTERN,
+    DURATION_CONSTRUCTOR_NAME, DURATION_PATTERN, DURATION_SINCE_NAME, HMS_PATTERN,
+    MS_AND_OFFSET_PATTERN, OFFSET_METHOD_NAME,
 };
 use miette::Diagnostic;
 use smol_str::SmolStr;
@@ -46,7 +47,8 @@ mod constants {
     use crate::{ast::Name, extensions::datetime::EXTENSION_NAME};
 
     lazy_static::lazy_static! {
-        pub static ref DATETIME_CONSTRUCTOR_NAME : Name = Name::parse_unqualified_name(EXTENSION_NAME).expect("should be a valid identifier");
+        pub static ref DATETIME_STR_CONSTRUCTOR_NAME : Name = Name::parse_unqualified_name(EXTENSION_NAME).expect("should be a valid identifier");
+        pub static ref DATETIME_LONG_CONSTRUCTOR_NAME : Name = Name::parse_unqualified_name("datetime_unix").expect("should be a valid identifier");
         pub static ref DURATION_CONSTRUCTOR_NAME : Name = Name::parse_unqualified_name("duration").expect("should be a valid identifier");
         pub static ref OFFSET_METHOD_NAME : Name = Name::parse_unqualified_name("offset").expect("should be a valid identifier");
         pub static ref DURATION_SINCE_NAME : Name = Name::parse_unqualified_name("durationSince").expect("should be a valid identifier");
@@ -125,9 +127,9 @@ fn datetime_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
         |s| {
             parse_datetime(s)
                 .map(DateTime::from)
-                .map_err(|err| extension_err(err.to_string(), &DATETIME_CONSTRUCTOR_NAME))
+                .map_err(|err| extension_err(err.to_string(), &DATETIME_STR_CONSTRUCTOR_NAME))
         },
-        &DATETIME_CONSTRUCTOR_NAME,
+        &DATETIME_STR_CONSTRUCTOR_NAME,
     )
 }
 
@@ -140,7 +142,7 @@ where
     Ext: ExtensionValue + std::cmp::Ord + 'static,
 {
     match &v.value {
-        ValueKind::ExtensionValue(ev) if ev.typename() == type_name.to_owned() => {
+        ValueKind::ExtensionValue(ev) if ev.typename() == *type_name => {
             // PANIC SAFETY Conditional above performs a typecheck
             #[allow(clippy::expect_used)]
             let ext = ev
@@ -170,7 +172,7 @@ where
 
 /// Check that `v` is a datetime type and, if it is, return the wrapped value
 fn as_datetime(v: &Value) -> Result<&DateTime, evaluator::EvaluationError> {
-    as_ext(v, &DATETIME_CONSTRUCTOR_NAME)
+    as_ext(v, &DATETIME_STR_CONSTRUCTOR_NAME)
 }
 
 /// Check that `v` is a duration type and, if it is, return the wrapped value
@@ -189,9 +191,9 @@ fn offset(datetime: Value, duration: Value) -> evaluator::Result<ExtensionOutput
         &OFFSET_METHOD_NAME,
     ))?;
     let e = ExtensionValueWithArgs::new(
-        Arc::new(ret),
-        DATETIME_CONSTRUCTOR_NAME.to_owned(),
-        todo!("undecided"),
+        Arc::new(ret.clone()),
+        DATETIME_LONG_CONSTRUCTOR_NAME.to_owned(),
+        vec![Value::from(ret.epoch).into()],
     );
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(e)),
@@ -221,10 +223,11 @@ fn duration_since(lhs: Value, rhs: Value) -> evaluator::Result<ExtensionOutputVa
 
 fn to_date(value: Value) -> evaluator::Result<ExtensionOutputValue> {
     let d = as_datetime(&value)?;
+    let ret = d.to_date();
     let e = ExtensionValueWithArgs::new(
-        Arc::new(d.to_date()),
-        DATETIME_CONSTRUCTOR_NAME.to_owned(),
-        todo!("undecided"),
+        Arc::new(ret.clone()),
+        DATETIME_STR_CONSTRUCTOR_NAME.to_owned(),
+        vec![Value::from(ret.epoch).into()],
     );
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(e)),
@@ -270,12 +273,18 @@ impl Display for DateTime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.epoch {
             i64::MIN => {
+                // PANIC SAFETY: `i64::MIN` + 1 is a valid millisecond for `TimeDelta`
+                #[allow(clippy::unwrap_used)]
                 let delta = TimeDelta::try_milliseconds(i64::MIN + 1).unwrap();
+                // PANIC SAFETY: 1 is a valid millisecond for `TimeDelta`
+                #[allow(clippy::unwrap_used)]
                 let date_time =
                     NaiveDateTime::UNIX_EPOCH + delta - TimeDelta::try_milliseconds(1).unwrap();
                 date_time.fmt(f)
             }
             _ => {
+                // PANIC SAFETY: any `i64` other than `i64::MIN` is a valid millisecond for `TimeDelta`
+                #[allow(clippy::unwrap_used)]
                 let delta = TimeDelta::try_milliseconds(self.epoch).unwrap();
                 let date_time = NaiveDateTime::UNIX_EPOCH + delta;
                 date_time.fmt(f)
@@ -286,7 +295,7 @@ impl Display for DateTime {
 
 impl ExtensionValue for DateTime {
     fn typename(&self) -> crate::ast::Name {
-        DATETIME_CONSTRUCTOR_NAME.to_owned()
+        DATETIME_STR_CONSTRUCTOR_NAME.to_owned()
     }
 }
 
@@ -472,6 +481,8 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
         .captures(s)
         .ok_or(DateTimeParseError::InvalidDatePattern)?
         .extract();
+    // PANIC SAFETY: `year`, `month`, and `day` should be all valid given the limit on the number of digits.
+    #[allow(clippy::unwrap_used)]
     let date = NaiveDate::from_ymd_opt(
         year.parse().unwrap(),
         month.parse().unwrap(),
@@ -481,6 +492,8 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
 
     // A complete match; simply return
     if date_str.len() == s.len() {
+        // PANIC SAFETY: `0`s should be all valid given the limit on the number of digits.
+        #[allow(clippy::unwrap_used)]
         return Ok(NaiveDateTime::new(
             date,
             NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
@@ -494,9 +507,10 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
         .captures(s)
         .ok_or(DateTimeParseError::InvalidHMSPattern)?
         .extract();
-    let h: u32 = h.parse().unwrap();
-    let m: u32 = m.parse().unwrap();
-    let sec: u32 = sec.parse().unwrap();
+    // PANIC SAFETY: `h`, `m`, and `sec` should be all valid given the limit on the number of digits.
+    #[allow(clippy::unwrap_used)]
+    let (h, m, sec): (u32, u32, u32) =
+        (h.parse().unwrap(), m.parse().unwrap(), sec.parse().unwrap());
 
     // Get millisecond and offset
     let s = &s[hms_str.len()..];
@@ -505,16 +519,22 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
         .captures(s)
         .ok_or(DateTimeParseError::InvalidMSOffsetPattern)?;
     let ms: u32 = if captures.get(1).is_some() {
+        // PANIC SAFETY: should be valid given the limit on the number of digits.
+        #[allow(clippy::unwrap_used)]
         captures[2].parse().unwrap()
     } else {
         0
     };
     let offset: Result<TimeDelta, DateTimeParseError> = if captures.get(4).is_some() {
         let sign = &captures[5] == "+";
-        let offset_hour: u32 = captures[6].parse().unwrap();
-        let offset_min: u32 = captures[7].parse().unwrap();
+        // PANIC SAFETY: should be valid given the limit on the number of digits.
+        #[allow(clippy::unwrap_used)]
+        let (offset_hour, offset_min): (u32, u32) =
+            (captures[6].parse().unwrap(), captures[7].parse().unwrap());
         if offset_hour < 12 && offset_min < 60 {
             let offset_in_secs = (offset_hour * 3600 + offset_min * 60) as i64;
+            // PANIC SAFETY: should be valid because the limit on the values of offsets.
+            #[allow(clippy::unwrap_used)]
             Ok(TimeDelta::new(
                 if sign {
                     offset_in_secs
@@ -539,16 +559,16 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
 /// Construct the extension
 pub fn extension() -> Extension {
     let datetime_type = SchemaType::Extension {
-        name: DATETIME_CONSTRUCTOR_NAME.to_owned(),
+        name: DATETIME_STR_CONSTRUCTOR_NAME.to_owned(),
     };
     let duration_type = SchemaType::Extension {
         name: DURATION_CONSTRUCTOR_NAME.to_owned(),
     };
     Extension::new(
-        constants::DATETIME_CONSTRUCTOR_NAME.clone(),
+        constants::DATETIME_STR_CONSTRUCTOR_NAME.clone(),
         vec![
             ExtensionFunction::unary(
-                constants::DATETIME_CONSTRUCTOR_NAME.clone(),
+                constants::DATETIME_STR_CONSTRUCTOR_NAME.clone(),
                 CallStyle::FunctionStyle,
                 Box::new(datetime_from_str),
                 datetime_type.clone(),
