@@ -21,7 +21,7 @@ use std::{fmt::Display, i64, sync::Arc};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta};
 use constants::{
     DATETIME_CONSTRUCTOR_NAME, DATE_PATTERN, DURATION_CONSTRUCTOR_NAME, DURATION_PATTERN,
-    HMS_PATTERN, MS_AND_OFFSET_PATTERN, OFFSET_METHOD_NAME,
+    DURATION_SINCE_NAME, HMS_PATTERN, MS_AND_OFFSET_PATTERN, OFFSET_METHOD_NAME,
 };
 use miette::Diagnostic;
 use smol_str::SmolStr;
@@ -57,14 +57,14 @@ mod constants {
         pub static ref TO_MINUTES_NAME : Name = Name::parse_unqualified_name("toMinutes").expect("should be a valid identifier");
         pub static ref TO_HOURS_NAME : Name = Name::parse_unqualified_name("toHours").expect("should be a valid identifier");
         pub static ref TO_DAYS_NAME : Name = Name::parse_unqualified_name("toDays").expect("should be a valid identifier");
-        pub static ref DATETIME_LESS_THAN : Name = Name::parse_unqualified_name("datetimeLessThan").expect("should be a valid identifier");
-        pub static ref DATETIME_LESS_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("datetimeLessThanOrEqual").expect("should be a valid identifier");
-        pub static ref DATETIME_GREATER_THAN : Name = Name::parse_unqualified_name("datetimeGreaterThan").expect("should be a valid identifier");
-        pub static ref DATETIME_GREATER_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("datetimeGreaterThanOrEqual").expect("should be a valid identifier");
-        pub static ref DURATION_LESS_THAN : Name = Name::parse_unqualified_name("durationLessThan").expect("should be a valid identifier");
-        pub static ref DURATION_LESS_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("durationLessThanOrEqual").expect("should be a valid identifier");
-        pub static ref DURATION_GREATER_THAN : Name = Name::parse_unqualified_name("durationGreaterThan").expect("should be a valid identifier");
-        pub static ref DURATION_GREATER_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("durationGreaterThanOrEqual").expect("should be a valid identifier");
+        pub static ref DATETIME_BEFORE : Name = Name::parse_unqualified_name("before").expect("should be a valid identifier");
+        pub static ref DATETIME_BEFORE_OR_EQUAL : Name = Name::parse_unqualified_name("beforeOrEqualTo").expect("should be a valid identifier");
+        pub static ref DATETIME_AFTER : Name = Name::parse_unqualified_name("after").expect("should be a valid identifier");
+        pub static ref DATETIME_AFTER_OR_EQUAL : Name = Name::parse_unqualified_name("afterOrEqualTo").expect("should be a valid identifier");
+        pub static ref DURATION_SHORTER_THAN : Name = Name::parse_unqualified_name("shorterThan").expect("should be a valid identifier");
+        pub static ref DURATION_SHORTER_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("shorterThanOrEqualTo").expect("should be a valid identifier");
+        pub static ref DURATION_LONGER_THAN : Name = Name::parse_unqualified_name("longerThan").expect("should be a valid identifier");
+        pub static ref DURATION_LONGER_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("longerThanOrEqualTo").expect("should be a valid identifier");
     }
 
     // Global regex, initialized at first use
@@ -200,6 +200,68 @@ fn offset(datetime: Value, duration: Value) -> evaluator::Result<ExtensionOutput
     .into())
 }
 
+fn duration_since(lhs: Value, rhs: Value) -> evaluator::Result<ExtensionOutputValue> {
+    let lhs = as_datetime(&lhs)?;
+    let rhs = as_datetime(&rhs)?;
+    let ret = lhs.duration_since(rhs.clone()).ok_or(extension_err(
+        format!("overflows when computing the duration between {lhs} and {rhs}",),
+        &DURATION_SINCE_NAME,
+    ))?;
+    let e = ExtensionValueWithArgs::new(
+        Arc::new(ret.clone()),
+        DURATION_CONSTRUCTOR_NAME.to_owned(),
+        vec![Value::from(ret.to_string()).into()],
+    );
+    Ok(Value {
+        value: ValueKind::ExtensionValue(Arc::new(e)),
+        loc: None,
+    }
+    .into())
+}
+
+fn to_date(value: Value) -> evaluator::Result<ExtensionOutputValue> {
+    let d = as_datetime(&value)?;
+    let e = ExtensionValueWithArgs::new(
+        Arc::new(d.to_date()),
+        DATETIME_CONSTRUCTOR_NAME.to_owned(),
+        todo!("undecided"),
+    );
+    Ok(Value {
+        value: ValueKind::ExtensionValue(Arc::new(e)),
+        loc: None,
+    }
+    .into())
+}
+
+fn to_time(value: Value) -> evaluator::Result<ExtensionOutputValue> {
+    let d = as_datetime(&value)?;
+    let ret = d.to_time();
+    let e = ExtensionValueWithArgs::new(
+        Arc::new(ret.clone()),
+        DURATION_CONSTRUCTOR_NAME.to_owned(),
+        vec![Value::from(ret.to_string()).into()],
+    );
+    Ok(Value {
+        value: ValueKind::ExtensionValue(Arc::new(e)),
+        loc: None,
+    }
+    .into())
+}
+
+fn comparison_predicate<Ext>(
+    lhs: &Value,
+    rhs: &Value,
+    cast_func: impl Fn(&Value) -> Result<&Ext, evaluator::EvaluationError>,
+    predicate: impl Fn(&Ext, &Ext) -> bool,
+) -> evaluator::Result<ExtensionOutputValue>
+where
+    Ext: ExtensionValue + std::cmp::Ord + 'static,
+{
+    let lhs = cast_func(lhs)?;
+    let rhs = cast_func(rhs)?;
+    Ok(Value::from(predicate(lhs, rhs)).into())
+}
+
 // Note that this implementation cannot always generate valid input strings
 // because they only represent a small subset of `datetime`
 // And we just use `NaiveDateTime`'s implementation, which does not pad
@@ -325,6 +387,14 @@ impl Duration {
     fn to_days(&self) -> i64 {
         self.to_hours() / 24
     }
+}
+
+fn duration_method(
+    value: Value,
+    internal_func: impl Fn(&Duration) -> i64,
+) -> evaluator::Result<ExtensionOutputValue> {
+    let d = as_duration(&value)?;
+    Ok(Value::from(internal_func(d)).into())
 }
 
 #[derive(Debug, Clone, Error, Diagnostic)]
@@ -490,6 +560,125 @@ pub fn extension() -> Extension {
                 Box::new(duration_from_str),
                 duration_type.clone(),
                 SchemaType::String,
+            ),
+            ExtensionFunction::binary(
+                constants::OFFSET_METHOD_NAME.clone(),
+                CallStyle::MethodStyle,
+                Box::new(offset),
+                datetime_type.clone(),
+                (datetime_type.clone(), duration_type.clone()),
+            ),
+            ExtensionFunction::binary(
+                constants::DURATION_SINCE_NAME.clone(),
+                CallStyle::MethodStyle,
+                Box::new(duration_since),
+                duration_type.clone(),
+                (datetime_type.clone(), duration_type.clone()),
+            ),
+            ExtensionFunction::unary(
+                constants::TO_DATE_NAME.clone(),
+                CallStyle::MethodStyle,
+                Box::new(to_date),
+                datetime_type.clone(),
+                datetime_type.clone(),
+            ),
+            ExtensionFunction::unary(
+                constants::TO_TIME_NAME.clone(),
+                CallStyle::MethodStyle,
+                Box::new(to_time),
+                duration_type.clone(),
+                datetime_type.clone(),
+            ),
+            ExtensionFunction::binary(
+                constants::DATETIME_BEFORE.clone(),
+                CallStyle::MethodStyle,
+                Box::new(|x, y| comparison_predicate(&x, &y, as_datetime, DateTime::lt)),
+                SchemaType::Bool,
+                (datetime_type.clone(), datetime_type.clone()),
+            ),
+            ExtensionFunction::binary(
+                constants::DATETIME_BEFORE_OR_EQUAL.clone(),
+                CallStyle::MethodStyle,
+                Box::new(|x, y| comparison_predicate(&x, &y, as_datetime, DateTime::le)),
+                SchemaType::Bool,
+                (datetime_type.clone(), datetime_type.clone()),
+            ),
+            ExtensionFunction::binary(
+                constants::DATETIME_AFTER.clone(),
+                CallStyle::MethodStyle,
+                Box::new(|x, y| comparison_predicate(&x, &y, as_datetime, DateTime::gt)),
+                SchemaType::Bool,
+                (datetime_type.clone(), datetime_type.clone()),
+            ),
+            ExtensionFunction::binary(
+                constants::DATETIME_AFTER_OR_EQUAL.clone(),
+                CallStyle::MethodStyle,
+                Box::new(|x, y| comparison_predicate(&x, &y, as_datetime, DateTime::ge)),
+                SchemaType::Bool,
+                (datetime_type.clone(), datetime_type.clone()),
+            ),
+            ExtensionFunction::binary(
+                constants::DURATION_SHORTER_THAN.clone(),
+                CallStyle::MethodStyle,
+                Box::new(|x, y| comparison_predicate(&x, &y, as_duration, Duration::lt)),
+                SchemaType::Bool,
+                (duration_type.clone(), duration_type.clone()),
+            ),
+            ExtensionFunction::binary(
+                constants::DURATION_SHORTER_THAN_OR_EQUAL.clone(),
+                CallStyle::MethodStyle,
+                Box::new(|x, y| comparison_predicate(&x, &y, as_duration, Duration::le)),
+                SchemaType::Bool,
+                (duration_type.clone(), duration_type.clone()),
+            ),
+            ExtensionFunction::binary(
+                constants::DURATION_LONGER_THAN.clone(),
+                CallStyle::MethodStyle,
+                Box::new(|x, y| comparison_predicate(&x, &y, as_duration, Duration::gt)),
+                SchemaType::Bool,
+                (duration_type.clone(), duration_type.clone()),
+            ),
+            ExtensionFunction::binary(
+                constants::DURATION_LONGER_THAN_OR_EQUAL.clone(),
+                CallStyle::MethodStyle,
+                Box::new(|x, y| comparison_predicate(&x, &y, as_duration, Duration::ge)),
+                SchemaType::Bool,
+                (duration_type.clone(), duration_type.clone()),
+            ),
+            ExtensionFunction::unary(
+                constants::TO_MILLISECONDS_NAME.clone(),
+                CallStyle::MethodStyle,
+                Box::new(|value| duration_method(value, Duration::to_milliseconds)),
+                SchemaType::Long,
+                duration_type.clone(),
+            ),
+            ExtensionFunction::unary(
+                constants::TO_SECONDS_NAME.clone(),
+                CallStyle::MethodStyle,
+                Box::new(|value| duration_method(value, Duration::to_seconds)),
+                SchemaType::Long,
+                duration_type.clone(),
+            ),
+            ExtensionFunction::unary(
+                constants::TO_MINUTES_NAME.clone(),
+                CallStyle::MethodStyle,
+                Box::new(|value| duration_method(value, Duration::to_minutes)),
+                SchemaType::Long,
+                duration_type.clone(),
+            ),
+            ExtensionFunction::unary(
+                constants::TO_HOURS_NAME.clone(),
+                CallStyle::MethodStyle,
+                Box::new(|value| duration_method(value, Duration::to_hours)),
+                SchemaType::Long,
+                duration_type.clone(),
+            ),
+            ExtensionFunction::unary(
+                constants::TO_DAYS_NAME.clone(),
+                CallStyle::MethodStyle,
+                Box::new(|value| duration_method(value, Duration::to_days)),
+                SchemaType::Long,
+                duration_type.clone(),
             ),
         ],
     )
