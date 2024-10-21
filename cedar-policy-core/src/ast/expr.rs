@@ -1029,6 +1029,8 @@ impl From<&proto::Expr> for Expr {
 
 #[cfg(feature = "protobufs")]
 impl From<&Expr> for proto::Expr {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::allow_unimplemented)]
     fn from(v: &Expr) -> Self {
         let source_loc: Option<proto::Loc> = v.source_loc.as_ref().map(proto::Loc::from);
         let expr_kind = match &v.expr_kind {
@@ -1039,8 +1041,6 @@ impl From<&Expr> for proto::Expr {
             }
 
             ExprKind::Unknown(_u) => {
-                // PANIC SAFETY: experimental feature
-                #[allow(clippy::unimplemented)]
                 unimplemented!("Protobuffer interface does not support Unknown expressions")
             }
             ExprKind::If {

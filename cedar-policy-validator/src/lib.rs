@@ -34,6 +34,7 @@
 #[cfg(feature = "protobufs")]
 pub mod proto {
     #![allow(missing_docs)]
+    #![allow(clippy::doc_markdown)]
     include!(concat!(env!("OUT_DIR"), "/cedar_policy_validator.rs"));
 }
 
@@ -105,6 +106,8 @@ impl ValidationMode {
 
 #[cfg(feature = "protobufs")]
 impl From<&ValidationMode> for proto::ValidationMode {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::allow_unimplemented)]
     fn from(v: &ValidationMode) -> Self {
         match v {
             ValidationMode::Strict => proto::ValidationMode::Strict,

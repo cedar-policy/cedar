@@ -130,11 +130,11 @@ impl From<&proto::EntityUidEntry> for EntityUIDEntry {
 
 #[cfg(feature = "protobufs")]
 impl From<&EntityUIDEntry> for proto::EntityUidEntry {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::unimplemented)]
     fn from(v: &EntityUIDEntry) -> Self {
         match v {
             EntityUIDEntry::Unknown { loc: _ } => {
-                // PANIC SAFETY: experimental feature
-                #[allow(clippy::unimplemented)]
                 unimplemented!(
                     "Unknown EntityUID is not currently supported by the Protobuf interface"
                 );
