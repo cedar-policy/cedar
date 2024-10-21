@@ -20,7 +20,6 @@
 use std::collections::{hash_map::Entry, BTreeMap, HashMap, HashSet};
 
 use cedar_policy_core::{
-    fuzzy_match::fuzzy_search,
     ast::{
         EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name,
         PartialValueSerializedAsExpr, UnreservedId,
@@ -28,6 +27,7 @@ use cedar_policy_core::{
     entities::{json::err::JsonDeserializationErrorContext, CedarValueJson},
     evaluator::RestrictedEvaluator,
     extensions::Extensions,
+    fuzzy_match::fuzzy_search,
 };
 use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
