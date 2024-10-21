@@ -48,7 +48,6 @@ pub use diagnostics::*;
 mod expr_iterator;
 mod extension_schema;
 mod extensions;
-mod fuzzy_match;
 mod rbac;
 mod schema;
 pub use schema::*;

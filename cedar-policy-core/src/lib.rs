@@ -33,6 +33,7 @@ mod error_macros;
 pub mod est;
 pub mod evaluator;
 pub mod extensions;
+pub mod fuzzy_match;
 pub mod jsonvalue;
 pub mod parser;
 pub mod transitive_closure;

@@ -300,8 +300,14 @@ pub enum ToASTErrorKind {
     #[error("`{0}` is not a valid method")]
     UnknownMethod(ast::UnreservedId),
     /// Returned when a policy attempts to call a function that does not exist
-    #[error("`{0}` is not a valid function")]
-    UnknownFunction(ast::Name),
+    #[error("`{id}` is not a valid function")]
+    UnknownFunction {
+        /// The user-provided function id
+        id: ast::Name,
+        /// The hint to resolve the error
+        #[help]
+        hint: Option<String>,
+    },
     /// Returned when a policy attempts to write an entity literal
     #[error("invalid entity literal: {0}")]
     #[diagnostic(help("entity literals should have a form like `Namespace::User::\"alice\"`"))]
