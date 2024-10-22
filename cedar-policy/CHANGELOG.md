@@ -14,7 +14,7 @@ Cedar Language Version: TBD
 
 ### Added
 
-- Added experimental `protobufs` code from Brandon Rozek.
+- Added protobuf implementation behind experimental `protobufs` flag. 
 
 ### Fixed
 
