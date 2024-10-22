@@ -38,8 +38,8 @@ fn generate_schemas() {
     #[allow(clippy::expect_used)]
     config
         .compile_protos(
-            &["./schema/Validator.proto"],
-            &["./schema", "../cedar-policy-core/schema"],
+            &["./protobuf_schema/Validator.proto"],
+            &["./protobuf_schema", "../cedar-policy-core/protobuf_schema"],
         )
         .expect("Prost protobuf compilation error;");
 }

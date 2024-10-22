@@ -34,6 +34,6 @@ fn generate_parsers() {
 fn generate_schemas() {
     // PANIC SAFETY: static file compiled at build time
     #[allow(clippy::expect_used)]
-    prost_build::compile_protos(&["./schema/AST.proto"], &["./schema"])
+    prost_build::compile_protos(&["./protobuf_schema/AST.proto"], &["./protobuf_schema"])
         .expect("Prost protobuf compilation error;");
 }
