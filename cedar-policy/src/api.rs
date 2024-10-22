@@ -913,6 +913,7 @@ pub struct Response {
 }
 
 /// A partially evaluated authorization response.
+///
 /// Splits the results into several categories: satisfied, false, and residual for each policy effect.
 /// Also tracks all the errors that were encountered during evaluation.
 #[doc = include_str!("../experimental_warning.md")]
@@ -1633,8 +1634,9 @@ impl Schema {
     }
 }
 
-/// Contains the result of policy validation. The result includes the list of
-/// issues found by validation and whether validation succeeds or fails.
+/// Contains the result of policy validation.
+///
+/// The result includes the list of issues found by validation and whether validation succeeds or fails.
 /// Validation succeeds if there are no fatal errors. There may still be
 /// non-fatal warnings present when validation passes.
 #[derive(Debug)]
@@ -1782,8 +1784,9 @@ impl Diagnostic for ValidationResult {
     }
 }
 
-/// Scan a set of policies for potentially confusing/obfuscating text. These
-/// checks are also provided through [`Validator::validate`] which provides more
+/// Scan a set of policies for potentially confusing/obfuscating text.
+///
+/// These checks are also provided through [`Validator::validate`] which provides more
 /// comprehensive error detection, but this function can be used to check for
 /// confusable strings without defining a schema.
 pub fn confusable_string_checker<'a>(
@@ -3992,6 +3995,7 @@ impl std::fmt::Display for EvalResult {
 }
 
 /// Evaluates an expression.
+///
 /// If evaluation results in an error (e.g., attempting to access a non-existent Entity or Record,
 /// passing the wrong number of arguments to a function etc.), that error is returned as a String
 pub fn eval_expression(
@@ -4439,6 +4443,7 @@ action CreateList in Create appliesTo {
 }
 
 /// Given a schema and policy set, compute an entity manifest.
+///
 /// The policies must validate against the schema in strict mode,
 /// otherwise an error is returned.
 /// The manifest describes the data required to answer requests
