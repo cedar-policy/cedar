@@ -14,7 +14,7 @@ Cedar Language Version: TBD
 
 ### Added
 
-- Added protobuf implementation behind experimental `protobufs` flag. 
+- Added protobuf schemas and (de)serialization code using on `prost` crate behind the experimental `protobufs` flag.
 
 ### Fixed
 
