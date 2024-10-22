@@ -104,7 +104,9 @@ impl From<&proto::EntityType> for EntityType {
     #[allow(clippy::expect_used)]
     fn from(v: &proto::EntityType) -> Self {
         Self(Name::from(
-            v.name.as_ref().expect("as_ref() for field that will exist"),
+            v.name
+                .as_ref()
+                .expect("`as_ref()` for field that should exist"),
         ))
     }
 }
@@ -282,7 +284,10 @@ impl From<&proto::EntityUid> for EntityUID {
     fn from(v: &proto::EntityUid) -> Self {
         let loc: Option<Loc> = v.loc.as_ref().map(Loc::from);
         Self {
-            ty: EntityType::from(v.ty.as_ref().expect("as_ref() for field that will exist")),
+            ty: EntityType::from(
+                v.ty.as_ref()
+                    .expect("`as_ref()` for field that should exist"),
+            ),
             eid: Eid::new(v.eid.clone()),
             loc: loc,
         }
@@ -703,7 +708,11 @@ impl From<&proto::Entity> for Entity {
             .collect();
 
         Self {
-            uid: EntityUID::from(v.uid.as_ref().expect("as_ref() for field that will exist")),
+            uid: EntityUID::from(
+                v.uid
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist"),
+            ),
             attrs,
             ancestors,
             tags,

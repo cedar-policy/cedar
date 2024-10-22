@@ -36,7 +36,11 @@ impl From<&proto::expr::like::PatternElem> for PatternElem {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &proto::expr::like::PatternElem) -> Self {
-        match v.data.as_ref().expect("as_ref() for field that will exist") {
+        match v
+            .data
+            .as_ref()
+            .expect("`as_ref()` for field that should exist")
+        {
             proto::expr::like::pattern_elem::Data::C(c) => {
                 PatternElem::Char(c.chars().next().expect("c is non-empty"))
             }

@@ -166,23 +166,25 @@ impl From<&proto::ValidatorActionId> for ValidatorActionId {
         let eval = RestrictedEvaluator::new(&extensions_none);
         Self {
             name: ast::EntityUID::from(
-                v.name.as_ref().expect("as_ref() for field that will exist"),
+                v.name
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist"),
             ),
             applies_to: ValidatorApplySpec::from(
                 v.applies_to
                     .as_ref()
-                    .expect("as_ref() for field that will exist"),
+                    .expect("`as_ref()` for field that should exist"),
             ),
             descendants: v.descendants.iter().map(ast::EntityUID::from).collect(),
             context: Type::from(
                 v.context
                     .as_ref()
-                    .expect("as_ref() for field that will exist"),
+                    .expect("`as_ref()` for field that should exist"),
             ),
             attribute_types: Attributes::from(
                 v.attribute_types
                     .as_ref()
-                    .expect("as_ref() for field that will exist"),
+                    .expect("`as_ref()` for field that should exist"),
             ),
             attributes: v
                 .attributes

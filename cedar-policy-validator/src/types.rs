@@ -728,7 +728,11 @@ impl From<&proto::Type> for Type {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &proto::Type) -> Self {
-        match v.data.as_ref().expect("as_ref() for field that will exist") {
+        match v
+            .data
+            .as_ref()
+            .expect("`as_ref()` for field that should exist")
+        {
             proto::r#type::Data::Ty(vt) => {
                 match proto::r#type::Ty::try_from(vt.to_owned()).expect("decode should succeed") {
                     proto::r#type::Ty::Never => Type::Never,
@@ -790,7 +794,7 @@ impl From<&Type> for proto::Type {
                 data: Some(proto::r#type::Data::SetType(Box::new(proto::Type::from(
                     element_type
                         .as_ref()
-                        .expect("as_ref() for field that will exist")
+                        .expect("`as_ref()` for field that should exist")
                         .as_ref(),
                 )))),
             },
@@ -1518,7 +1522,11 @@ impl From<&proto::EntityRecordKind> for EntityRecordKind {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &proto::EntityRecordKind) -> Self {
-        match v.data.as_ref().expect("as_ref() for field that will exist") {
+        match v
+            .data
+            .as_ref()
+            .expect("`as_ref()` for field that should exist")
+        {
             proto::entity_record_kind::Data::Ty(ty) => {
                 match proto::entity_record_kind::Ty::try_from(ty.to_owned())
                     .expect("decode should succeed")
@@ -1531,7 +1539,7 @@ impl From<&proto::EntityRecordKind> for EntityRecordKind {
                     p_record
                         .attrs
                         .as_ref()
-                        .expect("as_ref() for field that will exist"),
+                        .expect("`as_ref()` for field that should exist"),
                 ),
                 open_attributes: OpenTag::from(
                     &proto::OpenTag::try_from(p_record.open_attributes)
@@ -1543,7 +1551,7 @@ impl From<&proto::EntityRecordKind> for EntityRecordKind {
                     p_entity
                         .e
                         .as_ref()
-                        .expect("as_ref() for field that will exist"),
+                        .expect("`as_ref()` for field that should exist"),
                 )))
             }
             proto::entity_record_kind::Data::ActionEntity(p_action_entity) => Self::ActionEntity {
@@ -1551,13 +1559,13 @@ impl From<&proto::EntityRecordKind> for EntityRecordKind {
                     p_action_entity
                         .name
                         .as_ref()
-                        .expect("as_ref() for field that will exist"),
+                        .expect("`as_ref()` for field that should exist"),
                 ),
                 attrs: Attributes::from(
                     p_action_entity
                         .attrs
                         .as_ref()
-                        .expect("as_ref() for field that will exist"),
+                        .expect("`as_ref()` for field that should exist"),
                 ),
             },
         }
@@ -1687,7 +1695,7 @@ impl From<&proto::AttributeType> for AttributeType {
             attr_type: Type::from(
                 v.attr_type
                     .as_ref()
-                    .expect("as_ref() for field that will exist"),
+                    .expect("`as_ref()` for field that should exist"),
             ),
             is_required: v.is_required,
         }

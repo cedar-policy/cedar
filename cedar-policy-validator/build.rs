@@ -41,5 +41,5 @@ fn generate_schemas() {
             &["./protobuf_schema/Validator.proto"],
             &["./protobuf_schema", "../cedar-policy-core/protobuf_schema"],
         )
-        .expect("Prost protobuf compilation error;");
+        .expect("failed to compile `.proto` schema files");
 }

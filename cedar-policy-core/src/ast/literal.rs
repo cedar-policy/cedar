@@ -133,7 +133,11 @@ impl From<&proto::expr::Literal> for Literal {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &proto::expr::Literal) -> Self {
-        match v.lit.as_ref().expect("as_ref() for field that will exist") {
+        match v
+            .lit
+            .as_ref()
+            .expect("`as_ref()` for field that should exist")
+        {
             proto::expr::literal::Lit::B(b) => Literal::Bool(b.clone()),
             proto::expr::literal::Lit::I(l) => Literal::Long(l.clone()),
             proto::expr::literal::Lit::S(s) => Literal::String(s.clone().into()),

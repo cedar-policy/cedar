@@ -849,11 +849,11 @@ impl From<&proto::Expr> for Expr {
         let pdata = v
             .expr_kind
             .as_ref()
-            .expect("as_ref() for field that will exist");
+            .expect("`as_ref()` for field that should exist");
         let ety = pdata
             .data
             .as_ref()
-            .expect("as_ref() for field that will exist");
+            .expect("`as_ref()` for field that should exist");
 
         match ety {
             proto::expr::expr_kind::Data::Lit(lit) => {
@@ -876,17 +876,17 @@ impl From<&proto::Expr> for Expr {
                 let test_expr = msg
                     .test_expr
                     .as_ref()
-                    .expect("as_ref() for field that will exist")
+                    .expect("`as_ref()` for field that should exist")
                     .as_ref();
                 let then_expr = msg
                     .then_expr
                     .as_ref()
-                    .expect("as_ref() for field that will exist")
+                    .expect("`as_ref()` for field that should exist")
                     .as_ref();
                 let else_expr = msg
                     .else_expr
                     .as_ref()
-                    .expect("as_ref() for field that will exist")
+                    .expect("`as_ref()` for field that should exist")
                     .as_ref();
                 Expr::ite(
                     Expr::from(test_expr),
@@ -900,12 +900,12 @@ impl From<&proto::Expr> for Expr {
                 let left = msg
                     .left
                     .as_ref()
-                    .expect("as_ref() for field that will exist")
+                    .expect("`as_ref()` for field that should exist")
                     .as_ref();
                 let right = msg
                     .right
                     .as_ref()
-                    .expect("as_ref() for field that will exist")
+                    .expect("`as_ref()` for field that should exist")
                     .as_ref();
                 Expr::and(Expr::from(left), Expr::from(right)).with_maybe_source_loc(source_loc)
             }
@@ -914,12 +914,12 @@ impl From<&proto::Expr> for Expr {
                 let left = msg
                     .left
                     .as_ref()
-                    .expect("as_ref() for field that will exist")
+                    .expect("`as_ref()` for field that should exist")
                     .as_ref();
                 let right = msg
                     .right
                     .as_ref()
-                    .expect("as_ref() for field that will exist")
+                    .expect("`as_ref()` for field that should exist")
                     .as_ref();
                 Expr::or(Expr::from(left), Expr::from(right)).with_maybe_source_loc(source_loc)
             }
@@ -928,7 +928,7 @@ impl From<&proto::Expr> for Expr {
                 let arg = msg
                     .expr
                     .as_ref()
-                    .expect("as_ref() for field that will exist")
+                    .expect("`as_ref()` for field that should exist")
                     .as_ref();
                 let puop =
                     proto::expr::unary_app::Op::try_from(msg.op).expect("decode should succeed");
@@ -942,11 +942,11 @@ impl From<&proto::Expr> for Expr {
                 let left = msg
                     .left
                     .as_ref()
-                    .expect("as_ref() for field that will exist");
+                    .expect("`as_ref()` for field that should exist");
                 let right = msg
                     .right
                     .as_ref()
-                    .expect("as_ref() for field that will exist");
+                    .expect("`as_ref()` for field that should exist");
                 Expr::binary_app(
                     BinaryOp::from(&pbop),
                     Expr::from(left.as_ref()),
@@ -959,7 +959,7 @@ impl From<&proto::Expr> for Expr {
                 Name::from(
                     msg.fn_name
                         .as_ref()
-                        .expect("as_ref() for field that will exist"),
+                        .expect("`as_ref()` for field that should exist"),
                 ),
                 msg.args.iter().map(Expr::from).collect(),
             )
@@ -969,7 +969,7 @@ impl From<&proto::Expr> for Expr {
                 let arg = msg
                     .expr
                     .as_ref()
-                    .expect("as_ref() for field that will exist")
+                    .expect("`as_ref()` for field that should exist")
                     .as_ref();
                 Expr::get_attr(Expr::from(arg), msg.attr.clone().into())
                     .with_maybe_source_loc(source_loc)
@@ -979,7 +979,7 @@ impl From<&proto::Expr> for Expr {
                 let arg = msg
                     .expr
                     .as_ref()
-                    .expect("as_ref() for field that will exist")
+                    .expect("`as_ref()` for field that should exist")
                     .as_ref();
                 Expr::has_attr(Expr::from(arg), msg.attr.clone().into())
                     .with_maybe_source_loc(source_loc)
@@ -989,7 +989,7 @@ impl From<&proto::Expr> for Expr {
                 let arg = msg
                     .expr
                     .as_ref()
-                    .expect("as_ref() for field that will exist")
+                    .expect("`as_ref()` for field that should exist")
                     .as_ref();
                 Expr::like(Expr::from(arg), msg.pattern.iter().map(PatternElem::from))
                     .with_maybe_source_loc(source_loc)
@@ -999,14 +999,14 @@ impl From<&proto::Expr> for Expr {
                 let arg = msg
                     .expr
                     .as_ref()
-                    .expect("as_ref() for field that will exist")
+                    .expect("`as_ref()` for field that should exist")
                     .as_ref();
                 Expr::is_entity_type(
                     Expr::from(arg),
                     EntityType::from(
                         msg.entity_type
                             .as_ref()
-                            .expect("as_ref() for field that will exist"),
+                            .expect("`as_ref()` for field that should exist"),
                     ),
                 )
                 .with_maybe_source_loc(source_loc)

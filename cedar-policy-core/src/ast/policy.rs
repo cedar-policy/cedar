@@ -589,7 +589,7 @@ impl From<&proto::LiteralPolicy> for LiteralPolicy {
                 EntityUID::from(
                     v.principal_euid
                         .as_ref()
-                        .expect("as_ref() for field that will exist"),
+                        .expect("`as_ref()` for field that should exist"),
                 ),
             );
         }
@@ -599,7 +599,7 @@ impl From<&proto::LiteralPolicy> for LiteralPolicy {
                 EntityUID::from(
                     v.resource_euid
                         .as_ref()
-                        .expect("as_ref() for field that will exist"),
+                        .expect("`as_ref()` for field that should exist"),
                 ),
             );
         }
@@ -1233,22 +1233,22 @@ impl From<&proto::TemplateBody> for TemplateBody {
             PrincipalConstraint::from(
                 v.principal_constraint
                     .as_ref()
-                    .expect("as_ref() for field that will exist"),
+                    .expect("`as_ref()` for field that should exist"),
             ),
             ActionConstraint::from(
                 v.action_constraint
                     .as_ref()
-                    .expect("as_ref() for field that will exist"),
+                    .expect("`as_ref()` for field that should exist"),
             ),
             ResourceConstraint::from(
                 v.resource_constraint
                     .as_ref()
-                    .expect("as_ref() for field that will exist"),
+                    .expect("`as_ref()` for field that should exist"),
             ),
             Expr::from(
                 v.non_scope_constraints
                     .as_ref()
-                    .expect("as_ref() for field that will exist"),
+                    .expect("`as_ref()` for field that should exist"),
             ),
         );
         body
@@ -1516,7 +1516,7 @@ impl From<&proto::PrincipalConstraint> for PrincipalConstraint {
             constraint: PrincipalOrResourceConstraint::from(
                 v.constraint
                     .as_ref()
-                    .expect("as_ref() for field that will exist"),
+                    .expect("`as_ref()` for field that should exist"),
             ),
         }
     }
@@ -1647,7 +1647,7 @@ impl From<&proto::ResourceConstraint> for ResourceConstraint {
             constraint: PrincipalOrResourceConstraint::from(
                 v.constraint
                     .as_ref()
-                    .expect("as_ref() for field that will exist"),
+                    .expect("`as_ref()` for field that should exist"),
             ),
         }
     }
@@ -1695,7 +1695,11 @@ impl From<&proto::EntityReference> for EntityReference {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &proto::EntityReference) -> Self {
-        match v.data.as_ref().expect("as_ref() for field that will exist") {
+        match v
+            .data
+            .as_ref()
+            .expect("`as_ref()` for field that should exist")
+        {
             proto::entity_reference::Data::Ty(ty) => {
                 match proto::entity_reference::Ty::try_from(ty.to_owned())
                     .expect("decode should succeed")
@@ -1915,7 +1919,11 @@ impl From<&proto::PrincipalOrResourceConstraint> for PrincipalOrResourceConstrai
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &proto::PrincipalOrResourceConstraint) -> Self {
-        match v.data.as_ref().expect("as_ref() for field that will exist") {
+        match v
+            .data
+            .as_ref()
+            .expect("`as_ref()` for field that should exist")
+        {
             proto::principal_or_resource_constraint::Data::Ty(ty) => {
                 match proto::principal_or_resource_constraint::Ty::try_from(ty.to_owned())
                     .expect("decode should succeed")
@@ -1927,26 +1935,40 @@ impl From<&proto::PrincipalOrResourceConstraint> for PrincipalOrResourceConstrai
             }
             proto::principal_or_resource_constraint::Data::In(msg) => {
                 PrincipalOrResourceConstraint::In(EntityReference::from(
-                    msg.er.as_ref().expect("as_ref() for field that will exist"),
+                    msg.er
+                        .as_ref()
+                        .expect("`as_ref()` for field that should exist"),
                 ))
             }
             proto::principal_or_resource_constraint::Data::Eq(msg) => {
                 PrincipalOrResourceConstraint::Eq(EntityReference::from(
-                    msg.er.as_ref().expect("as_ref() for field that will exist"),
+                    msg.er
+                        .as_ref()
+                        .expect("`as_ref()` for field that should exist"),
                 ))
             }
             proto::principal_or_resource_constraint::Data::Is(msg) => {
                 PrincipalOrResourceConstraint::Is(
-                    EntityType::from(msg.et.as_ref().expect("as_ref() for field that will exist"))
-                        .into(),
+                    EntityType::from(
+                        msg.et
+                            .as_ref()
+                            .expect("`as_ref()` for field that should exist"),
+                    )
+                    .into(),
                 )
             }
             proto::principal_or_resource_constraint::Data::IsIn(msg) => {
                 PrincipalOrResourceConstraint::IsIn(
-                    EntityType::from(msg.et.as_ref().expect("as_ref() for field that will exist"))
-                        .into(),
+                    EntityType::from(
+                        msg.et
+                            .as_ref()
+                            .expect("`as_ref()` for field that should exist"),
+                    )
+                    .into(),
                     EntityReference::from(
-                        msg.er.as_ref().expect("as_ref() for field that will exist"),
+                        msg.er
+                            .as_ref()
+                            .expect("`as_ref()` for field that should exist"),
                     ),
                 )
             }

@@ -888,12 +888,12 @@ impl From<&proto::ValidatorSchema> for ValidatorSchema {
                     let k = ast::EntityType::from(
                         kvp.key
                             .as_ref()
-                            .expect("as_ref() for field that will exist"),
+                            .expect("`as_ref()` for field that should exist"),
                     );
                     let v = ValidatorEntityType::from(
                         kvp.value
                             .as_ref()
-                            .expect("as_ref() for field that will exist"),
+                            .expect("`as_ref()` for field that should exist"),
                     );
                     (k, v)
                 })
@@ -905,12 +905,12 @@ impl From<&proto::ValidatorSchema> for ValidatorSchema {
                     let k = ast::EntityUID::from(
                         kvp.key
                             .as_ref()
-                            .expect("as_ref() for field that will exist"),
+                            .expect("`as_ref()` for field that should exist"),
                     );
                     let v = ValidatorActionId::from(
                         kvp.value
                             .as_ref()
-                            .expect("as_ref() for field that will exist"),
+                            .expect("`as_ref()` for field that should exist"),
                     );
                     (k, v)
                 })

@@ -139,13 +139,15 @@ impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
         };
         Self {
             name: ast::EntityType::from(
-                v.name.as_ref().expect("as_ref() for field that will exist"),
+                v.name
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist"),
             ),
             descendants: v.descendants.iter().map(ast::EntityType::from).collect(),
             attributes: Attributes::from(
                 v.attributes
                     .as_ref()
-                    .expect("as_ref() for field that will exist"),
+                    .expect("`as_ref()` for field that should exist"),
             ),
             open_attributes: OpenTag::from(
                 &proto::OpenTag::try_from(v.open_attributes).expect("decode should succeed"),
