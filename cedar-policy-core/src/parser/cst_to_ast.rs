@@ -44,7 +44,7 @@ use crate::ast::{
     PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
 };
 use crate::est::extract_single_argument;
-use crate::fuzzy_match::fuzzy_search;
+use crate::fuzzy_match::fuzzy_search_limited;
 use itertools::Either;
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
@@ -1510,8 +1510,13 @@ impl ast::Name {
             Ok(construct_ext_func(self, args, loc))
         } else {
             fn suggest_function(name: &ast::Name, funs: &HashSet<&ast::Name>) -> Option<String> {
+                const SUGGEST_FUNCTION_MAX_DISTANCE: usize = 3;
                 let fnames = funs.iter().map(ToString::to_string).collect::<Vec<_>>();
-                let suggested_function = fuzzy_search(&name.to_string(), fnames.as_slice());
+                let suggested_function = fuzzy_search_limited(
+                    &name.to_string(),
+                    fnames.as_slice(),
+                    Some(SUGGEST_FUNCTION_MAX_DISTANCE),
+                );
                 suggested_function.map(|f| format!("did you mean `{f}`?"))
             }
             let hint = suggest_function(&self, &EXTENSION_STYLES.functions);
