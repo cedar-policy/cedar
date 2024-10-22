@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+pub use names::TYPES_WITH_OPERATOR_OVERLOADING;
+
 use crate::ast::*;
 use crate::entities::SchemaType;
 use crate::evaluator;
@@ -22,6 +24,19 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::Arc;
+
+// PANIC SAFETY `Name`s in here are valid `Name`s
+#[allow(clippy::expect_used)]
+mod names {
+    use std::collections::HashSet;
+
+    use super::Name;
+
+    lazy_static::lazy_static! {
+        /// Extension type names that support operator overloading
+        pub static ref TYPES_WITH_OPERATOR_OVERLOADING : HashSet<Name> = HashSet::from_iter([Name::parse_unqualified_name("datetime").expect("valid identifier"), Name::parse_unqualified_name("duration").expect("valid identifier")]);
+    }
+}
 
 /// Cedar extension.
 ///
@@ -399,6 +414,10 @@ impl ExtensionValueWithArgs {
     /// Get the constructor and args that can reproduce this value
     pub fn constructor_and_args(&self) -> (&Name, &[RestrictedExpr]) {
         (&self.constructor, &self.args)
+    }
+
+    pub(crate) fn supports_operator_overloading(&self) -> bool {
+        TYPES_WITH_OPERATOR_OVERLOADING.contains(&self.value.typename())
     }
 }
 

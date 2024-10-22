@@ -28,10 +28,11 @@ pub mod partial_evaluation;
 
 use std::collections::HashMap;
 
-use crate::ast::{Extension, ExtensionFunction, Name};
+use crate::ast::{Extension, ExtensionFunction, Name, TYPES_WITH_OPERATOR_OVERLOADING};
 use crate::entities::SchemaType;
 use crate::parser::Loc;
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use thiserror::Error;
 
 use self::extension_function_lookup_errors::FuncDoesNotExistError;
@@ -94,6 +95,14 @@ impl Extensions<'static> {
     /// Get a new `Extensions` with no extensions enabled.
     pub fn none() -> &'static Extensions<'static> {
         &EXTENSIONS_NONE
+    }
+
+    /// Iterate over extension types that support operator overloading
+    pub fn types_with_operator_overloading() -> NonEmpty<Name> {
+        NonEmpty::from_vec(Vec::from_iter(
+            TYPES_WITH_OPERATOR_OVERLOADING.iter().cloned(),
+        ))
+        .unwrap()
     }
 }
 

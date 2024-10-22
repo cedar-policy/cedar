@@ -21,6 +21,7 @@
 pub(crate) mod test;
 
 mod typecheck_answer;
+use itertools::Itertools;
 pub(crate) use typecheck_answer::TypecheckAnswer;
 
 use std::{borrow::Cow, collections::HashSet, iter::zip};
@@ -38,9 +39,12 @@ use crate::{
     ValidationError, ValidationMode, ValidationWarning,
 };
 
-use cedar_policy_core::ast::{
-    BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
-    PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
+use cedar_policy_core::{
+    ast::{
+        BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
+        PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
+    },
+    extensions::Extensions,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1248,15 +1252,17 @@ impl<'a> Typechecker<'a> {
                     request_env,
                     prior_capability,
                     arg1,
-                    &[
-                        Type::primitive_long(),
-                        Type::extension("datetime".parse().unwrap()),
-                        Type::extension("duration".parse().unwrap()),
-                    ],
+                    &Extensions::types_with_operator_overloading()
+                        .into_iter()
+                        .map(Type::extension)
+                        .chain(std::iter::once(Type::primitive_long()))
+                        .collect_vec(),
                     type_errors,
                     |_| None,
                 );
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
+                    // PANIC SAFETY: the closure is applied when previous operation succeeds and hence `expr_ty_arg1` should have a type
+                    #[allow(clippy::unwrap_used)]
                     let expected_type = expr_ty_arg1.data().as_ref().unwrap();
                     let ans_arg2 = self.expect_type(
                         request_env,

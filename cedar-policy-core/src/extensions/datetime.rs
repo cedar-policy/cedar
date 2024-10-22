@@ -37,17 +37,17 @@ use crate::{
     evaluator::{self, EvaluationError},
 };
 
-const EXTENSION_NAME: &str = "datetime";
+const DATETIME_EXTENSION_NAME: &str = "datetime";
 
 // PANIC SAFETY The `Name`s and `Regex` here are valid
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod constants {
     use regex::Regex;
 
-    use crate::{ast::Name, extensions::datetime::EXTENSION_NAME};
+    use crate::{ast::Name, extensions::datetime::DATETIME_EXTENSION_NAME};
 
     lazy_static::lazy_static! {
-        pub static ref DATETIME_STR_CONSTRUCTOR_NAME : Name = Name::parse_unqualified_name(EXTENSION_NAME).expect("should be a valid identifier");
+        pub static ref DATETIME_STR_CONSTRUCTOR_NAME : Name = Name::parse_unqualified_name(DATETIME_EXTENSION_NAME).expect("should be a valid identifier");
         pub static ref DATETIME_LONG_CONSTRUCTOR_NAME : Name = Name::parse_unqualified_name("datetime_unix").expect("should be a valid identifier");
         pub static ref DURATION_CONSTRUCTOR_NAME : Name = Name::parse_unqualified_name("duration").expect("should be a valid identifier");
         pub static ref OFFSET_METHOD_NAME : Name = Name::parse_unqualified_name("offset").expect("should be a valid identifier");
@@ -59,6 +59,7 @@ mod constants {
         pub static ref TO_MINUTES_NAME : Name = Name::parse_unqualified_name("toMinutes").expect("should be a valid identifier");
         pub static ref TO_HOURS_NAME : Name = Name::parse_unqualified_name("toHours").expect("should be a valid identifier");
         pub static ref TO_DAYS_NAME : Name = Name::parse_unqualified_name("toDays").expect("should be a valid identifier");
+        /*
         pub static ref DATETIME_BEFORE : Name = Name::parse_unqualified_name("before").expect("should be a valid identifier");
         pub static ref DATETIME_BEFORE_OR_EQUAL : Name = Name::parse_unqualified_name("beforeOrEqualTo").expect("should be a valid identifier");
         pub static ref DATETIME_AFTER : Name = Name::parse_unqualified_name("after").expect("should be a valid identifier");
@@ -67,6 +68,7 @@ mod constants {
         pub static ref DURATION_SHORTER_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("shorterThanOrEqualTo").expect("should be a valid identifier");
         pub static ref DURATION_LONGER_THAN : Name = Name::parse_unqualified_name("longerThan").expect("should be a valid identifier");
         pub static ref DURATION_LONGER_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("longerThanOrEqualTo").expect("should be a valid identifier");
+         */
     }
 
     // Global regex, initialized at first use
@@ -251,6 +253,7 @@ fn to_time(value: Value) -> evaluator::Result<ExtensionOutputValue> {
     .into())
 }
 
+/*
 fn comparison_predicate<Ext>(
     lhs: &Value,
     rhs: &Value,
@@ -264,6 +267,7 @@ where
     let rhs = cast_func(rhs)?;
     Ok(Value::from(predicate(lhs, rhs)).into())
 }
+*/
 
 // Note that this implementation cannot always generate valid input strings
 // because they only represent a small subset of `datetime`
@@ -609,6 +613,7 @@ pub fn extension() -> Extension {
                 duration_type.clone(),
                 datetime_type.clone(),
             ),
+            /*
             ExtensionFunction::binary(
                 constants::DATETIME_BEFORE.clone(),
                 CallStyle::MethodStyle,
@@ -665,6 +670,7 @@ pub fn extension() -> Extension {
                 SchemaType::Bool,
                 (duration_type.clone(), duration_type.clone()),
             ),
+            */
             ExtensionFunction::unary(
                 constants::TO_MILLISECONDS_NAME.clone(),
                 CallStyle::MethodStyle,
