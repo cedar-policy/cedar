@@ -32,10 +32,11 @@ use crate::{
     entities::Name,
 };
 use either::Either;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use serde_with::{DeserializeAs, SerializeAs};
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
@@ -359,16 +360,17 @@ impl CedarValueJson {
                 ))
             }
             ValueKind::ExtensionValue(ev) => {
-                let ext_fn: &Name = &ev.constructor;
+                let restricted_expr = ev.value().into_restricted_expr();
+                let (func, args) = restricted_expr.as_extn_fn_call().unwrap();
                 Ok(Self::ExtnEscape {
                     __extn: FnAndArg {
-                        ext_fn: ext_fn.to_string().into(),
-                        arg: match ev.args.as_slice() {
-                            [ref expr] => Box::new(Self::from_expr(expr.as_borrowed())?),
-                            [] => return Err(JsonSerializationError::call_0_args(ext_fn.clone())),
+                        ext_fn: func.to_smolstr(),
+                        arg: match args.collect_vec()[..] {
+                            [ref expr] => Box::new(Self::from_expr(*expr)?),
+                            [] => return Err(JsonSerializationError::call_0_args(func.clone())),
                             _ => {
                                 return Err(JsonSerializationError::call_2_or_more_args(
-                                    ext_fn.clone(),
+                                    func.clone(),
                                 ))
                             }
                         },

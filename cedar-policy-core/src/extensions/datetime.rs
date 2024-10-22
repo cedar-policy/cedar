@@ -20,9 +20,8 @@ use std::{fmt::Display, i64, sync::Arc};
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta};
 use constants::{
-    DATETIME_LONG_CONSTRUCTOR_NAME, DATETIME_STR_CONSTRUCTOR_NAME, DATE_PATTERN,
-    DURATION_CONSTRUCTOR_NAME, DURATION_PATTERN, DURATION_SINCE_NAME, HMS_PATTERN,
-    MS_AND_OFFSET_PATTERN, OFFSET_METHOD_NAME,
+    DATETIME_CONSTRUCTOR_NAME, DATE_PATTERN, DURATION_CONSTRUCTOR_NAME, DURATION_PATTERN,
+    DURATION_SINCE_NAME, HMS_PATTERN, MS_AND_OFFSET_PATTERN, OFFSET_METHOD_NAME,
 };
 use miette::Diagnostic;
 use smol_str::SmolStr;
@@ -30,8 +29,8 @@ use thiserror::Error;
 
 use crate::{
     ast::{
-        CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue,
-        ExtensionValueWithArgs, Literal, Name, Type, Value, ValueKind,
+        CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue, Literal,
+        Name, RepresentableExtensionValue, RestrictedExpr, Type, Value, ValueKind,
     },
     entities::SchemaType,
     evaluator::{self, EvaluationError},
@@ -47,8 +46,7 @@ mod constants {
     use crate::{ast::Name, extensions::datetime::DATETIME_EXTENSION_NAME};
 
     lazy_static::lazy_static! {
-        pub static ref DATETIME_STR_CONSTRUCTOR_NAME : Name = Name::parse_unqualified_name(DATETIME_EXTENSION_NAME).expect("should be a valid identifier");
-        pub static ref DATETIME_LONG_CONSTRUCTOR_NAME : Name = Name::parse_unqualified_name("datetime_unix").expect("should be a valid identifier");
+        pub static ref DATETIME_CONSTRUCTOR_NAME : Name = Name::parse_unqualified_name(DATETIME_EXTENSION_NAME).expect("should be a valid identifier");
         pub static ref DURATION_CONSTRUCTOR_NAME : Name = Name::parse_unqualified_name("duration").expect("should be a valid identifier");
         pub static ref OFFSET_METHOD_NAME : Name = Name::parse_unqualified_name("offset").expect("should be a valid identifier");
         pub static ref DURATION_SINCE_NAME : Name = Name::parse_unqualified_name("durationSince").expect("should be a valid identifier");
@@ -101,19 +99,14 @@ fn extension_err(msg: String, extension_name: &crate::ast::Name) -> evaluator::E
 fn construct_from_str<Ext>(
     arg: Value,
     constructor: impl Fn(&str) -> Result<Ext, EvaluationError>,
-    constructor_name: &Name,
 ) -> evaluator::Result<ExtensionOutputValue>
 where
-    Ext: ExtensionValue + std::cmp::Ord + 'static,
+    Ext: ExtensionValue + std::cmp::Ord + 'static + std::clone::Clone + Into<RestrictedExpr>,
 {
     let s = arg.get_as_string()?;
     let ext_value: Ext = constructor(s)?;
     let arg_source_loc = arg.source_loc().cloned();
-    let e = ExtensionValueWithArgs::new(
-        Arc::new(ext_value),
-        constructor_name.to_owned(),
-        vec![arg.into()],
-    );
+    let e = RepresentableExtensionValue::new(Arc::new(ext_value));
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(e)),
         loc: arg_source_loc, // follow the same convention as the `decimal` extension
@@ -124,15 +117,11 @@ where
 /// Cedar function that constructs a `datetime` Cedar type from a
 /// Cedar string
 fn datetime_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
-    construct_from_str(
-        arg,
-        |s| {
-            parse_datetime(s)
-                .map(DateTime::from)
-                .map_err(|err| extension_err(err.to_string(), &DATETIME_STR_CONSTRUCTOR_NAME))
-        },
-        &DATETIME_STR_CONSTRUCTOR_NAME,
-    )
+    construct_from_str(arg, |s| {
+        parse_datetime(s)
+            .map(DateTime::from)
+            .map_err(|err| extension_err(err.to_string(), &DATETIME_CONSTRUCTOR_NAME))
+    })
 }
 
 /// Help message to display when a String was provided where a decimal value was expected.
@@ -174,7 +163,7 @@ where
 
 /// Check that `v` is a datetime type and, if it is, return the wrapped value
 fn as_datetime(v: &Value) -> Result<&DateTime, evaluator::EvaluationError> {
-    as_ext(v, &DATETIME_STR_CONSTRUCTOR_NAME)
+    as_ext(v, &DATETIME_CONSTRUCTOR_NAME)
 }
 
 /// Check that `v` is a duration type and, if it is, return the wrapped value
@@ -192,11 +181,7 @@ fn offset(datetime: Value, duration: Value) -> evaluator::Result<ExtensionOutput
         ),
         &OFFSET_METHOD_NAME,
     ))?;
-    let e = ExtensionValueWithArgs::new(
-        Arc::new(ret.clone()),
-        DATETIME_LONG_CONSTRUCTOR_NAME.to_owned(),
-        vec![Value::from(ret.epoch).into()],
-    );
+    let e = RepresentableExtensionValue::new(Arc::new(ret.clone()));
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(e)),
         loc: None,
@@ -211,11 +196,7 @@ fn duration_since(lhs: Value, rhs: Value) -> evaluator::Result<ExtensionOutputVa
         format!("overflows when computing the duration between {lhs} and {rhs}",),
         &DURATION_SINCE_NAME,
     ))?;
-    let e = ExtensionValueWithArgs::new(
-        Arc::new(ret.clone()),
-        DURATION_CONSTRUCTOR_NAME.to_owned(),
-        vec![Value::from(ret.to_string()).into()],
-    );
+    let e = RepresentableExtensionValue::new(Arc::new(ret.clone()));
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(e)),
         loc: None,
@@ -226,11 +207,7 @@ fn duration_since(lhs: Value, rhs: Value) -> evaluator::Result<ExtensionOutputVa
 fn to_date(value: Value) -> evaluator::Result<ExtensionOutputValue> {
     let d = as_datetime(&value)?;
     let ret = d.to_date();
-    let e = ExtensionValueWithArgs::new(
-        Arc::new(ret.clone()),
-        DATETIME_STR_CONSTRUCTOR_NAME.to_owned(),
-        vec![Value::from(ret.epoch).into()],
-    );
+    let e = RepresentableExtensionValue::new(Arc::new(ret.clone()));
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(e)),
         loc: None,
@@ -241,11 +218,7 @@ fn to_date(value: Value) -> evaluator::Result<ExtensionOutputValue> {
 fn to_time(value: Value) -> evaluator::Result<ExtensionOutputValue> {
     let d = as_datetime(&value)?;
     let ret = d.to_time();
-    let e = ExtensionValueWithArgs::new(
-        Arc::new(ret.clone()),
-        DURATION_CONSTRUCTOR_NAME.to_owned(),
-        vec![Value::from(ret.to_string()).into()],
-    );
+    let e = RepresentableExtensionValue::new(Arc::new(ret.clone()));
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(e)),
         loc: None,
@@ -299,12 +272,13 @@ impl Display for DateTime {
 
 impl ExtensionValue for DateTime {
     fn typename(&self) -> crate::ast::Name {
-        DATETIME_STR_CONSTRUCTOR_NAME.to_owned()
+        DATETIME_CONSTRUCTOR_NAME.to_owned()
     }
 }
 
 impl DateTime {
     const DAY_IN_MILLISECONDS: i64 = 1000 * 3600 * 24;
+    const UNIX_EPOCH_STR: &str = "1970-01-01";
 
     fn offset(&self, duration: Duration) -> Option<Self> {
         self.epoch
@@ -328,6 +302,30 @@ impl DateTime {
         Duration {
             ms: self.epoch % Self::DAY_IN_MILLISECONDS,
         }
+    }
+}
+
+impl From<DateTime> for RestrictedExpr {
+    fn from(value: DateTime) -> Self {
+        RestrictedExpr::call_extension_fn(
+            OFFSET_METHOD_NAME.clone(),
+            vec![
+                RestrictedExpr::call_extension_fn(
+                    DATETIME_CONSTRUCTOR_NAME.clone(),
+                    vec![Value::from(DateTime::UNIX_EPOCH_STR).into()],
+                ),
+                Duration { ms: value.epoch }.into(),
+            ],
+        )
+    }
+}
+
+impl From<Duration> for RestrictedExpr {
+    fn from(value: Duration) -> Self {
+        RestrictedExpr::call_extension_fn(
+            DURATION_CONSTRUCTOR_NAME.clone(),
+            vec![Value::from(value.to_string()).into()],
+        )
     }
 }
 
@@ -370,14 +368,9 @@ impl ExtensionValue for Duration {
 /// Cedar function that constructs a `duration` Cedar type from a
 /// Cedar string
 fn duration_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
-    construct_from_str(
-        arg,
-        |s| {
-            parse_duration(s)
-                .map_err(|err| extension_err(err.to_string(), &DURATION_CONSTRUCTOR_NAME))
-        },
-        &DURATION_CONSTRUCTOR_NAME,
-    )
+    construct_from_str(arg, |s| {
+        parse_duration(s).map_err(|err| extension_err(err.to_string(), &DURATION_CONSTRUCTOR_NAME))
+    })
 }
 
 impl Duration {
@@ -563,16 +556,16 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
 /// Construct the extension
 pub fn extension() -> Extension {
     let datetime_type = SchemaType::Extension {
-        name: DATETIME_STR_CONSTRUCTOR_NAME.to_owned(),
+        name: DATETIME_CONSTRUCTOR_NAME.to_owned(),
     };
     let duration_type = SchemaType::Extension {
         name: DURATION_CONSTRUCTOR_NAME.to_owned(),
     };
     Extension::new(
-        constants::DATETIME_STR_CONSTRUCTOR_NAME.clone(),
+        constants::DATETIME_CONSTRUCTOR_NAME.clone(),
         vec![
             ExtensionFunction::unary(
-                constants::DATETIME_STR_CONSTRUCTOR_NAME.clone(),
+                constants::DATETIME_CONSTRUCTOR_NAME.clone(),
                 CallStyle::FunctionStyle,
                 Box::new(datetime_from_str),
                 datetime_type.clone(),

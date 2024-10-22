@@ -251,6 +251,7 @@ mod test {
     use super::*;
     use cedar_policy_core::{
         ast::{self, PolicyID},
+        extensions::Extensions,
         parser::{self, Loc},
     };
 
@@ -527,10 +528,13 @@ mod test {
         let result = validator.validate(&set, ValidationMode::default());
         assert_eq!(
             result.validation_errors().collect::<Vec<_>>(),
-            vec![&ValidationError::expected_type(
+            vec![&ValidationError::expected_one_of_types(
                 typecheck::test::test_utils::get_loc(src, "true"),
                 PolicyID::from_string("policy0"),
-                Type::primitive_long(),
+                Extensions::types_with_operator_overloading()
+                    .into_iter()
+                    .map(Type::extension)
+                    .chain(std::iter::once(Type::primitive_long())),
                 Type::singleton_boolean(true),
                 None,
             )]

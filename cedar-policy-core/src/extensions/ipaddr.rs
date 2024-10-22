@@ -16,9 +16,11 @@
 
 //! This module contains the Cedar 'ipaddr' extension.
 
+use names::IP_FROM_STR_NAME;
+
 use crate::ast::{
-    CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue,
-    ExtensionValueWithArgs, Literal, Name, Type, Value, ValueKind,
+    CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue, Literal, Name,
+    RepresentableExtensionValue, RestrictedExpr, Type, Value, ValueKind,
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
@@ -223,6 +225,15 @@ impl std::fmt::Display for IPAddr {
     }
 }
 
+impl From<IPAddr> for RestrictedExpr {
+    fn from(value: IPAddr) -> Self {
+        RestrictedExpr::call_extension_fn(
+            IP_FROM_STR_NAME.clone(),
+            vec![Value::from(value.to_string()).into()],
+        )
+    }
+}
+
 impl ExtensionValue for IPAddr {
     fn typename(&self) -> Name {
         Self::typename()
@@ -303,13 +314,10 @@ fn str_contains_colons_and_dots(s: &str) -> Result<(), String> {
 /// Cedar string
 fn ip_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
-    let function_name = names::IP_FROM_STR_NAME.clone();
     let arg_source_loc = arg.source_loc().cloned();
-    let ipaddr = ExtensionValueWithArgs::new(
-        Arc::new(IPAddr::from_str(str.as_str()).map_err(extension_err)?),
-        function_name,
-        vec![arg.into()],
-    );
+    let ipaddr = RepresentableExtensionValue::new(Arc::new(
+        IPAddr::from_str(str.as_str()).map_err(extension_err)?,
+    ));
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(ipaddr)),
         loc: arg_source_loc, // this gives the loc of the arg. We could perhaps give instead the loc of the entire `ip("...")` call, but that is hard to do at this program point
@@ -605,12 +613,12 @@ mod tests {
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(ip("127.0.0.1"), ip("10.0.0.10"))),
             Err(EvaluationError::TypeError(evaluation_errors::TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}]);
                 assert_eq!(actual, Type::Extension {
                     name: Name::parse_unqualified_name("ipaddr")
                         .expect("should be a valid identifier")
                 });
-                assert_eq!(advice, None);
+                assert_eq!(advice, Some("Only extension types `datetime` and `duration` support operator overloading".into()));
             }
         );
         // test that isIpv4 on a String is an error

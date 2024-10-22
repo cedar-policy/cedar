@@ -50,7 +50,7 @@ pub enum ValueKind {
     /// Evaluating an `Expr` can result in a first-class anonymous record (keyed on String)
     Record(Arc<BTreeMap<SmolStr, Value>>),
     /// Evaluating an `Expr` can result in an extension value
-    ExtensionValue(Arc<ExtensionValueWithArgs>),
+    ExtensionValue(Arc<RepresentableExtensionValue>),
 }
 
 // Custom impl of `Ord`, ignoring the `Loc`s

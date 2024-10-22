@@ -1224,7 +1224,7 @@ mod json_parsing_tests {
             alice.get("toast").cloned().map(RestrictedExpr::try_from),
             Some(Ok(RestrictedExpr::call_extension_fn(
                 "decimal".parse().expect("should be a valid Name"),
-                vec![RestrictedExpr::val("33.47")],
+                vec![RestrictedExpr::val("33.4700")],
             ))),
         );
         assert_eq!(
@@ -2353,7 +2353,7 @@ mod schema_based_parsing_tests {
             parsed.get("home_ip").cloned().map(RestrictedExpr::try_from),
             Some(Ok(RestrictedExpr::call_extension_fn(
                 Name::parse_unqualified_name("ip").expect("valid"),
-                vec![RestrictedExpr::val("222.222.222.101")]
+                vec![RestrictedExpr::val("222.222.222.101/32")]
             ))),
         );
         assert_eq!(
@@ -2370,7 +2370,7 @@ mod schema_based_parsing_tests {
                 .map(RestrictedExpr::try_from),
             Some(Ok(RestrictedExpr::call_extension_fn(
                 Name::parse_unqualified_name("decimal").expect("valid"),
-                vec![RestrictedExpr::val("5.7")]
+                vec![RestrictedExpr::val("5.7000")]
             ))),
         );
     }
@@ -2603,7 +2603,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                    .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but it actually has type decimal: `decimal("3.33")`"#)
+                    .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but it actually has type decimal: `decimal("3.3300")`"#)
                     .build()
             );
         });

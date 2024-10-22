@@ -20,7 +20,10 @@
 
 use std::{str::FromStr, vec};
 
-use cedar_policy_core::ast::{BinaryOp, EntityUID, Expr, PatternElem, SlotId, Var};
+use cedar_policy_core::{
+    ast::{BinaryOp, EntityUID, Expr, PatternElem, SlotId, Var},
+    extensions::Extensions,
+};
 use serde_json::json;
 use smol_str::SmolStr;
 
@@ -212,10 +215,13 @@ fn and_typecheck_fails() {
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
-        ValidationError::expected_type(
+        ValidationError::expected_one_of_types(
             get_loc(src, "false"),
             expr_id_placeholder(),
-            Type::primitive_long(),
+            Extensions::types_with_operator_overloading()
+                .into_iter()
+                .map(Type::extension)
+                .chain(std::iter::once(Type::primitive_long())),
             Type::singleton_boolean(false),
             None,
         )
@@ -227,10 +233,13 @@ fn and_typecheck_fails() {
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
-        ValidationError::expected_type(
+        ValidationError::expected_one_of_types(
             get_loc(src, "false"),
             expr_id_placeholder(),
-            Type::primitive_long(),
+            Extensions::types_with_operator_overloading()
+                .into_iter()
+                .map(Type::extension)
+                .chain(std::iter::once(Type::primitive_long())),
             Type::singleton_boolean(false),
             None,
         )
@@ -352,10 +361,13 @@ fn or_typecheck_fails() {
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
-        ValidationError::expected_type(
+        ValidationError::expected_one_of_types(
             get_loc(src, "true"),
             expr_id_placeholder(),
-            Type::primitive_long(),
+            Extensions::types_with_operator_overloading()
+                .into_iter()
+                .map(Type::extension)
+                .chain(std::iter::once(Type::primitive_long())),
             Type::singleton_boolean(true),
             None,
         )
@@ -367,10 +379,13 @@ fn or_typecheck_fails() {
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
-        ValidationError::expected_type(
+        ValidationError::expected_one_of_types(
             get_loc(src, "false"),
             expr_id_placeholder(),
-            Type::primitive_long(),
+            Extensions::types_with_operator_overloading()
+                .into_iter()
+                .map(Type::extension)
+                .chain(std::iter::once(Type::primitive_long())),
             Type::singleton_boolean(false),
             None,
         )
@@ -382,10 +397,13 @@ fn or_typecheck_fails() {
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
-        ValidationError::expected_type(
+        ValidationError::expected_one_of_types(
             get_loc(src, "true"),
             expr_id_placeholder(),
-            Type::primitive_long(),
+            Extensions::types_with_operator_overloading()
+                .into_iter()
+                .map(Type::extension)
+                .chain(std::iter::once(Type::primitive_long())),
             Type::singleton_boolean(true),
             None,
         )
@@ -1026,17 +1044,23 @@ fn less_than_typecheck_fails() {
     assert_sets_equal(
         errors,
         [
-            ValidationError::expected_type(
+            ValidationError::expected_one_of_types(
                 get_loc(src, "true"),
                 expr_id_placeholder(),
-                Type::primitive_long(),
+                Extensions::types_with_operator_overloading()
+                    .into_iter()
+                    .map(Type::extension)
+                    .chain(std::iter::once(Type::primitive_long())),
                 Type::singleton_boolean(true),
                 None,
             ),
-            ValidationError::expected_type(
+            ValidationError::expected_one_of_types(
                 get_loc(src, "false"),
                 expr_id_placeholder(),
-                Type::primitive_long(),
+                Extensions::types_with_operator_overloading()
+                    .into_iter()
+                    .map(Type::extension)
+                    .chain(std::iter::once(Type::primitive_long())),
                 Type::singleton_boolean(false),
                 None,
             ),

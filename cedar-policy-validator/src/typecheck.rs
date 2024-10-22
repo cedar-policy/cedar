@@ -1248,32 +1248,36 @@ impl<'a> Typechecker<'a> {
             }
 
             BinaryOp::Less | BinaryOp::LessEq => {
+                let expected_types = Extensions::types_with_operator_overloading()
+                    .into_iter()
+                    .map(Type::extension)
+                    .chain(std::iter::once(Type::primitive_long()))
+                    .collect_vec();
                 let ans_arg1 = self.expect_one_of_types(
                     request_env,
                     prior_capability,
                     arg1,
-                    &Extensions::types_with_operator_overloading()
-                        .into_iter()
-                        .map(Type::extension)
-                        .chain(std::iter::once(Type::primitive_long()))
-                        .collect_vec(),
+                    &expected_types,
                     type_errors,
                     |_| None,
                 );
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
-                    // PANIC SAFETY: the closure is applied when previous operation succeeds and hence `expr_ty_arg1` should have a type
-                    #[allow(clippy::unwrap_used)]
-                    let expected_type = expr_ty_arg1.data().as_ref().unwrap();
-                    let ans_arg2 = self.expect_type(
+                    let ans_arg2 = self.expect_one_of_types(
                         request_env,
                         prior_capability,
                         arg2,
-                        expected_type.clone(),
+                        &expected_types,
                         type_errors,
                         |_| None,
                     );
                     ans_arg2.then_typecheck(|expr_ty_arg2, _| {
-                        TypecheckAnswer::success(
+                        let outcome = if expr_ty_arg1.data() == expr_ty_arg2.data() {
+                            TypecheckAnswer::success
+                        } else {
+                            TypecheckAnswer::fail
+                        };
+
+                        outcome(
                             ExprBuilder::with_data(Some(Type::primitive_boolean()))
                                 .with_same_source_loc(bin_expr)
                                 .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
