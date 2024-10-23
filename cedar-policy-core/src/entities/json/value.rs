@@ -361,6 +361,8 @@ impl CedarValueJson {
             }
             ValueKind::ExtensionValue(ev) => {
                 let restricted_expr = ev.value().into_restricted_expr();
+                // PANIC SAFETY: `ev.value()` must be a function call
+                #[allow(clippy::unwrap_used)]
                 let (func, args) = restricted_expr.as_extn_fn_call().unwrap();
                 Ok(Self::ExtnEscape {
                     __extn: FnAndArg {
