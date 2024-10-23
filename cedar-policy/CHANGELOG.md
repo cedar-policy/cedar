@@ -12,6 +12,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ## [Unreleased]
 Cedar Language Version: TBD
 
+### Added
+
+- Added protobuf schemas and (de)serialization code using on `prost` crate behind the experimental `protobufs` flag.
+
 ### Fixed
 
 - Some misleading parser errors for JSON schema with mistakes in nested attribute definitions (#1270, resolving #417)
