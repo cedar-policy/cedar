@@ -1066,6 +1066,11 @@ fn less_than_typecheck_fails() {
             ),
         ],
     );
+
+    let src = r#"duration("1d") < 1"#;
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    println!("{errors:?}");
 }
 
 #[test]
