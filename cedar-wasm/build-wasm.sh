@@ -84,6 +84,9 @@ process_types_file() {
     s/{[[:space:]]*\.: /{ ".": /g
     s/ | __skip//g
     s/ { .*: __skip } |//g
+    # Workaround for wasm-bindgen issue resulting in malformed return type Array
+    # without generic paramter. See https://github.com/rustwasm/wasm-bindgen/issues/4207
+    s/[[:space:]]Array;/ number[];/g
     ' "$types_file" > "$types_file.tmp" && mv "$types_file.tmp" "$types_file"
 
     echo "type SmolStr = string;" >> "$types_file"
