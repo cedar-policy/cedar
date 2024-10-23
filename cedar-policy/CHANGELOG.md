@@ -20,6 +20,8 @@ Cedar Language Version: TBD
 
 - The error associated with parsing a non-existent extension function additionally
   includes a suggestion based on available extension functions (#1280, resolving #332).
+- The error associated with parsing a non-existent extension method additionally
+  includes a suggestion based on available extension functions (#1289, resolving #246).
 
 ### Fixed
 
