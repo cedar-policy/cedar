@@ -43,6 +43,12 @@ use crate::{
     types::{Attributes, EntityRecordKind, OpenTag, Type},
 };
 
+#[cfg(feature = "protobufs")]
+use crate::proto;
+
+#[cfg(feature = "protobufs")]
+use cedar_policy_core::ast;
+
 mod action;
 pub use action::ValidatorActionId;
 pub(crate) use action::ValidatorApplySpec;
@@ -842,6 +848,74 @@ impl ValidatorSchema {
             extensions,
         )
         .map_err(Into::into)
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&ValidatorSchema> for proto::ValidatorSchema {
+    fn from(v: &ValidatorSchema) -> Self {
+        Self {
+            entity_types: v
+                .entity_types
+                .iter()
+                .map(|(k, v)| proto::EntityTypeWithTypesMap {
+                    key: Some(ast::proto::EntityType::from(k)),
+                    value: Some(proto::ValidatorEntityType::from(v)),
+                })
+                .collect(),
+            action_ids: v
+                .action_ids
+                .iter()
+                .map(|(k, v)| proto::EntityUidWithActionIdsMap {
+                    key: Some(ast::proto::EntityUid::from(k)),
+                    value: Some(proto::ValidatorActionId::from(v)),
+                })
+                .collect(),
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::ValidatorSchema> for ValidatorSchema {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::ValidatorSchema) -> Self {
+        Self {
+            entity_types: v
+                .entity_types
+                .iter()
+                .map(|kvp| {
+                    let k = ast::EntityType::from(
+                        kvp.key
+                            .as_ref()
+                            .expect("`as_ref()` for field that should exist"),
+                    );
+                    let v = ValidatorEntityType::from(
+                        kvp.value
+                            .as_ref()
+                            .expect("`as_ref()` for field that should exist"),
+                    );
+                    (k, v)
+                })
+                .collect(),
+            action_ids: v
+                .action_ids
+                .iter()
+                .map(|kvp| {
+                    let k = ast::EntityUID::from(
+                        kvp.key
+                            .as_ref()
+                            .expect("`as_ref()` for field that should exist"),
+                    );
+                    let v = ValidatorActionId::from(
+                        kvp.value
+                            .as_ref()
+                            .expect("`as_ref()` for field that should exist"),
+                    );
+                    (k, v)
+                })
+                .collect(),
+        }
     }
 }
 

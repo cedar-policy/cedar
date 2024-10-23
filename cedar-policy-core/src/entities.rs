@@ -358,6 +358,57 @@ impl std::fmt::Display for Entities {
     }
 }
 
+#[cfg(feature = "protobufs")]
+impl From<&proto::Entities> for Entities {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::Entities) -> Self {
+        let entities: Vec<Entity> = v.entities.iter().map(Entity::from).collect();
+
+        #[cfg(not(feature = "partial-eval"))]
+        let result = Entities::new();
+
+        #[cfg(feature = "partial-eval")]
+        let mut result = Entities::new();
+        #[cfg(feature = "partial-eval")]
+        if v.mode == crate::entities::proto::Mode::Partial as i32 {
+            result = result.partial();
+        }
+
+        result
+            .add_entities(
+                entities,
+                None::<&NoEntitiesSchema>,
+                TCComputation::AssumeAlreadyComputed,
+                Extensions::none(),
+            )
+            .expect("Should be able to add entities")
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&Entities> for proto::Entities {
+    fn from(v: &Entities) -> Self {
+        let mut entities: Vec<proto::Entity> = Vec::with_capacity(v.entities.len());
+        for entity in v.entities.values() {
+            entities.push(proto::Entity::from(entity));
+        }
+
+        #[cfg(feature = "partial-eval")]
+        if v.mode == Mode::Partial {
+            return Self {
+                entities: entities,
+                mode: crate::entities::proto::Mode::Partial.into(),
+            };
+        }
+
+        Self {
+            entities: entities,
+            mode: proto::Mode::Concrete.into(),
+        }
+    }
+}
+
 /// Results from dereferencing values from the Entity Store
 #[derive(Debug, Clone)]
 pub enum Dereference<'a, T> {
@@ -3456,5 +3507,73 @@ mod schema_based_parsing_tests {
                     .build()
             );
         });
+    }
+}
+
+#[cfg(feature = "protobufs")]
+#[cfg(test)]
+pub mod protobuf_tests {
+    use super::*;
+    use smol_str::SmolStr;
+    use std::collections::{BTreeMap, HashSet};
+    use std::iter;
+
+    #[test]
+    fn roundtrip() {
+        // Empty Test
+        let entities1: Entities = Entities::new();
+        assert_eq!(
+            entities1,
+            Entities::from(&proto::Entities::from(&entities1))
+        );
+
+        // Single Element Test
+        let attrs = (1..=7)
+            .map(|id| (format!("{id}").into(), RestrictedExpr::val(true)))
+            .collect::<HashMap<SmolStr, _>>();
+        let entity: Entity = Entity::new(
+            r#"Foo::"bar""#.parse().unwrap(),
+            attrs.clone(),
+            HashSet::new(),
+            BTreeMap::new(),
+            &Extensions::none(),
+        )
+        .unwrap();
+        let mut entities2: Entities = Entities::new();
+        entities2 = entities2
+            .add_entities(
+                iter::once(entity.clone()),
+                None::<&NoEntitiesSchema>,
+                TCComputation::AssumeAlreadyComputed,
+                Extensions::none(),
+            )
+            .unwrap();
+        assert_eq!(
+            entities2,
+            Entities::from(&proto::Entities::from(&entities2))
+        );
+
+        // Two Element Test
+        let entity2: Entity = Entity::new(
+            r#"Bar::"foo""#.parse().unwrap(),
+            attrs.clone(),
+            HashSet::new(),
+            BTreeMap::new(),
+            &Extensions::none(),
+        )
+        .unwrap();
+        let mut entities3: Entities = Entities::new();
+        entities3 = entities3
+            .add_entities(
+                iter::once(entity.clone()).chain(iter::once(entity2)),
+                None::<&NoEntitiesSchema>,
+                TCComputation::AssumeAlreadyComputed,
+                Extensions::none(),
+            )
+            .unwrap();
+        assert_eq!(
+            entities3,
+            Entities::from(&proto::Entities::from(&entities3))
+        );
     }
 }
