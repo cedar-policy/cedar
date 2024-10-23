@@ -28,6 +28,9 @@ use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::Loc;
 use crate::FromNormalizedStr;
 
+#[cfg(feature = "protobufs")]
+use crate::ast::proto;
+
 use super::{PrincipalOrResource, UnreservedId};
 use thiserror::Error;
 
@@ -351,6 +354,26 @@ impl std::fmt::Display for SlotId {
     }
 }
 
+#[cfg(feature = "protobufs")]
+impl From<&proto::SlotId> for SlotId {
+    fn from(v: &proto::SlotId) -> Self {
+        match v {
+            proto::SlotId::Principal => SlotId::principal(),
+            proto::SlotId::Resource => SlotId::resource(),
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&SlotId> for proto::SlotId {
+    fn from(v: &SlotId) -> Self {
+        match v {
+            SlotId(ValidSlotId::Principal) => proto::SlotId::Principal,
+            SlotId(ValidSlotId::Resource) => proto::SlotId::Resource,
+        }
+    }
+}
+
 /// Two possible variants for Slots
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub(crate) enum ValidSlotId {
@@ -528,6 +551,35 @@ impl Name {
     }
 }
 
+#[cfg(feature = "protobufs")]
+impl From<&proto::Name> for Name {
+    fn from(v: &proto::Name) -> Self {
+        let loc: Option<Loc> = v.loc.as_ref().map(Loc::from);
+        let path: Arc<Vec<Id>> = Arc::new(v.path.iter().map(Id::new_unchecked).collect());
+        Self(InternalName {
+            id: Id::new_unchecked(&v.id),
+            path: path,
+            loc: loc,
+        })
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&Name> for proto::Name {
+    fn from(v: &Name) -> Self {
+        let mut path: Vec<String> = Vec::with_capacity(v.0.path.as_ref().len());
+        for value in v.0.path.as_ref() {
+            path.push(String::from(value.as_ref()));
+        }
+
+        Self {
+            id: String::from(v.0.id.as_ref()),
+            path: path,
+            loc: v.0.loc.as_ref().map(proto::Loc::from),
+        }
+    }
+}
+
 /// Error when a reserved name is used where it is not allowed
 #[derive(Debug, Clone, PartialEq, Eq, Error, Diagnostic, Hash)]
 #[error("The name `{0}` contains `__cedar`, which is reserved")]
@@ -663,6 +715,19 @@ mod test {
                 .qualify_with(None)
                 .to_smolstr()
         )
+    }
+
+    #[cfg(feature = "protobufs")]
+    #[test]
+    fn protobuf_roundtrip() {
+        let orig_name: Name = Name::from_normalized_str("B::C::D").unwrap();
+        assert_eq!(orig_name, Name::from(&proto::Name::from(&orig_name)));
+
+        let orig_slot1: SlotId = SlotId::principal();
+        assert_eq!(orig_slot1, SlotId::from(&proto::SlotId::from(&orig_slot1)));
+
+        let orig_slot2: SlotId = SlotId::resource();
+        assert_eq!(orig_slot2, SlotId::from(&proto::SlotId::from(&orig_slot2)));
     }
 
     #[test]

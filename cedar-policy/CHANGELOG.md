@@ -12,6 +12,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ## [Unreleased]
 Cedar Language Version: TBD
 
+### Added
+
+- Added protobuf schemas and (de)serialization code using on `prost` crate behind the experimental `protobufs` flag.
+
 ### Changed
 
 - The error associated with parsing a non-existent extension function additionally
