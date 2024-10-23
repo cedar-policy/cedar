@@ -37,11 +37,9 @@ use std::collections::HashSet;
 #[cfg(feature = "level-validate")]
 mod level_validate;
 
+mod coreschema;
 #[cfg(feature = "entity-manifest")]
 pub mod entity_manifest;
-mod err;
-pub use err::*;
-mod coreschema;
 pub use coreschema::*;
 mod diagnostics;
 pub use diagnostics::*;
@@ -51,6 +49,7 @@ mod extensions;
 mod fuzzy_match;
 mod rbac;
 mod schema;
+pub use schema::err::*;
 pub use schema::*;
 pub mod json_schema;
 mod str_checks;

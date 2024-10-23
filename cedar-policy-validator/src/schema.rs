@@ -37,8 +37,6 @@ use smol_str::ToSmolStr;
 
 use crate::{
     cedar_schema::SchemaWarning,
-    err::schema_errors::*,
-    err::*,
     json_schema,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
 };
@@ -53,6 +51,8 @@ pub(crate) use namespace_def::try_jsonschema_type_into_validator_type;
 pub use namespace_def::ValidatorNamespaceDef;
 mod raw_name;
 pub use raw_name::{ConditionalName, RawName, ReferenceType};
+pub(crate) mod err;
+use err::{schema_errors::*, *};
 
 /// Configurable validator behaviors regarding actions
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Default)]
