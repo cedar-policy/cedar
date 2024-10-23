@@ -490,8 +490,26 @@ impl ast::UnreservedId {
                         )
                         .into())
                     } else {
+                        fn suggest_method(
+                            name: &ast::UnreservedId,
+                            methods: &HashSet<ast::UnreservedId>,
+                        ) -> Option<String> {
+                            const SUGGEST_METHOD_MAX_DISTANCE: usize = 3;
+                            let method_names =
+                                methods.iter().map(ToString::to_string).collect::<Vec<_>>();
+                            let suggested_method = fuzzy_search_limited(
+                                &name.to_string(),
+                                method_names.as_slice(),
+                                Some(SUGGEST_METHOD_MAX_DISTANCE),
+                            );
+                            suggested_method.map(|m| format!("did you mean `{m}`?"))
+                        }
+                        let hint = suggest_method(&self, &EXTENSION_STYLES.methods);
                         Err(ToASTError::new(
-                            ToASTErrorKind::UnknownMethod(self.clone()),
+                            ToASTErrorKind::UnknownMethod {
+                                id: self.clone(),
+                                hint,
+                            },
                             loc.clone(),
                         )
                         .into())
@@ -4017,6 +4035,13 @@ mod tests {
                 "[].bar()",
                 ExpectedErrorMessageBuilder::error("`bar` is not a valid method")
                     .exactly_one_underline("[].bar()")
+                    .build(),
+            ),
+            (
+                "principal.addr.isipv4()",
+                ExpectedErrorMessageBuilder::error("`isipv4` is not a valid method")
+                    .exactly_one_underline("principal.addr.isipv4()")
+                    .help("did you mean `isIpv4`?")
                     .build(),
             ),
             (
