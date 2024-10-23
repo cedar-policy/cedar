@@ -16,6 +16,11 @@ Cedar Language Version: TBD
 
 - Added protobuf schemas and (de)serialization code using on `prost` crate behind the experimental `protobufs` flag.
 
+### Changed
+
+- The error associated with parsing a non-existent extension function additionally
+  includes a suggestion based on available extension functions (#1280, resolving #332).
+
 ### Fixed
 
 - Some misleading parser errors for JSON schema with mistakes in nested attribute definitions (#1270, resolving #417)
