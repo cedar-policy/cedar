@@ -15,7 +15,6 @@
  */
 
 //! This module contains the Cedar 'datetime' extension.
-
 use std::{fmt::Display, i64, sync::Arc};
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta};
@@ -167,7 +166,8 @@ fn offset(datetime: Value, duration: Value) -> evaluator::Result<ExtensionOutput
     let ret = datetime.offset(duration.clone()).ok_or(extension_err(
         format!(
             "overflows when adding an offset: {}+({})",
-            datetime, duration
+            RestrictedExpr::from(datetime.clone()),
+            duration
         ),
         &OFFSET_METHOD_NAME,
     ))?;
@@ -183,7 +183,11 @@ fn duration_since(lhs: Value, rhs: Value) -> evaluator::Result<ExtensionOutputVa
     let lhs = as_datetime(&lhs)?;
     let rhs = as_datetime(&rhs)?;
     let ret = lhs.duration_since(rhs.clone()).ok_or(extension_err(
-        format!("overflows when computing the duration between {lhs} and {rhs}",),
+        format!(
+            "overflows when computing the duration between {} and {}",
+            RestrictedExpr::from(lhs.clone()),
+            RestrictedExpr::from(rhs.clone())
+        ),
         &DURATION_SINCE_NAME,
     ))?;
     let e = RepresentableExtensionValue::new(Arc::new(ret.clone()));
@@ -216,34 +220,6 @@ fn to_time(value: Value) -> evaluator::Result<ExtensionOutputValue> {
     .into())
 }
 
-// Note that this implementation cannot always generate valid input strings
-// because they only represent a small subset of `datetime`
-// And we just use `NaiveDateTime`'s implementation, which does not pad
-// milliseconds with leading zeros
-impl Display for DateTime {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.epoch {
-            i64::MIN => {
-                // PANIC SAFETY: `i64::MIN` + 1 is a valid millisecond for `TimeDelta`
-                #[allow(clippy::unwrap_used)]
-                let delta = TimeDelta::try_milliseconds(i64::MIN + 1).unwrap();
-                // PANIC SAFETY: 1 is a valid millisecond for `TimeDelta`
-                #[allow(clippy::unwrap_used)]
-                let date_time =
-                    NaiveDateTime::UNIX_EPOCH + delta - TimeDelta::try_milliseconds(1).unwrap();
-                date_time.fmt(f)
-            }
-            _ => {
-                // PANIC SAFETY: any `i64` other than `i64::MIN` is a valid millisecond for `TimeDelta`
-                #[allow(clippy::unwrap_used)]
-                let delta = TimeDelta::try_milliseconds(self.epoch).unwrap();
-                let date_time = NaiveDateTime::UNIX_EPOCH + delta;
-                date_time.fmt(f)
-            }
-        }
-    }
-}
-
 impl ExtensionValue for DateTime {
     fn typename(&self) -> crate::ast::Name {
         DATETIME_CONSTRUCTOR_NAME.to_owned()
@@ -266,9 +242,19 @@ impl DateTime {
             .map(|ms| Duration { ms })
     }
 
+    // essentially `self.epoch.div_floor(Self::DAY_IN_MILLISECONDS) * Self::DAY_IN_MILLISECONDS`
+    // but `div_floor` is only available on nightly
     fn to_date(&self) -> Self {
         Self {
-            epoch: (self.epoch / Self::DAY_IN_MILLISECONDS) * Self::DAY_IN_MILLISECONDS,
+            epoch: if self.epoch < 0 {
+                if self.epoch % Self::DAY_IN_MILLISECONDS == 0 {
+                    self.epoch
+                } else {
+                    (self.epoch / Self::DAY_IN_MILLISECONDS - 1) * Self::DAY_IN_MILLISECONDS
+                }
+            } else {
+                (self.epoch / Self::DAY_IN_MILLISECONDS) * Self::DAY_IN_MILLISECONDS
+            },
         }
     }
 
@@ -708,6 +694,8 @@ mod tests {
             parse_datetime("10000-01-01T00:00:00Z"),
             Err(DateTimeParseError::InvalidDatePattern)
         );
+        assert_matches!(parse_datetime("2024-00-01"), Err(DateTimeParseError::InvalidDate(s)) if s == "2024-00-01");
+        assert_matches!(parse_datetime("2024-01-00"), Err(DateTimeParseError::InvalidDate(s)) if s == "2024-01-00");
         assert_matches!(parse_datetime("2024-02-30"), Err(DateTimeParseError::InvalidDate(s)) if s == "2024-02-30");
         assert_matches!(parse_datetime("2025-02-29"), Err(DateTimeParseError::InvalidDate(s)) if s == "2025-02-29");
         assert_matches!(parse_datetime("2024-20-01"), Err(DateTimeParseError::InvalidDate(s)) if s == "2024-20-01");
@@ -953,9 +941,18 @@ mod tests {
             yesterday.duration_since(today.clone()),
             Some(parse_duration("-1d").unwrap())
         );
+        let some_day_before_unix_epoch: DateTime = parse_datetime("1900-01-01").unwrap().into();
 
-        assert_eq!(today.to_date(), today);
-        assert_eq!(yesterday.to_date(), yesterday);
-        assert_eq!(unix_epoch.to_date(), unix_epoch);
+        let max_day_offset = parse_duration("23h59m59s999ms").unwrap();
+        let min_day_offset = parse_duration("-23h59m59s999ms").unwrap();
+
+        for d in [today, yesterday, unix_epoch, some_day_before_unix_epoch] {
+            assert_eq!(d.to_date(), d);
+            assert_eq!(d.offset(max_day_offset.clone()).unwrap().to_date(), d);
+            assert_eq!(
+                d.offset(min_day_offset.clone()).unwrap().to_date(),
+                d.offset(parse_duration("-1d").unwrap()).unwrap()
+            );
+        }
     }
 }

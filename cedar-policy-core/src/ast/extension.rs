@@ -21,7 +21,7 @@ use crate::entities::SchemaType;
 use crate::evaluator;
 use std::any::Any;
 use std::collections::HashMap;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::Arc;
 
@@ -358,7 +358,7 @@ impl std::fmt::Debug for ExtensionFunction {
 /// Anything implementing this trait can be used as a first-class value in
 /// Cedar. For instance, the `ipaddr` extension uses this mechanism
 /// to implement IPAddr as a Cedar first-class value.
-pub trait ExtensionValue: Debug + Display + Send + Sync + UnwindSafe + RefUnwindSafe {
+pub trait ExtensionValue: Debug + Send + Sync + UnwindSafe + RefUnwindSafe {
     /// Get the name of the type of this value.
     ///
     /// Cedar has nominal typing, so two values have the same type iff they
@@ -412,12 +412,6 @@ impl From<RepresentableExtensionValue> for Expr {
 impl StaticallyTyped for RepresentableExtensionValue {
     fn type_of(&self) -> Type {
         self.value.type_of()
-    }
-}
-
-impl Display for RepresentableExtensionValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
     }
 }
 

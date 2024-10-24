@@ -517,7 +517,7 @@ impl std::fmt::Display for ValueKind {
             Self::Record(record) => {
                 write!(f, "<first-class record with {} fields>", record.len())
             }
-            Self::ExtensionValue(ev) => write!(f, "{}", ev),
+            Self::ExtensionValue(ev) => write!(f, "{}", ev.value().into_restricted_expr()),
         }
     }
 }

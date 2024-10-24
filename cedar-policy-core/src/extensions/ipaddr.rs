@@ -642,13 +642,13 @@ mod tests {
             eval.interpret_inline_policy(&ip("127.0.0.1"))
                 .unwrap()
                 .to_string(),
-            "127.0.0.1/32"
+            r#"ip("127.0.0.1/32")"#
         );
         assert_eq!(
             eval.interpret_inline_policy(&ip("ffee::11"))
                 .unwrap()
                 .to_string(),
-            "ffee::11/128"
+            r#"ip("ffee::11/128")"#
         );
     }
 
@@ -712,25 +712,25 @@ mod tests {
             eval.interpret_inline_policy(&ip("127.0.0.1/0"))
                 .unwrap()
                 .to_string(),
-            "127.0.0.1/0"
+            r#"ip("127.0.0.1/0")"#
         );
         assert_eq!(
             eval.interpret_inline_policy(&ip("127.0.0.1/8"))
                 .unwrap()
                 .to_string(),
-            "127.0.0.1/8"
+            r#"ip("127.0.0.1/8")"#
         );
         assert_eq!(
             eval.interpret_inline_policy(&ip("127.0.0.1/32"))
                 .unwrap()
                 .to_string(),
-            "127.0.0.1/32"
+            r#"ip("127.0.0.1/32")"#
         );
         assert_eq!(
             eval.interpret_inline_policy(&ip("ffee::/64"))
                 .unwrap()
                 .to_string(),
-            "ffee::/64"
+            r#"ip("ffee::/64")"#
         );
     }
 
