@@ -380,7 +380,7 @@ fn duration_method(
 #[derive(Debug, Clone, Error, Diagnostic)]
 enum DurationParseError {
     #[error("invalid duration pattern")]
-    #[help("A valid duration string is a concatenated sequence of quantity-unit pairs")]
+    #[help("A valid duration string is a concatenated sequence of quantity-unit pairs with an optional `-` at the beginning")]
     InvalidPattern,
     #[error("Duration overflows internal representation")]
     #[help("A duration in milliseconds must be representable by a signed 64 bit integer")]
@@ -388,6 +388,9 @@ enum DurationParseError {
 }
 
 fn parse_duration(s: &str) -> Result<Duration, DurationParseError> {
+    if s.is_empty() || s == "-" {
+        return Err(DurationParseError::InvalidPattern);
+    }
     let captures = DURATION_PATTERN
         .captures(s)
         .ok_or(DurationParseError::InvalidPattern)?;
@@ -853,6 +856,14 @@ mod tests {
 
     #[test]
     fn parse_duration_neg() {
+        for s in [
+            "", "a", "-", "-1", "➖1ms", "11dd", "00000mm", "-d", "-h", "-1hh", "-h2d", "-ms",
+            // incorrect ordering
+            "1ms1s", "1ms1m", "1ms1h", "0ms1d", "1s1m", "1s1h", "0s0d", "0m0h", "0m0d", "1h1d",
+            "1ms1m1d",
+        ] {
+            assert!(parse_duration(s).is_err());
+        }
         assert!(parse_duration(&milliseconds_to_duration(i64::MAX as i128 + 1)).is_err());
         assert!(parse_duration(&milliseconds_to_duration(i64::MIN as i128 - 1)).is_err());
     }
