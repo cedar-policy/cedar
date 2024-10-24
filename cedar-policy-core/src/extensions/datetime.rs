@@ -955,4 +955,36 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_predicates() {
+        let unix_epoch = DateTime { epoch: 0 };
+        let today: DateTime = parse_datetime("2024-10-24").unwrap().into();
+        let yesterday: DateTime = parse_datetime("2024-10-23").unwrap().into();
+        let some_day_before_unix_epoch: DateTime = parse_datetime("1900-01-01").unwrap().into();
+        assert!(unix_epoch <= unix_epoch);
+        assert!(today == today);
+        assert!(today != yesterday);
+        assert!(unix_epoch < today);
+        assert!(today > yesterday);
+        assert!(some_day_before_unix_epoch <= unix_epoch);
+        assert!(today >= some_day_before_unix_epoch);
+        assert!(yesterday >= some_day_before_unix_epoch);
+    }
+
+    #[test]
+    fn test_duration_methods() {
+        let day_offset = parse_duration("10d23h59m58s999ms").unwrap();
+        let day_offset_neg = parse_duration("-10d23h59m58s999ms").unwrap();
+        for o in [day_offset, day_offset_neg] {
+            assert_eq!(o.to_days().abs(), 10);
+            assert_eq!(o.to_hours().abs(), 10 * 24 + 23);
+            assert_eq!(o.to_minutes().abs(), (10 * 24 + 23) * 60 + 59);
+            assert_eq!(o.to_seconds().abs(), ((10 * 24 + 23) * 60 + 59) * 60 + 58);
+            assert_eq!(
+                o.to_milliseconds().abs(),
+                (((10 * 24 + 23) * 60 + 59) * 60 + 58) * 1000 + 999
+            );
+        }
+    }
 }
