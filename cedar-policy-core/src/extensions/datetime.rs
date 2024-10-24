@@ -57,16 +57,6 @@ mod constants {
         pub static ref TO_MINUTES_NAME : Name = Name::parse_unqualified_name("toMinutes").expect("should be a valid identifier");
         pub static ref TO_HOURS_NAME : Name = Name::parse_unqualified_name("toHours").expect("should be a valid identifier");
         pub static ref TO_DAYS_NAME : Name = Name::parse_unqualified_name("toDays").expect("should be a valid identifier");
-        /*
-        pub static ref DATETIME_BEFORE : Name = Name::parse_unqualified_name("before").expect("should be a valid identifier");
-        pub static ref DATETIME_BEFORE_OR_EQUAL : Name = Name::parse_unqualified_name("beforeOrEqualTo").expect("should be a valid identifier");
-        pub static ref DATETIME_AFTER : Name = Name::parse_unqualified_name("after").expect("should be a valid identifier");
-        pub static ref DATETIME_AFTER_OR_EQUAL : Name = Name::parse_unqualified_name("afterOrEqualTo").expect("should be a valid identifier");
-        pub static ref DURATION_SHORTER_THAN : Name = Name::parse_unqualified_name("shorterThan").expect("should be a valid identifier");
-        pub static ref DURATION_SHORTER_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("shorterThanOrEqualTo").expect("should be a valid identifier");
-        pub static ref DURATION_LONGER_THAN : Name = Name::parse_unqualified_name("longerThan").expect("should be a valid identifier");
-        pub static ref DURATION_LONGER_THAN_OR_EQUAL : Name = Name::parse_unqualified_name("longerThanOrEqualTo").expect("should be a valid identifier");
-         */
     }
 
     // Global regex, initialized at first use
@@ -225,22 +215,6 @@ fn to_time(value: Value) -> evaluator::Result<ExtensionOutputValue> {
     }
     .into())
 }
-
-/*
-fn comparison_predicate<Ext>(
-    lhs: &Value,
-    rhs: &Value,
-    cast_func: impl Fn(&Value) -> Result<&Ext, evaluator::EvaluationError>,
-    predicate: impl Fn(&Ext, &Ext) -> bool,
-) -> evaluator::Result<ExtensionOutputValue>
-where
-    Ext: ExtensionValue + std::cmp::Ord + 'static,
-{
-    let lhs = cast_func(lhs)?;
-    let rhs = cast_func(rhs)?;
-    Ok(Value::from(predicate(lhs, rhs)).into())
-}
-*/
 
 // Note that this implementation cannot always generate valid input strings
 // because they only represent a small subset of `datetime`
@@ -606,64 +580,6 @@ pub fn extension() -> Extension {
                 duration_type.clone(),
                 datetime_type.clone(),
             ),
-            /*
-            ExtensionFunction::binary(
-                constants::DATETIME_BEFORE.clone(),
-                CallStyle::MethodStyle,
-                Box::new(|x, y| comparison_predicate(&x, &y, as_datetime, DateTime::lt)),
-                SchemaType::Bool,
-                (datetime_type.clone(), datetime_type.clone()),
-            ),
-            ExtensionFunction::binary(
-                constants::DATETIME_BEFORE_OR_EQUAL.clone(),
-                CallStyle::MethodStyle,
-                Box::new(|x, y| comparison_predicate(&x, &y, as_datetime, DateTime::le)),
-                SchemaType::Bool,
-                (datetime_type.clone(), datetime_type.clone()),
-            ),
-            ExtensionFunction::binary(
-                constants::DATETIME_AFTER.clone(),
-                CallStyle::MethodStyle,
-                Box::new(|x, y| comparison_predicate(&x, &y, as_datetime, DateTime::gt)),
-                SchemaType::Bool,
-                (datetime_type.clone(), datetime_type.clone()),
-            ),
-            ExtensionFunction::binary(
-                constants::DATETIME_AFTER_OR_EQUAL.clone(),
-                CallStyle::MethodStyle,
-                Box::new(|x, y| comparison_predicate(&x, &y, as_datetime, DateTime::ge)),
-                SchemaType::Bool,
-                (datetime_type.clone(), datetime_type.clone()),
-            ),
-            ExtensionFunction::binary(
-                constants::DURATION_SHORTER_THAN.clone(),
-                CallStyle::MethodStyle,
-                Box::new(|x, y| comparison_predicate(&x, &y, as_duration, Duration::lt)),
-                SchemaType::Bool,
-                (duration_type.clone(), duration_type.clone()),
-            ),
-            ExtensionFunction::binary(
-                constants::DURATION_SHORTER_THAN_OR_EQUAL.clone(),
-                CallStyle::MethodStyle,
-                Box::new(|x, y| comparison_predicate(&x, &y, as_duration, Duration::le)),
-                SchemaType::Bool,
-                (duration_type.clone(), duration_type.clone()),
-            ),
-            ExtensionFunction::binary(
-                constants::DURATION_LONGER_THAN.clone(),
-                CallStyle::MethodStyle,
-                Box::new(|x, y| comparison_predicate(&x, &y, as_duration, Duration::gt)),
-                SchemaType::Bool,
-                (duration_type.clone(), duration_type.clone()),
-            ),
-            ExtensionFunction::binary(
-                constants::DURATION_LONGER_THAN_OR_EQUAL.clone(),
-                CallStyle::MethodStyle,
-                Box::new(|x, y| comparison_predicate(&x, &y, as_duration, Duration::ge)),
-                SchemaType::Bool,
-                (duration_type.clone(), duration_type.clone()),
-            ),
-            */
             ExtensionFunction::unary(
                 constants::TO_MILLISECONDS_NAME.clone(),
                 CallStyle::MethodStyle,
