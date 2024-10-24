@@ -40,10 +40,7 @@ impl<'a> CoreSchema<'a> {
     /// Create a new `CoreSchema` for the given `ValidatorSchema`
     pub fn new(schema: &'a ValidatorSchema) -> Self {
         Self {
-            actions: schema
-                .action_entities_iter()
-                .map(|e| (e.uid().clone(), Arc::new(e)))
-                .collect(),
+            actions: schema.actions.clone(),
             schema,
         }
     }
