@@ -21,6 +21,7 @@
 pub(crate) mod test;
 
 mod typecheck_answer;
+use itertools::Itertools;
 pub(crate) use typecheck_answer::TypecheckAnswer;
 
 use std::{borrow::Cow, collections::HashSet, iter::zip};
@@ -37,9 +38,12 @@ use crate::{
     ValidationError, ValidationMode, ValidationWarning,
 };
 
-use cedar_policy_core::ast::{
-    BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
-    PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
+use cedar_policy_core::{
+    ast::{
+        BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
+        PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
+    },
+    extensions::Extensions,
 };
 use cedar_policy_core::fuzzy_match::fuzzy_search;
 
@@ -1244,25 +1248,36 @@ impl<'a> Typechecker<'a> {
             }
 
             BinaryOp::Less | BinaryOp::LessEq => {
-                let ans_arg1 = self.expect_type(
+                let expected_types = Extensions::types_with_operator_overloading()
+                    .into_iter()
+                    .map(Type::extension)
+                    .chain(std::iter::once(Type::primitive_long()))
+                    .collect_vec();
+                let ans_arg1 = self.expect_one_of_types(
                     request_env,
                     prior_capability,
                     arg1,
-                    Type::primitive_long(),
+                    &expected_types,
                     type_errors,
                     |_| None,
                 );
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
-                    let ans_arg2 = self.expect_type(
+                    let ans_arg2 = self.expect_one_of_types(
                         request_env,
                         prior_capability,
                         arg2,
-                        Type::primitive_long(),
+                        &expected_types,
                         type_errors,
                         |_| None,
                     );
                     ans_arg2.then_typecheck(|expr_ty_arg2, _| {
-                        TypecheckAnswer::success(
+                        let outcome = if expr_ty_arg1.data() == expr_ty_arg2.data() {
+                            TypecheckAnswer::success
+                        } else {
+                            TypecheckAnswer::fail
+                        };
+
+                        outcome(
                             ExprBuilder::with_data(Some(Type::primitive_boolean()))
                                 .with_same_source_loc(bin_expr)
                                 .binary_app(*op, expr_ty_arg1, expr_ty_arg2),

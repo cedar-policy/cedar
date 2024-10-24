@@ -387,7 +387,7 @@ mod passes_empty_schema {
 }
 
 mod fails_empty_schema {
-    use cedar_policy_core::ast::PolicyID;
+    use cedar_policy_core::{ast::PolicyID, extensions::Extensions};
 
     use crate::types::Type;
 
@@ -402,10 +402,13 @@ mod fails_empty_schema {
         let src = r#"permit(principal, action, resource) when { principal.foo > "a" };"#;
         assert_typecheck_fails_empty_schema(
             parse_policy(None, src).unwrap(),
-            [ValidationError::expected_type(
+            [ValidationError::expected_one_of_types(
                 get_loc(src, r#""a""#),
                 PolicyID::from_string("policy0"),
-                Type::primitive_long(),
+                Extensions::types_with_operator_overloading()
+                    .into_iter()
+                    .map(Type::extension)
+                    .chain(std::iter::once(Type::primitive_long())),
                 Type::primitive_string(),
                 None,
             )],
@@ -634,7 +637,7 @@ mod passes_partial_schema {
 }
 
 mod fail_partial_schema {
-    use cedar_policy_core::ast::PolicyID;
+    use cedar_policy_core::{ast::PolicyID, extensions::Extensions};
 
     use super::*;
     use crate::validation_errors::{LubContext, LubHelp};
@@ -646,10 +649,13 @@ mod fail_partial_schema {
         let src = r#"permit(principal == User::"alice", action, resource) when { principal.name > principal.unknown };"#;
         assert_typecheck_fails_partial_schema(
             parse_policy(None, src).unwrap(),
-            [ValidationError::expected_type(
+            [ValidationError::expected_one_of_types(
                 get_loc(src, "principal.name"),
                 PolicyID::from_string("policy0"),
-                Type::primitive_long(),
+                Extensions::types_with_operator_overloading()
+                    .into_iter()
+                    .map(Type::extension)
+                    .chain(std::iter::once(Type::primitive_long())),
                 Type::primitive_string(),
                 None,
             )],

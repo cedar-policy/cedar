@@ -3024,7 +3024,7 @@ pub(crate) mod test {
                 &src,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("unknown extension type `partial_evaluation`")
-                    .help("did you mean `decimal`?")
+                    .help("did you mean `duration`?")
                     .build());
         });
     }

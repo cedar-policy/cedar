@@ -3956,7 +3956,9 @@ impl From<ast::Value> for EvalResult {
                     .map(|(k, v)| (k.to_string(), v.clone().into()))
                     .collect(),
             )),
-            ast::ValueKind::ExtensionValue(ev) => Self::ExtensionValue(ev.to_string()),
+            ast::ValueKind::ExtensionValue(ev) => {
+                Self::ExtensionValue(ev.value().into_restricted_expr().to_string())
+            }
         }
     }
 }

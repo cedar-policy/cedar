@@ -37,6 +37,9 @@ pub mod ipaddr;
 #[cfg(feature = "decimal")]
 pub mod decimal;
 
+#[cfg(feature = "datetime")]
+pub mod datetime;
+
 pub mod partial_evaluation;
 
 lazy_static::lazy_static! {
@@ -45,6 +48,8 @@ lazy_static::lazy_static! {
         ipaddr::extension_schema(),
         #[cfg(feature = "decimal")]
         decimal::extension_schema(),
+        #[cfg(feature = "datetime")]
+        datetime::extension_schema(),
         #[cfg(feature = "partial-eval")]
         partial_evaluation::extension_schema(),
     ];
