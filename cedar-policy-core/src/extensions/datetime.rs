@@ -268,7 +268,7 @@ impl DateTime {
 
     fn to_date(&self) -> Self {
         Self {
-            epoch: self.epoch / Self::DAY_IN_MILLISECONDS,
+            epoch: (self.epoch / Self::DAY_IN_MILLISECONDS) * Self::DAY_IN_MILLISECONDS,
         }
     }
 
@@ -639,6 +639,8 @@ mod tests {
         parse_datetime, parse_duration, DateTimeParseError, Duration,
     };
 
+    use super::DateTime;
+
     #[test]
     fn test_parse_pos() {
         let s = "2024-10-15";
@@ -711,6 +713,7 @@ mod tests {
         assert_matches!(parse_datetime("2024-20-01"), Err(DateTimeParseError::InvalidDate(s)) if s == "2024-20-01");
         assert_matches!(parse_datetime("2024-01-32"), Err(DateTimeParseError::InvalidDate(s)) if s == "2024-01-32");
         assert_matches!(parse_datetime("2024-01-99"), Err(DateTimeParseError::InvalidDate(s)) if s == "2024-01-99");
+        assert_matches!(parse_datetime("2024-04-31"), Err(DateTimeParseError::InvalidDate(s)) if s == "2024-04-31");
 
         // invalid hms
         assert_matches!(
@@ -866,5 +869,93 @@ mod tests {
         }
         assert!(parse_duration(&milliseconds_to_duration(i64::MAX as i128 + 1)).is_err());
         assert!(parse_duration(&milliseconds_to_duration(i64::MIN as i128 - 1)).is_err());
+    }
+
+    #[test]
+    fn test_offset() {
+        let unix_epoch = DateTime { epoch: 0 };
+        let date_time_max = unix_epoch
+            .offset(parse_duration(&milliseconds_to_duration(i64::MAX.into())).unwrap())
+            .expect("valid datetime");
+        let date_time_min = unix_epoch
+            .offset(parse_duration(&milliseconds_to_duration(i64::MIN.into())).unwrap())
+            .expect("valid datetime");
+        assert!(date_time_max
+            .offset(parse_duration("1ms").unwrap())
+            .is_none());
+        assert_eq!(
+            date_time_max.offset(parse_duration("-1ms").unwrap()),
+            Some(
+                unix_epoch
+                    .offset(
+                        parse_duration(&milliseconds_to_duration(i64::MAX as i128 - 1)).unwrap()
+                    )
+                    .expect("valid datetime")
+            )
+        );
+        assert!(date_time_min
+            .offset(parse_duration("-1ms").unwrap())
+            .is_none());
+        assert_eq!(
+            date_time_min.offset(parse_duration("1ms").unwrap()),
+            Some(
+                unix_epoch
+                    .offset(
+                        parse_duration(&milliseconds_to_duration(i64::MIN as i128 + 1)).unwrap()
+                    )
+                    .expect("valid datetime")
+            )
+        );
+        assert_eq!(
+            unix_epoch.offset(parse_duration("1d").unwrap()),
+            Some(parse_datetime("1970-01-02").unwrap().into())
+        );
+        assert_eq!(
+            unix_epoch.offset(parse_duration("-1d").unwrap()),
+            Some(parse_datetime("1969-12-31").unwrap().into())
+        );
+    }
+
+    #[test]
+    fn test_duration_since() {
+        let unix_epoch = DateTime { epoch: 0 };
+        let today: DateTime = parse_datetime("2024-10-24").unwrap().into();
+        assert_eq!(
+            today.duration_since(unix_epoch.clone()),
+            Some(parse_duration("20020d").unwrap())
+        );
+        let yesterday: DateTime = parse_datetime("2024-10-23").unwrap().into();
+        assert_eq!(
+            yesterday.duration_since(today.clone()),
+            Some(parse_duration("-1d").unwrap())
+        );
+        assert_eq!(
+            today.duration_since(yesterday),
+            Some(parse_duration("1d").unwrap())
+        );
+
+        let date_time_min = unix_epoch
+            .offset(parse_duration(&milliseconds_to_duration(i64::MIN.into())).unwrap())
+            .expect("valid datetime");
+        assert!(today.duration_since(date_time_min).is_none());
+    }
+
+    #[test]
+    fn test_to_date() {
+        let unix_epoch = DateTime { epoch: 0 };
+        let today: DateTime = parse_datetime("2024-10-24").unwrap().into();
+        assert_eq!(
+            today.duration_since(unix_epoch.clone()),
+            Some(parse_duration("20020d").unwrap())
+        );
+        let yesterday: DateTime = parse_datetime("2024-10-23").unwrap().into();
+        assert_eq!(
+            yesterday.duration_since(today.clone()),
+            Some(parse_duration("-1d").unwrap())
+        );
+
+        assert_eq!(today.to_date(), today);
+        assert_eq!(yesterday.to_date(), yesterday);
+        assert_eq!(unix_epoch.to_date(), unix_epoch);
     }
 }
