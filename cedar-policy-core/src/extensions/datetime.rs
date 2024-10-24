@@ -452,21 +452,27 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
         .captures(s)
         .ok_or(DateTimeParseError::InvalidDatePattern)?
         .extract();
+
+    // It's a closure because we want to perform syntactical check first and
+    // hence delay semantic check
+    // Both checks are from left to right
     // PANIC SAFETY: `year`, `month`, and `day` should be all valid given the limit on the number of digits.
     #[allow(clippy::unwrap_used)]
-    let date = NaiveDate::from_ymd_opt(
-        year.parse().unwrap(),
-        month.parse().unwrap(),
-        day.parse().unwrap(),
-    )
-    .ok_or(DateTimeParseError::InvalidDate(date_str.into()))?;
+    let date = || {
+        NaiveDate::from_ymd_opt(
+            year.parse().unwrap(),
+            month.parse().unwrap(),
+            day.parse().unwrap(),
+        )
+        .ok_or(DateTimeParseError::InvalidDate(date_str.into()))
+    };
 
     // A complete match; simply return
     if date_str.len() == s.len() {
         // PANIC SAFETY: `0`s should be all valid given the limit on the number of digits.
         #[allow(clippy::unwrap_used)]
         return Ok(NaiveDateTime::new(
-            date,
+            date()?,
             NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
         ));
     }
@@ -485,7 +491,6 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
 
     // Get millisecond and offset
     let s = &s[hms_str.len()..];
-
     let captures = MS_AND_OFFSET_PATTERN
         .captures(s)
         .ok_or(DateTimeParseError::InvalidMSOffsetPattern)?;
@@ -496,6 +501,10 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
     } else {
         0
     };
+
+    let date = date()?;
+    let time = NaiveTime::from_hms_milli_opt(h, m, sec, ms)
+        .ok_or(DateTimeParseError::InvalidHMS(hms_str[1..].into()))?;
     let offset: Result<TimeDelta, DateTimeParseError> = if captures.get(4).is_some() {
         let sign = &captures[5] == "+";
         // PANIC SAFETY: should be valid given the limit on the number of digits.
@@ -521,10 +530,7 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
     } else {
         Ok(TimeDelta::default())
     };
-    let time = NaiveTime::from_hms_milli_opt(h, m, sec, ms)
-        .ok_or(DateTimeParseError::InvalidHMS(hms_str.into()))?
-        + offset?;
-    Ok(NaiveDateTime::new(date, time))
+    Ok(NaiveDateTime::new(date, time) + offset?)
 }
 
 /// Construct the extension
@@ -624,8 +630,11 @@ mod tests {
     use std::str::FromStr;
 
     use chrono::NaiveDateTime;
+    use cool_asserts::assert_matches;
 
-    use crate::extensions::datetime::{parse_datetime, parse_duration, Duration};
+    use crate::extensions::datetime::{
+        parse_datetime, parse_duration, DateTimeParseError, Duration,
+    };
 
     #[test]
     fn test_parse_pos() {
@@ -680,6 +689,125 @@ mod tests {
         ] {
             assert!(parse_datetime(s).is_err());
         }
+
+        // invalid dates
+        assert_matches!(
+            parse_datetime("0000-0a-01"),
+            Err(DateTimeParseError::InvalidDatePattern)
+        );
+        assert_matches!(
+            parse_datetime("10000-01-01"),
+            Err(DateTimeParseError::InvalidDatePattern)
+        );
+        assert_matches!(
+            parse_datetime("10000-01-01T00:00:00Z"),
+            Err(DateTimeParseError::InvalidDatePattern)
+        );
+        assert_matches!(parse_datetime("2024-02-30"), Err(DateTimeParseError::InvalidDate(s)) if s == "2024-02-30");
+        assert_matches!(parse_datetime("2025-02-29"), Err(DateTimeParseError::InvalidDate(s)) if s == "2025-02-29");
+        assert_matches!(parse_datetime("2024-20-01"), Err(DateTimeParseError::InvalidDate(s)) if s == "2024-20-01");
+        assert_matches!(parse_datetime("2024-01-32"), Err(DateTimeParseError::InvalidDate(s)) if s == "2024-01-32");
+        assert_matches!(parse_datetime("2024-01-99"), Err(DateTimeParseError::InvalidDate(s)) if s == "2024-01-99");
+
+        // invalid hms
+        assert_matches!(
+            parse_datetime("2024-01-01T"),
+            Err(DateTimeParseError::InvalidHMSPattern)
+        );
+        assert_matches!(
+            parse_datetime("2024-01-01Ta"),
+            Err(DateTimeParseError::InvalidHMSPattern)
+        );
+        assert_matches!(
+            parse_datetime("2024-01-01T01:"),
+            Err(DateTimeParseError::InvalidHMSPattern)
+        );
+        assert_matches!(
+            parse_datetime("2024-01-01T01:02"),
+            Err(DateTimeParseError::InvalidHMSPattern)
+        );
+        assert_matches!(
+            parse_datetime("2024-01-01T01:02:0b"),
+            Err(DateTimeParseError::InvalidHMSPattern)
+        );
+        assert_matches!(
+            parse_datetime("2024-01-01T01::02:03"),
+            Err(DateTimeParseError::InvalidHMSPattern)
+        );
+        assert_matches!(
+            parse_datetime("2024-01-01T01::02::03"),
+            Err(DateTimeParseError::InvalidHMSPattern)
+        );
+        assert_matches!(parse_datetime("2024-01-01T31:02:03Z"), Err(DateTimeParseError::InvalidHMS(s)) if s == "31:02:03");
+        assert_matches!(parse_datetime("2024-01-01T01:60:03Z"), Err(DateTimeParseError::InvalidHMS(s)) if s == "01:60:03");
+        // we disallow `60`th second (i.e., potentially a leap second) because
+        // we can't check if it's a true leap second or not, though we can
+        // handle any computation if it's deemed to be a valid leap second
+        // Note that `2016-12-31T23:59:60Z` is the latest leap second as of
+        // writing
+        assert_matches!(parse_datetime("2016-12-31T23:59:60Z"), Err(DateTimeParseError::InvalidHMS(s)) if s == "23:59:60");
+        assert_matches!(parse_datetime("2016-12-31T23:59:61Z"), Err(DateTimeParseError::InvalidHMS(s)) if s == "23:59:61");
+
+        assert_matches!(
+            parse_datetime("2024-01-01T00:00:00"),
+            Err(DateTimeParseError::InvalidMSOffsetPattern)
+        );
+        assert_matches!(
+            parse_datetime("2024-01-01T00:00:00T"),
+            Err(DateTimeParseError::InvalidMSOffsetPattern)
+        );
+        assert_matches!(
+            parse_datetime("2024-01-01T00:00:00ZZ"),
+            Err(DateTimeParseError::InvalidMSOffsetPattern)
+        );
+        assert_matches!(
+            parse_datetime("2024-01-01T00:00:00x001Z"),
+            Err(DateTimeParseError::InvalidMSOffsetPattern)
+        );
+        assert_matches!(
+            parse_datetime("2024-01-01T00:00:00.001ZZ"),
+            Err(DateTimeParseError::InvalidMSOffsetPattern)
+        );
+        assert_matches!(
+            parse_datetime("2024-01-01T00:00:00➕0000"),
+            Err(DateTimeParseError::InvalidMSOffsetPattern)
+        );
+        assert_matches!(
+            parse_datetime("2024-01-01T00:00:00➖0000"),
+            Err(DateTimeParseError::InvalidMSOffsetPattern)
+        );
+        assert_matches!(
+            parse_datetime("2024-01-01T00:00:00.0001Z"),
+            Err(DateTimeParseError::InvalidMSOffsetPattern)
+        );
+        assert_matches!(
+            parse_datetime("2024-01-01T00:00:00.001➖0000"),
+            Err(DateTimeParseError::InvalidMSOffsetPattern)
+        );
+        assert_matches!(
+            parse_datetime("2024-01-01T00:00:00.001➕0000"),
+            Err(DateTimeParseError::InvalidMSOffsetPattern)
+        );
+        assert_matches!(
+            parse_datetime("2024-01-01T00:00:00.001+00000"),
+            Err(DateTimeParseError::InvalidMSOffsetPattern)
+        );
+        assert_matches!(
+            parse_datetime("2024-01-01T00:00:00.001-00000"),
+            Err(DateTimeParseError::InvalidMSOffsetPattern)
+        );
+        assert_matches!(
+            parse_datetime("2016-12-31T00:00:00+1200"),
+            Err(DateTimeParseError::InvalidOffset((12, 0)))
+        );
+        assert_matches!(
+            parse_datetime("2016-12-31T00:00:00+1160"),
+            Err(DateTimeParseError::InvalidOffset((11, 60)))
+        );
+        assert_matches!(
+            parse_datetime("2016-12-31T00:00:00+1199"),
+            Err(DateTimeParseError::InvalidOffset((11, 99)))
+        );
     }
 
     #[track_caller]
