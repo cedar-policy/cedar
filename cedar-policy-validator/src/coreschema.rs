@@ -19,7 +19,7 @@ use cedar_policy_core::extensions::{ExtensionFunctionLookupError, Extensions};
 use cedar_policy_core::{ast, entities};
 use miette::Diagnostic;
 use smol_str::SmolStr;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -27,20 +27,13 @@ use thiserror::Error;
 #[derive(Debug)]
 pub struct CoreSchema<'a> {
     /// Contains all the information
-    schema: &'a ValidatorSchema,
-    /// For easy lookup, this is a map from action name to `Entity` object
-    /// for each action in the schema. This information is contained in the
-    /// `ValidatorSchema`, but not efficient to extract -- getting the `Entity`
-    /// from the `ValidatorSchema` is O(N) as of this writing, but with this
-    /// cache it's O(1).
-    actions: HashMap<ast::EntityUID, Arc<ast::Entity>>,
+    schema: &'a ValidatorSchema
 }
 
 impl<'a> CoreSchema<'a> {
     /// Create a new `CoreSchema` for the given `ValidatorSchema`
     pub fn new(schema: &'a ValidatorSchema) -> Self {
         Self {
-            actions: schema.actions.clone(),
             schema,
         }
     }
@@ -55,7 +48,7 @@ impl<'a> entities::Schema for CoreSchema<'a> {
     }
 
     fn action(&self, action: &ast::EntityUID) -> Option<Arc<ast::Entity>> {
-        self.actions.get(action).cloned()
+        self.schema.actions.get(action).cloned()
     }
 
     fn entity_types_with_basename<'b>(
@@ -76,7 +69,7 @@ impl<'a> entities::Schema for CoreSchema<'a> {
     }
 
     fn action_entities(&self) -> Self::ActionEntityIterator {
-        self.actions.values().map(Arc::clone).collect()
+        self.schema.actions.values().map(Arc::clone).collect()
     }
 }
 

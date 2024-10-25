@@ -858,8 +858,7 @@ impl ValidatorSchema {
         Entities::from_entities(
             self.actions
                 .values()
-                .map(|entity| entity.as_ref().clone())
-                .collect::<Vec<Entity>>(),
+                .map(|entity| entity.as_ref().clone()),
             None::<&cedar_policy_core::entities::NoEntitiesSchema>, // we don't want to tell `Entities::from_entities()` to add the schema's action entities, that would infinitely recurse
             TCComputation::AssumeAlreadyComputed,
             extensions,
