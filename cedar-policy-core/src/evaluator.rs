@@ -2844,7 +2844,7 @@ pub mod test {
     fn interpret_compares() {
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(request, &entities, Extensions::none());
+        let eval = Evaluator::new(request, &entities, Extensions::all_available());
         // 3 < 303
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(3), Expr::val(303))),
@@ -3163,6 +3163,164 @@ pub mod test {
                 assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
             }
         );
+
+        let datetime_constructor: Name = "datetime".parse().unwrap();
+        let duration_constructor: Name = "duration".parse().unwrap();
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::less(
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-01-01").into()]),
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-01-23").into()]))),
+            Ok(v) if v == Value::from(true));
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::lesseq(
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-01-01").into()]),
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-01-23").into()]))),
+            Ok(v) if v == Value::from(true));
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::less(
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-01-01T01:02:03Z").into()]),
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2023-01-23").into()]))),
+            Ok(v) if v == Value::from(false));
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::lesseq(
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-01-01T01:02:03Z").into()]),
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2023-01-23").into()]))),
+            Ok(v) if v == Value::from(false));
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::less(
+                Expr::call_extension_fn(
+                    duration_constructor.clone(),
+                    vec![Value::from("1h").into()]),
+                Expr::call_extension_fn(
+                    duration_constructor.clone(),
+                    vec![Value::from("2h").into()]))),
+            Ok(v) if v == Value::from(true));
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::lesseq(
+                Expr::call_extension_fn(
+                    duration_constructor.clone(),
+                    vec![Value::from("1h").into()]),
+                Expr::call_extension_fn(
+                    duration_constructor.clone(),
+                    vec![Value::from("2h").into()]))),
+            Ok(v) if v == Value::from(true));
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::less(
+                Expr::call_extension_fn(
+                    duration_constructor.clone(),
+                    vec![Value::from("3h2m").into()]),
+                Expr::call_extension_fn(
+                    duration_constructor.clone(),
+                    vec![Value::from("2h").into()]))),
+            Ok(v) if v == Value::from(false));
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::lesseq(
+                Expr::call_extension_fn(
+                    duration_constructor.clone(),
+                    vec![Value::from("3h2m").into()]),
+                Expr::call_extension_fn(
+                    duration_constructor.clone(),
+                    vec![Value::from("2h").into()]))),
+            Ok(v) if v == Value::from(false));
+
+        // type error favors long and then extension types with operator overloading
+        assert_matches!(eval.interpret_inline_policy(
+        &Expr::lesseq(
+            Value::from(1).into(),
+            Expr::call_extension_fn(
+                duration_constructor.clone(),
+                vec![Value::from("2h").into()]))),
+        Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::Extension { name: duration_constructor.clone() });
+                assert_eq!(advice, None);
+        });
+
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::lesseq(
+                Expr::call_extension_fn(
+                    duration_constructor.clone(),
+                    vec![Value::from("2h").into()]),
+                Value::from(1).into())),
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Long]);
+                assert_eq!(actual, Type::Extension { name: duration_constructor.clone() });
+                assert_eq!(advice, None);
+        });
+
+        assert_matches!(eval.interpret_inline_policy(
+        &Expr::lesseq(
+            Expr::call_extension_fn(
+                duration_constructor.clone(),
+                vec![Value::from("2h").into()]),
+            Expr::call_extension_fn(
+                "decimal".parse().unwrap(),
+                vec![Value::from("2.0").into()]))),
+        Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Extension { name: duration_constructor.clone() }]);
+                assert_eq!(actual, Type::Extension { name: "decimal".parse().unwrap() });
+                assert_eq!(advice, None);
+        });
+
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::lesseq(
+                Expr::call_extension_fn(
+                    "decimal".parse().unwrap(),
+                    vec![Value::from("2.0").into()]),
+                Expr::call_extension_fn(
+                    duration_constructor.clone(),
+                    vec![Value::from("2h").into()]))),
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Extension { name: duration_constructor.clone() }]);
+                assert_eq!(actual, Type::Extension { name: "decimal".parse().unwrap() });
+                assert_eq!(advice, None);
+        });
+
+        // if both sides support overloading, favor lhs
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::lesseq(
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2023-01-23").into()]),
+                Expr::call_extension_fn(
+                    duration_constructor.clone(),
+                    vec![Value::from("2h").into()]))),
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Extension { name: datetime_constructor.clone() }]);
+                assert_eq!(actual, Type::Extension { name: duration_constructor.clone() });
+                assert_eq!(advice, None);
+        });
+
+        // if both sides are of the same extension type without any operator overloading, remind users those that have
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::lesseq(
+                Expr::call_extension_fn(
+                    "decimal".parse().unwrap(),
+                    vec![Value::from("2.0").into()]),
+                Expr::call_extension_fn(
+                    "decimal".parse().unwrap(),
+                    vec![Value::from("3.0").into()]))),
+            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
+                assert_eq!(expected, nonempty![Type::Extension { name: datetime_constructor.clone() }, Type::Extension { name: duration_constructor.clone() }]);
+                assert_eq!(actual, Type::Extension { name: "decimal".parse().unwrap() });
+                assert_eq!(advice, Some("Only extension types `datetime` and `duration` support operator overloading".into()));
+        });
     }
 
     #[test]
