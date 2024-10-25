@@ -13,13 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 use crate::{ValidatorEntityType, ValidatorSchema};
 use cedar_policy_core::extensions::{ExtensionFunctionLookupError, Extensions};
 use cedar_policy_core::{ast, entities};
 use miette::Diagnostic;
 use smol_str::SmolStr;
+use std::collections::hash_map::Values;
 use std::collections::HashSet;
+use std::iter::Cloned;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -27,21 +28,19 @@ use thiserror::Error;
 #[derive(Debug)]
 pub struct CoreSchema<'a> {
     /// Contains all the information
-    schema: &'a ValidatorSchema
+    schema: &'a ValidatorSchema,
 }
 
 impl<'a> CoreSchema<'a> {
     /// Create a new `CoreSchema` for the given `ValidatorSchema`
     pub fn new(schema: &'a ValidatorSchema) -> Self {
-        Self {
-            schema,
-        }
+        Self { schema }
     }
 }
 
 impl<'a> entities::Schema for CoreSchema<'a> {
     type EntityTypeDescription = EntityTypeDescription;
-    type ActionEntityIterator = Vec<Arc<ast::Entity>>;
+    type ActionEntityIterator = Cloned<Values<'a, ast::EntityUID, Arc<ast::Entity>>>;
 
     fn entity_type(&self, entity_type: &ast::EntityType) -> Option<EntityTypeDescription> {
         EntityTypeDescription::new(self.schema, entity_type)
@@ -69,7 +68,7 @@ impl<'a> entities::Schema for CoreSchema<'a> {
     }
 
     fn action_entities(&self) -> Self::ActionEntityIterator {
-        self.schema.actions.values().map(Arc::clone).collect()
+        self.schema.actions.values().cloned()
     }
 }
 
