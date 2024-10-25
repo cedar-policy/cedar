@@ -1,6 +1,6 @@
 # Workaround for wasm-bindgen issue resulting in malformed return type `Array`
 # without any generic parameter when building with Rust version 1.82. We pin
-# this crate to 1.81 to avoid build failures. We plant to delete this once the
+# this crate to 1.81 to avoid build failures. We plan to delete this once the
 # issue is resolved: https://github.com/cedar-policy/cedar/issues/1292
 [toolchain]
 channel = "1.81"
