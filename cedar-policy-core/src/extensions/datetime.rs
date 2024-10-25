@@ -307,15 +307,7 @@ struct Duration {
 
 impl Display for Duration {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}d{}h{}m{}s{}ms",
-            self.to_days(),
-            self.to_hours(),
-            self.to_minutes(),
-            self.to_seconds(),
-            self.ms % 1000
-        )
+        write!(f, "{}ms", self.ms)
     }
 }
 
