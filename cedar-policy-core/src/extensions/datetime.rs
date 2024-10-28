@@ -77,11 +77,16 @@ struct DateTime {
     epoch: i64,
 }
 
-fn extension_err(msg: String, extension_name: &crate::ast::Name) -> evaluator::EvaluationError {
+fn extension_err(
+    msg: String,
+    extension_name: &crate::ast::Name,
+    advice: Option<String>,
+) -> evaluator::EvaluationError {
     evaluator::EvaluationError::failed_extension_function_application(
         extension_name.clone(),
         msg,
         None, // source loc will be added by the evaluator
+        advice,
     )
 }
 
@@ -107,15 +112,15 @@ where
 /// Cedar string
 fn datetime_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     construct_from_str(arg, |s| {
-        parse_datetime(s)
-            .map(DateTime::from)
-            .map_err(|err| extension_err(err.to_string(), &DATETIME_CONSTRUCTOR_NAME))
+        parse_datetime(s).map(DateTime::from).map_err(|err| {
+            extension_err(
+                err.to_string(),
+                &DATETIME_CONSTRUCTOR_NAME,
+                err.help().map(|v| v.to_string()),
+            )
+        })
     })
 }
-
-/// Help message to display when a String was provided where a decimal value was expected.
-/// This error is likely due to confusion between "1.23" and decimal("1.23").
-const ADVICE_MSG: &str = "maybe you forgot to apply the `decimal` constructor?";
 
 fn as_ext<'a, Ext>(v: &'a Value, type_name: &'a Name) -> Result<&'a Ext, evaluator::EvaluationError>
 where
@@ -138,7 +143,7 @@ where
                     name: type_name.to_owned(),
                 },
                 v,
-                ADVICE_MSG.into(),
+                format!("maybe you forgot to apply the `{type_name}` constructor?"),
             ))
         }
         _ => Err(evaluator::EvaluationError::type_error_single(
@@ -170,6 +175,7 @@ fn offset(datetime: Value, duration: Value) -> evaluator::Result<ExtensionOutput
             duration
         ),
         &OFFSET_METHOD_NAME,
+        None,
     ))?;
     let e = RepresentableExtensionValue::new(Arc::new(ret.clone()));
     Ok(Value {
@@ -189,6 +195,7 @@ fn duration_since(lhs: Value, rhs: Value) -> evaluator::Result<ExtensionOutputVa
             RestrictedExpr::from(rhs.clone())
         ),
         &DURATION_SINCE_NAME,
+        None,
     ))?;
     let e = RepresentableExtensionValue::new(Arc::new(ret.clone()));
     Ok(Value {
@@ -321,7 +328,13 @@ impl ExtensionValue for Duration {
 /// Cedar string
 fn duration_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     construct_from_str(arg, |s| {
-        parse_duration(s).map_err(|err| extension_err(err.to_string(), &DURATION_CONSTRUCTOR_NAME))
+        parse_duration(s).map_err(|err| {
+            extension_err(
+                err.to_string(),
+                &DURATION_CONSTRUCTOR_NAME,
+                err.help().map(|v| v.to_string()),
+            )
+        })
     })
 }
 
@@ -612,18 +625,26 @@ mod tests {
 
     use chrono::NaiveDateTime;
     use cool_asserts::assert_matches;
+    use nonempty::nonempty;
 
     use crate::{
-        ast::{Eid, EntityUID, EntityUIDEntry, Expr, Request, RestrictedExpr, Value, ValueKind},
+        ast::{
+            Eid, EntityUID, EntityUIDEntry, Expr, Request, RestrictedExpr, Type, Value, ValueKind,
+        },
         entities::Entities,
-        evaluator::Evaluator,
+        evaluator::{EvaluationError, Evaluator},
         extensions::{
             datetime::{
-                constants::{DURATION_CONSTRUCTOR_NAME, OFFSET_METHOD_NAME},
+                constants::{
+                    DURATION_CONSTRUCTOR_NAME, OFFSET_METHOD_NAME, TO_DATE_NAME, TO_DAYS_NAME,
+                    TO_HOURS_NAME, TO_MILLISECONDS_NAME, TO_MINUTES_NAME, TO_SECONDS_NAME,
+                    TO_TIME_NAME,
+                },
                 parse_datetime, parse_duration, DateTimeParseError, Duration,
             },
             Extensions,
         },
+        parser::parse_expr,
     };
 
     use super::{constants::DATETIME_CONSTRUCTOR_NAME, DateTime};
@@ -989,16 +1010,20 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_interpretation_datetime() {
-        let dummy_entity = EntityUIDEntry::Known {
+    fn dummy_entity() -> EntityUIDEntry {
+        EntityUIDEntry::Known {
             euid: Arc::new(EntityUID::from_components(
                 "A".parse().unwrap(),
                 Eid::new(""),
                 None,
             )),
             loc: None,
-        };
+        }
+    }
+
+    #[test]
+    fn test_interpretation_datetime() {
+        let dummy_entity = dummy_entity();
         let entities = Entities::default();
         let eval = Evaluator::new(
             Request::new_unchecked(
@@ -1055,8 +1080,370 @@ mod tests {
                     RestrictedExpr::call_extension_fn(DURATION_CONSTRUCTOR_NAME.clone(), vec![Value::from("1730135533456ms").into()])]))
             }
         );
+
+        assert_matches!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                DATETIME_CONSTRUCTOR_NAME.clone(),
+                vec![Value::from("22024-30-28T10:12:13.456-0700").into()]
+            )),
+            Err(EvaluationError::FailedExtensionFunctionExecution(err)) => {
+                assert_eq!(err.extension_name, *DATETIME_CONSTRUCTOR_NAME);
+                assert_eq!(err.msg, "invalid date pattern".to_owned());
+                // TODO: figure out why it's none given the help annotations
+                assert_eq!(err.advice, None);
+            }
+        );
+
+        // offset the offset component in a datetime specification
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"datetime("2024-10-28T10:12:13.456-0700").offset(duration("-7h"))"#)
+                    .unwrap()
+            )
+            .unwrap(),
+            eval.interpret_inline_policy(
+                &parse_expr(r#"datetime("2024-10-28T10:12:13.456Z")"#).unwrap()
+            )
+            .unwrap()
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"datetime("2024-10-28T10:12:13.456+0700").offset(duration("7h"))"#)
+                    .unwrap()
+            )
+            .unwrap(),
+            eval.interpret_inline_policy(
+                &parse_expr(r#"datetime("2024-10-28T10:12:13.456Z")"#).unwrap()
+            )
+            .unwrap()
+        );
+
+        assert_matches!(
+            eval.interpret_inline_policy(&parse_expr(r#"datetime("2024-10-28T10:12:13.456+0700").offset("7h")"#).unwrap()),
+            Err(EvaluationError::TypeError(err)) => {
+                assert_eq!(err.expected, nonempty![Type::Extension { name: DURATION_CONSTRUCTOR_NAME.clone() }]);
+                assert_eq!(err.actual, Type::String);
+                assert_eq!(err.advice, Some("maybe you forgot to apply the `duration` constructor?".to_owned()));
+            }
+        );
+
+        // .durationSince
+        assert_eq!(
+            eval.interpret_inline_policy(&parse_expr(r#"datetime("2024-10-28T10:12:13.456+0700").durationSince(datetime("2024-10-28T10:12:13.456Z"))"#).unwrap()).unwrap(),
+            eval.interpret_inline_policy(&parse_expr(r#"duration("-7h")"#).unwrap()).unwrap()
+        );
+
+        assert_eq!(
+            eval.interpret_inline_policy(&parse_expr(r#"datetime("2024-10-28T10:12:13.456-0700").durationSince(datetime("2024-10-28T10:12:13.456Z"))"#).unwrap()).unwrap(),
+            eval.interpret_inline_policy(&parse_expr(r#"duration("7h")"#).unwrap()).unwrap()
+        );
+
+        assert_matches!(
+            eval.interpret_inline_policy(&parse_expr(r#"datetime("2024-10-28T10:12:13.456+0700").durationSince("7h")"#).unwrap()),
+            Err(EvaluationError::TypeError(err)) => {
+                assert_eq!(err.expected, nonempty![Type::Extension { name: DATETIME_CONSTRUCTOR_NAME.clone() }]);
+                assert_eq!(err.actual, Type::String);
+                assert_eq!(err.advice, Some("maybe you forgot to apply the `datetime` constructor?".to_owned()));
+            }
+        );
+
+        // .toDate
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"datetime("2024-10-28T10:12:13.456+0700").toDate()"#).unwrap()
+            )
+            .unwrap(),
+            eval.interpret_inline_policy(&parse_expr(r#"datetime("2024-10-28")"#).unwrap())
+                .unwrap()
+        );
+
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"datetime("2024-10-28T10:12:13.456-0700").toDate()"#).unwrap()
+            )
+            .unwrap(),
+            eval.interpret_inline_policy(&parse_expr(r#"datetime("2024-10-28")"#).unwrap())
+                .unwrap()
+        );
+
+        assert_matches!(
+            eval.interpret_inline_policy(&parse_expr(r#"datetime("2024-10-28T10:12:13.456-0700").toDate(1)"#).unwrap()),
+            Err(EvaluationError::WrongNumArguments(err)) => {
+                assert_eq!(err.function_name, *TO_DATE_NAME);
+                assert_eq!(err.actual, 2);
+                assert_eq!(err.expected, 1);
+            }
+        );
+
+        // .toTime
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"datetime("2024-10-28T10:12:13.456+0700").toTime()"#).unwrap()
+            )
+            .unwrap(),
+            eval.interpret_inline_policy(&parse_expr(r#"duration("3h12m13s456ms")"#).unwrap())
+                .unwrap()
+        );
+
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"datetime("2024-10-28T10:12:13.456-0700").toTime()"#).unwrap()
+            )
+            .unwrap(),
+            eval.interpret_inline_policy(&parse_expr(r#"duration("17h12m13s456ms")"#).unwrap())
+                .unwrap()
+        );
+
+        assert_matches!(
+            eval.interpret_inline_policy(&parse_expr(r#"datetime("2024-10-28T10:12:13.456-0700").toTime(1)"#).unwrap()),
+            Err(EvaluationError::WrongNumArguments(err)) => {
+                assert_eq!(err.function_name, *TO_TIME_NAME);
+                assert_eq!(err.actual, 2);
+                assert_eq!(err.expected, 1);
+            }
+        );
+
+        // comparisons
+        assert_eq!(
+            eval.interpret_inline_policy(&parse_expr(r#"datetime("2024-10-28T10:12:13.456-0700") > datetime("2024-10-28T10:12:13.456Z")"#).unwrap()).unwrap(),
+            Value::from(true),
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&parse_expr(r#"datetime("2024-10-28T10:12:13.456-0700") >= datetime("2024-10-28T10:12:13.456Z")"#).unwrap()).unwrap(),
+            Value::from(true),
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&parse_expr(r#"datetime("2024-10-28T10:12:13.456-0700") != datetime("2024-10-28T10:12:13.456Z")"#).unwrap()).unwrap(),
+            Value::from(true),
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&parse_expr(r#"datetime("2024-10-28T10:12:13.456-0700") == datetime("2024-10-28T17:12:13.456Z")"#).unwrap()).unwrap(),
+            Value::from(true),
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&parse_expr(r#"datetime("2024-10-28T10:12:13.456-0700") < datetime("2024-10-28T17:12:13.456-0800")"#).unwrap()).unwrap(),
+            Value::from(true),
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(&parse_expr(r#"datetime("2024-10-28T10:12:13.456-0700") <= datetime("2024-10-28T17:12:13.456-0800")"#).unwrap()).unwrap(),
+            Value::from(true),
+        );
     }
 
     #[test]
-    fn rfc_examples() {}
+    fn test_interpretation_duration() {
+        let dummy_entity = dummy_entity();
+        let entities = Entities::default();
+        let eval = Evaluator::new(
+            Request::new_unchecked(
+                dummy_entity.clone(),
+                dummy_entity.clone(),
+                dummy_entity,
+                None,
+            ),
+            &entities,
+            Extensions::all_available(),
+        );
+
+        assert_matches!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                DURATION_CONSTRUCTOR_NAME.clone(),
+                vec![Value::from("1d2h3m4s50ms").into()]
+            )),
+            Ok(Value {
+                value: ValueKind::ExtensionValue(ext),
+                ..
+            }) => {
+                assert_eq!(ext.value().into_restricted_expr(),
+                    RestrictedExpr::call_extension_fn(DURATION_CONSTRUCTOR_NAME.clone(), vec![Value::from("93784050ms").into()]));
+            }
+        );
+
+        assert_matches!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                DURATION_CONSTRUCTOR_NAME.clone(),
+                vec![Value::from("1dd2h3m4s50ms").into()]
+            )),
+            Err(EvaluationError::FailedExtensionFunctionExecution(err)) => {
+                assert_eq!(err.extension_name, *DURATION_CONSTRUCTOR_NAME);
+                assert_eq!(err.msg, "invalid duration pattern".to_owned());
+                // TODO: figure out why it's none given the help annotations
+                assert_eq!(err.advice, None);
+            }
+        );
+
+        // .toMilliseconds
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"duration("1d2h3m4s50ms").toMilliseconds()"#).unwrap()
+            )
+            .unwrap(),
+            Value::from(93784050)
+        );
+
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"duration("-1d2h3m4s50ms").toMilliseconds()"#).unwrap()
+            )
+            .unwrap(),
+            Value::from(-93784050)
+        );
+
+        assert_matches!(
+            eval.interpret_inline_policy(&parse_expr(r#"duration("-1d2h3m4s50ms").toMilliseconds(1)"#).unwrap()),
+            Err(EvaluationError::WrongNumArguments(err)) => {
+                assert_eq!(err.function_name, *TO_MILLISECONDS_NAME);
+                assert_eq!(err.actual, 2);
+                assert_eq!(err.expected, 1);
+            }
+        );
+
+        // .toSeconds
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"duration("1d2h3m4s50ms").toSeconds()"#).unwrap()
+            )
+            .unwrap(),
+            Value::from(93784)
+        );
+
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"duration("-1d2h3m4s50ms").toSeconds()"#).unwrap()
+            )
+            .unwrap(),
+            Value::from(-93784)
+        );
+
+        assert_matches!(
+            eval.interpret_inline_policy(&parse_expr(r#"duration("-1d2h3m4s50ms").toSeconds(1)"#).unwrap()),
+            Err(EvaluationError::WrongNumArguments(err)) => {
+                assert_eq!(err.function_name, *TO_SECONDS_NAME);
+                assert_eq!(err.actual, 2);
+                assert_eq!(err.expected, 1);
+            }
+        );
+
+        // .toMinutes
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"duration("1d2h3m4s50ms").toMinutes()"#).unwrap()
+            )
+            .unwrap(),
+            Value::from(1563)
+        );
+
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"duration("-1d2h3m4s50ms").toMinutes()"#).unwrap()
+            )
+            .unwrap(),
+            Value::from(-1563)
+        );
+
+        assert_matches!(
+            eval.interpret_inline_policy(&parse_expr(r#"duration("-1d2h3m4s50ms").toMinutes(1)"#).unwrap()),
+            Err(EvaluationError::WrongNumArguments(err)) => {
+                assert_eq!(err.function_name, *TO_MINUTES_NAME);
+                assert_eq!(err.actual, 2);
+                assert_eq!(err.expected, 1);
+            }
+        );
+
+        // .toHours
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"duration("1d2h3m4s50ms").toHours()"#).unwrap()
+            )
+            .unwrap(),
+            Value::from(26)
+        );
+
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"duration("-1d2h3m4s50ms").toHours()"#).unwrap()
+            )
+            .unwrap(),
+            Value::from(-26)
+        );
+
+        assert_matches!(
+            eval.interpret_inline_policy(&parse_expr(r#"duration("-1d2h3m4s50ms").toHours(1)"#).unwrap()),
+            Err(EvaluationError::WrongNumArguments(err)) => {
+                assert_eq!(err.function_name, *TO_HOURS_NAME);
+                assert_eq!(err.actual, 2);
+                assert_eq!(err.expected, 1);
+            }
+        );
+
+        // .toDays
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"duration("1d2h3m4s50ms").toDays()"#).unwrap()
+            )
+            .unwrap(),
+            Value::from(1)
+        );
+
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"duration("-1d2h3m4s50ms").toDays()"#).unwrap()
+            )
+            .unwrap(),
+            Value::from(-1)
+        );
+
+        assert_matches!(
+            eval.interpret_inline_policy(&parse_expr(r#"duration("-1d2h3m4s50ms").toDays(1)"#).unwrap()),
+            Err(EvaluationError::WrongNumArguments(err)) => {
+                assert_eq!(err.function_name, *TO_DAYS_NAME);
+                assert_eq!(err.actual, 2);
+                assert_eq!(err.expected, 1);
+            }
+        );
+
+        // Python's datetime does this but is -2h shorter than 1h?
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"duration("-2h") < duration("1h")"#).unwrap()
+            )
+            .unwrap(),
+            Value::from(true),
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"duration("-2h") <= duration("1h")"#).unwrap()
+            )
+            .unwrap(),
+            Value::from(true),
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"duration("-2h") != duration("1h")"#).unwrap()
+            )
+            .unwrap(),
+            Value::from(true),
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"duration("-3d") == duration("-72h")"#).unwrap()
+            )
+            .unwrap(),
+            Value::from(true),
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"duration("2h") > duration("1h")"#).unwrap()
+            )
+            .unwrap(),
+            Value::from(true),
+        );
+        assert_eq!(
+            eval.interpret_inline_policy(
+                &parse_expr(r#"duration("2h") >= duration("1h")"#).unwrap()
+            )
+            .unwrap(),
+            Value::from(true),
+        );
+    }
 }

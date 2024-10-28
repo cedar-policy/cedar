@@ -303,11 +303,13 @@ impl EvaluationError {
         extension_name: Name,
         msg: String,
         source_loc: Option<Loc>,
+        advice: Option<String>,
     ) -> Self {
         evaluation_errors::ExtensionFunctionExecutionError {
             extension_name,
             msg,
             source_loc,
+            advice,
         }
         .into()
     }
@@ -649,12 +651,18 @@ pub mod evaluation_errors {
         pub(crate) extension_name: Name,
         /// Error message from the extension
         pub(crate) msg: String,
+        /// Optional advice for how to fix this error
+        pub(crate) advice: Option<String>,
         /// Source location
         pub(crate) source_loc: Option<Loc>,
     }
 
     impl Diagnostic for ExtensionFunctionExecutionError {
         impl_diagnostic_from_source_loc_opt_field!(source_loc);
+
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            self.advice.as_ref().map(|v| Box::new(v) as _)
+        }
     }
 
     impl ExtensionFunctionExecutionError {

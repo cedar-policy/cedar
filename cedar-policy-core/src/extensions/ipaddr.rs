@@ -245,6 +245,7 @@ fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
         names::EXTENSION_NAME.clone(),
         msg.into(),
         None, // source loc will be added by the evaluator
+        None,
     )
 }
 

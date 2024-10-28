@@ -180,11 +180,12 @@ impl ExtensionValue for Decimal {
 
 const EXTENSION_NAME: &str = "decimal";
 
-fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
+fn extension_err(msg: impl Into<String>, advice: Option<String>) -> evaluator::EvaluationError {
     evaluator::EvaluationError::failed_extension_function_application(
         constants::DECIMAL_FROM_STR_NAME.clone(),
         msg.into(),
-        None, // source loc will be added by the evaluator
+        None,
+        advice.map(Into::into), // source loc will be added by the evaluator
     )
 }
 
@@ -192,7 +193,8 @@ fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
 /// Cedar string
 fn decimal_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
-    let decimal = Decimal::from_str(str.as_str()).map_err(|e| extension_err(e.to_string()))?;
+    let decimal =
+        Decimal::from_str(str.as_str()).map_err(|e| extension_err(e.to_string(), None))?;
     let arg_source_loc = arg.source_loc().cloned();
     let e = RepresentableExtensionValue::new(Arc::new(decimal));
     Ok(Value {
