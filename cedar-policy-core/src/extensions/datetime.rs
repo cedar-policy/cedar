@@ -498,9 +498,9 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
             #[allow(clippy::unwrap_used)]
             Ok(TimeDelta::new(
                 if sign {
-                    offset_in_secs
+                    -offset_in_secs // + means UTC is behind
                 } else {
-                    -offset_in_secs
+                    offset_in_secs // - means UTC is ahead
                 },
                 0,
             )
@@ -608,16 +608,25 @@ pub fn extension() -> Extension {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
+    use std::{str::FromStr, sync::Arc};
 
     use chrono::NaiveDateTime;
     use cool_asserts::assert_matches;
 
-    use crate::extensions::datetime::{
-        parse_datetime, parse_duration, DateTimeParseError, Duration,
+    use crate::{
+        ast::{Eid, EntityUID, EntityUIDEntry, Expr, Request, RestrictedExpr, Value, ValueKind},
+        entities::Entities,
+        evaluator::Evaluator,
+        extensions::{
+            datetime::{
+                constants::{DURATION_CONSTRUCTOR_NAME, OFFSET_METHOD_NAME},
+                parse_datetime, parse_duration, DateTimeParseError, Duration,
+            },
+            Extensions,
+        },
     };
 
-    use super::DateTime;
+    use super::{constants::DATETIME_CONSTRUCTOR_NAME, DateTime};
 
     #[test]
     fn test_parse_pos() {
@@ -639,22 +648,22 @@ mod tests {
         let s = "2024-10-15T11:38:02.101+1134";
         assert_eq!(
             parse_datetime(s).unwrap(),
-            NaiveDateTime::from_str("2024-10-15T23:12:02.101").unwrap()
+            NaiveDateTime::from_str("2024-10-15T00:04:02.101").unwrap()
         );
         let s = "2024-10-15T11:38:02.101-1134";
         assert_eq!(
             parse_datetime(s).unwrap(),
-            NaiveDateTime::from_str("2024-10-15T00:04:02.101").unwrap()
+            NaiveDateTime::from_str("2024-10-15T23:12:02.101").unwrap()
         );
         let s = "2024-10-15T11:38:02+1134";
         assert_eq!(
             parse_datetime(s).unwrap(),
-            NaiveDateTime::from_str("2024-10-15T23:12:02").unwrap()
+            NaiveDateTime::from_str("2024-10-15T00:04:02").unwrap()
         );
         let s = "2024-10-15T11:38:02-1134";
         assert_eq!(
             parse_datetime(s).unwrap(),
-            NaiveDateTime::from_str("2024-10-15T00:04:02").unwrap()
+            NaiveDateTime::from_str("2024-10-15T23:12:02").unwrap()
         );
     }
 
@@ -979,4 +988,75 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_interpretation_datetime() {
+        let dummy_entity = EntityUIDEntry::Known {
+            euid: Arc::new(EntityUID::from_components(
+                "A".parse().unwrap(),
+                Eid::new(""),
+                None,
+            )),
+            loc: None,
+        };
+        let entities = Entities::default();
+        let eval = Evaluator::new(
+            Request::new_unchecked(
+                dummy_entity.clone(),
+                dummy_entity.clone(),
+                dummy_entity,
+                None,
+            ),
+            &entities,
+            Extensions::all_available(),
+        );
+
+        assert_matches!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                DATETIME_CONSTRUCTOR_NAME.clone(),
+                vec![Value::from("2024-10-28").into()]
+            )),
+            Ok(Value {
+                value: ValueKind::ExtensionValue(ext),
+                ..
+            }) => {
+                assert_eq!(ext.value().into_restricted_expr(), RestrictedExpr::call_extension_fn(OFFSET_METHOD_NAME.clone(), vec![
+                    RestrictedExpr::call_extension_fn(DATETIME_CONSTRUCTOR_NAME.clone(), vec![Value::from("1970-01-01").into()]),
+                    RestrictedExpr::call_extension_fn(DURATION_CONSTRUCTOR_NAME.clone(), vec![Value::from("1730073600000ms").into()])]))
+            }
+        );
+
+        assert_matches!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                DATETIME_CONSTRUCTOR_NAME.clone(),
+                vec![Value::from("2024-10-28T01:22:33.456Z").into()]
+            )),
+            Ok(Value {
+                value: ValueKind::ExtensionValue(ext),
+                ..
+            }) => {
+                assert_eq!(ext.value().into_restricted_expr(), RestrictedExpr::call_extension_fn(OFFSET_METHOD_NAME.clone(), vec![
+                    RestrictedExpr::call_extension_fn(DATETIME_CONSTRUCTOR_NAME.clone(), vec![Value::from("1970-01-01").into()]),
+                    RestrictedExpr::call_extension_fn(DURATION_CONSTRUCTOR_NAME.clone(), vec![Value::from("1730078553456ms").into()])]))
+            }
+        );
+
+        assert_matches!(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                DATETIME_CONSTRUCTOR_NAME.clone(),
+                vec![Value::from("2024-10-28T10:12:13.456-0700").into()]
+            )),
+            Ok(Value {
+                value: ValueKind::ExtensionValue(ext),
+                ..
+            }) => {
+                assert_eq!(ext.value().into_restricted_expr(), RestrictedExpr::call_extension_fn(OFFSET_METHOD_NAME.clone(), vec![
+                    RestrictedExpr::call_extension_fn(DATETIME_CONSTRUCTOR_NAME.clone(), vec![Value::from("1970-01-01").into()]),
+                    RestrictedExpr::call_extension_fn(DURATION_CONSTRUCTOR_NAME.clone(), vec![Value::from("1730135533456ms").into()])]))
+            }
+        );
+    }
+
+    #[test]
+    fn rfc_examples() {}
 }
