@@ -253,7 +253,7 @@ impl DateTime {
     // but `div_floor` is only available on nightly
     fn to_date(&self) -> Self {
         Self {
-            epoch: if self.epoch < 0 {
+            epoch: if self.epoch.is_negative() {
                 if self.epoch % Self::DAY_IN_MILLISECONDS == 0 {
                     self.epoch
                 } else {
@@ -267,7 +267,16 @@ impl DateTime {
 
     fn to_time(&self) -> Duration {
         Duration {
-            ms: self.epoch % Self::DAY_IN_MILLISECONDS,
+            ms: if self.epoch.is_negative() {
+                let rem = self.epoch % Self::DAY_IN_MILLISECONDS;
+                if rem == 0 {
+                    rem
+                } else {
+                    rem + Self::DAY_IN_MILLISECONDS
+                }
+            } else {
+                self.epoch % Self::DAY_IN_MILLISECONDS
+            },
         }
     }
 }
@@ -974,6 +983,36 @@ mod tests {
             assert_eq!(
                 d.offset(min_day_offset.clone()).unwrap().to_date(),
                 d.offset(parse_duration("-1d").unwrap()).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn test_to_time() {
+        let unix_epoch = DateTime { epoch: 0 };
+        let today: DateTime = parse_datetime("2024-10-24").unwrap().into();
+        assert_eq!(
+            today.duration_since(unix_epoch.clone()),
+            Some(parse_duration("20020d").unwrap())
+        );
+        let yesterday: DateTime = parse_datetime("2024-10-23").unwrap().into();
+        assert_eq!(
+            yesterday.duration_since(today.clone()),
+            Some(parse_duration("-1d").unwrap())
+        );
+        let some_day_before_unix_epoch: DateTime = parse_datetime("1900-01-01").unwrap().into();
+
+        let max_day_offset = parse_duration("23h59m59s999ms").unwrap();
+        let min_day_offset = parse_duration("-23h59m59s999ms").unwrap();
+
+        for d in [today, yesterday, unix_epoch, some_day_before_unix_epoch] {
+            assert_eq!(
+                d.offset(max_day_offset.clone()).unwrap().to_time(),
+                max_day_offset
+            );
+            assert_eq!(
+                d.offset(min_day_offset.clone()).unwrap().to_time(),
+                parse_duration("1ms").unwrap(),
             );
         }
     }
