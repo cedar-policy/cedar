@@ -1773,30 +1773,52 @@ mod test {
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_least_upper_bound(
         schema: ValidatorSchema,
+        mode: ValidationMode,
         lhs: Type,
         rhs: Type,
         lub: Result<Type, LubHelp>,
     ) {
         assert_eq!(
-            Type::least_upper_bound(&schema, &lhs, &rhs, ValidationMode::Permissive),
+            Type::least_upper_bound(&schema, &lhs, &rhs, mode),
             lub,
             "assert_least_upper_bound({:?}, {:?}, {:?})",
             lhs,
             rhs,
             lub
         );
+
+        if let Ok(lub_ty) = &lub {
+            // Also assert that types are subtypes of the LUB
+            assert!(
+                Type::is_subtype(&schema, &lhs, &lub_ty, mode),
+                "{lhs:?} </: {lub_ty:?}"
+            );
+            assert!(
+                Type::is_subtype(&schema, &rhs, &lub_ty, mode),
+                "{rhs:?} </: {lub_ty:?}"
+            );
+
+            // Permissive LUB should be the same as strict when the strict LUB is defined.
+            if mode == ValidationMode::Strict {
+                assert_least_upper_bound(schema, ValidationMode::Permissive, lhs, rhs, lub);
+            }
+        } else if mode == ValidationMode::Permissive {
+            // Lub is `Err` for permissive, so it should also be `Err` for strict.
+            assert_least_upper_bound(schema, ValidationMode::Strict, lhs, rhs, lub);
+        }
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_entity_lub(
         schema: ValidatorSchema,
+        mode: ValidationMode,
         lhs: Type,
         rhs: Type,
         lub_names: &[&str],
         lub_attrs: &[(&str, Type)],
     ) {
-        let lub = Type::least_upper_bound(&schema, &lhs, &rhs, ValidationMode::Permissive);
-        assert_matches!(lub, Ok(Type::EntityOrRecord(EntityRecordKind::Entity(entity_lub))) => {
+        let lub = Type::least_upper_bound(&schema, &lhs, &rhs, mode);
+        assert_matches!(&lub, Ok(Type::EntityOrRecord(EntityRecordKind::Entity(entity_lub))) => {
             assert_eq!(
                 lub_names
                     .iter()
@@ -1819,101 +1841,158 @@ mod test {
                 "Incorrect computed record type for LUB."
             );
         });
-    }
 
-    fn empty_schema() -> ValidatorSchema {
-        ValidatorSchema::empty()
-    }
+        // Also assert that types are subtypes of the LUB
+        assert!(
+            Type::is_subtype(&schema, &lhs, lub.as_ref().unwrap(), mode),
+            "{lhs:?} </: {lub:?}"
+        );
+        assert!(
+            Type::is_subtype(&schema, &rhs, lub.as_ref().unwrap(), mode),
+            "{rhs:?} </: {lub:?}"
+        );
 
-    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_least_upper_bound_empty_schema(lhs: Type, rhs: Type, lub: Result<Type, LubHelp>) {
-        assert_least_upper_bound(empty_schema(), lhs, rhs, lub);
+        // Permissive LUB should be the same as strict when the strict LUB is defined.
+        if mode == ValidationMode::Strict {
+            assert_entity_lub(
+                schema,
+                ValidationMode::Permissive,
+                lhs,
+                rhs,
+                lub_names,
+                lub_attrs,
+            );
+        }
     }
 
     #[test]
     fn test_primitive_lub() {
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
             Type::False,
             Type::True,
             Ok(Type::primitive_boolean()),
         );
-        assert_least_upper_bound_empty_schema(Type::False, Type::False, Ok(Type::False));
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
+            Type::False,
+            Type::False,
+            Ok(Type::False),
+        );
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
             Type::False,
             Type::primitive_boolean(),
             Ok(Type::primitive_boolean()),
         );
 
-        assert_least_upper_bound_empty_schema(Type::True, Type::True, Ok(Type::True));
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
+            Type::True,
+            Type::True,
+            Ok(Type::True),
+        );
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
             Type::True,
             Type::False,
             Ok(Type::primitive_boolean()),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
             Type::True,
             Type::primitive_boolean(),
             Ok(Type::primitive_boolean()),
         );
 
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
             Type::primitive_boolean(),
             Type::False,
             Ok(Type::primitive_boolean()),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
             Type::primitive_boolean(),
             Type::True,
             Ok(Type::primitive_boolean()),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
             Type::primitive_boolean(),
             Type::primitive_boolean(),
             Ok(Type::primitive_boolean()),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
             Type::primitive_string(),
             Type::primitive_string(),
             Ok(Type::primitive_string()),
         );
 
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
             Type::primitive_long(),
             Type::primitive_long(),
             Ok(Type::primitive_long()),
         );
 
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::False,
             Type::primitive_string(),
             Err(LubHelp::None),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::False,
             Type::primitive_long(),
             Err(LubHelp::None),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::True,
             Type::primitive_string(),
             Err(LubHelp::None),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::True,
             Type::primitive_long(),
             Err(LubHelp::None),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::primitive_boolean(),
             Type::primitive_string(),
             Err(LubHelp::None),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::primitive_boolean(),
             Type::primitive_long(),
             Err(LubHelp::None),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::primitive_string(),
             Type::primitive_long(),
             Err(LubHelp::None),
@@ -1923,27 +2002,37 @@ mod test {
     #[test]
     fn test_extension_lub() {
         let ipaddr: Name = "ipaddr".parse().expect("should be a valid identifier");
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
             Type::extension(ipaddr.clone()),
             Type::extension(ipaddr.clone()),
             Ok(Type::extension(ipaddr.clone())),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::extension(ipaddr.clone()),
             Type::extension("test".parse().expect("should be a valid identifier")),
             Err(LubHelp::None),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::extension(ipaddr.clone()),
             Type::False,
             Err(LubHelp::None),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::extension(ipaddr.clone()),
             Type::primitive_string(),
             Err(LubHelp::None),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::extension(ipaddr),
             Type::any_entity_reference(),
             Err(LubHelp::None),
@@ -1952,24 +2041,61 @@ mod test {
 
     #[test]
     fn test_set_lub() {
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
             Type::set(Type::True),
             Type::set(Type::True),
             Ok(Type::set(Type::True)),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
             Type::set(Type::False),
             Type::set(Type::True),
             Ok(Type::set(Type::primitive_boolean())),
         );
 
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::set(Type::primitive_boolean()),
             Type::set(Type::primitive_long()),
             Err(LubHelp::None),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::set(Type::primitive_boolean()),
+            Type::primitive_boolean(),
+            Err(LubHelp::None),
+        );
+
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
+            Type::any_set(),
+            Type::any_set(),
+            Ok(Type::any_set()),
+        );
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
+            Type::any_set(),
+            Type::set(Type::primitive_long()),
+            Ok(Type::any_set()),
+        );
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
+            Type::set(Type::primitive_long()),
+            Type::any_set(),
+            Ok(Type::any_set()),
+        );
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
+            Type::any_set(),
             Type::primitive_boolean(),
             Err(LubHelp::None),
         );
@@ -1977,19 +2103,25 @@ mod test {
 
     #[test]
     fn test_record_undef_lub() {
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::open_record_with_attributes(None),
             Type::primitive_string(),
             Err(LubHelp::None),
         );
 
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::closed_record_with_attributes(None),
             Type::primitive_string(),
             Err(LubHelp::None),
         );
 
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::closed_record_with_attributes(None),
             Type::set(Type::primitive_boolean()),
             Err(LubHelp::None),
@@ -1998,28 +2130,38 @@ mod test {
 
     #[test]
     fn test_record_lub() {
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
             Type::closed_record_with_attributes(None),
             Type::closed_record_with_attributes(None),
             Ok(Type::closed_record_with_attributes(None)),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
             Type::closed_record_with_attributes(None),
             Type::open_record_with_attributes(None),
             Ok(Type::open_record_with_attributes(None)),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
             Type::open_record_with_attributes(None),
             Type::closed_record_with_attributes(None),
             Ok(Type::open_record_with_attributes(None)),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
             Type::open_record_with_attributes(None),
             Type::open_record_with_attributes(None),
             Ok(Type::open_record_with_attributes(None)),
         );
 
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::closed_record_with_required_attributes([
                 ("foo".into(), Type::False),
                 ("bar".into(), Type::primitive_long()),
@@ -2033,8 +2175,23 @@ mod test {
                 Type::primitive_long(),
             )])),
         );
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
+            Type::closed_record_with_required_attributes([
+                ("foo".into(), Type::False),
+                ("bar".into(), Type::primitive_long()),
+            ]),
+            Type::closed_record_with_required_attributes([
+                ("foo".into(), Type::primitive_string()),
+                ("bar".into(), Type::primitive_long()),
+            ]),
+            Err(LubHelp::None),
+        );
 
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::closed_record_with_required_attributes([("bar".into(), Type::primitive_long())]),
             Type::closed_record_with_required_attributes([
                 ("foo".into(), Type::primitive_string()),
@@ -2045,8 +2202,20 @@ mod test {
                 Type::primitive_long(),
             )])),
         );
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
+            Type::closed_record_with_required_attributes([("bar".into(), Type::primitive_long())]),
+            Type::closed_record_with_required_attributes([
+                ("foo".into(), Type::primitive_string()),
+                ("bar".into(), Type::primitive_long()),
+            ]),
+            Err(LubHelp::RecordWidth),
+        );
 
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::closed_record_with_required_attributes([
                 ("foo".into(), Type::False),
                 ("bar".into(), Type::primitive_long()),
@@ -2060,8 +2229,23 @@ mod test {
                 Type::primitive_boolean(),
             )])),
         );
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
+            Type::closed_record_with_required_attributes([
+                ("foo".into(), Type::False),
+                ("bar".into(), Type::primitive_long()),
+            ]),
+            Type::closed_record_with_required_attributes([
+                ("foo".into(), Type::True),
+                ("baz".into(), Type::primitive_long()),
+            ]),
+            Err(LubHelp::RecordWidth),
+        );
 
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
             Type::closed_record_with_required_attributes([("foo".into(), Type::False)]),
             Type::closed_record_with_required_attributes([("foo".into(), Type::True)]),
             Ok(Type::closed_record_with_required_attributes([(
@@ -2070,7 +2254,9 @@ mod test {
             )])),
         );
 
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::closed_record_with_attributes([
                 (
                     "foo".into(),
@@ -2102,11 +2288,45 @@ mod test {
                 ),
             ])),
         );
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
+            Type::closed_record_with_attributes([
+                (
+                    "foo".into(),
+                    AttributeType::new(Type::primitive_long(), false),
+                ),
+                (
+                    "bar".into(),
+                    AttributeType::new(Type::primitive_long(), false),
+                ),
+            ]),
+            Type::closed_record_with_attributes([
+                (
+                    "foo".into(),
+                    AttributeType::new(Type::primitive_long(), true),
+                ),
+                (
+                    "bar".into(),
+                    AttributeType::new(Type::primitive_long(), false),
+                ),
+            ]),
+            Err(LubHelp::AttributeQualifier),
+        );
 
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::closed_record_with_required_attributes([("a".into(), Type::primitive_long())]),
             Type::closed_record_with_attributes([]),
             Ok(Type::open_record_with_attributes([])),
+        );
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
+            Type::closed_record_with_required_attributes([("a".into(), Type::primitive_long())]),
+            Type::closed_record_with_attributes([]),
+            Err(LubHelp::RecordWidth),
         );
     }
 
@@ -2127,51 +2347,62 @@ mod test {
         .expect("Expected valid schema")
     }
 
-    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_least_upper_bound_simple_schema(lhs: Type, rhs: Type, lub: Result<Type, LubHelp>) {
-        assert_least_upper_bound(simple_schema(), lhs, rhs, lub);
-    }
-
-    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_entity_lub_attrs_simple_schema(
-        lhs: Type,
-        rhs: Type,
-        lub_names: &[&str],
-        lub_attrs: &[(&str, Type)],
-    ) {
-        assert_entity_lub(simple_schema(), lhs, rhs, lub_names, lub_attrs);
-    }
-
     #[test]
     fn test_entity_lub() {
-        assert_least_upper_bound_simple_schema(
+        assert_least_upper_bound(
+            simple_schema(),
+            ValidationMode::Strict,
             Type::any_entity_reference(),
             Type::any_entity_reference(),
             Ok(Type::any_entity_reference()),
         );
-        assert_entity_lub_attrs_simple_schema(
+        assert_entity_lub(
+            simple_schema(),
+            ValidationMode::Permissive,
             Type::named_entity_reference_from_str("foo"),
             Type::named_entity_reference_from_str("bar"),
             &["foo", "bar"],
             &[],
         );
-        assert_entity_lub_attrs_simple_schema(
+        assert_least_upper_bound(
+            simple_schema(),
+            ValidationMode::Strict,
+            Type::named_entity_reference_from_str("foo"),
+            Type::named_entity_reference_from_str("bar"),
+            Err(LubHelp::EntityType),
+        );
+        assert_entity_lub(
+            simple_schema(),
+            ValidationMode::Strict,
             Type::named_entity_reference_from_str("foo"),
             Type::named_entity_reference_from_str("foo"),
             &["foo"],
             &[],
         );
-        assert_least_upper_bound_simple_schema(
+        assert_least_upper_bound(
+            simple_schema(),
+            ValidationMode::Permissive,
             Type::any_entity_reference(),
             Type::named_entity_reference_from_str("foo"),
             Ok(Type::any_entity_reference()),
         );
-        assert_least_upper_bound_simple_schema(
+        assert_least_upper_bound(
+            simple_schema(),
+            ValidationMode::Strict,
+            Type::any_entity_reference(),
+            Type::named_entity_reference_from_str("foo"),
+            Err(LubHelp::EntityType),
+        );
+        assert_least_upper_bound(
+            simple_schema(),
+            ValidationMode::Permissive,
             Type::named_entity_reference_from_str("foo"),
             Type::primitive_boolean(),
             Err(LubHelp::None),
         );
-        assert_least_upper_bound_simple_schema(
+        assert_least_upper_bound(
+            simple_schema(),
+            ValidationMode::Permissive,
             Type::named_entity_reference_from_str("foo"),
             Type::set(Type::any_entity_reference()),
             Err(LubHelp::None),
@@ -2182,22 +2413,42 @@ mod test {
     /// does not need to be declared in the entity type list.
     #[test]
     fn test_action_entity_lub() {
-        assert_entity_lub_attrs_simple_schema(
+        assert_entity_lub(
+            simple_schema(),
+            ValidationMode::Strict,
             Type::named_entity_reference_from_str("Action"),
             Type::named_entity_reference_from_str("Action"),
             &["Action"],
             &[],
         );
-        assert_entity_lub_attrs_simple_schema(
+        assert_entity_lub(
+            simple_schema(),
+            ValidationMode::Permissive,
             Type::named_entity_reference_from_str("Action"),
             Type::named_entity_reference_from_str("foo"),
             &["Action", "foo"],
             &[],
         );
-        assert_least_upper_bound_simple_schema(
+        assert_least_upper_bound(
+            simple_schema(),
+            ValidationMode::Strict,
+            Type::named_entity_reference_from_str("Action"),
+            Type::named_entity_reference_from_str("foo"),
+            Err(LubHelp::EntityType),
+        );
+        assert_least_upper_bound(
+            simple_schema(),
+            ValidationMode::Permissive,
             Type::named_entity_reference_from_str("Action"),
             Type::any_entity_reference(),
             Ok(Type::any_entity_reference()),
+        );
+        assert_least_upper_bound(
+            simple_schema(),
+            ValidationMode::Strict,
+            Type::named_entity_reference_from_str("Action"),
+            Type::any_entity_reference(),
+            Err(LubHelp::EntityType),
         );
     }
 
@@ -2238,24 +2489,11 @@ mod test {
         .expect("Expected valid schema")
     }
 
-    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_least_upper_bound_attr_schema(lhs: Type, rhs: Type, lub: Result<Type, LubHelp>) {
-        assert_least_upper_bound(attr_schema(), lhs, rhs, lub);
-    }
-
-    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_entity_lub_attrs_attr_schema(
-        lhs: Type,
-        rhs: Type,
-        lub_names: &[&str],
-        lub_attrs: &[(&str, Type)],
-    ) {
-        assert_entity_lub(attr_schema(), lhs, rhs, lub_names, lub_attrs);
-    }
-
     #[test]
     fn test_entity_lub_with_attributes() {
-        assert_entity_lub_attrs_attr_schema(
+        assert_entity_lub(
+            attr_schema(),
+            ValidationMode::Strict,
             Type::named_entity_reference_from_str("baz"),
             Type::named_entity_reference_from_str("baz"),
             &["baz"],
@@ -2265,13 +2503,24 @@ mod test {
                 ("c", Type::named_entity_reference_from_str("foo")),
             ],
         );
-        assert_entity_lub_attrs_attr_schema(
+        assert_entity_lub(
+            attr_schema(),
+            ValidationMode::Permissive,
             Type::named_entity_reference_from_str("baz"),
             Type::named_entity_reference_from_str("foo"),
             &["baz", "foo"],
             &[],
         );
-        assert_entity_lub_attrs_attr_schema(
+        assert_least_upper_bound(
+            attr_schema(),
+            ValidationMode::Strict,
+            Type::named_entity_reference_from_str("baz"),
+            Type::named_entity_reference_from_str("foo"),
+            Err(LubHelp::EntityType),
+        );
+        assert_entity_lub(
+            attr_schema(),
+            ValidationMode::Permissive,
             Type::named_entity_reference_from_str("baz"),
             Type::named_entity_reference_from_str("buz"),
             &["baz", "buz"],
@@ -2288,21 +2537,34 @@ mod test {
                 ),
             ],
         );
+        assert_least_upper_bound(
+            attr_schema(),
+            ValidationMode::Strict,
+            Type::named_entity_reference_from_str("baz"),
+            Type::named_entity_reference_from_str("buz"),
+            Err(LubHelp::EntityType),
+        );
     }
 
     #[test]
     fn test_record_entity_lub() {
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::any_entity_reference(),
             Type::any_record(),
             Err(LubHelp::EntityRecord),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::closed_record_with_attributes(None),
             Type::any_entity_reference(),
             Err(LubHelp::EntityRecord),
         );
-        assert_least_upper_bound_empty_schema(
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
             Type::closed_record_with_required_attributes([
                 ("foo".into(), Type::False),
                 ("bar".into(), Type::primitive_long()),
@@ -2310,17 +2572,23 @@ mod test {
             Type::any_entity_reference(),
             Err(LubHelp::EntityRecord),
         );
-        assert_least_upper_bound_attr_schema(
+        assert_least_upper_bound(
+            attr_schema(),
+            ValidationMode::Permissive,
             Type::named_entity_reference_from_str("foo"),
             Type::any_record(),
             Err(LubHelp::EntityRecord),
         );
-        assert_least_upper_bound_attr_schema(
+        assert_least_upper_bound(
+            attr_schema(),
+            ValidationMode::Permissive,
             Type::named_entity_reference_from_str("baz"),
             Type::any_record(),
             Err(LubHelp::EntityRecord),
         );
-        assert_least_upper_bound_attr_schema(
+        assert_least_upper_bound(
+            attr_schema(),
+            ValidationMode::Permissive,
             Type::named_entity_reference_from_str("buz"),
             Type::closed_record_with_required_attributes(vec![
                 ("a".into(), Type::primitive_long()),
@@ -2365,6 +2633,7 @@ mod test {
 
         assert_least_upper_bound(
             schema,
+            ValidationMode::Strict,
             Type::named_entity_reference_from_str("U"),
             Type::closed_record_with_required_attributes([(
                 "foo".into(),
@@ -2406,25 +2675,19 @@ mod test {
         .expect("Expected valid schema")
     }
 
-    #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_entity_lub_attrs_rec_schema(
-        lhs: Type,
-        rhs: Type,
-        lub_names: &[&str],
-        lub_attrs: &[(&str, Type)],
-    ) {
-        assert_entity_lub(rec_schema(), lhs, rhs, lub_names, lub_attrs);
-    }
-
     #[test]
     fn test_with_recursive_types() {
-        assert_entity_lub_attrs_rec_schema(
+        assert_entity_lub(
+            rec_schema(),
+            ValidationMode::Strict,
             Type::named_entity_reference_from_str("biz"),
             Type::named_entity_reference_from_str("biz"),
             &["biz"],
             &[("c", Type::named_entity_reference_from_str("biz"))],
         );
-        assert_entity_lub_attrs_rec_schema(
+        assert_entity_lub(
+            rec_schema(),
+            ValidationMode::Permissive,
             Type::named_entity_reference_from_str("biz"),
             Type::named_entity_reference_from_str("fiz"),
             &["biz", "fiz"],
@@ -2437,6 +2700,13 @@ mod test {
                         .collect::<BTreeSet<_>>(),
                 })),
             )],
+        );
+        assert_least_upper_bound(
+            rec_schema(),
+            ValidationMode::Strict,
+            Type::named_entity_reference_from_str("biz"),
+            Type::named_entity_reference_from_str("fiz"),
+            Err(LubHelp::EntityType),
         );
     }
 
