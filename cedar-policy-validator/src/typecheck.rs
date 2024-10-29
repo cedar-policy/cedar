@@ -29,7 +29,6 @@ use std::{borrow::Cow, collections::HashSet, iter::zip};
 use crate::{
     extension_schema::ExtensionFunctionType,
     extensions::ExtensionSchemas,
-    fuzzy_match::fuzzy_search,
     schema::ValidatorSchema,
     types::{
         AttributeType, Capability, CapabilitySet, EntityRecordKind, OpenTag, Primitive, RequestEnv,
@@ -39,6 +38,7 @@ use crate::{
     ValidationError, ValidationMode, ValidationWarning,
 };
 
+use cedar_policy_core::fuzzy_match::fuzzy_search;
 use cedar_policy_core::{
     ast::{
         BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
