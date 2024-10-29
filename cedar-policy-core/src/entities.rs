@@ -58,7 +58,7 @@ pub struct Entities {
     /// Important internal invariant: for any `Entities` object that exists, the
     /// the `ancestor` relation is transitively closed.
     #[serde_as(as = "Vec<(_, _)>")]
-    entities: HashMap<EntityUID, Entity>,
+    entities: HashMap<EntityUID, Arc<Entity>>,
 
     /// The mode flag determines whether this store functions as a partial store or
     /// as a fully concrete store.
@@ -109,7 +109,7 @@ impl Entities {
 
     /// Iterate over the `Entity`s in the `Entities`
     pub fn iter(&self) -> impl Iterator<Item = &Entity> {
-        self.entities.values()
+        self.entities.values().map(|e| e.as_ref())
     }
 
     /// Adds the [`crate::ast::Entity`]s in the iterator to this [`Entities`].
@@ -140,7 +140,7 @@ impl Entities {
                     return Err(EntitiesError::duplicate(entity.uid().clone()))
                 }
                 hash_map::Entry::Vacant(vacant_entry) => {
-                    vacant_entry.insert(entity);
+                    vacant_entry.insert(Arc::new(entity));
                 }
             }
         }
@@ -213,7 +213,7 @@ impl Entities {
                 schema
                     .action_entities()
                     .into_iter()
-                    .map(|e| (e.uid().clone(), Arc::unwrap_or_clone(e))),
+                    .map(|e: Arc<Entity>| (e.uid().clone(), e)),
             );
         }
         Ok(Self {
@@ -252,6 +252,7 @@ impl Entities {
     fn to_ejsons(&self) -> Result<Vec<EntityJson>> {
         self.entities
             .values()
+            .map(Arc::as_ref)
             .map(EntityJson::from_entity)
             .collect::<std::result::Result<_, JsonSerializationError>>()
             .map_err(Into::into)
@@ -322,13 +323,13 @@ impl Entities {
 }
 
 /// Create a map from EntityUids to Entities, erroring if there are any duplicates
-fn create_entity_map(es: impl Iterator<Item = Entity>) -> Result<HashMap<EntityUID, Entity>> {
+fn create_entity_map(es: impl Iterator<Item = Entity>) -> Result<HashMap<EntityUID, Arc<Entity>>> {
     let mut map = HashMap::new();
     for e in es {
         match map.entry(e.uid().clone()) {
             hash_map::Entry::Occupied(_) => return Err(EntitiesError::duplicate(e.uid().clone())),
             hash_map::Entry::Vacant(v) => {
-                v.insert(e);
+                v.insert(Arc::new(e));
             }
         };
     }
@@ -338,10 +339,14 @@ fn create_entity_map(es: impl Iterator<Item = Entity>) -> Result<HashMap<EntityU
 impl IntoIterator for Entities {
     type Item = Entity;
 
-    type IntoIter = hash_map::IntoValues<EntityUID, Entity>;
+    type IntoIter = std::vec::IntoIter<Entity>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.entities.into_values()
+        self.entities
+            .into_values()
+            .map(Arc::unwrap_or_clone)
+            .collect::<Vec<Entity>>()
+            .into_iter()
     }
 }
 

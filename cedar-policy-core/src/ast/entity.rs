@@ -30,6 +30,7 @@ use serde_with::{serde_as, TryFromInto};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::str::FromStr;
+use std::sync::Arc;
 use thiserror::Error;
 
 /// The entity type that Actions must have
@@ -646,6 +647,25 @@ impl TCNode<EntityUID> for Entity {
 
     fn add_edge_to(&mut self, k: EntityUID) {
         self.add_ancestor(k)
+    }
+
+    fn out_edges(&self) -> Box<dyn Iterator<Item = &EntityUID> + '_> {
+        Box::new(self.ancestors())
+    }
+
+    fn has_edge_to(&self, e: &EntityUID) -> bool {
+        self.is_descendant_of(e)
+    }
+}
+
+impl TCNode<EntityUID> for Arc<Entity> {
+    fn get_key(&self) -> EntityUID {
+        self.uid().clone()
+    }
+
+    fn add_edge_to(&mut self, k: EntityUID) {
+        // Use Arc::make_mut to get a mutable reference to the inner value
+        Arc::make_mut(self).add_ancestor(k)
     }
 
     fn out_edges(&self) -> Box<dyn Iterator<Item = &EntityUID> + '_> {
