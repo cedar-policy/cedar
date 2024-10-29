@@ -1253,9 +1253,10 @@ impl<'a> Typechecker<'a> {
                     .map(Type::extension)
                     .chain(std::iter::once(Type::primitive_long()))
                     .collect_vec();
-                let ans_arg1 = self.typecheck(request_env, prior_capability, arg1, type_errors);
+                let ans_arg1 = self.typecheck(request_env, prior_capability, &arg1, type_errors);
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
-                    let ans_arg2 = self.typecheck(request_env, prior_capability, arg2, type_errors);
+                    let ans_arg2 =
+                        self.typecheck(request_env, prior_capability, &arg2, type_errors);
                     ans_arg2.then_typecheck(|expr_ty_arg2, _| {
                         let expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
                             .with_same_source_loc(bin_expr)
@@ -1263,23 +1264,38 @@ impl<'a> Typechecker<'a> {
                         let t1 = expr_ty_arg1.data().as_ref();
                         let t2 = expr_ty_arg2.data().as_ref();
                         match (t1, t2) {
-                            (
-                                Some(Type::Primitive {
-                                    primitive_type: Primitive::Long,
-                                }),
-                                Some(Type::Primitive {
-                                    primitive_type: Primitive::Long,
-                                }),
-                            ) => TypecheckAnswer::success(expr),
-
-                            (Some(t1), Some(t2))
-                                if t1.support_operator_overloading()
-                                    && t2.support_operator_overloading()
-                                    && t1 == t2 =>
-                            {
+                            (Some(Type::Never), Some(Type::Never)) => TypecheckAnswer::fail(expr),
+                            (Some(Type::Never), Some(other)) => {
+                                if expected_types.contains(other) {
+                                    TypecheckAnswer::success(expr)
+                                } else {
+                                    type_errors.push(ValidationError::expected_one_of_types(
+                                        expr_ty_arg2.source_loc().cloned(),
+                                        self.policy_id.clone(),
+                                        expected_types,
+                                        other.clone(),
+                                        None,
+                                    ));
+                                    TypecheckAnswer::fail(expr)
+                                }
+                            }
+                            (Some(other), Some(Type::Never)) => {
+                                if expected_types.contains(other) {
+                                    TypecheckAnswer::success(expr)
+                                } else {
+                                    type_errors.push(ValidationError::expected_one_of_types(
+                                        expr_ty_arg1.source_loc().cloned(),
+                                        self.policy_id.clone(),
+                                        expected_types,
+                                        other.clone(),
+                                        None,
+                                    ));
+                                    TypecheckAnswer::fail(expr)
+                                }
+                            }
+                            (Some(t1), Some(t2)) if t1 == t2 && expected_types.contains(t1) => {
                                 TypecheckAnswer::success(expr)
                             }
-
                             (
                                 Some(Type::Primitive {
                                     primitive_type: Primitive::Long,
@@ -1338,26 +1354,6 @@ impl<'a> Typechecker<'a> {
                                     lhs.clone(),
                                     None,
                                 ));
-                                type_errors.push(ValidationError::expected_one_of_types(
-                                    expr_ty_arg2.source_loc().cloned(),
-                                    self.policy_id.clone(),
-                                    expected_types,
-                                    rhs.clone(),
-                                    None,
-                                ));
-                                TypecheckAnswer::fail(expr)
-                            }
-                            (Some(lhs), _) => {
-                                type_errors.push(ValidationError::expected_one_of_types(
-                                    expr_ty_arg1.source_loc().cloned(),
-                                    self.policy_id.clone(),
-                                    expected_types,
-                                    lhs.clone(),
-                                    None,
-                                ));
-                                TypecheckAnswer::fail(expr)
-                            }
-                            (_, Some(rhs)) => {
                                 type_errors.push(ValidationError::expected_one_of_types(
                                     expr_ty_arg2.source_loc().cloned(),
                                     self.policy_id.clone(),

@@ -219,10 +219,7 @@ fn and_typecheck_fails() {
         ValidationError::expected_one_of_types(
             get_loc(src, "false"),
             expr_id_placeholder(),
-            Extensions::types_with_operator_overloading()
-                .into_iter()
-                .map(Type::extension)
-                .chain(std::iter::once(Type::primitive_long())),
+            std::iter::once(Type::primitive_long()),
             Type::singleton_boolean(false),
             None,
         )
@@ -237,10 +234,7 @@ fn and_typecheck_fails() {
         ValidationError::expected_one_of_types(
             get_loc(src, "false"),
             expr_id_placeholder(),
-            Extensions::types_with_operator_overloading()
-                .into_iter()
-                .map(Type::extension)
-                .chain(std::iter::once(Type::primitive_long())),
+            std::iter::once(Type::primitive_long()),
             Type::singleton_boolean(false),
             None,
         )
@@ -365,10 +359,7 @@ fn or_typecheck_fails() {
         ValidationError::expected_one_of_types(
             get_loc(src, "true"),
             expr_id_placeholder(),
-            Extensions::types_with_operator_overloading()
-                .into_iter()
-                .map(Type::extension)
-                .chain(std::iter::once(Type::primitive_long())),
+            std::iter::once(Type::primitive_long()),
             Type::singleton_boolean(true),
             None,
         )
@@ -383,10 +374,7 @@ fn or_typecheck_fails() {
         ValidationError::expected_one_of_types(
             get_loc(src, "false"),
             expr_id_placeholder(),
-            Extensions::types_with_operator_overloading()
-                .into_iter()
-                .map(Type::extension)
-                .chain(std::iter::once(Type::primitive_long())),
+            std::iter::once(Type::primitive_long()),
             Type::singleton_boolean(false),
             None,
         )
@@ -401,10 +389,7 @@ fn or_typecheck_fails() {
         ValidationError::expected_one_of_types(
             get_loc(src, "true"),
             expr_id_placeholder(),
-            Extensions::types_with_operator_overloading()
-                .into_iter()
-                .map(Type::extension)
-                .chain(std::iter::once(Type::primitive_long())),
+            std::iter::once(Type::primitive_long()),
             Type::singleton_boolean(true),
             None,
         )
