@@ -1781,21 +1781,18 @@ mod test {
         assert_eq!(
             Type::least_upper_bound(&schema, &lhs, &rhs, mode),
             lub,
-            "assert_least_upper_bound({:?}, {:?}, {:?})",
-            lhs,
-            rhs,
-            lub
+            "assert_least_upper_bound({lhs:?}, {rhs:?}, {lub:?}, {mode:?})",
         );
 
         if let Ok(lub_ty) = &lub {
             // Also assert that types are subtypes of the LUB
             assert!(
                 Type::is_subtype(&schema, &lhs, &lub_ty, mode),
-                "{lhs:?} </: {lub_ty:?}"
+                "{lhs:?} </: ({mode:?}) {lub_ty:?}"
             );
             assert!(
                 Type::is_subtype(&schema, &rhs, &lub_ty, mode),
-                "{rhs:?} </: {lub_ty:?}"
+                "{rhs:?} </: ({mode:?}) {lub_ty:?}"
             );
 
             // Permissive LUB should be the same as strict when the strict LUB is defined.
@@ -1807,7 +1804,6 @@ mod test {
             assert_least_upper_bound(schema, ValidationMode::Strict, lhs, rhs, lub);
         }
     }
-
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     fn assert_entity_lub(
         schema: ValidatorSchema,
@@ -1825,7 +1821,7 @@ mod test {
                     .map(|s| s.parse().expect("Expected valid entity type name."))
                     .collect::<BTreeSet<_>>(),
                 entity_lub.lub_elements,
-                "Incorrect entity types composing LUB."
+                "Incorrect entity types composing LUB for {mode:?}."
             );
             assert_eq!(
                 Attributes::with_attributes(
@@ -1838,18 +1834,18 @@ mod test {
                         .collect::<BTreeMap<_, _>>()
                 ),
                 entity_lub.get_attribute_types(&schema),
-                "Incorrect computed record type for LUB."
+                "Incorrect computed record type for LUB for {mode:?}."
             );
         });
 
         // Also assert that types are subtypes of the LUB
         assert!(
             Type::is_subtype(&schema, &lhs, lub.as_ref().unwrap(), mode),
-            "{lhs:?} </: {lub:?}"
+            "{lhs:?} </: ({mode:?}) {lub:?}"
         );
         assert!(
             Type::is_subtype(&schema, &rhs, lub.as_ref().unwrap(), mode),
-            "{rhs:?} </: {lub:?}"
+            "{rhs:?} </: ({mode:?}) {lub:?}"
         );
 
         // Permissive LUB should be the same as strict when the strict LUB is defined.
@@ -2447,8 +2443,9 @@ mod test {
             Ok(action_view_ty.clone()),
         );
 
-        // This test case seems a little odd, but the types don't actually only
-        // track the entity type, not the id, so the `Action::"edit"` type is actually identical.
+        // This test case seems a little odd, but the types actually only track
+        // the entity type, not the id, so the `Action::"edit"` type is
+        // identical to `Action::"view"`.
         assert_least_upper_bound(
             action_schema(),
             ValidationMode::Strict,
