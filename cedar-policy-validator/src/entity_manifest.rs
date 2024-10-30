@@ -48,7 +48,7 @@ use crate::{ValidationResult, Validator};
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
-#[doc = include_str!("../../cedar-policy/experimental_warning.md")]
+#[doc = include_str!("../experimental_warning.md")]
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -68,14 +68,14 @@ where
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
-#[doc = include_str!("../../cedar-policy/experimental_warning.md")]
+#[doc = include_str!("../experimental_warning.md")]
 pub type Fields<T> = HashMap<SmolStr, Box<AccessTrie<T>>>;
 
 /// The root of a data path or [`RootAccessTrie`].
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
-#[doc = include_str!("../../cedar-policy/experimental_warning.md")]
+#[doc = include_str!("../experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "camelCase")]
 pub enum EntityRoot {
@@ -106,7 +106,7 @@ impl Display for EntityRoot {
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
-#[doc = include_str!("../../cedar-policy/experimental_warning.md")]
+#[doc = include_str!("../experimental_warning.md")]
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -129,7 +129,7 @@ where
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
-#[doc = include_str!("../../cedar-policy/experimental_warning.md")]
+#[doc = include_str!("../experimental_warning.md")]
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

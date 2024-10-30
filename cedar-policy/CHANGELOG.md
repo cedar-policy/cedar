@@ -29,6 +29,13 @@ Cedar Language Version: TBD
 
 - Some misleading parser errors for JSON schema with mistakes in nested attribute definitions (#1270, resolving #417)
 
+## [4.2.1] - 2024-10-08
+Cedar Language version: 4.1
+
+### Fixed
+
+- Fixes a minor issues preventing documentation from building on docs.rs
+
 ## [4.2.0] - 2024-10-07
 Cedar Language version: 4.1
 
@@ -750,7 +757,8 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.1.0...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.2.1...main
+[4.2.1]: https://github.com/cedar-policy/cedar/compare/v4.2.0...v4.2.1
 [4.2.0]: https://github.com/cedar-policy/cedar/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/cedar-policy/cedar/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/cedar-policy/cedar/compare/v3.4.0...v4.0.0
