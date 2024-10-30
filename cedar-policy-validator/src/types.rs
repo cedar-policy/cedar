@@ -1493,7 +1493,7 @@ impl EntityRecordKind {
                     && ((open1.is_open() && !mode.is_strict() && attrs0.is_subtype(schema, attrs1, mode))
                         || attrs0.is_subtype_depth_only(schema, attrs1, mode))
             }
-            (ActionEntity { .. }, ActionEntity { .. }) => false,
+            (ActionEntity { .. }, ActionEntity { .. }) => rk0 == rk1,
             (Entity(lub0), Entity(lub1)) => {
                 if mode.is_strict() {
                     lub0 == lub1
@@ -2409,46 +2409,114 @@ mod test {
         );
     }
 
+    fn action_schema() -> ValidatorSchema {
+        ValidatorSchema::from_schema_frag(
+            json_schema::Fragment::from_json_value(serde_json::json!({
+            "": {
+                "entityTypes": { "foo": {}},
+                "actions": {
+                    "view": { "appliesTo": {"principalTypes": [], "resourceTypes": []} },
+                    "edit": { "appliesTo": {"principalTypes": [], "resourceTypes": []} },
+                }
+            },
+            "ns": {
+                "entityTypes": {},
+                "actions": {
+                    "move": { "appliesTo": {"principalTypes": [], "resourceTypes": []} },
+                }
+            }}))
+            .expect("Expected valid schema"),
+            ActionBehavior::PermitAttributes,
+            Extensions::all_available(),
+        )
+        .expect("Expected valid schema")
+    }
+
     /// Test cases with entity type Action are interesting because Action
     /// does not need to be declared in the entity type list.
     #[test]
     fn test_action_entity_lub() {
-        assert_entity_lub(
-            simple_schema(),
+        let action_view_ty =
+            Type::euid_literal(r#"Action::"view""#.parse().unwrap(), &action_schema()).unwrap();
+
+        assert_least_upper_bound(
+            action_schema(),
             ValidationMode::Strict,
-            Type::named_entity_reference_from_str("Action"),
-            Type::named_entity_reference_from_str("Action"),
-            &["Action"],
-            &[],
+            action_view_ty.clone(),
+            action_view_ty.clone(),
+            Ok(action_view_ty.clone()),
         );
-        assert_entity_lub(
-            simple_schema(),
+
+        // This test case seems a little odd, but the types don't actually only
+        // track the entity type, not the id, so the `Action::"edit"` type is actually identical.
+        assert_least_upper_bound(
+            action_schema(),
+            ValidationMode::Strict,
+            action_view_ty.clone(),
+            Type::euid_literal(r#"Action::"edit""#.parse().unwrap(), &action_schema()).unwrap(),
+            Ok(action_view_ty.clone()),
+        );
+
+        // These actions have different entity types, so we give `AnyEntity` as
+        // the permissive LUB, and error in strict mode.
+        assert_least_upper_bound(
+            action_schema(),
             ValidationMode::Permissive,
-            Type::named_entity_reference_from_str("Action"),
-            Type::named_entity_reference_from_str("foo"),
-            &["Action", "foo"],
-            &[],
+            action_view_ty.clone(),
+            Type::euid_literal(r#"ns::Action::"move""#.parse().unwrap(), &action_schema()).unwrap(),
+            Ok(Type::any_entity_reference()),
         );
         assert_least_upper_bound(
-            simple_schema(),
+            action_schema(),
             ValidationMode::Strict,
-            Type::named_entity_reference_from_str("Action"),
+            action_view_ty.clone(),
+            Type::euid_literal(r#"ns::Action::"move""#.parse().unwrap(), &action_schema()).unwrap(),
+            Err(LubHelp::EntityType),
+        );
+
+        assert_least_upper_bound(
+            action_schema(),
+            ValidationMode::Permissive,
+            action_view_ty.clone(),
+            Type::named_entity_reference_from_str("foo"),
+            Ok(Type::any_entity_reference()),
+        );
+        assert_least_upper_bound(
+            action_schema(),
+            ValidationMode::Strict,
+            action_view_ty.clone(),
             Type::named_entity_reference_from_str("foo"),
             Err(LubHelp::EntityType),
         );
+
         assert_least_upper_bound(
-            simple_schema(),
+            action_schema(),
             ValidationMode::Permissive,
-            Type::named_entity_reference_from_str("Action"),
+            action_view_ty.clone(),
             Type::any_entity_reference(),
             Ok(Type::any_entity_reference()),
         );
         assert_least_upper_bound(
-            simple_schema(),
+            action_schema(),
             ValidationMode::Strict,
-            Type::named_entity_reference_from_str("Action"),
+            action_view_ty.clone(),
             Type::any_entity_reference(),
             Err(LubHelp::EntityType),
+        );
+
+        assert_least_upper_bound(
+            action_schema(),
+            ValidationMode::Permissive,
+            action_view_ty.clone(),
+            Type::primitive_long(),
+            Err(LubHelp::None),
+        );
+        assert_least_upper_bound(
+            action_schema(),
+            ValidationMode::Permissive,
+            action_view_ty.clone(),
+            Type::any_record(),
+            Err(LubHelp::EntityRecord),
         );
     }
 
@@ -2633,7 +2701,7 @@ mod test {
 
         assert_least_upper_bound(
             schema,
-            ValidationMode::Strict,
+            ValidationMode::Permissive,
             Type::named_entity_reference_from_str("U"),
             Type::closed_record_with_required_attributes([(
                 "foo".into(),
