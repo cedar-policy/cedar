@@ -2211,6 +2211,17 @@ mod test {
 
         assert_least_upper_bound(
             ValidatorSchema::empty(),
+            ValidationMode::Strict,
+            Type::closed_record_with_required_attributes([("a".into(), Type::True)]),
+            Type::closed_record_with_required_attributes([("a".into(), Type::False)]),
+            Ok(Type::closed_record_with_required_attributes([(
+                "a".into(),
+                Type::primitive_boolean(),
+            )])),
+        );
+
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
             ValidationMode::Permissive,
             Type::closed_record_with_required_attributes([
                 ("foo".into(), Type::False),
@@ -2308,6 +2319,77 @@ mod test {
                 ),
             ]),
             Err(LubHelp::AttributeQualifier),
+        );
+
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Permissive,
+            Type::closed_record_with_attributes([
+                (
+                    "foo".into(),
+                    AttributeType::new(Type::primitive_long(), false),
+                ),
+                (
+                    "bar".into(),
+                    AttributeType::new(Type::primitive_long(), false),
+                ),
+            ]),
+            Type::closed_record_with_attributes([
+                (
+                    "foo".into(),
+                    AttributeType::new(Type::primitive_long(), true),
+                ),
+                (
+                    "baz".into(),
+                    AttributeType::new(Type::primitive_long(), false),
+                ),
+            ]),
+            Ok(Type::open_record_with_attributes([(
+                "foo".into(),
+                AttributeType::new(Type::primitive_long(), false),
+            )])),
+        );
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
+            Type::closed_record_with_attributes([
+                (
+                    "foo".into(),
+                    AttributeType::new(Type::primitive_long(), false),
+                ),
+                (
+                    "bar".into(),
+                    AttributeType::new(Type::primitive_long(), false),
+                ),
+            ]),
+            Type::closed_record_with_attributes([
+                (
+                    "foo".into(),
+                    AttributeType::new(Type::primitive_long(), true),
+                ),
+                (
+                    "baz".into(),
+                    AttributeType::new(Type::primitive_long(), false),
+                ),
+            ]),
+            Err(LubHelp::RecordWidth),
+        );
+
+        assert_least_upper_bound(
+            ValidatorSchema::empty(),
+            ValidationMode::Strict,
+            Type::open_record_with_attributes([(
+                "foo".into(),
+                AttributeType::new(Type::False, true),
+            )]),
+            Type::closed_record_with_attributes([(
+                "foo".into(),
+                AttributeType::new(Type::True, true),
+            )]),
+            Ok(Type::open_record_with_attributes([(
+                "foo".into(),
+                AttributeType::new(Type::primitive_boolean(), true),
+            )])),
         );
 
         assert_least_upper_bound(
