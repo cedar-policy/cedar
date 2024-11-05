@@ -263,7 +263,7 @@ impl From<ValueKind> for RestrictedExpr {
             .expect("can't have duplicate keys, because the input `map` was already a BTreeMap"),
             ValueKind::ExtensionValue(ev) => {
                 let ev = Arc::unwrap_or_clone(ev);
-                ev.value().into_restricted_expr()
+                ev.into()
             }
         }
     }

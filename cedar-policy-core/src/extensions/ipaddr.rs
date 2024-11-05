@@ -238,6 +238,9 @@ impl ExtensionValue for IPAddr {
     fn typename(&self) -> Name {
         Self::typename()
     }
+    fn supports_operator_overloading(&self) -> bool {
+        false
+    }
 }
 
 fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
@@ -316,9 +319,11 @@ fn str_contains_colons_and_dots(s: &str) -> Result<(), String> {
 fn ip_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
     let arg_source_loc = arg.source_loc().cloned();
-    let ipaddr = RepresentableExtensionValue::new(Arc::new(
-        IPAddr::from_str(str.as_str()).map_err(extension_err)?,
-    ));
+    let ipaddr = RepresentableExtensionValue::new(
+        Arc::new(IPAddr::from_str(str.as_str()).map_err(extension_err)?),
+        names::IP_FROM_STR_NAME.clone(),
+        vec![arg.into()],
+    );
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(ipaddr)),
         loc: arg_source_loc, // this gives the loc of the arg. We could perhaps give instead the loc of the entire `ip("...")` call, but that is hard to do at this program point
@@ -643,13 +648,13 @@ mod tests {
             eval.interpret_inline_policy(&ip("127.0.0.1"))
                 .unwrap()
                 .to_string(),
-            r#"ip("127.0.0.1/32")"#
+            r#"ip("127.0.0.1")"#
         );
         assert_eq!(
             eval.interpret_inline_policy(&ip("ffee::11"))
                 .unwrap()
                 .to_string(),
-            r#"ip("ffee::11/128")"#
+            r#"ip("ffee::11")"#
         );
     }
 

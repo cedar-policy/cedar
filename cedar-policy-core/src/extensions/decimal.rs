@@ -176,6 +176,9 @@ impl ExtensionValue for Decimal {
     fn typename(&self) -> Name {
         Self::typename()
     }
+    fn supports_operator_overloading(&self) -> bool {
+        false
+    }
 }
 
 const EXTENSION_NAME: &str = "decimal";
@@ -196,7 +199,11 @@ fn decimal_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let decimal =
         Decimal::from_str(str.as_str()).map_err(|e| extension_err(e.to_string(), None))?;
     let arg_source_loc = arg.source_loc().cloned();
-    let e = RepresentableExtensionValue::new(Arc::new(decimal));
+    let e = RepresentableExtensionValue::new(
+        Arc::new(decimal),
+        constants::DECIMAL_FROM_STR_NAME.clone(),
+        vec![arg.into()],
+    );
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(e)),
         loc: arg_source_loc, // this gives the loc of the arg. We could perhaps give instead the loc of the entire `decimal("x.yz")` call, but that is hard to do at this program point

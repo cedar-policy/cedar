@@ -92,15 +92,17 @@ fn extension_err(
 
 fn construct_from_str<Ext>(
     arg: Value,
+    constructor_name: Name,
     constructor: impl Fn(&str) -> Result<Ext, EvaluationError>,
 ) -> evaluator::Result<ExtensionOutputValue>
 where
-    Ext: ExtensionValue + std::cmp::Ord + 'static + std::clone::Clone + Into<RestrictedExpr>,
+    Ext: ExtensionValue + std::cmp::Ord + 'static + std::clone::Clone,
 {
     let s = arg.get_as_string()?;
     let ext_value: Ext = constructor(s)?;
     let arg_source_loc = arg.source_loc().cloned();
-    let e = RepresentableExtensionValue::new(Arc::new(ext_value));
+    let e =
+        RepresentableExtensionValue::new(Arc::new(ext_value), constructor_name, vec![arg.into()]);
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(e)),
         loc: arg_source_loc, // follow the same convention as the `decimal` extension
@@ -111,7 +113,7 @@ where
 /// Cedar function that constructs a `datetime` Cedar type from a
 /// Cedar string
 fn datetime_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
-    construct_from_str(arg, |s| {
+    construct_from_str(arg, DATETIME_CONSTRUCTOR_NAME.clone(), |s| {
         parse_datetime(s).map(DateTime::from).map_err(|err| {
             extension_err(
                 err.to_string(),
@@ -177,9 +179,8 @@ fn offset(datetime: Value, duration: Value) -> evaluator::Result<ExtensionOutput
         &OFFSET_METHOD_NAME,
         None,
     ))?;
-    let e = RepresentableExtensionValue::new(Arc::new(ret.clone()));
     Ok(Value {
-        value: ValueKind::ExtensionValue(Arc::new(e)),
+        value: ValueKind::ExtensionValue(Arc::new(ret.into())),
         loc: None,
     }
     .into())
@@ -197,9 +198,8 @@ fn duration_since(lhs: Value, rhs: Value) -> evaluator::Result<ExtensionOutputVa
         &DURATION_SINCE_NAME,
         None,
     ))?;
-    let e = RepresentableExtensionValue::new(Arc::new(ret.clone()));
     Ok(Value {
-        value: ValueKind::ExtensionValue(Arc::new(e)),
+        value: ValueKind::ExtensionValue(Arc::new(ret.into())),
         loc: None,
     }
     .into())
@@ -215,9 +215,8 @@ fn to_date(value: Value) -> evaluator::Result<ExtensionOutputValue> {
         &TO_DATE_NAME,
         None,
     ))?;
-    let e = RepresentableExtensionValue::new(Arc::new(ret.clone()));
     Ok(Value {
-        value: ValueKind::ExtensionValue(Arc::new(e)),
+        value: ValueKind::ExtensionValue(Arc::new(ret.into())),
         loc: None,
     }
     .into())
@@ -226,9 +225,8 @@ fn to_date(value: Value) -> evaluator::Result<ExtensionOutputValue> {
 fn to_time(value: Value) -> evaluator::Result<ExtensionOutputValue> {
     let d = as_datetime(&value)?;
     let ret = d.to_time();
-    let e = RepresentableExtensionValue::new(Arc::new(ret.clone()));
     Ok(Value {
-        value: ValueKind::ExtensionValue(Arc::new(e)),
+        value: ValueKind::ExtensionValue(Arc::new(ret.into())),
         loc: None,
     }
     .into())
@@ -237,6 +235,9 @@ fn to_time(value: Value) -> evaluator::Result<ExtensionOutputValue> {
 impl ExtensionValue for DateTime {
     fn typename(&self) -> crate::ast::Name {
         DATETIME_CONSTRUCTOR_NAME.to_owned()
+    }
+    fn supports_operator_overloading(&self) -> bool {
+        true
     }
 }
 
@@ -285,29 +286,36 @@ impl DateTime {
             },
         }
     }
-}
 
-impl From<DateTime> for RestrictedExpr {
-    fn from(value: DateTime) -> Self {
-        RestrictedExpr::call_extension_fn(
+    fn as_ext_func_call(&self) -> (Name, Vec<RestrictedExpr>) {
+        (
             OFFSET_METHOD_NAME.clone(),
             vec![
                 RestrictedExpr::call_extension_fn(
                     DATETIME_CONSTRUCTOR_NAME.clone(),
                     vec![Value::from(DateTime::UNIX_EPOCH_STR).into()],
                 ),
-                Duration { ms: value.epoch }.into(),
+                Duration { ms: self.epoch }.into(),
             ],
         )
     }
 }
 
-impl From<Duration> for RestrictedExpr {
-    fn from(value: Duration) -> Self {
-        RestrictedExpr::call_extension_fn(
-            DURATION_CONSTRUCTOR_NAME.clone(),
-            vec![Value::from(value.to_string()).into()],
-        )
+impl From<DateTime> for RestrictedExpr {
+    fn from(value: DateTime) -> Self {
+        let (func, args) = value.as_ext_func_call();
+        Self::call_extension_fn(func, args)
+    }
+}
+
+impl From<DateTime> for RepresentableExtensionValue {
+    fn from(value: DateTime) -> Self {
+        let (func, args) = value.as_ext_func_call();
+        Self {
+            func,
+            args,
+            value: Arc::new(value),
+        }
     }
 }
 
@@ -337,12 +345,33 @@ impl ExtensionValue for Duration {
     fn typename(&self) -> crate::ast::Name {
         DURATION_CONSTRUCTOR_NAME.to_owned()
     }
+    fn supports_operator_overloading(&self) -> bool {
+        true
+    }
+}
+
+impl From<Duration> for RestrictedExpr {
+    fn from(value: Duration) -> Self {
+        let (func, args) = value.as_ext_func_call();
+        RestrictedExpr::call_extension_fn(func, args)
+    }
+}
+
+impl From<Duration> for RepresentableExtensionValue {
+    fn from(value: Duration) -> Self {
+        let (func, args) = value.as_ext_func_call();
+        Self {
+            func,
+            args,
+            value: Arc::new(value),
+        }
+    }
 }
 
 /// Cedar function that constructs a `duration` Cedar type from a
 /// Cedar string
 fn duration_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
-    construct_from_str(arg, |s| {
+    construct_from_str(arg, DURATION_CONSTRUCTOR_NAME.clone(), |s| {
         parse_duration(s).map_err(|err| {
             extension_err(
                 err.to_string(),
@@ -372,6 +401,13 @@ impl Duration {
 
     fn to_days(&self) -> i64 {
         self.to_hours() / 24
+    }
+
+    fn as_ext_func_call(&self) -> (Name, Vec<RestrictedExpr>) {
+        (
+            DURATION_CONSTRUCTOR_NAME.clone(),
+            vec![Value::from(self.to_string()).into()],
+        )
     }
 }
 
@@ -643,17 +679,14 @@ mod tests {
     use nonempty::nonempty;
 
     use crate::{
-        ast::{
-            Eid, EntityUID, EntityUIDEntry, Expr, Request, RestrictedExpr, Type, Value, ValueKind,
-        },
+        ast::{Eid, EntityUID, EntityUIDEntry, Expr, Request, Type, Value, ValueKind},
         entities::Entities,
         evaluator::{EvaluationError, Evaluator},
         extensions::{
             datetime::{
                 constants::{
-                    DURATION_CONSTRUCTOR_NAME, OFFSET_METHOD_NAME, TO_DATE_NAME, TO_DAYS_NAME,
-                    TO_HOURS_NAME, TO_MILLISECONDS_NAME, TO_MINUTES_NAME, TO_SECONDS_NAME,
-                    TO_TIME_NAME,
+                    DURATION_CONSTRUCTOR_NAME, TO_DATE_NAME, TO_DAYS_NAME, TO_HOURS_NAME,
+                    TO_MILLISECONDS_NAME, TO_MINUTES_NAME, TO_SECONDS_NAME, TO_TIME_NAME,
                 },
                 parse_datetime, parse_duration, DateTimeParseError, Duration,
             },
@@ -1110,9 +1143,7 @@ mod tests {
                 value: ValueKind::ExtensionValue(ext),
                 ..
             }) => {
-                assert_eq!(ext.value().into_restricted_expr(), RestrictedExpr::call_extension_fn(OFFSET_METHOD_NAME.clone(), vec![
-                    RestrictedExpr::call_extension_fn(DATETIME_CONSTRUCTOR_NAME.clone(), vec![Value::from("1970-01-01").into()]),
-                    RestrictedExpr::call_extension_fn(DURATION_CONSTRUCTOR_NAME.clone(), vec![Value::from("1730073600000ms").into()])]))
+                assert!(ext.value().equals_extvalue(&DateTime {epoch: 1730073600000}));
             }
         );
 
@@ -1125,9 +1156,7 @@ mod tests {
                 value: ValueKind::ExtensionValue(ext),
                 ..
             }) => {
-                assert_eq!(ext.value().into_restricted_expr(), RestrictedExpr::call_extension_fn(OFFSET_METHOD_NAME.clone(), vec![
-                    RestrictedExpr::call_extension_fn(DATETIME_CONSTRUCTOR_NAME.clone(), vec![Value::from("1970-01-01").into()]),
-                    RestrictedExpr::call_extension_fn(DURATION_CONSTRUCTOR_NAME.clone(), vec![Value::from("1730078553456ms").into()])]))
+                assert!(ext.value().equals_extvalue(&DateTime {epoch: 1730078553456}));
             }
         );
 
@@ -1140,9 +1169,7 @@ mod tests {
                 value: ValueKind::ExtensionValue(ext),
                 ..
             }) => {
-                assert_eq!(ext.value().into_restricted_expr(), RestrictedExpr::call_extension_fn(OFFSET_METHOD_NAME.clone(), vec![
-                    RestrictedExpr::call_extension_fn(DATETIME_CONSTRUCTOR_NAME.clone(), vec![Value::from("1970-01-01").into()]),
-                    RestrictedExpr::call_extension_fn(DURATION_CONSTRUCTOR_NAME.clone(), vec![Value::from("1730135533456ms").into()])]))
+                assert!(ext.value().equals_extvalue(&DateTime {epoch: 1730135533456}));
             }
         );
 
@@ -1319,8 +1346,7 @@ mod tests {
                 value: ValueKind::ExtensionValue(ext),
                 ..
             }) => {
-                assert_eq!(ext.value().into_restricted_expr(),
-                    RestrictedExpr::call_extension_fn(DURATION_CONSTRUCTOR_NAME.clone(), vec![Value::from("93784050ms").into()]));
+                assert!(ext.value().equals_extvalue(&Duration {ms: 93784050}));
             }
         );
 

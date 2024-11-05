@@ -34,7 +34,11 @@ mod names {
 
     lazy_static::lazy_static! {
         /// Extension type names that support operator overloading
-        pub static ref TYPES_WITH_OPERATOR_OVERLOADING : BTreeSet<Name> = BTreeSet::from_iter([Name::parse_unqualified_name("datetime").expect("valid identifier"), Name::parse_unqualified_name("duration").expect("valid identifier")]);
+        pub static ref TYPES_WITH_OPERATOR_OVERLOADING : BTreeSet<Name> =
+            BTreeSet::from_iter(
+                [Name::parse_unqualified_name("datetime").expect("valid identifier"),
+                 Name::parse_unqualified_name("duration").expect("valid identifier")]
+            );
     }
 }
 
@@ -364,6 +368,9 @@ pub trait ExtensionValue: Debug + Send + Sync + UnwindSafe + RefUnwindSafe {
     /// Cedar has nominal typing, so two values have the same type iff they
     /// return the same typename here.
     fn typename(&self) -> Name;
+
+    /// If it supports operator overloading
+    fn supports_operator_overloading(&self) -> bool;
 }
 
 impl<V: ExtensionValue> StaticallyTyped for V {
@@ -375,17 +382,26 @@ impl<V: ExtensionValue> StaticallyTyped for V {
 }
 
 #[derive(Debug, Clone)]
-/// Object container for extension values, also stores the constructor-and-args
-/// that can reproduce the value (important for converting the value back to
-/// `RestrictedExpr` for instance)
+/// Object container for extension values
+/// An extension value must be representable by a [`RestrictedExpr`]
+/// Specifically, it will be a function call `func` on `args`
+/// Note that `func` may not be the constructor. A counterexample is that a
+/// `datetime` is represented by an `offset` method call.
+/// Nevertheless, an invariant is that `eval(<func>(<args>)) == value`
 pub struct RepresentableExtensionValue {
-    value: Arc<dyn InternalExtensionValue>,
+    pub(crate) func: Name,
+    pub(crate) args: Vec<RestrictedExpr>,
+    pub(crate) value: Arc<dyn InternalExtensionValue>,
 }
 
 impl RepresentableExtensionValue {
-    /// Create a new `ExtensionValueWithArgs`
-    pub fn new(value: Arc<dyn InternalExtensionValue + Send + Sync>) -> Self {
-        Self { value }
+    /// Create a new [`RepresentableExtensionValue`]
+    pub fn new(
+        value: Arc<dyn InternalExtensionValue + Send + Sync>,
+        func: Name,
+        args: Vec<RestrictedExpr>,
+    ) -> Self {
+        Self { value, func, args }
     }
 
     /// Get the internal value
@@ -398,14 +414,15 @@ impl RepresentableExtensionValue {
         self.value.typename()
     }
 
+    /// If this value supports operator overloading
     pub(crate) fn supports_operator_overloading(&self) -> bool {
-        TYPES_WITH_OPERATOR_OVERLOADING.contains(&self.value.typename())
+        self.value.supports_operator_overloading()
     }
 }
 
-impl From<RepresentableExtensionValue> for Expr {
+impl From<RepresentableExtensionValue> for RestrictedExpr {
     fn from(val: RepresentableExtensionValue) -> Self {
-        val.value().into_restricted_expr().into()
+        RestrictedExpr::call_extension_fn(val.func, val.args)
     }
 }
 
@@ -457,16 +474,9 @@ pub trait InternalExtensionValue: ExtensionValue {
     /// this will be the basis for `Ord` on `InternalExtensionValue`; but note
     /// the `&dyn` (normal `Ord` doesn't have the `dyn`)
     fn cmp_extvalue(&self, other: &dyn InternalExtensionValue) -> std::cmp::Ordering;
-    /// this will convert an extension value to a [`RestrictedExpr`]
-    fn into_restricted_expr(&self) -> RestrictedExpr;
 }
 
-impl<V: 'static + Eq + Ord + ExtensionValue + Send + Sync + Into<RestrictedExpr> + Clone>
-    InternalExtensionValue for V
-{
-    fn into_restricted_expr(&self) -> RestrictedExpr {
-        self.clone().into()
-    }
+impl<V: 'static + Eq + Ord + ExtensionValue + Send + Sync + Clone> InternalExtensionValue for V {
     fn as_any(&self) -> &dyn Any {
         self
     }

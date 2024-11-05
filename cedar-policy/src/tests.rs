@@ -2334,7 +2334,7 @@ mod schema_based_parsing_tests {
         };
         assert_matches!(
             parsed.attr("home_ip"),
-            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"ip("222.222.222.101/32")"#
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"ip("222.222.222.101")"#
         );
         assert_matches!(
             parsed.attr("work_ip"),
@@ -2342,7 +2342,7 @@ mod schema_based_parsing_tests {
         );
         assert_matches!(
             parsed.attr("trust_score"),
-            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"decimal("5.7000")"#
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"decimal("5.7")"#
         );
 
         // simple type mismatch with expected type
@@ -2520,7 +2520,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but it actually has type decimal: `decimal("3.3300")`"#)
+                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but it actually has type decimal: `decimal("3.33")`"#)
                 .build()
         );
 
@@ -2817,7 +2817,7 @@ mod schema_based_parsing_tests {
         };
         assert_matches!(
             parsed.attr("home_ip"),
-            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"ip("222.222.222.101/32")"#
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"ip("222.222.222.101")"#
         );
         assert_matches!(
             parsed.attr("work_ip"),
@@ -2825,7 +2825,7 @@ mod schema_based_parsing_tests {
         );
         assert_matches!(
             parsed.attr("trust_score"),
-            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"decimal("5.7000")"#
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"decimal("5.7")"#
         );
 
         // simple type mismatch with expected type
@@ -3013,7 +3013,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but it actually has type decimal: `decimal("3.3300")`"#)
+                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but it actually has type decimal: `decimal("3.33")`"#)
                 .build()
         );
 
@@ -4689,7 +4689,7 @@ mod decimal_ip_constructors {
     fn expr_ip() {
         let ip = Expression::new_ip("10.10.10.10");
         assert_matches!(evaluate_empty(&ip),
-                Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, r#"ip("10.10.10.10/32")"#)
+                Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, r#"ip("10.10.10.10")"#)
         );
     }
 

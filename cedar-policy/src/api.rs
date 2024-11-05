@@ -38,9 +38,9 @@ pub use err::*;
 
 pub use ast::Effect;
 pub use authorizer::Decision;
-use cedar_policy_core::ast;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
+use cedar_policy_core::ast::{self, RestrictedExpr};
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{ContextSchema, Dereference};
 use cedar_policy_core::est::{self, TemplateLink};
@@ -3957,7 +3957,7 @@ impl From<ast::Value> for EvalResult {
                     .collect(),
             )),
             ast::ValueKind::ExtensionValue(ev) => {
-                Self::ExtensionValue(ev.value().into_restricted_expr().to_string())
+                Self::ExtensionValue(RestrictedExpr::from(ev.as_ref().clone()).to_string())
             }
         }
     }

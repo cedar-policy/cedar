@@ -32,7 +32,6 @@ use crate::{
     entities::Name,
 };
 use either::Either;
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use serde_with::{DeserializeAs, SerializeAs};
@@ -360,19 +359,18 @@ impl CedarValueJson {
                 ))
             }
             ValueKind::ExtensionValue(ev) => {
-                let restricted_expr = ev.value().into_restricted_expr();
-                // PANIC SAFETY: `ev.value()` must be a function call
-                #[allow(clippy::unwrap_used)]
-                let (func, args) = restricted_expr.as_extn_fn_call().unwrap();
+                let ext_func = &ev.func;
                 Ok(Self::ExtnEscape {
                     __extn: FnAndArg {
-                        ext_fn: func.to_smolstr(),
-                        arg: match args.collect_vec()[..] {
-                            [ref expr] => Box::new(Self::from_expr(*expr)?),
-                            [] => return Err(JsonSerializationError::call_0_args(func.clone())),
+                        ext_fn: ext_func.to_smolstr(),
+                        arg: match ev.args.as_slice() {
+                            [ref expr] => Box::new(Self::from_expr(expr.as_borrowed())?),
+                            [] => {
+                                return Err(JsonSerializationError::call_0_args(ext_func.clone()))
+                            }
                             _ => {
                                 return Err(JsonSerializationError::call_2_or_more_args(
-                                    func.clone(),
+                                    ext_func.clone(),
                                 ))
                             }
                         },
