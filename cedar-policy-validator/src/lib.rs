@@ -31,26 +31,31 @@
 #![allow(clippy::result_large_err, clippy::large_enum_variant)] // see #878
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
 
+#[cfg(feature = "protobufs")]
+pub mod proto {
+    #![allow(missing_docs)]
+    #![allow(clippy::doc_markdown)]
+    include!(concat!(env!("OUT_DIR"), "/cedar_policy_validator.rs"));
+}
+
 use cedar_policy_core::ast::{Policy, PolicySet, Template};
 use serde::Serialize;
 use std::collections::HashSet;
 #[cfg(feature = "level-validate")]
 mod level_validate;
 
+mod coreschema;
 #[cfg(feature = "entity-manifest")]
 pub mod entity_manifest;
-mod err;
-pub use err::*;
-mod coreschema;
 pub use coreschema::*;
 mod diagnostics;
 pub use diagnostics::*;
 mod expr_iterator;
 mod extension_schema;
 mod extensions;
-mod fuzzy_match;
 mod rbac;
 mod schema;
+pub use schema::err::*;
 pub use schema::*;
 pub mod json_schema;
 mod str_checks;
@@ -93,6 +98,30 @@ impl ValidationMode {
             ValidationMode::Permissive => false,
             #[cfg(feature = "partial-validate")]
             ValidationMode::Partial => false,
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&ValidationMode> for proto::ValidationMode {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::allow_unimplemented)]
+    fn from(v: &ValidationMode) -> Self {
+        match v {
+            ValidationMode::Strict => proto::ValidationMode::Strict,
+            ValidationMode::Permissive => proto::ValidationMode::Permissive,
+            #[cfg(feature = "partial-validate")]
+            ValidationMode::Partial => unimplemented!(),
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::ValidationMode> for ValidationMode {
+    fn from(v: &proto::ValidationMode) -> Self {
+        match v {
+            proto::ValidationMode::Strict => ValidationMode::Strict,
+            proto::ValidationMode::Permissive => ValidationMode::Permissive,
         }
     }
 }

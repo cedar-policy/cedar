@@ -843,6 +843,7 @@ impl From<est::PolicySetFromJsonError> for PolicySetError {
 
 /// Represents one or more [`ParseError`]s encountered when parsing a policy or
 /// expression.
+///
 /// By default, the `Diagnostic` and `Error` implementations will only print the
 /// first error. If you want to see all errors, use `.iter()` or `.into_iter()`.
 #[derive(Debug, Diagnostic, Error)]

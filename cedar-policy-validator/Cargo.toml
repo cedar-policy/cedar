@@ -32,6 +32,9 @@ serde-wasm-bindgen = { version = "0.6", optional = true }
 tsify = { version = "0.4.5", optional = true }
 wasm-bindgen = { version = "0.2.82", optional = true }
 
+# protobuf dependency
+prost = { version = "0.13.3", optional = true }
+
 [features]
 # by default, enable all Cedar extensions
 default = ["ipaddr", "decimal"]
@@ -47,6 +50,7 @@ arbitrary = ["dep:arbitrary", "cedar-policy-core/arbitrary"]
 partial-validate = []
 level-validate = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
+protobufs = ["dep:prost", "dep:prost-build"]
 entity-manifest = []
 
 [dev-dependencies]
@@ -57,3 +61,5 @@ miette = { version = "7.1.0", features = ["fancy"] }
 
 [build-dependencies]
 lalrpop = "0.22.0"
+# protobuf dependency
+prost-build = { version = "0.13.3", optional = true }

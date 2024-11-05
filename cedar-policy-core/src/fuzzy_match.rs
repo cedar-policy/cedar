@@ -14,8 +14,21 @@
  * limitations under the License.
  */
 
+//! This module provides the fuzzy matching utility used to make suggestions
+//! when encountering unknown values in entities, functions, etc.
+
 /// Fuzzy string matching using the Levenshtein distance algorithm
 pub fn fuzzy_search(key: &str, lst: &[impl AsRef<str>]) -> Option<String> {
+    fuzzy_search_limited(key, lst, None)
+}
+
+/// Fuzzy string matching using the Levenshtein distance algorithm, with an
+/// option to limit matching up to some distance.
+pub fn fuzzy_search_limited(
+    key: &str,
+    lst: &[impl AsRef<str>],
+    max_distance: Option<usize>,
+) -> Option<String> {
     if key.is_empty() || lst.is_empty() {
         None
     } else {
@@ -27,10 +40,16 @@ pub fn fuzzy_search(key: &str, lst: &[impl AsRef<str>]) -> Option<String> {
                 acc
             }
         });
-        Some(t.1.to_owned())
+
+        if let Some(threshold) = max_distance {
+            (t.0 <= threshold).then_some(t.1.to_owned())
+        } else {
+            Some(t.1.to_owned())
+        }
     }
 }
-pub fn levenshtein_distance(word1: &str, word2: &str) -> usize {
+
+fn levenshtein_distance(word1: &str, word2: &str) -> usize {
     let w1 = word1.chars().collect::<Vec<_>>();
     let w2 = word2.chars().collect::<Vec<_>>();
     let word1_length = w1.len() + 1;

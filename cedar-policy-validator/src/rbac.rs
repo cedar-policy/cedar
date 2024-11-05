@@ -21,6 +21,7 @@ use cedar_policy_core::{
         self, ActionConstraint, EntityReference, EntityUID, Policy, PolicyID, PrincipalConstraint,
         PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
     },
+    fuzzy_match::fuzzy_search,
     parser::Loc,
 };
 
@@ -32,7 +33,7 @@ use crate::{
     ValidationError,
 };
 
-use super::{fuzzy_match::fuzzy_search, schema::*, Validator};
+use super::{schema::*, Validator};
 
 impl Validator {
     /// Generate `UnrecognizedEntityType` error for every entity type in the

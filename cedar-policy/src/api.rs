@@ -913,6 +913,7 @@ pub struct Response {
 }
 
 /// A partially evaluated authorization response.
+///
 /// Splits the results into several categories: satisfied, false, and residual for each policy effect.
 /// Also tracks all the errors that were encountered during evaluation.
 #[doc = include_str!("../experimental_warning.md")]
@@ -991,7 +992,7 @@ impl PartialResponse {
         es: &Entities,
     ) -> Result<Self, ReauthorizationError> {
         let exts = Extensions::all_available();
-        let evaluator = RestrictedEvaluator::new(&exts);
+        let evaluator = RestrictedEvaluator::new(exts);
         let mapping = mapping
             .into_iter()
             .map(|(name, expr)| {
@@ -1633,8 +1634,9 @@ impl Schema {
     }
 }
 
-/// Contains the result of policy validation. The result includes the list of
-/// issues found by validation and whether validation succeeds or fails.
+/// Contains the result of policy validation.
+///
+/// The result includes the list of issues found by validation and whether validation succeeds or fails.
 /// Validation succeeds if there are no fatal errors. There may still be
 /// non-fatal warnings present when validation passes.
 #[derive(Debug)]
@@ -1782,8 +1784,9 @@ impl Diagnostic for ValidationResult {
     }
 }
 
-/// Scan a set of policies for potentially confusing/obfuscating text. These
-/// checks are also provided through [`Validator::validate`] which provides more
+/// Scan a set of policies for potentially confusing/obfuscating text.
+///
+/// These checks are also provided through [`Validator::validate`] which provides more
 /// comprehensive error detection, but this function can be used to check for
 /// confusable strings without defining a schema.
 pub fn confusable_string_checker<'a>(
@@ -2373,7 +2376,9 @@ fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item
                     },
                     //PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
                     #[allow(clippy::unreachable)]
-                    _ => unreachable!("used unsupported feature"),
+                    cedar_policy_validator::types::RequestEnv::UndeclaredAction => {
+                        unreachable!("used unsupported feature")
+                    }
                 })
             } else {
                 None
@@ -2973,12 +2978,9 @@ impl Policy {
             .condition()
             .subexpressions()
             .filter_map(|e| match e.expr_kind() {
-                cedar_policy_core::ast::ExprKind::Lit(l) => match l {
-                    cedar_policy_core::ast::Literal::EntityUID(euid) => {
-                        Some(EntityUid((*euid).as_ref().clone()))
-                    }
-                    _ => None,
-                },
+                cedar_policy_core::ast::ExprKind::Lit(
+                    cedar_policy_core::ast::Literal::EntityUID(euid),
+                ) => Some(EntityUid((*euid).as_ref().clone())),
                 _ => None,
             })
             .collect()
@@ -2995,8 +2997,7 @@ impl Policy {
         let cloned_est = self
             .lossless
             .est()
-            .expect("Internal error, failed to construct est.")
-            .clone();
+            .expect("Internal error, failed to construct est.");
 
         let mapping = mapping.into_iter().map(|(k, v)| (k.0, v.0)).collect();
 
@@ -3011,7 +3012,7 @@ impl Policy {
             Err(e) => return Err(e.into()),
         };
 
-        Ok(Policy {
+        Ok(Self {
             ast,
             lossless: LosslessPolicy::Est(est),
         })
@@ -3994,6 +3995,7 @@ impl std::fmt::Display for EvalResult {
 }
 
 /// Evaluates an expression.
+///
 /// If evaluation results in an error (e.g., attempting to access a non-existent Entity or Record,
 /// passing the wrong number of arguments to a function etc.), that error is returned as a String
 pub fn eval_expression(
@@ -4441,6 +4443,7 @@ action CreateList in Create appliesTo {
 }
 
 /// Given a schema and policy set, compute an entity manifest.
+///
 /// The policies must validate against the schema in strict mode,
 /// otherwise an error is returned.
 /// The manifest describes the data required to answer requests
@@ -4451,5 +4454,5 @@ pub fn compute_entity_manifest(
     schema: &Schema,
     pset: &PolicySet,
 ) -> Result<EntityManifest, EntityManifestError> {
-    entity_manifest::compute_entity_manifest(&schema.0, &pset.ast).map_err(|e| e.into())
+    entity_manifest::compute_entity_manifest(&schema.0, &pset.ast).map_err(Into::into)
 }

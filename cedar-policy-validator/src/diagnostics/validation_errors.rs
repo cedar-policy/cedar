@@ -22,6 +22,7 @@ use thiserror::Error;
 use std::fmt::Display;
 use std::ops::{Add, Neg};
 
+use cedar_policy_core::fuzzy_match::fuzzy_search;
 use cedar_policy_core::impl_diagnostic_from_source_loc_opt_field;
 use cedar_policy_core::parser::Loc;
 
@@ -30,7 +31,6 @@ use std::collections::BTreeSet;
 use cedar_policy_core::ast::{Eid, EntityType, EntityUID, Expr, ExprKind, PolicyID, Var};
 use cedar_policy_core::parser::join_with_conjunction;
 
-use crate::fuzzy_match::fuzzy_search;
 use crate::types::{EntityLUB, EntityRecordKind, RequestEnv, Type};
 use crate::ValidatorSchema;
 use itertools::Itertools;
@@ -485,8 +485,8 @@ impl Diagnostic for HierarchyNotRespected {
     }
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, Error, Copy, Ord, PartialOrd)]
 /// Represents how many entity dereferences can be applied to a node.
+#[derive(Default, Debug, Clone, Hash, Eq, PartialEq, Error, Copy, Ord, PartialOrd)]
 pub struct EntityDerefLevel {
     /// A negative value `-n` represents `n` too many dereferences
     pub level: i64,
@@ -503,12 +503,6 @@ impl From<u32> for EntityDerefLevel {
         EntityDerefLevel {
             level: value as i64,
         }
-    }
-}
-
-impl Default for EntityDerefLevel {
-    fn default() -> Self {
-        Self { level: 0 }
     }
 }
 
@@ -557,7 +551,7 @@ impl Diagnostic for EntityDerefLevelViolation {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        Some(Box::new(format!("Consider increasing the level")))
+        Some(Box::new("Consider increasing the level"))
     }
 }
 

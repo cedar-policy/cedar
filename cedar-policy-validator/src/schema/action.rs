@@ -33,6 +33,12 @@ use crate::{
     ConditionalName,
 };
 
+#[cfg(feature = "protobufs")]
+use crate::proto;
+
+#[cfg(feature = "protobufs")]
+use cedar_policy_core::{evaluator::RestrictedEvaluator, extensions::Extensions};
+
 /// Contains information about actions used by the validator.  The contents of
 /// the struct are the same as the schema entity type structure, but the
 /// `member_of` relation is reversed to instead be `descendants`.
@@ -123,6 +129,80 @@ impl TCNode<EntityUID> for ValidatorActionId {
     }
 }
 
+#[cfg(feature = "protobufs")]
+impl From<&ValidatorActionId> for proto::ValidatorActionId {
+    fn from(v: &ValidatorActionId) -> Self {
+        Self {
+            name: Some(ast::proto::EntityUid::from(&v.name)),
+            applies_to: Some(proto::ValidatorApplySpec::from(&v.applies_to)),
+            descendants: v
+                .descendants
+                .iter()
+                .map(ast::proto::EntityUid::from)
+                .collect(),
+            context: Some(proto::Type::from(&v.context)),
+            attribute_types: Some(proto::Attributes::from(&v.attribute_types)),
+            attributes: v
+                .attributes
+                .iter()
+                .map(|(s, v)| {
+                    let key = s.to_string();
+                    let value = ast::proto::Expr::from(&ast::Expr::from(ast::PartialValue::from(
+                        v.to_owned(),
+                    )));
+                    (key, value)
+                })
+                .collect(),
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::ValidatorActionId> for ValidatorActionId {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::ValidatorActionId) -> Self {
+        let extensions_none = Extensions::none();
+        let eval = RestrictedEvaluator::new(&extensions_none);
+        Self {
+            name: ast::EntityUID::from(
+                v.name
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist"),
+            ),
+            applies_to: ValidatorApplySpec::from(
+                v.applies_to
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist"),
+            ),
+            descendants: v.descendants.iter().map(ast::EntityUID::from).collect(),
+            context: Type::from(
+                v.context
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist"),
+            ),
+            attribute_types: Attributes::from(
+                v.attribute_types
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist"),
+            ),
+            attributes: v
+                .attributes
+                .iter()
+                .map(|(k, v)| {
+                    let pval = eval
+                        .partial_interpret(
+                            ast::BorrowedRestrictedExpr::new(&ast::Expr::from(v))
+                                .expect("RestrictedExpr"),
+                        )
+                        .expect("interpret on RestrictedExpr");
+                    (k.into(), pval.into())
+                })
+                .collect(),
+        }
+    }
+}
+
 /// The principals and resources that an action can be applied to.
 ///
 /// The parameter `N` represents the type of entity type names stored in this
@@ -141,6 +221,42 @@ pub(crate) struct ValidatorApplySpec<N> {
 
     /// The resource entity types the action can be applied to.
     resource_apply_spec: HashSet<N>,
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&ValidatorApplySpec<ast::EntityType>> for proto::ValidatorApplySpec {
+    fn from(v: &ValidatorApplySpec<ast::EntityType>) -> Self {
+        Self {
+            principal_apply_spec: v
+                .principal_apply_spec
+                .iter()
+                .map(ast::proto::EntityType::from)
+                .collect(),
+            resource_apply_spec: v
+                .resource_apply_spec
+                .iter()
+                .map(ast::proto::EntityType::from)
+                .collect(),
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::ValidatorApplySpec> for ValidatorApplySpec<ast::EntityType> {
+    fn from(v: &proto::ValidatorApplySpec) -> Self {
+        Self {
+            principal_apply_spec: v
+                .principal_apply_spec
+                .iter()
+                .map(ast::EntityType::from)
+                .collect(),
+            resource_apply_spec: v
+                .resource_apply_spec
+                .iter()
+                .map(ast::EntityType::from)
+                .collect(),
+        }
+    }
 }
 
 impl<N> ValidatorApplySpec<N> {
