@@ -16,9 +16,26 @@ Cedar Language Version: TBD
 
 - Added protobuf schemas and (de)serialization code using on `prost` crate behind the experimental `protobufs` flag.
 
+### Changed
+
+- The error associated with parsing a non-existent extension function additionally
+  includes a suggestion based on available extension functions (#1280, resolving #332).
+- The error associated with parsing a non-existent extension method additionally
+  includes a suggestion based on available extension methods (#1289, resolving #246).
+- Extract action graph inversion from `CoreSchema` to `ValidatorSchema` instantiation
+  to improve schema validation speeds. (#1290, as part of resolving #1285)
+
 ### Fixed
 
 - Some misleading parser errors for JSON schema with mistakes in nested attribute definitions (#1270, resolving #417)
+- Cedar schema printer now correctly prints entity tags (#1304)
+
+## [4.2.1] - 2024-10-08
+Cedar Language version: 4.1
+
+### Fixed
+
+- Fixes a minor issues preventing documentation from building on docs.rs
 
 ## [4.2.0] - 2024-10-07
 Cedar Language version: 4.1
@@ -741,7 +758,8 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.1.0...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.2.1...main
+[4.2.1]: https://github.com/cedar-policy/cedar/compare/v4.2.0...v4.2.1
 [4.2.0]: https://github.com/cedar-policy/cedar/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/cedar-policy/cedar/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/cedar-policy/cedar/compare/v3.4.0...v4.0.0

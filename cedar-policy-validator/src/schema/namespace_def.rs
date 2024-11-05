@@ -27,6 +27,7 @@ use cedar_policy_core::{
     entities::{json::err::JsonDeserializationErrorContext, CedarValueJson},
     evaluator::RestrictedEvaluator,
     extensions::Extensions,
+    fuzzy_match::fuzzy_search,
 };
 use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
@@ -35,7 +36,6 @@ use smol_str::{SmolStr, ToSmolStr};
 use super::{internal_name_to_entity_type, AllDefs, ValidatorApplySpec};
 use crate::{
     err::{schema_errors::*, SchemaError},
-    fuzzy_match::fuzzy_search,
     json_schema::{self, CommonTypeId},
     types::{AttributeType, Attributes, OpenTag, Type},
     ActionBehavior, ConditionalName, RawName, ReferenceType,

@@ -29,7 +29,6 @@ use std::{borrow::Cow, collections::HashSet, iter::zip};
 use crate::{
     extension_schema::ExtensionFunctionType,
     extensions::ExtensionSchemas,
-    fuzzy_match::fuzzy_search,
     schema::ValidatorSchema,
     types::{
         AttributeType, Capability, CapabilitySet, EntityRecordKind, OpenTag, Primitive, RequestEnv,
@@ -46,6 +45,7 @@ use cedar_policy_core::{
     },
     extensions::Extensions,
 };
+use cedar_policy_core::fuzzy_match::fuzzy_search;
 
 #[cfg(not(target_arch = "wasm32"))]
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;

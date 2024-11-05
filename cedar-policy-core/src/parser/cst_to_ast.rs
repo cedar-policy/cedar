@@ -44,6 +44,7 @@ use crate::ast::{
     PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
 };
 use crate::est::extract_single_argument;
+use crate::fuzzy_match::fuzzy_search_limited;
 use itertools::Either;
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
@@ -489,8 +490,26 @@ impl ast::UnreservedId {
                         )
                         .into())
                     } else {
+                        fn suggest_method(
+                            name: &ast::UnreservedId,
+                            methods: &HashSet<ast::UnreservedId>,
+                        ) -> Option<String> {
+                            const SUGGEST_METHOD_MAX_DISTANCE: usize = 3;
+                            let method_names =
+                                methods.iter().map(ToString::to_string).collect::<Vec<_>>();
+                            let suggested_method = fuzzy_search_limited(
+                                &name.to_string(),
+                                method_names.as_slice(),
+                                Some(SUGGEST_METHOD_MAX_DISTANCE),
+                            );
+                            suggested_method.map(|m| format!("did you mean `{m}`?"))
+                        }
+                        let hint = suggest_method(&self, &EXTENSION_STYLES.methods);
                         Err(ToASTError::new(
-                            ToASTErrorKind::UnknownMethod(self.clone()),
+                            ToASTErrorKind::UnknownMethod {
+                                id: self.clone(),
+                                hint,
+                            },
                             loc.clone(),
                         )
                         .into())
@@ -1508,7 +1527,18 @@ impl ast::Name {
         if EXTENSION_STYLES.functions.contains(&self) {
             Ok(construct_ext_func(self, args, loc))
         } else {
-            Err(ToASTError::new(ToASTErrorKind::UnknownFunction(self), loc).into())
+            fn suggest_function(name: &ast::Name, funs: &HashSet<&ast::Name>) -> Option<String> {
+                const SUGGEST_FUNCTION_MAX_DISTANCE: usize = 3;
+                let fnames = funs.iter().map(ToString::to_string).collect::<Vec<_>>();
+                let suggested_function = fuzzy_search_limited(
+                    &name.to_string(),
+                    fnames.as_slice(),
+                    Some(SUGGEST_FUNCTION_MAX_DISTANCE),
+                );
+                suggested_function.map(|f| format!("did you mean `{f}`?"))
+            }
+            let hint = suggest_function(&self, &EXTENSION_STYLES.functions);
+            Err(ToASTError::new(ToASTErrorKind::UnknownFunction { id: self, hint }, loc).into())
         }
     }
 }
@@ -4008,9 +4038,24 @@ mod tests {
                     .build(),
             ),
             (
+                "principal.addr.isipv4()",
+                ExpectedErrorMessageBuilder::error("`isipv4` is not a valid method")
+                    .exactly_one_underline("principal.addr.isipv4()")
+                    .help("did you mean `isIpv4`?")
+                    .build(),
+            ),
+            (
                 "bar([])",
                 ExpectedErrorMessageBuilder::error("`bar` is not a valid function")
                     .exactly_one_underline("bar([])")
+                    .help("did you mean `ip`?")
+                    .build(),
+            ),
+            (
+                r#"Ip("1.1.1.1/24")"#,
+                ExpectedErrorMessageBuilder::error("`Ip` is not a valid function")
+                    .exactly_one_underline(r#"Ip("1.1.1.1/24")"#)
+                    .help("did you mean `ip`?")
                     .build(),
             ),
             (

@@ -21,4 +21,4 @@ miette = { version = "7.1.0" }
 lazy_static = "1.4.0"
 
 [dev-dependencies]
-insta = { version = "1.38.0", features = ["glob"] }
+insta = { version = "1.41.1", features = ["glob"] }

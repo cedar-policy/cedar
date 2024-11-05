@@ -22,6 +22,7 @@ use thiserror::Error;
 use std::fmt::Display;
 use std::ops::{Add, Neg};
 
+use cedar_policy_core::fuzzy_match::fuzzy_search;
 use cedar_policy_core::impl_diagnostic_from_source_loc_opt_field;
 use cedar_policy_core::parser::Loc;
 
@@ -30,7 +31,6 @@ use std::collections::BTreeSet;
 use cedar_policy_core::ast::{Eid, EntityType, EntityUID, Expr, ExprKind, PolicyID, Var};
 use cedar_policy_core::parser::join_with_conjunction;
 
-use crate::fuzzy_match::fuzzy_search;
 use crate::types::{EntityLUB, EntityRecordKind, RequestEnv, Type};
 use crate::ValidatorSchema;
 use itertools::Itertools;
