@@ -2344,7 +2344,7 @@ mod entity_tags {
                     assert_matches!(ty, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
                         assert_eq!(&format!("{type_name}"), "String");
                     });
-                    assert_eq!(*required, true);
+                    assert!(*required);
                 });
             });
         });

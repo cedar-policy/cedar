@@ -4149,7 +4149,7 @@ mod test {
             );
             assert_panics!(
                 serde_json::from_value::<Policy>(bad).unwrap(),
-                includes("unknown variant `is`, expected one of `All`, `==`, `in`"),
+                includes("unknown variant `is`, expected one of `All`, `all`, `==`, `in`"),
             );
         }
 

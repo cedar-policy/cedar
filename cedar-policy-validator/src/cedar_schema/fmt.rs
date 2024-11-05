@@ -118,6 +118,10 @@ impl<N: Display> Display for json_schema::EntityType<N> {
             write!(f, " = {ty}")?;
         }
 
+        if let Some(tags) = &self.tags {
+            write!(f, " tags {tags}")?;
+        }
+
         Ok(())
     }
 }
@@ -231,4 +235,28 @@ pub fn json_schema_to_cedar_schema_str<N: Display>(
         .into());
     }
     Ok(json_schema.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use cedar_policy_core::extensions::Extensions;
+
+    use crate::cedar_schema::parser::parse_cedar_schema_fragment;
+
+    #[test]
+    fn rfc_example() {
+        let src = "entity User = {
+            jobLevel: Long,
+          } tags Set<String>;
+          entity Document = {
+            owner: User,
+          } tags Set<String>;";
+        let (cedar_schema, _) =
+            parse_cedar_schema_fragment(src, Extensions::none()).expect("should parse");
+        let printed_cedar_schema = cedar_schema.to_cedarschema().expect("should convert");
+        let (parsed_cedar_schema, _) =
+            parse_cedar_schema_fragment(&printed_cedar_schema, Extensions::none())
+                .expect("should parse");
+        assert_eq!(cedar_schema, parsed_cedar_schema);
+    }
 }
