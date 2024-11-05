@@ -20,9 +20,6 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::sync::Arc;
 
-#[cfg(feature = "protobufs")]
-use crate::ast::proto;
-
 /// First-class values which may appear as literals in `Expr::Lit`.
 ///
 /// Note that the auto-derived `PartialEq` and `Eq` are total equality -- using
@@ -128,46 +125,6 @@ impl From<Arc<EntityUID>> for Literal {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl From<&proto::expr::Literal> for Literal {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::expr::Literal) -> Self {
-        match v
-            .lit
-            .as_ref()
-            .expect("`as_ref()` for field that should exist")
-        {
-            proto::expr::literal::Lit::B(b) => Literal::Bool(b.clone()),
-            proto::expr::literal::Lit::I(l) => Literal::Long(l.clone()),
-            proto::expr::literal::Lit::S(s) => Literal::String(s.clone().into()),
-            proto::expr::literal::Lit::Euid(e) => Literal::EntityUID(EntityUID::from(e).into()),
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&Literal> for proto::expr::Literal {
-    fn from(v: &Literal) -> Self {
-        match v {
-            Literal::Bool(b) => Self {
-                lit: Some(proto::expr::literal::Lit::B(b.clone())),
-            },
-            Literal::Long(l) => Self {
-                lit: Some(proto::expr::literal::Lit::I(l.clone())),
-            },
-            Literal::String(s) => Self {
-                lit: Some(proto::expr::literal::Lit::S(s.to_string())),
-            },
-            Literal::EntityUID(euid) => Self {
-                lit: Some(proto::expr::literal::Lit::Euid(proto::EntityUid::from(
-                    euid.as_ref(),
-                ))),
-            },
-        }
-    }
-}
-
 impl Literal {
     /// Check if this literal is an entity reference
     ///
@@ -175,57 +132,5 @@ impl Literal {
     /// required to be an entity reference.
     pub fn is_ref(&self) -> bool {
         matches!(self, Self::EntityUID(..))
-    }
-}
-
-#[cfg(feature = "protobufs")]
-#[cfg(test)]
-mod test {
-    use super::*;
-    use proto;
-
-    #[test]
-    fn protobuf_roundtrip() {
-        let bool_literal_f = Literal::from(false);
-        assert_eq!(
-            bool_literal_f,
-            Literal::from(&proto::expr::Literal::from(&bool_literal_f))
-        );
-
-        let bool_literal_t = Literal::from(true);
-        assert_eq!(
-            bool_literal_t,
-            Literal::from(&proto::expr::Literal::from(&bool_literal_t))
-        );
-
-        let long_literal0 = Literal::from(0);
-        assert_eq!(
-            long_literal0,
-            Literal::from(&proto::expr::Literal::from(&long_literal0))
-        );
-
-        let long_literal1 = Literal::from(1);
-        assert_eq!(
-            long_literal1,
-            Literal::from(&proto::expr::Literal::from(&long_literal1))
-        );
-
-        let str_literal0 = Literal::from("");
-        assert_eq!(
-            str_literal0,
-            Literal::from(&proto::expr::Literal::from(&str_literal0))
-        );
-
-        let str_literal1 = Literal::from("foo");
-        assert_eq!(
-            str_literal1,
-            Literal::from(&proto::expr::Literal::from(&str_literal1))
-        );
-
-        let euid_literal = Literal::from(EntityUID::with_eid("foo"));
-        assert_eq!(
-            euid_literal,
-            Literal::from(&proto::expr::Literal::from(&euid_literal))
-        );
     }
 }
