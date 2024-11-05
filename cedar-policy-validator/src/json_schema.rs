@@ -2510,6 +2510,7 @@ mod entity_tags {
     use cool_asserts::assert_matches;
     use serde_json::json;
 
+    /// This schema taken directly from the RFC 82 text
     #[track_caller]
     fn example_json_schema() -> serde_json::Value {
         json!({"": {
@@ -2556,7 +2557,6 @@ mod entity_tags {
         assert_eq!(json, serialized_json_schema);
     }
 
-    /// This schema taken directly from the RFC 82 text
     #[test]
     fn basic() {
         let json = example_json_schema();
