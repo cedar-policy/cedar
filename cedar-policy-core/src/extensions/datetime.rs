@@ -20,7 +20,7 @@ use std::{fmt::Display, i64, sync::Arc};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta};
 use constants::{
     DATETIME_CONSTRUCTOR_NAME, DATE_PATTERN, DURATION_CONSTRUCTOR_NAME, DURATION_PATTERN,
-    DURATION_SINCE_NAME, HMS_PATTERN, MS_AND_OFFSET_PATTERN, OFFSET_METHOD_NAME,
+    DURATION_SINCE_NAME, HMS_PATTERN, MS_AND_OFFSET_PATTERN, OFFSET_METHOD_NAME, TO_DATE_NAME,
 };
 use miette::Diagnostic;
 use smol_str::SmolStr;
@@ -207,7 +207,14 @@ fn duration_since(lhs: Value, rhs: Value) -> evaluator::Result<ExtensionOutputVa
 
 fn to_date(value: Value) -> evaluator::Result<ExtensionOutputValue> {
     let d = as_datetime(&value)?;
-    let ret = d.to_date();
+    let ret = d.to_date().ok_or(extension_err(
+        format!(
+            "overflows when computing the date of {}",
+            RestrictedExpr::from(d.clone()),
+        ),
+        &TO_DATE_NAME,
+        None,
+    ))?;
     let e = RepresentableExtensionValue::new(Arc::new(ret.clone()));
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(e)),
@@ -251,18 +258,17 @@ impl DateTime {
 
     // essentially `self.epoch.div_floor(Self::DAY_IN_MILLISECONDS) * Self::DAY_IN_MILLISECONDS`
     // but `div_floor` is only available on nightly
-    fn to_date(&self) -> Self {
-        Self {
-            epoch: if self.epoch.is_negative() {
-                if self.epoch % Self::DAY_IN_MILLISECONDS == 0 {
-                    self.epoch
-                } else {
-                    (self.epoch / Self::DAY_IN_MILLISECONDS - 1) * Self::DAY_IN_MILLISECONDS
-                }
+    fn to_date(&self) -> Option<Self> {
+        if self.epoch.is_negative() {
+            if self.epoch % Self::DAY_IN_MILLISECONDS == 0 {
+                Some(self.epoch)
             } else {
-                (self.epoch / Self::DAY_IN_MILLISECONDS) * Self::DAY_IN_MILLISECONDS
-            },
+                (self.epoch / Self::DAY_IN_MILLISECONDS - 1).checked_mul(Self::DAY_IN_MILLISECONDS)
+            }
+        } else {
+            Some((self.epoch / Self::DAY_IN_MILLISECONDS) * Self::DAY_IN_MILLISECONDS)
         }
+        .map(|epoch| Self { epoch })
     }
 
     fn to_time(&self) -> Duration {
@@ -977,14 +983,34 @@ mod tests {
         let max_day_offset = parse_duration("23h59m59s999ms").unwrap();
         let min_day_offset = parse_duration("-23h59m59s999ms").unwrap();
 
-        for d in [today, yesterday, unix_epoch, some_day_before_unix_epoch] {
-            assert_eq!(d.to_date(), d);
-            assert_eq!(d.offset(max_day_offset.clone()).unwrap().to_date(), d);
+        for d in [
+            today,
+            yesterday,
+            unix_epoch.clone(),
+            some_day_before_unix_epoch,
+        ] {
+            assert_eq!(d.to_date().expect("should not overflow"), d);
             assert_eq!(
-                d.offset(min_day_offset.clone()).unwrap().to_date(),
+                d.offset(max_day_offset.clone())
+                    .unwrap()
+                    .to_date()
+                    .expect("should not overflow"),
+                d
+            );
+            assert_eq!(
+                d.offset(min_day_offset.clone())
+                    .unwrap()
+                    .to_date()
+                    .expect("should not overflow"),
                 d.offset(parse_duration("-1d").unwrap()).unwrap()
             );
         }
+
+        assert!(unix_epoch
+            .offset(Duration { ms: i64::MIN })
+            .expect("should be able to construct")
+            .to_date()
+            .is_none());
     }
 
     #[test]
