@@ -28,6 +28,7 @@ Cedar Language Version: TBD
 ### Fixed
 
 - Some misleading parser errors for JSON schema with mistakes in nested attribute definitions (#1270, resolving #417)
+- Cedar schema printer now correctly prints entity tags (#1304)
 
 ## [4.2.1] - 2024-10-08
 Cedar Language version: 4.1

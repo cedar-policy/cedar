@@ -2511,9 +2511,9 @@ mod entity_tags {
     use serde_json::json;
 
     /// This schema taken directly from the RFC 82 text
-    #[test]
-    fn basic() {
-        let json = json!({"": {
+    #[track_caller]
+    fn example_json_schema() -> serde_json::Value {
+        json!({"": {
             "entityTypes": {
                 "User" : {
                     "shape" : {
@@ -2546,7 +2546,20 @@ mod entity_tags {
                 }
             },
             "actions": {}
-        }});
+        }})
+    }
+
+    #[test]
+    fn roundtrip() {
+        let json = example_json_schema();
+        let json_schema = Fragment::from_json_value(json.clone()).expect("should be valid");
+        let serialized_json_schema = serde_json::to_value(json_schema).expect("should be valid");
+        assert_eq!(json, serialized_json_schema);
+    }
+
+    #[test]
+    fn basic() {
+        let json = example_json_schema();
         assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
             let user = frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
             assert_matches!(&user.tags, Some(Type::Type(TypeVariant::Set { element })) => {
