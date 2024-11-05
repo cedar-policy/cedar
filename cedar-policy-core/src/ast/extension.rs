@@ -25,7 +25,7 @@ use std::fmt::Debug;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::Arc;
 
-// PANIC SAFETY `Name`s in here are valid `Name`s
+// PANIC SAFETY: `Name`s in here are valid `Name`s
 #[allow(clippy::expect_used)]
 mod names {
     use std::collections::BTreeSet;

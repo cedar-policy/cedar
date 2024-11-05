@@ -1202,7 +1202,6 @@ fn less_than_typecheck_fails() {
         )],
     );
 
-    // Then lhs
     let src = r#"datetime("1970-01-01") < duration("1d")"#;
     let errors =
         assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
