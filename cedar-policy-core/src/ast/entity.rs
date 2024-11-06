@@ -773,6 +773,13 @@ impl From<&Entity> for proto::Entity {
     }
 }
 
+#[cfg(feature = "protobufs")]
+impl From<&Arc<Entity>> for proto::Entity {
+    fn from(v: &Arc<Entity>) -> Self {
+        Self::from(v.as_ref())
+    }
+}
+
 /// `PartialValue`, but serialized as a `RestrictedExpr`.
 ///
 /// (Extension values can't be directly serialized, but can be serialized as
