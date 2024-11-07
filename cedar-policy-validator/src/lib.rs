@@ -556,10 +556,10 @@ mod test {
         let result = validator.validate(&set, ValidationMode::default());
         assert_eq!(
             result.validation_errors().collect::<Vec<_>>(),
-            vec![&ValidationError::expected_one_of_types(
+            vec![&ValidationError::expected_type(
                 typecheck::test::test_utils::get_loc(src, "true"),
                 PolicyID::from_string("policy0"),
-                std::iter::once(Type::primitive_long()),
+                Type::primitive_long(),
                 Type::singleton_boolean(true),
                 None,
             )]

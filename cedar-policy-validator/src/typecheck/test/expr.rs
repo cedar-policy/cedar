@@ -216,10 +216,10 @@ fn and_typecheck_fails() {
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
-        ValidationError::expected_one_of_types(
+        ValidationError::expected_type(
             get_loc(src, "false"),
             expr_id_placeholder(),
-            std::iter::once(Type::primitive_long()),
+            Type::primitive_long(),
             Type::singleton_boolean(false),
             None,
         )
@@ -231,10 +231,10 @@ fn and_typecheck_fails() {
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
-        ValidationError::expected_one_of_types(
+        ValidationError::expected_type(
             get_loc(src, "false"),
             expr_id_placeholder(),
-            std::iter::once(Type::primitive_long()),
+            Type::primitive_long(),
             Type::singleton_boolean(false),
             None,
         )
@@ -356,10 +356,10 @@ fn or_typecheck_fails() {
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
-        ValidationError::expected_one_of_types(
+        ValidationError::expected_type(
             get_loc(src, "true"),
             expr_id_placeholder(),
-            std::iter::once(Type::primitive_long()),
+            Type::primitive_long(),
             Type::singleton_boolean(true),
             None,
         )
@@ -371,10 +371,10 @@ fn or_typecheck_fails() {
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
-        ValidationError::expected_one_of_types(
+        ValidationError::expected_type(
             get_loc(src, "false"),
             expr_id_placeholder(),
-            std::iter::once(Type::primitive_long()),
+            Type::primitive_long(),
             Type::singleton_boolean(false),
             None,
         )
@@ -386,10 +386,10 @@ fn or_typecheck_fails() {
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
-        ValidationError::expected_one_of_types(
+        ValidationError::expected_type(
             get_loc(src, "true"),
             expr_id_placeholder(),
-            std::iter::once(Type::primitive_long()),
+            Type::primitive_long(),
             Type::singleton_boolean(true),
             None,
         )
@@ -1144,10 +1144,10 @@ fn less_than_typecheck_fails() {
         assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
     assert_sets_equal(
         errors,
-        [ValidationError::expected_one_of_types(
+        [ValidationError::expected_type(
             get_loc(src, "true"),
             expr_id_placeholder(),
-            vec![Type::primitive_long()],
+            Type::primitive_long(),
             Type::singleton_boolean(true),
             None,
         )],
@@ -1158,12 +1158,12 @@ fn less_than_typecheck_fails() {
         assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
     assert_sets_equal(
         errors,
-        [ValidationError::expected_one_of_types(
+        [ValidationError::expected_type(
             get_loc(src, "true"),
             expr_id_placeholder(),
-            vec![Type::ExtensionType {
+            Type::ExtensionType {
                 name: get_duration_constructor_name(),
-            }],
+            },
             Type::singleton_boolean(true),
             None,
         )],
@@ -1175,10 +1175,10 @@ fn less_than_typecheck_fails() {
         assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
     assert_sets_equal(
         errors,
-        [ValidationError::expected_one_of_types(
+        [ValidationError::expected_type(
             get_loc(src, r#"duration("1d")"#),
             expr_id_placeholder(),
-            vec![Type::primitive_long()],
+            Type::primitive_long(),
             Type::ExtensionType {
                 name: get_duration_constructor_name(),
             },
@@ -1191,10 +1191,10 @@ fn less_than_typecheck_fails() {
         assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
     assert_sets_equal(
         errors,
-        [ValidationError::expected_one_of_types(
+        [ValidationError::expected_type(
             get_loc(src, r#"duration("1d")"#),
             expr_id_placeholder(),
-            vec![Type::primitive_long()],
+            Type::primitive_long(),
             Type::ExtensionType {
                 name: get_duration_constructor_name(),
             },
@@ -1207,12 +1207,12 @@ fn less_than_typecheck_fails() {
         assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
     assert_sets_equal(
         errors,
-        [ValidationError::expected_one_of_types(
+        [ValidationError::expected_type(
             get_loc(src, r#"duration("1d")"#),
             expr_id_placeholder(),
-            vec![Type::ExtensionType {
+            Type::ExtensionType {
                 name: get_datetime_constructor_name(),
-            }],
+            },
             Type::ExtensionType {
                 name: get_duration_constructor_name(),
             },
