@@ -132,7 +132,6 @@ impl WrappedAccessPaths {
                 WrappedAccessPaths::AccessPath(access_path)
             }
             WrappedAccessPaths::RecordLiteral(mut record) => {
-                #[allow(clippy::panic)]
                 if let Some(field) = record.remove(attr) {
                     *field
                 } else {
