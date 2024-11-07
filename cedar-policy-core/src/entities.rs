@@ -369,7 +369,7 @@ impl From<&proto::Entities> for Entities {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &proto::Entities) -> Self {
-        let entities: Vec<Entity> = v.entities.iter().map(Entity::from).collect();
+        let entities: Vec<Arc<Entity>> = v.entities.iter().map(|e| Arc::new(Entity::from(e))).collect();
 
         #[cfg(not(feature = "partial-eval"))]
         let result = Entities::new();
@@ -3546,14 +3546,13 @@ pub mod protobuf_tests {
         let attrs = (1..=7)
             .map(|id| (format!("{id}").into(), RestrictedExpr::val(true)))
             .collect::<HashMap<SmolStr, _>>();
-        let entity: Entity = Entity::new(
+        let entity: Arc<Entity> = Arc::new(Entity::new(
             r#"Foo::"bar""#.parse().unwrap(),
             attrs.clone(),
             HashSet::new(),
             BTreeMap::new(),
             &Extensions::none(),
-        )
-        .unwrap();
+        ).unwrap());
         let mut entities2: Entities = Entities::new();
         entities2 = entities2
             .add_entities(
@@ -3569,14 +3568,13 @@ pub mod protobuf_tests {
         );
 
         // Two Element Test
-        let entity2: Entity = Entity::new(
+        let entity2: Arc<Entity> = Arc::new(Entity::new(
             r#"Bar::"foo""#.parse().unwrap(),
             attrs.clone(),
             HashSet::new(),
             BTreeMap::new(),
             &Extensions::none(),
-        )
-        .unwrap();
+        ).unwrap());
         let mut entities3: Entities = Entities::new();
         entities3 = entities3
             .add_entities(
