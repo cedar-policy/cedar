@@ -196,8 +196,8 @@ pub fn deeply_nested_est(c: &mut Criterion) {
     c.bench_function("Policy::from_json", |b| {
         b.iter(|| {
             let _ = Policy::from_json(
-              None,
-              black_box(serde_json::from_str(black_box(json_str)).unwrap()),
+                None,
+                black_box(serde_json::from_str(black_box(json_str)).unwrap()),
             );
         })
     });
