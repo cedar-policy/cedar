@@ -125,7 +125,7 @@ impl Entities {
     /// responsible for ensuring that TC and DAG hold before calling this method.
     pub fn add_entities(
         mut self,
-        collection: impl IntoIterator<Item = Entity>,
+        collection: impl IntoIterator<Item = Arc<Entity>>,
         schema: Option<&impl Schema>,
         tc_computation: TCComputation,
         extensions: &Extensions<'_>,
@@ -140,7 +140,7 @@ impl Entities {
                     return Err(EntitiesError::duplicate(entity.uid().clone()))
                 }
                 hash_map::Entry::Vacant(vacant_entry) => {
-                    vacant_entry.insert(Arc::new(entity));
+                    vacant_entry.insert(entity);
                 }
             }
         }
@@ -174,7 +174,7 @@ impl Entities {
         tc_computation: TCComputation,
         extensions: &Extensions<'_>,
     ) -> Result<Self> {
-        let mut entity_map = create_entity_map(entities.into_iter())?;
+        let mut entity_map = create_entity_map(entities.into_iter().map(Arc::new))?;
         if let Some(schema) = schema {
             // Validate non-action entities against schema.
             // We do this before adding the actions, because we trust the
@@ -323,13 +323,13 @@ impl Entities {
 }
 
 /// Create a map from EntityUids to Entities, erroring if there are any duplicates
-fn create_entity_map(es: impl Iterator<Item = Entity>) -> Result<HashMap<EntityUID, Arc<Entity>>> {
+fn create_entity_map(es: impl Iterator<Item = Arc<Entity>>) -> Result<HashMap<EntityUID, Arc<Entity>>> {
     let mut map = HashMap::new();
     for e in es {
         match map.entry(e.uid().clone()) {
             hash_map::Entry::Occupied(_) => return Err(EntitiesError::duplicate(e.uid().clone())),
             hash_map::Entry::Vacant(v) => {
-                v.insert(Arc::new(e));
+                v.insert(e);
             }
         };
     }
@@ -553,7 +553,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -593,7 +594,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -632,7 +634,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -675,7 +678,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -714,7 +718,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -755,7 +760,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -795,7 +801,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -822,7 +829,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -843,7 +851,8 @@ mod json_parsing_tests {
         let new = serde_json::json!([{"uid":{ "type": "Test", "id": "alice" }, "attrs" : {}, "parents" : []}]);
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
