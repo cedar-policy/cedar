@@ -16,11 +16,9 @@
 
 //! This module contains the Cedar 'ipaddr' extension.
 
-use names::IP_FROM_STR_NAME;
-
 use crate::ast::{
     CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue, Literal, Name,
-    RepresentableExtensionValue, RestrictedExpr, Type, Value, ValueKind,
+    RepresentableExtensionValue, Type, Value, ValueKind,
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
@@ -222,15 +220,6 @@ impl std::str::FromStr for IPAddr {
 impl std::fmt::Display for IPAddr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}/{}", self.addr, self.prefix)
-    }
-}
-
-impl From<IPAddr> for RestrictedExpr {
-    fn from(value: IPAddr) -> Self {
-        RestrictedExpr::call_extension_fn(
-            IP_FROM_STR_NAME.clone(),
-            vec![Value::from(value.to_string()).into()],
-        )
     }
 }
 

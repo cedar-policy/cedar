@@ -103,10 +103,7 @@ impl Extensions<'static> {
     pub fn types_with_operator_overloading() -> NonEmpty<Name> {
         // PANIC SAFETY: There are more than one element in `TYPES_WITH_OPERATOR_OVERLOADING`
         #[allow(clippy::unwrap_used)]
-        NonEmpty::from_vec(Vec::from_iter(
-            TYPES_WITH_OPERATOR_OVERLOADING.iter().cloned(),
-        ))
-        .unwrap()
+        NonEmpty::collect(TYPES_WITH_OPERATOR_OVERLOADING.iter().cloned()).unwrap()
     }
 }
 

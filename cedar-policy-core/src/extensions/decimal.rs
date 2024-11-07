@@ -18,11 +18,10 @@
 
 use crate::ast::{
     CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue, Literal, Name,
-    RepresentableExtensionValue, RestrictedExpr, Type, Value, ValueKind,
+    RepresentableExtensionValue, Type, Value, ValueKind,
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
-use constants::DECIMAL_FROM_STR_NAME;
 use miette::Diagnostic;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -159,15 +158,6 @@ impl std::fmt::Display for Decimal {
             "{}.{}",
             self.value / i64::pow(10, NUM_DIGITS),
             (self.value % i64::pow(10, NUM_DIGITS)).abs()
-        )
-    }
-}
-
-impl From<Decimal> for RestrictedExpr {
-    fn from(value: Decimal) -> Self {
-        RestrictedExpr::call_extension_fn(
-            DECIMAL_FROM_STR_NAME.clone(),
-            vec![Value::from(value.to_string()).into()],
         )
     }
 }
