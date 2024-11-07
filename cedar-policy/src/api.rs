@@ -58,6 +58,7 @@ use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Read;
 use std::str::FromStr;
+use std::sync::Arc;
 
 // PANIC SAFETY: `CARGO_PKG_VERSION` should return a valid SemVer version string
 #[allow(clippy::unwrap_used)]
@@ -407,7 +408,7 @@ impl Entities {
     ) -> Result<Self, EntitiesError> {
         Ok(Self(
             self.0.add_entities(
-                entities.into_iter().map(|e| e.0),
+                entities.into_iter().map(|e| Arc::new(e.0)),
                 schema
                     .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
                     .as_ref(),
@@ -446,7 +447,7 @@ impl Entities {
             Extensions::all_available(),
             cedar_policy_core::entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser.iter_from_json_str(json)?;
+        let new_entities = eparser.iter_from_json_str(json)?.map(Arc::new);
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),
@@ -484,7 +485,7 @@ impl Entities {
             Extensions::all_available(),
             cedar_policy_core::entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser.iter_from_json_value(json)?;
+        let new_entities = eparser.iter_from_json_value(json)?.map(Arc::new);
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),
@@ -523,7 +524,7 @@ impl Entities {
             Extensions::all_available(),
             cedar_policy_core::entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser.iter_from_json_file(json)?;
+        let new_entities = eparser.iter_from_json_file(json)?.map(Arc::new);
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),

@@ -58,7 +58,7 @@ pub struct Entities {
     /// Important internal invariant: for any `Entities` object that exists, the
     /// the `ancestor` relation is transitively closed.
     #[serde_as(as = "Vec<(_, _)>")]
-    entities: HashMap<EntityUID, Entity>,
+    entities: HashMap<EntityUID, Arc<Entity>>,
 
     /// The mode flag determines whether this store functions as a partial store or
     /// as a fully concrete store.
@@ -109,7 +109,7 @@ impl Entities {
 
     /// Iterate over the `Entity`s in the `Entities`
     pub fn iter(&self) -> impl Iterator<Item = &Entity> {
-        self.entities.values()
+        self.entities.values().map(|e| e.as_ref())
     }
 
     /// Adds the [`crate::ast::Entity`]s in the iterator to this [`Entities`].
@@ -125,7 +125,7 @@ impl Entities {
     /// responsible for ensuring that TC and DAG hold before calling this method.
     pub fn add_entities(
         mut self,
-        collection: impl IntoIterator<Item = Entity>,
+        collection: impl IntoIterator<Item = Arc<Entity>>,
         schema: Option<&impl Schema>,
         tc_computation: TCComputation,
         extensions: &Extensions<'_>,
@@ -174,7 +174,7 @@ impl Entities {
         tc_computation: TCComputation,
         extensions: &Extensions<'_>,
     ) -> Result<Self> {
-        let mut entity_map = create_entity_map(entities.into_iter())?;
+        let mut entity_map = create_entity_map(entities.into_iter().map(Arc::new))?;
         if let Some(schema) = schema {
             // Validate non-action entities against schema.
             // We do this before adding the actions, because we trust the
@@ -213,7 +213,7 @@ impl Entities {
                 schema
                     .action_entities()
                     .into_iter()
-                    .map(|e| (e.uid().clone(), Arc::unwrap_or_clone(e))),
+                    .map(|e: Arc<Entity>| (e.uid().clone(), e)),
             );
         }
         Ok(Self {
@@ -252,6 +252,7 @@ impl Entities {
     fn to_ejsons(&self) -> Result<Vec<EntityJson>> {
         self.entities
             .values()
+            .map(Arc::as_ref)
             .map(EntityJson::from_entity)
             .collect::<std::result::Result<_, JsonSerializationError>>()
             .map_err(Into::into)
@@ -322,7 +323,9 @@ impl Entities {
 }
 
 /// Create a map from EntityUids to Entities, erroring if there are any duplicates
-fn create_entity_map(es: impl Iterator<Item = Entity>) -> Result<HashMap<EntityUID, Entity>> {
+fn create_entity_map(
+    es: impl Iterator<Item = Arc<Entity>>,
+) -> Result<HashMap<EntityUID, Arc<Entity>>> {
     let mut map = HashMap::new();
     for e in es {
         match map.entry(e.uid().clone()) {
@@ -338,10 +341,13 @@ fn create_entity_map(es: impl Iterator<Item = Entity>) -> Result<HashMap<EntityU
 impl IntoIterator for Entities {
     type Item = Entity;
 
-    type IntoIter = hash_map::IntoValues<EntityUID, Entity>;
+    type IntoIter = std::iter::Map<
+        std::collections::hash_map::IntoValues<EntityUID, Arc<Entity>>,
+        fn(Arc<Entity>) -> Entity,
+    >;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.entities.into_values()
+        self.entities.into_values().map(Arc::unwrap_or_clone)
     }
 }
 
@@ -363,7 +369,11 @@ impl From<&proto::Entities> for Entities {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &proto::Entities) -> Self {
-        let entities: Vec<Entity> = v.entities.iter().map(Entity::from).collect();
+        let entities: Vec<Arc<Entity>> = v
+            .entities
+            .iter()
+            .map(|e| Arc::new(Entity::from(e)))
+            .collect();
 
         #[cfg(not(feature = "partial-eval"))]
         let result = Entities::new();
@@ -548,7 +558,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -588,7 +599,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -627,7 +639,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -670,7 +683,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -709,7 +723,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -750,7 +765,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -790,7 +806,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -817,7 +834,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -838,7 +856,8 @@ mod json_parsing_tests {
         let new = serde_json::json!([{"uid":{ "type": "Test", "id": "alice" }, "attrs" : {}, "parents" : []}]);
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -3531,14 +3550,16 @@ pub mod protobuf_tests {
         let attrs = (1..=7)
             .map(|id| (format!("{id}").into(), RestrictedExpr::val(true)))
             .collect::<HashMap<SmolStr, _>>();
-        let entity: Entity = Entity::new(
-            r#"Foo::"bar""#.parse().unwrap(),
-            attrs.clone(),
-            HashSet::new(),
-            BTreeMap::new(),
-            &Extensions::none(),
-        )
-        .unwrap();
+        let entity: Arc<Entity> = Arc::new(
+            Entity::new(
+                r#"Foo::"bar""#.parse().unwrap(),
+                attrs.clone(),
+                HashSet::new(),
+                BTreeMap::new(),
+                &Extensions::none(),
+            )
+            .unwrap(),
+        );
         let mut entities2: Entities = Entities::new();
         entities2 = entities2
             .add_entities(
@@ -3554,14 +3575,16 @@ pub mod protobuf_tests {
         );
 
         // Two Element Test
-        let entity2: Entity = Entity::new(
-            r#"Bar::"foo""#.parse().unwrap(),
-            attrs.clone(),
-            HashSet::new(),
-            BTreeMap::new(),
-            &Extensions::none(),
-        )
-        .unwrap();
+        let entity2: Arc<Entity> = Arc::new(
+            Entity::new(
+                r#"Bar::"foo""#.parse().unwrap(),
+                attrs.clone(),
+                HashSet::new(),
+                BTreeMap::new(),
+                &Extensions::none(),
+            )
+            .unwrap(),
+        );
         let mut entities3: Entities = Entities::new();
         entities3 = entities3
             .add_entities(
