@@ -580,7 +580,7 @@ impl Entities {
     /// # let entity = entities.get(&euid).unwrap();
     /// # assert_eq!(entity.attr("age").unwrap().unwrap(), EvalResult::Long(19));
     /// # let ip = entity.attr("ip_addr").unwrap().unwrap();
-    /// # assert_eq!(ip, EvalResult::ExtensionValue("ip(\"10.0.1.101/32\")".to_string()));
+    /// # assert_eq!(ip, EvalResult::ExtensionValue("ip(\"10.0.1.101\")".to_string()));
     /// ```
     pub fn from_json_str(json: &str, schema: Option<&Schema>) -> Result<Self, EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
