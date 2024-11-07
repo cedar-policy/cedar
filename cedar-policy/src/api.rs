@@ -55,10 +55,10 @@ use miette::Diagnostic;
 use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
-use std::sync::Arc;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Read;
 use std::str::FromStr;
+use std::sync::Arc;
 
 // PANIC SAFETY: `CARGO_PKG_VERSION` should return a valid SemVer version string
 #[allow(clippy::unwrap_used)]
@@ -447,8 +447,7 @@ impl Entities {
             Extensions::all_available(),
             cedar_policy_core::entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser.iter_from_json_str(json)?
-        .map(Arc::new);
+        let new_entities = eparser.iter_from_json_str(json)?.map(Arc::new);
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),
@@ -486,8 +485,7 @@ impl Entities {
             Extensions::all_available(),
             cedar_policy_core::entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser.iter_from_json_value(json)?
-        .map(Arc::new);
+        let new_entities = eparser.iter_from_json_value(json)?.map(Arc::new);
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),
@@ -526,8 +524,7 @@ impl Entities {
             Extensions::all_available(),
             cedar_policy_core::entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser.iter_from_json_file(json)?
-            .map(Arc::new);
+        let new_entities = eparser.iter_from_json_file(json)?.map(Arc::new);
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),

@@ -323,7 +323,9 @@ impl Entities {
 }
 
 /// Create a map from EntityUids to Entities, erroring if there are any duplicates
-fn create_entity_map(es: impl Iterator<Item = Arc<Entity>>) -> Result<HashMap<EntityUID, Arc<Entity>>> {
+fn create_entity_map(
+    es: impl Iterator<Item = Arc<Entity>>,
+) -> Result<HashMap<EntityUID, Arc<Entity>>> {
     let mut map = HashMap::new();
     for e in es {
         match map.entry(e.uid().clone()) {
@@ -345,9 +347,7 @@ impl IntoIterator for Entities {
     >;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.entities
-            .into_values()
-            .map(Arc::unwrap_or_clone)
+        self.entities.into_values().map(Arc::unwrap_or_clone)
     }
 }
 
@@ -369,7 +369,11 @@ impl From<&proto::Entities> for Entities {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &proto::Entities) -> Self {
-        let entities: Vec<Arc<Entity>> = v.entities.iter().map(|e| Arc::new(Entity::from(e))).collect();
+        let entities: Vec<Arc<Entity>> = v
+            .entities
+            .iter()
+            .map(|e| Arc::new(Entity::from(e)))
+            .collect();
 
         #[cfg(not(feature = "partial-eval"))]
         let result = Entities::new();
@@ -3546,13 +3550,16 @@ pub mod protobuf_tests {
         let attrs = (1..=7)
             .map(|id| (format!("{id}").into(), RestrictedExpr::val(true)))
             .collect::<HashMap<SmolStr, _>>();
-        let entity: Arc<Entity> = Arc::new(Entity::new(
-            r#"Foo::"bar""#.parse().unwrap(),
-            attrs.clone(),
-            HashSet::new(),
-            BTreeMap::new(),
-            &Extensions::none(),
-        ).unwrap());
+        let entity: Arc<Entity> = Arc::new(
+            Entity::new(
+                r#"Foo::"bar""#.parse().unwrap(),
+                attrs.clone(),
+                HashSet::new(),
+                BTreeMap::new(),
+                &Extensions::none(),
+            )
+            .unwrap(),
+        );
         let mut entities2: Entities = Entities::new();
         entities2 = entities2
             .add_entities(
@@ -3568,13 +3575,16 @@ pub mod protobuf_tests {
         );
 
         // Two Element Test
-        let entity2: Arc<Entity> = Arc::new(Entity::new(
-            r#"Bar::"foo""#.parse().unwrap(),
-            attrs.clone(),
-            HashSet::new(),
-            BTreeMap::new(),
-            &Extensions::none(),
-        ).unwrap());
+        let entity2: Arc<Entity> = Arc::new(
+            Entity::new(
+                r#"Bar::"foo""#.parse().unwrap(),
+                attrs.clone(),
+                HashSet::new(),
+                BTreeMap::new(),
+                &Extensions::none(),
+            )
+            .unwrap(),
+        );
         let mut entities3: Entities = Entities::new();
         entities3 = entities3
             .add_entities(
