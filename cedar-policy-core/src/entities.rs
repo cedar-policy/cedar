@@ -339,14 +339,15 @@ fn create_entity_map(es: impl Iterator<Item = Arc<Entity>>) -> Result<HashMap<En
 impl IntoIterator for Entities {
     type Item = Entity;
 
-    type IntoIter = std::vec::IntoIter<Entity>;
+    type IntoIter = std::iter::Map<
+        std::collections::hash_map::IntoValues<EntityUID, Arc<Entity>>,
+        fn(Arc<Entity>) -> Entity,
+    >;
 
     fn into_iter(self) -> Self::IntoIter {
         self.entities
             .into_values()
             .map(Arc::unwrap_or_clone)
-            .collect::<Vec<Entity>>()
-            .into_iter()
     }
 }
 
