@@ -431,8 +431,6 @@ impl<'e> Evaluator<'e> {
                         let i1 = arg1.get_as_long()?;
                         let i2 = arg2.get_as_long()?;
                         match op {
-                            BinaryOp::Less => Ok((i1 < i2).into()),
-                            BinaryOp::LessEq => Ok((i1 <= i2).into()),
                             BinaryOp::Add => match i1.checked_add(i2) {
                                 Some(sum) => Ok(sum.into()),
                                 None => {
@@ -3206,10 +3204,10 @@ pub mod test {
             &Expr::less(
                 Expr::call_extension_fn(
                     duration_constructor.clone(),
-                    vec![Value::from("1h").into()]),
+                    vec![Value::from("5s").into()]),
                 Expr::call_extension_fn(
                     duration_constructor.clone(),
-                    vec![Value::from("2h").into()]))),
+                    vec![Value::from("2m").into()]))),
             Ok(v) if v == Value::from(true));
         assert_matches!(eval.interpret_inline_policy(
             &Expr::lesseq(
@@ -3238,6 +3236,77 @@ pub mod test {
                     duration_constructor.clone(),
                     vec![Value::from("2h").into()]))),
             Ok(v) if v == Value::from(false));
+
+        // datetimes that are different times on the same day
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::noteq(
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-11-07").into()]),
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-11-07T14:00:00Z").into()]))),
+            Ok(v) if v == Value::from(true));
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::noteq(
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-11-07T14:00:00.123Z").into()]),
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-11-07T14:00:00Z").into()]))),
+            Ok(v) if v == Value::from(true));
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::noteq(
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-11-07T14:00:00Z").into()]),
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-11-07T17:00:00Z").into()]))),
+            Ok(v) if v == Value::from(true));
+
+        // datetimes that use the UTC offset
+        // both datetimes are UTC 2024-11-07T12:00:00Z
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::noteq(
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-11-07T14:00:00+0200").into()]),
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-11-07T11:00:00-0100").into()]))),
+            Ok(v) if v == Value::from(false));
+        // both datetimes are UTC 2024-11-08
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::noteq(
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-11-08T02:00:00+0200").into()]),
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-11-07T23:00:00-0100").into()]))),
+            Ok(v) if v == Value::from(false));
+
+        // feb 28 < feb 29 < mar 1 for a leap year
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::less(
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-02-28").into()]),
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-02-29").into()]))),
+            Ok(v) if v == Value::from(true));
+        assert_matches!(eval.interpret_inline_policy(
+            &Expr::less(
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-02-29").into()]),
+                Expr::call_extension_fn(
+                    datetime_constructor.clone(),
+                    vec![Value::from("2024-03-01").into()]))),
+            Ok(v) if v == Value::from(true));
 
         // type error favors long and then extension types with operator overloading
         assert_matches!(eval.interpret_inline_policy(
