@@ -19,7 +19,7 @@
 #[cfg(test)]
 mod demo_tests {
     use std::{
-        collections::HashMap,
+        collections::BTreeMap,
         iter::{empty, once},
     };
 
@@ -340,7 +340,7 @@ mod demo_tests {
         let namespace =
             json_schema::NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
         let fragment =
-            json_schema::Fragment(HashMap::from([(Some("bar".parse().unwrap()), namespace)]));
+            json_schema::Fragment(BTreeMap::from([(Some("bar".parse().unwrap()), namespace)]));
         let as_src = fragment.to_cedarschema().unwrap();
         let expected = r#"action "foo";"#;
         assert!(as_src.contains(expected), "src was:\n`{as_src}`");
@@ -430,8 +430,8 @@ namespace Baz {action "Foo" appliesTo {
     #[test]
     fn print_actions() {
         let namespace = json_schema::NamespaceDefinition {
-            common_types: HashMap::new(),
-            entity_types: HashMap::from([(
+            common_types: BTreeMap::new(),
+            entity_types: BTreeMap::from([(
                 "a".parse().unwrap(),
                 json_schema::EntityType::<RawName> {
                     member_of_types: vec![],
@@ -439,7 +439,7 @@ namespace Baz {action "Foo" appliesTo {
                     tags: None,
                 },
             )]),
-            actions: HashMap::from([(
+            actions: BTreeMap::from([(
                 "j".to_smolstr(),
                 json_schema::ActionType::<RawName> {
                     attributes: None,
@@ -452,7 +452,7 @@ namespace Baz {action "Foo" appliesTo {
                 },
             )]),
         };
-        let fragment = json_schema::Fragment(HashMap::from([(None, namespace)]));
+        let fragment = json_schema::Fragment(BTreeMap::from([(None, namespace)]));
         let src = fragment.to_cedarschema().unwrap();
         assert!(src.contains(r#"action "j";"#), "schema was: `{src}`")
     }
@@ -2344,7 +2344,7 @@ mod entity_tags {
                     assert_matches!(ty, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
                         assert_eq!(&format!("{type_name}"), "String");
                     });
-                    assert_eq!(*required, true);
+                    assert!(*required);
                 });
             });
         });

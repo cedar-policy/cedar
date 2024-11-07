@@ -47,7 +47,7 @@ use crate::{ValidationResult, Validator};
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
-#[doc = include_str!("../../cedar-policy/experimental_warning.md")]
+#[doc = include_str!("../experimental_warning.md")]
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -70,7 +70,7 @@ pub type Fields = HashMap<SmolStr, Box<AccessTrie>>;
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
-#[doc = include_str!("../../cedar-policy/experimental_warning.md")]
+#[doc = include_str!("../experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "camelCase")]
 pub enum EntityRoot {
@@ -101,7 +101,7 @@ impl Display for EntityRoot {
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
-#[doc = include_str!("../../cedar-policy/experimental_warning.md")]
+#[doc = include_str!("../experimental_warning.md")]
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -120,7 +120,7 @@ pub struct RootAccessTrie {
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
-#[doc = include_str!("../../cedar-policy/experimental_warning.md")]
+#[doc = include_str!("../experimental_warning.md")]
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -441,7 +441,7 @@ pub fn compute_entity_manifest(
                     // using static analysis
                     entity_manifest_from_expr(&typechecked_expr).map(|val| val.global_trie)
                 }
-                PolicyCheck::Irrelevant(_) => {
+                PolicyCheck::Irrelevant(_, _) => {
                     // this policy is irrelevant, so we need no data
                     Ok(RootAccessTrie::new())
                 }
@@ -571,7 +571,6 @@ fn entity_manifest_from_expr(
                 .union(&arg2_res.full_type_required(ty2))
                 .empty_paths())
         }
-        #[cfg(feature = "entity-tags")]
         ExprKind::BinaryApp {
             op: BinaryOp::GetTag | BinaryOp::HasTag,
             arg1: _,

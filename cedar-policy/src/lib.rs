@@ -32,7 +32,8 @@
     rustdoc::invalid_rust_codeblocks,
     rustdoc::bare_urls,
     clippy::doc_markdown,
-    clippy::doc_lazy_continuation
+    clippy::doc_lazy_continuation,
+    clippy::too_long_first_doc_paragraph
 )]
 #![allow(
     clippy::needless_doctest_main,

@@ -9,10 +9,10 @@ license.workspace = true
 exclude = ['/build']
 
 [dependencies]
-cedar-policy = { version = "=4.0.0", path = "../cedar-policy", features = ["wasm"] }
-cedar-policy-core = { version = "=4.0.0", path = "../cedar-policy-core", features = ["wasm"] }
-cedar-policy-formatter = { version = "=4.0.0", path = "../cedar-policy-formatter" }
-cedar-policy-validator = { version = "=4.0.0", path = "../cedar-policy-validator", features = ["wasm"] }
+cedar-policy = { version = "=4.1.0", path = "../cedar-policy", features = ["wasm"] }
+cedar-policy-core = { version = "=4.1.0", path = "../cedar-policy-core", features = ["wasm"] }
+cedar-policy-formatter = { version = "=4.1.0", path = "../cedar-policy-formatter" }
+cedar-policy-validator = { version = "=4.1.0", path = "../cedar-policy-validator", features = ["wasm"] }
 
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde-wasm-bindgen = "0.6"
@@ -33,7 +33,7 @@ wasm-bindgen-test = "0.3.13"
 cool_asserts = "2.0"
 
 [build-dependencies]
-cargo-lock = "9.0.0"
+cargo-lock = "10.0.0"
 # Lock `url` (dependencies of cargo-lock) to 2.5.2 because they may introduce a
 # dependency on a crate licensed under the Unicode 3.0 license in a future
 # minor version, and we do not have explicit legal aproval to use that license.

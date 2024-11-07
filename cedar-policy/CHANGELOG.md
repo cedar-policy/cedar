@@ -14,13 +14,55 @@ Cedar Language Version: TBD
 
 ### Added
 
+- Added protobuf schemas and (de)serialization code using on `prost` crate behind the experimental `protobufs` flag.
+
+### Changed
+
+- The error associated with parsing a non-existent extension function additionally
+  includes a suggestion based on available extension functions (#1280, resolving #332).
+- The error associated with parsing a non-existent extension method additionally
+  includes a suggestion based on available extension methods (#1289, resolving #246).
+- Extract action graph inversion from `CoreSchema` to `ValidatorSchema` instantiation
+  to improve schema validation speeds. (#1290, as part of resolving #1285)
+
+### Fixed
+
+- Some misleading parser errors for JSON schema with mistakes in nested attribute definitions (#1270, resolving #417)
+- Cedar schema printer now correctly prints entity tags (#1304)
+
+## [4.2.1] - 2024-10-08
+Cedar Language version: 4.1
+
+### Fixed
+
+- Fixes a minor issues preventing documentation from building on docs.rs
+
+## [4.2.0] - 2024-10-07
+Cedar Language version: 4.1
+
+### Added
+
+- Added `sub_entity_literals` API (#1233).
+- Added level validation [RFC 76](https://github.com/cedar-policy/rfcs/pull/76) as an experimental feature.
+- Annotations without explicit values. It is now possible to write an annotation `@my_annotation` as
+  short-hand for `@my_annotation("")` (#1231, resolving #1031).
+- Stabilized [RFC 82](https://github.com/cedar-policy/rfcs/pull/82), removing
+  the experimental `entity-tags` feature flag. That functionality is now available
+  without the feature flag.
+
+### Changed
+
+- The validator provides a more specific hint when an action ID cannot be found
+  and the same action ID with `Action::` has been defined (#1258, resolving #166)
+
+## [4.1.0] - 2024-09-30
+Cedar Language Version: 4.0
+
+### Added
+
 - Added `get_entity_literals` API (#1149).
 - Implemented [RFC 82](https://github.com/cedar-policy/rfcs/pull/82), adding
   entity tags to the Cedar language under experimental flag `entity-tags` (#1204, #1207, #1213, #1218)
-- Implemented [RFC 74](https://github.com/cedar-policy/rfcs/pull/74): A new experimental API (`compute_entity_manifest`)
-  that provides the Entity Manifest: a data
-  structure that describes what data is required to satisfy a
-  Cedar request. To use this API you must enable the `entity-manifest` feature flag.
 - Added public APIs to get language and SDK version numbers (#1219).
 
 ### Fixed
@@ -716,7 +758,10 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.0.0...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.2.1...main
+[4.2.1]: https://github.com/cedar-policy/cedar/compare/v4.2.0...v4.2.1
+[4.2.0]: https://github.com/cedar-policy/cedar/compare/v4.1.0...v4.2.0
+[4.1.0]: https://github.com/cedar-policy/cedar/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/cedar-policy/cedar/compare/v3.4.0...v4.0.0
 [3.4.1]: https://github.com/cedar-policy/cedar/compare/v3.4.0...v3.4.1
 [3.4.0]: https://github.com/cedar-policy/cedar/compare/v3.3.0...v3.4.0

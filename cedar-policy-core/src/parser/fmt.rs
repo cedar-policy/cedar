@@ -116,7 +116,10 @@ impl fmt::Display for Policy {
 
 impl fmt::Display for Annotation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "@{}({})", View(&self.key), View(&self.value))
+        match self.value.as_ref() {
+            Some(value) => write!(f, "@{}({})", View(&self.key), View(value)),
+            None => write!(f, "@{}", View(&self.key)),
+        }
     }
 }
 

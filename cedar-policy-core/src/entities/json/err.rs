@@ -49,6 +49,10 @@ impl Display for EscapeKind {
 }
 
 /// Errors thrown during deserialization from JSON
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Diagnostic, Error)]
 #[non_exhaustive]
 pub enum JsonDeserializationError {
@@ -127,8 +131,13 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ReservedName(#[from] ReservedNameError),
-    /// Returned when entities have tags, but the `entity-tags` feature is not enabled
-    #[cfg(not(feature = "entity-tags"))]
+    /// Never returned as of 4.2.0 (entity tags are now stable), but this error
+    /// variant not removed because that would be a breaking change on this
+    /// publicly-exported type.
+    #[deprecated(
+        since = "4.2.0",
+        note = "entity-tags is now stable and fully supported, so this error never occurs"
+    )]
     #[error("entity tags are not supported in this build; to use entity tags, you must enable the `entity-tags` experimental feature")]
     UnsupportedEntityTags,
 }

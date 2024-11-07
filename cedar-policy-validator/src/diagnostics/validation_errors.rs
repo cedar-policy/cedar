@@ -20,16 +20,19 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use std::fmt::Display;
+use std::ops::{Add, Neg};
 
+use cedar_policy_core::fuzzy_match::fuzzy_search;
 use cedar_policy_core::impl_diagnostic_from_source_loc_opt_field;
 use cedar_policy_core::parser::Loc;
 
 use std::collections::BTreeSet;
 
-use cedar_policy_core::ast::{EntityType, EntityUID, Expr, ExprKind, PolicyID, Var};
+use cedar_policy_core::ast::{Eid, EntityType, EntityUID, Expr, ExprKind, PolicyID, Var};
 use cedar_policy_core::parser::join_with_conjunction;
 
 use crate::types::{EntityLUB, EntityRecordKind, RequestEnv, Type};
+use crate::ValidatorSchema;
 use itertools::Itertools;
 use smol_str::SmolStr;
 
@@ -68,21 +71,59 @@ pub struct UnrecognizedActionId {
     pub source_loc: Option<Loc>,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
-    /// Action Id seen in the policy.
+    /// Action Id seen in the policy
     pub actual_action_id: String,
-    /// An action id from the schema that the user might reasonably have
-    /// intended to write.
-    pub suggested_action_id: Option<String>,
+    /// Hint for resolving the error
+    pub hint: Option<UnrecognizedActionIdHelp>,
 }
 
 impl Diagnostic for UnrecognizedActionId {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        match &self.suggested_action_id {
-            Some(s) => Some(Box::new(format!("did you mean `{s}`?"))),
-            None => None,
-        }
+        self.hint
+            .as_ref()
+            .map(|help| Box::new(help) as Box<dyn std::fmt::Display>)
+    }
+}
+
+/// Help for resolving an unrecognized action id error
+#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
+pub enum UnrecognizedActionIdHelp {
+    /// Draw attention to action id including action type (e.g., `Action::"Action::view"`)
+    #[error("did you intend to include the type in action `{0}`?")]
+    AvoidActionTypeInActionId(String),
+    /// Suggest an alternative action
+    #[error("did you mean `{0}`?")]
+    SuggestAlternative(String),
+}
+
+/// Determine the help to offer in the presence of an unrecognized action id error.
+pub fn unrecognized_action_id_help(
+    euid: &EntityUID,
+    schema: &ValidatorSchema,
+) -> Option<UnrecognizedActionIdHelp> {
+    // Check if the user has included the type (i.e., `Action::`) in the action id
+    let eid_str: &str = euid.eid().as_ref();
+    let eid_with_type = format!("Action::{}", eid_str);
+    let eid_with_type_and_quotes = format!("Action::\"{}\"", eid_str);
+    let maybe_id_with_type = schema.known_action_ids().find(|euid| {
+        let eid = <Eid as AsRef<str>>::as_ref(euid.eid());
+        eid.contains(&eid_with_type) || eid.contains(&eid_with_type_and_quotes)
+    });
+    if let Some(id) = maybe_id_with_type {
+        // In that case, let the user know about it
+        Some(UnrecognizedActionIdHelp::AvoidActionTypeInActionId(
+            id.to_string(),
+        ))
+    } else {
+        // Otherwise, suggest using another id
+        let euids_strs = schema
+            .known_action_ids()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        fuzzy_search(euid.eid().as_ref(), &euids_strs)
+            .map(UnrecognizedActionIdHelp::SuggestAlternative)
     }
 }
 
@@ -313,7 +354,6 @@ impl Diagnostic for UnsafeOptionalAttributeAccess {
 }
 
 /// Structure containing details about an unsafe tag access error.
-#[cfg(feature = "entity-tags")]
 #[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
 #[error(
     "for policy `{policy_id}`, unable to guarantee safety of access to tag `{tag}`{}",
@@ -333,7 +373,6 @@ pub struct UnsafeTagAccess {
     pub tag: Expr<Option<Type>>,
 }
 
-#[cfg(feature = "entity-tags")]
 impl Diagnostic for UnsafeTagAccess {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
@@ -346,7 +385,6 @@ impl Diagnostic for UnsafeTagAccess {
 }
 
 /// Structure containing details about a no-tags-allowed error.
-#[cfg(feature = "entity-tags")]
 #[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
 #[error(
     "for policy `{policy_id}`, `.getTag()` is not allowed on entities of {} because no `tags` were declared on the entity type in the schema",
@@ -366,7 +404,6 @@ pub struct NoTagsAllowed {
     pub entity_ty: Option<EntityType>,
 }
 
-#[cfg(feature = "entity-tags")]
 impl Diagnostic for NoTagsAllowed {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
 }
@@ -445,6 +482,76 @@ impl Diagnostic for HierarchyNotRespected {
             ))),
             _ => None,
         }
+    }
+}
+
+/// Represents how many entity dereferences can be applied to a node.
+#[derive(Default, Debug, Clone, Hash, Eq, PartialEq, Error, Copy, Ord, PartialOrd)]
+pub struct EntityDerefLevel {
+    /// A negative value `-n` represents `n` too many dereferences
+    pub level: i64,
+}
+
+impl Display for EntityDerefLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        write!(f, "{}", self.level)
+    }
+}
+
+impl From<u32> for EntityDerefLevel {
+    fn from(value: u32) -> Self {
+        EntityDerefLevel {
+            level: value as i64,
+        }
+    }
+}
+
+impl Add for EntityDerefLevel {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        EntityDerefLevel {
+            level: self.level + rhs.level,
+        }
+    }
+}
+
+impl Neg for EntityDerefLevel {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        EntityDerefLevel { level: -self.level }
+    }
+}
+
+impl EntityDerefLevel {
+    /// Decrement the entity deref level
+    pub fn decrement(&self) -> Self {
+        EntityDerefLevel {
+            level: self.level - 1,
+        }
+    }
+}
+
+/// Structure containing details about entity dereference level violation
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
+#[error("for policy `{policy_id}`, the maximum allowed level {allowed_level} is violated. Actual level is {}", (allowed_level.add(actual_level.neg())))]
+pub struct EntityDerefLevelViolation {
+    /// Source location
+    pub source_loc: Option<Loc>,
+    /// Policy ID where the error occurred
+    pub policy_id: PolicyID,
+    /// The maximum level allowed by the schema
+    pub allowed_level: EntityDerefLevel,
+    /// The actual level this policy uses
+    pub actual_level: EntityDerefLevel,
+}
+
+impl Diagnostic for EntityDerefLevelViolation {
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new("Consider increasing the level"))
     }
 }
 

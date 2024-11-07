@@ -44,6 +44,7 @@ use crate::ast::{
     PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
 };
 use crate::est::extract_single_argument;
+use crate::fuzzy_match::fuzzy_search_limited;
 use itertools::Either;
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
@@ -204,7 +205,9 @@ impl Node<Option<cst::Policy>> {
         let maybe_effect = policy.effect.to_effect();
 
         // convert annotations
-        let maybe_annotations = policy.get_ast_annotations();
+        let maybe_annotations = policy.get_ast_annotations(|value, loc| {
+            ast::Annotation::with_optional_value(value, Some(loc.clone()))
+        });
 
         // convert scope
         let maybe_scope = policy.extract_scope();
@@ -232,7 +235,7 @@ impl Node<Option<cst::Policy>> {
             flatten_tuple_4(maybe_effect, maybe_annotations, maybe_scope, maybe_conds)?;
         Ok(construct_template_policy(
             id,
-            annotations,
+            annotations.into(),
             effect,
             principal,
             action,
@@ -307,11 +310,14 @@ impl cst::Policy {
     }
 
     /// Get annotations from the `cst::Policy`
-    pub fn get_ast_annotations(&self) -> Result<ast::Annotations> {
+    pub fn get_ast_annotations<T>(
+        &self,
+        annotation_constructor: impl Fn(Option<SmolStr>, &Loc) -> T,
+    ) -> Result<BTreeMap<ast::AnyId, T>> {
         let mut annotations = BTreeMap::new();
         let mut all_errs: Vec<ParseErrors> = vec![];
         for node in self.annotations.iter() {
-            match node.to_kv_pair() {
+            match node.to_kv_pair(&annotation_constructor) {
                 Ok((k, v)) => {
                     use std::collections::btree_map::Entry;
                     match annotations.entry(k) {
@@ -336,7 +342,7 @@ impl cst::Policy {
         }
         match ParseErrors::flatten(all_errs) {
             Some(errs) => Err(errs),
-            None => Ok(annotations.into()),
+            None => Ok(annotations),
         }
     }
 }
@@ -344,24 +350,29 @@ impl cst::Policy {
 impl Node<Option<cst::Annotation>> {
     /// Get the (k, v) pair for the annotation. Critically, this checks validity
     /// for the strings and does unescaping
-    pub fn to_kv_pair(&self) -> Result<(ast::AnyId, ast::Annotation)> {
+    pub fn to_kv_pair<T>(
+        &self,
+        annotation_constructor: impl Fn(Option<SmolStr>, &Loc) -> T,
+    ) -> Result<(ast::AnyId, T)> {
         let anno = self.try_as_inner()?;
 
         let maybe_key = anno.key.to_any_ident();
-        let maybe_value = anno.value.as_valid_string().and_then(|s| {
-            to_unescaped_string(s).map_err(|unescape_errs| {
-                ParseErrors::new_from_nonempty(unescape_errs.map(|e| self.to_ast_err(e).into()))
+        let maybe_value = anno
+            .value
+            .as_ref()
+            .map(|a| {
+                a.as_valid_string().and_then(|s| {
+                    to_unescaped_string(s).map_err(|unescape_errs| {
+                        ParseErrors::new_from_nonempty(
+                            unescape_errs.map(|e| self.to_ast_err(e).into()),
+                        )
+                    })
+                })
             })
-        });
+            .transpose();
 
         let (k, v) = flatten_tuple_2(maybe_key, maybe_value)?;
-        Ok((
-            k,
-            ast::Annotation {
-                val: v,
-                loc: Some(self.loc.clone()), // self's loc, not the loc of the value alone; see comments on ast::Annotation
-            },
-        ))
+        Ok((k, annotation_constructor(v, &self.loc)))
     }
 }
 
@@ -369,7 +380,7 @@ impl Node<Option<cst::Ident>> {
     /// Convert `cst::Ident` to `ast::UnreservedId`. Fails for reserved or invalid identifiers
     pub(crate) fn to_unreserved_ident(&self) -> Result<ast::UnreservedId> {
         self.to_valid_ident()
-            .and_then(|id| id.try_into().map_err(ParseErrors::singleton))
+            .and_then(|id| id.try_into().map_err(|err| self.to_ast_err(err).into()))
     }
     /// Convert `cst::Ident` to `ast::Id`. Fails for reserved or invalid identifiers
     pub fn to_valid_ident(&self) -> Result<ast::Id> {
@@ -459,20 +470,10 @@ impl ast::UnreservedId {
                 .map(|arg| construct_method_contains_all(e, arg, loc.clone())),
             "containsAny" => extract_single_argument(args.into_iter(), "containsAny", loc)
                 .map(|arg| construct_method_contains_any(e, arg, loc.clone())),
-            #[cfg(feature = "entity-tags")]
             "getTag" => extract_single_argument(args.into_iter(), "getTag", loc)
-                .map(|arg| construct_method_getTag(e, arg, loc.clone())),
-            #[cfg(not(feature = "entity-tags"))]
-            "getTag" => {
-                Err(ToASTError::new(ToASTErrorKind::UnsupportedEntityTags, loc.clone()).into())
-            }
-            #[cfg(feature = "entity-tags")]
+                .map(|arg| construct_method_get_tag(e, arg, loc.clone())),
             "hasTag" => extract_single_argument(args.into_iter(), "hasTag", loc)
-                .map(|arg| construct_method_hasTag(e, arg, loc.clone())),
-            #[cfg(not(feature = "entity-tags"))]
-            "hasTag" => {
-                Err(ToASTError::new(ToASTErrorKind::UnsupportedEntityTags, loc.clone()).into())
-            }
+                .map(|arg| construct_method_has_tag(e, arg, loc.clone())),
             _ => {
                 if EXTENSION_STYLES.methods.contains(self) {
                     let args = NonEmpty {
@@ -489,8 +490,26 @@ impl ast::UnreservedId {
                         )
                         .into())
                     } else {
+                        fn suggest_method(
+                            name: &ast::UnreservedId,
+                            methods: &HashSet<ast::UnreservedId>,
+                        ) -> Option<String> {
+                            const SUGGEST_METHOD_MAX_DISTANCE: usize = 3;
+                            let method_names =
+                                methods.iter().map(ToString::to_string).collect::<Vec<_>>();
+                            let suggested_method = fuzzy_search_limited(
+                                &name.to_string(),
+                                method_names.as_slice(),
+                                Some(SUGGEST_METHOD_MAX_DISTANCE),
+                            );
+                            suggested_method.map(|m| format!("did you mean `{m}`?"))
+                        }
+                        let hint = suggest_method(&self, &EXTENSION_STYLES.methods);
                         Err(ToASTError::new(
-                            ToASTErrorKind::UnknownMethod(self.clone()),
+                            ToASTErrorKind::UnknownMethod {
+                                id: self.clone(),
+                                hint,
+                            },
                             loc.clone(),
                         )
                         .into())
@@ -1128,6 +1147,54 @@ impl Node<Option<cst::Member>> {
         }
     }
 
+    /// Construct an attribute access or method call on an expression. This also
+    /// handles function calls, but a function call of an arbitrary expression
+    /// is always an error.
+    ///
+    /// The input `head` is an arbitrary expression, while `next` and `tail` are
+    /// togther a non-empty list of accesses applied to that expression.
+    ///
+    /// Returns a tuple where the first element is the expression built for the
+    /// `next` access applied to `head`, and the second element is the new tail of
+    /// acessors. In most cases, `tail` is returned unmodified, but in the method
+    /// call case we need to pull off the `Call` element containing the arguments.
+    fn build_expr_accessor<'a>(
+        &self,
+        head: ast::Expr,
+        next: &mut AstAccessor,
+        tail: &'a mut [AstAccessor],
+    ) -> Result<(ast::Expr, &'a mut [AstAccessor])> {
+        use AstAccessor::*;
+        match (next, tail) {
+            // trying to "call" an expression as a function like `(1 + 1)("foo")`. Always an error.
+            (Call(_), _) => Err(self.to_ast_err(ToASTErrorKind::ExpressionCall).into()),
+
+            // method call on arbitrary expression like `[].contains(1)`
+            (Field(id), [Call(args), rest @ ..]) => {
+                // move the expr and args out of the slice
+                let args = std::mem::take(args);
+                // move the id out of the slice as well, to avoid cloning the internal string
+                let id = mem::replace(id, ast::UnreservedId::empty());
+                Ok((id.to_meth(head, args, &self.loc)?, rest))
+            }
+
+            // field of arbitrary expr like `(principal.foo).bar`
+            (Field(id), rest) => {
+                let id = mem::replace(id, ast::UnreservedId::empty());
+                Ok((
+                    construct_expr_attr(head, id.to_smolstr(), self.loc.clone()),
+                    rest,
+                ))
+            }
+
+            // index into arbitrary expr like `(principal.foo)["bar"]`
+            (Index(i), rest) => {
+                let i = mem::take(i);
+                Ok((construct_expr_attr(head, i, self.loc.clone()), rest))
+            }
+        }
+    }
+
     fn to_expr_or_special(&self) -> Result<ExprOrSpecial<'_>> {
         let mem = self.try_as_inner()?;
 
@@ -1137,198 +1204,115 @@ impl Node<Option<cst::Member>> {
         // Return errors in case parsing failed for any element
         let (prim, mut accessors) = flatten_tuple_2(maybe_prim, maybe_accessors)?;
 
-        // `head` will store the current translated expression
-        let mut head = prim;
-        // `tail` will store what remains to be translated
-        let mut tail = &mut accessors[..];
-
-        // This algorithm is essentially an iterator over the accessor slice, but the
-        // pattern match should be easier to read, since we have to check multiple elements
-        // at once. We use `mem::replace` to "deconstruct" the slice as we go, filling it
-        // with empty data and taking ownership of its contents.
-        // The loop returns on the first error observed.
-        loop {
+        let (mut head, mut tail) = {
             use AstAccessor::*;
             use ExprOrSpecial::*;
-            match (&mut head, tail) {
-                // no accessors left - we're done
-                (_, []) => break Ok(head),
-                // function call
-                (Name { name, .. }, [Call(a), rest @ ..]) => {
-                    // move the vec out of the slice, we won't use the slice after
-                    let args = std::mem::take(a);
-                    // replace the object `name` refers to with a default value since it won't be used afterwards
-                    let nn = mem::replace(
-                        name,
-                        ast::Name::unqualified_name(ast::UnreservedId::empty()),
-                    );
-                    head = nn.into_func(args, self.loc.clone()).map(|expr| Expr {
-                        expr,
-                        loc: self.loc.clone(),
-                    })?;
-                    tail = rest;
-                }
-                // variable call - error
-                (Var { var, .. }, [Call(_), ..]) => {
-                    break Err(self.to_ast_err(ToASTErrorKind::VariableCall(*var)).into())
-                }
-                // arbitrary call - error
-                (_, [Call(_), ..]) => {
-                    break Err(self.to_ast_err(ToASTErrorKind::ExpressionCall).into())
-                }
-                // method call on name - error
-                (Name { name, .. }, [Field(f), Call(_), ..]) => {
-                    break Err(self
-                        .to_ast_err(ToASTErrorKind::NoMethods(name.clone(), f.clone()))
-                        .into())
-                }
-                // method call on variable
-                (Var { var, loc: var_loc }, [Field(i), Call(a), rest @ ..]) => {
-                    // move var and args out of the slice
-                    let var = mem::replace(var, ast::Var::Principal);
-                    let args = std::mem::take(a);
-                    // move the id out of the slice as well, to avoid cloning the internal string
-                    let id = mem::replace(i, ast::UnreservedId::empty());
+            match (prim, accessors.as_mut_slice()) {
+                // no accessors, return head immediately.
+                (prim, []) => return Ok(prim),
 
-                    head = id
-                        .to_meth(construct_expr_var(var, var_loc.clone()), args, &self.loc)
-                        .map(|expr| Expr {
-                            expr,
-                            loc: self.loc.clone(),
-                        })?;
-                    tail = rest;
+                // Any access on an arbitrary expression. We will handle the
+                // possibility of multiple chained accesses on this expression
+                // in the loop at the end of this function.
+                (Expr { expr, .. }, [next, rest @ ..]) => {
+                    self.build_expr_accessor(expr, next, rest)?
                 }
-                // method call on arbitrary expression
-                (Expr { expr, .. }, [Field(i), Call(a), rest @ ..]) => {
-                    // move the expr and args out of the slice
-                    let args = std::mem::take(a);
-                    let expr = mem::replace(expr, ast::Expr::val(false));
-                    // move the id out of the slice as well, to avoid cloning the internal string
-                    let id = mem::replace(i, ast::UnreservedId::empty());
-                    head = id.to_meth(expr, args, &self.loc).map(|expr| Expr {
-                        expr,
-                        loc: self.loc.clone(),
-                    })?;
-                    tail = rest;
-                }
-                // method call on string literal (same as Expr case)
-                (StrLit { lit, loc: lit_loc }, [Field(i), Call(a), rest @ ..]) => {
-                    let args = std::mem::take(a);
-                    let id = mem::replace(i, ast::UnreservedId::empty());
-                    let maybe_expr = match to_unescaped_string(lit) {
-                        Ok(s) => Ok(construct_expr_string(s, lit_loc.clone())),
+                // String literals are handled the same ways as expressions
+                (StrLit { lit, loc }, [next, rest @ ..]) => {
+                    let str_lit_expr = match to_unescaped_string(lit) {
+                        Ok(s) => construct_expr_string(s, loc.clone()),
                         Err(escape_errs) => {
-                            Err(ParseErrors::new_from_nonempty(escape_errs.map(|e| {
-                                self.to_ast_err(ToASTErrorKind::Unescape(e)).into()
-                            })))
+                            return Err(ParseErrors::new_from_nonempty(
+                                escape_errs
+                                    .map(|e| self.to_ast_err(ToASTErrorKind::Unescape(e)).into()),
+                            ))
                         }
                     };
-                    head = maybe_expr.and_then(|e| {
-                        id.to_meth(e, args, &self.loc).map(|expr| Expr {
-                            expr,
-                            loc: self.loc.clone(),
-                        })
-                    })?;
-                    tail = rest;
+                    self.build_expr_accessor(str_lit_expr, next, rest)?
                 }
-                // access on arbitrary name - error
-                (Name { name, .. }, [Field(f), ..]) => {
-                    break Err(self
-                        .to_ast_err(ToASTErrorKind::InvalidAccess(
-                            name.clone(),
-                            f.to_string().into(),
-                        ))
-                        .into())
+
+                // function call
+                (Name { name, .. }, [Call(args), rest @ ..]) => {
+                    // move the vec out of the slice, we won't use the slice after
+                    let args = std::mem::take(args);
+                    (name.into_func(args, self.loc.clone())?, rest)
                 }
-                (Name { name, .. }, [Index(i), ..]) => {
-                    break Err(self
-                        .to_ast_err(ToASTErrorKind::InvalidIndex(name.clone(), i.clone()))
-                        .into())
+                // variable function call - error
+                (Var { var, .. }, [Call(_), ..]) => {
+                    return Err(self.to_ast_err(ToASTErrorKind::VariableCall(var)).into());
                 }
-                // attribute of variable
+
+                // method call on name - error
+                (Name { name, .. }, [Field(f), Call(_), ..]) => {
+                    return Err(self
+                        .to_ast_err(ToASTErrorKind::NoMethods(name.clone(), f.clone()))
+                        .into());
+                }
+                // method call on variable
+                (Var { var, loc: var_loc }, [Field(id), Call(args), rest @ ..]) => {
+                    let args = std::mem::take(args);
+                    // move the id out of the slice as well, to avoid cloning the internal string
+                    let id = mem::replace(id, ast::UnreservedId::empty());
+                    (
+                        id.to_meth(construct_expr_var(var, var_loc.clone()), args, &self.loc)?,
+                        rest,
+                    )
+                }
+
+                // attribute access on a variable
                 (Var { var, loc: var_loc }, [Field(i), rest @ ..]) => {
-                    let var = mem::replace(var, ast::Var::Principal);
                     let id = mem::replace(i, ast::UnreservedId::empty());
-                    head = Expr {
-                        expr: construct_expr_attr(
+                    (
+                        construct_expr_attr(
                             construct_expr_var(var, var_loc.clone()),
                             id.to_smolstr(),
                             self.loc.clone(),
                         ),
-                        loc: self.loc.clone(),
-                    };
-                    tail = rest;
+                        rest,
+                    )
                 }
-                // field of arbitrary expr
-                (Expr { expr, .. }, [Field(i), rest @ ..]) => {
-                    let expr = mem::replace(expr, ast::Expr::val(false));
-                    let id = mem::replace(i, ast::UnreservedId::empty());
-                    head = Expr {
-                        expr: construct_expr_attr(expr, id.to_smolstr(), self.loc.clone()),
-                        loc: self.loc.clone(),
-                    };
-                    tail = rest;
+                // attribute access on an arbitrary name - error
+                (Name { name, .. }, [Field(f), ..]) => {
+                    return Err(self
+                        .to_ast_err(ToASTErrorKind::InvalidAccess(
+                            name.clone(),
+                            f.to_string().into(),
+                        ))
+                        .into());
                 }
-                // field of string literal (same as Expr case)
-                (StrLit { lit, loc: lit_loc }, [Field(i), rest @ ..]) => {
-                    let id = mem::replace(i, ast::UnreservedId::empty());
-                    let maybe_expr = match to_unescaped_string(lit) {
-                        Ok(s) => Ok(construct_expr_string(s, lit_loc.clone())),
-                        Err(escape_errs) => {
-                            Err(ParseErrors::new_from_nonempty(escape_errs.map(|e| {
-                                self.to_ast_err(ToASTErrorKind::Unescape(e)).into()
-                            })))
-                        }
-                    };
-                    head = maybe_expr.map(|e| Expr {
-                        expr: construct_expr_attr(e, id.to_smolstr(), self.loc.clone()),
-                        loc: self.loc.clone(),
-                    })?;
-                    tail = rest;
+                // index style attribute access on an arbitrary name - error
+                (Name { name, .. }, [Index(i), ..]) => {
+                    return Err(self
+                        .to_ast_err(ToASTErrorKind::InvalidIndex(name.clone(), i.clone()))
+                        .into());
                 }
-                // index into var
+
+                // index style attribute access on a variable
                 (Var { var, loc: var_loc }, [Index(i), rest @ ..]) => {
-                    let var = mem::replace(var, ast::Var::Principal);
-                    let s = mem::take(i);
-                    head = Expr {
-                        expr: construct_expr_attr(
+                    let i = mem::take(i);
+                    (
+                        construct_expr_attr(
                             construct_expr_var(var, var_loc.clone()),
-                            s,
+                            i,
                             self.loc.clone(),
                         ),
-                        loc: self.loc.clone(),
-                    };
-                    tail = rest;
-                }
-                // index into arbitrary expr
-                (Expr { expr, .. }, [Index(i), rest @ ..]) => {
-                    let expr = mem::replace(expr, ast::Expr::val(false));
-                    let s = mem::take(i);
-                    head = Expr {
-                        expr: construct_expr_attr(expr, s, self.loc.clone()),
-                        loc: self.loc.clone(),
-                    };
-                    tail = rest;
-                }
-                // index into string literal (same as Expr case)
-                (StrLit { lit, loc: lit_loc }, [Index(i), rest @ ..]) => {
-                    let id = mem::take(i);
-                    let maybe_expr = match to_unescaped_string(lit) {
-                        Ok(s) => Ok(construct_expr_string(s, lit_loc.clone())),
-                        Err(escape_errs) => {
-                            Err(ParseErrors::new_from_nonempty(escape_errs.map(|e| {
-                                self.to_ast_err(ToASTErrorKind::Unescape(e)).into()
-                            })))
-                        }
-                    };
-                    head = maybe_expr.map(|e| Expr {
-                        expr: construct_expr_attr(e, id, self.loc.clone()),
-                        loc: self.loc.clone(),
-                    })?;
-                    tail = rest;
+                        rest,
+                    )
                 }
             }
+        };
+
+        // After processing the first element, we know that `head` is always an
+        // expression, so we repeatedly apply `build_expr_access` on head
+        // without need to consider the other cases until we've consumed the
+        // list of accesses.
+        while let [next, rest @ ..] = tail {
+            (head, tail) = self.build_expr_accessor(head, next, rest)?;
         }
+        Ok(ExprOrSpecial::Expr {
+            expr: head,
+            loc: self.loc.clone(),
+        })
     }
 }
 
@@ -1543,7 +1527,18 @@ impl ast::Name {
         if EXTENSION_STYLES.functions.contains(&self) {
             Ok(construct_ext_func(self, args, loc))
         } else {
-            Err(ToASTError::new(ToASTErrorKind::UnknownFunction(self), loc).into())
+            fn suggest_function(name: &ast::Name, funs: &HashSet<&ast::Name>) -> Option<String> {
+                const SUGGEST_FUNCTION_MAX_DISTANCE: usize = 3;
+                let fnames = funs.iter().map(ToString::to_string).collect::<Vec<_>>();
+                let suggested_function = fuzzy_search_limited(
+                    &name.to_string(),
+                    fnames.as_slice(),
+                    Some(SUGGEST_FUNCTION_MAX_DISTANCE),
+                );
+                suggested_function.map(|f| format!("did you mean `{f}`?"))
+            }
+            let hint = suggest_function(&self, &EXTENSION_STYLES.functions);
+            Err(ToASTError::new(ToASTErrorKind::UnknownFunction { id: self, hint }, loc).into())
         }
     }
 }
@@ -1814,12 +1809,10 @@ fn construct_method_contains_any(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast:
         .with_source_loc(loc)
         .contains_any(e0, e1)
 }
-#[cfg(feature = "entity-tags")]
-fn construct_method_getTag(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast::Expr {
+fn construct_method_get_tag(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).get_tag(e0, e1)
 }
-#[cfg(feature = "entity-tags")]
-fn construct_method_hasTag(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast::Expr {
+fn construct_method_has_tag(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).has_tag(e0, e1)
 }
 
@@ -2244,7 +2237,7 @@ mod tests {
     }
 
     #[test]
-    fn policy_annotations() {
+    fn single_annotation() {
         // common use-case
         let policy = assert_parse_policy_succeeds(
             r#"
@@ -2253,9 +2246,12 @@ mod tests {
         );
         assert_matches!(
             policy.annotation(&ast::AnyId::new_unchecked("anno")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "good annotation")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "good annotation")
         );
+    }
 
+    #[test]
+    fn duplicate_annotations_error() {
         // duplication is error
         let src = r#"
             @anno("good annotation")
@@ -2273,7 +2269,10 @@ mod tests {
                 .exactly_one_underline("@anno(\"oops, duplicate\")")
                 .build(),
         );
+    }
 
+    #[test]
+    fn multiple_policys_and_annotations_ok() {
         // can have multiple annotations
         let policyset = text_to_cst::parse_policies(
             r#"
@@ -2303,28 +2302,28 @@ mod tests {
                 .get(&ast::PolicyID::from_string("policy0"))
                 .expect("should be a policy")
                 .annotation(&ast::AnyId::new_unchecked("anno1")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "first")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "first")
         );
         assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy1"))
                 .expect("should be a policy")
                 .annotation(&ast::AnyId::new_unchecked("anno2")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "second")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "second")
         );
         assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy2"))
                 .expect("should be a policy")
                 .annotation(&ast::AnyId::new_unchecked("anno3a")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "third-a")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "third-a")
         );
         assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy2"))
                 .expect("should be a policy")
                 .annotation(&ast::AnyId::new_unchecked("anno3b")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "third-b")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "third-b")
         );
         assert_matches!(
             policyset
@@ -2341,7 +2340,10 @@ mod tests {
                 .count(),
             2
         );
+    }
 
+    #[test]
+    fn reserved_word_annotations_ok() {
         // can have Cedar reserved words as annotation keys
         let policyset = text_to_cst::parse_policies(
             r#"
@@ -2365,43 +2367,80 @@ mod tests {
             .expect("should be the right policy ID");
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("if")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `if`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `if`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("then")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `then`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `then`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("else")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `else`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `else`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("true")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `true`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `true`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("false")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `false`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `false`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("in")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `in`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `in`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("is")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `is`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `is`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("like")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `like`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `like`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("has")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `has`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `has`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("principal")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_str(), "this is the annotation for `principal`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `principal`")
+        );
+    }
+
+    #[test]
+    fn single_annotation_without_value() {
+        let policy = assert_parse_policy_succeeds(r#"@anno permit(principal,action,resource);"#);
+        assert_matches!(
+            policy.annotation(&ast::AnyId::new_unchecked("anno")),
+            Some(annotation) => assert_eq!(annotation.as_ref(), ""),
+        );
+    }
+
+    #[test]
+    fn duplicate_annotations_without_value() {
+        let src = "@anno @anno permit(principal,action,resource);";
+        let errs = assert_parse_policy_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("duplicate annotation: @anno")
+                .exactly_one_underline("@anno")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn multiple_annotation_without_value() {
+        let policy =
+            assert_parse_policy_succeeds(r#"@foo @bar permit(principal,action,resource);"#);
+        assert_matches!(
+            policy.annotation(&ast::AnyId::new_unchecked("foo")),
+            Some(annotation) => assert_eq!(annotation.as_ref(), ""),
+        );
+        assert_matches!(
+            policy.annotation(&ast::AnyId::new_unchecked("bar")),
+            Some(annotation) => assert_eq!(annotation.as_ref(), ""),
         );
     }
 
@@ -2614,6 +2653,22 @@ mod tests {
     }
 
     #[test]
+    fn construct_invalid_get_var() {
+        let src = r#"
+            {"principal":1, "two":"two"}[principal]
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid string literal: principal")
+                .exactly_one_underline("principal")
+                .build(),
+        );
+    }
+
+    #[test]
     fn construct_has_1() {
         let expr = assert_parse_expr_succeeds(
             r#"
@@ -2738,6 +2793,42 @@ mod tests {
                 r"string\\\*with\\\*backslashes\\\*and\\\*stars"
             );
         });
+    }
+
+    #[test]
+    fn construct_like_var() {
+        let src = r#"
+            "principal" like principal
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "right hand side of a `like` expression must be a pattern literal, but got `principal`",
+            )
+            .exactly_one_underline("principal")
+            .build(),
+        );
+    }
+
+    #[test]
+    fn construct_like_name() {
+        let src = r#"
+            "foo::bar::baz" like foo::bar
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "right hand side of a `like` expression must be a pattern literal, but got `foo::bar`",
+            )
+            .exactly_one_underline("foo::bar")
+            .build(),
+        );
     }
 
     #[test]
@@ -3829,6 +3920,15 @@ mod tests {
                     .exactly_one_underline_with_label(r#"is"#, "expected `!=`, `&&`, `<`, `<=`, `==`, `>`, `>=`, `||`, `}`, or `in`")
                     .build(),
             ),
+            (
+                // TODO #1252: Improve error message and help text for `is <string-lit>`
+                r#"permit(principal, action, resource) when { principal is "User" };"#,
+                ExpectedErrorMessageBuilder::error(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `User`"#,
+                ).help(
+                    "try using `==` to test for equality"
+                ).exactly_one_underline("\"User\"").build(),
+            ),
         ];
         for (p_src, expected) in invalid_is_policies {
             assert_matches!(parse_policy_or_template(None, p_src), Err(e) => {
@@ -3938,9 +4038,24 @@ mod tests {
                     .build(),
             ),
             (
+                "principal.addr.isipv4()",
+                ExpectedErrorMessageBuilder::error("`isipv4` is not a valid method")
+                    .exactly_one_underline("principal.addr.isipv4()")
+                    .help("did you mean `isIpv4`?")
+                    .build(),
+            ),
+            (
                 "bar([])",
                 ExpectedErrorMessageBuilder::error("`bar` is not a valid function")
                     .exactly_one_underline("bar([])")
+                    .help("did you mean `ip`?")
+                    .build(),
+            ),
+            (
+                r#"Ip("1.1.1.1/24")"#,
+                ExpectedErrorMessageBuilder::error("`Ip` is not a valid function")
+                    .exactly_one_underline(r#"Ip("1.1.1.1/24")"#)
+                    .help("did you mean `ip`?")
                     .build(),
             ),
             (

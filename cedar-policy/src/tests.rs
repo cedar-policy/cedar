@@ -1865,16 +1865,16 @@ mod entity_validate_tests {
     #[test]
     fn issue_1176_should_fail3() {
         let (schema, _) = Schema::from_cedarschema_str(
-            r###"
+            r#"
 entity A = {"foo": Set < Set < {"bar": __cedar::Bool, "baz"?: __cedar::Bool} > >};
 action "g" appliesTo {
   principal: [A],
   resource: [A],
 };
-        "###,
+        "#,
         )
         .unwrap();
-        let entity_str = r###"
+        let entity_str = r#"
         {
             "uid": {
               "type": "A",
@@ -1916,7 +1916,7 @@ action "g" appliesTo {
             },
             "parents": []
           }
-        "###;
+        "#;
 
         assert_matches!(
             Entity::from_json_str(entity_str, Some(&schema)),
@@ -1962,16 +1962,16 @@ action "g" appliesTo {
     #[test]
     fn should_pass_set_set_rec_one_req_one_opt() {
         let (schema, _) = Schema::from_cedarschema_str(
-            r###"
+            r#"
 entity A = {"foo": Set < Set < {"bar": __cedar::Bool, "baz"?: __cedar::Bool} > >};
 action "g" appliesTo {
   principal: [A],
   resource: [A],
 };
-        "###,
+        "#,
         )
         .unwrap();
-        let entity_str = r###"
+        let entity_str = r#"
         {
             "uid": {
               "type": "A",
@@ -2014,7 +2014,7 @@ action "g" appliesTo {
             },
             "parents": []
           }
-        "###;
+        "#;
 
         assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
     }
@@ -2022,7 +2022,7 @@ action "g" appliesTo {
     #[test]
     fn example_app_tags() {
         let (schema, _) = Schema::from_cedarschema_str(
-            r###"
+            r#"
             entity User {
               allowedTagsForRole: {
                 "Role-A"?: {
@@ -2042,10 +2042,10 @@ action "g" appliesTo {
               principal: User,
               resource: User,
             };
-        "###,
+        "#,
         )
         .unwrap();
-        let entity_str = r###"
+        let entity_str = r#"
         {
             "uid": {
                 "type": "User",
@@ -2068,24 +2068,24 @@ action "g" appliesTo {
             },
             "parents": []
         }
-        "###;
+        "#;
         assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
     }
 
     #[test]
     fn should_pass_set_set_record_one_req_one_opt() {
         let (schema, _) = Schema::from_cedarschema_str(
-            r###"
+            r#"
             entity A = {"qqamncWam": Set < Set < {"": __cedar::Bool, "bbrb"?: __cedar::Bool} > >};
             action "g" appliesTo {
               principal: [A],
               resource: [A],
               context: {"vlipwwpm0am": Set < Set < {"": __cedar::String, "b"?: __cedar::Bool} > >}
             };
-        "###,
+        "#,
         )
         .unwrap();
-        let entity_str = r###"
+        let entity_str = r#"
         {
             "uid": {
               "type": "A",
@@ -2155,7 +2155,7 @@ action "g" appliesTo {
             },
             "parents": []
           }
-        "###;
+        "#;
         assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
     }
 }
@@ -3923,6 +3923,249 @@ mod partial_schema {
     }
 }
 
+#[cfg(feature = "level-validate")]
+mod level_validation_tests {
+    use crate::ValidationMode;
+    use crate::{Policy, PolicySet, ValidationError, Validator};
+    use cool_asserts::assert_matches;
+    use serde_json::json;
+
+    use super::Schema;
+
+    fn get_schema() -> Schema {
+        Schema::from_json_value(json!(
+        {
+            "": {
+                "entityTypes": {
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "is_admin": {
+                                    "type": "Boolean",
+                                    "required": true
+                                },
+                                "profile_pic": {
+                                    "type": "Entity",
+                                    "name": "Photo",
+                                    "required": true
+                                }
+                            }
+                        },
+                        "memberOfTypes": ["User"]
+                    },
+                    "Photo": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "foo": {
+                                    "type": "Entity",
+                                    "name": "User",
+                                    "required": true
+                                }
+                            }
+                        }
+                    }
+                },
+                "actions": {
+                    "view": {
+                        "appliesTo": {
+                            "resourceTypes": [ "Photo" ],
+                            "principalTypes": [ "User" ]
+                        }
+                    }
+                }
+            }
+        }))
+        .expect("Schema parse error.")
+        .try_into()
+        .expect("Expected valid schema.")
+    }
+
+    #[test]
+    fn level_validation_passes() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when {1 > 0};"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(result.validation_passed());
+    }
+
+    #[test]
+    fn level_validation_fails() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when {principal in resource.foo};"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(!result.validation_passed());
+        assert_eq!(result.validation_errors().count(), 1);
+        assert_matches!(
+            result.validation_errors().next().unwrap(),
+            ValidationError::EntityDerefLevelViolation(_)
+        );
+    }
+
+    #[test]
+    fn level_validation_fails_rhs_in() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when {principal.profile_pic in resource.foo.profile_pic};"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(!result.validation_passed());
+        assert_eq!(result.validation_errors().count(), 1);
+        let err = result.validation_errors().next().unwrap();
+        assert_matches!(err, ValidationError::EntityDerefLevelViolation(_));
+        match err {
+            ValidationError::EntityDerefLevelViolation(inner) => {
+                assert!(format!("{}", inner.to_string()).contains("Actual level is 2"));
+            }
+            _ => unreachable!(),
+        };
+    }
+
+    #[test]
+    fn level_validation_passes_level2() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { resource.foo.is_admin };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 2);
+        assert!(result.validation_passed());
+    }
+
+    #[test]
+    fn level_validation_irrelevant_policy_passes() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { false && principal.is_admin };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(result.validation_passed());
+    }
+
+    #[test]
+    fn level_validation_irrelevant_policy_fails() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { principal.is_admin && false };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(!result.validation_passed());
+        assert_eq!(result.validation_errors().count(), 1);
+        assert_matches!(
+            result.validation_errors().next().unwrap(),
+            ValidationError::EntityDerefLevelViolation(_)
+        );
+    }
+
+    #[test]
+    fn level_validation_fails_ite() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { if principal == User::"henry" then true else principal in resource.foo };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(!result.validation_passed());
+        assert_eq!(result.validation_errors().count(), 1);
+        assert_matches!(
+            result.validation_errors().next().unwrap(),
+            ValidationError::EntityDerefLevelViolation(_)
+        );
+    }
+
+    #[test]
+    fn level_validation_passes_ite() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { if principal == User::"henry" then true else principal in resource.foo };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 1);
+        assert!(result.validation_passed());
+    }
+
+    #[test]
+    fn level_validation_fails_record() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": true, "bar": resource.foo.is_admin }.bar };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(!result.validation_passed());
+        assert_eq!(result.validation_errors().count(), 1);
+        assert_matches!(
+            result.validation_errors().next().unwrap(),
+            ValidationError::EntityDerefLevelViolation(_)
+        );
+    }
+
+    #[test]
+    fn level_validation_passes_record_increased_level() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": true, "bar": resource.foo.is_admin }.bar };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 2);
+        assert!(result.validation_passed());
+    }
+
+    #[test]
+    fn level_validation_passes_record_other_attr() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": true, "bar": resource.foo.is_admin }.foo };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(result.validation_passed());
+    }
+}
+
 mod template_tests {
     use std::str::FromStr;
 
@@ -4155,7 +4398,7 @@ mod issue_618 {
         round_trip(r#"permit(principal, action, resource) when { principal["\n"] };"#);
         round_trip(r#"permit(principal, action, resource) when { {"\n": 0} };"#);
         round_trip(
-            r#"@annotation("\n") 
+            r#"@annotation("\n")
 permit(principal, action, resource) when { {"\n": 0} };"#,
         );
     }
@@ -5717,28 +5960,240 @@ mod context_tests {
 }
 
 mod policy_manipulation_functions_tests {
+    use std::collections::BTreeMap;
+
+    use cool_asserts::assert_matches;
+
     use super::*;
 
     #[test]
     fn empty_policy() {
-        let policy_str = r###"permit(principal, action, resource);
-        "###;
+        let policy_str = r"permit(principal, action, resource);
+        ";
         let policy = Policy::from_str(policy_str).expect("should succeed");
         assert_eq!(policy.entity_literals(), vec![]);
     }
 
     #[test]
     fn non_empty_policy() {
-        let policy_str = r###"permit(principal == User::"Bob", action == Action::"view", resource) when {
+        let policy_str = r#"permit(principal == User::"Bob", action == Action::"view", resource) when {
             !resource.private && resource.owner != User::"Alice"
         };
-        "###;
+        "#;
         let policy = Policy::from_str(policy_str).expect("should succeed");
         let res = policy.entity_literals();
         assert_eq!(res.len(), 3);
         assert!(res.contains(&EntityUid::from_str("User::\"Bob\"").expect("should parse")));
         assert!(res.contains(&EntityUid::from_str("Action::\"view\"").expect("should parse")));
         assert!(res.contains(&EntityUid::from_str("User::\"Alice\"").expect("should parse")));
+    }
+
+    #[test]
+    fn test_entity_sub_principal() {
+        let policy_str = r#"permit(principal == User::"Alice", action, resource);"#;
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_eq!(policy.to_string(), new_policy.to_string());
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Bob").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_ne!(policy.to_string(), new_policy.to_string());
+    }
+
+    #[test]
+    fn test_entity_sub_action() {
+        let policy_str = r#"permit(principal, action == Action::"view", resource);"#;
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("Action").unwrap(),
+                    EntityId::from_str("view").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("Action").unwrap(),
+                    EntityId::from_str("view").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_eq!(policy.to_string(), new_policy.to_string());
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("Action").unwrap(),
+                    EntityId::from_str("view").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("Action").unwrap(),
+                    EntityId::from_str("read").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_ne!(policy.to_string(), new_policy.to_string());
+    }
+
+    #[test]
+    fn test_entity_sub_resource() {
+        let policy_str = r#"permit(principal, action, resource == User::"Alice");"#;
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_eq!(policy.to_string(), new_policy.to_string());
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Bob").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_ne!(policy.to_string(), new_policy.to_string());
+    }
+
+    #[test]
+    fn test_entity_sub_body() {
+        let policy_str =
+            r#"permit(principal, action, resource) when { principal == User::"Alice" };"#;
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_eq!(policy.to_string(), new_policy.to_string());
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Bob").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_ne!(policy.to_string(), new_policy.to_string());
+    }
+
+    #[test]
+    fn test_entity_swap() {
+        let policy_str = r#"permit(principal, action in [Action::"1", Action::"2"], resource) when { principal in [User::"1", User::"2"] };"#;
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+        let expected_policy_str = r#"permit(principal, action in [Action::"2", Action::"1"], resource) when { principal in [User::"2", User::"1"] };"#;
+
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([
+                (
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("User").unwrap(),
+                        EntityId::from_str("1").unwrap(),
+                    ),
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("User").unwrap(),
+                        EntityId::from_str("2").unwrap(),
+                    ),
+                ),
+                (
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("User").unwrap(),
+                        EntityId::from_str("2").unwrap(),
+                    ),
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("User").unwrap(),
+                        EntityId::from_str("1").unwrap(),
+                    ),
+                ),
+                (
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("Action").unwrap(),
+                        EntityId::from_str("1").unwrap(),
+                    ),
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("Action").unwrap(),
+                        EntityId::from_str("2").unwrap(),
+                    ),
+                ),
+                (
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("Action").unwrap(),
+                        EntityId::from_str("2").unwrap(),
+                    ),
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("Action").unwrap(),
+                        EntityId::from_str("1").unwrap(),
+                    ),
+                ),
+            ]))
+            .unwrap();
+        assert_eq!(new_policy.to_string(), expected_policy_str.to_string());
+    }
+
+    #[test]
+    fn test_err_illegal_substitution() {
+        let policy_str = r#"permit(principal, action == Action::"1", resource);"#;
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+
+        assert_matches!(
+            policy.sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("Action").unwrap(),
+                    EntityId::from_str("1").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("2").unwrap(),
+                ),
+            )])),
+            Err(PolicyFromJsonError {
+                inner: cedar_policy_core::est::FromJsonError::InvalidActionType(_)
+            })
+        );
     }
 }
 
@@ -5747,7 +6202,7 @@ mod version_tests {
 
     #[test]
     fn test_sdk_version() {
-        assert_eq!(get_sdk_version().to_string(), "4.0.0");
+        assert_eq!(get_sdk_version().to_string(), "4.1.0");
     }
 
     #[test]
@@ -5788,7 +6243,7 @@ mod reserved_keywords_in_policies {
           permit(principal, action, resource);
         "#
         ));
-        assert_matches!(res, Ok(_))
+        assert_matches!(res, Ok(_));
     }
 
     #[track_caller]
@@ -5842,14 +6297,14 @@ mod reserved_keywords_in_policies {
             });
 
         // No restrictions on OTHER_SPECIAL_IDENTS
-        OTHER_SPECIAL_IDENTS.iter().for_each(|id| {
+        for id in OTHER_SPECIAL_IDENTS.iter() {
             assert_valid_expression(format!("{{ {id}: 1 }}"));
             assert_valid_expression(format!("principal has {id}"));
             assert_valid_expression(format!("principal.{id} == \"foo\""));
-        });
+        }
 
         // RESERVED_IDENTS cannot be used as keys without quotes
-        RESERVED_IDENTS.into_iter().for_each(|id| {
+        for id in RESERVED_IDENTS.into_iter() {
             // slightly different errors depending on `id`; related to #407
             match id {
                 "true" | "false" => {
@@ -5897,10 +6352,10 @@ mod reserved_keywords_in_policies {
                 RESERVED_IDENT_MSG(id),
                 id.into(),
             );
-        });
+        }
 
         // RESERVED_NAMESPACE cannot be used as keys without quotes
-        RESERVED_NAMESPACE.into_iter().for_each(|id| {
+        for id in RESERVED_NAMESPACE.into_iter() {
             assert_invalid_expression(
                 format!("{{ {id}: 1 }}"),
                 RESERVED_NAMESPACE_MSG(id),
@@ -5914,21 +6369,21 @@ mod reserved_keywords_in_policies {
             assert_invalid_expression(
                 format!("principal.{id} == \"foo\""),
                 RESERVED_NAMESPACE_MSG(id),
-                "princip".into(), // TODO(#1221): wrong source is used
+                id.into(),
             );
-        });
+        }
     }
 
     #[test]
     fn test_reserved_namespace_elements() {
         // No restrictions on OTHER_SPECIAL_IDENTS
-        OTHER_SPECIAL_IDENTS.iter().for_each(|id| {
+        for id in OTHER_SPECIAL_IDENTS.iter() {
             assert_valid_expression(format!("foo::{id}::\"bar\""));
             assert_valid_expression(format!("principal is {id}::foo"));
-        });
+        }
 
         // RESERVED_IDENTS cannot be used in namespaces
-        RESERVED_IDENTS.into_iter().for_each(|id| {
+        for id in RESERVED_IDENTS.into_iter() {
             assert_invalid_expression(
                 format!("foo::{id}::\"bar\""),
                 RESERVED_IDENT_MSG(id),
@@ -5939,10 +6394,10 @@ mod reserved_keywords_in_policies {
                 RESERVED_IDENT_MSG(id),
                 id.into(),
             );
-        });
+        }
 
         // RESERVED_NAMESPACE cannot be used in namespaces
-        RESERVED_NAMESPACE.into_iter().for_each(|id| {
+        for id in RESERVED_NAMESPACE.into_iter() {
             assert_invalid_expression(
                 format!("foo::{id}::\"bar\""),
                 RESERVED_NAMESPACE_MSG(&format!("foo::{id}")),
@@ -5953,7 +6408,7 @@ mod reserved_keywords_in_policies {
                 RESERVED_NAMESPACE_MSG(&format!("{id}::foo")),
                 format!("{id}::foo"),
             );
-        });
+        }
     }
 
     #[test]
@@ -5961,7 +6416,7 @@ mod reserved_keywords_in_policies {
         // No keyword is allowed as an extension function names since we check
         // against the known extension functions at parse time.
 
-        RESERVED_IDENTS.into_iter().for_each(|id| {
+        for id in RESERVED_IDENTS.into_iter() {
             assert_invalid_expression(
                 format!("extension::function::{id}(\"foo\")"),
                 RESERVED_IDENT_MSG(id),
@@ -5972,9 +6427,9 @@ mod reserved_keywords_in_policies {
                 RESERVED_IDENT_MSG(id),
                 id.into(),
             );
-        });
+        }
 
-        RESERVED_NAMESPACE.into_iter().for_each(|id| {
+        for id in RESERVED_NAMESPACE.into_iter() {
             assert_invalid_expression(
                 format!("extension::function::{id}(\"foo\")"),
                 RESERVED_NAMESPACE_MSG(&format!("extension::function::{id}")),
@@ -5983,11 +6438,11 @@ mod reserved_keywords_in_policies {
             assert_invalid_expression(
                 format!("context.{id}(1)"),
                 RESERVED_NAMESPACE_MSG(id),
-                "context".into(), // TODO(#1221): wrong source is used
+                id.into(),
             );
-        });
+        }
 
-        OTHER_SPECIAL_IDENTS.into_iter().for_each(|id| {
+        for id in OTHER_SPECIAL_IDENTS.into_iter() {
             assert_invalid_expression(
                 format!("extension::function::{id}(\"foo\")"),
                 format!("`extension::function::{id}` is not a valid function"),
@@ -5998,6 +6453,6 @@ mod reserved_keywords_in_policies {
                 format!("`{id}` is not a valid method"),
                 format!("context.{id}(1)"),
             );
-        });
+        }
     }
 }

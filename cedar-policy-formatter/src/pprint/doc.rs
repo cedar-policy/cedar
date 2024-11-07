@@ -24,18 +24,18 @@ use super::token::Comment;
 /// The trait to convert a CST to a RcDoc
 pub trait Doc {
     /// Convert a type implementing this trait to a `RcDoc`.
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>>;
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>>;
 }
 
 impl Doc for Ident {
     // An Ident's doc is itself.
-    fn to_doc(&self, _context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, _context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         Some(RcDoc::as_string(self))
     }
 }
 
 impl Doc for Node<Option<VariableDef>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let vd = self.as_inner()?;
         let start_comment = get_comment_at_start(self.loc.span, &mut context.tokens)?;
         let var_doc = vd.variable.as_inner()?.to_doc(context)?;
@@ -92,7 +92,7 @@ impl Doc for Node<Option<VariableDef>> {
 }
 
 impl Doc for Node<Option<Cond>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let cond = self.as_inner()?;
         let lb_comment = get_comment_after_end(cond.cond.loc.span, &mut context.tokens)?;
         let rb_comment = get_comment_at_end(self.loc.span, &mut context.tokens)?;
@@ -156,15 +156,15 @@ impl Doc for Node<Option<Cond>> {
 }
 
 impl Doc for Node<Option<Expr>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         match self.as_inner()?.expr.as_ref() {
             ExprData::If(c, t, e) => {
-                fn pp_group<'n>(
-                    s: &'n str,
-                    c: Comment,
-                    e: &'n Node<Option<Expr>>,
-                    context: &mut Context<'_>,
-                ) -> RcDoc<'n> {
+                fn pp_group<'src>(
+                    s: &'src str,
+                    c: Comment<'src>,
+                    e: &Node<Option<Expr>>,
+                    context: &mut Context<'_, 'src>,
+                ) -> RcDoc<'src> {
                     add_comment(RcDoc::text(s), c, RcDoc::nil()).append(
                         RcDoc::line()
                             .append(e.to_doc(context))
@@ -189,7 +189,7 @@ impl Doc for Node<Option<Expr>> {
 }
 
 impl Doc for Node<Option<Or>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         let initial = &e.initial;
         let extended = &e.extended;
@@ -209,7 +209,7 @@ impl Doc for Node<Option<Or>> {
 }
 
 impl Doc for Node<Option<And>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         let initial = &e.initial;
         let extended = &e.extended;
@@ -229,7 +229,7 @@ impl Doc for Node<Option<And>> {
 }
 
 impl Doc for Node<Option<Relation>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         match e {
             Relation::Common { initial, extended } => {
@@ -320,13 +320,13 @@ impl Doc for Node<Option<Relation>> {
 }
 
 impl Doc for AddOp {
-    fn to_doc(&self, _: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, _context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         Some(RcDoc::as_string(self))
     }
 }
 
 impl Doc for Node<Option<Add>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         let initial = &e.initial;
         let extended = &e.extended;
@@ -356,13 +356,13 @@ impl Doc for Node<Option<Add>> {
 }
 
 impl Doc for MultOp {
-    fn to_doc(&self, _: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, __context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         Some(RcDoc::as_string(self))
     }
 }
 
 impl Doc for Node<Option<Mult>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         let initial = &e.initial;
         let extended = &e.extended;
@@ -392,7 +392,7 @@ impl Doc for Node<Option<Mult>> {
 }
 
 impl Doc for Node<Option<Unary>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         if let Some(op) = e.op {
             match op {
@@ -433,7 +433,7 @@ impl Doc for Node<Option<Unary>> {
 }
 
 impl Doc for Member {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let item_doc = self.item.to_doc(context)?;
         Some(
             item_doc
@@ -450,7 +450,7 @@ impl Doc for Member {
 }
 
 impl Doc for Node<Option<RecInit>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         let key_doc = e.0.to_doc(context)?;
         let value_doc = e.1.to_doc(context)?;
@@ -468,7 +468,7 @@ impl Doc for Node<Option<RecInit>> {
 }
 
 impl Doc for Node<Option<Name>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         let path = &e.path;
         let n = &e.name;
@@ -506,7 +506,7 @@ impl Doc for Node<Option<Name>> {
 }
 
 impl Doc for Node<Option<Str>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         // Note: the input string may contain newlines, but `utils::create_multiline_doc`
         // _cannot_ be used here because this function will change indentation
@@ -520,7 +520,7 @@ impl Doc for Node<Option<Str>> {
 }
 
 impl Doc for Node<Option<Ref>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         match self.as_inner()? {
             Ref::Uid { path, eid } => Some(
                 path.to_doc(context)?
@@ -537,7 +537,7 @@ impl Doc for Node<Option<Ref>> {
 }
 
 impl Doc for Node<Option<Literal>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         Some(add_comment(
             RcDoc::as_string(self.as_inner()?),
             get_comment_at_start(self.loc.span, &mut context.tokens)?,
@@ -547,7 +547,7 @@ impl Doc for Node<Option<Literal>> {
 }
 
 impl Doc for Node<Option<Slot>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         Some(add_comment(
             RcDoc::as_string(self.as_inner()?),
             get_comment_at_start(self.loc.span, &mut context.tokens)?,
@@ -557,7 +557,7 @@ impl Doc for Node<Option<Slot>> {
 }
 
 impl Doc for Node<Option<Primary>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         match e {
             Primary::Literal(lit) => lit.to_doc(context),
@@ -649,7 +649,7 @@ impl Doc for Node<Option<Primary>> {
 }
 
 impl Doc for Node<Option<MemAccess>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         match e {
             MemAccess::Field(f) => Some(
@@ -718,37 +718,38 @@ impl Doc for Node<Option<MemAccess>> {
 }
 
 impl Doc for Node<Option<Annotation>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let annotation = self.as_inner()?;
         let id_doc = annotation.key.to_doc(context);
-        let val_doc = annotation.value.to_doc(context);
         let at_doc = add_comment(
             RcDoc::text("@"),
             get_comment_at_start(self.loc.span, &mut context.tokens)?,
             RcDoc::nil(),
         );
-        let lp_doc = add_comment(
-            RcDoc::text("("),
-            get_comment_after_end(annotation.key.loc.span, &mut context.tokens)?,
-            RcDoc::nil(),
-        );
-        let rp_doc = add_comment(
-            RcDoc::text(")"),
-            get_comment_at_end(self.loc.span, &mut context.tokens)?,
-            RcDoc::hardline(),
-        );
-        Some(
-            at_doc
-                .append(id_doc)
-                .append(lp_doc)
-                .append(val_doc)
-                .append(rp_doc),
-        )
+        let val_doc = match annotation.value.as_ref() {
+            Some(value) => {
+                let lp_doc = add_comment(
+                    RcDoc::text("("),
+                    get_comment_after_end(annotation.key.loc.span, &mut context.tokens)?,
+                    RcDoc::nil(),
+                );
+                let val_doc = value.to_doc(context);
+                let rp_doc = add_comment(
+                    RcDoc::text(")"),
+                    get_comment_at_end(self.loc.span, &mut context.tokens)?,
+                    RcDoc::hardline(),
+                );
+                lp_doc.append(val_doc).append(rp_doc)
+            }
+            None => RcDoc::hardline(),
+        };
+
+        Some(at_doc.append(id_doc).append(val_doc))
     }
 }
 
 impl Doc for Node<Option<Ident>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         Some(add_comment(
             self.as_inner()?.to_doc(context)?,
             get_comment_at_start(self.loc.span, &mut context.tokens)?,
@@ -758,7 +759,7 @@ impl Doc for Node<Option<Ident>> {
 }
 
 impl Doc for Node<Option<Policy>> {
-    fn to_doc(&self, context: &mut Context<'_>) -> Option<RcDoc<'_>> {
+    fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let policy = self.as_inner()?;
 
         let anno_doc = RcDoc::intersperse(

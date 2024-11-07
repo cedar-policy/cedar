@@ -58,6 +58,7 @@ use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Read;
 use std::str::FromStr;
+use std::sync::Arc;
 
 // PANIC SAFETY: `CARGO_PKG_VERSION` should return a valid SemVer version string
 #[allow(clippy::unwrap_used)]
@@ -120,7 +121,6 @@ impl Entity {
             uid.into(),
             attrs.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
             parents.into_iter().map(EntityUid::into).collect(),
-            #[cfg(feature = "entity-tags")]
             [],
             Extensions::all_available(),
         )?))
@@ -408,7 +408,7 @@ impl Entities {
     ) -> Result<Self, EntitiesError> {
         Ok(Self(
             self.0.add_entities(
-                entities.into_iter().map(|e| e.0),
+                entities.into_iter().map(|e| Arc::new(e.0)),
                 schema
                     .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
                     .as_ref(),
@@ -447,7 +447,7 @@ impl Entities {
             Extensions::all_available(),
             cedar_policy_core::entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser.iter_from_json_str(json)?;
+        let new_entities = eparser.iter_from_json_str(json)?.map(Arc::new);
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),
@@ -485,7 +485,7 @@ impl Entities {
             Extensions::all_available(),
             cedar_policy_core::entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser.iter_from_json_value(json)?;
+        let new_entities = eparser.iter_from_json_value(json)?.map(Arc::new);
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),
@@ -524,7 +524,7 @@ impl Entities {
             Extensions::all_available(),
             cedar_policy_core::entities::TCComputation::ComputeNow,
         );
-        let new_entities = eparser.iter_from_json_file(json)?;
+        let new_entities = eparser.iter_from_json_file(json)?.map(Arc::new);
         Ok(Self(self.0.add_entities(
             new_entities,
             schema.as_ref(),
@@ -914,6 +914,7 @@ pub struct Response {
 }
 
 /// A partially evaluated authorization response.
+///
 /// Splits the results into several categories: satisfied, false, and residual for each policy effect.
 /// Also tracks all the errors that were encountered during evaluation.
 #[doc = include_str!("../experimental_warning.md")]
@@ -992,7 +993,7 @@ impl PartialResponse {
         es: &Entities,
     ) -> Result<Self, ReauthorizationError> {
         let exts = Extensions::all_available();
-        let evaluator = RestrictedEvaluator::new(&exts);
+        let evaluator = RestrictedEvaluator::new(exts);
         let mapping = mapping
             .into_iter()
             .map(|(name, expr)| {
@@ -1255,6 +1256,26 @@ impl Validator {
     /// policies in the policy set have passed the validator.
     pub fn validate(&self, pset: &PolicySet, mode: ValidationMode) -> ValidationResult {
         ValidationResult::from(self.0.validate(&pset.ast, mode.into()))
+    }
+
+    #[cfg(feature = "level-validate")]
+    /// Validate all policies in a policy set, collecting all validation errors
+    /// found into the returned `ValidationResult`. If validation passes, run level
+    /// validation (RFC 76). Each error is returned together with the policy id of the policy
+    /// where the error was found. If a policy id included in the input policy set does not
+    /// appear in the output iterator, then that policy passed the validator. If the function
+    /// `validation_passed` returns true, then there were no validation errors found, so
+    /// all policies in the policy set have passed the validator.
+    pub fn validate_with_level(
+        &self,
+        pset: &PolicySet,
+        mode: ValidationMode,
+        max_deref_level: u32,
+    ) -> ValidationResult {
+        ValidationResult::from(
+            self.0
+                .validate_with_level(&pset.ast, mode.into(), max_deref_level),
+        )
     }
 }
 
@@ -1614,8 +1635,9 @@ impl Schema {
     }
 }
 
-/// Contains the result of policy validation. The result includes the list of
-/// issues found by validation and whether validation succeeds or fails.
+/// Contains the result of policy validation.
+///
+/// The result includes the list of issues found by validation and whether validation succeeds or fails.
 /// Validation succeeds if there are no fatal errors. There may still be
 /// non-fatal warnings present when validation passes.
 #[derive(Debug)]
@@ -1763,8 +1785,9 @@ impl Diagnostic for ValidationResult {
     }
 }
 
-/// Scan a set of policies for potentially confusing/obfuscating text. These
-/// checks are also provided through [`Validator::validate`] which provides more
+/// Scan a set of policies for potentially confusing/obfuscating text.
+///
+/// These checks are also provided through [`Validator::validate`] which provides more
 /// comprehensive error detection, but this function can be used to check for
 /// confusable strings without defining a schema.
 pub fn confusable_string_checker<'a>(
@@ -2096,7 +2119,10 @@ impl PolicySet {
         self.policies.get(id)
     }
 
-    /// Extract annotation data from a `Policy` by its `PolicyId` and annotation key
+    /// Extract annotation data from a `Policy` by its `PolicyId` and annotation key.
+    /// If the annotation is present without an explicit value (e.g., `@annotation`),
+    /// then this function returns `Some("")`. It returns `None` only when the
+    /// annotation is not present.
     pub fn annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .get(id.as_ref())?
@@ -2105,6 +2131,9 @@ impl PolicySet {
     }
 
     /// Extract annotation data from a `Template` by its `PolicyId` and annotation key.
+    /// If the annotation is present without an explicit value (e.g., `@annotation`),
+    /// then this function returns `Some("")`. It returns `None` only when the
+    /// annotation is not present.
     pub fn template_annotation(&self, id: &PolicyId, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .get_template(id.as_ref())?
@@ -2348,7 +2377,9 @@ fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item
                     },
                     //PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
                     #[allow(clippy::unreachable)]
-                    _ => unreachable!("used unsupported feature"),
+                    cedar_policy_validator::types::RequestEnv::UndeclaredAction => {
+                        unreachable!("used unsupported feature")
+                    }
                 })
             } else {
                 None
@@ -2423,7 +2454,10 @@ impl Template {
         self.ast.effect()
     }
 
-    /// Get an annotation value of this `Template`
+    /// Get an annotation value of this `Template`.
+    /// If the annotation is present without an explicit value (e.g., `@annotation`),
+    /// then this function returns `Some("")`. It returns `None` only when the
+    /// annotation is not present.
     pub fn annotation(&self, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .annotation(&key.as_ref().parse().ok()?)
@@ -2431,6 +2465,8 @@ impl Template {
     }
 
     /// Iterate through annotation data of this `Template` as key-value pairs
+    /// Annotations which do not have an explicit value (e.g., `@annotation`),
+    /// are included in the iterator with the value `""`.
     pub fn annotations(&self) -> impl Iterator<Item = (&str, &str)> {
         self.ast
             .annotations()
@@ -2721,6 +2757,9 @@ impl Policy {
     }
 
     /// Get an annotation value of this template-linked or static policy
+    /// If the annotation is present without an explicit value (e.g., `@annotation`),
+    /// then this function returns `Some("")`. It returns `None` only when the
+    /// annotation is not present.
     pub fn annotation(&self, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .annotation(&key.as_ref().parse().ok()?)
@@ -2728,6 +2767,8 @@ impl Policy {
     }
 
     /// Iterate through annotation data of this template-linked or static policy
+    /// Annotations which do not have an explicit value (e.g., `@annotation`),
+    /// are included in the iterator with the value `""`.
     pub fn annotations(&self) -> impl Iterator<Item = (&str, &str)> {
         self.ast
             .annotations()
@@ -2938,15 +2979,44 @@ impl Policy {
             .condition()
             .subexpressions()
             .filter_map(|e| match e.expr_kind() {
-                cedar_policy_core::ast::ExprKind::Lit(l) => match l {
-                    cedar_policy_core::ast::Literal::EntityUID(euid) => {
-                        Some(EntityUid((*euid).as_ref().clone()))
-                    }
-                    _ => None,
-                },
+                cedar_policy_core::ast::ExprKind::Lit(
+                    cedar_policy_core::ast::Literal::EntityUID(euid),
+                ) => Some(EntityUid((*euid).as_ref().clone())),
                 _ => None,
             })
             .collect()
+    }
+
+    /// Return a new policy where all occurences of key `EntityUid`s are replaced by value `EntityUid`
+    /// (as a single, non-sequential substitution).
+    pub fn sub_entity_literals(
+        &self,
+        mapping: BTreeMap<EntityUid, EntityUid>,
+    ) -> Result<Self, PolicyFromJsonError> {
+        // PANIC SAFETY: This can't fail for a policy that was already constructed
+        #[allow(clippy::expect_used)]
+        let cloned_est = self
+            .lossless
+            .est()
+            .expect("Internal error, failed to construct est.");
+
+        let mapping = mapping.into_iter().map(|(k, v)| (k.0, v.0)).collect();
+
+        // PANIC SAFETY: This can't fail for a policy that was already constructed
+        #[allow(clippy::expect_used)]
+        let est = cloned_est
+            .sub_entity_literals(&mapping)
+            .expect("Internal error, failed to sub entity literals.");
+
+        let ast = match est.clone().try_into_ast_policy(Some(self.ast.id().clone())) {
+            Ok(ast) => ast,
+            Err(e) => return Err(e.into()),
+        };
+
+        Ok(Self {
+            ast,
+            lossless: LosslessPolicy::Est(est),
+        })
     }
 
     fn from_est(id: Option<PolicyId>, est: est::Policy) -> Result<Self, PolicyFromJsonError> {
@@ -3926,6 +3996,7 @@ impl std::fmt::Display for EvalResult {
 }
 
 /// Evaluates an expression.
+///
 /// If evaluation results in an error (e.g., attempting to access a non-existent Entity or Record,
 /// passing the wrong number of arguments to a function etc.), that error is returned as a String
 pub fn eval_expression(
@@ -4373,6 +4444,7 @@ action CreateList in Create appliesTo {
 }
 
 /// Given a schema and policy set, compute an entity manifest.
+///
 /// The policies must validate against the schema in strict mode,
 /// otherwise an error is returned.
 /// The manifest describes the data required to answer requests

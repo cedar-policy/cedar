@@ -383,12 +383,10 @@ pub enum ValidationError {
     /// The typechecker could not conclude that an access to a tag was safe.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    #[cfg(feature = "entity-tags")]
     UnsafeTagAccess(#[from] validation_errors::UnsafeTagAccess),
     /// `.getTag()` on an entity type which cannot have tags according to the schema.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    #[cfg(feature = "entity-tags")]
     NoTagsAllowed(#[from] validation_errors::NoTagsAllowed),
     /// Undefined extension function.
     #[error(transparent)]
@@ -421,6 +419,10 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InternalInvariantViolation(#[from] validation_errors::InternalInvariantViolation),
+    /// Entity level violation
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    EntityDerefLevelViolation(#[from] validation_errors::EntityDerefLevelViolation),
 }
 
 impl ValidationError {
@@ -434,9 +436,7 @@ impl ValidationError {
             Self::IncompatibleTypes(e) => e.policy_id(),
             Self::UnsafeAttributeAccess(e) => e.policy_id(),
             Self::UnsafeOptionalAttributeAccess(e) => e.policy_id(),
-            #[cfg(feature = "entity-tags")]
             Self::UnsafeTagAccess(e) => e.policy_id(),
-            #[cfg(feature = "entity-tags")]
             Self::NoTagsAllowed(e) => e.policy_id(),
             Self::UndefinedFunction(e) => e.policy_id(),
             Self::WrongNumberArguments(e) => e.policy_id(),
@@ -445,6 +445,7 @@ impl ValidationError {
             Self::NonLitExtConstructor(e) => e.policy_id(),
             Self::HierarchyNotRespected(e) => e.policy_id(),
             Self::InternalInvariantViolation(e) => e.policy_id(),
+            Self::EntityDerefLevelViolation(e) => e.policy_id(),
         }
     }
 }
@@ -474,11 +475,9 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             cedar_policy_validator::ValidationError::UnsafeOptionalAttributeAccess(e) => {
                 Self::UnsafeOptionalAttributeAccess(e.into())
             }
-            #[cfg(feature = "entity-tags")]
             cedar_policy_validator::ValidationError::UnsafeTagAccess(e) => {
                 Self::UnsafeTagAccess(e.into())
             }
-            #[cfg(feature = "entity-tags")]
             cedar_policy_validator::ValidationError::NoTagsAllowed(e) => {
                 Self::NoTagsAllowed(e.into())
             }
@@ -502,6 +501,10 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             }
             cedar_policy_validator::ValidationError::InternalInvariantViolation(e) => {
                 Self::InternalInvariantViolation(e.into())
+            }
+            #[cfg(feature = "level-validate")]
+            cedar_policy_validator::ValidationError::EntityDerefLevelViolation(e) => {
+                Self::EntityDerefLevelViolation(e.into())
             }
         }
     }
@@ -840,6 +843,7 @@ impl From<est::PolicySetFromJsonError> for PolicySetError {
 
 /// Represents one or more [`ParseError`]s encountered when parsing a policy or
 /// expression.
+///
 /// By default, the `Diagnostic` and `Error` implementations will only print the
 /// first error. If you want to see all errors, use `.iter()` or `.into_iter()`.
 #[derive(Debug, Diagnostic, Error)]

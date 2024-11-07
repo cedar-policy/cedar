@@ -58,7 +58,7 @@ pub struct Entities {
     /// Important internal invariant: for any `Entities` object that exists, the
     /// the `ancestor` relation is transitively closed.
     #[serde_as(as = "Vec<(_, _)>")]
-    entities: HashMap<EntityUID, Entity>,
+    entities: HashMap<EntityUID, Arc<Entity>>,
 
     /// The mode flag determines whether this store functions as a partial store or
     /// as a fully concrete store.
@@ -137,7 +137,7 @@ impl Entities {
 
     /// Iterate over the `Entity`s in the `Entities`
     pub fn iter(&self) -> impl Iterator<Item = &Entity> {
-        self.entities.values()
+        self.entities.values().map(|e| e.as_ref())
     }
 
     /// Adds the [`crate::ast::Entity`]s in the iterator to this [`Entities`].
@@ -153,7 +153,7 @@ impl Entities {
     /// responsible for ensuring that TC and DAG hold before calling this method.
     pub fn add_entities(
         mut self,
-        collection: impl IntoIterator<Item = Entity>,
+        collection: impl IntoIterator<Item = Arc<Entity>>,
         schema: Option<&impl Schema>,
         tc_computation: TCComputation,
         extensions: &Extensions<'_>,
@@ -202,7 +202,7 @@ impl Entities {
         tc_computation: TCComputation,
         extensions: &Extensions<'_>,
     ) -> Result<Self> {
-        let mut entity_map = create_entity_map(entities.into_iter())?;
+        let mut entity_map = create_entity_map(entities.into_iter().map(Arc::new))?;
         if let Some(schema) = schema {
             // Validate non-action entities against schema.
             // We do this before adding the actions, because we trust the
@@ -241,7 +241,7 @@ impl Entities {
                 schema
                     .action_entities()
                     .into_iter()
-                    .map(|e| (e.uid().clone(), Arc::unwrap_or_clone(e))),
+                    .map(|e: Arc<Entity>| (e.uid().clone(), e)),
             );
         }
         Ok(Self {
@@ -280,6 +280,7 @@ impl Entities {
     fn to_ejsons(&self) -> Result<Vec<EntityJson>> {
         self.entities
             .values()
+            .map(Arc::as_ref)
             .map(EntityJson::from_entity)
             .collect::<std::result::Result<_, JsonSerializationError>>()
             .map_err(Into::into)
@@ -350,7 +351,9 @@ impl Entities {
 }
 
 /// Create a map from EntityUids to Entities, erroring if there are any duplicates
-fn create_entity_map(es: impl Iterator<Item = Entity>) -> Result<HashMap<EntityUID, Entity>> {
+fn create_entity_map(
+    es: impl Iterator<Item = Arc<Entity>>,
+) -> Result<HashMap<EntityUID, Arc<Entity>>> {
     let mut map = HashMap::new();
     for e in es {
         match map.entry(e.uid().clone()) {
@@ -366,10 +369,13 @@ fn create_entity_map(es: impl Iterator<Item = Entity>) -> Result<HashMap<EntityU
 impl IntoIterator for Entities {
     type Item = Entity;
 
-    type IntoIter = hash_map::IntoValues<EntityUID, Entity>;
+    type IntoIter = std::iter::Map<
+        std::collections::hash_map::IntoValues<EntityUID, Arc<Entity>>,
+        fn(Arc<Entity>) -> Entity,
+    >;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.entities.into_values()
+        self.entities.into_values().map(Arc::unwrap_or_clone)
     }
 }
 
@@ -382,6 +388,61 @@ impl std::fmt::Display for Entities {
                 writeln!(f, "{e}")?;
             }
             Ok(())
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::Entities> for Entities {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::Entities) -> Self {
+        let entities: Vec<Arc<Entity>> = v
+            .entities
+            .iter()
+            .map(|e| Arc::new(Entity::from(e)))
+            .collect();
+
+        #[cfg(not(feature = "partial-eval"))]
+        let result = Entities::new();
+
+        #[cfg(feature = "partial-eval")]
+        let mut result = Entities::new();
+        #[cfg(feature = "partial-eval")]
+        if v.mode == crate::entities::proto::Mode::Partial as i32 {
+            result = result.partial();
+        }
+
+        result
+            .add_entities(
+                entities,
+                None::<&NoEntitiesSchema>,
+                TCComputation::AssumeAlreadyComputed,
+                Extensions::none(),
+            )
+            .expect("Should be able to add entities")
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&Entities> for proto::Entities {
+    fn from(v: &Entities) -> Self {
+        let mut entities: Vec<proto::Entity> = Vec::with_capacity(v.entities.len());
+        for entity in v.entities.values() {
+            entities.push(proto::Entity::from(entity));
+        }
+
+        #[cfg(feature = "partial-eval")]
+        if v.mode == Mode::Partial {
+            return Self {
+                entities: entities,
+                mode: crate::entities::proto::Mode::Partial.into(),
+            };
+        }
+
+        Self {
+            entities: entities,
+            mode: proto::Mode::Concrete.into(),
         }
     }
 }
@@ -525,7 +586,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -565,7 +627,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -604,7 +667,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -647,7 +711,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -686,7 +751,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -727,7 +793,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -767,7 +834,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -794,7 +862,8 @@ mod json_parsing_tests {
 
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -815,7 +884,8 @@ mod json_parsing_tests {
         let new = serde_json::json!([{"uid":{ "type": "Test", "id": "alice" }, "attrs" : {}, "parents" : []}]);
         let addl_entities = parser
             .iter_from_json_value(new)
-            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -1764,7 +1834,6 @@ mod json_parsing_tests {
             ]
             .into_iter()
             .collect(),
-            #[cfg(feature = "entity-tags")]
             [
                 // note that `foo` is also an attribute, with a different type
                 ("foo".into(), RestrictedExpr::val(2345)),
@@ -1809,7 +1878,6 @@ mod json_parsing_tests {
             ]
             .into_iter()
             .collect(),
-            #[cfg(feature = "entity-tags")]
             [],
             Extensions::all_available(),
         )
@@ -2171,7 +2239,6 @@ mod schema_based_parsing_tests {
             }
         }
 
-        #[cfg(feature = "entity-tags")]
         fn tag_type(&self) -> Option<SchemaType> {
             Some(SchemaType::Set {
                 element_ty: Box::new(SchemaType::String),
@@ -2209,7 +2276,6 @@ mod schema_based_parsing_tests {
     /// JSON that should parse differently with and without the above schema
     #[test]
     fn with_and_without_schema() {
-        #[cfg(feature = "entity-tags")]
         let entitiesjson = json!(
             [
                 {
@@ -2237,34 +2303,6 @@ mod schema_based_parsing_tests {
                     "tags": {
                         "someTag": ["pancakes"],
                     },
-                }
-            ]
-        );
-        #[cfg(not(feature = "entity-tags"))]
-        let entitiesjson = json!(
-            [
-                {
-                    "uid": { "type": "Employee", "id": "12UA45" },
-                    "attrs": {
-                        "isFullTime": true,
-                        "numDirectReports": 3,
-                        "department": "Sales",
-                        "manager": { "type": "Employee", "id": "34FB87" },
-                        "hr_contacts": [
-                            { "type": "HR", "id": "aaaaa" },
-                            { "type": "HR", "id": "bbbbb" }
-                        ],
-                        "json_blob": {
-                            "inner1": false,
-                            "inner2": "-*/",
-                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
-                        },
-                        "home_ip": "222.222.222.101",
-                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
-                        "trust_score": "5.7",
-                        "tricky": { "type": "Employee", "id": "34FB87" }
-                    },
-                    "parents": [],
                 }
             ]
         );
@@ -2359,11 +2397,9 @@ mod schema_based_parsing_tests {
             .get("isFullTime")
             .expect("isFullTime attr should exist");
         assert_eq!(is_full_time, &PartialValue::Value(Value::from(true)),);
-        #[cfg(feature = "entity-tags")]
         let some_tag = parsed
             .get_tag("someTag")
             .expect("someTag attr should exist");
-        #[cfg(feature = "entity-tags")]
         assert_eq!(
             some_tag,
             &PartialValue::Value(Value::set(["pancakes".into()], None))
@@ -2834,15 +2870,9 @@ mod schema_based_parsing_tests {
             Extensions::all_available(),
             TCComputation::ComputeNow,
         );
-        #[cfg(feature = "entity-tags")]
         let expected_error_msg =
             ExpectedErrorMessageBuilder::error_starts_with("error during entity deserialization")
                 .source(r#"in tag `someTag` on `Employee::"12UA45"`, type mismatch: value was expected to have type [string], but it actually has type string: `"pancakes"`"#)
-                .build();
-        #[cfg(not(feature = "entity-tags"))]
-        let expected_error_msg =
-            ExpectedErrorMessageBuilder::error_starts_with("error during entity deserialization")
-                .source(r#"found a tag `someTag` on `Employee::"12UA45"`, but no tags should exist on `Employee::"12UA45"` according to the schema"#)
                 .build();
         assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
             expect_err(
@@ -3412,7 +3442,6 @@ mod schema_based_parsing_tests {
                 }
             }
 
-            #[cfg(feature = "entity-tags")]
             fn tag_type(&self) -> Option<SchemaType> {
                 None
             }
@@ -3525,5 +3554,77 @@ mod schema_based_parsing_tests {
                     .build()
             );
         });
+    }
+}
+
+#[cfg(feature = "protobufs")]
+#[cfg(test)]
+pub mod protobuf_tests {
+    use super::*;
+    use smol_str::SmolStr;
+    use std::collections::{BTreeMap, HashSet};
+    use std::iter;
+
+    #[test]
+    fn roundtrip() {
+        // Empty Test
+        let entities1: Entities = Entities::new();
+        assert_eq!(
+            entities1,
+            Entities::from(&proto::Entities::from(&entities1))
+        );
+
+        // Single Element Test
+        let attrs = (1..=7)
+            .map(|id| (format!("{id}").into(), RestrictedExpr::val(true)))
+            .collect::<HashMap<SmolStr, _>>();
+        let entity: Arc<Entity> = Arc::new(
+            Entity::new(
+                r#"Foo::"bar""#.parse().unwrap(),
+                attrs.clone(),
+                HashSet::new(),
+                BTreeMap::new(),
+                &Extensions::none(),
+            )
+            .unwrap(),
+        );
+        let mut entities2: Entities = Entities::new();
+        entities2 = entities2
+            .add_entities(
+                iter::once(entity.clone()),
+                None::<&NoEntitiesSchema>,
+                TCComputation::AssumeAlreadyComputed,
+                Extensions::none(),
+            )
+            .unwrap();
+        assert_eq!(
+            entities2,
+            Entities::from(&proto::Entities::from(&entities2))
+        );
+
+        // Two Element Test
+        let entity2: Arc<Entity> = Arc::new(
+            Entity::new(
+                r#"Bar::"foo""#.parse().unwrap(),
+                attrs.clone(),
+                HashSet::new(),
+                BTreeMap::new(),
+                &Extensions::none(),
+            )
+            .unwrap(),
+        );
+        let mut entities3: Entities = Entities::new();
+        entities3 = entities3
+            .add_entities(
+                iter::once(entity.clone()).chain(iter::once(entity2)),
+                None::<&NoEntitiesSchema>,
+                TCComputation::AssumeAlreadyComputed,
+                Extensions::none(),
+            )
+            .unwrap();
+        assert_eq!(
+            entities3,
+            Entities::from(&proto::Entities::from(&entities3))
+        );
     }
 }

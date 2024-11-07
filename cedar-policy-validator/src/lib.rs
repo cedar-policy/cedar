@@ -31,10 +31,20 @@
 #![allow(clippy::result_large_err, clippy::large_enum_variant)] // see #878
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
 
+#[cfg(feature = "protobufs")]
+pub mod proto {
+    #![allow(missing_docs)]
+    #![allow(clippy::doc_markdown)]
+    include!(concat!(env!("OUT_DIR"), "/cedar_policy_validator.rs"));
+}
+
 use cedar_policy_core::ast::{Policy, PolicySet, Template};
 use serde::Serialize;
 use std::collections::HashSet;
+#[cfg(feature = "level-validate")]
+mod level_validate;
 
+mod coreschema;
 #[cfg(feature = "entity-manifest")]
 pub mod entity_loader;
 #[cfg(feature = "entity-manifest")]
@@ -45,18 +55,15 @@ mod entity_manifest_analysis;
 mod entity_manifest_type_annotations;
 #[cfg(feature = "entity-manifest")]
 pub mod entity_slicing;
-mod err;
-pub use err::*;
-mod coreschema;
 pub use coreschema::*;
 mod diagnostics;
 pub use diagnostics::*;
 mod expr_iterator;
 mod extension_schema;
 mod extensions;
-mod fuzzy_match;
 mod rbac;
 mod schema;
+pub use schema::err::*;
 pub use schema::*;
 pub mod json_schema;
 mod str_checks;
@@ -64,6 +71,7 @@ pub use str_checks::confusable_string_checks;
 pub mod cedar_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
+
 pub mod types;
 
 /// Used to select how a policy will be validated.
@@ -102,6 +110,30 @@ impl ValidationMode {
     }
 }
 
+#[cfg(feature = "protobufs")]
+impl From<&ValidationMode> for proto::ValidationMode {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::allow_unimplemented)]
+    fn from(v: &ValidationMode) -> Self {
+        match v {
+            ValidationMode::Strict => proto::ValidationMode::Strict,
+            ValidationMode::Permissive => proto::ValidationMode::Permissive,
+            #[cfg(feature = "partial-validate")]
+            ValidationMode::Partial => unimplemented!(),
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::ValidationMode> for ValidationMode {
+    fn from(v: &proto::ValidationMode) -> Self {
+        match v {
+            proto::ValidationMode::Strict => ValidationMode::Strict,
+            proto::ValidationMode::Permissive => ValidationMode::Permissive,
+        }
+    }
+}
+
 /// Structure containing the context needed for policy validation. This is
 /// currently only the `EntityType`s and `ActionType`s from a single schema.
 #[derive(Debug)]
@@ -121,6 +153,34 @@ impl Validator {
         let validate_policy_results: (Vec<_>, Vec<_>) = policies
             .all_templates()
             .map(|p| self.validate_policy(p, mode))
+            .unzip();
+        let template_and_static_policy_errs = validate_policy_results.0.into_iter().flatten();
+        let template_and_static_policy_warnings = validate_policy_results.1.into_iter().flatten();
+        let link_errs = policies
+            .policies()
+            .filter_map(|p| self.validate_slots(p, mode))
+            .flatten();
+        ValidationResult::new(
+            template_and_static_policy_errs.chain(link_errs),
+            template_and_static_policy_warnings
+                .chain(confusable_string_checks(policies.all_templates())),
+        )
+    }
+
+    #[cfg(feature = "level-validate")]
+    /// Validate all templates, links, and static policies in a policy set.
+    /// If validation passes, also run level validation with `max_deref_level`
+    /// (see RFC 76).
+    /// Return a `ValidationResult`.
+    pub fn validate_with_level(
+        &self,
+        policies: &PolicySet,
+        mode: ValidationMode,
+        max_deref_level: u32,
+    ) -> ValidationResult {
+        let validate_policy_results: (Vec<_>, Vec<_>) = policies
+            .all_templates()
+            .map(|p| self.validate_policy_with_level(p, mode, max_deref_level))
             .unzip();
         let template_and_static_policy_errs = validate_policy_results.0.into_iter().flatten();
         let template_and_static_policy_warnings = validate_policy_results.1.into_iter().flatten();
@@ -222,6 +282,7 @@ mod test {
     use std::{collections::HashMap, sync::Arc};
 
     use crate::types::Type;
+    use crate::validation_errors::UnrecognizedActionIdHelp;
     use crate::Result;
 
     use super::*;
@@ -300,7 +361,9 @@ mod test {
             Some(Loc::new(45..60, Arc::from(policy_a_src))),
             PolicyID::from_string("pola"),
             "Action::\"actin\"".to_string(),
-            Some("Action::\"action\"".to_string()),
+            Some(UnrecognizedActionIdHelp::SuggestAlternative(
+                "Action::\"action\"".to_string(),
+            )),
         );
 
         assert!(!result.validation_passed());

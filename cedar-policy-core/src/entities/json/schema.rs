@@ -125,7 +125,6 @@ pub trait EntityTypeDescription {
     /// If this entity has tags, what type should the tags be?
     ///
     /// Returning `None` indicates that no tags should exist for this entity type.
-    #[cfg(feature = "entity-tags")]
     fn tag_type(&self) -> Option<SchemaType>;
 
     /// Get the names of all the required attributes for this entity type.
@@ -153,7 +152,6 @@ impl EntityTypeDescription for NullEntityTypeDescription {
     fn attr_type(&self, _attr: &str) -> Option<SchemaType> {
         None
     }
-    #[cfg(feature = "entity-tags")]
     fn tag_type(&self) -> Option<SchemaType> {
         None
     }

@@ -30,6 +30,7 @@ use serde_with::{serde_as, TryFromInto};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::str::FromStr;
+use std::sync::Arc;
 use thiserror::Error;
 
 /// The entity type that Actions must have
@@ -95,6 +96,28 @@ impl FromStr for EntityType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         s.parse().map(Self)
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::EntityType> for EntityType {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::EntityType) -> Self {
+        Self(Name::from(
+            v.name
+                .as_ref()
+                .expect("`as_ref()` for field that should exist"),
+        ))
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&EntityType> for proto::EntityType {
+    fn from(v: &EntityType) -> Self {
+        Self {
+            name: Some(proto::Name::from(v.name())),
+        }
     }
 }
 
@@ -255,6 +278,36 @@ impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
     }
 }
 
+#[cfg(feature = "protobufs")]
+impl From<&proto::EntityUid> for EntityUID {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::EntityUid) -> Self {
+        let loc: Option<Loc> = v.loc.as_ref().map(Loc::from);
+        Self {
+            ty: EntityType::from(
+                v.ty.as_ref()
+                    .expect("`as_ref()` for field that should exist"),
+            ),
+            eid: Eid::new(v.eid.clone()),
+            loc: loc,
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&EntityUID> for proto::EntityUid {
+    fn from(v: &EntityUID) -> Self {
+        let loc: Option<proto::Loc> = v.loc.as_ref().map(proto::Loc::from);
+        let eid_ref: &str = v.eid.as_ref();
+        Self {
+            ty: Some(proto::EntityType::from(&v.ty)),
+            eid: eid_ref.to_owned(),
+            loc: loc,
+        }
+    }
+}
+
 /// The `Eid` type represents the id of an `Entity`, without the typename.
 /// Together with the typename it comprises an `EntityUID`.
 /// For example, in `User::"alice"`, the `Eid` is `alice`.
@@ -322,7 +375,6 @@ pub struct Entity {
     /// deterministic order.
     /// And like in `attrs`, the values in `tags` appear as `RestrictedExpr` in
     /// the serialized form of `Entity`.
-    #[cfg(feature = "entity-tags")]
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     tags: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
 }
@@ -385,7 +437,7 @@ impl Entity {
         uid: EntityUID,
         attrs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
         ancestors: HashSet<EntityUID>,
-        #[cfg(feature = "entity-tags")] tags: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
+        tags: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
         extensions: &Extensions<'_>,
     ) -> Result<Self, EntityAttrEvaluationError> {
         let evaluator = RestrictedEvaluator::new(extensions);
@@ -404,7 +456,6 @@ impl Entity {
             .into_iter()
             .map(|kv| evaluate_kvs(kv, true))
             .collect::<Result<_, EntityAttrEvaluationError>>()?;
-        #[cfg(feature = "entity-tags")]
         let evaluated_tags = tags
             .into_iter()
             .map(|kv| evaluate_kvs(kv, false))
@@ -413,7 +464,6 @@ impl Entity {
             uid,
             attrs: evaluated_attrs,
             ancestors,
-            #[cfg(feature = "entity-tags")]
             tags: evaluated_tags,
         })
     }
@@ -451,7 +501,6 @@ impl Entity {
             uid,
             attrs,
             ancestors,
-            #[cfg(feature = "entity-tags")]
             tags: BTreeMap::new(),
         }
     }
@@ -467,7 +516,6 @@ impl Entity {
     }
 
     /// Get the value for the given tag, or `None` if not present
-    #[cfg(feature = "entity-tags")]
     pub fn get_tag(&self, tag: &str) -> Option<&PartialValue> {
         self.tags.get(tag).map(|v| v.as_ref())
     }
@@ -488,7 +536,6 @@ impl Entity {
     }
 
     /// Get the number of tags on this entity
-    #[cfg(feature = "entity-tags")]
     pub fn tags_len(&self) -> usize {
         self.tags.len()
     }
@@ -499,7 +546,6 @@ impl Entity {
     }
 
     /// Iterate over this entity's tag names
-    #[cfg(feature = "entity-tags")]
     pub fn tag_keys(&self) -> impl Iterator<Item = &SmolStr> {
         self.tags.keys()
     }
@@ -510,7 +556,6 @@ impl Entity {
     }
 
     /// Iterate over this entity's tags
-    #[cfg(feature = "entity-tags")]
     pub fn tags(&self) -> impl Iterator<Item = (&SmolStr, &PartialValue)> {
         self.tags.iter().map(|(k, v)| (k, v.as_ref()))
     }
@@ -521,7 +566,6 @@ impl Entity {
             uid,
             attrs: BTreeMap::new(),
             ancestors: HashSet::new(),
-            #[cfg(feature = "entity-tags")]
             tags: BTreeMap::new(),
         }
     }
@@ -557,7 +601,6 @@ impl Entity {
     /// Set the given tag to the given value.
     // Only used for convenience in some tests and when fuzzing
     #[cfg(any(test, fuzzing))]
-    #[cfg(feature = "entity-tags")]
     pub fn set_tag(
         &mut self,
         tag: SmolStr,
@@ -601,17 +644,13 @@ impl Entity {
             uid,
             attrs,
             ancestors,
-            #[cfg(feature = "entity-tags")]
             tags,
         } = self;
         (
             uid,
             attrs.into_iter().map(|(k, v)| (k, v.0)).collect(),
             ancestors,
-            #[cfg(feature = "entity-tags")]
             tags.into_iter().map(|(k, v)| (k, v.0)).collect(),
-            #[cfg(not(feature = "entity-tags"))]
-            HashMap::new(),
         )
     }
 
@@ -669,6 +708,25 @@ impl TCNode<EntityUID> for Entity {
     }
 }
 
+impl TCNode<EntityUID> for Arc<Entity> {
+    fn get_key(&self) -> EntityUID {
+        self.uid().clone()
+    }
+
+    fn add_edge_to(&mut self, k: EntityUID) {
+        // Use Arc::make_mut to get a mutable reference to the inner value
+        Arc::make_mut(self).add_ancestor(k)
+    }
+
+    fn out_edges(&self) -> Box<dyn Iterator<Item = &EntityUID> + '_> {
+        Box::new(self.ancestors())
+    }
+
+    fn has_edge_to(&self, e: &EntityUID) -> bool {
+        self.is_descendant_of(e)
+    }
+}
+
 impl std::fmt::Display for Entity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -681,6 +739,94 @@ impl std::fmt::Display for Entity {
                 .join("; "),
             self.ancestors.iter().join(", ")
         )
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::Entity> for Entity {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::Entity) -> Self {
+        let eval = RestrictedEvaluator::new(&Extensions::none());
+
+        let attrs: BTreeMap<SmolStr, PartialValueSerializedAsExpr> = v
+            .attrs
+            .iter()
+            .map(|(key, value)| {
+                let pval = eval
+                    .partial_interpret(
+                        BorrowedRestrictedExpr::new(&Expr::from(value)).expect("RestrictedExpr"),
+                    )
+                    .expect("interpret on RestrictedExpr");
+                (key.into(), pval.into())
+            })
+            .collect();
+
+        let ancestors: HashSet<EntityUID> = v.ancestors.iter().map(EntityUID::from).collect();
+
+        let tags: BTreeMap<SmolStr, PartialValueSerializedAsExpr> = v
+            .tags
+            .iter()
+            .map(|(key, value)| {
+                let pval = eval
+                    .partial_interpret(
+                        BorrowedRestrictedExpr::new(&Expr::from(value)).expect("RestrictedExpr"),
+                    )
+                    .expect("interpret on RestrictedExpr");
+                (key.into(), pval.into())
+            })
+            .collect();
+
+        Self {
+            uid: EntityUID::from(
+                v.uid
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist"),
+            ),
+            attrs,
+            ancestors,
+            tags,
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&Entity> for proto::Entity {
+    fn from(v: &Entity) -> Self {
+        let mut attrs: HashMap<String, proto::Expr> = HashMap::with_capacity(v.attrs.len());
+        for (key, value) in &v.attrs {
+            attrs.insert(
+                key.to_string(),
+                proto::Expr::from(&Expr::from(PartialValue::from(value.to_owned()))),
+            );
+        }
+
+        let mut ancestors: Vec<proto::EntityUid> = Vec::with_capacity(v.ancestors.len());
+        for ancestor in &v.ancestors {
+            ancestors.push(proto::EntityUid::from(ancestor));
+        }
+
+        let mut tags: HashMap<String, proto::Expr> = HashMap::with_capacity(v.tags.len());
+        for (key, value) in &v.tags {
+            tags.insert(
+                key.to_string(),
+                proto::Expr::from(&Expr::from(PartialValue::from(value.to_owned()))),
+            );
+        }
+
+        Self {
+            uid: Some(proto::EntityUid::from(&v.uid)),
+            attrs,
+            ancestors,
+            tags,
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&Arc<Entity>> for proto::Entity {
+    fn from(v: &Arc<Entity>) -> Self {
+        Self::from(v.as_ref())
     }
 }
 
@@ -795,6 +941,36 @@ mod test {
         assert!(!euid.is_action());
         let euid = EntityUID::from_str("Action::Foo::\"view\"").unwrap();
         assert!(!euid.is_action());
+    }
+
+    #[cfg(feature = "protobufs")]
+    #[test]
+    fn round_trip_protobuf() {
+        let name = Name::from_normalized_str("B::C::D").unwrap();
+        let ety_specified = EntityType(name);
+        assert_eq!(
+            ety_specified,
+            EntityType::from(&proto::EntityType::from(&ety_specified))
+        );
+
+        let euid1 = EntityUID::with_eid("foo");
+        assert_eq!(euid1, EntityUID::from(&proto::EntityUid::from(&euid1)));
+
+        let euid2 = EntityUID::from_str("Foo::Action::\"view\"").unwrap();
+        assert_eq!(euid2, EntityUID::from(&proto::EntityUid::from(&euid2)));
+
+        let attrs = (1..=7)
+            .map(|id| (format!("{id}").into(), RestrictedExpr::val(true)))
+            .collect::<HashMap<SmolStr, _>>();
+        let entity = Entity::new(
+            r#"Foo::"bar""#.parse().unwrap(),
+            attrs.clone(),
+            HashSet::new(),
+            BTreeMap::new(),
+            &Extensions::none(),
+        )
+        .unwrap();
+        assert_eq!(entity, Entity::from(&proto::Entity::from(&entity)));
     }
 
     #[test]

@@ -26,7 +26,8 @@ mod scope_constraints;
 pub use scope_constraints::*;
 
 use crate::ast;
-use crate::entities::json::EntityUidJson;
+use crate::ast::EntityUID;
+use crate::entities::json::{err::JsonDeserializationError, EntityUidJson};
 use crate::parser::cst;
 use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
@@ -66,7 +67,7 @@ pub struct Policy {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
     #[cfg_attr(feature = "wasm", tsify(type = "Record<string, string>"))]
-    annotations: BTreeMap<ast::AnyId, SmolStr>,
+    annotations: BTreeMap<ast::AnyId, Option<SmolStr>>,
 }
 
 /// Serde JSON structure for a `when` or `unless` clause in the EST format
@@ -102,6 +103,25 @@ impl Policy {
             annotations: self.annotations,
         })
     }
+
+    /// Substitute entity literals
+    pub fn sub_entity_literals(
+        self,
+        mapping: &BTreeMap<EntityUID, EntityUID>,
+    ) -> Result<Self, JsonDeserializationError> {
+        Ok(Policy {
+            effect: self.effect,
+            principal: self.principal.sub_entity_literals(mapping)?,
+            action: self.action.sub_entity_literals(mapping)?,
+            resource: self.resource.sub_entity_literals(mapping)?,
+            conditions: self
+                .conditions
+                .into_iter()
+                .map(|clause| clause.sub_entity_literals(mapping))
+                .collect::<Result<Vec<_>, _>>()?,
+            annotations: self.annotations,
+        })
+    }
 }
 
 impl Clause {
@@ -112,6 +132,18 @@ impl Clause {
         // currently, slots are not allowed in clauses
         Ok(self)
     }
+
+    /// Substitute entity literals
+    pub fn sub_entity_literals(
+        self,
+        mapping: &BTreeMap<EntityUID, EntityUID>,
+    ) -> Result<Self, JsonDeserializationError> {
+        use Clause::{Unless, When};
+        match self.clone() {
+            When(e) => Ok(When(e.sub_entity_literals(mapping)?)),
+            Unless(e) => Ok(Unless(e.sub_entity_literals(mapping)?)),
+        }
+    }
 }
 
 impl TryFrom<cst::Policy> for Policy {
@@ -119,7 +151,7 @@ impl TryFrom<cst::Policy> for Policy {
     fn try_from(policy: cst::Policy) -> Result<Policy, ParseErrors> {
         let maybe_effect = policy.effect.to_effect();
         let maybe_scope = policy.extract_scope();
-        let maybe_annotations = policy.get_ast_annotations();
+        let maybe_annotations = policy.get_ast_annotations(|v, _| v);
         let maybe_conditions = ParseErrors::transpose(policy.conds.into_iter().map(|node| {
             let (cond, loc) = node.into_inner();
             let cond = cond.ok_or_else(|| {
@@ -140,7 +172,7 @@ impl TryFrom<cst::Policy> for Policy {
             action: action.into(),
             resource: resource.into(),
             conditions,
-            annotations: annotations.into_iter().map(|(k, v)| (k, v.val)).collect(),
+            annotations,
         })
     }
 }
@@ -230,7 +262,7 @@ impl Policy {
             None,
             self.annotations
                 .into_iter()
-                .map(|(key, val)| (key, ast::Annotation { val, loc: None }))
+                .map(|(key, val)| (key, ast::Annotation::with_optional_value(val, None)))
                 .collect(),
             self.effect,
             self.principal.try_into()?,
@@ -276,7 +308,10 @@ impl From<ast::Policy> for Policy {
             conditions: vec![ast.non_scope_constraints().clone().into()],
             annotations: ast
                 .annotations()
-                .map(|(k, v)| (k.clone(), v.val.clone()))
+                // When converting from AST to EST, we will always interpret an
+                // empty-string annotation as an explicit `""` rather than
+                // `null` (which is implicitly equivalent to `""`).
+                .map(|(k, v)| (k.clone(), Some(v.val.clone())))
                 .collect(),
         }
     }
@@ -293,7 +328,10 @@ impl From<ast::Template> for Policy {
             conditions: vec![ast.non_scope_constraints().clone().into()],
             annotations: ast
                 .annotations()
-                .map(|(k, v)| (k.clone(), v.val.clone()))
+                // When converting from AST to EST, we will always interpret an
+                // empty-string annotation as an explicit `""` rather than
+                // `null` (which is implicitly equivalent to `""`)
+                .map(|(k, v)| (k.clone(), Some(v.val.clone())))
                 .collect(),
         }
     }
@@ -308,7 +346,11 @@ impl<T: Clone> From<ast::Expr<T>> for Clause {
 impl std::fmt::Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (k, v) in self.annotations.iter() {
-            writeln!(f, "@{k}(\"{}\") ", v.escape_debug())?;
+            write!(f, "@{k}")?;
+            if let Some(v) = v {
+                write!(f, "(\"{}\")", v.escape_debug())?;
+            }
+            writeln!(f)?;
         }
         write!(
             f,
@@ -566,6 +608,85 @@ mod test {
                     "foo": "bar",
                     "this1is2a3valid_identifier": "any arbitrary ! string \" is @ allowed in 🦀 here_",
                 }
+            }
+        );
+        let roundtripped = serde_json::to_value(ast_roundtrip(est.clone())).unwrap();
+        assert_eq!(
+            roundtripped,
+            expected_json_after_roundtrip,
+            "\nExpected after roundtrip:\n{}\n\nActual after roundtrip:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json_after_roundtrip).unwrap(),
+            serde_json::to_string_pretty(&roundtripped).unwrap()
+        );
+        let roundtripped = serde_json::to_value(circular_roundtrip(est)).unwrap();
+        assert_eq!(
+            roundtripped,
+            expected_json_after_roundtrip,
+            "\nExpected after roundtrip:\n{}\n\nActual after roundtrip:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json_after_roundtrip).unwrap(),
+            serde_json::to_string_pretty(&roundtripped).unwrap()
+        );
+    }
+
+    #[test]
+    fn annotated_without_value_policy() {
+        let policy = r#"@foo permit(principal, action, resource);"#;
+        let cst = parser::text_to_cst::parse_policy(policy)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let expected_json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All",
+                },
+                "action": {
+                    "op": "All",
+                },
+                "resource": {
+                    "op": "All",
+                },
+                "conditions": [],
+                "annotations": { "foo": null, }
+            }
+        );
+        assert_eq!(
+            serde_json::to_value(&est).unwrap(),
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&est).unwrap()
+        );
+        let old_est = est.clone();
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
+        assert_eq!(&old_est, &est);
+
+        // during the lossy transform to AST, the `null` annotation becomes an empty string
+        let expected_json_after_roundtrip = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All",
+                },
+                "action": {
+                    "op": "All",
+                },
+                "resource": {
+                    "op": "All",
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "Value": true
+                        }
+                    }
+                ],
+                "annotations": { "foo": "", }
             }
         );
         let roundtripped = serde_json::to_value(ast_roundtrip(est.clone())).unwrap();
@@ -2342,9 +2463,7 @@ mod test {
         let est = text_roundtrip(&old_est);
         assert_eq!(&old_est, &est);
 
-        #[cfg(feature = "entity-tags")]
         assert_eq!(ast_roundtrip(est.clone()), est);
-        #[cfg(feature = "entity-tags")]
         assert_eq!(circular_roundtrip(est.clone()), est);
     }
 
@@ -4030,7 +4149,7 @@ mod test {
             );
             assert_panics!(
                 serde_json::from_value::<Policy>(bad).unwrap(),
-                includes("unknown variant `is`, expected one of `All`, `==`, `in`"),
+                includes("unknown variant `is`, expected one of `All`, `all`, `==`, `in`"),
             );
         }
 

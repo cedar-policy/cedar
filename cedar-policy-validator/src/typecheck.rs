@@ -28,7 +28,6 @@ use std::{borrow::Cow, collections::HashSet, iter::zip};
 use crate::{
     extension_schema::ExtensionFunctionType,
     extensions::ExtensionSchemas,
-    fuzzy_match::fuzzy_search,
     schema::ValidatorSchema,
     types::{
         AttributeType, Capability, CapabilitySet, EntityRecordKind, OpenTag, Primitive, RequestEnv,
@@ -42,6 +41,7 @@ use cedar_policy_core::ast::{
     BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
     PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
 };
+use cedar_policy_core::fuzzy_match::fuzzy_search;
 
 #[cfg(not(target_arch = "wasm32"))]
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
@@ -52,7 +52,7 @@ pub enum PolicyCheck {
     /// Policy will evaluate to a bool
     Success(Expr<Option<Type>>),
     /// Policy will always evaluate to false, and may have errors
-    Irrelevant(Vec<ValidationError>),
+    Irrelevant(Vec<ValidationError>, Expr<Option<Type>>),
     /// Policy will have errors
     Fail(Vec<ValidationError>),
 }
@@ -106,7 +106,7 @@ impl<'a> Typechecker<'a> {
             (true, true),
             |(all_false, all_succ), (_, check)| match check {
                 PolicyCheck::Success(_) => (false, all_succ),
-                PolicyCheck::Irrelevant(err) => {
+                PolicyCheck::Irrelevant(err, _) => {
                     let no_err = err.is_empty();
                     type_errors.extend(err);
                     (all_false, all_succ && no_err)
@@ -155,7 +155,10 @@ impl<'a> Typechecker<'a> {
                 (false, true, None) => PolicyCheck::Fail(type_errors),
                 (false, true, Some(e)) => PolicyCheck::Success(e),
                 (false, false, _) => PolicyCheck::Fail(type_errors),
-                (true, _, _) => PolicyCheck::Irrelevant(type_errors),
+                (true, _, Some(e)) => PolicyCheck::Irrelevant(type_errors, e),
+                // PANIC SAFETY: `is_false` implies `e` has a type implies `Some(e)`.
+                #[allow(clippy::unreachable)]
+                (true, _, None) => unreachable!(),
             }
         })
     }
@@ -218,7 +221,12 @@ impl<'a> Typechecker<'a> {
                         (false, true, None) => policy_checks.push(PolicyCheck::Fail(type_errors)),
                         (false, true, Some(e)) => policy_checks.push(PolicyCheck::Success(e)),
                         (false, false, _) => policy_checks.push(PolicyCheck::Fail(type_errors)),
-                        (true, _, _) => policy_checks.push(PolicyCheck::Irrelevant(type_errors)),
+                        (true, _, Some(e)) => {
+                            policy_checks.push(PolicyCheck::Irrelevant(type_errors, e))
+                        }
+                        // PANIC SAFETY: `is_false` implies `e` has a type implies `Some(e)`.
+                        #[allow(clippy::unreachable)]
+                        (true, _, None) => unreachable!(),
                     }
                 }
             }
@@ -1427,7 +1435,6 @@ impl<'a> Typechecker<'a> {
                 })
             }
 
-            #[cfg(feature = "entity-tags")]
             BinaryOp::HasTag => self
                 .expect_type(
                     request_env,
@@ -1496,12 +1503,11 @@ impl<'a> Typechecker<'a> {
                             ExprBuilder::with_data(Some(type_of_has))
                                 .with_same_source_loc(bin_expr)
                                 .binary_app(BinaryOp::HasTag, expr_ty_arg1, expr_ty_arg2),
-                            CapabilitySet::singleton(Capability::new_borrowed_tag(arg1, &arg2)),
+                            CapabilitySet::singleton(Capability::new_borrowed_tag(arg1, arg2)),
                         )
                     })
                 }),
 
-            #[cfg(feature = "entity-tags")]
             BinaryOp::GetTag => {
                 self.expect_type(
                     request_env,
@@ -1509,9 +1515,7 @@ impl<'a> Typechecker<'a> {
                     arg1,
                     Type::any_entity_reference(),
                     type_errors,
-                    |actual| match actual {
-                        _ => None,
-                    },
+                    |_actual| None,
                 )
                 .then_typecheck(|expr_ty_arg1, _| {
                     self.expect_type(
@@ -1548,7 +1552,7 @@ impl<'a> Typechecker<'a> {
                                 );
                             }
                         };
-                        if prior_capability.contains(&Capability::new_borrowed_tag(arg1, &arg2)) {
+                        if prior_capability.contains(&Capability::new_borrowed_tag(arg1, arg2)) {
                             // Determine the set of possible tag types for this access.
                             let tag_types = match self.tag_types(kind) {
                                 Ok(tag_types) => tag_types,
@@ -1596,7 +1600,7 @@ impl<'a> Typechecker<'a> {
                                 // compute the LUB of all the relevant tag types, and assign that
                                 // as the type.
                                 let tag_type = match Type::reduce_to_least_upper_bound(
-                                    &self.schema,
+                                    self.schema,
                                     tag_types.clone(),
                                     self.mode,
                                 ) {
@@ -1739,7 +1743,6 @@ impl<'a> Typechecker<'a> {
     /// If `kind` is a LUB containing some entity types that have tags and some
     /// that do not, this ignores the entity types that do not; we just assume
     /// the access is not on one of those entity types.
-    #[cfg(feature = "entity-tags")]
     fn tag_types<'s>(&'s self, kind: &EntityRecordKind) -> Result<HashSet<&'s Type>, ()> {
         use crate::schema::ValidatorEntityType;
         match kind {

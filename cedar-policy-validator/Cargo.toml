@@ -11,7 +11,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-cedar-policy-core = { version = "=4.0.0", path = "../cedar-policy-core" }
+cedar-policy-core = { version = "=4.1.0", path = "../cedar-policy-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_with = "3.0"
@@ -23,7 +23,7 @@ unicode-security = "0.1.0"
 smol_str = { version = "0.3", features = ["serde"] }
 stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
-lalrpop-util = { version = "0.21.0", features = ["lexer", "unicode"] }
+lalrpop-util = { version = "0.22.0", features = ["lexer", "unicode"] }
 lazy_static = "1.4.0"
 nonempty = "0.10.0"
 
@@ -31,6 +31,9 @@ nonempty = "0.10.0"
 serde-wasm-bindgen = { version = "0.6", optional = true }
 tsify = { version = "0.4.5", optional = true }
 wasm-bindgen = { version = "0.2.82", optional = true }
+
+# protobuf dependency
+prost = { version = "0.13.3", optional = true }
 
 [features]
 # by default, enable all Cedar extensions
@@ -45,15 +48,18 @@ arbitrary = ["dep:arbitrary", "cedar-policy-core/arbitrary"]
 
 # Experimental features.
 partial-validate = []
+level-validate = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
+protobufs = ["dep:prost", "dep:prost-build"]
 entity-manifest = []
-entity-tags = []
 
 [dev-dependencies]
 similar-asserts = "1.5.0"
 cool_asserts = "2.0"
-cedar-policy-core = { version = "=4.0.0", path = "../cedar-policy-core", features = ["test-util"] }
+cedar-policy-core = { version = "=4.1.0", path = "../cedar-policy-core", features = ["test-util"] }
 miette = { version = "7.1.0", features = ["fancy"] }
 
 [build-dependencies]
-lalrpop = "0.21.0"
+lalrpop = "0.22.0"
+# protobuf dependency
+prost-build = { version = "0.13.3", optional = true }

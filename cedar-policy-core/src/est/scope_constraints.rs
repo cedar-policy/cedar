@@ -16,11 +16,14 @@
 
 use super::{FromJsonError, LinkingError};
 use crate::ast;
-use crate::entities::json::{err::JsonDeserializationErrorContext, EntityUidJson};
+use crate::ast::EntityUID;
+use crate::entities::json::{
+    err::JsonDeserializationError, err::JsonDeserializationErrorContext, EntityUidJson,
+};
 use crate::parser::err::parse_errors;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 #[cfg(feature = "wasm")]
@@ -205,6 +208,63 @@ impl PrincipalConstraint {
             })),
         }
     }
+
+    /// Substitute entity literals
+    pub fn sub_entity_literals(
+        self,
+        mapping: &BTreeMap<EntityUID, EntityUID>,
+    ) -> Result<Self, JsonDeserializationError> {
+        match self.clone() {
+            PrincipalConstraint::All
+            | PrincipalConstraint::Eq(EqConstraint::Slot { .. })
+            | PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot { .. })
+            | PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                in_entity: Some(PrincipalOrResourceInConstraint::Slot { .. }),
+                ..
+            })
+            | PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type: _,
+                in_entity: None,
+            }) => Ok(self.clone()),
+            PrincipalConstraint::Eq(EqConstraint::Entity { entity }) => {
+                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                match mapping.get(&euid) {
+                    Some(new_euid) => Ok(PrincipalConstraint::Eq(EqConstraint::Entity {
+                        entity: new_euid.into(),
+                    })),
+                    None => Ok(self.clone()),
+                }
+            }
+            PrincipalConstraint::In(PrincipalOrResourceInConstraint::Entity { entity }) => {
+                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                match mapping.get(&euid) {
+                    Some(new_euid) => Ok(PrincipalConstraint::In(
+                        PrincipalOrResourceInConstraint::Entity {
+                            entity: new_euid.into(),
+                        },
+                    )),
+                    None => Ok(self.clone()),
+                }
+            }
+            PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type: ety,
+                in_entity: Some(PrincipalOrResourceInConstraint::Entity { entity }),
+            }) => {
+                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                match mapping.get(&euid) {
+                    Some(new_euid) => {
+                        Ok(PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                            entity_type: ety,
+                            in_entity: Some(PrincipalOrResourceInConstraint::Entity {
+                                entity: new_euid.into(),
+                            }),
+                        }))
+                    }
+                    None => Ok(self.clone()),
+                }
+            }
+        }
+    }
 }
 
 impl ResourceConstraint {
@@ -254,6 +314,61 @@ impl ResourceConstraint {
             })),
         }
     }
+
+    /// Substitute entity literals
+    pub fn sub_entity_literals(
+        self,
+        mapping: &BTreeMap<EntityUID, EntityUID>,
+    ) -> Result<Self, JsonDeserializationError> {
+        match self.clone() {
+            ResourceConstraint::All
+            | ResourceConstraint::Eq(EqConstraint::Slot { .. })
+            | ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot { .. })
+            | ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                in_entity: Some(PrincipalOrResourceInConstraint::Slot { .. }),
+                ..
+            })
+            | ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type: _,
+                in_entity: None,
+            }) => Ok(self.clone()),
+            ResourceConstraint::Eq(EqConstraint::Entity { entity }) => {
+                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                match mapping.get(&euid) {
+                    Some(new_euid) => Ok(ResourceConstraint::Eq(EqConstraint::Entity {
+                        entity: new_euid.into(),
+                    })),
+                    None => Ok(self.clone()),
+                }
+            }
+            ResourceConstraint::In(PrincipalOrResourceInConstraint::Entity { entity }) => {
+                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                match mapping.get(&euid) {
+                    Some(new_euid) => Ok(ResourceConstraint::In(
+                        PrincipalOrResourceInConstraint::Entity {
+                            entity: new_euid.into(),
+                        },
+                    )),
+                    None => Ok(self.clone()),
+                }
+            }
+            ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type: ety,
+                in_entity: Some(PrincipalOrResourceInConstraint::Entity { entity }),
+            }) => {
+                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                match mapping.get(&euid) {
+                    Some(new_euid) => Ok(ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                        entity_type: ety,
+                        in_entity: Some(PrincipalOrResourceInConstraint::Entity {
+                            entity: new_euid.into(),
+                        }),
+                    })),
+                    None => Ok(self.clone()),
+                }
+            }
+        }
+    }
 }
 
 impl ActionConstraint {
@@ -263,6 +378,51 @@ impl ActionConstraint {
     pub fn link(self, _vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
         // currently, slots are not allowed in action constraints
         Ok(self)
+    }
+
+    /// Substitute entity literals
+    pub fn sub_entity_literals(
+        self,
+        mapping: &BTreeMap<EntityUID, EntityUID>,
+    ) -> Result<Self, JsonDeserializationError> {
+        match self.clone() {
+            ActionConstraint::Eq(EqConstraint::Entity { entity }) => {
+                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                match mapping.get(&euid) {
+                    Some(new_euid) => Ok(ActionConstraint::Eq(EqConstraint::Entity {
+                        entity: new_euid.into(),
+                    })),
+                    None => Ok(self.clone()),
+                }
+            }
+            ActionConstraint::In(ActionInConstraint::Single { entity }) => {
+                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                match mapping.get(&euid) {
+                    Some(new_euid) => Ok(ActionConstraint::In(ActionInConstraint::Single {
+                        entity: new_euid.into(),
+                    })),
+                    None => Ok(self.clone()),
+                }
+            }
+            ActionConstraint::In(ActionInConstraint::Set { entities }) => {
+                let mut new_entities: Vec<EntityUidJson> = vec![];
+                for entity in entities {
+                    let euid = entity
+                        .clone()
+                        .into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                    match mapping.get(&euid) {
+                        Some(new_euid) => new_entities.push(new_euid.clone().into()),
+                        None => new_entities.push(entity),
+                    };
+                }
+                Ok(ActionConstraint::In(ActionInConstraint::Set {
+                    entities: new_entities,
+                }))
+            }
+            ActionConstraint::All | ActionConstraint::Eq(EqConstraint::Slot { .. }) => {
+                Ok(self.clone())
+            }
+        }
     }
 }
 

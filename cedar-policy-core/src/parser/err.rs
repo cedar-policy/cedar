@@ -123,6 +123,8 @@ const POLICY_SCOPE_HELP: &str =
     "policy scopes must contain a `principal`, `action`, and `resource` element in that order";
 
 /// Details about a particular kind of `ToASTError`.
+//
+// This is NOT a publicly exported error type.
 #[derive(Debug, Diagnostic, Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ToASTErrorKind {
@@ -295,11 +297,23 @@ pub enum ToASTErrorKind {
     #[error("attempted to call `{0}.{1}(...)`, but `{0}` does not have any methods")]
     NoMethods(ast::Name, ast::UnreservedId),
     /// Returned when a policy attempts to call a method that does not exist
-    #[error("`{0}` is not a valid method")]
-    UnknownMethod(ast::UnreservedId),
+    #[error("`{id}` is not a valid method")]
+    UnknownMethod {
+        /// The user-provided method id
+        id: ast::UnreservedId,
+        /// The hint to resolve the error
+        #[help]
+        hint: Option<String>,
+    },
     /// Returned when a policy attempts to call a function that does not exist
-    #[error("`{0}` is not a valid function")]
-    UnknownFunction(ast::Name),
+    #[error("`{id}` is not a valid function")]
+    UnknownFunction {
+        /// The user-provided function id
+        id: ast::Name,
+        /// The hint to resolve the error
+        #[help]
+        hint: Option<String>,
+    },
     /// Returned when a policy attempts to write an entity literal
     #[error("invalid entity literal: {0}")]
     #[diagnostic(help("entity literals should have a form like `Namespace::User::\"alice\"`"))]
@@ -371,10 +385,6 @@ pub enum ToASTErrorKind {
     #[error("when `is` and `in` are used together, `is` must come first")]
     #[diagnostic(help("try `_ is _ in _`"))]
     InvertedIsIn,
-    /// Returned when a policy uses entity tags, but the `entity-tags` feature is not enabled
-    #[cfg(not(feature = "entity-tags"))]
-    #[error("entity tags are not supported in this build; to use entity tags, you must enable the `entity-tags` experimental feature")]
-    UnsupportedEntityTags,
 }
 
 impl ToASTErrorKind {

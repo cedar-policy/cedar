@@ -22,9 +22,13 @@ use std::collections::HashSet;
 
 use cedar_policy_core::{ast::EntityType, transitive_closure::TCNode};
 
-#[cfg(feature = "entity-tags")]
-use crate::types::Type;
-use crate::types::{AttributeType, Attributes, OpenTag};
+use crate::types::{AttributeType, Attributes, OpenTag, Type};
+
+#[cfg(feature = "protobufs")]
+use crate::proto;
+
+#[cfg(feature = "protobufs")]
+use cedar_policy_core::ast;
 
 /// Contains entity type information for use by the validator. The contents of
 /// the struct are the same as the schema entity type structure, but the
@@ -52,7 +56,7 @@ pub struct ValidatorEntityType {
 
     /// Tag type for this entity type. `None` indicates that entities of this
     /// type are not allowed to have tags.
-    #[cfg(feature = "entity-tags")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) tags: Option<Type>,
 }
 
@@ -75,7 +79,6 @@ impl ValidatorEntityType {
 
     /// Get the type of tags on this entity. `None` indicates that entities of
     /// this type are not allowed to have tags.
-    #[cfg(feature = "entity-tags")]
     pub fn tag_type(&self) -> Option<&Type> {
         self.tags.as_ref()
     }
@@ -96,5 +99,60 @@ impl TCNode<EntityType> for ValidatorEntityType {
 
     fn has_edge_to(&self, e: &EntityType) -> bool {
         self.descendants.contains(e)
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
+    fn from(v: &ValidatorEntityType) -> Self {
+        let tags = match &v.tags {
+            Some(tags) => Some(proto::Tag {
+                optional_type: Some(proto::tag::OptionalType::Type(proto::Type::from(tags))),
+            }),
+            None => None,
+        };
+        Self {
+            name: Some(ast::proto::EntityType::from(&v.name)),
+            descendants: v
+                .descendants
+                .iter()
+                .map(ast::proto::EntityType::from)
+                .collect(),
+            attributes: Some(proto::Attributes::from(&v.attributes)),
+            open_attributes: proto::OpenTag::from(&v.open_attributes).into(),
+            tags,
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::ValidatorEntityType) -> Self {
+        let tags = match &v.tags {
+            Some(tags) => match &tags.optional_type {
+                Some(proto::tag::OptionalType::Type(ty)) => Some(Type::from(ty)),
+                _ => None,
+            },
+            None => None,
+        };
+        Self {
+            name: ast::EntityType::from(
+                v.name
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist"),
+            ),
+            descendants: v.descendants.iter().map(ast::EntityType::from).collect(),
+            attributes: Attributes::from(
+                v.attributes
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist"),
+            ),
+            open_attributes: OpenTag::from(
+                &proto::OpenTag::try_from(v.open_attributes).expect("decode should succeed"),
+            ),
+            tags,
+        }
     }
 }
