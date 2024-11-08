@@ -29,13 +29,11 @@ use cedar_policy_core::{
 };
 use smol_str::SmolStr;
 
-use crate::{
-    entity_manifest::{
-        AccessTrie, EntityManifest, EntityRoot, PartialRequestError, RootAccessTrie,
-    },
-    entity_slicing::{
+use crate::entity_manifest::{
+    slicing::{
         EntitySliceError, PartialContextError, PartialEntityError, WrongNumberOfEntitiesError,
     },
+    AccessTrie, EntityManifest, EntityRoot, PartialRequestError, RootAccessTrie,
 };
 
 /// A request that an entity be loaded.

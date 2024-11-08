@@ -29,7 +29,12 @@ use serde_with::serde_as;
 use smol_str::SmolStr;
 use thiserror::Error;
 
-use crate::entity_manifest_analysis::{EntityManifestAnalysisResult, WrappedAccessPaths};
+mod analysis;
+mod loader;
+pub mod slicing;
+mod type_annotations;
+
+use crate::entity_manifest::analysis::{EntityManifestAnalysisResult, WrappedAccessPaths};
 use crate::{
     typecheck::{PolicyCheck, Typechecker},
     types::Type,

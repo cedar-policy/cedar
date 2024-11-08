@@ -30,9 +30,9 @@ pub use cedar_policy_core::extensions::{
 use cedar_policy_core::{ast, authorizer, est};
 pub use cedar_policy_validator::cedar_schema::{schema_warnings, SchemaWarning};
 #[cfg(feature = "entity-manifest")]
-use cedar_policy_validator::entity_manifest::{self, PartialExpressionError, PartialRequestError};
+pub use cedar_policy_validator::entity_manifest::slicing::EntitySliceError;
 #[cfg(feature = "entity-manifest")]
-pub use cedar_policy_validator::entity_slicing::EntitySliceError;
+use cedar_policy_validator::entity_manifest::{self, PartialExpressionError, PartialRequestError};
 pub use cedar_policy_validator::{schema_errors, SchemaError};
 use miette::Diagnostic;
 use ref_cast::RefCast;

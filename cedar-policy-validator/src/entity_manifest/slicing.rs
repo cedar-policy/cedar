@@ -13,7 +13,7 @@ use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
 
-use crate::entity_loader::{
+use crate::entity_manifest::loader::{
     load_entities, AncestorsRequest, EntityAnswer, EntityLoader, EntityRequest,
 };
 use crate::entity_manifest::{AccessTrie, EntityManifest, PartialRequestError};
