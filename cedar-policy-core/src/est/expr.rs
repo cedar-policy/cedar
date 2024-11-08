@@ -85,7 +85,7 @@ impl<'de> Deserialize<'de> for Expr {
                     None => (),
                     Some(k2) => {
                         let k2: SmolStr = k2;
-                        return Err(serde::de::Error::custom(format!("JSON object representing an Expr should have only one key, but found two keys: `{k}` and `{k2}`")));
+                        return Err(serde::de::Error::custom(format!("JSON object representing an `Expr` should have only one key, but found two keys: `{k}` and `{k2}`")));
                     }
                 };
                 match k.as_str() {
