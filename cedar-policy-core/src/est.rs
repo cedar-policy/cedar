@@ -3445,7 +3445,7 @@ mod test {
             }
         );
         assert_matches!(serde_json::from_value::<Policy>(bad), Err(e) => {
-            assert_eq!(e.to_string(), "expression map shouldn't have two keys");
+            assert_eq!(e.to_string(), "JSON object representing an `Expr` should have only one key, but found two keys: `+` and `-`");
         });
 
         let bad = json!(
