@@ -3433,6 +3433,47 @@ mod test {
                             },
                             "-": {
                                 "left": {
+                                    "Value": 8
+                                },
+                                "right": {
+                                    "Value": 2
+                                }
+                            },
+                        }
+                    }
+                ]
+            }
+        );
+        assert_matches!(serde_json::from_value::<Policy>(bad), Err(e) => {
+            assert_eq!(e.to_string(), "expression map shouldn't have two keys");
+        });
+
+        let bad = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All"
+                },
+                "action": {
+                    "op": "All"
+                },
+                "resource": {
+                    "op": "All"
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "+": {
+                                "left": {
+                                    "Value": 3
+                                },
+                                "right": {
+                                    "Value": 4
+                                }
+                            },
+                            "-": {
+                                "left": {
                                     "Value": 2
                                 },
                                 "right": {
