@@ -3403,9 +3403,9 @@ mod test {
                 ]
             }
         );
-        let est: Policy = serde_json::from_value(bad).unwrap();
-        let ast: Result<ast::Policy, _> = est.try_into_ast_policy(None);
-        assert_matches!(ast, Err(FromJsonError::MissingOperator));
+        assert_matches!(serde_json::from_value::<Policy>(bad), Err(e) => {
+            assert_eq!(e.to_string(), "empty map is not a valid expression");
+        });
 
         let bad = json!(
             {

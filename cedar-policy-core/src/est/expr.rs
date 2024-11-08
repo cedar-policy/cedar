@@ -21,6 +21,7 @@ use crate::entities::json::{
     CedarValueJson, FnAndArg, TypeAndId,
 };
 use crate::extensions::Extensions;
+use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
 use crate::parser::cst::{self, Ident};
 use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::unescape::to_unescaped_string;
@@ -28,25 +29,90 @@ use crate::parser::util::flatten_tuple_2;
 use crate::parser::{Loc, Node};
 use either::Either;
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
+use serde::{de::Visitor, Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 /// Serde JSON structure for a Cedar expression in the EST format
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Expr {
     /// Any Cedar expression other than an extension function call.
-    /// We try to match this first, see docs on #[serde(untagged)].
     ExprNoExt(ExprNoExt),
-    /// If that didn't match (because the key is not one of the keys defined in
-    /// `ExprNoExt`), we assume we have an extension function call, where the
-    /// key is the name of an extension function or method.
+    /// Extension function call, where the key is the name of an extension
+    /// function or method.
     ExtFuncCall(ExtFuncCall),
+}
+
+// Manual implementation of `Deserialize` is more efficient than the derived
+// implementation with `serde(untagged)`. In particular, if the key is valid for
+// `ExprNoExt` but there is a deserialization problem within the corresponding
+// value, the derived implementation would backtrack and try to deserialize as
+// `ExtFuncCall` with that key as the extension function name, but this manual
+// implementation instead eagerly errors out, taking advantage of the fact that
+// none of the keys for `ExprNoExt` are valid extension function names.
+//
+// See #1284.
+impl<'de> Deserialize<'de> for Expr {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ExprVisitor;
+        impl<'de> Visitor<'de> for ExprVisitor {
+            type Value = Expr;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("JSON object representing an expression")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let (k, v): (SmolStr, JsonValueWithNoDuplicateKeys) = match map.next_entry()? {
+                    None => {
+                        return Err(serde::de::Error::custom(
+                            "empty map is not a valid expression",
+                        ))
+                    }
+                    Some((k, v)) => (k, v),
+                };
+                match map.next_key()? {
+                    None => (),
+                    Some(k2) => {
+                        let k2: SmolStr = k2;
+                        return Err(serde::de::Error::custom(format!("JSON object representing an Expr should have only one key, but found two keys: `{k}` and `{k2}`")));
+                    }
+                };
+                match k.as_str() {
+                    // All the valid keys for `ExprNoExt`.
+                    // If a variant or alias is added to `ExprNoExt`, it must also be added here.
+                    "Value" | "Var" | "Slot" | "!" | "neg" | "==" | "!=" | "in" | "<" | "<="
+                    | ">" | ">=" | "&&" | "||" | "+" | "-" | "*" | "contains" | "containsAll"
+                    | "containsAny" | "getTag" | "hasTag" | "." | "has" | "like" | "is"
+                    | "if-then-else" | "Set" | "Record" => {
+                        let obj = serde_json::json!({ k: v });
+                        let exprnoext =
+                            serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
+                        Ok(Expr::ExprNoExt(exprnoext))
+                    }
+                    _ => {
+                        // Any other key is assumed to be the name of an extension function.
+                        let obj = serde_json::json!({ k: v });
+                        let extfunccall =
+                            serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
+                        Ok(Expr::ExtFuncCall(extfunccall))
+                    }
+                }
+            }
+        }
+
+        deserializer.deserialize_map(ExprVisitor)
+    }
 }
 
 /// Represent an element of a pattern literal
