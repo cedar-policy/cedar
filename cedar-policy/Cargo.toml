@@ -88,6 +88,10 @@ harness = false
 name = "extension_fn_validation"
 harness = false
 
+[[bench]]
+name = "deeply_nested_est"
+harness = false
+
 [package.metadata.docs.rs]
 features = ["experimental"]
 rustdoc-args = ["--cfg", "docsrs"]
