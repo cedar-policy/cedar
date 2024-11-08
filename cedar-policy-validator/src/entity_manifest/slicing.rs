@@ -247,6 +247,8 @@ impl AccessTrie {
 
 #[cfg(test)]
 mod entity_slice_tests {
+    use std::collections::BTreeSet;
+
     use cedar_policy_core::{
         ast::{Context, PolicyID, PolicySet},
         entities::{EntityJsonParser, TCComputation},
@@ -257,6 +259,42 @@ mod entity_slice_tests {
     use crate::{entity_manifest::compute_entity_manifest, CoreSchema, ValidatorSchema};
 
     use super::*;
+
+    /// The implementation of [`Eq`] and [`PartialEq`] for
+    /// entities just compares entity ids.
+    /// This implementation does a more traditional, deep equality
+    /// check comparing attributes, ancestors, and the id.
+    fn entity_deep_equal(this: &Entity, other: &Entity) -> bool {
+        this.uid() == other.uid()
+            && BTreeMap::from_iter(this.attrs()) == BTreeMap::from_iter(other.attrs())
+            && BTreeSet::from_iter(this.ancestors()) == BTreeSet::from_iter(other.ancestors())
+    }
+
+    /// The implementation of [`Eq`] and [`PartialEq`] on [`Entities`]
+    /// only checks equality by id for entities in the store.
+    /// This method checks that the entities are equal deeply,
+    /// using `[Entity::deep_equal]` to check equality.
+    /// Note that it ignores mode
+    fn entities_deep_equal(this: &Entities, other: &Entities) -> bool {
+        for this_entity in this.iter() {
+            let key = this_entity.uid();
+            if let Dereference::Data(other_value) = other.entity(key) {
+                if !entity_deep_equal(this_entity, other_value) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+
+        for key in other.iter() {
+            if !matches!(this.entity(key.uid()), Dereference::Data(_)) {
+                return false;
+            }
+        }
+
+        true
+    }
 
     // Schema for testing in this module
     fn schema() -> ValidatorSchema {
@@ -349,7 +387,7 @@ action Read appliesTo {
 
         // PANIC SAFETY: panic in testing when test fails
         #[allow(clippy::panic)]
-        if !sliced_entities.deep_equal(&expected_entities) {
+        if !entities_deep_equal(&sliced_entities, &expected_entities) {
             panic!(
                 "Sliced entities differed from expected. Expected:\n{}\nGot:\n{}",
                 expected_entities.to_json_value().unwrap(),

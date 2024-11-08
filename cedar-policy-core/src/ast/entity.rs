@@ -386,49 +386,6 @@ impl std::hash::Hash for Entity {
 }
 
 impl Entity {
-    /// The implementation of [`Eq`] and [`PartialEq`] for
-    /// entities just compares entity ids.
-    /// This implementation does a more traditional, deep equality
-    /// check comparing attributes, ancestors, and the id.
-    pub fn deep_equal(&self, other: &Self) -> bool {
-        self.uid == other.uid && self.attrs == other.attrs && self.ancestors == other.ancestors
-    }
-
-    /// Union two compatible entities, creating a new entity
-    /// with atributes from both.
-    /// The union is deep, meaning that if both entities have
-    /// records these records get unioned.
-    /// Returns `None` when incompatible.
-    pub fn union(&self, other: &Self) -> Option<Self> {
-        if self.uid() != other.uid() {
-            return None;
-        }
-
-        let mut new_attrs: HashMap<SmolStr, PartialValue> = self
-            .attrs
-            .iter()
-            .map(|item| (item.0.clone(), item.1.as_ref().clone()))
-            .collect();
-        for (key, val) in &other.attrs {
-            if let Some(v) = new_attrs.get_mut(key) {
-                *v = v.union(val.as_ref())?;
-            } else {
-                new_attrs.insert(key.clone(), val.as_ref().clone());
-            }
-        }
-
-        let mut new_ancestors = self.ancestors.clone();
-        for ancestor in &other.ancestors {
-            new_ancestors.insert(ancestor.clone());
-        }
-
-        Some(Entity::new_with_attr_partial_value(
-            self.uid().clone(),
-            new_attrs,
-            new_ancestors,
-        ))
-    }
-
     /// Create a new `Entity` with this UID, attributes, ancestors, and tags
     ///
     /// # Errors
@@ -612,21 +569,7 @@ impl Entity {
         Ok(())
     }
 
-    /// Mark the given `UID` as an ancestor of this `Entity`.
-    // When fuzzing, `add_ancestor()` is fully `pub`.
-    #[cfg(not(fuzzing))]
-    pub(crate) fn add_ancestor(&mut self, uid: EntityUID) {
-        self.ancestors.insert(uid);
-    }
-
-    /// Add a set of ancestors to this `Entity`.
-    /// TODO why is `add_ancestor` pub(crate) instead of pub, and should this be too?
-    pub fn add_ancestors(&mut self, ancestors: HashSet<EntityUID>) {
-        self.ancestors.extend(ancestors);
-    }
-
     /// Mark the given `UID` as an ancestor of this `Entity`
-    #[cfg(fuzzing)]
     pub fn add_ancestor(&mut self, uid: EntityUID) {
         self.ancestors.insert(uid);
     }
