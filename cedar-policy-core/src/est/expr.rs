@@ -88,24 +88,23 @@ impl<'de> Deserialize<'de> for Expr {
                         return Err(serde::de::Error::custom(format!("JSON object representing an `Expr` should have only one key, but found two keys: `{k}` and `{k2}`")));
                     }
                 };
-                match k.as_str() {
-                    // All the valid keys for `ExprNoExt`.
-                    // If a variant or alias is added to `ExprNoExt`, it must also be added here.
-                    "Value" | "Var" | "Slot" | "!" | "neg" | "==" | "!=" | "in" | "<" | "<="
-                    | ">" | ">=" | "&&" | "||" | "+" | "-" | "*" | "contains" | "containsAll"
-                    | "containsAny" | "getTag" | "hasTag" | "." | "has" | "like" | "is"
-                    | "if-then-else" | "Set" | "Record" => {
-                        let obj = serde_json::json!({ k: v });
-                        let exprnoext =
-                            serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
-                        Ok(Expr::ExprNoExt(exprnoext))
-                    }
-                    _ => {
-                        // Any other key is assumed to be the name of an extension function.
+                match ast::Name::parse_unqualified_name(&k)
+                    .map(|name| name.is_known_extension_func_name())
+                {
+                    Ok(true) => {
+                        // `k` is the name of an extension function. We assume that no such keys
+                        // are valid keys for `ExprNoExt`, so we must parse as an `ExtFuncCall`.
                         let obj = serde_json::json!({ k: v });
                         let extfunccall =
                             serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
                         Ok(Expr::ExtFuncCall(extfunccall))
+                    }
+                    _ => {
+                        // not a valid extension function, so we expect it to work for `ExprNoExt`.
+                        let obj = serde_json::json!({ k: v });
+                        let exprnoext =
+                            serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
+                        Ok(Expr::ExprNoExt(exprnoext))
                     }
                 }
             }
