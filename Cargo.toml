@@ -15,6 +15,10 @@ resolver = "2"
 [profile.release]
 overflow-checks = true
 
+[profile.bench]
+overflow-checks = true
+debug = "line-tables-only"  # this adds more debug symbols/info to the binary than the default for `release` (which is `none`)
+
 # Keys that packages can inherit
 [workspace.package]
 # Check the minimum supported Rust version with `cargo install cargo-msrv && cargo msrv --min 1.X.0` where `X` is something lower than the version noted here (to confirm that versions lower than the one noted here _don't_ work)
