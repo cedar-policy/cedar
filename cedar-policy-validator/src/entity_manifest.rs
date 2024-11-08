@@ -201,6 +201,19 @@ pub enum EntityManifestError {
     /// A policy was partial
     #[error(transparent)]
     PartialExpression(#[from] PartialExpressionError),
+    /// Unsupported feature
+    #[error(transparent)]
+    UnsupportedCedarFeature(#[from] UnsupportedCedarFeatureError),
+}
+
+/// Error when entity manifest analysis cannot handle a Cedar feature
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
+#[derive(Debug, Clone, Error, Diagnostic)]
+#[error("entity manifest analysis currently doesn't support Cedar feature: {feature}")]
+pub struct UnsupportedCedarFeatureError {
+    pub(crate) feature: SmolStr,
 }
 
 /// Error when the manifest has an entity the schema lacks.
@@ -580,9 +593,10 @@ fn entity_manifest_from_expr(
             op: BinaryOp::GetTag | BinaryOp::HasTag,
             arg1: _,
             arg2: _,
-        } => {
-            unimplemented!("interaction between RFCs 74 and 82")
+        } => Err(UnsupportedCedarFeatureError {
+            feature: "entity tags".into(),
         }
+        .into()),
         ExprKind::ExtensionFunctionApp { fn_name: _, args } => {
             // WARNING: this code assumes that extension functions
             // all take primitives as inputs and produce

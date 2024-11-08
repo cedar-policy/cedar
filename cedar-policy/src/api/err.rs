@@ -32,7 +32,9 @@ pub use cedar_policy_validator::cedar_schema::{schema_warnings, SchemaWarning};
 #[cfg(feature = "entity-manifest")]
 pub use cedar_policy_validator::entity_manifest::slicing::EntitySliceError;
 #[cfg(feature = "entity-manifest")]
-use cedar_policy_validator::entity_manifest::{self, PartialExpressionError, PartialRequestError};
+use cedar_policy_validator::entity_manifest::{
+    self, PartialExpressionError, PartialRequestError, UnsupportedCedarFeatureError,
+};
 pub use cedar_policy_validator::{schema_errors, SchemaError};
 use miette::Diagnostic;
 use ref_cast::RefCast;
@@ -1233,6 +1235,10 @@ pub enum EntityManifestError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     PartialExpression(#[from] PartialExpressionError),
+    /// Encounters unsupported Cedar feature
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnsupportedCedarFeature(#[from] UnsupportedCedarFeatureError),
 }
 
 #[cfg(feature = "entity-manifest")]
@@ -1244,6 +1250,9 @@ impl From<entity_manifest::EntityManifestError> for EntityManifestError {
             entity_manifest::EntityManifestError::PartialRequest(e) => Self::PartialRequest(e),
             entity_manifest::EntityManifestError::PartialExpression(e) => {
                 Self::PartialExpression(e)
+            }
+            entity_manifest::EntityManifestError::UnsupportedCedarFeature(e) => {
+                Self::UnsupportedCedarFeature(e)
             }
         }
     }
