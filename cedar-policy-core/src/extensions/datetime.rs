@@ -491,6 +491,51 @@ enum DateTimeParseError {
     InvalidOffset((u32, u32)),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UTCOffset {
+    positive: bool,
+    hh: u32,
+    mm: u32,
+}
+
+impl UTCOffset {
+    const MIN: Self = Self {
+        positive: false,
+        hh: 12,
+        mm: 0,
+    };
+    const MAX: Self = Self {
+        positive: true,
+        hh: 14,
+        mm: 0,
+    };
+    fn to_seconds(&self) -> i64 {
+        let offset_in_seconds_unsigned = (self.hh * 3600 + self.mm * 60) as i64;
+        if self.positive {
+            offset_in_seconds_unsigned
+        } else {
+            -offset_in_seconds_unsigned
+        }
+    }
+
+    // Reference: https://en.wikipedia.org/wiki/List_of_UTC_offsets
+    fn is_valid(&self) -> bool {
+        self.mm < 60 && self >= &Self::MIN && self <= &Self::MAX
+    }
+}
+
+impl PartialOrd for UTCOffset {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.to_seconds().partial_cmp(&other.to_seconds())
+    }
+}
+
+impl Ord for UTCOffset {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.to_seconds().cmp(&other.to_seconds())
+    }
+}
+
 fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
     // Get date first
     let (date_str, [year, month, day]) = DATE_PATTERN
@@ -551,24 +596,21 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
     let time = NaiveTime::from_hms_milli_opt(h, m, sec, ms)
         .ok_or(DateTimeParseError::InvalidHMS(hms_str[1..].into()))?;
     let offset: Result<TimeDelta, DateTimeParseError> = if captures.get(4).is_some() {
-        let sign = &captures[5] == "+";
+        let positive = &captures[5] == "+";
         // PANIC SAFETY: should be valid given the limit on the number of digits.
         #[allow(clippy::unwrap_used)]
         let (offset_hour, offset_min): (u32, u32) =
             (captures[6].parse().unwrap(), captures[7].parse().unwrap());
-        if offset_hour < 12 && offset_min < 60 {
-            let offset_in_secs = (offset_hour * 3600 + offset_min * 60) as i64;
+        let offset = UTCOffset {
+            positive,
+            hh: offset_hour,
+            mm: offset_min,
+        };
+        if offset.is_valid() {
+            let offset_in_secs = offset.to_seconds();
             // PANIC SAFETY: should be valid because the limit on the values of offsets.
             #[allow(clippy::unwrap_used)]
-            Ok(TimeDelta::new(
-                if sign {
-                    -offset_in_secs // + means UTC is behind
-                } else {
-                    offset_in_secs // - means UTC is ahead
-                },
-                0,
-            )
-            .unwrap())
+            Ok(TimeDelta::new(-offset_in_secs, 0).unwrap())
         } else {
             Err(DateTimeParseError::InvalidOffset((offset_hour, offset_min)))
         }
@@ -859,10 +901,6 @@ mod tests {
         assert_matches!(
             parse_datetime("2024-01-01T00:00:00.001-00000"),
             Err(DateTimeParseError::InvalidMSOffsetPattern)
-        );
-        assert_matches!(
-            parse_datetime("2016-12-31T00:00:00+1200"),
-            Err(DateTimeParseError::InvalidOffset((12, 0)))
         );
         assert_matches!(
             parse_datetime("2016-12-31T00:00:00+1160"),
