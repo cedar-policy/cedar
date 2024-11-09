@@ -38,7 +38,7 @@ tsify = { version = "0.4.5", optional = true }
 wasm-bindgen = { version = "0.2.82", optional = true }
 
 # datetime extension requires chrono
-chrono = { version = "0.4.38", optional = true}
+chrono = { version = "0.4.38", optional = true, default-features = false}
 
 # protobuf dependency
 prost = { version = "0.13.3", optional = true }
