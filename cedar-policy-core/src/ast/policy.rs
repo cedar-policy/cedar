@@ -338,7 +338,11 @@ impl LinkingError {
     }
 }
 
-fn describe_arity_error(unbound_values: &[SlotId], extra_values: &[SlotId], fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+fn describe_arity_error(
+    unbound_values: &[SlotId],
+    extra_values: &[SlotId],
+    fmt: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
     match (unbound_values.len(), extra_values.len()) {
         // PANIC SAFETY 0,0 case is not an error
         #[allow(clippy::unreachable)]
