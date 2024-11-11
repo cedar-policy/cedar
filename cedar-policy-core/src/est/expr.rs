@@ -1436,7 +1436,10 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
                     item = match item {
                         Either::Left(name) => {
                             return Err(node
-                                .to_ast_err(ToASTErrorKind::InvalidAccess(name, id.to_smolstr()))
+                                .to_ast_err(ToASTErrorKind::InvalidAccess {
+                                    lhs: name,
+                                    field: id.to_smolstr(),
+                                })
                                 .into())
                         }
                         Either::Right(expr) => Either::Right(Expr::get_attr(expr, id.to_smolstr())),
@@ -1505,7 +1508,10 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
                     item = match item {
                         Either::Left(name) => {
                             return Err(node
-                                .to_ast_err(ToASTErrorKind::InvalidIndex(name, s))
+                                .to_ast_err(ToASTErrorKind::InvalidIndex {
+                                    lhs: name,
+                                    field: s,
+                                })
                                 .into())
                         }
                         Either::Right(expr) => Either::Right(Expr::get_attr(expr, s)),
