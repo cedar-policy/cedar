@@ -26,7 +26,7 @@ Cedar Language version: 4.1
 - The error associated with parsing a non-existent extension method additionally
   includes a suggestion based on available extension methods (#1289, resolving #246).
 - Improved entity validation speed, particularly for large schemas with many
-  actions (#1290, as part of resolving #1285)
+  actions (#1290 and #1296, resolving #1285)
 
 ### Fixed
 
