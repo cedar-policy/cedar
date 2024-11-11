@@ -37,5 +37,5 @@ cargo-lock = "10.0.0"
 # Lock `url` (dependencies of cargo-lock) to 2.5.2 because they may introduce a
 # dependency on a crate licensed under the Unicode 3.0 license in a future
 # minor version, and we do not have explicit legal aproval to use that license.
-url = "=2.5.2"
+url = "=2.5.3"
 itertools = "0.13.0"
