@@ -2368,3 +2368,96 @@ mod entity_tags {
         });
     }
 }
+
+// RFC 48 test cases
+#[cfg(test)]
+mod annotations {
+    use cool_asserts::assert_matches;
+
+    use crate::cedar_schema::parser::parse_schema;
+
+    #[test]
+    fn rfc_examples() {
+        // basic
+        assert_matches!(
+            parse_schema(
+                r#"
+        @doc("This entity defines our central user type")
+entity User { 
+    manager : User,
+    team : String
+};
+        "#
+            ),
+            Ok(_)
+        );
+        // basic + namespace
+        assert_matches!(
+            parse_schema(
+                r#"
+        @doc("this is namespace foo")
+        namespace foo {
+@doc("This entity defines our central user type")
+entity User { 
+    manager : User,
+    team : String
+};
+    }
+        "#
+            ),
+            Ok(_)
+        );
+        // entity attribute annotation
+        assert_matches!(
+            parse_schema(
+                r#"
+@doc("This entity defines our central user type")
+entity User { 
+    manager : User,
+
+    @doc("Which team user belongs to")    
+    @docLink("https://schemaDocs.example.com/User/team")
+    team : String
+};
+"#
+            ),
+            Ok(_)
+        );
+        // full example
+        assert_matches!(
+            parse_schema(
+                r#"
+        @doc("this is the namespace")
+namespace TinyTodo {
+    @doc("a common type representing a task")
+    type Task = {
+        "id": Long,
+        "name": String,
+        "state": String,
+    };
+    @doc("a common type representing a set of tasks")
+    type Tasks = Set<Task>;
+
+    @doc("an entity type representing a list")
+    @doc("any entity type is a child of type `Application`")
+    entity List in [Application] = {
+        @doc("editors of a list")
+        "editors": Team,
+        "name": String,
+        "owner": User,
+        @doc("readers of a list")
+        "readers": Team,
+        "tasks": Tasks,
+    };
+
+    @doc("actions that a user can operate on a list")
+    action DeleteList, GetList, UpdateList appliesTo {
+        principal: [User],
+        resource: [List]
+    };
+}"#
+            ),
+            Ok(_)
+        );
+    }
+}
