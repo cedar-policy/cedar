@@ -16,14 +16,17 @@ Cedar Language Version: TBD
 
 - Added protobuf schemas and (de)serialization code using on `prost` crate behind the experimental `protobufs` flag.
 
+## [4.2.2] - Coming soon
+Cedar Language version: 4.1
+
 ### Changed
 
 - The error associated with parsing a non-existent extension function additionally
   includes a suggestion based on available extension functions (#1280, resolving #332).
 - The error associated with parsing a non-existent extension method additionally
   includes a suggestion based on available extension methods (#1289, resolving #246).
-- Extract action graph inversion from `CoreSchema` to `ValidatorSchema` instantiation
-  to improve schema validation speeds. (#1290, as part of resolving #1285)
+- Improved entity validation speed, particularly for large schemas with many
+  actions (#1290 and #1296, resolving #1285)
 
 ### Fixed
 
@@ -758,7 +761,8 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.2.1...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.2.2...main
+[4.2.1]: https://github.com/cedar-policy/cedar/compare/v4.2.1...v4.2.2
 [4.2.1]: https://github.com/cedar-policy/cedar/compare/v4.2.0...v4.2.1
 [4.2.0]: https://github.com/cedar-policy/cedar/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/cedar-policy/cedar/compare/v4.0.0...v4.1.0
