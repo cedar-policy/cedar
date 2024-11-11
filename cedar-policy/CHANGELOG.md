@@ -16,6 +16,9 @@ Cedar Language Version: TBD
 
 - Added protobuf schemas and (de)serialization code using on `prost` crate behind the experimental `protobufs` flag.
 
+## [4.2.2] - Coming soon
+Cedar Language version: 4.1
+
 ### Changed
 
 - The error associated with parsing a non-existent extension function additionally
