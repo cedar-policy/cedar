@@ -917,7 +917,7 @@ namespace Baz {action "Foo" appliesTo {
         assert_labeled_span("type t =", "expected `{`, identifier, or `Set`");
         assert_labeled_span(
             "entity User {",
-            "expected `}`, identifier, or string literal",
+            "expected `@`, `}`, identifier, or string literal",
         );
         assert_labeled_span("entity User { name:", "expected `{`, identifier, or `Set`");
     }

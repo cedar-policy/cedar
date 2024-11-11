@@ -102,21 +102,21 @@ pub Schema: ASchema = {
 
 // Namespace := 'namespace' Path '{' {Decl} '}'
 Namespace: Node<Namespace> = {
-    <l:@L> NAMESPACE <p: Path> "{" <decls: Decl*> "}" <r:@R>
+    <l:@L> <annotations: Annotation*> NAMESPACE <p: Path> "{" <decls: Annotated<Decl>*> "}" <r:@R>
         => Node::with_source_loc(Namespace { name: Some(Node::with_source_loc(p, Loc::new(l..r, Arc::clone(src)))), decls}, Loc::new(l..r, Arc::clone(src))),
-     <l:@L> <decl: Decl> <r:@R> => Node::with_source_loc(Namespace {name: None, decls: vec![decl]}, Loc::new(l..r, Arc::clone(src))),
+     <l:@L> <decl: Annotated<Decl>> <r:@R> => Node::with_source_loc(Namespace {name: None, decls: vec![decl]}, Loc::new(l..r, Arc::clone(src))),
 }
 
 // Decl := Entity | Action | TypeDecl
 Decl: Node<Declaration> = {
-    <e:Annotated<Entity>> => e,
-    <a:Annotated<Action>> => a,
-    <t:Annotated<TypeDecl>> => t,
+    <e:Entity> => e,
+    <a:Action> => a,
+    <t:TypeDecl> => t,
 }
 
 // Entity := 'entity' Idents ['in' EntOrTypes] [['='] RecType] ';'
 Entity: Node<Declaration> = {
-    <l:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> <ds:("="? "{" <AttrDecls?> "}")?> <ts:(TAGS <Type>)?> ";" <r:@R>
+    <l:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> <ds:("="? "{" <AnnotatedAttrDecls?> "}")?> <ts:(TAGS <Type>)?> ";" <r:@R>
         => Node::with_source_loc(Declaration::Entity(EntityDecl { names: ets, member_of_types: ps.unwrap_or_default(), attrs: ds.map(|ds| ds.unwrap_or_default()).unwrap_or_default(), tags: ts }), Loc::new(l..r, Arc::clone(src))),
 }
 
@@ -196,6 +196,14 @@ AttrDecls: Vec<Node<AttrDecl>> = {
     <l:@L> <name: Name> <required:"?"?> ":" <ty:Type> ","? <r:@R>
         => vec![Node::with_source_loc(AttrDecl { name, required: required.is_none(), ty}, Loc::new(l..r, Arc::clone(src)))],
     <l:@L> <name: Name> <required:"?"?> ":" <ty:Type> "," <r:@R> <mut ds: AttrDecls>
+        => {ds.insert(0, Node::with_source_loc(AttrDecl { name, required: required.is_none(), ty}, Loc::new(l..r, Arc::clone(src)))); ds},
+}
+
+// AnnotatedAttrDecls := Annotation* Name ['?'] ':' Type [',' | ',' AttrDecls]
+AnnotatedAttrDecls: Vec<Node<AttrDecl>> = {
+    <l:@L> <annotations: Annotation*> <name: Name> <required:"?"?> ":" <ty:Type> ","? <r:@R>
+        => vec![Node::with_source_loc(AttrDecl { name, required: required.is_none(), ty}, Loc::new(l..r, Arc::clone(src)))],
+    <l:@L> <annotations: Annotation*> <name: Name> <required:"?"?> ":" <ty:Type> "," <r:@R> <mut ds: AnnotatedAttrDecls>
         => {ds.insert(0, Node::with_source_loc(AttrDecl { name, required: required.is_none(), ty}, Loc::new(l..r, Arc::clone(src)))); ds},
 }
 
