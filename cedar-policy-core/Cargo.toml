@@ -22,7 +22,7 @@ either = "1.8"
 itertools = "0.13"
 ref-cast = "1.0"
 rustc_lexer = "0.1"
-thiserror = "1.0"
+thiserror = "2.0"
 smol_str = { version = "0.3", features = ["serde"] }
 stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
