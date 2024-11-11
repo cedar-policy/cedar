@@ -16,7 +16,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_with = "3.0"
 miette = "7.1.0"
-thiserror = "1.0"
+thiserror = "2.0"
 itertools = "0.13"
 ref-cast = "1.0"
 unicode-security = "0.1.0"
