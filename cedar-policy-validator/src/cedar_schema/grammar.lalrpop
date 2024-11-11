@@ -82,10 +82,18 @@ match {
 
     // other tokens
     ",", ";", ":", "::", "{", "}", "[", "]",
-    "<", ">", "=", "?",
+    "<", ">", "=", "?", "@", "(", ")",
 
 }
 
+// Annotations := {'@' Ident '(' String ')'}
+Annotation: Node<()> = {
+    <l:@L> "@" <key:Ident> <value: ("(" <STR> ")")?> <r:@R> => Node::with_source_loc((), Loc::new(l..r, Arc::clone(src)))
+}
+
+Annotated<E>: E = {
+   <annotations: Annotation*> <e:E> => e,
+}
 
 // Schema := {Namespace}
 pub Schema: ASchema = {
@@ -101,9 +109,9 @@ Namespace: Node<Namespace> = {
 
 // Decl := Entity | Action | TypeDecl
 Decl: Node<Declaration> = {
-    <e:Entity> => e,
-    <a:Action> => a,
-    <t:TypeDecl> => t,
+    <e:Annotated<Entity>> => e,
+    <a:Annotated<Action>> => a,
+    <t:Annotated<TypeDecl>> => t,
 }
 
 // Entity := 'entity' Idents ['in' EntOrTypes] [['='] RecType] ';'

@@ -1185,7 +1185,7 @@ mod test {
             &ExpectedErrorMessageBuilder::error("failed to parse schema from string")
                 .exactly_one_underline_with_label(
                     "permit",
-                    "expected `action`, `entity`, `namespace`, or `type`",
+                    "expected `@`, `action`, `entity`, `namespace`, or `type`",
                 )
                 .source("error parsing schema: unexpected token `permit`")
                 .build(),
