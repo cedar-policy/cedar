@@ -77,33 +77,37 @@ pub struct Fragment<N>(
         feature = "wasm",
         tsify(type = "Record<string, NamespaceDefinition<N>>")
     )]
-    pub BTreeMap<Option<Name>, NamespaceDefinition<N>>,
+    pub BTreeMap<Option<Name>, Annotated<NamespaceDefinition<N>>>,
 );
 
 /// Custom deserializer to ensure that the empty namespace is mapped to `None`
 fn deserialize_schema_fragment<'de, D, N: Deserialize<'de> + From<RawName>>(
     deserializer: D,
-) -> std::result::Result<BTreeMap<Option<Name>, NamespaceDefinition<N>>, D::Error>
+) -> std::result::Result<BTreeMap<Option<Name>, Annotated<NamespaceDefinition<N>>>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let raw: BTreeMap<SmolStr, NamespaceDefinition<N>> =
+    let raw: BTreeMap<SmolStr, Annotated<NamespaceDefinition<N>>> =
         serde_with::rust::maps_duplicate_key_is_error::deserialize(deserializer)?;
-    Ok(BTreeMap::from_iter(
-        raw.into_iter()
-            .map(|(key, value)| {
-                let key = if key.is_empty() {
-                    None
-                } else {
-                    Some(Name::from_normalized_str(&key).map_err(|err| {
-                        serde::de::Error::custom(format!("invalid namespace `{key}`: {err}"))
-                    })?)
-                };
-                Ok((key, value))
-            })
-            .collect::<std::result::Result<Vec<(Option<Name>, NamespaceDefinition<N>)>, D::Error>>(
-            )?,
-    ))
+    Ok(
+        BTreeMap::from_iter(
+            raw.into_iter()
+                .map(|(key, value)| {
+                    let key = if key.is_empty() {
+                        None
+                    } else {
+                        Some(Name::from_normalized_str(&key).map_err(|err| {
+                            serde::de::Error::custom(format!("invalid namespace `{key}`: {err}"))
+                        })?)
+                    };
+                    Ok((key, value))
+                })
+                .collect::<std::result::Result<
+                    Vec<(Option<Name>, Annotated<NamespaceDefinition<N>>)>,
+                    D::Error,
+                >>()?,
+        ),
+    )
 }
 
 impl<N: Serialize> Serialize for Fragment<N> {
@@ -271,6 +275,31 @@ pub struct ReservedCommonTypeBasenameError {
     pub(crate) id: UnreservedId,
 }
 
+/// Annotations
+pub type Annotations = BTreeMap<SmolStr, SmolStr>;
+
+/// A struct that can be annotated, e.g., entity types.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Annotated<T> {
+    /// The struct that's optionally annotated
+    #[serde(flatten)]
+    pub data: T,
+    /// Annotations
+    #[serde(default)]
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
+    pub annotations: Annotations,
+}
+
+impl<T> From<T> for Annotated<T> {
+    fn from(value: T) -> Self {
+        Self {
+            data: value,
+            annotations: BTreeMap::new(),
+        }
+    }
+}
+
 /// A single namespace definition from a Fragment.
 /// This is composed of common types, entity types, and action definitions.
 ///
@@ -293,11 +322,11 @@ pub struct NamespaceDefinition<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub common_types: BTreeMap<CommonTypeId, Type<N>>,
+    pub common_types: BTreeMap<CommonTypeId, Annotated<Type<N>>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub entity_types: BTreeMap<UnreservedId, EntityType<N>>,
+    pub entity_types: BTreeMap<UnreservedId, Annotated<EntityType<N>>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub actions: BTreeMap<SmolStr, ActionType<N>>,
+    pub actions: BTreeMap<SmolStr, Annotated<ActionType<N>>>,
 }
 
 impl<N> NamespaceDefinition<N> {
@@ -307,8 +336,14 @@ impl<N> NamespaceDefinition<N> {
     ) -> Self {
         Self {
             common_types: BTreeMap::new(),
-            entity_types: entity_types.into_iter().collect(),
-            actions: actions.into_iter().collect(),
+            entity_types: entity_types
+                .into_iter()
+                .map(|(key, value)| (key, value.into()))
+                .collect(),
+            actions: actions
+                .into_iter()
+                .map(|(key, value)| (key, value.into()))
+                .collect(),
         }
     }
 }
@@ -323,17 +358,17 @@ impl NamespaceDefinition<RawName> {
             common_types: self
                 .common_types
                 .into_iter()
-                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
+                .map(|(k, v)| (k, v.data.conditionally_qualify_type_references(ns).into()))
                 .collect(),
             entity_types: self
                 .entity_types
                 .into_iter()
-                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
+                .map(|(k, v)| (k, v.data.conditionally_qualify_type_references(ns).into()))
                 .collect(),
             actions: self
                 .actions
                 .into_iter()
-                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
+                .map(|(k, v)| (k, v.data.conditionally_qualify_type_references(ns).into()))
                 .collect(),
         }
     }
@@ -354,17 +389,17 @@ impl NamespaceDefinition<ConditionalName> {
             common_types: self
                 .common_types
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
+                .map(|(k, v)| Ok((k, v.data.fully_qualify_type_references(all_defs)?.into())))
                 .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
             entity_types: self
                 .entity_types
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
+                .map(|(k, v)| Ok((k, v.data.fully_qualify_type_references(all_defs)?.into())))
                 .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
             actions: self
                 .actions
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
+                .map(|(k, v)| Ok((k, v.data.fully_qualify_type_references(all_defs)?.into())))
                 .collect::<Result<_>>()?,
         })
     }
@@ -911,7 +946,7 @@ impl<N> Type<N> {
         match self {
             Type::Type(TypeVariant::Record(RecordType { attributes, .. })) => attributes
                 .iter()
-                .map(|(_, ty)| ty.ty.common_type_references())
+                .map(|(_, ty)| ty.data.ty.common_type_references())
                 .fold(Box::new(std::iter::empty()), |it, tys| {
                     Box::new(it.chain(tys))
                 }),
@@ -935,7 +970,7 @@ impl<N> Type<N> {
             Self::Type(TypeVariant::Set { element }) => element.is_extension(),
             Self::Type(TypeVariant::Record(RecordType { attributes, .. })) => attributes
                 .values()
-                .try_fold(false, |a, e| match e.ty.is_extension() {
+                .try_fold(false, |a, e| match e.data.ty.is_extension() {
                     Some(true) => Some(true),
                     Some(false) => Some(a),
                     None => None,
@@ -1226,7 +1261,8 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                                             TypeOfAttribute {
                                                 ty: ty.into_n(),
                                                 required,
-                                            },
+                                            }
+                                            .into(),
                                         )
                                     })
                                     .collect(),
@@ -1326,7 +1362,7 @@ impl<N> From<TypeVariant<N>> for Type<N> {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct RecordType<N> {
     /// Attribute names and types for the record
-    pub attributes: BTreeMap<SmolStr, TypeOfAttribute<N>>,
+    pub attributes: BTreeMap<SmolStr, Annotated<TypeOfAttribute<N>>>,
     /// Whether "additional attributes" are possible on this record
     #[serde(default = "partial_schema_default")]
     #[serde(skip_serializing_if = "is_partial_schema_default")]
@@ -1359,7 +1395,7 @@ impl RecordType<RawName> {
             attributes: self
                 .attributes
                 .into_iter()
-                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
+                .map(|(k, v)| (k, v.data.conditionally_qualify_type_references(ns).into()))
                 .collect(),
             additional_attributes: self.additional_attributes,
         }
@@ -1381,7 +1417,7 @@ impl RecordType<ConditionalName> {
             attributes: self
                 .attributes
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
+                .map(|(k, v)| Ok((k, v.data.fully_qualify_type_references(all_defs)?.into())))
                 .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
             additional_attributes: self.additional_attributes,
         })
@@ -1479,13 +1515,20 @@ impl TypeVariant<RawName> {
                 additional_attributes,
             }) => TypeVariant::Record(RecordType {
                 attributes: BTreeMap::from_iter(attributes.into_iter().map(
-                    |(attr, TypeOfAttribute { ty, required })| {
+                    |(
+                        attr,
+                        Annotated {
+                            data: TypeOfAttribute { ty, required },
+                            ..
+                        },
+                    )| {
                         (
                             attr,
                             TypeOfAttribute {
                                 ty: ty.conditionally_qualify_type_references(ns),
                                 required,
-                            },
+                            }
+                            .into(),
                         )
                     },
                 )),
@@ -1509,7 +1552,7 @@ impl TypeVariant<RawName> {
             }) => TypeVariant::Record(RecordType {
                 attributes: attributes
                     .into_iter()
-                    .map(|(k, v)| (k, v.into_n()))
+                    .map(|(k, v)| (k, v.data.into_n().into()))
                     .collect(),
                 additional_attributes,
             }),
@@ -1552,15 +1595,24 @@ impl TypeVariant<ConditionalName> {
             }) => Ok(TypeVariant::Record(RecordType {
                 attributes: attributes
                     .into_iter()
-                    .map(|(attr, TypeOfAttribute { ty, required })| {
-                        Ok((
+                    .map(
+                        |(
                             attr,
-                            TypeOfAttribute {
-                                ty: ty.fully_qualify_type_references(all_defs)?,
-                                required,
+                            Annotated {
+                                data: TypeOfAttribute { ty, required },
+                                ..
                             },
-                        ))
-                    })
+                        )| {
+                            Ok((
+                                attr,
+                                TypeOfAttribute {
+                                    ty: ty.fully_qualify_type_references(all_defs)?,
+                                    required,
+                                }
+                                .into(),
+                            ))
+                        },
+                    )
                     .collect::<std::result::Result<BTreeMap<_, _>, TypeNotDefinedError>>()?,
                 additional_attributes,
             })),
@@ -1592,7 +1644,12 @@ impl<'a> arbitrary::Arbitrary<'a> for Type<RawName> {
                     let attr_names: BTreeSet<String> = u.arbitrary()?;
                     attr_names
                         .into_iter()
-                        .map(|attr_name| Ok((attr_name.into(), u.arbitrary()?)))
+                        .map(|attr_name| {
+                            Ok((
+                                attr_name.into(),
+                                u.arbitrary::<TypeOfAttribute<RawName>>()?.into(),
+                            ))
+                        })
                         .collect::<arbitrary::Result<_>>()?
                 };
                 TypeVariant::Record(RecordType {
@@ -2136,7 +2193,7 @@ mod test {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error(r#"unknown field `User`, expected one of `commonTypes`, `entityTypes`, `actions` at line 3 column 35"#)
+                &ExpectedErrorMessageBuilder::error(r#"missing field `entityTypes` at line 3 column 42"#)
                     .help("JSON formatted schema must specify a namespace. If you want to use the empty namespace, explicitly specify it with `{ \"\": {..} }`")
                     .build());
         });
@@ -2561,11 +2618,11 @@ mod entity_tags {
     fn basic() {
         let json = example_json_schema();
         assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
-            let user = frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
+            let user = &frag.0.get(&None).unwrap().data.entity_types.get(&"User".parse().unwrap()).unwrap().data;
             assert_matches!(&user.tags, Some(Type::Type(TypeVariant::Set { element })) => {
                 assert_matches!(&**element, Type::Type(TypeVariant::String)); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
             });
-            let doc = frag.0.get(&None).unwrap().entity_types.get(&"Document".parse().unwrap()).unwrap();
+            let doc = &frag.0.get(&None).unwrap().data.entity_types.get(&"Document".parse().unwrap()).unwrap().data;
             assert_matches!(&doc.tags, Some(Type::Type(TypeVariant::Set { element })) => {
                 assert_matches!(&**element, Type::Type(TypeVariant::String)); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
             });
@@ -2595,7 +2652,7 @@ mod entity_tags {
             "actions": {}
         }});
         assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
-            let user = frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
+            let user = &frag.0.get(&None).unwrap().data.entity_types.get(&"User".parse().unwrap()).unwrap().data;
             assert_matches!(&user.tags, Some(Type::CommonTypeRef { type_name }) => {
                 assert_eq!(&format!("{type_name}"), "T");
             });
@@ -2622,7 +2679,7 @@ mod entity_tags {
             "actions": {}
         }});
         assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
-            let user = frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
+            let user = &frag.0.get(&None).unwrap().data.entity_types.get(&"User".parse().unwrap()).unwrap().data;
             assert_matches!(&user.tags, Some(Type::Type(TypeVariant::Entity{ name })) => {
                 assert_eq!(&format!("{name}"), "User");
             });
@@ -2679,7 +2736,8 @@ mod test_json_roundtrip {
                 common_types: BTreeMap::new(),
                 entity_types: BTreeMap::new(),
                 actions: BTreeMap::new(),
-            },
+            }
+            .into(),
         )]));
         roundtrip(fragment);
     }
@@ -2692,7 +2750,8 @@ mod test_json_roundtrip {
                 common_types: BTreeMap::new(),
                 entity_types: BTreeMap::new(),
                 actions: BTreeMap::new(),
-            },
+            }
+            .into(),
         )]));
         roundtrip(fragment);
     }
@@ -2712,7 +2771,8 @@ mod test_json_roundtrip {
                             additional_attributes: false,
                         }))),
                         tags: None,
-                    },
+                    }
+                    .into(),
                 )]),
                 actions: BTreeMap::from([(
                     "action".into(),
@@ -2729,9 +2789,11 @@ mod test_json_roundtrip {
                             ))),
                         }),
                         member_of: None,
-                    },
+                    }
+                    .into(),
                 )]),
-            },
+            }
+            .into(),
         )]));
         roundtrip(fragment);
     }
@@ -2754,10 +2816,12 @@ mod test_json_roundtrip {
                                 },
                             ))),
                             tags: None,
-                        },
+                        }
+                        .into(),
                     )]),
                     actions: BTreeMap::new(),
-                },
+                }
+                .into(),
             ),
             (
                 None,
@@ -2779,9 +2843,11 @@ mod test_json_roundtrip {
                                 ))),
                             }),
                             member_of: None,
-                        },
+                        }
+                        .into(),
                     )]),
-                },
+                }
+                .into(),
             ),
         ]));
         roundtrip(fragment);
@@ -2819,7 +2885,7 @@ mod test_duplicates_error {
             "Foo": {
               "entityTypes" : {
                 "Bar": {},
-                "Bar": {},
+                "Bar": {}
               },
               "actions": {}
             }
@@ -2931,5 +2997,30 @@ mod test_duplicates_error {
             }
         }"#;
         Fragment::from_json_str(src).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod annotations {
+    use cool_asserts::assert_matches;
+
+    use crate::RawName;
+
+    use super::Fragment;
+
+    #[test]
+    fn basic() {
+        let src = serde_json::json!(
+        {
+           "" : {
+            "entityTypes": {},
+            "actions": {},
+            "annotations": {
+                "doc": "this is a doc"
+            }
+           }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Ok(_))
     }
 }

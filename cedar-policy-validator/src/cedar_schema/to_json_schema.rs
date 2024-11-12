@@ -78,7 +78,9 @@ pub fn cedar_schema_to_json_schema(
 
     let names = build_namespace_bindings(all_namespaces.iter())?;
     let warnings = compute_namespace_warnings(&names, extensions);
-    let fragment = collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?.collect();
+    let fragment = collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?
+        .map(|(key, value)| (key, value.into()))
+        .collect();
     Ok((
         json_schema::Fragment(fragment),
         warnings.collect::<Vec<_>>().into_iter(),
@@ -106,7 +108,10 @@ pub fn cedar_type_to_json_type(ty: Node<Type>) -> json_schema::Type<RawName> {
             json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
                 attributes: fields
                     .into_iter()
-                    .map(|field| convert_attr_decl(field.node))
+                    .map(|field| {
+                        let (key, value) = convert_attr_decl(field.node);
+                        (key, value.into())
+                    })
                     .collect(),
                 additional_attributes: false,
             }))
@@ -167,11 +172,13 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
         // Convert entity type decls, collecting all errors
         let entity_types = collect_all_errors(entity_types.into_iter().map(convert_entity_decl))?
             .flatten()
+            .map(|(key, value)| (key, value.into()))
             .collect();
 
         // Convert action decls, collecting all errors
         let actions = collect_all_errors(action.into_iter().map(convert_action_decl))?
             .flatten()
+            .map(|(key, value)| (key, value.into()))
             .collect();
 
         // Convert common type decls
@@ -183,7 +190,7 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
                     .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), name_loc.clone()))?;
                 let ctid = json_schema::CommonTypeId::new(id)
                     .map_err(|e| ToJsonSchemaError::reserved_keyword(e.id, name_loc))?;
-                Ok((ctid, cedar_type_to_json_type(decl.def)))
+                Ok((ctid, cedar_type_to_json_type(decl.def).into()))
             })
             .collect::<Result<_, ToJsonSchemaError>>()?;
 
@@ -365,7 +372,10 @@ fn convert_attr_decls(
     json_schema::RecordType {
         attributes: attrs
             .into_iter()
-            .map(|attr| convert_attr_decl(attr.node))
+            .map(|attr| {
+                let (key, value) = convert_attr_decl(attr.node);
+                (key, value.into())
+            })
             .collect(),
         additional_attributes: false,
     }
@@ -384,7 +394,10 @@ fn convert_context_decl(
             json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
                 attributes: attrs
                     .into_iter()
-                    .map(|attr| convert_attr_decl(attr.node))
+                    .map(|attr| {
+                        let (key, value) = convert_attr_decl(attr.node);
+                        (key, value.into())
+                    })
                     .collect(),
                 additional_attributes: false,
             }))

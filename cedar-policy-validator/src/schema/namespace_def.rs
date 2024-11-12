@@ -132,12 +132,31 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
 
         // Convert the common types, actions and entity types from the schema
         // file into the representation used by the validator.
-        let common_types =
-            CommonTypeDefs::from_raw_common_types(namespace_def.common_types, namespace.as_ref())?;
-        let actions =
-            ActionsDef::from_raw_actions(namespace_def.actions, namespace.as_ref(), extensions)?;
-        let entity_types =
-            EntityTypesDef::from_raw_entity_types(namespace_def.entity_types, namespace.as_ref())?;
+        let common_types = CommonTypeDefs::from_raw_common_types(
+            namespace_def
+                .common_types
+                .into_iter()
+                .map(|(key, value)| (key, value.data))
+                .collect(),
+            namespace.as_ref(),
+        )?;
+        let actions = ActionsDef::from_raw_actions(
+            namespace_def
+                .actions
+                .into_iter()
+                .map(|(key, value)| (key, value.data))
+                .collect(),
+            namespace.as_ref(),
+            extensions,
+        )?;
+        let entity_types = EntityTypesDef::from_raw_entity_types(
+            namespace_def
+                .entity_types
+                .into_iter()
+                .map(|(key, value)| (key, value.data))
+                .collect(),
+            namespace.as_ref(),
+        )?;
 
         Ok(ValidatorNamespaceDef {
             namespace,
@@ -241,7 +260,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
         if action_behavior == ActionBehavior::ProhibitAttributes {
             let mut actions_with_attributes: Vec<String> = Vec::new();
             for (name, a) in &schema_nsdef.actions {
-                if a.attributes.is_some() {
+                if a.data.attributes.is_some() {
                     actions_with_attributes.push(name.to_string());
                 }
             }
@@ -1022,18 +1041,22 @@ pub(crate) fn try_record_type_into_validator_type(
     if cfg!(not(feature = "partial-validate")) && rty.additional_attributes {
         Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
     } else {
-        Ok(
-            parse_record_attributes(rty.attributes, extensions)?.map(move |attrs| {
-                Type::record_with_attributes(
-                    attrs,
-                    if rty.additional_attributes {
-                        OpenTag::OpenAttributes
-                    } else {
-                        OpenTag::ClosedAttributes
-                    },
-                )
-            }),
-        )
+        Ok(parse_record_attributes(
+            rty.attributes
+                .into_iter()
+                .map(|(key, value)| (key, value.data)),
+            extensions,
+        )?
+        .map(move |attrs| {
+            Type::record_with_attributes(
+                attrs,
+                if rty.additional_attributes {
+                    OpenTag::OpenAttributes
+                } else {
+                    OpenTag::ClosedAttributes
+                },
+            )
+        }))
     }
 }
 
