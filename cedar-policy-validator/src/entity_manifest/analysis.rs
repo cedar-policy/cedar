@@ -178,7 +178,7 @@ impl WrappedAccessPaths {
 
                     res
                 }
-                // PANIC SAFETY: Typechecking should identity record literals as record types.
+                // PANIC SAFETY: Typechecking should identify record literals as record types.
                 #[allow(clippy::panic)]
                 _ => {
                     panic!("Found record literal when expected {} type", ty);
@@ -193,7 +193,7 @@ impl WrappedAccessPaths {
                         .expect("Expected concrete set type after typechecking");
                     elements.full_type_required(ele_type)
                 }
-                // PANIC SAFETY: Typechecking should identity set literals as set types.
+                // PANIC SAFETY: Typechecking should identify set literals as set types.
                 #[allow(clippy::panic)]
                 _ => {
                     panic!("Found set literal when expected {} type", ty);
