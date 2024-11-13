@@ -713,10 +713,10 @@ resource: [Document]
         let mut pset = PolicySet::new();
         let policy = parse_policy(
             None,
-            "permit(principal, action, resource)
+            r#"permit(principal, action, resource)
 when {
-    principal.name == \"John\"
-};",
+    principal.name == "John"
+};"#,
         )
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
@@ -729,7 +729,7 @@ when {
                 RequestType {
                     principal: "User".parse().unwrap(),
                     resource: "Document".parse().unwrap(),
-                    action: "Action::\"Read\"".parse().unwrap(),
+                    action: r#"Action::"Read""#.parse().unwrap(),
                 },
                 RootAccessTrie {
                     trie: [(
@@ -937,10 +937,10 @@ action Read appliesTo {
         let mut pset = PolicySet::new();
         let policy = parse_policy(
             None,
-            "permit(principal, action, resource)
+            r#"permit(principal, action, resource)
 when {
-    principal.name == \"John\"
-};",
+    principal.name == "John"
+};"#,
         )
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
@@ -1402,12 +1402,12 @@ action Hello appliesTo {
 
         let policy = parse_policy(
             None,
-            "permit(principal, action, resource)
+            r#"permit(principal, action, resource)
 when {
-    if principal.name == \"John\"
-    then resource.owner.name == User::\"oliver\".name
-    else resource.viewer == User::\"oliver\"
-};",
+    if principal.name == "John"
+    then resource.owner.name == User::"oliver".name
+    else resource.viewer == User::"oliver"
+};"#,
         )
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
@@ -1521,20 +1521,20 @@ when {
 
         let policy = parse_policy(
             None,
-            "permit(principal, action, resource)
+            r#"permit(principal, action, resource)
 when {
     {
-      \"myfield\":
+      "myfield":
           {
-            \"secondfield\":
-            if principal.name == \"yihong\"
+            "secondfield":
+            if principal.name == "yihong"
             then principal
             else resource.owner,
-            \"ignored but still important due to errors\":
+            "ignored but still important due to errors":
             resource.viewer
           }
-    }[\"myfield\"][\"secondfield\"].name == \"pavel\"
-};",
+    }["myfield"]["secondfield"].name == "pavel"
+};"#,
         )
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");

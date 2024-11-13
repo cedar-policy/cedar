@@ -24,9 +24,7 @@ use crate::entity_manifest::{AccessTrie, EntityManifest, PartialRequestError};
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
-#[error(
-    "entity slicing requires fully concrete policies. Got a policy with an unknown expression"
-)]
+#[error("entity slicing requires fully concrete policies. Got a policy with an unknown expression")]
 pub struct PartialExpressionError {}
 
 impl Diagnostic for PartialExpressionError {}
@@ -37,9 +35,7 @@ impl Diagnostic for PartialExpressionError {}
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
-#[error(
-    "entity slicing requires fully concrete policies. Got a policy with an unknown expression"
-)]
+#[error("entity slicing requires fully concrete policies. Got a policy with an unknown expression")]
 pub struct IncompatibleEntityManifestError {
     non_record_entity_value: Value,
 }
@@ -401,10 +397,10 @@ action Read appliesTo {
         let mut pset = PolicySet::new();
         let policy = parse_policy(
             None,
-            "permit(principal, action, resource)
+            r#"permit(principal, action, resource)
 when {
-    principal.name == \"John\"
-};",
+    principal.name == "John"
+};"#,
         )
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
@@ -626,12 +622,12 @@ when {
         let mut pset = PolicySet::new();
         let policy = parse_policy(
             None,
-            "permit(principal, action, resource)
+            r#"permit(principal, action, resource)
 when {
     principal in (if 2 > 3
-                  then Document::\"dummy\"
+                  then Document::"dummy"
                   else principal.personaldoc)
-};",
+};"#,
         )
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
