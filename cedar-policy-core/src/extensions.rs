@@ -21,14 +21,18 @@ pub mod ipaddr;
 
 #[cfg(feature = "decimal")]
 pub mod decimal;
+
+#[cfg(feature = "datetime")]
+pub mod datetime;
 pub mod partial_evaluation;
 
 use std::collections::HashMap;
 
-use crate::ast::{Extension, ExtensionFunction, Name};
+use crate::ast::{Extension, ExtensionFunction, Name, TYPES_WITH_OPERATOR_OVERLOADING};
 use crate::entities::SchemaType;
 use crate::parser::Loc;
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use thiserror::Error;
 
 use self::extension_function_lookup_errors::FuncDoesNotExistError;
@@ -42,6 +46,8 @@ lazy_static::lazy_static! {
         ipaddr::extension(),
         #[cfg(feature = "decimal")]
         decimal::extension(),
+        #[cfg(feature = "datetime")]
+        datetime::extension(),
         #[cfg(feature = "partial-eval")]
         partial_evaluation::extension(),
     ];
@@ -91,6 +97,13 @@ impl Extensions<'static> {
     /// Get a new `Extensions` with no extensions enabled.
     pub fn none() -> &'static Extensions<'static> {
         &EXTENSIONS_NONE
+    }
+
+    /// Iterate over extension types that support operator overloading
+    pub fn types_with_operator_overloading() -> NonEmpty<Name> {
+        // PANIC SAFETY: There are more than one element in `TYPES_WITH_OPERATOR_OVERLOADING`
+        #[allow(clippy::unwrap_used)]
+        NonEmpty::collect(TYPES_WITH_OPERATOR_OVERLOADING.iter().cloned()).unwrap()
     }
 }
 

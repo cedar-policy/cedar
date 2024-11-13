@@ -671,6 +671,15 @@ impl Type {
                 | Type::EntityOrRecord(EntityRecordKind::ActionEntity { .. })
         )
     }
+
+    pub(crate) fn support_operator_overloading(&self) -> bool {
+        match self {
+            Self::ExtensionType { name } => {
+                Extensions::types_with_operator_overloading().contains(name)
+            }
+            _ => false,
+        }
+    }
 }
 
 impl Display for Type {

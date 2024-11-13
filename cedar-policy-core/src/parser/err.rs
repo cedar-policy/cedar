@@ -323,11 +323,21 @@ pub enum ToASTErrorKind {
     #[error("function calls must be of the form `<name>(arg1, arg2, ...)`")]
     ExpressionCall,
     /// Returned when a policy attempts to access the fields of a value with no fields
-    #[error("invalid member access `{0}.{1}`, `{0}` has no fields or methods")]
-    InvalidAccess(ast::Name, SmolStr),
+    #[error("invalid member access `{lhs}.{field}`, `{lhs}` has no fields or methods")]
+    InvalidAccess {
+        /// what we attempted to access a field of
+        lhs: ast::Name,
+        /// field we attempted to access
+        field: SmolStr,
+    },
     /// Returned when a policy attempts to index on a fields of a value with no fields
-    #[error("invalid indexing expression `{0}[\"{}\"]`, `{0}` has no fields", .1.escape_debug())]
-    InvalidIndex(ast::Name, SmolStr),
+    #[error("invalid indexing expression `{lhs}[\"{}\"]`, `{lhs}` has no fields", .field.escape_debug())]
+    InvalidIndex {
+        /// what we attempted to access a field of
+        lhs: ast::Name,
+        /// field we attempted to access
+        field: SmolStr,
+    },
     /// Returned when the contents of an indexing expression is not a string literal
     #[error("the contents of an index expression must be a string literal")]
     NonStringIndex,

@@ -21,6 +21,7 @@
 pub(crate) mod test;
 
 mod typecheck_answer;
+use itertools::Itertools;
 pub(crate) use typecheck_answer::TypecheckAnswer;
 
 use std::{borrow::Cow, collections::HashSet, iter::zip};
@@ -37,11 +38,14 @@ use crate::{
     ValidationError, ValidationMode, ValidationWarning,
 };
 
-use cedar_policy_core::ast::{
-    BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
-    PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
-};
 use cedar_policy_core::fuzzy_match::fuzzy_search;
+use cedar_policy_core::{
+    ast::{
+        BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
+        PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
+    },
+    extensions::Extensions,
+};
 
 #[cfg(not(target_arch = "wasm32"))]
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
@@ -1244,29 +1248,123 @@ impl<'a> Typechecker<'a> {
             }
 
             BinaryOp::Less | BinaryOp::LessEq => {
-                let ans_arg1 = self.expect_type(
-                    request_env,
-                    prior_capability,
-                    arg1,
-                    Type::primitive_long(),
-                    type_errors,
-                    |_| None,
-                );
+                let expected_types = Extensions::types_with_operator_overloading()
+                    .into_iter()
+                    .map(Type::extension)
+                    .chain(std::iter::once(Type::primitive_long()))
+                    .collect_vec();
+                let ans_arg1 = self.typecheck(request_env, prior_capability, &arg1, type_errors);
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
-                    let ans_arg2 = self.expect_type(
-                        request_env,
-                        prior_capability,
-                        arg2,
-                        Type::primitive_long(),
-                        type_errors,
-                        |_| None,
-                    );
+                    let ans_arg2 =
+                        self.typecheck(request_env, prior_capability, &arg2, type_errors);
                     ans_arg2.then_typecheck(|expr_ty_arg2, _| {
-                        TypecheckAnswer::success(
-                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                .with_same_source_loc(bin_expr)
-                                .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
-                        )
+                        let expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                            .with_same_source_loc(bin_expr)
+                            .binary_app(*op, expr_ty_arg1.clone(), expr_ty_arg2.clone());
+                        let t1 = expr_ty_arg1.data().as_ref();
+                        let t2 = expr_ty_arg2.data().as_ref();
+                        match (t1, t2) {
+                            (Some(Type::Never), Some(Type::Never)) => TypecheckAnswer::fail(expr),
+                            (Some(Type::Never), Some(other)) => {
+                                if expected_types.contains(other) {
+                                    TypecheckAnswer::success(expr)
+                                } else {
+                                    type_errors.push(ValidationError::expected_one_of_types(
+                                        expr_ty_arg2.source_loc().cloned(),
+                                        self.policy_id.clone(),
+                                        expected_types,
+                                        other.clone(),
+                                        None,
+                                    ));
+                                    TypecheckAnswer::fail(expr)
+                                }
+                            }
+                            (Some(other), Some(Type::Never)) => {
+                                if expected_types.contains(other) {
+                                    TypecheckAnswer::success(expr)
+                                } else {
+                                    type_errors.push(ValidationError::expected_one_of_types(
+                                        expr_ty_arg1.source_loc().cloned(),
+                                        self.policy_id.clone(),
+                                        expected_types,
+                                        other.clone(),
+                                        None,
+                                    ));
+                                    TypecheckAnswer::fail(expr)
+                                }
+                            }
+                            (Some(t1), Some(t2)) if t1 == t2 && expected_types.contains(t1) => {
+                                TypecheckAnswer::success(expr)
+                            }
+                            (
+                                Some(Type::Primitive {
+                                    primitive_type: Primitive::Long,
+                                }),
+                                Some(other),
+                            ) => {
+                                type_errors.push(ValidationError::expected_one_of_types(
+                                    expr_ty_arg2.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    vec![Type::primitive_long()],
+                                    other.clone(),
+                                    None,
+                                ));
+                                TypecheckAnswer::fail(expr)
+                            }
+                            (
+                                Some(other),
+                                Some(Type::Primitive {
+                                    primitive_type: Primitive::Long,
+                                }),
+                            ) => {
+                                type_errors.push(ValidationError::expected_one_of_types(
+                                    expr_ty_arg1.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    vec![Type::primitive_long()],
+                                    other.clone(),
+                                    None,
+                                ));
+                                TypecheckAnswer::fail(expr)
+                            }
+                            (Some(lhs), Some(rhs)) if lhs.support_operator_overloading() => {
+                                type_errors.push(ValidationError::expected_one_of_types(
+                                    expr_ty_arg2.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    vec![lhs.clone()],
+                                    rhs.clone(),
+                                    None,
+                                ));
+                                TypecheckAnswer::fail(expr)
+                            }
+                            (Some(lhs), Some(rhs)) if rhs.support_operator_overloading() => {
+                                type_errors.push(ValidationError::expected_one_of_types(
+                                    expr_ty_arg1.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    vec![rhs.clone()],
+                                    lhs.clone(),
+                                    None,
+                                ));
+                                TypecheckAnswer::fail(expr)
+                            }
+                            (Some(lhs), Some(rhs)) => {
+                                type_errors.push(ValidationError::expected_one_of_types(
+                                    expr_ty_arg1.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    expected_types.clone(),
+                                    lhs.clone(),
+                                    None,
+                                ));
+                                type_errors.push(ValidationError::expected_one_of_types(
+                                    expr_ty_arg2.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    expected_types,
+                                    rhs.clone(),
+                                    None,
+                                ));
+                                TypecheckAnswer::fail(expr)
+                            }
+                            _ => TypecheckAnswer::fail(expr),
+                        }
                     })
                 })
             }

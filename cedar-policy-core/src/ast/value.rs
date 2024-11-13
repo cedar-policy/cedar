@@ -50,7 +50,7 @@ pub enum ValueKind {
     /// Evaluating an `Expr` can result in a first-class anonymous record (keyed on String)
     Record(Arc<BTreeMap<SmolStr, Value>>),
     /// Evaluating an `Expr` can result in an extension value
-    ExtensionValue(Arc<ExtensionValueWithArgs>),
+    ExtensionValue(Arc<RepresentableExtensionValue>),
 }
 
 // Custom impl of `Ord`, ignoring the `Loc`s
@@ -517,7 +517,7 @@ impl std::fmt::Display for ValueKind {
             Self::Record(record) => {
                 write!(f, "<first-class record with {} fields>", record.len())
             }
-            Self::ExtensionValue(ev) => write!(f, "{}", ev),
+            Self::ExtensionValue(ev) => write!(f, "{}", RestrictedExpr::from(ev.as_ref().clone())),
         }
     }
 }

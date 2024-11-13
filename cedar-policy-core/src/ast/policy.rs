@@ -303,7 +303,7 @@ impl std::fmt::Display for Template {
 pub enum LinkingError {
     /// An error with the slot arguments provided
     // INVARIANT: `unbound_values` and `extra_values` can't both be empty
-    #[error("{}", describe_arity_error(.unbound_values, .extra_values))]
+    #[error(fmt = describe_arity_error)]
     ArityError {
         /// Error for when some Slots were not provided values
         unbound_values: Vec<SlotId>,
@@ -338,14 +338,18 @@ impl LinkingError {
     }
 }
 
-fn describe_arity_error(unbound_values: &[SlotId], extra_values: &[SlotId]) -> String {
+fn describe_arity_error(
+    unbound_values: &[SlotId],
+    extra_values: &[SlotId],
+    fmt: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
     match (unbound_values.len(), extra_values.len()) {
         // PANIC SAFETY 0,0 case is not an error
         #[allow(clippy::unreachable)]
         (0,0) => unreachable!(),
-        (_unbound, 0) => format!("the following slots were not provided as arguments: {}", unbound_values.iter().join(",")),
-        (0, _extra) => format!("the following slots were provided as arguments, but did not exist in the template: {}", extra_values.iter().join(",")),
-        (_unbound, _extra) => format!("the following slots were not provided as arguments: {}. The following slots were provided as arguments, but did not exist in the template: {}", unbound_values.iter().join(","), extra_values.iter().join(","))
+        (_unbound, 0) => write!(fmt, "the following slots were not provided as arguments: {}", unbound_values.iter().join(",")),
+        (0, _extra) => write!(fmt, "the following slots were provided as arguments, but did not exist in the template: {}", extra_values.iter().join(",")),
+        (_unbound, _extra) => write!(fmt, "the following slots were not provided as arguments: {}. The following slots were provided as arguments, but did not exist in the template: {}", unbound_values.iter().join(","), extra_values.iter().join(",")),
     }
 }
 

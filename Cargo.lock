@@ -98,9 +98,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.92"
+version = "1.0.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74f37166d7d48a0284b99dd824694c26119c700b53bf0d1540cdb147dbdaaf13"
+checksum = "4c95c10ba0b00a02636238b814946408b1322d5ac4760326e6fb8ec956d85775"
 
 [[package]]
 name = "arbitrary"
@@ -319,7 +319,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "smol_str",
- "thiserror",
+ "thiserror 2.0.3",
  "tsify",
  "wasm-bindgen",
 ]
@@ -340,7 +340,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
- "thiserror",
+ "thiserror 2.0.3",
 ]
 
 [[package]]
@@ -348,6 +348,7 @@ name = "cedar-policy-core"
 version = "4.1.0"
 dependencies = [
  "arbitrary",
+ "chrono",
  "cool_asserts",
  "either",
  "itertools 0.13.0",
@@ -367,7 +368,7 @@ dependencies = [
  "serde_with",
  "smol_str",
  "stacker",
- "thiserror",
+ "thiserror 2.0.3",
  "tsify",
  "wasm-bindgen",
 ]
@@ -410,7 +411,7 @@ dependencies = [
  "similar-asserts",
  "smol_str",
  "stacker",
- "thiserror",
+ "thiserror 2.0.3",
  "tsify",
  "unicode-security",
  "wasm-bindgen",
@@ -472,8 +473,10 @@ checksum = "a21f936df1771bf62b77f047b726c4625ff2e8aa607c01ec06e5a05bd8463401"
 dependencies = [
  "android-tzdata",
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-targets 0.52.6",
 ]
 
@@ -1323,7 +1326,7 @@ dependencies = [
  "supports-unicode",
  "terminal_size",
  "textwrap",
- "thiserror",
+ "thiserror 1.0.67",
  "unicode-width",
 ]
 
@@ -2138,7 +2141,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "psm",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2248,7 +2251,16 @@ version = "1.0.67"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b3c6efbfc763e64eb85c11c25320f0737cb7364c4b6336db90aa9ebe27a0bbd"
 dependencies = [
- "thiserror-impl",
+ "thiserror-impl 1.0.67",
+]
+
+[[package]]
+name = "thiserror"
+version = "2.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c006c85c7651b3cf2ada4584faa36773bd07bac24acfb39f3c431b36d7e667aa"
+dependencies = [
+ "thiserror-impl 2.0.3",
 ]
 
 [[package]]
@@ -2256,6 +2268,17 @@ name = "thiserror-impl"
 version = "1.0.67"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b607164372e89797d78b8e23a6d67d5d1038c1c65efd52e1389ef8b77caba2a6"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f077553d607adc1caf65430528a576c757a71ed73944b66ebb58ef2bbd243568"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2619,7 +2642,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

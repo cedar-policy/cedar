@@ -1274,16 +1274,19 @@ impl Node<Option<cst::Member>> {
                 // attribute access on an arbitrary name - error
                 (Name { name, .. }, [Field(f), ..]) => {
                     return Err(self
-                        .to_ast_err(ToASTErrorKind::InvalidAccess(
-                            name.clone(),
-                            f.to_string().into(),
-                        ))
+                        .to_ast_err(ToASTErrorKind::InvalidAccess {
+                            lhs: name.clone(),
+                            field: f.to_smolstr(),
+                        })
                         .into());
                 }
                 // index style attribute access on an arbitrary name - error
                 (Name { name, .. }, [Index(i), ..]) => {
                     return Err(self
-                        .to_ast_err(ToASTErrorKind::InvalidIndex(name.clone(), i.clone()))
+                        .to_ast_err(ToASTErrorKind::InvalidIndex {
+                            lhs: name.clone(),
+                            field: i.clone(),
+                        })
                         .into());
                 }
 

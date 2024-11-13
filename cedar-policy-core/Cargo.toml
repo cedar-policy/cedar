@@ -7,7 +7,7 @@ build = "build.rs"
 version.workspace = true
 license.workspace = true
 categories.workspace = true
-description = "Core implemenation of the Cedar Policy language."
+description = "Core implementation of the Cedar policy language"
 keywords.workspace = true
 homepage.workspace = true
 repository.workspace = true
@@ -22,7 +22,7 @@ either = "1.8"
 itertools = "0.13"
 ref-cast = "1.0"
 rustc_lexer = "0.1"
-thiserror = "1.0"
+thiserror = "2.0"
 smol_str = { version = "0.3", features = ["serde"] }
 stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
@@ -37,14 +37,18 @@ serde-wasm-bindgen = { version = "0.6", optional = true }
 tsify = { version = "0.4.5", optional = true }
 wasm-bindgen = { version = "0.2.82", optional = true }
 
+# datetime extension requires chrono
+chrono = { version = "0.4.38", optional = true, default-features = false}
+
 # protobuf dependency
 prost = { version = "0.13.3", optional = true }
 
 [features]
 # by default, enable all Cedar extensions
-default = ["ipaddr", "decimal"]
+default = ["ipaddr", "decimal", "datetime"]
 ipaddr = []
 decimal = ["dep:regex"]
+datetime = ["dep:chrono", "dep:regex"]
 
 # Enables `Arbitrary` implementations for several types in this crate
 arbitrary = ["dep:arbitrary"]
