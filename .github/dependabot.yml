@@ -18,3 +18,6 @@ updates:
       rust-dependencies:
         patterns:
           - "*"
+    # Ignore (do not update) some dependencies
+    ignore:
+      - dependency-name: "url"  # see notes in cedar-wasm/Cargo.toml
