@@ -14,14 +14,33 @@
  * limitations under the License.
  */
 
+pub use names::TYPES_WITH_OPERATOR_OVERLOADING;
+
 use crate::ast::*;
 use crate::entities::SchemaType;
 use crate::evaluator;
 use std::any::Any;
 use std::collections::HashMap;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::Arc;
+
+// PANIC SAFETY: `Name`s in here are valid `Name`s
+#[allow(clippy::expect_used)]
+mod names {
+    use std::collections::BTreeSet;
+
+    use super::Name;
+
+    lazy_static::lazy_static! {
+        /// Extension type names that support operator overloading
+        pub static ref TYPES_WITH_OPERATOR_OVERLOADING : BTreeSet<Name> =
+            BTreeSet::from_iter(
+                [Name::parse_unqualified_name("datetime").expect("valid identifier"),
+                 Name::parse_unqualified_name("duration").expect("valid identifier")]
+            );
+    }
+}
 
 /// Cedar extension.
 ///
@@ -343,12 +362,15 @@ impl std::fmt::Debug for ExtensionFunction {
 /// Anything implementing this trait can be used as a first-class value in
 /// Cedar. For instance, the `ipaddr` extension uses this mechanism
 /// to implement IPAddr as a Cedar first-class value.
-pub trait ExtensionValue: Debug + Display + Send + Sync + UnwindSafe + RefUnwindSafe {
+pub trait ExtensionValue: Debug + Send + Sync + UnwindSafe + RefUnwindSafe {
     /// Get the name of the type of this value.
     ///
     /// Cedar has nominal typing, so two values have the same type iff they
     /// return the same typename here.
     fn typename(&self) -> Name;
+
+    /// If it supports operator overloading
+    fn supports_operator_overloading(&self) -> bool;
 }
 
 impl<V: ExtensionValue> StaticallyTyped for V {
@@ -360,30 +382,26 @@ impl<V: ExtensionValue> StaticallyTyped for V {
 }
 
 #[derive(Debug, Clone)]
-/// Object container for extension values, also stores the constructor-and-args
-/// that can reproduce the value (important for converting the value back to
-/// `RestrictedExpr` for instance)
-pub struct ExtensionValueWithArgs {
-    value: Arc<dyn InternalExtensionValue>,
-    pub(crate) constructor: Name,
-    /// Args are stored in `RestrictedExpr` form, just because that's most
-    /// convenient for reconstructing a `RestrictedExpr` that reproduces this
-    /// extension value
+/// Object container for extension values
+/// An extension value must be representable by a [`RestrictedExpr`]
+/// Specifically, it will be a function call `func` on `args`
+/// Note that `func` may not be the constructor. A counterexample is that a
+/// `datetime` is represented by an `offset` method call.
+/// Nevertheless, an invariant is that `eval(<func>(<args>)) == value`
+pub struct RepresentableExtensionValue {
+    pub(crate) func: Name,
     pub(crate) args: Vec<RestrictedExpr>,
+    pub(crate) value: Arc<dyn InternalExtensionValue>,
 }
 
-impl ExtensionValueWithArgs {
-    /// Create a new `ExtensionValueWithArgs`
+impl RepresentableExtensionValue {
+    /// Create a new [`RepresentableExtensionValue`]
     pub fn new(
         value: Arc<dyn InternalExtensionValue + Send + Sync>,
-        constructor: Name,
+        func: Name,
         args: Vec<RestrictedExpr>,
     ) -> Self {
-        Self {
-            value,
-            constructor,
-            args,
-        }
+        Self { value, func, args }
     }
 
     /// Get the internal value
@@ -396,46 +414,40 @@ impl ExtensionValueWithArgs {
         self.value.typename()
     }
 
-    /// Get the constructor and args that can reproduce this value
-    pub fn constructor_and_args(&self) -> (&Name, &[RestrictedExpr]) {
-        (&self.constructor, &self.args)
+    /// If this value supports operator overloading
+    pub(crate) fn supports_operator_overloading(&self) -> bool {
+        self.value.supports_operator_overloading()
     }
 }
 
-impl From<ExtensionValueWithArgs> for Expr {
-    fn from(val: ExtensionValueWithArgs) -> Self {
-        ExprBuilder::new().call_extension_fn(val.constructor, val.args.into_iter().map(Into::into))
+impl From<RepresentableExtensionValue> for RestrictedExpr {
+    fn from(val: RepresentableExtensionValue) -> Self {
+        RestrictedExpr::call_extension_fn(val.func, val.args)
     }
 }
 
-impl StaticallyTyped for ExtensionValueWithArgs {
+impl StaticallyTyped for RepresentableExtensionValue {
     fn type_of(&self) -> Type {
         self.value.type_of()
     }
 }
 
-impl Display for ExtensionValueWithArgs {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
-    }
-}
-
-impl PartialEq for ExtensionValueWithArgs {
+impl PartialEq for RepresentableExtensionValue {
     fn eq(&self, other: &Self) -> bool {
         // Values that are equal are equal regardless of which arguments made them
         self.value.as_ref() == other.value.as_ref()
     }
 }
 
-impl Eq for ExtensionValueWithArgs {}
+impl Eq for RepresentableExtensionValue {}
 
-impl PartialOrd for ExtensionValueWithArgs {
+impl PartialOrd for RepresentableExtensionValue {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for ExtensionValueWithArgs {
+impl Ord for RepresentableExtensionValue {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.value.cmp(&other.value)
     }
@@ -464,7 +476,7 @@ pub trait InternalExtensionValue: ExtensionValue {
     fn cmp_extvalue(&self, other: &dyn InternalExtensionValue) -> std::cmp::Ordering;
 }
 
-impl<V: 'static + Eq + Ord + ExtensionValue + Send + Sync> InternalExtensionValue for V {
+impl<V: 'static + Eq + Ord + ExtensionValue + Send + Sync + Clone> InternalExtensionValue for V {
     fn as_any(&self) -> &dyn Any {
         self
     }

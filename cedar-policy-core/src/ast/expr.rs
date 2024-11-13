@@ -171,7 +171,7 @@ impl From<ValueKind> for Expr {
                     .map(|(k, v)| (k, Expr::from(v))),
             )
             .expect("cannot have duplicate key because the input was already a BTreeMap"),
-            ValueKind::ExtensionValue(ev) => Expr::from(ev.as_ref().clone()),
+            ValueKind::ExtensionValue(ev) => RestrictedExpr::from(ev.as_ref().clone()).into(),
         }
     }
 }

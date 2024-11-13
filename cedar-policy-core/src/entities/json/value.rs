@@ -35,7 +35,7 @@ use either::Either;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use serde_with::{DeserializeAs, SerializeAs};
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
@@ -359,16 +359,18 @@ impl CedarValueJson {
                 ))
             }
             ValueKind::ExtensionValue(ev) => {
-                let ext_fn: &Name = &ev.constructor;
+                let ext_func = &ev.func;
                 Ok(Self::ExtnEscape {
                     __extn: FnAndArg {
-                        ext_fn: ext_fn.to_string().into(),
+                        ext_fn: ext_func.to_smolstr(),
                         arg: match ev.args.as_slice() {
                             [ref expr] => Box::new(Self::from_expr(expr.as_borrowed())?),
-                            [] => return Err(JsonSerializationError::call_0_args(ext_fn.clone())),
+                            [] => {
+                                return Err(JsonSerializationError::call_0_args(ext_func.clone()))
+                            }
                             _ => {
                                 return Err(JsonSerializationError::call_2_or_more_args(
-                                    ext_fn.clone(),
+                                    ext_func.clone(),
                                 ))
                             }
                         },

@@ -38,9 +38,9 @@ pub use err::*;
 
 pub use ast::Effect;
 pub use authorizer::Decision;
-use cedar_policy_core::ast;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
+use cedar_policy_core::ast::{self, RestrictedExpr};
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{ContextSchema, Dereference};
 use cedar_policy_core::est::{self, TemplateLink};
@@ -581,7 +581,7 @@ impl Entities {
     /// # let entity = entities.get(&euid).unwrap();
     /// # assert_eq!(entity.attr("age").unwrap().unwrap(), EvalResult::Long(19));
     /// # let ip = entity.attr("ip_addr").unwrap().unwrap();
-    /// # assert_eq!(ip, EvalResult::ExtensionValue("10.0.1.101/32".to_string()));
+    /// # assert_eq!(ip, EvalResult::ExtensionValue("ip(\"10.0.1.101\")".to_string()));
     /// ```
     pub fn from_json_str(json: &str, schema: Option<&Schema>) -> Result<Self, EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
@@ -3957,7 +3957,9 @@ impl From<ast::Value> for EvalResult {
                     .map(|(k, v)| (k.to_string(), v.clone().into()))
                     .collect(),
             )),
-            ast::ValueKind::ExtensionValue(ev) => Self::ExtensionValue(ev.to_string()),
+            ast::ValueKind::ExtensionValue(ev) => {
+                Self::ExtensionValue(RestrictedExpr::from(ev.as_ref().clone()).to_string())
+            }
         }
     }
 }

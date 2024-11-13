@@ -841,10 +841,10 @@ fn type_error_is_not_reported_for_every_cross_product_element() {
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
-        ValidationError::expected_type(
+        ValidationError::expected_one_of_types(
             get_loc(src, "true"),
             PolicyID::from_string("0"),
-            Type::primitive_long(),
+            std::iter::once(Type::primitive_long()),
             Type::True,
             None,
         )
