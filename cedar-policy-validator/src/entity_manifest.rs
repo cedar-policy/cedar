@@ -221,7 +221,7 @@ pub struct UnsupportedCedarFeatureError {
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error("entity manifest doesn't match schema. Schema is missing entity {entity}. Either you wrote an entity manifest by hand (not reccomended) or you are using an out-of-date entity manifest with respect to the schema.")]
+#[error("entity manifest doesn't match schema. Schema is missing entity {entity}. Either you wrote an entity manifest by hand (not recommended) or you are using an out-of-date entity manifest with respect to the schema")]
 pub struct MismatchedMissingEntityError {
     pub(crate) entity: EntityUID,
 }

@@ -25,7 +25,7 @@ use crate::entity_manifest::{AccessTrie, EntityManifest, PartialRequestError};
 // when adding public methods.
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[error(
-    "Entity slicing requires fully concrete policies. Got a policy with an unknown expression."
+    "entity slicing requires fully concrete policies. Got a policy with an unknown expression"
 )]
 pub struct PartialExpressionError {}
 
@@ -38,7 +38,7 @@ impl Diagnostic for PartialExpressionError {}
 // when adding public methods.
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[error(
-    "Entity slicing requires fully concrete policies. Got a policy with an unknown expression."
+    "entity slicing requires fully concrete policies. Got a policy with an unknown expression"
 )]
 pub struct IncompatibleEntityManifestError {
     non_record_entity_value: Value,
@@ -47,7 +47,7 @@ pub struct IncompatibleEntityManifestError {
 impl Diagnostic for IncompatibleEntityManifestError {
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(format!(
-            "Expected entity or record during entity loading. Got value: {}",
+            "expected entity or record during entity loading. Got value: {}",
             self.non_record_entity_value
         )))
     }
@@ -58,7 +58,7 @@ impl Diagnostic for IncompatibleEntityManifestError {
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
-#[error("Entity slicing requires fully concrete entities. Got a partial entity.")]
+#[error("entity slicing requires fully concrete entities. Got a partial entity")]
 pub struct PartialEntityError {}
 
 impl Diagnostic for PartialEntityError {}
