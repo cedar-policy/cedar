@@ -15,6 +15,7 @@ Cedar Language Version: TBD
 ### Added
 
 - Added protobuf schemas and (de)serialization code using on `prost` crate behind the experimental `protobufs` flag.
+- Added a new get helper method to Context that allows easy extraction of generic values from the context by key. This method simplifies the common use case of retrieving values from Context objects.
 
 ## [4.2.2] - Coming soon
 Cedar Language version: 4.1
