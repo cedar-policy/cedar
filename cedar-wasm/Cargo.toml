@@ -34,5 +34,5 @@ cool_asserts = "2.0"
 
 [build-dependencies]
 cargo-lock = "10.0.0"
-url = "2.5.2"
+url = "2.5.3"
 itertools = "0.13.0"
