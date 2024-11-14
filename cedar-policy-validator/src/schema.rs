@@ -76,7 +76,7 @@ pub enum ActionBehavior {
 
 /// A `ValidatorSchemaFragment` consists of any number (even 0) of
 /// `ValidatorNamespaceDef`s.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ValidatorSchemaFragment<N, A>(Vec<ValidatorNamespaceDef<N, A>>);
 
 impl TryInto<ValidatorSchemaFragment<ConditionalName, ConditionalName>>

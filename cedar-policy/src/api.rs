@@ -763,7 +763,7 @@ impl IntoIterator for Entities {
 
 /// Authorizer object, which provides responses to authorization queries
 #[repr(transparent)]
-#[derive(Debug, RefCast)]
+#[derive(Debug, Clone, RefCast)]
 pub struct Authorizer(authorizer::Authorizer);
 
 impl Default for Authorizer {
@@ -1237,7 +1237,7 @@ impl From<ValidationMode> for cedar_policy_validator::ValidationMode {
 
 /// Validator object, which provides policy validation and typechecking.
 #[repr(transparent)]
-#[derive(Debug, RefCast)]
+#[derive(Debug, Clone, RefCast)]
 pub struct Validator(cedar_policy_validator::Validator);
 
 impl Validator {
@@ -1281,7 +1281,7 @@ impl Validator {
 
 /// Contains all the type information used to construct a `Schema` that can be
 /// used to validate a policy.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SchemaFragment {
     value: cedar_policy_validator::ValidatorSchemaFragment<
         cedar_policy_validator::ConditionalName,
@@ -1640,7 +1640,7 @@ impl Schema {
 /// The result includes the list of issues found by validation and whether validation succeeds or fails.
 /// Validation succeeds if there are no fatal errors. There may still be
 /// non-fatal warnings present when validation passes.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ValidationResult {
     validation_errors: Vec<ValidationError>,
     validation_warnings: Vec<ValidationWarning>,
@@ -3399,7 +3399,7 @@ impl FromStr for RestrictedExpression {
 /// for partial evaluation.
 #[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RequestBuilder<S> {
     principal: ast::EntityUIDEntry,
     action: ast::EntityUIDEntry,
@@ -3412,7 +3412,7 @@ pub struct RequestBuilder<S> {
 /// A marker type that indicates [`Schema`] is not set for a request
 #[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UnsetSchema;
 
 #[cfg(feature = "partial-eval")]
@@ -3525,7 +3525,7 @@ impl RequestBuilder<&Schema> {
 /// It represents an authorization request asking the question, "Can this
 /// principal take this action on this resource in this context?"
 #[repr(transparent)]
-#[derive(Debug, RefCast)]
+#[derive(Debug, Clone, RefCast)]
 pub struct Request(pub(crate) ast::Request);
 
 impl Request {
@@ -3860,7 +3860,7 @@ impl std::fmt::Display for Context {
 }
 
 /// Result of Evaluation
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EvalResult {
     /// Boolean value
     Bool(bool),
@@ -3880,7 +3880,7 @@ pub enum EvalResult {
 }
 
 /// Sets of Cedar values
-#[derive(Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Set(BTreeSet<EvalResult>);
 
 impl Set {
@@ -3906,7 +3906,7 @@ impl Set {
 }
 
 /// A record of Cedar values
-#[derive(Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Record(BTreeMap<String, EvalResult>);
 
 impl Record {

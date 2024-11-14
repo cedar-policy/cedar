@@ -66,7 +66,7 @@ use crate::{
 ///
 /// `A` is like `N`, but `A` governs typenames in `appliesTo` fields, while
 /// `N` governs all other type references.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ValidatorNamespaceDef<N, A> {
     /// The (fully-qualified) name of the namespace this is a definition of, or
     /// `None` if this is a definition for the empty namespace.
@@ -266,7 +266,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
 /// [`json_schema::Type`]s (values in the map), entity/common type references may or
 /// may not be fully qualified yet, depending on `N`; see notes on
 /// [`json_schema::Type`].
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CommonTypeDefs<N> {
     pub(super) defs: HashMap<InternalName, json_schema::Type<N>>,
 }
@@ -371,7 +371,7 @@ impl CommonTypeDefs<ConditionalName> {
 /// different schema fragment).
 ///
 /// All [`EntityType`] keys in this map are declared in this schema fragment.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EntityTypesDef<N> {
     pub(super) defs: HashMap<EntityType, EntityTypeFragment<N>>,
 }
@@ -440,7 +440,7 @@ impl EntityTypesDef<ConditionalName> {
 /// reference undeclared entity/common types. Furthermore, entity/common type
 /// references in `parents`, `attributes`, and `tags` may or may not be fully
 /// qualified yet, depending on `N`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EntityTypeFragment<N> {
     /// Description of the attribute types for this entity type.
     ///
@@ -562,7 +562,7 @@ impl EntityTypeFragment<ConditionalName> {
 /// types. All action entities are required to use a single `Action` entity
 /// type. However, the action entity type may be namespaced, so an action entity
 /// may have a fully qualified entity type `My::Namespace::Action`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ActionsDef<N, A> {
     pub(super) actions: HashMap<EntityUID, ActionFragment<N, A>>,
 }
@@ -636,7 +636,7 @@ impl ActionsDef<ConditionalName, ConditionalName> {
 ///
 /// `A` is used for typenames in `applies_to`, and `N` is used for all other
 /// type references.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ActionFragment<N, A> {
     /// The type of the context record for this action. This may contain
     /// references to common types which have not yet been resolved/inlined
