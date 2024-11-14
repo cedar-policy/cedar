@@ -40,7 +40,7 @@ pub use partial_response::ErrorState;
 pub use partial_response::PartialResponse;
 
 /// Authorizer
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Authorizer {
     /// Cedar `Extension`s which will be used during requests to this `Authorizer`
     extensions: &'static Extensions<'static>,
