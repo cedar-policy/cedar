@@ -569,14 +569,7 @@ impl Entity {
         Ok(())
     }
 
-    /// Mark the given `UID` as an ancestor of this `Entity`.
-    // When fuzzing, `add_ancestor()` is fully `pub`.
-    #[cfg(not(fuzzing))]
-    pub(crate) fn add_ancestor(&mut self, uid: EntityUID) {
-        self.ancestors.insert(uid);
-    }
     /// Mark the given `UID` as an ancestor of this `Entity`
-    #[cfg(fuzzing)]
     pub fn add_ancestor(&mut self, uid: EntityUID) {
         self.ancestors.insert(uid);
     }
