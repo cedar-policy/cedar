@@ -3412,7 +3412,7 @@ pub struct RequestBuilder<S> {
 /// A marker type that indicates [`Schema`] is not set for a request
 #[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct UnsetSchema;
 
 #[cfg(feature = "partial-eval")]
