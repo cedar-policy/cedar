@@ -128,7 +128,7 @@ impl From<&proto::ValidationMode> for ValidationMode {
 
 /// Structure containing the context needed for policy validation. This is
 /// currently only the `EntityType`s and `ActionType`s from a single schema.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Validator {
     schema: ValidatorSchema,
 }
