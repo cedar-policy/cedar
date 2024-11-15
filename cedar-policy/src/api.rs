@@ -3565,6 +3565,15 @@ impl Request {
         )?))
     }
 
+    /// Get the context component of the request. Returns `None` if the context is
+    /// "unknown" (i.e., constructed using the partial evaluation APIs).
+    pub fn context(&self) -> Option<&Context> {
+        match self.0.context() {
+            Some(ctx) => Some(Context::ref_cast(&ctx)),
+            None => None,
+        }
+    }
+
     /// Get the principal component of the request. Returns `None` if the principal is
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn principal(&self) -> Option<&EntityUid> {
@@ -3631,6 +3640,36 @@ impl Context {
             pairs.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
             Extensions::all_available(),
         )?))
+    }
+
+    /// Retrieves a value from the Context by its key.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key to look up in the context
+    ///
+    /// # Returns
+    ///
+    /// * `Some(EvalResult)` - If the key exists in the context, returns its value
+    /// * `None` - If the key doesn't exist or if the context is not a Value type
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cedar_policy::{Context, Request, EntityUid};
+    /// # use std::str::FromStr;
+    /// let context = Context::from_json_str(r#"{"rayId": "abc123"}"#, None).unwrap();
+    /// if let Some(value) = context.get("rayId") {
+    ///     // value here is an EvalResult, convertible from the internal Value type
+    ///     println!("Found value: {:?}", value);
+    /// }
+    /// assert_eq!(context.get("nonexistent"), None);
+    /// ```
+    pub fn get(&self, key: &str) -> Option<EvalResult> {
+        match &self.0 {
+            ast::Context::Value(map) => map.get(key).map(|v| EvalResult::from(v.clone())),
+            _ => None,
+        }
     }
 
     /// Create a `Context` from a string containing JSON (which must be a JSON
@@ -4442,6 +4481,32 @@ action CreateList in Create appliesTo {
         .map(|ty| ty.parse().unwrap())
         .collect::<HashSet<EntityTypeName>>();
         assert_eq!(entities, expected);
+    }
+
+    #[test]
+    fn test_request_context() {
+        // Create a context with some test data
+        let context =
+            Context::from_json_str(r#"{"testKey": "testValue", "numKey": 42}"#, None).unwrap();
+
+        // Create entity UIDs for the request
+        let principal: EntityUid = "User::\"alice\"".parse().unwrap();
+        let action: EntityUid = "Action::\"view\"".parse().unwrap();
+        let resource: EntityUid = "Resource::\"doc123\"".parse().unwrap();
+
+        // Create the request
+        let request = Request::new(
+            principal, action, resource, context, None, // no schema validation for this test
+        )
+        .unwrap();
+
+        // Test context() method
+        let retrieved_context = request.context().expect("Context should be present");
+
+        // Test get() method on the retrieved context
+        assert!(retrieved_context.get("testKey").is_some());
+        assert!(retrieved_context.get("numKey").is_some());
+        assert!(retrieved_context.get("nonexistent").is_none());
     }
 }
 
