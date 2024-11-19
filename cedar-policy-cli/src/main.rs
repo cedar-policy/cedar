@@ -66,3 +66,64 @@ fn main() -> CedarExitCode {
         Commands::LanguageVersion => language_version(),
     }
 }
+
+#[cfg(test)]
+mod test {
+    use cedar_policy_cli::serialization::AnalysisCommands;
+    use cedar_policy_cli::serialization::EquivalenceArgs;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_json_serialize() {
+        let test_data_root = PathBuf::from(r"../sample-data/sandbox_b");
+        let mut schema_file = test_data_root.clone();
+        schema_file.push("schema.cedarschema");
+        let mut old_policies_file = test_data_root.clone();
+        old_policies_file.push("policies_4.cedar");
+        let new_policies_file = old_policies_file.clone();
+
+        let acmd = AnalysisCommands::Equivalence(EquivalenceArgs {
+            schema_file,
+            old_policies_file,
+            new_policies_file,
+        });
+        super::write_drt_json(acmd);
+    }
+
+    #[cfg(feature = "protobufs")]
+    #[test]
+    fn test_proto_serialize() {
+        let test_data_root = PathBuf::from(r"../sample-data/sandbox_b");
+        let mut schema_file = test_data_root.clone();
+        schema_file.push("schema.cedarschema");
+        let mut old_policies_file = test_data_root.clone();
+        old_policies_file.push("policies_4.cedar");
+        let new_policies_file = old_policies_file.clone();
+
+        let acmd = AnalysisCommands::Equivalence(EquivalenceArgs {
+            schema_file,
+            old_policies_file,
+            new_policies_file,
+        });
+        super::write_drt_proto(acmd);
+    }
+
+    #[cfg(feature = "protobufs")]
+    #[test]
+    fn test_proto_serialize_from_json() {
+        use cedar_policy_cli::serialization::AnalyzeCommandsFromJson;
+        let data = r#"
+        {
+            "schema":"entity Team, UserGroup in [UserGroup];\r\nentity Issue  = {\r\n  \"repo\": Repository,\r\n  \"reporter\": User,\r\n};\r\nentity Org  = {\r\n  \"members\": UserGroup,\r\n  \"owners\": UserGroup,\r\n};\r\nentity Repository  = {\r\n  \"admins\": UserGroup,\r\n  \"maintainers\": UserGroup,\r\n  \"readers\": UserGroup,\r\n  \"triagers\": UserGroup,\r\n  \"writers\": UserGroup,\r\n};\r\nentity User in [UserGroup, Team] = {\r\n  \"is_intern\": Bool,\r\n};\r\nentity File  = {\r\n  \"filename\": String,\r\n  \"owner\": User,\r\n  \"private\": Bool,\r\n};\r\n\r\naction push, pull, fork appliesTo {\r\n  principal: [User],\r\n  resource: [Repository]\r\n};\r\naction assign_issue, delete_issue, edit_issue appliesTo {\r\n  principal: [User],\r\n  resource: [Issue]\r\n};\r\naction add_reader, add_writer, add_maintainer, add_admin, add_triager appliesTo {\r\n  principal: [User],\r\n  resource: [Repository]\r\n};\r\naction view, comment appliesTo {\r\n  principal: [User],\r\n  resource: [File]\r\n};",
+            "old_policy_set": "permit(principal, action in [Action::\"view\", Action::\"comment\"], resource)\r\n            when {\r\n                principal == resource.owner ||\r\n                ((resource.filename like \"*.png\" ||\r\n                resource.filename like \"*.jpg\") && !resource.private)\r\n            };\r\n",
+            "new_policy_set": "permit(principal, action in [Action::\"view\", Action::\"comment\"], resource)\r\n            when {\r\n                principal == resource.owner ||\r\n                ((resource.filename like \"*.png\" ||\r\n                resource.filename like \"*.jpg\") && !resource.private)\r\n            };\r\n"
+        }
+        "#.to_string();
+        let output_path = PathBuf::from("/tmp/tmp.binpb");
+
+        let acmd = AnalyzeCommandsFromJson::Equivalence(
+            cedar_policy_cli::serialization::AnalyzeCommandsFromJsonArgs { data, output_path },
+        );
+        super::write_drt_proto_from_json(acmd);
+    }
+}
