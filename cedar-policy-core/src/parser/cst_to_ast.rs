@@ -46,6 +46,7 @@ use crate::ast::{
 use crate::est::extract_single_argument;
 use crate::fuzzy_match::fuzzy_search_limited;
 use itertools::Either;
+use nonempty::nonempty;
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 use std::cmp::Ordering;
@@ -947,7 +948,10 @@ impl Node<Option<cst::Relation>> {
             }
             cst::Relation::Has { target, field } => {
                 let maybe_target = target.to_expr();
-                let maybe_field = field.to_expr_or_special()?.into_valid_attr();
+                let maybe_field = Ok(match field.to_has_rhs()? {
+                    Either::Left(s) => s,
+                    Either::Right(ids) => ids.first().to_smolstr(),
+                });
                 let (target, field) = flatten_tuple_2(maybe_target, maybe_field)?;
                 Ok(ExprOrSpecial::Expr {
                     expr: construct_expr_has(target, field, self.loc.clone()),
@@ -997,6 +1001,74 @@ impl Node<Option<cst::Relation>> {
 impl Node<Option<cst::Add>> {
     fn to_expr(&self) -> Result<ast::Expr> {
         self.to_expr_or_special()?.into_expr()
+    }
+
+    // Peel the grammar onion until we see valid RHS
+    pub(crate) fn to_has_rhs(&self) -> Result<Either<SmolStr, NonEmpty<UnreservedId>>> {
+        let inner @ cst::Add { initial, extended } = self.try_as_inner()?;
+        let err = || {
+            ToASTError::new(
+                ToASTErrorKind::InvalidAttribute(inner.to_string().into()),
+                self.loc.clone(),
+            )
+            .into()
+        };
+        let construct_attrs = |first: UnreservedId, rest: &[Node<Option<cst::MemAccess>>]| {
+            let mut acc = nonempty![first];
+            rest.iter().try_for_each(|ma| {
+                let ma = ma.try_as_inner()?;
+                match ma {
+                    cst::MemAccess::Field(id) => {
+                        acc.push(id.to_unreserved_ident()?);
+                        Ok(())
+                    }
+                    _ => Err(err()),
+                }
+            })?;
+            Ok::<nonempty::NonEmpty<UnreservedId>, ParseErrors>(acc)
+        };
+        if !extended.is_empty() {
+            return Err(err());
+        }
+        let cst::Mult { initial, extended } = initial.try_as_inner()?;
+        if !extended.is_empty() {
+            return Err(err());
+        }
+        if let cst::Unary { op: None, item } = initial.try_as_inner()? {
+            let cst::Member { item, access } = item.try_as_inner()?;
+            let item = item.to_expr_or_special()?;
+            match (item, access.as_slice()) {
+                (ExprOrSpecial::StrLit { lit, loc }, []) => Ok(Either::Left(
+                    to_unescaped_string(lit).map_err(|escape_errs| {
+                        ParseErrors::new_from_nonempty(escape_errs.map(|e| {
+                            ToASTError::new(ToASTErrorKind::Unescape(e), loc.clone()).into()
+                        }))
+                    })?,
+                )),
+                (ExprOrSpecial::Var { var, .. }, rest) => {
+                    // PANIC SAFETY: any variable should be a valid identifier
+                    #[allow(clippy::unwrap_used)]
+                    let first = construct_string_from_var(var).parse().unwrap();
+                    Ok(Either::Right(construct_attrs(first, rest)?))
+                }
+                (ExprOrSpecial::Name { name, loc }, rest) => {
+                    if name.is_unqualified() {
+                        let first = name.basename();
+
+                        Ok(Either::Right(construct_attrs(first, rest)?))
+                    } else {
+                        Err(ToASTError::new(
+                            ToASTErrorKind::PathAsAttribute(inner.to_string()),
+                            loc,
+                        )
+                        .into())
+                    }
+                }
+                _ => Err(err()),
+            }
+        } else {
+            Err(err())
+        }
     }
     pub(crate) fn to_expr_or_special(&self) -> Result<ExprOrSpecial<'_>> {
         let add = self.try_as_inner()?;
