@@ -36,6 +36,18 @@ use std::{
 use cedar_policy::*;
 use cedar_policy_formatter::{policies_str_to_pretty, Config};
 
+// Needed for the generated code to find `crate::cedar_policy_...`
+#[cfg(feature = "protobufs")]
+use cedar_policy_core;
+#[cfg(feature = "protobufs")]
+use cedar_policy_validator;
+
+#[cfg(feature = "protobufs")]
+pub mod proto {
+    #![allow(missing_docs)]
+    include!(concat!(env!("OUT_DIR"), "/amzn_cedar_internal_cli.rs"));
+}
+
 /// Basic Cedar CLI for evaluating authorization queries
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)] // Pull from `Cargo.toml`
@@ -106,6 +118,15 @@ pub enum Commands {
     New(NewArgs),
     /// Partially evaluate an authorization request
     PartiallyAuthorize(PartiallyAuthorizeArgs),
+    /// Ouput JSON file for consumption by Lean
+    #[command(subcommand)]
+    WriteDRTJson(serialization::AnalysisCommands),
+    /// Output protobuf binary file for consuption by Lean
+    #[command(subcommand)]
+    WriteDRTProto(serialization::AnalysisCommands),
+    /// Output protobuf binary file for consuption by Lean
+    #[command(subcommand)]
+    WriteDRTProtoFromJSON(serialization::AnalyzeCommandsFromJson),
     /// Print Cedar language version
     LanguageVersion,
 }
@@ -1562,6 +1583,357 @@ fn execute_partial_request(
         Err(e) => {
             errs.push(e.wrap_err("failed to parse request"));
             Err(errs)
+        }
+    }
+}
+
+pub mod serialization {
+    use cedar_policy_core::{ast::PolicySet, extensions::Extensions, parser::parse_policyset};
+    use cedar_policy_validator::CedarSchemaError;
+    use clap::{Args, Subcommand};
+    use serde::Serialize;
+    use std::path::{Path, PathBuf};
+    use thiserror::Error;
+
+    use crate::CedarExitCode;
+
+    /// Captures all possible errors in CLI operations
+    #[derive(Debug, Error)]
+    pub enum CliError {
+        /// Error opening or reading a file
+        #[error("failed to open or read {path}: {err}")]
+        FileError {
+            /// Path of the file we failed to open or read
+            path: PathBuf,
+            /// Error we encountered
+            err: std::io::Error,
+        },
+        /// Error when loading the schema
+        #[error("failed to load cedar schema: {0}")]
+        CedarSchemaError(#[from] cedar_policy_validator::CedarSchemaError),
+        /// Error when parsing a policy
+        #[error("failed to parse policy in {path}: {err}")]
+        PolicyParse {
+            /// Path of the policy we failed to parse
+            path: PathBuf,
+            /// Error we encountered
+            err: cedar_policy_core::parser::err::ParseErrors,
+        },
+        /// Failed to find a policy with the specified id
+        #[error("failed to find a policy with id: {id}")]
+        PolicyNotFound {
+            /// Policy id we failed to find
+            id: cedar_policy_core::ast::PolicyID,
+        },
+
+        /// Error we can't report to avoid logging PII
+        #[error("Anonymous error: {s}")]
+        Anonymous { s: String },
+    }
+
+    type Result<T> = std::result::Result<T, CliError>;
+
+    /// This represents multiple ways to specify a pair of policies.
+    #[derive(Args, Debug)]
+    pub struct PolicyPairArgs {
+        /// File containing the first policy (and no other policies)
+        #[arg(
+            long = "policy1",
+            value_name = "FILE",
+            conflicts_with = "policies",
+            requires = "policy2"
+        )]
+        policy1_file: Option<PathBuf>,
+        /// File containing the second policy (and no other policies)
+        #[arg(
+            long = "policy2",
+            value_name = "FILE",
+            conflicts_with = "policies",
+            requires = "policy1"
+        )]
+        policy2_file: Option<PathBuf>,
+        /// File containing policies to analyze. Use with --id1 and --id2
+        #[clap(short, long = "policies", value_name = "FILE", requires = "id1")]
+        policies_file: Option<PathBuf>,
+        /// id of the first policy
+        #[arg(
+            long = "id1",
+            value_name = "ID",
+            conflicts_with = "policy1",
+            requires = "id2"
+        )]
+        id1: Option<String>,
+        /// id of the second policy
+        #[arg(
+            long = "id2",
+            value_name = "ID",
+            conflicts_with = "policy2",
+            requires = "id1"
+        )]
+        id2: Option<String>,
+    }
+
+    #[derive(Args, Debug)]
+    pub struct AnalyzeCommandsFromJsonArgs {
+        #[arg(short, long = "json", value_name = "String")]
+        pub data: String,
+        #[arg(short, long = "output", value_name = "FILE")]
+        pub output_path: PathBuf,
+    }
+
+    #[derive(Args, Debug)]
+    pub struct EquivalenceArgs {
+        /// File containing the schema
+        #[arg(short, long = "schema", value_name = "FILE")]
+        pub schema_file: PathBuf,
+        /// File containing the policy to analyze
+        #[arg(short, long = "old_policies", value_name = "FILE")]
+        pub old_policies_file: PathBuf,
+        #[arg(short, long = "new_policies", value_name = "FILE")]
+        pub new_policies_file: PathBuf,
+    }
+
+    #[derive(Subcommand, Debug)]
+    pub enum AnalysisCommands {
+        /// Equivalence check
+        Equivalence(EquivalenceArgs),
+    }
+
+    #[derive(Subcommand, Debug)]
+    pub enum AnalyzeCommandsFromJson {
+        /// Equivalence check
+        Equivalence(AnalyzeCommandsFromJsonArgs),
+    }
+
+    fn read_schema_from_file(
+        path: impl AsRef<Path> + std::marker::Copy,
+    ) -> Result<cedar_policy_validator::ValidatorSchema> {
+        let file = std::fs::File::open(path).map_err(|err| CliError::FileError {
+            path: path.as_ref().into(),
+            err,
+        })?;
+        match cedar_policy_validator::ValidatorSchema::from_json_file(
+            file,
+            Extensions::all_available(),
+        ) {
+            Ok(res) => Ok(res),
+            Err(e) => Err(CliError::CedarSchemaError(CedarSchemaError::Schema(e))),
+        }
+    }
+
+    fn read_policies_from_file(path: impl AsRef<Path> + std::marker::Copy) -> Result<PolicySet> {
+        let text = std::fs::read_to_string(path).map_err(|err| CliError::FileError {
+            path: path.as_ref().into(),
+            err,
+        })?;
+        parse_policyset(&text).map_err(|err| CliError::PolicyParse {
+            path: path.as_ref().into(),
+            err,
+        })
+    }
+
+    #[derive(Debug, Serialize)]
+    pub struct EquivRequest<'a> {
+        pub schema: &'a cedar_policy_validator::ValidatorSchema,
+        pub old_policies: &'a PolicySet,
+        pub new_policies: &'a PolicySet,
+    }
+
+    pub fn write_drt_json_for_equivalence(args: EquivalenceArgs) -> Result<()> {
+        let schema = &read_schema_from_file(&args.schema_file)?;
+        let old_policies = &read_policies_from_file(&args.old_policies_file)?;
+        let new_policies = &read_policies_from_file(&args.new_policies_file)?;
+
+        let s: String = serde_json::to_string(&EquivRequest {
+            schema,
+            old_policies,
+            new_policies,
+        })
+        .expect("failed to serialize schema or policies");
+
+        println!("{s}");
+        Ok(())
+    }
+
+    pub fn write_drt_json(acmd: AnalysisCommands) -> CedarExitCode {
+        let res = match acmd {
+            AnalysisCommands::Equivalence(args) => write_drt_json_for_equivalence(args),
+        };
+        match res {
+            Ok(()) => CedarExitCode::Success,
+            Err(e) => {
+                eprintln!("{e}");
+                CedarExitCode::Failure
+            }
+        }
+    }
+
+    #[cfg(feature = "protobufs")]
+    pub mod protobuf {
+        use std::fs::File;
+        use std::io::Write;
+        use std::path::PathBuf;
+
+        use super::{
+            read_policies_from_file, AnalysisCommands, AnalyzeCommandsFromJson,
+            AnalyzeCommandsFromJsonArgs, EquivRequest,
+        };
+        use super::{EquivalenceArgs, Result};
+        use crate::serialization::read_schema_from_file;
+        use crate::{proto, CedarExitCode};
+        use cedar_policy_core::ast::PolicySet;
+        use cedar_policy_core::parser::parse_policyset;
+        use prost::Message;
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Debug, Serialize)]
+        pub struct ValidationRequest<'a> {
+            pub schema: &'a cedar_policy_validator::ValidatorSchema,
+            pub policies: &'a PolicySet,
+            pub mode: cedar_policy_validator::ValidationMode,
+        }
+
+        impl From<ValidationRequest<'_>> for proto::ValidationRequestMsg {
+            fn from(v: ValidationRequest) -> Self {
+                Self {
+                    schema: Some(cedar_policy_validator::proto::ValidatorSchema::from(
+                        v.schema,
+                    )),
+                    policies: Some(cedar_policy_core::ast::proto::LiteralPolicySet::from(
+                        v.policies,
+                    )),
+                    mode: cedar_policy_validator::proto::ValidationMode::from(&v.mode).into(),
+                }
+            }
+        }
+
+        impl From<EquivRequest<'_>> for proto::EquivRequestMsg {
+            fn from(v: EquivRequest) -> Self {
+                Self {
+                    schema: Some(cedar_policy_validator::proto::ValidatorSchema::from(
+                        v.schema,
+                    )),
+                    old_policies: Some(cedar_policy_core::ast::proto::LiteralPolicySet::from(
+                        v.old_policies,
+                    )),
+                    new_policies: Some(cedar_policy_core::ast::proto::LiteralPolicySet::from(
+                        v.new_policies,
+                    )),
+                }
+            }
+        }
+
+        pub fn read_equivalence_drt_from_files(
+            args: EquivalenceArgs,
+        ) -> Result<proto::EquivRequestMsg> {
+            let schema = &read_schema_from_file(&args.schema_file)?;
+            let old_policies = &read_policies_from_file(&args.old_policies_file)?;
+            let new_policies = &read_policies_from_file(&args.new_policies_file)?;
+
+            let equiv_request = EquivRequest {
+                schema,
+                old_policies,
+                new_policies,
+            };
+            let equiv_request_proto = proto::EquivRequestMsg::from(equiv_request);
+            Ok(equiv_request_proto)
+        }
+
+        pub fn write_drt_proto_for_equivalence_from_files(args: EquivalenceArgs) -> Result<()> {
+            let equiv_request_proto: proto::EquivRequestMsg =
+                read_equivalence_drt_from_files(args)?;
+            write_drt_proto_for_equivalence(equiv_request_proto, "equiv_request.binpb".into())
+        }
+
+        #[derive(Debug, Deserialize)]
+        struct ComparisonRequest {
+            schema: String,
+            old_policy_set: String,
+            new_policy_set: String,
+        }
+
+        pub fn read_equivalence_drt_from_json(
+            args: AnalyzeCommandsFromJsonArgs,
+        ) -> Result<proto::EquivRequestMsg> {
+            use std::str::FromStr;
+
+            let comparison_request: ComparisonRequest =
+                serde_json::from_str(args.data.as_ref()).expect("Failed to parse");
+
+            let schema =
+                cedar_policy_validator::ValidatorSchema::from_str(&comparison_request.schema)
+                    .expect("Failed to deserialize schema");
+
+            let old_policies = parse_policyset(&comparison_request.old_policy_set).unwrap();
+
+            let new_policies = parse_policyset(&comparison_request.new_policy_set).unwrap();
+
+            Ok(proto::EquivRequestMsg {
+                schema: Some(cedar_policy_validator::proto::ValidatorSchema::from(
+                    &schema,
+                )),
+                old_policies: Some(cedar_policy_core::ast::proto::LiteralPolicySet::from(
+                    &old_policies,
+                )),
+                new_policies: Some(cedar_policy_core::ast::proto::LiteralPolicySet::from(
+                    &new_policies,
+                )),
+            })
+        }
+
+        pub fn write_drt_proto_for_equivalence_from_json(
+            args: AnalyzeCommandsFromJsonArgs,
+        ) -> Result<()> {
+            let output_path = args.output_path.clone();
+            let equiv_request_proto: proto::EquivRequestMsg = read_equivalence_drt_from_json(args)?;
+            write_drt_proto_for_equivalence(equiv_request_proto, output_path)
+        }
+
+        pub fn write_drt_proto_for_equivalence(
+            equiv_request_proto: proto::EquivRequestMsg,
+            output_location: PathBuf,
+        ) -> Result<()> {
+            let mut buf: Vec<u8> = vec![];
+            buf.reserve(equiv_request_proto.encoded_len());
+            equiv_request_proto
+                .encode(&mut buf)
+                .expect("Serialization failed");
+
+            let mut file = File::create(output_location).unwrap();
+            // Write a slice of bytes to the file
+            file.write_all(&buf).unwrap();
+
+            Ok(())
+        }
+
+        pub fn write_drt_proto(acmd: AnalysisCommands) -> CedarExitCode {
+            let res = match acmd {
+                AnalysisCommands::Equivalence(args) => {
+                    write_drt_proto_for_equivalence_from_files(args)
+                }
+            };
+            match res {
+                Ok(()) => CedarExitCode::Success,
+                Err(e) => {
+                    eprintln!("{e}");
+                    CedarExitCode::Failure
+                }
+            }
+        }
+
+        pub fn write_drt_proto_from_json(acmd: AnalyzeCommandsFromJson) -> CedarExitCode {
+            let res = match acmd {
+                AnalyzeCommandsFromJson::Equivalence(args) => {
+                    write_drt_proto_for_equivalence_from_json(args)
+                }
+            };
+            match res {
+                Ok(()) => CedarExitCode::Success,
+                Err(e) => {
+                    eprintln!("{e}");
+                    CedarExitCode::Failure
+                }
+            }
         }
     }
 }
