@@ -207,12 +207,16 @@ Relation: Node<Option<cst::Relation>> = {
         => Node::with_source_loc(Some(cst::Relation::Common{initial: i, extended: e}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <t:Add> HAS <f:Add> <r:@R>
         => Node::with_source_loc(Some(cst::Relation::Has{target: t, field: f}), Loc::new(l..r, Arc::clone(src))),
-    <l:@L> <t:Add> HAS IF <r:@R> => {
+    // The following rule exists allegedly for the sake of better error
+    // reporting. RFC 62 (extended has operator) allows a sequence of
+    // identifiers separated by . as RHS. Hence, we need to extend this rule to
+    // `HAS IF { MemAccess }`, as opposed to the original `HAS IF`.
+    <l:@L> <t:Add> HAS IF <a:MemAccess*> <r:@R> => {
         // Create an add expression from this identifier
         let id0 = Node::with_source_loc(Some(cst::Ident::If), Loc::new(l..r, Arc::clone(src)));
         let id1 = Node::with_source_loc(Some(cst::Name{path: vec![], name: id0}), Loc::new(l..r, Arc::clone(src)));
         let id2 = Node::with_source_loc(Some(cst::Primary::Name(id1)), Loc::new(l..r, Arc::clone(src)));
-        let id3 = Node::with_source_loc(Some(cst::Member{ item: id2, access: vec![] }), Loc::new(l..r, Arc::clone(src)));
+        let id3 = Node::with_source_loc(Some(cst::Member{ item: id2, access: a }), Loc::new(l..r, Arc::clone(src)));
         let id4 = Node::with_source_loc(Some(cst::Unary{op: None, item:id3}), Loc::new(l..r, Arc::clone(src)));
         let id5 = Node::with_source_loc(Some(cst::Mult{initial: id4, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
         let id6 = Node::with_source_loc(Some(cst::Add{initial:id5, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));

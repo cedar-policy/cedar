@@ -1212,4 +1212,56 @@ mod tests {
                 .build(),
         );
     }
+
+    #[test]
+    fn extended_has() {
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has a.b
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has a.if
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has if.a
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has if.if
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has true.if
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has if.true
+        };
+        "#,
+        );
+    }
 }

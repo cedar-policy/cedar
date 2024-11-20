@@ -1859,7 +1859,7 @@ fn construct_exprs_extended_has(t: ast::Expr, attrs: NonEmpty<SmolStr>, loc: Loc
     let (first, rest) = attrs.split_first();
     let has_expr = construct_expr_has_attr(t.clone(), first.to_owned(), loc.clone());
     let get_expr = construct_expr_get_attr(t, first.to_owned(), loc.clone());
-    rest.into_iter()
+    rest.iter()
         .fold((has_expr, get_expr), |(has_expr, get_expr), attr| {
             (
                 construct_expr_and(
