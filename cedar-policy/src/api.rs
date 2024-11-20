@@ -3569,7 +3569,7 @@ impl Request {
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn context(&self) -> Option<&Context> {
         match self.0.context() {
-            Some(ctx) => Some(Context::ref_cast(&ctx)),
+            Some(ctx) => Some(Context::ref_cast(ctx)),
             None => None,
         }
     }

@@ -1230,7 +1230,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                                         )
                                     })
                                     .collect(),
-                                additional_attributes: additional_attributes,
+                                additional_attributes,
                             })))
                         } else {
                             Err(serde::de::Error::missing_field(Attributes.as_str()))

@@ -498,13 +498,13 @@ impl ast::UnreservedId {
                             let method_names =
                                 methods.iter().map(ToString::to_string).collect::<Vec<_>>();
                             let suggested_method = fuzzy_search_limited(
-                                &name.to_string(),
+                                name.as_ref(),
                                 method_names.as_slice(),
                                 Some(SUGGEST_METHOD_MAX_DISTANCE),
                             );
                             suggested_method.map(|m| format!("did you mean `{m}`?"))
                         }
-                        let hint = suggest_method(&self, &EXTENSION_STYLES.methods);
+                        let hint = suggest_method(self, &EXTENSION_STYLES.methods);
                         Err(ToASTError::new(
                             ToASTErrorKind::UnknownMethod {
                                 id: self.clone(),

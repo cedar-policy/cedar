@@ -386,9 +386,8 @@ impl<'a> std::fmt::Display for ExpectedErrorMessage<'a> {
             writeln!(f, "and expected the following underlined segments:")?;
             for (underline, label) in &self.underlines {
                 writeln!(f, "  {underline}")?;
-                match label {
-                    Some(label) => writeln!(f, "  with label {label}")?,
-                    None => (),
+                if let Some(label) = label {
+                    writeln!(f, "  with label {label}")?
                 }
             }
         }

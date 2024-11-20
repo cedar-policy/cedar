@@ -421,10 +421,10 @@ impl<'e> Evaluator<'e> {
                             (_, ValueKind::Lit(Literal::Long(_))) => Err(EvaluationError::type_error_single(Type::Long, &arg1)),
                             (ValueKind::ExtensionValue(x), _) if x.supports_operator_overloading() => Err(EvaluationError::type_error_single(Type::Extension { name: x.typename() }, &arg2)),
                             (_, ValueKind::ExtensionValue(y)) if y.supports_operator_overloading() => Err(EvaluationError::type_error_single(Type::Extension { name: y.typename() }, &arg1)),
-                            (ValueKind::ExtensionValue(x), ValueKind::ExtensionValue(y)) if x.typename() == y.typename() => Err(EvaluationError::type_error_with_advice(Extensions::types_with_operator_overloading().map(|name| Type::Extension { name} ), &arg1, format!("Only extension types `datetime` and `duration` support operator overloading"))),
+                            (ValueKind::ExtensionValue(x), ValueKind::ExtensionValue(y)) if x.typename() == y.typename() => Err(EvaluationError::type_error_with_advice(Extensions::types_with_operator_overloading().map(|name| Type::Extension { name} ), &arg1, "Only extension types `datetime` and `duration` support operator overloading".to_string())),
                             // PANIC SAFETY: we're collecting a non-empty vec
                             #[allow(clippy::unwrap_used)]
-                            _ => Err(EvaluationError::type_error_with_advice(NonEmpty::collect(Extensions::types_with_operator_overloading().map(|name| Type::Extension { name} ).into_iter().chain(std::iter::once(Type::Long))).unwrap(), &arg1, format!("Only `Long` and extension types `datetime`, `duration` support comparison")))
+                            _ => Err(EvaluationError::type_error_with_advice(NonEmpty::collect(Extensions::types_with_operator_overloading().map(|name| Type::Extension { name} ).into_iter().chain(std::iter::once(Type::Long))).unwrap(), &arg1, "Only `Long` and extension types `datetime`, `duration` support comparison".to_string()))
                         }
                     }
                     BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
