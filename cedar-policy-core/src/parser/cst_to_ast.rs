@@ -949,12 +949,12 @@ impl Node<Option<cst::Relation>> {
             cst::Relation::Has { target, field } => {
                 let maybe_target = target.to_expr();
                 let maybe_field = Ok(match field.to_has_rhs()? {
-                    Either::Left(s) => s,
-                    Either::Right(ids) => ids.first().to_smolstr(),
+                    Either::Left(s) => nonempty![s],
+                    Either::Right(ids) => ids.map(|id| id.to_smolstr()),
                 });
                 let (target, field) = flatten_tuple_2(maybe_target, maybe_field)?;
                 Ok(ExprOrSpecial::Expr {
-                    expr: construct_expr_has(target, field, self.loc.clone()),
+                    expr: construct_exprs_extended_has(target, field, self.loc.clone()),
                     loc: self.loc.clone(),
                 })
             }
@@ -1848,8 +1848,30 @@ fn construct_expr_mul(
     }
     expr
 }
-fn construct_expr_has(t: ast::Expr, s: SmolStr, loc: Loc) -> ast::Expr {
+
+fn construct_expr_has_attr(t: ast::Expr, s: SmolStr, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).has_attr(t, s)
+}
+fn construct_expr_get_attr(t: ast::Expr, s: SmolStr, loc: Loc) -> ast::Expr {
+    ast::ExprBuilder::new().with_source_loc(loc).get_attr(t, s)
+}
+fn construct_exprs_extended_has(t: ast::Expr, attrs: NonEmpty<SmolStr>, loc: Loc) -> ast::Expr {
+    let (first, rest) = attrs.split_first();
+    let has_expr = construct_expr_has_attr(t.clone(), first.to_owned(), loc.clone());
+    let get_expr = construct_expr_get_attr(t, first.to_owned(), loc.clone());
+    rest.into_iter()
+        .fold((has_expr, get_expr), |(has_expr, get_expr), attr| {
+            (
+                construct_expr_and(
+                    has_expr,
+                    construct_expr_has_attr(get_expr.clone(), attr.to_owned(), loc.clone()),
+                    std::iter::empty(),
+                    &loc,
+                ),
+                construct_expr_get_attr(get_expr, attr.to_owned(), loc.clone()),
+            )
+        })
+        .0
 }
 fn construct_expr_attr(e: ast::Expr, s: SmolStr, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).get_attr(e, s)
@@ -4789,6 +4811,22 @@ mod tests {
                     .exactly_one_underline(r#"foo["\n"]"#)
                     .build()
             );
+        });
+    }
+
+    #[test]
+    fn extended_has() {
+        assert_matches!(parse_policy(None, r#"
+        permit(
+  principal is User,
+  action == Action::"preview",
+  resource == Movie::"Blockbuster"
+) when {
+  principal has contactInfo.address.zip &&
+  principal.contactInfo.address.zip == "90210"
+};
+        "#), Ok(p) => {
+            println!("{p}");
         });
     }
 }
