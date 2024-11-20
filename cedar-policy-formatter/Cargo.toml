@@ -22,3 +22,6 @@ lazy_static = "1.4.0"
 
 [dev-dependencies]
 insta = { version = "1.41.1", features = ["glob"] }
+
+[lints]
+workspace = true

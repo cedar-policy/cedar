@@ -24,3 +24,6 @@ entity-manifest = ["cedar-policy/entity-manifest"]
 [dev-dependencies]
 assert_cmd = "2.0"
 tempfile = "3"
+
+[lints]
+workspace = true

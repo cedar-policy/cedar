@@ -39,3 +39,6 @@ rstest = "0.23.0"
 [[bin]]
 name = "cedar"
 path = "src/main.rs"
+
+[lints]
+workspace = true
