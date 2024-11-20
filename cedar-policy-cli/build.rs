@@ -10,6 +10,8 @@ fn generate_schemas() {
         ".cedar_policy_validator",
         "crate::cedar_policy_validator::proto",
     );
+    // PANIC SAFETY: compile-time unwrap
+    #[allow(clippy::unwrap_used)]
     config
         .compile_protos(
             &["protobuf_schema/CLI.proto"],

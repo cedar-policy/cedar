@@ -1741,37 +1741,55 @@ pub mod serialization {
         pub new_policies: &'a PolicySet,
     }
 
-    pub fn write_drt_json_for_equivalence(args: EquivalenceArgs) -> Result<()> {
-        let schema = &read_schema_from_file(&args.schema_file)?;
-        let old_policies = &read_policies_from_file(&args.old_policies_file)?;
-        let new_policies = &read_policies_from_file(&args.new_policies_file)?;
+    pub fn write_drt_json_for_equivalence(args: EquivalenceArgs) -> CedarExitCode {
+        let schema = &read_schema_from_file(&args.schema_file);
+        let old_policies = &read_policies_from_file(&args.old_policies_file);
+        let new_policies = &read_policies_from_file(&args.new_policies_file);
 
-        let s: String = serde_json::to_string(&EquivRequest {
-            schema,
-            old_policies,
-            new_policies,
-        })
-        .expect("failed to serialize schema or policies");
-
-        println!("{s}");
-        Ok(())
-    }
-
-    pub fn write_drt_json(acmd: AnalysisCommands) -> CedarExitCode {
-        let res = match acmd {
-            AnalysisCommands::Equivalence(args) => write_drt_json_for_equivalence(args),
-        };
-        match res {
-            Ok(()) => CedarExitCode::Success,
-            Err(e) => {
-                eprintln!("{e}");
+        match (&schema, &old_policies, &new_policies) {
+            (Ok(schema), Ok(old_policies), Ok(new_policies)) => {
+                match serde_json::to_string(&EquivRequest {
+                    schema,
+                    old_policies,
+                    new_policies,
+                }) {
+                    Ok(s) => {
+                        println!("{s}");
+                        CedarExitCode::Success
+                    }
+                    Err(e) => {
+                        eprintln!("{e}");
+                        CedarExitCode::Failure
+                    }
+                }
+            }
+            (_, _, _) => {
+                if let Some(e) = schema.as_ref().err() {
+                    eprintln!("{e}");
+                }
+                if let Some(e) = old_policies.as_ref().err() {
+                    eprintln!("{e}");
+                }
+                if let Some(e) = new_policies.as_ref().err() {
+                    eprintln!("{e}");
+                }
                 CedarExitCode::Failure
             }
         }
     }
 
+    pub fn write_drt_json(acmd: AnalysisCommands) -> CedarExitCode {
+        match acmd {
+            AnalysisCommands::Equivalence(args) => write_drt_json_for_equivalence(args),
+        }
+    }
+
     #[cfg(feature = "protobufs")]
     pub mod protobuf {
+        // PANIC SAFETY experimental feature
+        #![allow(clippy::unwrap_used)]
+        #![allow(clippy::expect_used)]
+
         use std::fs::File;
         use std::io::Write;
         use std::path::PathBuf;
