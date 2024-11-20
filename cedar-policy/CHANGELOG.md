@@ -1,6 +1,7 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+Changes affecting only the CLI are documented [separately](../cedar-policy-cli/CHANGELOG.md).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -17,7 +18,7 @@ Cedar Language Version: TBD
 - Added protobuf schemas and (de)serialization code using on `prost` crate behind the experimental `protobufs` flag.
 - Added a new get helper method to Context that allows easy extraction of generic values from the context by key. This method simplifies the common use case of retrieving values from Context objects.
 
-## [4.2.2] - Coming soon
+## [4.2.2] - 2024-11-11
 Cedar Language version: 4.1
 
 ### Changed
@@ -763,7 +764,7 @@ Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
 [Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.2.2...main
-[4.2.1]: https://github.com/cedar-policy/cedar/compare/v4.2.1...v4.2.2
+[4.2.2]: https://github.com/cedar-policy/cedar/compare/v4.2.1...v4.2.2
 [4.2.1]: https://github.com/cedar-policy/cedar/compare/v4.2.0...v4.2.1
 [4.2.0]: https://github.com/cedar-policy/cedar/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/cedar-policy/cedar/compare/v4.0.0...v4.1.0
