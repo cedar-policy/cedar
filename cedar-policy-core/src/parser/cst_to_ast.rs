@@ -1006,36 +1006,36 @@ impl Node<Option<cst::Add>> {
     // Peel the grammar onion until we see valid RHS
     pub(crate) fn to_has_rhs(&self) -> Result<Either<SmolStr, NonEmpty<UnreservedId>>> {
         let inner @ cst::Add { initial, extended } = self.try_as_inner()?;
-        let err = || {
-            ToASTError::new(
-                ToASTErrorKind::InvalidAttribute(inner.to_string().into()),
-                self.loc.clone(),
-            )
-            .into()
+        let err = |loc| {
+            ToASTError::new(ToASTErrorKind::InvalidHasRHS(inner.to_string().into()), loc).into()
         };
         let construct_attrs = |first: UnreservedId, rest: &[Node<Option<cst::MemAccess>>]| {
             let mut acc = nonempty![first];
-            rest.iter().try_for_each(|ma| {
-                let ma = ma.try_as_inner()?;
+            rest.iter().try_for_each(|ma_node| {
+                let ma = ma_node.try_as_inner()?;
                 match ma {
                     cst::MemAccess::Field(id) => {
                         acc.push(id.to_unreserved_ident()?);
                         Ok(())
                     }
-                    _ => Err(err()),
+                    _ => Err(err(ma_node.loc.clone())),
                 }
             })?;
             Ok::<nonempty::NonEmpty<UnreservedId>, ParseErrors>(acc)
         };
         if !extended.is_empty() {
-            return Err(err());
+            return Err(err(self.loc.clone()));
         }
         let cst::Mult { initial, extended } = initial.try_as_inner()?;
         if !extended.is_empty() {
-            return Err(err());
+            return Err(err(self.loc.clone()));
         }
-        if let cst::Unary { op: None, item } = initial.try_as_inner()? {
-            let cst::Member { item, access } = item.try_as_inner()?;
+        if let cst::Unary {
+            op: None,
+            item: item_node,
+        } = initial.try_as_inner()?
+        {
+            let cst::Member { item, access } = item_node.try_as_inner()?;
             let item = item.to_expr_or_special()?;
             match (item, access.as_slice()) {
                 (ExprOrSpecial::StrLit { lit, loc }, []) => Ok(Either::Left(
@@ -1064,12 +1064,26 @@ impl Node<Option<cst::Add>> {
                         .into())
                     }
                 }
-                _ => Err(err()),
+                // Attempt to return a precise error message for RHS like `true.<...>`
+                (ExprOrSpecial::Expr { loc, expr }, _) if expr.is_true() => Err(ToASTError::new(
+                    ToASTErrorKind::ReservedIdentifier(cst::Ident::True),
+                    loc,
+                )
+                .into()),
+                // Attempt to return a precise error message for RHS like `false.<...>`
+                (ExprOrSpecial::Expr { loc, expr }, _) if expr.is_false() => Err(ToASTError::new(
+                    ToASTErrorKind::ReservedIdentifier(cst::Ident::False),
+                    loc,
+                )
+                .into()),
+                (ExprOrSpecial::Expr { loc, .. }, _) => Err(err(loc)),
+                _ => Err(err(self.loc.clone())),
             }
         } else {
-            Err(err())
+            Err(err(self.loc.clone()))
         }
     }
+
     pub(crate) fn to_expr_or_special(&self) -> Result<ExprOrSpecial<'_>> {
         let add = self.try_as_inner()?;
 
@@ -2787,8 +2801,8 @@ mod tests {
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("invalid attribute name: 1")
-                .help("attribute names can either be identifiers or string literals")
+            &ExpectedErrorMessageBuilder::error("invalid RHS of a `has` operation: 1")
+                .help("valid RHS of a `has` operation is either a sequence of identifiers separated by `.` or a string literal")
                 .exactly_one_underline("1")
                 .build(),
         );
@@ -3002,8 +3016,8 @@ mod tests {
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("invalid attribute name: 1")
-                .help("attribute names can either be identifiers or string literals")
+            &ExpectedErrorMessageBuilder::error("invalid RHS of a `has` operation: 1")
+                .help("valid RHS of a `has` operation is either a sequence of identifiers separated by `.` or a string literal")
                 .exactly_one_underline("1")
                 .build(),
         );
@@ -4828,5 +4842,42 @@ mod tests {
         "#), Ok(p) => {
             println!("{p}");
         });
+
+        let policy = r#"permit(principal, action, resource) when {
+            principal has a.if
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "this identifier is reserved and cannot be used: if",
+                ).exactly_one_underline(r#"if"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has if.a
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "this identifier is reserved and cannot be used: if",
+                ).exactly_one_underline(r#"if"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has true.if
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "this identifier is reserved and cannot be used: true",
+                ).exactly_one_underline(r#"true"#).build());
+            }
+        );
     }
 }

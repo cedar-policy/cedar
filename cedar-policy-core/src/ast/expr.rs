@@ -1858,6 +1858,14 @@ impl<T> Expr<T> {
             }
         }
     }
+
+    pub(crate) fn is_true(&self) -> bool {
+        matches!(self.expr_kind(), ExprKind::Lit(Literal::Bool(true)))
+    }
+
+    pub(crate) fn is_false(&self) -> bool {
+        matches!(self.expr_kind(), ExprKind::Lit(Literal::Bool(false)))
+    }
 }
 
 /// AST variables
