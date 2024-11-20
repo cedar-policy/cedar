@@ -122,9 +122,11 @@ pub enum Commands {
     #[command(subcommand)]
     WriteDRTJson(serialization::AnalysisCommands),
     /// Output protobuf binary file for consuption by Lean
+    #[cfg(feature = "protobufs")]
     #[command(subcommand)]
     WriteDRTProto(serialization::AnalysisCommands),
     /// Output protobuf binary file for consuption by Lean
+    #[cfg(feature = "protobufs")]
     #[command(subcommand)]
     WriteDRTProtoFromJSON(serialization::AnalyzeCommandsFromJson),
     /// Print Cedar language version
