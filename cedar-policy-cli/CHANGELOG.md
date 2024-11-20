@@ -1,7 +1,7 @@
 # Changelog
 
 All notable changes to Cedar CLI tool will be documented in this file.
-Changes to the Cedar language, which are likely to effect users of the CLI, are documented separately in the [primary changelog](../cedar-policy/CHANGELOG.md).
+Changes to the Cedar language, which are likely to affect users of the CLI, are documented separately in the [primary changelog](../cedar-policy/CHANGELOG.md).
 
 ## Unreleased
 
