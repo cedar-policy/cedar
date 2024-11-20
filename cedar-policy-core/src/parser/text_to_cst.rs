@@ -1263,5 +1263,13 @@ mod tests {
         };
         "#,
         );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has if.then.else.in.like.has.is.__cedar
+        };
+        "#,
+        );
     }
 }
