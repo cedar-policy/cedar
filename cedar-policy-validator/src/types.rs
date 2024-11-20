@@ -1807,11 +1807,11 @@ mod test {
         if let Ok(lub_ty) = &lub {
             // Also assert that types are subtypes of the LUB
             assert!(
-                Type::is_subtype(&schema, &lhs, &lub_ty, mode),
+                Type::is_subtype(&schema, &lhs, lub_ty, mode),
                 "{lhs:?} </: ({mode:?}) {lub_ty:?}"
             );
             assert!(
-                Type::is_subtype(&schema, &rhs, &lub_ty, mode),
+                Type::is_subtype(&schema, &rhs, lub_ty, mode),
                 "{rhs:?} </: ({mode:?}) {lub_ty:?}"
             );
 
