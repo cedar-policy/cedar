@@ -1253,10 +1253,9 @@ impl<'a> Typechecker<'a> {
                     .map(Type::extension)
                     .chain(std::iter::once(Type::primitive_long()))
                     .collect_vec();
-                let ans_arg1 = self.typecheck(request_env, prior_capability, &arg1, type_errors);
+                let ans_arg1 = self.typecheck(request_env, prior_capability, arg1, type_errors);
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
-                    let ans_arg2 =
-                        self.typecheck(request_env, prior_capability, &arg2, type_errors);
+                    let ans_arg2 = self.typecheck(request_env, prior_capability, arg2, type_errors);
                     ans_arg2.then_typecheck(|expr_ty_arg2, _| {
                         let expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
                             .with_same_source_loc(bin_expr)

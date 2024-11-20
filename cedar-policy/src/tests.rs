@@ -6297,14 +6297,14 @@ mod reserved_keywords_in_policies {
             });
 
         // No restrictions on OTHER_SPECIAL_IDENTS
-        for id in OTHER_SPECIAL_IDENTS.iter() {
+        for id in &OTHER_SPECIAL_IDENTS {
             assert_valid_expression(format!("{{ {id}: 1 }}"));
             assert_valid_expression(format!("principal has {id}"));
             assert_valid_expression(format!("principal.{id} == \"foo\""));
         }
 
         // RESERVED_IDENTS cannot be used as keys without quotes
-        for id in RESERVED_IDENTS.into_iter() {
+        for id in RESERVED_IDENTS {
             // slightly different errors depending on `id`; related to #407
             match id {
                 "true" | "false" => {
@@ -6355,7 +6355,7 @@ mod reserved_keywords_in_policies {
         }
 
         // RESERVED_NAMESPACE cannot be used as keys without quotes
-        for id in RESERVED_NAMESPACE.into_iter() {
+        for id in RESERVED_NAMESPACE {
             assert_invalid_expression(
                 format!("{{ {id}: 1 }}"),
                 RESERVED_NAMESPACE_MSG(id),
@@ -6377,13 +6377,13 @@ mod reserved_keywords_in_policies {
     #[test]
     fn test_reserved_namespace_elements() {
         // No restrictions on OTHER_SPECIAL_IDENTS
-        for id in OTHER_SPECIAL_IDENTS.iter() {
+        for id in &OTHER_SPECIAL_IDENTS {
             assert_valid_expression(format!("foo::{id}::\"bar\""));
             assert_valid_expression(format!("principal is {id}::foo"));
         }
 
         // RESERVED_IDENTS cannot be used in namespaces
-        for id in RESERVED_IDENTS.into_iter() {
+        for id in RESERVED_IDENTS {
             assert_invalid_expression(
                 format!("foo::{id}::\"bar\""),
                 RESERVED_IDENT_MSG(id),
@@ -6397,7 +6397,7 @@ mod reserved_keywords_in_policies {
         }
 
         // RESERVED_NAMESPACE cannot be used in namespaces
-        for id in RESERVED_NAMESPACE.into_iter() {
+        for id in RESERVED_NAMESPACE {
             assert_invalid_expression(
                 format!("foo::{id}::\"bar\""),
                 RESERVED_NAMESPACE_MSG(&format!("foo::{id}")),
@@ -6416,7 +6416,7 @@ mod reserved_keywords_in_policies {
         // No keyword is allowed as an extension function names since we check
         // against the known extension functions at parse time.
 
-        for id in RESERVED_IDENTS.into_iter() {
+        for id in RESERVED_IDENTS {
             assert_invalid_expression(
                 format!("extension::function::{id}(\"foo\")"),
                 RESERVED_IDENT_MSG(id),
@@ -6429,7 +6429,7 @@ mod reserved_keywords_in_policies {
             );
         }
 
-        for id in RESERVED_NAMESPACE.into_iter() {
+        for id in RESERVED_NAMESPACE {
             assert_invalid_expression(
                 format!("extension::function::{id}(\"foo\")"),
                 RESERVED_NAMESPACE_MSG(&format!("extension::function::{id}")),
@@ -6442,7 +6442,7 @@ mod reserved_keywords_in_policies {
             );
         }
 
-        for id in OTHER_SPECIAL_IDENTS.into_iter() {
+        for id in OTHER_SPECIAL_IDENTS {
             assert_invalid_expression(
                 format!("extension::function::{id}(\"foo\")"),
                 format!("`extension::function::{id}` is not a valid function"),
