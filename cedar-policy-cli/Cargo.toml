@@ -21,10 +21,10 @@ serde_json = "1.0"
 miette = { version = "7.1.0", features = ["fancy"] }
 thiserror = "2.0"
 semver = "1.0.23"
-prost = "0.13"
+prost = {version = "0.13", optional = true}
 
 [build-dependencies]
-prost-build = "0.13"
+prost-build = {version = "0.13", optional = true}
 
 [features]
 default = []
@@ -32,7 +32,7 @@ experimental = ["permissive-validate", "partial-validate", "partial-eval"]
 permissive-validate = ["cedar-policy/permissive-validate"]
 partial-validate = ["cedar-policy/partial-validate"]
 partial-eval = ["cedar-policy/partial-eval"]
-protobufs = ["cedar-policy/protobufs", "cedar-policy-core/protobufs", "cedar-policy-validator/protobufs"]
+protobufs = ["dep:prost", "dep:prost-build", "cedar-policy/protobufs", "cedar-policy-core/protobufs", "cedar-policy-validator/protobufs"]
 
 [dev-dependencies]
 assert_cmd = "2.0"

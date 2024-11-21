@@ -45,7 +45,7 @@ use cedar_policy_validator;
 #[cfg(feature = "protobufs")]
 pub mod proto {
     #![allow(missing_docs)]
-    include!(concat!(env!("OUT_DIR"), "/amzn_cedar_internal_cli.rs"));
+    include!(concat!(env!("OUT_DIR"), "/cedar_internal_cli.rs"));
 }
 
 /// Basic Cedar CLI for evaluating authorization queries
@@ -1788,6 +1788,7 @@ pub mod serialization {
     pub mod protobuf {
         // PANIC SAFETY experimental feature
         #![allow(clippy::unwrap_used)]
+        // PANIC SAFETY experimental feature
         #![allow(clippy::expect_used)]
 
         use std::fs::File;
