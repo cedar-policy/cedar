@@ -1004,6 +1004,14 @@ impl Node<Option<cst::Add>> {
     }
 
     // Peel the grammar onion until we see valid RHS
+    // This function is added to implement RFC 62 (extended `has` operator).
+    // We could modify existing code instead of having this function. However,
+    // the former requires adding a weird variant to `ExprOrSpecial` to
+    // accommodate a sequence of identifiers as RHS, which greatly complicates
+    // the conversion from CSTs to `ExprOrSpecial`. Hence, this function is
+    // added to directly tackle the CST to AST conversion for the has operator,
+    // This design choice should be noninvasive to existing CST to AST logic,
+    // despite producing deadcode.
     pub(crate) fn to_has_rhs(&self) -> Result<Either<SmolStr, NonEmpty<UnreservedId>>> {
         let inner @ cst::Add { initial, extended } = self.try_as_inner()?;
         let err = |loc| {
@@ -1874,6 +1882,27 @@ fn construct_exprs_extended_has(t: ast::Expr, attrs: NonEmpty<SmolStr>, loc: Loc
     let (first, rest) = attrs.split_first();
     let has_expr = construct_expr_has_attr(t.clone(), first.to_owned(), loc.clone());
     let get_expr = construct_expr_get_attr(t, first.to_owned(), loc.clone());
+    // Foldl on the attribute list
+    // It produces the following for `principal has contactInfo.address.zip`
+    //     Expr.and
+    //   (Expr.and
+    //     (Expr.hasAttr (Expr.var .principal) "contactInfo")
+    //     (Expr.hasAttr
+    //       (Expr.getAttr (Expr.var .principal) "contactInfo")
+    //       "address"))
+    //   (Expr.hasAttr
+    //     (Expr.getAttr
+    //       (Expr.getAttr (Expr.var .principal) "contactInfo")
+    //       "address")
+    //     "zip")
+    // This is sound. However, the evaluator has to recur multiple times to the
+    // left-most node to evaluate the existence of the first attribute. The
+    // desugared expression should be the following to avoid the issue above,
+    // Expr.and
+    //   Expr.hasAttr (Expr.var .principal) "contactInfo"
+    //   (Expr.and
+    //      (Expr.hasAttr (Expr.getAttr (Expr.var .principal) "contactInfo")"address")
+    //      (Expr.hasAttr ..., "zip"))
     rest.iter()
         .fold((has_expr, get_expr), |(has_expr, get_expr), attr| {
             (
