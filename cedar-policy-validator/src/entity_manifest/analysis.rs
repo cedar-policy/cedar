@@ -158,7 +158,7 @@ impl WrappedAccessPaths {
         match self {
             WrappedAccessPaths::AccessPath(path) => {
                 let leaf_trie = type_to_access_trie(ty);
-                path.to_root_access_trie_with_leaf(leaf_trie.clone())
+                path.to_root_access_trie_with_leaf(leaf_trie)
             }
             WrappedAccessPaths::RecordLiteral(mut literal_fields) => match ty {
                 Type::EntityOrRecord(EntityRecordKind::Record {

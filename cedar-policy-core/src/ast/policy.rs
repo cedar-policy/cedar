@@ -613,7 +613,7 @@ impl From<&proto::LiteralPolicy> for LiteralPolicy {
         Self {
             template_id: PolicyID::from_string(template_id),
             link_id: link,
-            values: values,
+            values,
         }
     }
 }
@@ -642,8 +642,8 @@ impl From<&LiteralPolicy> for proto::LiteralPolicy {
             template_id: String::from(template_id_str),
             link_id: String::from(link_id_str),
             link_id_specified: v.link_id.is_some(),
-            principal_euid: principal_euid,
-            resource_euid: resource_euid,
+            principal_euid,
+            resource_euid,
         }
     }
 }
@@ -672,8 +672,8 @@ impl From<&Policy> for proto::LiteralPolicy {
             template_id: String::from(template_id_str),
             link_id: String::from(link_id_str),
             link_id_specified: v.link.is_some(),
-            principal_euid: principal_euid,
-            resource_euid: resource_euid,
+            principal_euid,
+            resource_euid,
         }
     }
 }
@@ -1276,8 +1276,8 @@ impl From<&TemplateBody> for proto::TemplateBody {
 
         Self {
             id: String::from(id_str),
-            loc: loc,
-            annotations: annotations,
+            loc,
+            annotations,
             effect: proto::Effect::from(&v.effect).into(),
             principal_constraint: Some(proto::PrincipalConstraint::from(&v.principal_constraint)),
             action_constraint: Some(proto::ActionConstraint::from(&v.action_constraint)),
@@ -2777,8 +2777,7 @@ mod test {
         let read_euid: Arc<EntityUID> = Arc::new(EntityUID::with_eid("read"));
         let write_euid: Arc<EntityUID> = Arc::new(EntityUID::with_eid("write"));
         let ac1: ActionConstraint = ActionConstraint::Eq(read_euid.clone());
-        let ac2: ActionConstraint =
-            ActionConstraint::In(vec![read_euid.clone(), write_euid.clone()]);
+        let ac2: ActionConstraint = ActionConstraint::In(vec![read_euid, write_euid]);
         assert_eq!(
             ActionConstraint::Any,
             ActionConstraint::from(&proto::ActionConstraint::from(&ActionConstraint::Any))
@@ -2803,7 +2802,7 @@ mod test {
         let prc3: PrincipalOrResourceConstraint =
             PrincipalOrResourceConstraint::is_entity_type(name1.to_owned());
         let prc4: PrincipalOrResourceConstraint =
-            PrincipalOrResourceConstraint::is_entity_type_in(name1.to_owned(), euid1.to_owned());
+            PrincipalOrResourceConstraint::is_entity_type_in(name1, euid1);
         assert_eq!(
             PrincipalOrResourceConstraint::any(),
             PrincipalOrResourceConstraint::from(&proto::PrincipalOrResourceConstraint::from(

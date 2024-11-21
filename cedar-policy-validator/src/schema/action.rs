@@ -163,7 +163,7 @@ impl From<&proto::ValidatorActionId> for ValidatorActionId {
     #[allow(clippy::expect_used)]
     fn from(v: &proto::ValidatorActionId) -> Self {
         let extensions_none = Extensions::none();
-        let eval = RestrictedEvaluator::new(&extensions_none);
+        let eval = RestrictedEvaluator::new(extensions_none);
         Self {
             name: ast::EntityUID::from(
                 v.name

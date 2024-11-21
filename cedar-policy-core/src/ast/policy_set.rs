@@ -135,10 +135,7 @@ impl From<&proto::LiteralPolicySet> for LiteralPolicySet {
             .map(|(key, value)| (PolicyID::from_string(key), LiteralPolicy::from(value)))
             .collect();
 
-        Self {
-            templates: templates,
-            links: links,
-        }
+        Self { templates, links }
     }
 }
 
@@ -160,10 +157,7 @@ impl From<&LiteralPolicySet> for proto::LiteralPolicySet {
             );
         }
 
-        Self {
-            templates: templates,
-            links: links,
-        }
+        Self { templates, links }
     }
 }
 
@@ -188,10 +182,7 @@ impl From<&PolicySet> for proto::LiteralPolicySet {
             );
         }
 
-        Self {
-            templates: templates,
-            links: links,
-        }
+        Self { templates, links }
     }
 }
 

@@ -4791,8 +4791,8 @@ mod issue_1061 {
                 ]
             }
         );
-        let est = serde_json::from_value::<est::Policy>(src.clone())
-            .expect("Failed to deserialize policy JSON");
+        let est =
+            serde_json::from_value::<est::Policy>(src).expect("Failed to deserialize policy JSON");
         let ast_from_est = est
             .try_into_ast_policy(None)
             .expect("Failed to convert EST to AST");

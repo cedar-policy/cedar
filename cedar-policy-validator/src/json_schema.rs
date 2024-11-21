@@ -527,7 +527,7 @@ impl AttributesOrContext<ConditionalName> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`ActionType`], including recursively.
 /// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]

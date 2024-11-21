@@ -1126,7 +1126,7 @@ impl From<&Expr> for proto::Expr {
             ExprKind::Record(record) => {
                 let precord = record
                     .as_ref()
-                    .into_iter()
+                    .iter()
                     .map(|(key, value)| (key.to_string(), proto::Expr::from(value)))
                     .collect();
                 proto::expr::expr_kind::Data::Record(proto::expr::Record { items: precord })
@@ -1136,7 +1136,7 @@ impl From<&Expr> for proto::Expr {
             expr_kind: Some(Box::new(proto::expr::ExprKind {
                 data: Some(expr_kind),
             })),
-            source_loc: source_loc,
+            source_loc,
         }
     }
 }
