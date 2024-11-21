@@ -1009,20 +1009,21 @@ impl Node<Option<cst::Add>> {
         let err = |loc| {
             ToASTError::new(ToASTErrorKind::InvalidHasRHS(inner.to_string().into()), loc).into()
         };
-        let construct_attrs = |first: UnreservedId, rest: &[Node<Option<cst::MemAccess>>]| {
-            let mut acc = nonempty![first];
-            rest.iter().try_for_each(|ma_node| {
-                let ma = ma_node.try_as_inner()?;
-                match ma {
-                    cst::MemAccess::Field(id) => {
-                        acc.push(id.to_unreserved_ident()?);
-                        Ok(())
+        let construct_attrs =
+            |first, rest: &[Node<Option<cst::MemAccess>>]| -> Result<NonEmpty<UnreservedId>> {
+                let mut acc = nonempty![first];
+                rest.iter().try_for_each(|ma_node| {
+                    let ma = ma_node.try_as_inner()?;
+                    match ma {
+                        cst::MemAccess::Field(id) => {
+                            acc.push(id.to_unreserved_ident()?);
+                            Ok(())
+                        }
+                        _ => Err(err(ma_node.loc.clone())),
                     }
-                    _ => Err(err(ma_node.loc.clone())),
-                }
-            })?;
-            Ok::<nonempty::NonEmpty<UnreservedId>, ParseErrors>(acc)
-        };
+                })?;
+                Ok(acc)
+            };
         if !extended.is_empty() {
             return Err(err(self.loc.clone()));
         }
