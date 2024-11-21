@@ -71,15 +71,14 @@ fn main() -> CedarExitCode {
 mod test {
     use cedar_policy_cli::serialization::AnalysisCommands;
     use cedar_policy_cli::serialization::EquivalenceArgs;
+    use std::path::Path;
     use std::path::PathBuf;
 
     #[test]
     fn test_json_serialize() {
         let test_data_root = PathBuf::from(r"../sample-data/sandbox_b");
-        let mut schema_file = test_data_root.clone();
-        schema_file.push("schema.cedarschema");
-        let mut old_policies_file = test_data_root.clone();
-        old_policies_file.push("policies_4.cedar");
+        let schema_file = Path::new(&test_data_root).join("schema.cedarschema");
+        let old_policies_file = Path::new(&test_data_root).join("policies_4.cedar");
         let new_policies_file = old_policies_file.clone();
 
         let acmd = AnalysisCommands::Equivalence(EquivalenceArgs {

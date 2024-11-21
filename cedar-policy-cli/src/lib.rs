@@ -1599,7 +1599,7 @@ pub mod serialization {
 
     use crate::CedarExitCode;
 
-    /// Captures all possible errors in CLI operations
+    /// Captures all possible errors in CLI operations in the `serialization` module
     #[derive(Debug, Error)]
     pub enum CliError {
         /// Error opening or reading a file
