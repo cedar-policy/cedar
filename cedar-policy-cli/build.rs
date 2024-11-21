@@ -15,13 +15,6 @@ fn generate_schemas() {
     // PANIC SAFETY: compile-time unwrap
     #[allow(clippy::unwrap_used)]
     config
-        .compile_protos(
-            &["protobuf_schema/CLI.proto"],
-            &[
-                "protobuf_schema",
-                "../cedar-policy-core/protobuf_schema",
-                "../cedar-policy-validator/protobuf_schema",
-            ],
-        )
+        .compile_protos(&["protobuf_schema/CLI.proto"], &["protobuf_schema"])
         .unwrap();
 }
