@@ -43,17 +43,38 @@ rust-2018-idioms = "deny"
 # means we'll see it in local runs.
 [workspace.lints.clippy]
 nursery = { level = "warn", priority = -1 }
-# Enabling some pedantic lints incrementally
-needless_pass_by_value = "warn"
-ref_option = "warn"
+pedantic = { level = "warn", priority = -1 }
 
 # These lints may be worth enforcing, but cause a lot of noise at the moment.
 use_self = "allow"
 option_if_let_else = "allow"
 redundant_pub_crate = "allow"
 too_long_first_doc_paragraph = "allow"
+match_same_arms = "allow"
+unnested_or_patterns = "allow"
+enum_glob_use = "allow"
+single_match_else = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+too_many_lines = "allow"
+wildcard_imports = "allow"
+redundant_closure_for_method_calls = "allow"
+similar_names = "allow"
+doc_markdown = "allow"
+module_name_repetitions = "allow"
+semicolon_if_nothing_returned = "allow"
+needless_raw_string_hashes = "allow"
+uninlined_format_args = "allow"
+default_trait_access = "allow"
+if_not_else = "allow"
+useless_let_if_seq = "allow"
+map_unwrap_or = "allow"
+return_self_not_must_use = "allow"
+from_iter_instead_of_collect = "allow"
+redundant_else = "allow"
 # We don't want to enforce these lints.
 missing_const_for_fn = "allow"
+must_use_candidate = "allow"
 needless_doctest_main = "allow"
 # see #878
 result_large_err = "allow"
