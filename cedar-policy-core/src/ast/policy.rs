@@ -152,6 +152,7 @@ impl Template {
     }
 
     /// Clone this Policy with a new ID
+    #[must_use]
     pub fn new_id(&self, id: PolicyID) -> Self {
         Template {
             body: self.body.new_id(id),
@@ -516,6 +517,7 @@ impl Policy {
     }
 
     /// Clone this policy or instance with a new ID
+    #[must_use]
     pub fn new_id(&self, id: PolicyID) -> Self {
         match self.link {
             None => Policy {
@@ -859,6 +861,7 @@ impl StaticPolicy {
     }
 
     /// Clone this policy with a new `Id`.
+    #[must_use]
     pub fn new_id(&self, id: PolicyID) -> Self {
         StaticPolicy(self.0.new_id(id))
     }
@@ -1039,6 +1042,7 @@ impl TemplateBody {
     }
 
     /// Clone this policy with a new `Id`.
+    #[must_use]
     pub fn new_id(&self, id: PolicyID) -> Self {
         let mut new = self.clone();
         new.id = id;
@@ -1488,6 +1492,7 @@ impl PrincipalConstraint {
     }
 
     /// Fill in the Slot, if any, with the given EUID
+    #[must_use]
     pub fn with_filled_slot(self, euid: Arc<EntityUID>) -> Self {
         match self.constraint {
             PrincipalOrResourceConstraint::Eq(EntityReference::Slot) => Self {
@@ -1619,6 +1624,7 @@ impl ResourceConstraint {
     }
 
     /// Fill in the Slot, if any, with the given EUID
+    #[must_use]
     pub fn with_filled_slot(self, euid: Arc<EntityUID>) -> Self {
         match self.constraint {
             PrincipalOrResourceConstraint::Eq(EntityReference::Slot) => Self {

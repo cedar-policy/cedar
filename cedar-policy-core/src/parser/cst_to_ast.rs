@@ -136,7 +136,7 @@ impl Node<Option<cst::Policies>> {
         }
 
         // fail on any error
-        if let Some(errs) = ParseErrors::flatten(all_errs) {
+        if let Some(errs) = ParseErrors::flatten(&all_errs) {
             Err(errs)
         } else {
             Ok(pset)
@@ -340,7 +340,7 @@ impl cst::Policy {
                 }
             }
         }
-        match ParseErrors::flatten(all_errs) {
+        match ParseErrors::flatten(&all_errs) {
             Some(errs) => Err(errs),
             None => Ok(annotations),
         }

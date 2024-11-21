@@ -469,7 +469,7 @@ impl<'a> Typechecker<'a> {
                 // detected by a different part of the validator, so a ValidationError is
                 // not generated here. We still return `TypecheckFail` so that
                 // typechecking is not considered successful.
-                match Type::euid_literal((**euid).clone(), self.schema) {
+                match Type::euid_literal(euid.as_ref(), self.schema) {
                     // The entity type is undeclared, but that's OK for a
                     // partial schema. The attributes record will be empty if we
                     // try to access it later, so all attributes will have the
@@ -1213,7 +1213,7 @@ impl<'a> Typechecker<'a> {
                 let rhs_ty = self.typecheck(request_env, prior_capability, arg2, type_errors);
                 lhs_ty.then_typecheck(|lhs_ty, _| {
                     rhs_ty.then_typecheck(|rhs_ty, _| {
-                        let type_of_eq = self.type_of_equality(
+                        let type_of_eq = Self::type_of_equality(
                             request_env,
                             arg1,
                             lhs_ty.data(),
@@ -1786,7 +1786,6 @@ impl<'a> Typechecker<'a> {
 
     /// Get the type for an `==` expression given the input types.
     fn type_of_equality<'b>(
-        &self,
         request_env: &RequestEnv<'_>,
         lhs_expr: &'b Expr,
         lhs_ty: &Option<Type>,

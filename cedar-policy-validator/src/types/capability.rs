@@ -38,11 +38,13 @@ impl<'a> CapabilitySet<'a> {
     }
 
     /// Construct the union of `self` and `other`
+    #[must_use]
     pub fn union(&self, other: &Self) -> Self {
         CapabilitySet(self.0.union(&other.0).cloned().collect())
     }
 
     /// Construct the intersection of `self` and `other`
+    #[must_use]
     pub fn intersect(&self, other: &Self) -> Self {
         CapabilitySet(self.0.intersection(&other.0).cloned().collect())
     }

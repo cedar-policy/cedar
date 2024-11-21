@@ -37,6 +37,7 @@ impl PartialValue {
     }
 
     /// Return the `PartialValue`, but with the given `Loc` (or `None`)
+    #[must_use]
     pub fn with_maybe_source_loc(self, loc: Option<Loc>) -> Self {
         match self {
             Self::Value(v) => Self::Value(v.with_maybe_source_loc(loc)),

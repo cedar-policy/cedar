@@ -63,6 +63,7 @@ impl EntityType {
     }
 
     /// Calls [`Name::qualify_with_name`] on the underlying [`Name`]
+    #[must_use]
     pub fn qualify_with(&self, namespace: Option<&Name>) -> Self {
         Self(self.0.qualify_with_name(namespace))
     }

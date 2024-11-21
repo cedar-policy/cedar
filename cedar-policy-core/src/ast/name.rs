@@ -189,6 +189,7 @@ impl InternalName {
     /// - `A`.qualify_with(None) is `A`
     /// - `A`.qualify_with(Some(C)) is `C::A`
     /// - `A`.qualify_with(Some(B::C)) is `B::C::A`
+    #[must_use]
     pub fn qualify_with(&self, namespace: Option<&InternalName>) -> InternalName {
         if self.is_unqualified() {
             match namespace {
@@ -539,6 +540,7 @@ impl Name {
     ///
     /// This method has the same behavior as [`InternalName::qualify_with_name()`] except that
     /// it's guaranteed to return [`Name`], not [`InternalName`]
+    #[must_use]
     pub fn qualify_with_name(&self, namespace: Option<&Self>) -> Self {
         // This is safe (upholds the `Name` invariant) because both `self` and `namespace`
         // cannot contain `__cedar` -- they were already `Name`s

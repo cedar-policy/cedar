@@ -247,6 +247,7 @@ impl<T> Expr<T> {
     }
 
     /// Return the `Expr`, but with the new `source_loc` (or `None`).
+    #[must_use]
     pub fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
         Self { source_loc, ..self }
     }
@@ -624,6 +625,7 @@ impl Expr {
     ///
     /// Ignores unmapped unknowns.
     /// Ignores type annotations on unknowns.
+    #[must_use]
     pub fn substitute(&self, definitions: &HashMap<SmolStr, Value>) -> Expr {
         match self.substitute_general::<UntypedSubstitution>(definitions) {
             Ok(e) => e,
@@ -1201,6 +1203,7 @@ impl<T> ExprBuilder<T> {
 
     /// Update the `ExprBuilder` to build an expression with some known location
     /// in policy source code.
+    #[must_use]
     pub fn with_source_loc(self, source_loc: Loc) -> Self {
         self.with_maybe_source_loc(Some(source_loc))
     }
@@ -1208,11 +1211,13 @@ impl<T> ExprBuilder<T> {
     /// Utility used the validator to get an expression with the same source
     /// location as an existing expression. This is done when reconstructing the
     /// `Expr` with type information.
+    #[must_use]
     pub fn with_same_source_loc<U>(self, expr: &Expr<U>) -> Self {
         self.with_maybe_source_loc(expr.source_loc.clone())
     }
 
     /// internally used to update `.source_loc` to the given `Some` or `None`
+    #[must_use]
     fn with_maybe_source_loc(mut self, maybe_source_loc: Option<Loc>) -> Self {
         self.source_loc = maybe_source_loc;
         self
@@ -1221,6 +1226,7 @@ impl<T> ExprBuilder<T> {
     /// Internally used by the following methods to construct an `Expr`
     /// containing the `data` and `source_loc` in this `ExprBuilder` with some
     /// inner `ExprKind`.
+    #[must_use]
     fn with_expr_kind(self, expr_kind: ExprKind<T>) -> Expr<T> {
         Expr::new(expr_kind, self.source_loc, self.data)
     }

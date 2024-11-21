@@ -908,7 +908,7 @@ fn translate_policy_inner(args: &TranslatePolicyArgs) -> Result<String> {
     let translate = match args.direction {
         PolicyTranslationDirection::CedarToJson => translate_policy_to_json,
     };
-    read_from_file_or_stdin(args.input_file.clone(), "policy").and_then(translate)
+    read_from_file_or_stdin(args.input_file.as_ref(), "policy").and_then(translate)
 }
 
 pub fn translate_policy(args: &TranslatePolicyArgs) -> CedarExitCode {
@@ -945,7 +945,7 @@ fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
         SchemaTranslationDirection::JsonToCedar => translate_schema_to_cedar,
         SchemaTranslationDirection::CedarToJson => translate_schema_to_json,
     };
-    read_from_file_or_stdin(args.input_file.clone(), "schema").and_then(translate)
+    read_from_file_or_stdin(args.input_file.as_ref(), "schema").and_then(translate)
 }
 
 pub fn translate_schema(args: &TranslateSchemaArgs) -> CedarExitCode {
@@ -1175,12 +1175,9 @@ fn add_template_links_to_set(path: impl AsRef<Path>, policy_set: &mut PolicySet)
 
 /// Given a file containing template links, return a `Vec` of those links
 fn load_links_from_file(path: impl AsRef<Path>) -> Result<Vec<TemplateLinked>> {
-    let f = match std::fs::File::open(path) {
-        Ok(f) => f,
-        Err(_) => {
-            // If the file doesn't exist, then give back the empty entity set
-            return Ok(vec![]);
-        }
+    let Ok(f) = std::fs::File::open(path) else {
+        // If the file doesn't exist, then give back the empty entity set
+        return Ok(vec![]);
     };
     if f.metadata()
         .into_diagnostic()
@@ -1339,7 +1336,7 @@ fn load_entities(entities_filename: impl AsRef<Path>, schema: Option<&Schema>) -
 /// This will rename template-linked policies to the id of their template, which may
 /// cause id conflicts, so only call this function before instancing
 /// templates into the policy set.
-fn rename_from_id_annotation(ps: PolicySet) -> Result<PolicySet> {
+fn rename_from_id_annotation(ps: &PolicySet) -> Result<PolicySet> {
     let mut new_ps = PolicySet::new();
     let t_iter = ps.templates().map(|t| match t.annotation("id") {
         None => Ok(t.clone()),
@@ -1365,7 +1362,7 @@ fn rename_from_id_annotation(ps: PolicySet) -> Result<PolicySet> {
 }
 
 // Read from a file (when `filename` is a `Some`) or stdin (when `filename` is `None`) to a `String`
-fn read_from_file_or_stdin(filename: Option<impl AsRef<Path>>, context: &str) -> Result<String> {
+fn read_from_file_or_stdin(filename: Option<&impl AsRef<Path>>, context: &str) -> Result<String> {
     let mut src_str = String::new();
     match filename.as_ref() {
         Some(path) => {
@@ -1385,7 +1382,7 @@ fn read_from_file_or_stdin(filename: Option<impl AsRef<Path>>, context: &str) ->
 }
 
 // Convenient wrapper around `read_from_file_or_stdin` to just read from a file
-fn read_from_file(filename: impl AsRef<Path>, context: &str) -> Result<String> {
+fn read_from_file(filename: &impl AsRef<Path>, context: &str) -> Result<String> {
     read_from_file_or_stdin(Some(filename), context)
 }
 
@@ -1395,7 +1392,7 @@ fn read_cedar_policy_set(
     filename: Option<impl AsRef<Path> + std::marker::Copy>,
 ) -> Result<PolicySet> {
     let context = "policy set";
-    let ps_str = read_from_file_or_stdin(filename, context)?;
+    let ps_str = read_from_file_or_stdin(filename.as_ref(), context)?;
     let ps = PolicySet::from_str(&ps_str)
         .map_err(|err| {
             let name = filename.map_or_else(
@@ -1405,7 +1402,7 @@ fn read_cedar_policy_set(
             Report::new(err).with_source_code(NamedSource::new(name, ps_str))
         })
         .wrap_err_with(|| format!("failed to parse {context}"))?;
-    rename_from_id_annotation(ps)
+    rename_from_id_annotation(&ps)
 }
 
 /// Read a policy set, static policy or policy template, in Cedar JSON (EST) syntax, from the file given
@@ -1414,7 +1411,7 @@ fn read_json_policy_set(
     filename: Option<impl AsRef<Path> + std::marker::Copy>,
 ) -> Result<PolicySet> {
     let context = "JSON policy";
-    let json_source = read_from_file_or_stdin(filename, context)?;
+    let json_source = read_from_file_or_stdin(filename.as_ref(), context)?;
     let json = serde_json::from_str::<serde_json::Value>(&json_source).into_diagnostic()?;
     let policy_type = get_json_policy_type(&json)?;
 
@@ -1468,10 +1465,7 @@ enum JsonPolicyType {
     PolicySet,
 }
 
-fn read_schema_file(
-    filename: impl AsRef<Path> + std::marker::Copy,
-    format: SchemaFormat,
-) -> Result<Schema> {
+fn read_schema_file(filename: &impl AsRef<Path>, format: SchemaFormat) -> Result<Schema> {
     let schema_src = read_from_file(filename, "schema")?;
     match format {
         SchemaFormat::Json => Schema::from_json_str(&schema_src).wrap_err_with(|| {
@@ -1496,7 +1490,7 @@ fn execute_request(
     request: &RequestArgs,
     policies: &PoliciesArgs,
     entities_filename: impl AsRef<Path>,
-    schema_filename: Option<impl AsRef<Path> + std::marker::Copy>,
+    schema_filename: Option<&impl AsRef<Path>>,
     schema_format: SchemaFormat,
     compute_duration: bool,
 ) -> Result<Response, Vec<Report>> {

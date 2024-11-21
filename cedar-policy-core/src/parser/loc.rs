@@ -41,6 +41,7 @@ impl Loc {
     }
 
     /// Create a new `Loc` with the same source code but a different span
+    #[must_use]
     pub fn span(&self, span: impl Into<miette::SourceSpan>) -> Self {
         Self {
             span: span.into(),

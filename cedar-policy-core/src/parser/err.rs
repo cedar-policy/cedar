@@ -792,7 +792,7 @@ impl ParseErrors {
 
     /// Flatten a `Vec<ParseErrors>` into a single `ParseErrors`, returning
     /// `None` if the input vector is empty.
-    pub(crate) fn flatten(v: Vec<ParseErrors>) -> Option<Self> {
+    pub(crate) fn flatten(v: &[ParseErrors]) -> Option<Self> {
         let (first, rest) = v.split_first()?;
         let mut first = first.clone();
         rest.iter()
@@ -811,7 +811,7 @@ impl ParseErrors {
             .into_iter()
             .filter_map(|r| r.map_err(|e| errs.push(e)).ok())
             .collect();
-        if let Some(combined_errs) = Self::flatten(errs) {
+        if let Some(combined_errs) = Self::flatten(&errs) {
             Err(combined_errs)
         } else {
             Ok(oks)

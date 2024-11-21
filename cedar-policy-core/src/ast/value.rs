@@ -132,6 +132,7 @@ impl Value {
     }
 
     /// Return the `Value`, but with the given `Loc` (or `None`)
+    #[must_use]
     pub fn with_maybe_source_loc(self, loc: Option<Loc>) -> Self {
         Self { loc, ..self }
     }
