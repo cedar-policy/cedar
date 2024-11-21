@@ -319,12 +319,12 @@ fn convert_app_decls(
         }
     }
     Ok(json_schema::ApplySpec {
-        resource_types: resource_types.map(|node| node.node).ok_or(
-            ToJsonSchemaError::no_resource(name.clone(), name_loc.clone()),
-        )?,
-        principal_types: principal_types.map(|node| node.node).ok_or(
-            ToJsonSchemaError::no_principal(name.clone(), name_loc.clone()),
-        )?,
+        resource_types: resource_types
+            .map(|node| node.node)
+            .ok_or_else(|| ToJsonSchemaError::no_resource(name.clone(), name_loc.clone()))?,
+        principal_types: principal_types
+            .map(|node| node.node)
+            .ok_or_else(|| ToJsonSchemaError::no_principal(name.clone(), name_loc.clone()))?,
         context: context.map(|c| c.node).unwrap_or_default(),
     })
 }

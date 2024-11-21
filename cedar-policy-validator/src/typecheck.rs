@@ -309,7 +309,7 @@ impl<'a> Typechecker<'a> {
                         resource,
                         context,
                         principal_slot: p_slot.clone(),
-                        resource_slot: r_slot.clone(),
+                        resource_slot: r_slot,
                     })
                 }),
             ),

@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-/// The integer types we use (both internally and for parsing).
-/// By default this is i64, but you may change to some suitable Integer type.
-/// If you do change this, some tests for over/underflow will need to change as well.
+//! The integer types we use (both internally and for parsing).
+//! By default this is i64, but you may change to some suitable Integer type.
+//! If you do change this, some tests for over/underflow will need to change as well.
 
 /// The integer type we use internally
 pub type Integer = i64;

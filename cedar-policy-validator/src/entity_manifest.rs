@@ -577,7 +577,7 @@ fn entity_manifest_from_expr(
                 .expect("Expected annotated types after typechecking");
 
             // For the `in` operator, we need the ancestors of entities.
-            if let BinaryOp::In = op {
+            if matches!(op, BinaryOp::In) {
                 arg1_res = arg1_res
                     .with_ancestors_required(&arg2_res.resulting_paths.to_ancestor_access_trie());
             }

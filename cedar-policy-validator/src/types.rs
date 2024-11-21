@@ -912,7 +912,7 @@ impl EntityLUB {
     /// just that entity type.
     pub(crate) fn single_entity(entity_type_name: EntityType) -> Self {
         Self {
-            lub_elements: [entity_type_name].into_iter().collect(),
+            lub_elements: BTreeSet::from([entity_type_name]),
         }
     }
 

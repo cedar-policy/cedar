@@ -101,7 +101,7 @@ impl ValidationMode {
 #[cfg(feature = "protobufs")]
 impl From<&ValidationMode> for proto::ValidationMode {
     // PANIC SAFETY: experimental feature
-    #[allow(clippy::allow_unimplemented)]
+    #[allow(clippy::unimplemented)]
     fn from(v: &ValidationMode) -> Self {
         match v {
             ValidationMode::Strict => proto::ValidationMode::Strict,

@@ -449,7 +449,7 @@ impl PartialResponse {
             .chain(self.residual_permits)
             .map(
                 |(id, (expr, _))| AuthorizationError::PolicyEvaluationError {
-                    id: id.clone(),
+                    id,
                     error: EvaluationError::non_value(expr.as_ref().clone()),
                 },
             )
@@ -612,7 +612,7 @@ mod test {
         ];
         let h = once((
             PolicyID::from_string("h"),
-            (three_plus_four.clone(), empty_annotations.clone()),
+            (three_plus_four.clone(), empty_annotations),
         ));
         let errs = empty();
         let pr = PartialResponse::new(
@@ -651,7 +651,7 @@ mod test {
         );
         let d = Policy::from_when_clause_annos(
             Effect::Permit,
-            one_plus_two.clone(),
+            one_plus_two,
             PolicyID::from_string("d"),
             None,
             Arc::default(),
@@ -676,7 +676,7 @@ mod test {
         );
         let h = Policy::from_when_clause_annos(
             Effect::Forbid,
-            three_plus_four.clone(),
+            three_plus_four,
             PolicyID::from_string("h"),
             None,
             Arc::default(),

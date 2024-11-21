@@ -170,15 +170,17 @@ fn as_duration(v: &Value) -> Result<&Duration, evaluator::EvaluationError> {
 fn offset(datetime: Value, duration: Value) -> evaluator::Result<ExtensionOutputValue> {
     let datetime = as_datetime(&datetime)?;
     let duration = as_duration(&duration)?;
-    let ret = datetime.offset(duration.clone()).ok_or(extension_err(
-        format!(
-            "overflows when adding an offset: {}+({})",
-            RestrictedExpr::from(datetime.clone()),
-            duration
-        ),
-        &OFFSET_METHOD_NAME,
-        None,
-    ))?;
+    let ret = datetime.offset(duration.clone()).ok_or_else(|| {
+        extension_err(
+            format!(
+                "overflows when adding an offset: {}+({})",
+                RestrictedExpr::from(datetime.clone()),
+                duration
+            ),
+            &OFFSET_METHOD_NAME,
+            None,
+        )
+    })?;
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(ret.into())),
         loc: None,
@@ -189,15 +191,17 @@ fn offset(datetime: Value, duration: Value) -> evaluator::Result<ExtensionOutput
 fn duration_since(lhs: Value, rhs: Value) -> evaluator::Result<ExtensionOutputValue> {
     let lhs = as_datetime(&lhs)?;
     let rhs = as_datetime(&rhs)?;
-    let ret = lhs.duration_since(rhs.clone()).ok_or(extension_err(
-        format!(
-            "overflows when computing the duration between {} and {}",
-            RestrictedExpr::from(lhs.clone()),
-            RestrictedExpr::from(rhs.clone())
-        ),
-        &DURATION_SINCE_NAME,
-        None,
-    ))?;
+    let ret = lhs.duration_since(rhs.clone()).ok_or_else(|| {
+        extension_err(
+            format!(
+                "overflows when computing the duration between {} and {}",
+                RestrictedExpr::from(lhs.clone()),
+                RestrictedExpr::from(rhs.clone())
+            ),
+            &DURATION_SINCE_NAME,
+            None,
+        )
+    })?;
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(ret.into())),
         loc: None,
@@ -207,14 +211,16 @@ fn duration_since(lhs: Value, rhs: Value) -> evaluator::Result<ExtensionOutputVa
 
 fn to_date(value: Value) -> evaluator::Result<ExtensionOutputValue> {
     let d = as_datetime(&value)?;
-    let ret = d.to_date().ok_or(extension_err(
-        format!(
-            "overflows when computing the date of {}",
-            RestrictedExpr::from(d.clone()),
-        ),
-        &TO_DATE_NAME,
-        None,
-    ))?;
+    let ret = d.to_date().ok_or_else(|| {
+        extension_err(
+            format!(
+                "overflows when computing the date of {}",
+                RestrictedExpr::from(d.clone()),
+            ),
+            &TO_DATE_NAME,
+            None,
+        )
+    })?;
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(ret.into())),
         loc: None,
@@ -671,7 +677,7 @@ pub fn extension() -> Extension {
                 CallStyle::MethodStyle,
                 Box::new(to_time),
                 duration_type.clone(),
-                datetime_type.clone(),
+                datetime_type,
             ),
             ExtensionFunction::unary(
                 constants::TO_MILLISECONDS_NAME.clone(),
@@ -706,7 +712,7 @@ pub fn extension() -> Extension {
                 CallStyle::MethodStyle,
                 Box::new(|value| duration_method(value, Duration::to_days)),
                 SchemaType::Long,
-                duration_type.clone(),
+                duration_type,
             ),
         ],
     )

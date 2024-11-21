@@ -407,13 +407,13 @@ impl From<&Entities> for proto::Entities {
         #[cfg(feature = "partial-eval")]
         if v.mode == Mode::Partial {
             return Self {
-                entities: entities,
+                entities,
                 mode: crate::entities::proto::Mode::Partial.into(),
             };
         }
 
         Self {
-            entities: entities,
+            entities,
             mode: proto::Mode::Concrete.into(),
         }
     }
@@ -923,7 +923,7 @@ mod json_parsing_tests {
         assert_eq!(bar, &PartialValue::from(2));
         assert!(alice.is_descendant_of(&bob));
         let bob = e.entity(&bob).unwrap();
-        assert!(bob.ancestors().collect::<Vec<_>>().is_empty());
+        assert!(bob.ancestors().next().is_none());
     }
 
     #[cfg(feature = "partial-eval")]
@@ -3556,7 +3556,7 @@ pub mod protobuf_tests {
                 attrs.clone(),
                 HashSet::new(),
                 BTreeMap::new(),
-                &Extensions::none(),
+                Extensions::none(),
             )
             .unwrap(),
         );
@@ -3578,17 +3578,17 @@ pub mod protobuf_tests {
         let entity2: Arc<Entity> = Arc::new(
             Entity::new(
                 r#"Bar::"foo""#.parse().unwrap(),
-                attrs.clone(),
+                attrs,
                 HashSet::new(),
                 BTreeMap::new(),
-                &Extensions::none(),
+                Extensions::none(),
             )
             .unwrap(),
         );
         let mut entities3: Entities = Entities::new();
         entities3 = entities3
             .add_entities(
-                iter::once(entity.clone()).chain(iter::once(entity2)),
+                iter::once(entity).chain(iter::once(entity2)),
                 None::<&NoEntitiesSchema>,
                 TCComputation::AssumeAlreadyComputed,
                 Extensions::none(),

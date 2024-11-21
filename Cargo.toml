@@ -39,10 +39,24 @@ unexpected_cfgs = { level = 'deny', check-cfg = ['cfg(kani)', 'cfg(fuzzing)'] }
 missing_debug_implementations = "deny"
 rust-2018-idioms = "deny"
 
+# For clippy lints CI will only block on errors, so setting one to "warn" just
+# means we'll see it in local runs.
 [workspace.lints.clippy]
+nursery = { level = "warn", priority = -1 }
+
+# These lints may be worth enforcing, but cause a lot of noise at the moment.
+use_self = "allow"
+option_if_let_else = "allow"
+redundant_pub_crate = "allow"
+too_long_first_doc_paragraph = "allow"
+# We don't want to enforce these lints.
+missing_const_for_fn = "allow"
+needless_doctest_main = "allow"
 # see #878
 result_large_err = "allow"
 large_enum_variant = "allow"
+
+redundant_clone = "deny"
 # Error on potential panics
 unwrap_used = "deny"
 expect_used = "deny"
@@ -50,3 +64,5 @@ fallible_impl_from = "deny"
 unreachable = "deny"
 indexing_slicing = "deny"
 panic = "deny"
+todo = "deny"
+unimplemented = "deny"

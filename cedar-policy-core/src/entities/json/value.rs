@@ -409,9 +409,9 @@ impl CedarValueJson {
                         Some(new_euid) => Ok(CedarValueJson::EntityEscape {
                             __entity: new_euid.into(),
                         }),
-                        None => Ok(self.clone()),
+                        None => Ok(self),
                     },
-                    Err(_) => Ok(self.clone()),
+                    Err(_) => Ok(self),
                 }
             }
             CedarValueJson::ExtnEscape { __extn } => Ok(CedarValueJson::ExtnEscape {
@@ -420,9 +420,9 @@ impl CedarValueJson {
                     arg: Box::new((*__extn.arg).sub_entity_literals(mapping)?),
                 },
             }),
-            CedarValueJson::Bool(_) => Ok(self.clone()),
-            CedarValueJson::Long(_) => Ok(self.clone()),
-            CedarValueJson::String(_) => Ok(self.clone()),
+            CedarValueJson::Bool(_) => Ok(self),
+            CedarValueJson::Long(_) => Ok(self),
+            CedarValueJson::String(_) => Ok(self),
             CedarValueJson::Set(v) => Ok(CedarValueJson::Set(
                 v.into_iter()
                     .map(|e| e.sub_entity_literals(mapping))
@@ -435,7 +435,7 @@ impl CedarValueJson {
                 }
                 Ok(CedarValueJson::Record(JsonRecord { values: new_m }))
             }
-            CedarValueJson::Null => Ok(self.clone()),
+            CedarValueJson::Null => Ok(self),
         }
     }
 }
