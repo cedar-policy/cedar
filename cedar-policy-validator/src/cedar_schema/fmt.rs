@@ -82,8 +82,8 @@ impl<N: Display> Display for json_schema::RecordType<N> {
                 f,
                 "\"{}\"{}: {}",
                 n.escape_debug(),
-                if ty.data.required { "" } else { "?" },
-                ty.data.ty
+                if ty.required { "" } else { "?" },
+                ty.ty.0.data
             )?;
             if i < (self.attributes.len() - 1) {
                 write!(f, ", ")?;

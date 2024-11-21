@@ -410,7 +410,7 @@ fn convert_attr_decl(attr: AttrDecl) -> (SmolStr, json_schema::TypeOfAttribute<R
     (
         attr.name.node,
         json_schema::TypeOfAttribute {
-            ty: cedar_type_to_json_type(attr.ty),
+            ty: json_schema::AnnotatedType(cedar_type_to_json_type(attr.ty).into()),
             required: attr.required,
         },
     )

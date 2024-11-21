@@ -946,7 +946,7 @@ impl<N> Type<N> {
         match self {
             Type::Type(TypeVariant::Record(RecordType { attributes, .. })) => attributes
                 .iter()
-                .map(|(_, ty)| ty.data.ty.common_type_references())
+                .map(|(_, ty)| ty.ty.0.data.common_type_references())
                 .fold(Box::new(std::iter::empty()), |it, tys| {
                     Box::new(it.chain(tys))
                 }),
@@ -970,7 +970,7 @@ impl<N> Type<N> {
             Self::Type(TypeVariant::Set { element }) => element.is_extension(),
             Self::Type(TypeVariant::Record(RecordType { attributes, .. })) => attributes
                 .values()
-                .try_fold(false, |a, e| match e.data.ty.is_extension() {
+                .try_fold(false, |a, e| match e.ty.0.data.is_extension() {
                     Some(true) => Some(true),
                     Some(false) => Some(a),
                     None => None,
@@ -1259,7 +1259,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                                         (
                                             k,
                                             TypeOfAttribute {
-                                                ty: ty.into_n(),
+                                                ty: AnnotatedType(ty.0.data.into_n().into()),
                                                 required,
                                             }
                                             .into(),
@@ -1350,6 +1350,163 @@ impl<N> From<TypeVariant<N>> for Type<N> {
     }
 }
 
+/// The fields for a `Type`. Used for implementing deserialization.
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Deserialize)]
+#[serde(field_identifier, rename_all = "camelCase")]
+enum AnnotatedTypeFields {
+    Type,
+    Element,
+    Attributes,
+    AdditionalAttributes,
+    Name,
+    Annotations,
+}
+
+// This macro is used to avoid duplicating the fields names when calling
+// `serde::de::Error::unknown_field`. It wants an `&'static [&'static str]`, and
+// AFAIK, the elements of the static slice must be literals.
+macro_rules! type_field_name_annotated {
+    (Type) => {
+        "type"
+    };
+    (Element) => {
+        "element"
+    };
+    (Attributes) => {
+        "attributes"
+    };
+    (AdditionalAttributes) => {
+        "additionalAttributes"
+    };
+    (Name) => {
+        "name"
+    };
+    (Annotations) => {
+        "annotations"
+    };
+}
+
+impl AnnotatedTypeFields {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Type => type_field_name_annotated!(Type),
+            Self::Element => type_field_name_annotated!(Element),
+            Self::Attributes => type_field_name_annotated!(Attributes),
+            Self::AdditionalAttributes => type_field_name_annotated!(AdditionalAttributes),
+            Self::Name => type_field_name_annotated!(Name),
+            Self::Annotations => type_field_name_annotated!(Annotations),
+        }
+    }
+}
+
+/// ...
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct AnnotatedType<N>(pub Annotated<Type<N>>);
+
+impl<N> From<Annotated<Type<N>>> for AnnotatedType<N> {
+    fn from(value: Annotated<Type<N>>) -> Self {
+        Self(value)
+    }
+}
+
+impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for AnnotatedType<N> {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Self(deserializer.deserialize_any(
+            AnnotatedTypeVisitor {
+                _phantom: PhantomData,
+            },
+        )?))
+    }
+}
+
+impl<'de, N: Deserialize<'de> + From<RawName>> Visitor<'de> for AnnotatedTypeVisitor<N> {
+    type Value = Annotated<Type<N>>;
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .write_str("builtin type or reference to type defined in commonTypes, with annotations")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> std::result::Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        use AnnotatedTypeFields::{
+            AdditionalAttributes, Annotations, Attributes, Element, Name, Type as TypeField,
+        };
+
+        let mut type_name: Option<SmolStr> = None;
+        let mut element: Option<Type<N>> = None;
+        let mut attributes: Option<AttributesTypeMap> = None;
+        let mut additional_attributes: Option<bool> = None;
+        let mut name: Option<SmolStr> = None;
+        let mut annotations: Option<BTreeMap<SmolStr, SmolStr>> = None;
+
+        // Gather all the fields in the object. Any fields that are not one of
+        // the possible fields for some schema type will have been reported by
+        // serde already.
+        while let Some(key) = map.next_key()? {
+            match key {
+                TypeField => {
+                    if type_name.is_some() {
+                        return Err(serde::de::Error::duplicate_field(TypeField.as_str()));
+                    }
+                    type_name = Some(map.next_value()?);
+                }
+                Element => {
+                    if element.is_some() {
+                        return Err(serde::de::Error::duplicate_field(Element.as_str()));
+                    }
+                    element = Some(map.next_value()?);
+                }
+                Attributes => {
+                    if attributes.is_some() {
+                        return Err(serde::de::Error::duplicate_field(Attributes.as_str()));
+                    }
+                    attributes = Some(map.next_value()?);
+                }
+                AdditionalAttributes => {
+                    if additional_attributes.is_some() {
+                        return Err(serde::de::Error::duplicate_field(
+                            AdditionalAttributes.as_str(),
+                        ));
+                    }
+                    additional_attributes = Some(map.next_value()?);
+                }
+                Name => {
+                    if name.is_some() {
+                        return Err(serde::de::Error::duplicate_field(Name.as_str()));
+                    }
+                    name = Some(map.next_value()?);
+                }
+                Annotations => {
+                    if annotations.is_some() {
+                        return Err(serde::de::Error::duplicate_field(Name.as_str()));
+                    }
+                    annotations = Some(map.next_value()?);
+                }
+            }
+        }
+        let ty = TypeVisitor::<N>::build_schema_type::<A>(
+            type_name,
+            element,
+            attributes,
+            additional_attributes,
+            name,
+        )?;
+        Ok(Self::Value {
+            data: ty,
+            annotations: annotations.unwrap_or_default(),
+        })
+    }
+}
+
+struct AnnotatedTypeVisitor<N> {
+    _phantom: PhantomData<N>,
+}
+
 /// Represents the type-level information about a record type.
 ///
 /// The parameter `N` is the type of entity type names and common type names in
@@ -1362,7 +1519,7 @@ impl<N> From<TypeVariant<N>> for Type<N> {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct RecordType<N> {
     /// Attribute names and types for the record
-    pub attributes: BTreeMap<SmolStr, Annotated<TypeOfAttribute<N>>>,
+    pub attributes: BTreeMap<SmolStr, TypeOfAttribute<N>>,
     /// Whether "additional attributes" are possible on this record
     #[serde(default = "partial_schema_default")]
     #[serde(skip_serializing_if = "is_partial_schema_default")]
@@ -1395,7 +1552,7 @@ impl RecordType<RawName> {
             attributes: self
                 .attributes
                 .into_iter()
-                .map(|(k, v)| (k, v.data.conditionally_qualify_type_references(ns).into()))
+                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns).into()))
                 .collect(),
             additional_attributes: self.additional_attributes,
         }
@@ -1417,7 +1574,7 @@ impl RecordType<ConditionalName> {
             attributes: self
                 .attributes
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.data.fully_qualify_type_references(all_defs)?.into())))
+                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?.into())))
                 .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
             additional_attributes: self.additional_attributes,
         })
@@ -1515,17 +1672,13 @@ impl TypeVariant<RawName> {
                 additional_attributes,
             }) => TypeVariant::Record(RecordType {
                 attributes: BTreeMap::from_iter(attributes.into_iter().map(
-                    |(
-                        attr,
-                        Annotated {
-                            data: TypeOfAttribute { ty, required },
-                            ..
-                        },
-                    )| {
+                    |(attr, TypeOfAttribute { ty, required })| {
                         (
                             attr,
                             TypeOfAttribute {
-                                ty: ty.conditionally_qualify_type_references(ns),
+                                ty: AnnotatedType(
+                                    ty.0.data.conditionally_qualify_type_references(ns).into(),
+                                ),
                                 required,
                             }
                             .into(),
@@ -1552,7 +1705,7 @@ impl TypeVariant<RawName> {
             }) => TypeVariant::Record(RecordType {
                 attributes: attributes
                     .into_iter()
-                    .map(|(k, v)| (k, v.data.into_n().into()))
+                    .map(|(k, v)| (k, v.into_n().into()))
                     .collect(),
                 additional_attributes,
             }),
@@ -1595,24 +1748,18 @@ impl TypeVariant<ConditionalName> {
             }) => Ok(TypeVariant::Record(RecordType {
                 attributes: attributes
                     .into_iter()
-                    .map(
-                        |(
+                    .map(|(attr, TypeOfAttribute { ty, required })| {
+                        Ok((
                             attr,
-                            Annotated {
-                                data: TypeOfAttribute { ty, required },
-                                ..
-                            },
-                        )| {
-                            Ok((
-                                attr,
-                                TypeOfAttribute {
-                                    ty: ty.fully_qualify_type_references(all_defs)?,
-                                    required,
-                                }
-                                .into(),
-                            ))
-                        },
-                    )
+                            TypeOfAttribute {
+                                ty: AnnotatedType(
+                                    ty.0.data.fully_qualify_type_references(all_defs)?.into(),
+                                ),
+                                required,
+                            }
+                            .into(),
+                        ))
+                    })
                     .collect::<std::result::Result<BTreeMap<_, _>, TypeNotDefinedError>>()?,
                 additional_attributes,
             })),
@@ -1701,7 +1848,7 @@ impl<'a> arbitrary::Arbitrary<'a> for Type<RawName> {
 pub struct TypeOfAttribute<N> {
     /// Underlying type of the attribute
     #[serde(flatten)]
-    pub ty: Type<N>,
+    pub ty: AnnotatedType<N>,
     /// Whether the attribute is required
     #[serde(default = "record_attribute_required_default")]
     #[serde(skip_serializing_if = "is_record_attribute_required_default")]
@@ -1711,7 +1858,7 @@ pub struct TypeOfAttribute<N> {
 impl TypeOfAttribute<RawName> {
     fn into_n<N: From<RawName>>(self) -> TypeOfAttribute<N> {
         TypeOfAttribute {
-            ty: self.ty.into_n(),
+            ty: AnnotatedType(self.ty.0.data.into_n().into()),
             required: self.required,
         }
     }
@@ -1722,7 +1869,13 @@ impl TypeOfAttribute<RawName> {
         ns: Option<&InternalName>,
     ) -> TypeOfAttribute<ConditionalName> {
         TypeOfAttribute {
-            ty: self.ty.conditionally_qualify_type_references(ns),
+            ty: AnnotatedType(
+                self.ty
+                    .0
+                    .data
+                    .conditionally_qualify_type_references(ns)
+                    .into(),
+            ),
             required: self.required,
         }
     }
@@ -1740,7 +1893,13 @@ impl TypeOfAttribute<ConditionalName> {
         all_defs: &AllDefs,
     ) -> std::result::Result<TypeOfAttribute<InternalName>, TypeNotDefinedError> {
         Ok(TypeOfAttribute {
-            ty: self.ty.fully_qualify_type_references(all_defs)?,
+            ty: AnnotatedType(
+                self.ty
+                    .0
+                    .data
+                    .fully_qualify_type_references(all_defs)?
+                    .into(),
+            ),
             required: self.required,
         })
     }
@@ -1750,7 +1909,7 @@ impl TypeOfAttribute<ConditionalName> {
 impl<'a> arbitrary::Arbitrary<'a> for TypeOfAttribute<RawName> {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
-            ty: u.arbitrary()?,
+            ty: AnnotatedType(u.arbitrary::<Type<RawName>>()?.into()),
             required: u.arbitrary()?,
         })
     }
@@ -2107,7 +2266,7 @@ mod test {
             expect_err(
                 "",
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error(r#"unknown field `foo`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`"#).build()
+                &ExpectedErrorMessageBuilder::error(r#"unknown field `foo`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`, `annotations`"#).build()
             );
         });
     }
@@ -3021,6 +3180,127 @@ mod annotations {
            }
         });
         let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
-        assert_matches!(schema, Ok(_))
+        assert_matches!(schema, Ok(_));
+
+        let src = serde_json::json!({
+            "": {
+            "entityTypes": {},
+            "actions": {},
+            "commonTypes": {
+                "Task": {
+                "annotations": {
+                    "doc": "a common type representing a task"
+                },
+                "type": "Record",
+                "attributes": {
+                    "id": {
+                    "type": "Long",
+                    "annotations": {
+                        "doc": "task id"
+                    }
+                    },
+                    "name": {
+                    "type": "String"
+                    },
+                    "state": {
+                    "type": "String"
+                    }
+                }
+        }}}});
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Ok(_));
+
+        let src = serde_json::json!({
+                    "": {
+                    "entityTypes": {
+                        "User" : {
+            "shape" : {
+                "type" : "Record",
+                "attributes" : {
+                    "name" : {
+                        "annotations": {
+                    "": ""
+                },
+                        "type" : "String"
+                    },
+                    "age" : {
+                        "type" : "Long"
+                    }
+                }
+            }
+        }
+                    },
+                    "actions": {},
+                    "commonTypes": {}
+                }});
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Ok(_));
+
+        // annotations cannot be in "shape"
+        let src = serde_json::json!({
+                    "": {
+                    "entityTypes": {
+                        "User" : {
+            "shape" : {
+                "annotations": {
+                    "": ""
+                },
+                "type" : "Record",
+                "attributes" : {
+                    "name" : {
+                        "type" : "String"
+                    },
+                    "age" : {
+                        "type" : "Long"
+                    }
+                }
+            }
+        }
+                    },
+                    "actions": {},
+                    "commonTypes": {}
+                }});
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(_));
+
+        // nested record
+        let src = serde_json::json!({
+                    "": {
+                    "entityTypes": {
+                        "User" : {
+            "shape" : {
+                "type" : "Record",
+                "attributes" : {
+                    "name" : {
+                        "annotations": {
+                    "a": "b"
+                },
+                        "type" : "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Record",
+                                "annotations": {
+                                    "c": "d"
+                                },
+                                "attributes": {
+                                    "...": {
+                                        "type": "Long"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "age" : {
+                        "type" : "Long"
+                    }
+                }
+            }
+        }
+                    },
+                    "actions": {},
+                    "commonTypes": {}
+                }});
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Ok(_));
     }
 }

@@ -588,7 +588,7 @@ namespace Baz {action "Foo" appliesTo {
                         type_name: "UserGroup".parse().unwrap(),
                     });
                 let attribute = attributes.get(group).expect("No attribute `{group}`");
-                assert_has_type(&attribute.data, expected);
+                assert_has_type(&attribute, expected);
             });
         }
         let issue = &github
@@ -604,14 +604,14 @@ namespace Baz {action "Foo" appliesTo {
         }))) => {
             let attribute = attributes.get("repo").expect("No `repo`");
             assert_has_type(
-                &attribute.data,
+                &attribute,
                 json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "Repository".parse().unwrap(),
                 }),
             );
             let attribute = attributes.get("reporter").expect("No `repo`");
             assert_has_type(
-                &attribute.data,
+                &attribute,
                 json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "User".parse().unwrap(),
                 }),
@@ -634,7 +634,7 @@ namespace Baz {action "Foo" appliesTo {
                     type_name: "UserGroup".parse().unwrap(),
                 });
                 let attribute = attributes.get(group).expect("No attribute `{group}`");
-                assert_has_type(&attribute.data, expected);
+                assert_has_type(&attribute, expected);
             });
         }
     }
@@ -645,7 +645,7 @@ namespace Baz {action "Foo" appliesTo {
         expected: json_schema::Type<N>,
     ) {
         assert!(e.required);
-        assert_eq!(&e.ty, &expected);
+        assert_eq!(&e.ty.0.data, &expected);
     }
 
     #[track_caller]
@@ -696,13 +696,13 @@ namespace Baz {action "Foo" appliesTo {
             additional_attributes: false,
         }))) => {
             assert_has_type(
-                &attributes.get("personalGroup").unwrap().data,
+                &attributes.get("personalGroup").unwrap(),
                 json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "Group".parse().unwrap(),
                 }),
             );
             assert_has_type(
-                &attributes.get("blocked").unwrap().data,
+                &attributes.get("blocked").unwrap(),
                 json_schema::Type::Type(json_schema::TypeVariant::Set {
                     element: Box::new(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                         type_name: "User".parse().unwrap(),
@@ -725,7 +725,7 @@ namespace Baz {action "Foo" appliesTo {
             additional_attributes: false,
         }))) => {
             assert_has_type(
-                &attributes.get("owner").unwrap().data,
+                &attributes.get("owner").unwrap(),
                 json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "User".parse().unwrap(),
                 }),
@@ -743,37 +743,37 @@ namespace Baz {action "Foo" appliesTo {
             additional_attributes: false,
         }))) => {
             assert_has_type(
-                &attributes.get("owner").unwrap().data,
+                &attributes.get("owner").unwrap(),
                 json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "User".parse().unwrap(),
                 }),
             );
             assert_has_type(
-                &attributes.get("isPrivate").unwrap().data,
+                &attributes.get("isPrivate").unwrap(),
                 json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "Bool".parse().unwrap(),
                 }),
             );
             assert_has_type(
-                &attributes.get("publicAccess").unwrap().data,
+                &attributes.get("publicAccess").unwrap(),
                 json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "String".parse().unwrap(),
                 }),
             );
             assert_has_type(
-                &attributes.get("viewACL").unwrap().data,
+                &attributes.get("viewACL").unwrap(),
                 json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "DocumentShare".parse().unwrap(),
                 }),
             );
             assert_has_type(
-                &attributes.get("modifyACL").unwrap().data,
+                &attributes.get("modifyACL").unwrap(),
                 json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "DocumentShare".parse().unwrap(),
                 }),
             );
             assert_has_type(
-                &attributes.get("manageACL").unwrap().data,
+                &attributes.get("manageACL").unwrap(),
                 json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "DocumentShare".parse().unwrap(),
                 }),
@@ -922,8 +922,8 @@ namespace Baz {action "Foo" appliesTo {
             attributes,
             additional_attributes: false,
         }))) => {
-            assert_matches!(attributes.get("tag").map(|ty| &ty.data), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
-                assert_matches!(ty, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
+            assert_matches!(attributes.get("tag"), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
+                assert_matches!(&ty.0.data, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
                     assert_eq!(type_name, &"AWS::Tag".parse().unwrap());
                 });
             });
@@ -1463,17 +1463,17 @@ mod translator_tests {
             attributes,
             additional_attributes: false,
         }))) => {
-            assert_matches!(attributes.get("name").map(|ty| &ty.data), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
+            assert_matches!(attributes.get("name"), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
                 let expected = json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "id".parse().unwrap(),
                 });
-                assert_eq!(ty, &expected);
+                assert_eq!(ty.0.data, expected);
             });
-            assert_matches!(attributes.get("email").map(|ty| &ty.data), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
+            assert_matches!(attributes.get("email"), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
                 let expected = json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "email_address".parse().unwrap(),
                 });
-                assert_eq!(ty, &expected);
+                assert_eq!(ty.0.data, expected);
             });
         });
         assert_matches!(ValidatorSchema::try_from(frag), Err(e) => {
@@ -2436,8 +2436,8 @@ mod entity_tags {
             assert!(warnings.is_empty());
             let entity_type = &frag.0.get(&None).unwrap().data.entity_types.get(&"E".parse().unwrap()).unwrap().data;
             assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::Record(rty))) => {
-                assert_matches!(rty.attributes.get("foo").map(|ty| &ty.data), Some(json_schema::TypeOfAttribute { ty, required }) => {
-                    assert_matches!(ty, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
+                assert_matches!(rty.attributes.get("foo"), Some(json_schema::TypeOfAttribute { ty, required }) => {
+                    assert_matches!(&ty.0.data, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
                         assert_eq!(&format!("{type_name}"), "String");
                     });
                     assert!(*required);

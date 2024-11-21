@@ -1042,9 +1042,7 @@ pub(crate) fn try_record_type_into_validator_type(
         Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
     } else {
         Ok(parse_record_attributes(
-            rty.attributes
-                .into_iter()
-                .map(|(key, value)| (key, value.data)),
+            rty.attributes.into_iter().map(|(key, value)| (key, value)),
             extensions,
         )?
         .map(move |attrs| {
@@ -1074,7 +1072,7 @@ fn parse_record_attributes(
             Ok((
                 attr,
                 (
-                    try_jsonschema_type_into_validator_type(ty.ty, extensions)?,
+                    try_jsonschema_type_into_validator_type(ty.ty.0.data, extensions)?,
                     ty.required,
                 ),
             ))
