@@ -4847,6 +4847,14 @@ mod tests {
             Ok(_)
         );
 
+        assert_matches!(parse_expr(r#"context has a.b"#), Ok(e) => {
+            assert!(e.eq_shape(&parse_expr(r#"(context has a) && (context.a has b)"#).unwrap()));
+        });
+
+        assert_matches!(parse_expr(r#"context has a.b.c"#), Ok(e) => {
+            assert!(e.eq_shape(&parse_expr(r#"((context has a) && (context.a has b)) && (context.a.b has c)"#).unwrap()));
+        });
+
         let policy = r#"permit(principal, action, resource) when {
             principal has a.if
           };"#;
