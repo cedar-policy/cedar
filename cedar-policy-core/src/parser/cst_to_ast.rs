@@ -4830,7 +4830,10 @@ mod tests {
 
     #[test]
     fn extended_has() {
-        assert_matches!(parse_policy(None, r#"
+        assert_matches!(
+            parse_policy(
+                None,
+                r#"
         permit(
   principal is User,
   action == Action::"preview",
@@ -4839,9 +4842,10 @@ mod tests {
   principal has contactInfo.address.zip &&
   principal.contactInfo.address.zip == "90210"
 };
-        "#), Ok(p) => {
-            println!("{p}");
-        });
+        "#
+            ),
+            Ok(_)
+        );
 
         let policy = r#"permit(principal, action, resource) when {
             principal has a.if
@@ -4877,6 +4881,18 @@ mod tests {
                 expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
                     "this identifier is reserved and cannot be used: true",
                 ).exactly_one_underline(r#"true"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has a.__cedar
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "The name `__cedar` contains `__cedar`, which is reserved",
+                ).exactly_one_underline(r#"__cedar"#).build());
             }
         );
     }
