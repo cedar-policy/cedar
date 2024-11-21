@@ -276,6 +276,7 @@ impl<'e> Evaluator<'e> {
     /// `partial_interpret()` -- ie, so we can make sure the source locations of
     /// all errors are set properly before returning them from
     /// `partial_interpret()`.
+    #[allow(clippy::cognitive_complexity)]
     fn partial_interpret_internal(&self, expr: &Expr, slots: &SlotEnv) -> Result<PartialValue> {
         let loc = expr.source_loc(); // the `loc` describing the location of the entire expression
         match expr.expr_kind() {

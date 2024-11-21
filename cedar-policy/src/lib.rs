@@ -20,11 +20,7 @@
 // to add a separate test specifically for README examples by introducing a
 // private, empty, and unused function with `#[doc = include_str!("../README.md")]`.
 #![doc = include_str!("../README.md")]
-#![warn(
-    clippy::pedantic,
-    clippy::use_self,
-    clippy::option_if_let_else,
-)]
+#![warn(clippy::pedantic, clippy::use_self, clippy::option_if_let_else)]
 #![deny(
     missing_docs,
     rustdoc::broken_intra_doc_links,

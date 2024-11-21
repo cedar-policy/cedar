@@ -71,14 +71,7 @@ pub fn large_context_record(c: &mut Criterion) {
         Entity::new(r#"Foo::"bar""#.parse().unwrap(), small_attr, HashSet::new()).unwrap();
 
     let euid: EntityUid = r#"Placeholder::"entity""#.parse().unwrap();
-    let req = Request::new(
-        euid.clone(),
-        euid.clone(),
-        euid,
-        Context::empty(),
-        None,
-    )
-    .unwrap();
+    let req = Request::new(euid.clone(), euid.clone(), euid, Context::empty(), None).unwrap();
     let large_entities = Entities::from_entities(once(large_entity), None).unwrap();
     let small_entities = Entities::from_entities(once(small_entity), None).unwrap();
     let auth = Authorizer::new();

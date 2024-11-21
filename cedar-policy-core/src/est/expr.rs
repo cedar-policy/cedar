@@ -638,7 +638,7 @@ impl Expr {
     /// extension function call, including method calls
     pub fn ext_call(fn_name: SmolStr, args: Vec<Expr>) -> Self {
         Expr::ExtFuncCall(ExtFuncCall {
-            call: [(fn_name, args)].into_iter().collect(),
+            call: HashMap::from([(fn_name, args)]),
         })
     }
 

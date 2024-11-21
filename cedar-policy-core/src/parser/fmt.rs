@@ -37,8 +37,8 @@ impl<'a, T: fmt::Display> fmt::Display for View<'a, T> {
 
 impl fmt::Display for Policies {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut ps = self.0.iter();
         if f.alternate() {
-            let mut ps = self.0.iter();
             if let Some(p) = ps.next() {
                 write!(f, "{:#}", View(p))?;
             }
@@ -46,7 +46,6 @@ impl fmt::Display for Policies {
                 write!(f, "\n\n{:#}", View(p))?;
             }
         } else {
-            let mut ps = self.0.iter();
             if let Some(p) = ps.next() {
                 write!(f, "{}", View(p))?;
             }
