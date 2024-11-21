@@ -37,7 +37,7 @@ use cedar_policy::*;
 use cedar_policy_formatter::{policies_str_to_pretty, Config};
 
 /// Basic Cedar CLI for evaluating authorization queries
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)] // Pull from `Cargo.toml`
 pub struct Cli {
     #[command(subcommand)]

@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-#![forbid(unsafe_code)]
-
 use wasm_bindgen::prelude::*;
 mod utils;
 
