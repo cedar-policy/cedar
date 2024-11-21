@@ -1030,7 +1030,7 @@ impl From<&proto::Expr> for Expr {
 #[cfg(feature = "protobufs")]
 impl From<&Expr> for proto::Expr {
     // PANIC SAFETY: experimental feature
-    #[allow(clippy::allow_unimplemented)]
+    #[allow(clippy::unimplemented)]
     fn from(v: &Expr) -> Self {
         let source_loc: Option<proto::Loc> = v.source_loc.as_ref().map(proto::Loc::from);
         let expr_kind = match &v.expr_kind {
