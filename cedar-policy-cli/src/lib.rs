@@ -118,14 +118,14 @@ pub enum Commands {
     New(NewArgs),
     /// Partially evaluate an authorization request
     PartiallyAuthorize(PartiallyAuthorizeArgs),
-    /// Ouput JSON file for consumption by Lean
+    /// Ouput a JSON file for consumption by Lean
     #[command(subcommand)]
     WriteDRTJson(serialization::AnalysisCommands),
-    /// Output protobuf binary file for consuption by Lean
+    /// Output a protobuf binary file for consumption by Lean
     #[cfg(feature = "protobufs")]
     #[command(subcommand)]
     WriteDRTProto(serialization::AnalysisCommands),
-    /// Output protobuf binary file for consuption by Lean
+    /// Output a protobuf binary file for consumption by Lean
     #[cfg(feature = "protobufs")]
     #[command(subcommand)]
     WriteDRTProtoFromJSON(serialization::AnalyzeCommandsFromJson),
@@ -1627,53 +1627,9 @@ pub mod serialization {
             /// Policy id we failed to find
             id: cedar_policy_core::ast::PolicyID,
         },
-
-        /// Error we can't report to avoid logging PII
-        #[error("Anonymous error: {s}")]
-        Anonymous { s: String },
     }
 
     type Result<T> = std::result::Result<T, CliError>;
-
-    /// This represents multiple ways to specify a pair of policies.
-    #[derive(Args, Debug)]
-    pub struct PolicyPairArgs {
-        /// File containing the first policy (and no other policies)
-        #[arg(
-            long = "policy1",
-            value_name = "FILE",
-            conflicts_with = "policies",
-            requires = "policy2"
-        )]
-        policy1_file: Option<PathBuf>,
-        /// File containing the second policy (and no other policies)
-        #[arg(
-            long = "policy2",
-            value_name = "FILE",
-            conflicts_with = "policies",
-            requires = "policy1"
-        )]
-        policy2_file: Option<PathBuf>,
-        /// File containing policies to analyze. Use with --id1 and --id2
-        #[clap(short, long = "policies", value_name = "FILE", requires = "id1")]
-        policies_file: Option<PathBuf>,
-        /// id of the first policy
-        #[arg(
-            long = "id1",
-            value_name = "ID",
-            conflicts_with = "policy1",
-            requires = "id2"
-        )]
-        id1: Option<String>,
-        /// id of the second policy
-        #[arg(
-            long = "id2",
-            value_name = "ID",
-            conflicts_with = "policy2",
-            requires = "id1"
-        )]
-        id2: Option<String>,
-    }
 
     #[derive(Args, Debug)]
     pub struct AnalyzeCommandsFromJsonArgs {
