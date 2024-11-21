@@ -24,7 +24,6 @@
     clippy::pedantic,
     clippy::use_self,
     clippy::option_if_let_else,
-    clippy::redundant_pub_crate
 )]
 #![deny(
     missing_docs,

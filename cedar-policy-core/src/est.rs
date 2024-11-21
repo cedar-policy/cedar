@@ -139,7 +139,7 @@ impl Clause {
         mapping: &BTreeMap<EntityUID, EntityUID>,
     ) -> Result<Self, JsonDeserializationError> {
         use Clause::{Unless, When};
-        match self.clone() {
+        match self {
             When(e) => Ok(When(e.sub_entity_literals(mapping)?)),
             Unless(e) => Ok(Unless(e.sub_entity_literals(mapping)?)),
         }

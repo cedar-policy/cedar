@@ -2203,7 +2203,7 @@ pub mod test {
                     ("foo".into(), Expr::val(2)),
                     (
                         "bar".into(),
-                        Expr::set(vec!(Expr::val(3), Expr::val(33), Expr::val(333)))
+                        Expr::set(vec![Expr::val(3), Expr::val(33), Expr::val(333)])
                     )
                 ])
                 .unwrap(),
@@ -2430,7 +2430,7 @@ pub mod test {
             .collect::<HashMap<SmolStr, _>>();
         let entity = Entity::new(
             r#"Foo::"bar""#.parse().unwrap(),
-            attrs.clone(),
+            attrs,
             HashSet::new(),
             [],
             Extensions::none(),
@@ -3386,7 +3386,7 @@ pub mod test {
                     "decimal".parse().unwrap(),
                     vec![Value::from("3.0").into()]))),
             Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: datetime_constructor.clone() }, Type::Extension { name: duration_constructor.clone() }]);
+                assert_eq!(expected, nonempty![Type::Extension { name: datetime_constructor }, Type::Extension { name: duration_constructor }]);
                 assert_eq!(actual, Type::Extension { name: "decimal".parse().unwrap() });
                 assert_eq!(advice, Some("Only extension types `datetime` and `duration` support operator overloading".into()));
         });

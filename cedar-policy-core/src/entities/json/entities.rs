@@ -343,7 +343,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                             },
                         )?,
                     };
-                    Ok((k.clone(), rexpr))
+                    Ok((k, rexpr))
                 }
             })
             .collect::<Result<_, JsonDeserializationError>>()?;

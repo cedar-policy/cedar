@@ -1220,7 +1220,7 @@ impl Node<Option<cst::Member>> {
                 // String literals are handled the same ways as expressions
                 (StrLit { lit, loc }, [next, rest @ ..]) => {
                     let str_lit_expr = match to_unescaped_string(lit) {
-                        Ok(s) => construct_expr_string(s, loc.clone()),
+                        Ok(s) => construct_expr_string(s, loc),
                         Err(escape_errs) => {
                             return Err(ParseErrors::new_from_nonempty(
                                 escape_errs
@@ -1245,7 +1245,7 @@ impl Node<Option<cst::Member>> {
                 // method call on name - error
                 (Name { name, .. }, [Field(f), Call(_), ..]) => {
                     return Err(self
-                        .to_ast_err(ToASTErrorKind::NoMethods(name.clone(), f.clone()))
+                        .to_ast_err(ToASTErrorKind::NoMethods(name, f.clone()))
                         .into());
                 }
                 // method call on variable
@@ -1254,7 +1254,7 @@ impl Node<Option<cst::Member>> {
                     // move the id out of the slice as well, to avoid cloning the internal string
                     let id = mem::replace(id, ast::UnreservedId::empty());
                     (
-                        id.to_meth(construct_expr_var(var, var_loc.clone()), args, &self.loc)?,
+                        id.to_meth(construct_expr_var(var, var_loc), args, &self.loc)?,
                         rest,
                     )
                 }
@@ -1264,7 +1264,7 @@ impl Node<Option<cst::Member>> {
                     let id = mem::replace(i, ast::UnreservedId::empty());
                     (
                         construct_expr_attr(
-                            construct_expr_var(var, var_loc.clone()),
+                            construct_expr_var(var, var_loc),
                             id.to_smolstr(),
                             self.loc.clone(),
                         ),
@@ -1275,7 +1275,7 @@ impl Node<Option<cst::Member>> {
                 (Name { name, .. }, [Field(f), ..]) => {
                     return Err(self
                         .to_ast_err(ToASTErrorKind::InvalidAccess {
-                            lhs: name.clone(),
+                            lhs: name,
                             field: f.to_smolstr(),
                         })
                         .into());
@@ -1284,7 +1284,7 @@ impl Node<Option<cst::Member>> {
                 (Name { name, .. }, [Index(i), ..]) => {
                     return Err(self
                         .to_ast_err(ToASTErrorKind::InvalidIndex {
-                            lhs: name.clone(),
+                            lhs: name,
                             field: i.clone(),
                         })
                         .into());
@@ -1294,11 +1294,7 @@ impl Node<Option<cst::Member>> {
                 (Var { var, loc: var_loc }, [Index(i), rest @ ..]) => {
                     let i = mem::take(i);
                     (
-                        construct_expr_attr(
-                            construct_expr_var(var, var_loc.clone()),
-                            i,
-                            self.loc.clone(),
-                        ),
+                        construct_expr_attr(construct_expr_var(var, var_loc), i, self.loc.clone()),
                         rest,
                     )
                 }

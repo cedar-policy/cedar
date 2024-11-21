@@ -30,7 +30,7 @@ use std::sync::Arc;
 extern crate tsify;
 
 /// Serde JSON structure for a principal scope constraint in the EST format
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -51,7 +51,7 @@ pub enum PrincipalConstraint {
 }
 
 /// Serde JSON structure for an action scope constraint in the EST format
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -69,7 +69,7 @@ pub enum ActionConstraint {
 }
 
 /// Serde JSON structure for a resource scope constraint in the EST format
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -90,7 +90,7 @@ pub enum ResourceConstraint {
 }
 
 /// Serde JSON structure for a `==` scope constraint in the EST format
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -110,7 +110,7 @@ pub enum EqConstraint {
 
 /// Serde JSON structure for an `in` scope constraint for principal/resource in
 /// the EST format
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -130,7 +130,7 @@ pub enum PrincipalOrResourceInConstraint {
 
 /// Serde JSON structure for an `is` scope constraint for principal/resource in
 /// the EST format
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -144,7 +144,7 @@ pub struct PrincipalOrResourceIsConstraint {
 
 /// Serde JSON structure for an `in` scope constraint for action in the EST
 /// format
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -225,14 +225,14 @@ impl PrincipalConstraint {
             | PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type: _,
                 in_entity: None,
-            }) => Ok(self.clone()),
+            }) => Ok(self),
             PrincipalConstraint::Eq(EqConstraint::Entity { entity }) => {
                 let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
                 match mapping.get(&euid) {
                     Some(new_euid) => Ok(PrincipalConstraint::Eq(EqConstraint::Entity {
                         entity: new_euid.into(),
                     })),
-                    None => Ok(self.clone()),
+                    None => Ok(self),
                 }
             }
             PrincipalConstraint::In(PrincipalOrResourceInConstraint::Entity { entity }) => {
@@ -243,7 +243,7 @@ impl PrincipalConstraint {
                             entity: new_euid.into(),
                         },
                     )),
-                    None => Ok(self.clone()),
+                    None => Ok(self),
                 }
             }
             PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
@@ -260,7 +260,7 @@ impl PrincipalConstraint {
                             }),
                         }))
                     }
-                    None => Ok(self.clone()),
+                    None => Ok(self),
                 }
             }
         }
@@ -331,14 +331,14 @@ impl ResourceConstraint {
             | ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type: _,
                 in_entity: None,
-            }) => Ok(self.clone()),
+            }) => Ok(self),
             ResourceConstraint::Eq(EqConstraint::Entity { entity }) => {
                 let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
                 match mapping.get(&euid) {
                     Some(new_euid) => Ok(ResourceConstraint::Eq(EqConstraint::Entity {
                         entity: new_euid.into(),
                     })),
-                    None => Ok(self.clone()),
+                    None => Ok(self),
                 }
             }
             ResourceConstraint::In(PrincipalOrResourceInConstraint::Entity { entity }) => {
@@ -349,7 +349,7 @@ impl ResourceConstraint {
                             entity: new_euid.into(),
                         },
                     )),
-                    None => Ok(self.clone()),
+                    None => Ok(self),
                 }
             }
             ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
@@ -364,7 +364,7 @@ impl ResourceConstraint {
                             entity: new_euid.into(),
                         }),
                     })),
-                    None => Ok(self.clone()),
+                    None => Ok(self),
                 }
             }
         }
@@ -392,7 +392,7 @@ impl ActionConstraint {
                     Some(new_euid) => Ok(ActionConstraint::Eq(EqConstraint::Entity {
                         entity: new_euid.into(),
                     })),
-                    None => Ok(self.clone()),
+                    None => Ok(self),
                 }
             }
             ActionConstraint::In(ActionInConstraint::Single { entity }) => {
@@ -401,7 +401,7 @@ impl ActionConstraint {
                     Some(new_euid) => Ok(ActionConstraint::In(ActionInConstraint::Single {
                         entity: new_euid.into(),
                     })),
-                    None => Ok(self.clone()),
+                    None => Ok(self),
                 }
             }
             ActionConstraint::In(ActionInConstraint::Set { entities }) => {
@@ -419,9 +419,7 @@ impl ActionConstraint {
                     entities: new_entities,
                 }))
             }
-            ActionConstraint::All | ActionConstraint::Eq(EqConstraint::Slot { .. }) => {
-                Ok(self.clone())
-            }
+            ActionConstraint::All | ActionConstraint::Eq(EqConstraint::Slot { .. }) => Ok(self),
         }
     }
 }

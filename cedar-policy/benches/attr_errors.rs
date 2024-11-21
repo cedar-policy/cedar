@@ -25,8 +25,7 @@ const LARGE_SIZE: usize = 100_000;
 pub fn large_context_record(c: &mut Criterion) {
     let large_context = Context::from_pairs(
         (1..=LARGE_SIZE)
-            .map(|i| (format!("a{i}"), RestrictedExpression::new_bool(true)))
-            .collect::<Vec<_>>(),
+            .map(|i| (format!("a{i}"), RestrictedExpression::new_bool(true))),
     )
     .unwrap();
 
@@ -48,7 +47,7 @@ pub fn large_context_record(c: &mut Criterion) {
     let small_req = Request::new(
         euid.clone(),
         euid.clone(),
-        euid.clone(),
+        euid,
         small_context,
         None,
     )

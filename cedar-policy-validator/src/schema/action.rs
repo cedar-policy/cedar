@@ -308,7 +308,7 @@ impl ValidatorApplySpec<ConditionalName> {
             .principal_apply_spec
             .into_iter()
             .map(|cname| {
-                let internal_name = cname.resolve(all_defs)?.clone();
+                let internal_name = cname.resolve(all_defs)?;
                 internal_name_to_entity_type(internal_name).map_err(Into::into)
             })
             .partition_result::<_, Vec<SchemaError>, _, _>();
@@ -316,7 +316,7 @@ impl ValidatorApplySpec<ConditionalName> {
             .resource_apply_spec
             .into_iter()
             .map(|cname| {
-                let internal_name = cname.resolve(all_defs)?.clone();
+                let internal_name = cname.resolve(all_defs)?;
                 internal_name_to_entity_type(internal_name).map_err(Into::into)
             })
             .partition_result::<_, Vec<SchemaError>, _, _>();

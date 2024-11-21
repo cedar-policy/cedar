@@ -74,7 +74,7 @@ pub fn large_context_record(c: &mut Criterion) {
     let req = Request::new(
         euid.clone(),
         euid.clone(),
-        euid.clone(),
+        euid,
         Context::empty(),
         None,
     )

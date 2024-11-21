@@ -1023,15 +1023,7 @@ mod tests {
         "#,
         );
         // should have successfully parsed 4 policies
-        assert_eq!(
-            policies
-                .0
-                .into_iter()
-                .filter_map(|p| p.node)
-                .collect::<Vec<_>>()
-                .len(),
-            4
-        );
+        assert_eq!(policies.0.into_iter().filter_map(|p| p.node).count(), 4);
     }
 
     #[test]

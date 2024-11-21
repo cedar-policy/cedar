@@ -115,7 +115,7 @@ impl<'de> Deserialize<'de> for Expr {
 }
 
 /// Represent an element of a pattern literal
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum PatternElem {
@@ -656,12 +656,12 @@ impl Expr {
         mapping: &BTreeMap<EntityUID, EntityUID>,
     ) -> Result<Self, JsonDeserializationError> {
         match self.clone() {
-            Expr::ExprNoExt(e) => match e.clone() {
+            Expr::ExprNoExt(e) => match e {
                 ExprNoExt::Value(v) => Ok(Expr::ExprNoExt(ExprNoExt::Value(
                     v.sub_entity_literals(mapping)?,
                 ))),
-                ExprNoExt::Var(_) => Ok(self.clone()),
-                ExprNoExt::Slot(_) => Ok(self.clone()),
+                ExprNoExt::Var(_) => Ok(self),
+                ExprNoExt::Slot(_) => Ok(self),
                 ExprNoExt::Not { arg } => Ok(Expr::ExprNoExt(ExprNoExt::Not {
                     arg: Arc::new((*arg).clone().sub_entity_literals(mapping)?),
                 })),
@@ -965,7 +965,7 @@ impl Expr {
                             )
                         })?;
                         if !fn_name.is_known_extension_func_name() {
-                            return Err(FromJsonError::UnknownExtensionFunction(fn_name.clone()));
+                            return Err(FromJsonError::UnknownExtensionFunction(fn_name));
                         }
                         Ok(ast::Expr::call_extension_fn(
                             fn_name,

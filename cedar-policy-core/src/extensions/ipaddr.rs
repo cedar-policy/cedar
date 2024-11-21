@@ -590,12 +590,12 @@ mod tests {
         assert_matches!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-                vec![Expr::set(vec!(
+                vec![Expr::set(vec![
                     Expr::val(127),
                     Expr::val(0),
                     Expr::val(0),
                     Expr::val(1)
-                ))]
+                ])]
             )),
             Err(EvaluationError::TypeError(evaluation_errors::TypeError { expected, actual, advice, .. })) => {
                 assert_eq!(expected, nonempty![Type::String]);

@@ -1737,7 +1737,7 @@ impl From<&EntityReference> for proto::EntityReference {
 }
 
 /// Error for unexpected slots
-#[derive(Debug, Clone, PartialEq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum UnexpectedSlotError {
     /// Found this slot where slots are not allowed
     #[error("found slot `{}` where slots are not allowed", .0.id)]

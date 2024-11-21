@@ -671,7 +671,7 @@ pub fn extension() -> Extension {
                 CallStyle::MethodStyle,
                 Box::new(to_time),
                 duration_type.clone(),
-                datetime_type.clone(),
+                datetime_type,
             ),
             ExtensionFunction::unary(
                 constants::TO_MILLISECONDS_NAME.clone(),
@@ -706,7 +706,7 @@ pub fn extension() -> Extension {
                 CallStyle::MethodStyle,
                 Box::new(|value| duration_method(value, Duration::to_days)),
                 SchemaType::Long,
-                duration_type.clone(),
+                duration_type,
             ),
         ],
     )

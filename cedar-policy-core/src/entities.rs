@@ -923,7 +923,7 @@ mod json_parsing_tests {
         assert_eq!(bar, &PartialValue::from(2));
         assert!(alice.is_descendant_of(&bob));
         let bob = e.entity(&bob).unwrap();
-        assert!(bob.ancestors().collect::<Vec<_>>().is_empty());
+        assert!(bob.ancestors().next().is_none());
     }
 
     #[cfg(feature = "partial-eval")]
