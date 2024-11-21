@@ -1815,7 +1815,7 @@ pub mod serialization {
         }
 
         impl From<ValidationRequest<'_>> for proto::ValidationRequestMsg {
-            fn from(v: ValidationRequest) -> Self {
+            fn from(v: ValidationRequest<'_>) -> Self {
                 Self {
                     schema: Some(cedar_policy_validator::proto::ValidatorSchema::from(
                         v.schema,
@@ -1829,7 +1829,7 @@ pub mod serialization {
         }
 
         impl From<EquivRequest<'_>> for proto::EquivRequestMsg {
-            fn from(v: EquivRequest) -> Self {
+            fn from(v: EquivRequest<'_>) -> Self {
                 Self {
                     schema: Some(cedar_policy_validator::proto::ValidatorSchema::from(
                         v.schema,
