@@ -15,11 +15,8 @@
  */
 
 //! Validator for Cedar policies
-#![forbid(unsafe_code)]
-#![warn(rust_2018_idioms)]
 #![deny(
     missing_docs,
-    missing_debug_implementations,
     rustdoc::broken_intra_doc_links,
     rustdoc::private_intra_doc_links,
     rustdoc::invalid_codeblock_attributes,
@@ -28,7 +25,6 @@
     rustdoc::bare_urls,
     clippy::doc_markdown
 )]
-#![allow(clippy::result_large_err, clippy::large_enum_variant)] // see #878
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
 
 #[cfg(feature = "protobufs")]

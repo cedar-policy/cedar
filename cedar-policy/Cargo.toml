@@ -96,3 +96,6 @@ harness = false
 [package.metadata.docs.rs]
 features = ["experimental"]
 rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true

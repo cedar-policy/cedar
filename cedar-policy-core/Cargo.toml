@@ -70,5 +70,5 @@ prost-build = { version = "0.13.3", optional = true }
 cool_asserts = "2.0"
 miette = { version = "7.1.0", features = ["fancy"] }
 
-[lints.rust]
-unexpected_cfgs = { level = 'deny', check-cfg = ['cfg(kani)', 'cfg(fuzzing)'] }
+[lints]
+workspace = true

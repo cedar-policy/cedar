@@ -18,7 +18,7 @@
 //! It converts text to a CST
 
 lalrpop_mod!(
-    #[allow(warnings, unused)]
+    #[allow(warnings, unused, missing_debug_implementations)]
     //PANIC SAFETY: lalrpop uses unwraps, and we are trusting lalrpop to generate correct code
     #[allow(clippy::unwrap_used)]
     //PANIC SAFETY: lalrpop uses slicing, and we are trusting lalrpop to generate correct code

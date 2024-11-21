@@ -64,3 +64,6 @@ miette = { version = "7.1.0", features = ["fancy"] }
 lalrpop = "0.22.0"
 # protobuf dependency
 prost-build = { version = "0.13.3", optional = true }
+
+[lints]
+workspace = true

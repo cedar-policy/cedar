@@ -3568,10 +3568,7 @@ impl Request {
     /// Get the context component of the request. Returns `None` if the context is
     /// "unknown" (i.e., constructed using the partial evaluation APIs).
     pub fn context(&self) -> Option<&Context> {
-        match self.0.context() {
-            Some(ctx) => Some(Context::ref_cast(ctx)),
-            None => None,
-        }
+        self.0.context().map(Context::ref_cast)
     }
 
     /// Get the principal component of the request. Returns `None` if the principal is
@@ -3668,7 +3665,7 @@ impl Context {
     pub fn get(&self, key: &str) -> Option<EvalResult> {
         match &self.0 {
             ast::Context::Value(map) => map.get(key).map(|v| EvalResult::from(v.clone())),
-            _ => None,
+            ast::Context::RestrictedResidual(_) => None,
         }
     }
 

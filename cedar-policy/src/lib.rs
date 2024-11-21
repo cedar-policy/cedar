@@ -20,11 +20,9 @@
 // to add a separate test specifically for README examples by introducing a
 // private, empty, and unused function with `#[doc = include_str!("../README.md")]`.
 #![doc = include_str!("../README.md")]
-#![forbid(unsafe_code)]
-#![warn(rust_2018_idioms, clippy::pedantic, clippy::nursery)]
+#![warn(clippy::pedantic, clippy::nursery)]
 #![deny(
     missing_docs,
-    missing_debug_implementations,
     rustdoc::broken_intra_doc_links,
     rustdoc::private_intra_doc_links,
     rustdoc::invalid_codeblock_attributes,

@@ -15,7 +15,7 @@
  */
 
 //! This module contains the Cedar 'datetime' extension.
-use std::{fmt::Display, i64, sync::Arc};
+use std::{fmt::Display, sync::Arc};
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta};
 use constants::{
@@ -526,7 +526,7 @@ impl UTCOffset {
 
 impl PartialOrd for UTCOffset {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.to_seconds().partial_cmp(&other.to_seconds())
+        Some(self.cmp(other))
     }
 }
 
