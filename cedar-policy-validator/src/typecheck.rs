@@ -206,7 +206,7 @@ impl<'a> Typechecker<'a> {
         let mut env_checks = Vec::new();
         for request in self.unlinked_request_envs() {
             let mut policy_checks = Vec::new();
-            for t in policy_templates.iter() {
+            for t in policy_templates {
                 let condition_expr = t.condition();
                 for linked_env in self.link_request_env(request.clone(), t) {
                     let mut type_errors = Vec::new();
@@ -429,14 +429,12 @@ impl<'a> Typechecker<'a> {
                     request_env
                         .principal_slot()
                         .clone()
-                        .map(Type::named_entity_reference)
-                        .unwrap_or(Type::any_entity_reference())
+                        .map_or(Type::any_entity_reference(), Type::named_entity_reference)
                 } else if slotid.is_resource() {
                     request_env
                         .resource_slot()
                         .clone()
-                        .map(Type::named_entity_reference)
-                        .unwrap_or(Type::any_entity_reference())
+                        .map_or(Type::any_entity_reference(), Type::named_entity_reference)
                 } else {
                     Type::any_entity_reference()
                 }))
@@ -2010,8 +2008,7 @@ impl<'a> Typechecker<'a> {
                                         let lhs_ty_in_rhs_ty = self
                                             .schema
                                             .get_entity_type(&rhs_name)
-                                            .map(|ety| ety.descendants.contains(&lhs_name))
-                                            .unwrap_or(false);
+                                            .is_some_and(|ety| ety.descendants.contains(&lhs_name));
                                         // A schema may always declare that an action entity is a member of another action entity,
                                         // regardless of their exact types (i.e., their namespaces), so we shouldn't treat it as an error.
                                         let action_in_action =

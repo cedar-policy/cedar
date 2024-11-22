@@ -694,7 +694,7 @@ mod test {
         )
         .expect("Failed to link");
         match pset.add(p2) {
-            Ok(_) => panic!("Should have failed due to conflict with existing link id"),
+            Ok(()) => panic!("Should have failed due to conflict with existing link id"),
             Err(PolicySetError::Occupied { id }) => assert_eq!(id, PolicyID::from_string("link")),
         }
 
@@ -725,7 +725,7 @@ mod test {
         )
         .expect("Failed to link");
         match pset.add(p4) {
-            Ok(_) => panic!("Should have failed due to conflict on template id"),
+            Ok(()) => panic!("Should have failed due to conflict on template id"),
             Err(PolicySetError::Occupied { id }) => {
                 assert_eq!(id, PolicyID::from_string("t"))
             }
@@ -747,7 +747,7 @@ mod test {
         .expect("Failed to parse");
         pset.add_static(p1).expect("Failed to add!");
         match pset.add_static(p2) {
-            Ok(_) => panic!("Should have failed to due name conflict"),
+            Ok(()) => panic!("Should have failed to due name conflict"),
             Err(PolicySetError::Occupied { id }) => assert_eq!(id, PolicyID::from_string("id")),
         }
     }

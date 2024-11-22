@@ -768,9 +768,7 @@ impl SubstitutionFunction for UntypedSubstitution {
     type Err = std::convert::Infallible;
 
     fn substitute(value: &Unknown, substitute: Option<&Value>) -> Result<Expr, Self::Err> {
-        Ok(substitute
-            .map(|v| v.clone().into())
-            .unwrap_or_else(|| Expr::unknown(value.clone())))
+        Ok(substitute.map_or_else(|| Expr::unknown(value.clone()), |v| v.clone().into()))
     }
 }
 

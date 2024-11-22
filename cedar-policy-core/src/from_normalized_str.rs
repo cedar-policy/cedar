@@ -47,8 +47,7 @@ pub trait FromNormalizedStr: FromStr<Err = ParseErrors> + Display {
                 .zip(normalized_src.bytes())
                 .enumerate()
                 .find(|(_, (b0, b1))| b0 != b1)
-                .map(|(idx, _)| idx)
-                .unwrap_or(s.len().min(normalized_src.len()));
+                .map_or(s.len().min(normalized_src.len()), |(idx, _)| idx);
 
             Err(ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
                 ToASTErrorKind::NonNormalizedString {

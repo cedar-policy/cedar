@@ -34,9 +34,10 @@ use super::eval_extension_constructor;
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
 fn get_argument_types(fname: &Name, datetime_ty: &Type, duration_ty: &Type) -> Vec<types::Type> {
-    if !fname.as_ref().is_unqualified() {
-        panic!("unexpected datetime extension function name: {fname}")
-    }
+    assert!(
+        fname.as_ref().is_unqualified(),
+        "unexpected datetime extension function name: {fname}"
+    );
     match fname.basename().as_ref() {
         "datetime" | "duration" => vec![Type::primitive_string()],
         "offset" => vec![datetime_ty.clone(), duration_ty.clone()],
@@ -53,9 +54,10 @@ fn get_argument_types(fname: &Name, datetime_ty: &Type, duration_ty: &Type) -> V
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
 fn get_return_type(fname: &Name, datetime_ty: &Type, duration_ty: &Type) -> Type {
-    if !fname.as_ref().is_unqualified() {
-        panic!("unexpected datetime extension function name: {fname}")
-    }
+    assert!(
+        fname.as_ref().is_unqualified(),
+        "unexpected datetime extension function name: {fname}"
+    );
     match fname.basename().as_ref() {
         "datetime" | "offset" | "toDate" => datetime_ty.clone(),
         "duration" | "durationSince" | "toTime" => duration_ty.clone(),
@@ -69,9 +71,10 @@ fn get_return_type(fname: &Name, datetime_ty: &Type, duration_ty: &Type) -> Type
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
 fn get_argument_check(fname: &Name) -> Option<ArgumentCheckFn> {
-    if !fname.as_ref().is_unqualified() {
-        panic!("unexpected datetime extension function name: {fname}")
-    }
+    assert!(
+        fname.as_ref().is_unqualified(),
+        "unexpected datetime extension function name: {fname}"
+    );
     match fname.basename().as_ref() {
         "datetime" => {
             let fname = fname.clone();
@@ -101,10 +104,10 @@ pub fn extension_schema() -> ExtensionSchema {
 
     let fun_tys = datetime_ext.funcs().map(|f| {
         let return_type = get_return_type(f.name(), &datetime_ty, &duration_ty);
-        debug_assert!(f
-            .return_type()
-            .map(|ty| return_type.is_consistent_with(ty))
-            .unwrap_or_else(|| return_type == Type::Never));
+        debug_assert!(f.return_type().map_or_else(
+            || return_type == Type::Never,
+            |ty| return_type.is_consistent_with(ty)
+        ));
         ExtensionFunctionType::new(
             f.name().clone(),
             get_argument_types(f.name(), &datetime_ty, &duration_ty),

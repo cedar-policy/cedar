@@ -729,11 +729,7 @@ impl<'e> Evaluator<'e> {
             }
         };
         for uid2 in rhs {
-            if uid1 == &uid2
-                || entity1
-                    .map(|e1| e1.is_descendant_of(&uid2))
-                    .unwrap_or(false)
-            {
+            if uid1 == &uid2 || entity1.is_some_and(|e1| e1.is_descendant_of(&uid2)) {
                 return Ok(true.into());
             }
         }
@@ -787,8 +783,7 @@ impl<'e> Evaluator<'e> {
                         if res.is_projectable() {
                             map.as_ref()
                                 .iter()
-                                .filter_map(|(k, v)| if k == attr { Some(v) } else { None })
-                                .next()
+                                .find_map(|(k, v)| if k == attr { Some(v) } else { None })
                                 .ok_or_else(|| {
                                     EvaluationError::record_attr_does_not_exist(
                                         attr.clone(),

@@ -59,7 +59,7 @@ impl fmt::Display for Policies {
 impl fmt::Display for Policy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // start with annotations
-        for anno in self.annotations.iter() {
+        for anno in &self.annotations {
             if f.alternate() {
                 // each annotation on a new line
                 writeln!(f, "{:#}", View(anno))?;
@@ -86,7 +86,7 @@ impl fmt::Display for Policy {
                 write!(f, ")")?;
             }
             // include conditions on their own lines
-            for c in self.conds.iter() {
+            for c in &self.conds {
                 write!(f, "\n{:#}", View(c))?;
             }
             write!(f, ";")?;
@@ -104,7 +104,7 @@ impl fmt::Display for Policy {
             }
             write!(f, ")")?;
 
-            for c in self.conds.iter() {
+            for c in &self.conds {
                 write!(f, " {}", View(c))?;
             }
             write!(f, ";")?;
@@ -162,7 +162,7 @@ impl fmt::Display for Expr {
 impl fmt::Display for Or {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", View(&self.initial))?;
-        for or in self.extended.iter() {
+        for or in &self.extended {
             write!(f, " || {}", View(or))?;
         }
         Ok(())
@@ -171,7 +171,7 @@ impl fmt::Display for Or {
 impl fmt::Display for And {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", View(&self.initial))?;
-        for and in self.extended.iter() {
+        for and in &self.extended {
             write!(f, " && {}", View(and))?;
         }
         Ok(())
@@ -182,7 +182,7 @@ impl fmt::Display for Relation {
         match self {
             Relation::Common { initial, extended } => {
                 write!(f, "{}", View(initial))?;
-                for (op, add) in extended.iter() {
+                for (op, add) in extended {
                     write!(f, " {} {}", op, View(add))?;
                 }
             }
@@ -271,7 +271,7 @@ impl fmt::Display for NegOp {
 impl fmt::Display for Add {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", View(&self.initial))?;
-        for (op, mult) in self.extended.iter() {
+        for (op, mult) in &self.extended {
             write!(f, " {} {}", op, View(mult))?;
         }
         Ok(())
@@ -280,7 +280,7 @@ impl fmt::Display for Add {
 impl fmt::Display for Mult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", View(&self.initial))?;
-        for (op, un) in self.extended.iter() {
+        for (op, un) in &self.extended {
             write!(f, " {} {}", op, View(un))?;
         }
         Ok(())
@@ -298,7 +298,7 @@ impl fmt::Display for Unary {
 impl fmt::Display for Member {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", View(&self.item))?;
-        for m in self.access.iter() {
+        for m in &self.access {
             write!(f, "{}", View(m))?;
         }
         Ok(())
@@ -359,7 +359,7 @@ impl fmt::Display for Primary {
 }
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for n in self.path.iter() {
+        for n in &self.path {
             write!(f, "{}::", View(n))?;
         }
         write!(f, "{}", View(&self.name))?;

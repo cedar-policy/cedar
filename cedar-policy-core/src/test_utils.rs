@@ -287,7 +287,7 @@ impl<'a> ExpectedErrorMessage<'a> {
     /// Panics if this invariant is violated.
     fn matches_underlines(&self, src: Option<&'a str>, err: &impl miette::Diagnostic) -> bool {
         let expected_num_labels = self.underlines.len();
-        let actual_num_labels = err.labels().map(|iter| iter.count()).unwrap_or(0);
+        let actual_num_labels = err.labels().map_or(0, |iter| iter.count());
         if expected_num_labels != actual_num_labels {
             return false;
         }
@@ -328,7 +328,7 @@ impl<'a> ExpectedErrorMessage<'a> {
     #[track_caller]
     fn expect_underlines_match(&self, src: Option<&'a str>, err: &miette::Report) {
         let expected_num_labels = self.underlines.len();
-        let actual_num_labels = err.labels().map(|iter| iter.count()).unwrap_or(0);
+        let actual_num_labels = err.labels().map_or(0, |iter| iter.count());
         assert_eq!(expected_num_labels, actual_num_labels, "in the following error:\n{err:?}\n\nexpected {expected_num_labels} underlines but found {actual_num_labels}"); // the Debug representation of miette::Report is the pretty one
         if expected_num_labels != 0 {
             let src =

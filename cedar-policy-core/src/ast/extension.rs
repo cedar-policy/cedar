@@ -160,8 +160,8 @@ impl ExtensionFunction {
     ) -> Self {
         Self {
             name,
-            func,
             style,
+            func,
             return_type,
             arg_types,
         }
@@ -401,7 +401,7 @@ impl RepresentableExtensionValue {
         func: Name,
         args: Vec<RestrictedExpr>,
     ) -> Self {
-        Self { value, func, args }
+        Self { func, args, value }
     }
 
     /// Get the internal value
@@ -485,8 +485,7 @@ impl<V: 'static + Eq + Ord + ExtensionValue + Send + Sync + Clone> InternalExten
         other
             .as_any()
             .downcast_ref::<V>()
-            .map(|v| self == v)
-            .unwrap_or(false) // if the downcast failed, values are different types, so equality is false
+            .is_some_and(|v| self == v) // if the downcast failed, values are different types, so equality is false
     }
 
     fn cmp_extvalue(&self, other: &dyn InternalExtensionValue) -> std::cmp::Ordering {

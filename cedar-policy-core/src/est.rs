@@ -345,7 +345,7 @@ impl<T: Clone> From<ast::Expr<T>> for Clause {
 
 impl std::fmt::Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (k, v) in self.annotations.iter() {
+        for (k, v) in &self.annotations {
             write!(f, "@{k}")?;
             if let Some(v) = v {
                 write!(f, "(\"{}\")", v.escape_debug())?;
@@ -2473,7 +2473,7 @@ mod test {
         permit(principal, action, resource)
         when {
 
-            "" like "ḛ̶͑͝x̶͔͛a̵̰̯͛m̴͉̋́p̷̠͂l̵͇̍̔ȩ̶̣͝"
+            "" like "ḛ̶͑͝x̶͔͛a̵̰̯͛m̴͉̋́p̷̠͂l̵͇̍̔ȩ̶̣͝"
         };
     "#;
         let cst = parser::text_to_cst::parse_policy(policy)
@@ -2645,7 +2645,7 @@ mod test {
                         },
                         "pattern": [
                           {
-                            "Literal": "ḛ̶͑͝x̶͔͛a̵̰̯͛m̴͉̋́p̷̠͂l̵͇̍̔ȩ̶̣͝"
+                            "Literal": "ḛ̶͑͝x̶͔͛a̵̰̯͛m̴͉̋́p̷̠͂l̵͇̍̔ȩ̶̣͝"
                           }
                         ]
                       }

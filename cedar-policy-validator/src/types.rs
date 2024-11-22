@@ -956,10 +956,10 @@ impl EntityLUB {
     /// bound of the all the attribute type.
     fn get_attribute_types(&self, schema: &ValidatorSchema) -> Attributes {
         let mut lub_element_attributes = self.lub_elements.iter().map(|name| {
-            schema
-                .get_entity_type(name)
-                .map(|entity_type| entity_type.attributes.clone())
-                .unwrap_or_else(|| Attributes::with_attributes(None))
+            schema.get_entity_type(name).map_or_else(
+                || Attributes::with_attributes(None),
+                |entity_type| entity_type.attributes.clone(),
+            )
         });
 
         // If I wanted to write this as a fold over a possibly empty set, I
@@ -1088,8 +1088,7 @@ impl Attributes {
         other.attrs.iter().all(|(k, other_ty)| {
             self.attrs
                 .get(k)
-                .map(|self_ty| AttributeType::is_subtype(schema, self_ty, other_ty, mode))
-                .unwrap_or(false)
+                .is_some_and(|self_ty| AttributeType::is_subtype(schema, self_ty, other_ty, mode))
         })
     }
 
@@ -1304,11 +1303,10 @@ impl EntityRecordKind {
             EntityRecordKind::Entity(lub) => lub.iter().any(|e_name| {
                 schema
                     .get_entity_type(e_name)
-                    .map(|e_type| e_type.open_attributes)
                     // The entity type was not found in the schema, so we know
                     // nothing about it and must assume that it may have
                     // additional attributes.
-                    .unwrap_or(OpenTag::OpenAttributes)
+                    .map_or(OpenTag::OpenAttributes, |e_type| e_type.open_attributes)
                     .is_open()
             }),
         }
