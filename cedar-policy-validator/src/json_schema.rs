@@ -65,7 +65,7 @@ use crate::{
 ///     processed, by converting [`RawName`]s into [`ConditionalName`]s
 /// - `N` = [`InternalName`]: a [`Fragment`] in which all names have been
 ///     resolved into fully-qualified [`InternalName`]s
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

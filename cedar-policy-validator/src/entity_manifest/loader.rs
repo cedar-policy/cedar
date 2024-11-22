@@ -454,7 +454,7 @@ fn compute_ancestors_request(
     }
 
     Ok(AncestorsRequest {
-        ancestors,
         entity_id,
+        ancestors,
     })
 }

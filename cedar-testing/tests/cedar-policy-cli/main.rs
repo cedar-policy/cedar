@@ -79,7 +79,7 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
     let entity_file = resolve_integration_test_path(&test.entities);
     let schema_file = resolve_integration_test_path(&test.schema);
 
-    for json_request in test.requests.into_iter() {
+    for json_request in test.requests {
         let validation_cmd = assert_cmd::Command::cargo_bin("cedar")
             .expect("bin exists")
             .arg("validate")

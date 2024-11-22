@@ -77,10 +77,11 @@ impl RootAccessTrie {
                                 schema,
                             )?,
                             EntityRoot::Var(Var::Action) => {
-                                let ty = Type::euid_literal(&request_type.action, schema)
-                                    .ok_or(MismatchedMissingEntityError {
+                                let ty = Type::euid_literal(&request_type.action, schema).ok_or(
+                                    MismatchedMissingEntityError {
                                         entity: request_type.action.clone(),
-                                    })?;
+                                    },
+                                )?;
                                 slice.to_typed(request_type, &ty, schema)?
                             }
                             EntityRoot::Var(Var::Principal) => slice.to_typed(
@@ -151,7 +152,7 @@ impl AccessTrie {
                 };
 
                 let mut new_children = HashMap::new();
-                for (field, child) in self.children.iter() {
+                for (field, child) in &self.children {
                     // if the schema doesn't mention an attribute,
                     // it's safe to drop it.
                     // this can come up with the `has` operator

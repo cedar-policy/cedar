@@ -56,10 +56,10 @@ pub fn extension_schema() -> ExtensionSchema {
         let fname = f.name();
         let fstring = fname.to_string();
         let return_type = get_return_type(&fstring);
-        debug_assert!(f
-            .return_type()
-            .map(|ty| return_type.is_consistent_with(ty))
-            .unwrap_or_else(|| return_type == Type::Never));
+        debug_assert!(f.return_type().map_or_else(
+            || return_type == Type::Never,
+            |ty| return_type.is_consistent_with(ty)
+        ));
         ExtensionFunctionType::new(
             fname.clone(),
             get_argument_types(&fstring),
