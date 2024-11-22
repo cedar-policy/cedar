@@ -991,8 +991,11 @@ impl From<&proto::Expr> for Expr {
                     .as_ref()
                     .expect("`as_ref()` for field that should exist")
                     .as_ref();
-                Expr::like(Expr::from(arg), msg.pattern.iter().map(PatternElem::from))
-                    .with_maybe_source_loc(source_loc)
+                Expr::like(
+                    Expr::from(arg),
+                    msg.pattern.iter().map(PatternElem::from).collect(),
+                )
+                .with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::Data::Is(msg) => {
