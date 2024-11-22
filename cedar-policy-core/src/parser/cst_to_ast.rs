@@ -40,8 +40,8 @@ use super::node::Node;
 use super::unescape::{to_pattern, to_unescaped_string};
 use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
 use crate::ast::{
-    self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
-    PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
+    self, ActionConstraint, CallStyle, Integer, Pattern, PatternElem, PolicySetError,
+    PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
 };
 use crate::est::extract_single_argument;
 use crate::fuzzy_match::fuzzy_search_limited;
@@ -1779,7 +1779,9 @@ fn construct_expr_attr(e: ast::Expr, s: SmolStr, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).get_attr(e, s)
 }
 fn construct_expr_like(e: ast::Expr, s: Vec<PatternElem>, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_loc(loc).like(e, s)
+    ast::ExprBuilder::new()
+        .with_source_loc(loc)
+        .like(e, Pattern::from(s))
 }
 fn construct_expr_is(e: ast::Expr, n: ast::EntityType, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new()
@@ -2832,7 +2834,7 @@ mod tests {
 
     #[test]
     fn pattern_roundtrip() {
-        let test_pattern = &vec![
+        let test_pattern = Pattern::from(vec![
             PatternElem::Char('h'),
             PatternElem::Char('e'),
             PatternElem::Char('l'),
@@ -2843,14 +2845,14 @@ mod tests {
             PatternElem::Char('*'),
             PatternElem::Char('\\'),
             PatternElem::Char('*'),
-        ];
+        ]);
         let e1 = ast::Expr::like(ast::Expr::val("hello"), test_pattern.clone());
         let s1 = format!("{e1}");
         // Char('\\') prints to r#"\\"# and Char('*') prints to r#"\*"#.
         assert_eq!(s1, r#""hello" like "hello\\0\*\\\*""#);
         let e2 = assert_parse_expr_succeeds(&s1);
         assert_matches!(e2.expr_kind(), ast::ExprKind::Like { pattern, .. } => {
-            assert_eq!(pattern.get_elems(), test_pattern);
+            assert_eq!(pattern.get_elems(), test_pattern.get_elems());
         });
         let s2 = format!("{e2}");
         assert_eq!(s1, s2);

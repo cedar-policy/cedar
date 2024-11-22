@@ -596,7 +596,7 @@ impl Expr {
     /// Create a 'like' expression.
     ///
     /// `expr` must evaluate to a String type
-    pub fn like(expr: Expr, pattern: impl IntoIterator<Item = PatternElem>) -> Self {
+    pub fn like(expr: Expr, pattern: Pattern) -> Self {
         ExprBuilder::new().like(expr, pattern)
     }
 
@@ -698,7 +698,7 @@ impl Expr {
             )),
             ExprKind::Like { expr, pattern } => Ok(Expr::like(
                 expr.substitute_general::<T>(definitions)?,
-                pattern.iter().cloned(),
+                pattern.clone(),
             )),
             ExprKind::Set(members) => {
                 let members = members
@@ -991,8 +991,11 @@ impl From<&proto::Expr> for Expr {
                     .as_ref()
                     .expect("`as_ref()` for field that should exist")
                     .as_ref();
-                Expr::like(Expr::from(arg), msg.pattern.iter().map(PatternElem::from))
-                    .with_maybe_source_loc(source_loc)
+                Expr::like(
+                    Expr::from(arg),
+                    msg.pattern.iter().map(PatternElem::from).collect(),
+                )
+                .with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::Data::Is(msg) => {
@@ -1521,10 +1524,10 @@ impl<T> ExprBuilder<T> {
     /// Create a 'like' expression.
     ///
     /// `expr` must evaluate to a String type
-    pub fn like(self, expr: Expr<T>, pattern: impl IntoIterator<Item = PatternElem>) -> Expr<T> {
+    pub fn like(self, expr: Expr<T>, pattern: Pattern) -> Expr<T> {
         self.with_expr_kind(ExprKind::Like {
             expr: Arc::new(expr),
-            pattern: Pattern::new(pattern),
+            pattern,
         })
     }
 
@@ -2070,24 +2073,24 @@ mod test {
     #[test]
     fn like_display() {
         // `\0` escaped form is `\0`.
-        let e = Expr::like(Expr::val("a"), vec![PatternElem::Char('\0')]);
+        let e = Expr::like(Expr::val("a"), Pattern::from(vec![PatternElem::Char('\0')]));
         assert_eq!(format!("{e}"), r#""a" like "\0""#);
         // `\`'s escaped form is `\\`
         let e = Expr::like(
             Expr::val("a"),
-            vec![PatternElem::Char('\\'), PatternElem::Char('0')],
+            Pattern::from(vec![PatternElem::Char('\\'), PatternElem::Char('0')]),
         );
         assert_eq!(format!("{e}"), r#""a" like "\\0""#);
         // `\`'s escaped form is `\\`
         let e = Expr::like(
             Expr::val("a"),
-            vec![PatternElem::Char('\\'), PatternElem::Wildcard],
+            Pattern::from(vec![PatternElem::Char('\\'), PatternElem::Wildcard]),
         );
         assert_eq!(format!("{e}"), r#""a" like "\\*""#);
         // literal star's escaped from is `\*`
         let e = Expr::like(
             Expr::val("a"),
-            vec![PatternElem::Char('\\'), PatternElem::Char('*')],
+            Pattern::from(vec![PatternElem::Char('\\'), PatternElem::Char('*')]),
         );
         assert_eq!(format!("{e}"), r#""a" like "\\\*""#);
     }
@@ -2273,8 +2276,9 @@ mod test {
                 Expr::has_attr(Expr::val(1), "foo".into()),
             ),
             (
-                ExprBuilder::with_data(1).like(temp.clone(), vec![PatternElem::Wildcard]),
-                Expr::like(Expr::val(1), vec![PatternElem::Wildcard]),
+                ExprBuilder::with_data(1)
+                    .like(temp.clone(), Pattern::from(vec![PatternElem::Wildcard])),
+                Expr::like(Expr::val(1), Pattern::from(vec![PatternElem::Wildcard])),
             ),
             (
                 ExprBuilder::with_data(1).is_entity_type(temp, "T".parse().unwrap()),

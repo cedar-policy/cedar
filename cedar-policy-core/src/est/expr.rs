@@ -125,8 +125,8 @@ pub enum PatternElem {
     Literal(SmolStr),
 }
 
-impl From<Vec<PatternElem>> for crate::ast::Pattern {
-    fn from(value: Vec<PatternElem>) -> Self {
+impl From<&[PatternElem]> for crate::ast::Pattern {
+    fn from(value: &[PatternElem]) -> Self {
         let mut elems = Vec::new();
         for elem in value {
             match elem {
@@ -138,7 +138,7 @@ impl From<Vec<PatternElem>> for crate::ast::Pattern {
                 }
             }
         }
-        Self::new(elems)
+        Self::from(elems)
     }
 }
 
@@ -901,7 +901,7 @@ impl Expr {
             }
             Expr::ExprNoExt(ExprNoExt::Like { left, pattern }) => Ok(ast::Expr::like(
                 (*left).clone().try_into_ast(id)?,
-                crate::ast::Pattern::from(pattern).iter().cloned(),
+                crate::ast::Pattern::from(pattern.as_slice()),
             )),
             Expr::ExprNoExt(ExprNoExt::Is {
                 left,
@@ -1810,7 +1810,7 @@ impl std::fmt::Display for ExprNoExt {
                 write!(
                     f,
                     " like \"{}\"",
-                    crate::ast::Pattern::from(pattern.clone())
+                    crate::ast::Pattern::from(pattern.as_slice())
                 )
             }
             ExprNoExt::Is {
