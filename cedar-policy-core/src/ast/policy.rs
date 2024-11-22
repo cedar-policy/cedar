@@ -2802,11 +2802,11 @@ mod test {
             Name::from_normalized_str("B::C::D").unwrap(),
         ));
         let prc1: PrincipalOrResourceConstraint =
-            PrincipalOrResourceConstraint::is_eq(euid1.to_owned());
+            PrincipalOrResourceConstraint::is_eq(euid1.clone());
         let prc2: PrincipalOrResourceConstraint =
-            PrincipalOrResourceConstraint::is_in(euid1.to_owned());
+            PrincipalOrResourceConstraint::is_in(euid1.clone());
         let prc3: PrincipalOrResourceConstraint =
-            PrincipalOrResourceConstraint::is_entity_type(name1.to_owned());
+            PrincipalOrResourceConstraint::is_entity_type(name1.clone());
         let prc4: PrincipalOrResourceConstraint =
             PrincipalOrResourceConstraint::is_entity_type_in(name1, euid1);
         assert_eq!(
