@@ -657,7 +657,7 @@ impl<'e> Evaluator<'e> {
                     PartialValue::Value(v) => {
                         Ok((pattern.wildcard_match(v.get_as_string()?)).into())
                     }
-                    PartialValue::Residual(r) => Ok(Expr::like(r, pattern.iter().cloned()).into()),
+                    PartialValue::Residual(r) => Ok(Expr::like(r, pattern.clone()).into()),
                 }
             }
             ExprKind::Is { expr, entity_type } => {
@@ -4234,7 +4234,7 @@ pub mod test {
         );
         // type error
         assert_matches!(
-            eval.interpret_inline_policy(&Expr::like(Expr::val(354), vec![])),
+            eval.interpret_inline_policy(&Expr::like(Expr::val(354), Pattern::from(vec![]))),
             Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
                 assert_eq!(expected, nonempty![Type::String]);
                 assert_eq!(actual, Type::Long);
@@ -4257,7 +4257,7 @@ pub mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::like(
                 Expr::val("*"),
-                vec![PatternElem::Char('\u{0000}')]
+                Pattern::from(vec![PatternElem::Char('\u{0000}')])
             )),
             Ok(Value::from(false))
         );
@@ -4884,12 +4884,12 @@ pub mod test {
         ));
         assert_restricted_expression_error(Expr::like(
             Expr::val("abcdefg12"),
-            vec![
+            Pattern::from(vec![
                 PatternElem::Char('a'),
                 PatternElem::Char('b'),
                 PatternElem::Char('c'),
                 PatternElem::Wildcard,
-            ],
+            ]),
         ));
         assert_matches!(
             evaluator.partial_interpret(
@@ -5948,7 +5948,10 @@ pub mod test {
         let es = Entities::new();
         let eval = Evaluator::new(empty_request(), &es, Extensions::none());
 
-        let e = Expr::like(Expr::unknown(Unknown::new_untyped("a")), []);
+        let e = Expr::like(
+            Expr::unknown(Unknown::new_untyped("a")),
+            Pattern::from(vec![]),
+        );
 
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
 

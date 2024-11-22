@@ -1014,10 +1014,7 @@ impl<'a> Typechecker<'a> {
                     TypecheckAnswer::success(
                         ExprBuilder::with_data(Some(Type::primitive_boolean()))
                             .with_same_source_loc(e)
-                            // FIXME: `pattern` contains an `Arc<Vec<...>>` that
-                            // could be cloned cheap, but this reallocated the
-                            // pattern vec. Need a different constructor.
-                            .like(actual_expr_ty, pattern.iter().cloned()),
+                            .like(actual_expr_ty, pattern.clone()),
                     )
                 })
             }

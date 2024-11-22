@@ -15,7 +15,7 @@
  */
 
 use cedar_policy_core::ast::{
-    EntityType, EntityUID, Expr, ExprKind, Literal, Name, PatternElem, Template,
+    EntityType, EntityUID, Expr, ExprKind, Literal, Name, Pattern, Template,
 };
 use cedar_policy_core::parser::Loc;
 
@@ -83,7 +83,7 @@ pub enum TextKind<'a> {
     /// Identifiers
     Identifier(Option<&'a Loc>, &'a str),
     /// Pattern Strings
-    Pattern(Option<&'a Loc>, &'a [PatternElem]),
+    Pattern(Option<&'a Loc>, &'a Pattern),
 }
 
 /// Returns an iterator over all text (strings and identifiers) in the expression.
@@ -101,7 +101,7 @@ fn text_in_expr(e: &Expr) -> impl IntoIterator<Item = TextKind<'_>> {
         ExprKind::GetAttr { attr, .. } => vec![TextKind::Identifier(e.source_loc(), attr)],
         ExprKind::HasAttr { attr, .. } => vec![TextKind::Identifier(e.source_loc(), attr)],
         ExprKind::Like { pattern, .. } => {
-            vec![TextKind::Pattern(e.source_loc(), pattern.get_elems())]
+            vec![TextKind::Pattern(e.source_loc(), pattern)]
         }
         ExprKind::Record(map) => map
             .keys()
@@ -156,7 +156,7 @@ fn text_in_name<'a>(loc: Option<&'a Loc>, name: &'a Name) -> impl Iterator<Item 
 mod tests {
     use super::{expr_entity_uids, expr_text};
     use crate::expr_iterator::TextKind;
-    use cedar_policy_core::ast::{EntityUID, Expr, Literal, PatternElem, Var};
+    use cedar_policy_core::ast::{EntityUID, Expr, Literal, Pattern, PatternElem, Var};
     use std::{collections::HashSet, str::FromStr};
 
     #[test]
@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn test_strs_like() {
-        let p = vec![PatternElem::Wildcard, PatternElem::Char('a')];
+        let p = Pattern::from(vec![PatternElem::Wildcard, PatternElem::Char('a')]);
         let e = Expr::like(Expr::val("test"), p.clone());
         let strs: HashSet<_> = expr_text(&e).collect();
 

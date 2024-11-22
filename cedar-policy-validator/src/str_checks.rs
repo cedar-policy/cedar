@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::ast::{Pattern, PolicyID, Template};
+use cedar_policy_core::ast::{PolicyID, Template};
 use cedar_policy_core::parser::Loc;
 
 use crate::expr_iterator::expr_text;
@@ -35,10 +35,8 @@ pub fn confusable_string_checks<'a>(
             let warning = match str {
                 TextKind::String(span, s) => permissable_str(span, policy.id(), s),
                 TextKind::Identifier(span, i) => permissable_ident(span, policy.id(), i),
-                TextKind::Pattern(span, p) => {
-                    let pat = Pattern::new(p.iter().copied());
-                    let as_str = format!("{pat}");
-                    permissable_str(span, policy.id(), &as_str)
+                TextKind::Pattern(span, pat) => {
+                    permissable_str(span, policy.id(), &pat.to_string())
                 }
             };
 
