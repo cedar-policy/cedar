@@ -209,6 +209,7 @@ impl InternalName {
     }
 
     /// Like `qualify_with()`, but accepts a [`Name`] as the namespace to qualify with
+    #[must_use]
     pub fn qualify_with_name(&self, namespace: Option<&Name>) -> InternalName {
         let ns = namespace.map(AsRef::as_ref);
         self.qualify_with(ns)
