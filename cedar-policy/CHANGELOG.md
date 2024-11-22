@@ -19,6 +19,11 @@ Cedar Language Version: TBD
 - Added protobuf and JSON generation code to `cedar-policy-cli`.
 - Added a new get helper method to Context that allows easy extraction of generic values from the context by key. This method simplifies the common use case of retrieving values from Context objects.
 
+### Changed
+
+- Stopped emitting warnings for identifiers containing certain printable ASCII
+  characters (e.g., `/` and `:`) (#1336, resolving #621)
+
 ## [4.2.2] - 2024-11-11
 Cedar Language version: 4.1
 
