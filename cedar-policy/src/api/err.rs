@@ -522,23 +522,30 @@ pub mod validation_warnings;
 #[derive(Debug, Clone, Error, Diagnostic)]
 #[non_exhaustive]
 pub enum ValidationWarning {
-    /// A string contains mixed scripts. Different scripts can contain visually similar characters which may be confused for each other.
+    /// A string contains a mix of characters for different scripts (e.g., latin
+    /// and cyrillic alphabets). Different scripts can contain visually similar
+    /// characters which may be confused for each other.
     #[diagnostic(transparent)]
     #[error(transparent)]
     MixedScriptString(#[from] validation_warnings::MixedScriptString),
-    /// A string contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
+    /// A string contains bidirectional text control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
     #[diagnostic(transparent)]
     #[error(transparent)]
     BidiCharsInString(#[from] validation_warnings::BidiCharsInString),
-    /// An id contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
+    /// An id contains bidirectional text control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
     #[diagnostic(transparent)]
     #[error(transparent)]
     BidiCharsInIdentifier(#[from] validation_warnings::BidiCharsInIdentifier),
-    /// An id contains mixed scripts. This can cause characters to be confused for each other.
+    /// An id contains a mix of characters for different scripts (e.g., latin and
+    /// cyrillic alphabets). Different scripts can contain visually similar
+    /// characters which may be confused for each other.
     #[diagnostic(transparent)]
     #[error(transparent)]
     MixedScriptIdentifier(#[from] validation_warnings::MixedScriptIdentifier),
-    /// An id contains characters that fall outside of the General Security Profile for Identifiers. We recommend adhering to this if possible. See Unicode® Technical Standard #39 for more info.
+    /// An id contains characters that is not a [graphical ASCII character](https://doc.rust-lang.org/std/primitive.char.html#method.is_ascii_graphic),
+    /// not the space character (`U+0020`), and falls outside of the General
+    /// Security Profile for Identifiers. We recommend adhering to this if
+    /// possible. See [Unicode® Technical Standard #39](https://unicode.org/reports/tr39/#General_Security_Profile) for more information.
     #[diagnostic(transparent)]
     #[error(transparent)]
     ConfusableIdentifier(#[from] validation_warnings::ConfusableIdentifier),

@@ -78,11 +78,15 @@ fn permissable_ident(
             policy_id.clone(),
             s,
         ))
-    } else if !s.chars().all(|c| c.identifier_allowed()) {
+    } else if let Some(c) = s
+        .chars()
+        .find(|c| *c != ' ' && !c.is_ascii_graphic() && !c.identifier_allowed())
+    {
         Some(ValidationWarning::confusable_identifier(
             loc.cloned(),
             policy_id.clone(),
             s,
+            c,
         ))
     } else if !s.is_single_script() {
         Some(ValidationWarning::mixed_script_identifier(
@@ -119,7 +123,9 @@ mod test {
     use cedar_policy_core::{
         ast::PolicySet,
         parser::{parse_policy, Loc},
+        test_utils::{expect_err, ExpectedErrorMessageBuilder},
     };
+    use cool_asserts::assert_matches;
     use std::sync::Arc;
     #[test]
     fn strs() {
@@ -148,14 +154,77 @@ mod test {
             permissable_ident(None, &PolicyID::from_string("0"), "test"),
             None
         );
-        match permissable_ident(None, &PolicyID::from_string("0"), "is​Admin") {
-            Some(ValidationWarning::ConfusableIdentifier(_)) => (),
-            o => panic!("should have produced ConfusableIdentifier: {:?}", o),
-        };
-        match permissable_ident(None, &PolicyID::from_string("0"), "say_һello") {
-            Some(ValidationWarning::MixedScriptIdentifier(_)) => (),
-            o => panic!("should have produced MixedScriptIdentifier: {:?}", o),
-        };
+        assert_eq!(
+            permissable_ident(
+                None,
+                &PolicyID::from_string("0"),
+                "https://www.example.com/test?foo=bar&bar=baz#buz"
+            ),
+            None
+        );
+        assert_eq!(
+            permissable_ident(
+                None,
+                &PolicyID::from_string("0"),
+                "http://example.com/query{firstName}-{lastName}"
+            ),
+            None
+        );
+        assert_eq!(
+            permissable_ident(
+                None,
+                &PolicyID::from_string("0"),
+                "example_user+1@example.com"
+            ),
+            None
+        );
+        assert_eq!(
+            permissable_ident(None, &PolicyID::from_string("0"), "get /pets/{petId}"),
+            None
+        );
+
+        assert_matches!(permissable_ident(None, &PolicyID::from_string("0"), "is​Admin"), Some(warning) => {
+            expect_err(
+                "",
+                &miette::Report::new(warning),
+                &ExpectedErrorMessageBuilder::error(r#"for policy `0`, identifier `is\u{200b}Admin` contains the character `\u{200b}` which is not a printable ASCII character and falls outside of the General Security Profile for Identifiers"#)
+                    .build());
+        });
+        assert_matches!(permissable_ident(None, &PolicyID::from_string("0"), "new\nline"), Some(warning) => {
+            expect_err(
+                "",
+                &miette::Report::new(warning),
+                &ExpectedErrorMessageBuilder::error(r#"for policy `0`, identifier `new\nline` contains the character `\n` which is not a printable ASCII character and falls outside of the General Security Profile for Identifiers"#)
+                    .build());
+        });
+        assert_matches!(permissable_ident(None, &PolicyID::from_string("0"), "null\0"), Some(warning) => {
+            expect_err(
+                "",
+                &miette::Report::new(warning),
+                &ExpectedErrorMessageBuilder::error(r#"for policy `0`, identifier `null\0` contains the character `\0` which is not a printable ASCII character and falls outside of the General Security Profile for Identifiers"#)
+                    .build());
+        });
+        assert_matches!(permissable_ident(None, &PolicyID::from_string("0"), "delete\x7f"), Some(warning) => {
+            expect_err(
+                "",
+                &miette::Report::new(warning),
+                &ExpectedErrorMessageBuilder::error(r#"for policy `0`, identifier `delete\u{7f}` contains the character `\u{7f}` which is not a printable ASCII character and falls outside of the General Security Profile for Identifiers"#)
+                    .build());
+        });
+        assert_matches!(permissable_ident(None, &PolicyID::from_string("0"), "🍌"), Some(warning) => {
+            expect_err(
+                "",
+                &miette::Report::new(warning),
+                &ExpectedErrorMessageBuilder::error(r#"for policy `0`, identifier `🍌` contains the character `🍌` which is not a printable ASCII character and falls outside of the General Security Profile for Identifiers"#)
+                    .build());
+        });
+        assert_matches!(permissable_ident(None, &PolicyID::from_string("0"), "say_һello") , Some(warning) => {
+            expect_err(
+                "",
+                &miette::Report::new(warning),
+                &ExpectedErrorMessageBuilder::error(r#"for policy `0`, identifier `say_һello` contains mixed scripts"#)
+                    .build());
+        });
     }
 
     #[test]
