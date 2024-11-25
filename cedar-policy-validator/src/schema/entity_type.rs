@@ -106,7 +106,7 @@ impl TCNode<EntityType> for ValidatorEntityType {
 impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
     fn from(v: &ValidatorEntityType) -> Self {
         let tags = v.tags.as_ref().map(|tags| proto::Tag {
-            optional_type: Some(proto::tag::OptionalType::Type(proto::Type::from(tags))),
+            optional_type: Some(proto::Type::from(tags)),
         });
         Self {
             name: Some(ast::proto::EntityType::from(&v.name)),
@@ -128,10 +128,7 @@ impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
     #[allow(clippy::expect_used)]
     fn from(v: &proto::ValidatorEntityType) -> Self {
         let tags = match &v.tags {
-            Some(tags) => match &tags.optional_type {
-                Some(proto::tag::OptionalType::Type(ty)) => Some(Type::from(ty)),
-                _ => None,
-            },
+            Some(tags) => tags.optional_type.as_ref().map(Type::from),
             None => None,
         };
         Self {
