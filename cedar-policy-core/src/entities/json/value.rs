@@ -232,13 +232,13 @@ impl CedarValueJson {
 
     /// Convert this `CedarValueJson` into a Cedar "restricted expression"
     pub fn into_expr(
-        self,
+        &self,
         ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
     ) -> Result<RestrictedExpr, JsonDeserializationError> {
         match self {
-            Self::Bool(b) => Ok(RestrictedExpr::val(b)),
-            Self::Long(i) => Ok(RestrictedExpr::val(i)),
-            Self::String(s) => Ok(RestrictedExpr::val(s)),
+            Self::Bool(b) => Ok(RestrictedExpr::val(*b)),
+            Self::Long(i) => Ok(RestrictedExpr::val(*i)),
+            Self::String(s) => Ok(RestrictedExpr::val(s.clone())),
             Self::Set(vals) => Ok(RestrictedExpr::set(
                 vals.into_iter()
                     .map(|v| v.into_expr(ctx.clone()))
@@ -246,7 +246,7 @@ impl CedarValueJson {
             )),
             Self::Record(map) => Ok(RestrictedExpr::record(
                 map.into_iter()
-                    .map(|(k, v)| Ok((k, v.into_expr(ctx.clone())?)))
+                    .map(|(k, v)| Ok((k.clone(), v.into_expr(ctx.clone())?)))
                     .collect::<Result<Vec<_>, JsonDeserializationError>>()?,
             )
             .map_err(|e| match e {
@@ -460,14 +460,18 @@ fn check_for_reserved_keys<'a>(
 impl FnAndArg {
     /// Convert this `FnAndArg` into a Cedar "restricted expression" (which will be a call to an extension constructor)
     pub fn into_expr(
-        self,
+        &self,
         ctx: impl Fn() -> JsonDeserializationErrorContext + Clone,
     ) -> Result<RestrictedExpr, JsonDeserializationError> {
         Ok(RestrictedExpr::call_extension_fn(
             Name::from_normalized_str(&self.ext_fn).map_err(|errs| {
-                JsonDeserializationError::parse_escape(EscapeKind::Extension, self.ext_fn, errs)
+                JsonDeserializationError::parse_escape(
+                    EscapeKind::Extension,
+                    self.ext_fn.clone(),
+                    errs,
+                )
             })?,
-            vec![CedarValueJson::into_expr(*self.arg, ctx)?],
+            vec![CedarValueJson::into_expr(&self.arg, ctx)?],
         ))
     }
 }
