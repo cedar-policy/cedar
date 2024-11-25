@@ -116,9 +116,7 @@ message AttributeType {
 }
 
 message Tag {
-    oneof optional_type {
-        Type type = 1;
-    }
+    Type optional_type = 1;
 }
 
 enum ValidationMode {
