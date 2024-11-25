@@ -289,10 +289,11 @@ impl Clause {
     /// `id` is the ID of the policy the clause belongs to, used only for reporting errors
     fn try_into_ast(self, id: ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
         match self {
-            Clause::When(expr) => Self::filter_slots(expr.try_into_ast(id)?, true),
-            Clause::Unless(expr) => {
-                Self::filter_slots(ast::Expr::not(expr.try_into_ast(id)?), false)
-            }
+            Clause::When(expr) => Self::filter_slots(expr.try_into_ast(id).map_err(|e| *e)?, true),
+            Clause::Unless(expr) => Self::filter_slots(
+                ast::Expr::not(expr.try_into_ast(id).map_err(|e| *e)?),
+                false,
+            ),
         }
     }
 }

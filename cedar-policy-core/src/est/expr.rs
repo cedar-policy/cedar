@@ -811,12 +811,12 @@ impl Expr {
     /// Attempt to convert this `est::Expr` into an `ast::Expr`
     ///
     /// `id`: the ID of the policy this `Expr` belongs to, used only for reporting errors
-    pub fn try_into_ast(self, id: ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
+    pub fn try_into_ast(self, id: ast::PolicyID) -> Result<ast::Expr, Box<FromJsonError>> {
         match self {
             Expr::ExprNoExt(ExprNoExt::Value(jsonvalue)) => jsonvalue
                 .into_expr(|| JsonDeserializationErrorContext::Policy { id: id.clone() })
                 .map(Into::into)
-                .map_err(Into::into),
+                .map_err(|e| Box::new(e.into())),
             Expr::ExprNoExt(ExprNoExt::Var(var)) => Ok(ast::Expr::var(var)),
             Expr::ExprNoExt(ExprNoExt::Slot(slot)) => Ok(ast::Expr::slot(slot)),
             Expr::ExprNoExt(ExprNoExt::Not { arg }) => {
@@ -908,7 +908,7 @@ impl Expr {
                 entity_type,
                 in_expr,
             }) => ast::EntityType::from_normalized_str(entity_type.as_str())
-                .map_err(FromJsonError::InvalidEntityType)
+                .map_err(|e| Box::new(FromJsonError::InvalidEntityType(e)))
                 .and_then(|entity_type_name| {
                     let left: ast::Expr = (*left).clone().try_into_ast(id.clone())?;
                     let is_expr = ast::Expr::is_entity_type(left.clone(), entity_type_name);
@@ -935,7 +935,7 @@ impl Expr {
                 elements
                     .into_iter()
                     .map(|el| el.try_into_ast(id.clone()))
-                    .collect::<Result<Vec<_>, FromJsonError>>()?,
+                    .collect::<Result<Vec<_>, Box<FromJsonError>>>()?,
             )),
             Expr::ExprNoExt(ExprNoExt::Record(map)) => {
                 // PANIC SAFETY: can't have duplicate keys here because the input was already a HashMap
@@ -943,13 +943,13 @@ impl Expr {
                 Ok(ast::Expr::record(
                     map.into_iter()
                         .map(|(k, v)| Ok((k, v.try_into_ast(id.clone())?)))
-                        .collect::<Result<HashMap<SmolStr, _>, FromJsonError>>()?,
+                        .collect::<Result<HashMap<SmolStr, _>, Box<FromJsonError>>>()?,
                 )
                 .expect("can't have duplicate keys here because the input was already a HashMap"))
             }
             Expr::ExtFuncCall(ExtFuncCall { call }) => {
                 match call.len() {
-                    0 => Err(FromJsonError::MissingOperator),
+                    0 => Err(Box::new(FromJsonError::MissingOperator)),
                     1 => {
                         // PANIC SAFETY checked that `call.len() == 1`
                         #[allow(clippy::expect_used)]
@@ -958,14 +958,17 @@ impl Expr {
                             .next()
                             .expect("already checked that len was 1");
                         let fn_name: ast::Name = fn_name.parse().map_err(|errs| {
-                            JsonDeserializationError::parse_escape(
-                                EscapeKind::Extension,
-                                fn_name,
-                                errs,
+                            Box::new(
+                                JsonDeserializationError::parse_escape(
+                                    EscapeKind::Extension,
+                                    fn_name,
+                                    errs,
+                                )
+                                .into(),
                             )
                         })?;
                         if !fn_name.is_known_extension_func_name() {
-                            return Err(FromJsonError::UnknownExtensionFunction(fn_name));
+                            return Err(Box::new(FromJsonError::UnknownExtensionFunction(fn_name)));
                         }
                         Ok(ast::Expr::call_extension_fn(
                             fn_name,
@@ -974,9 +977,9 @@ impl Expr {
                                 .collect::<Result<_, _>>()?,
                         ))
                     }
-                    _ => Err(FromJsonError::MultipleOperators {
+                    _ => Err(Box::new(FromJsonError::MultipleOperators {
                         ops: call.into_keys().collect(),
-                    }),
+                    })),
                 }
             }
         }
