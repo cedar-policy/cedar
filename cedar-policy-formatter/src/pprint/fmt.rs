@@ -33,7 +33,7 @@ fn tree_to_pretty<T: Doc>(t: &T, context: &mut config::Context<'_, '_>) -> Resul
     let mut w = Vec::new();
     let config = context.config;
     let doc = t.to_doc(context);
-    doc.ok_or(miette!("failed to produce doc"))?
+    doc.ok_or_else(|| miette!("failed to produce doc"))?
         .render(config.line_width, &mut w)
         .map_err(|err| miette!(format!("failed to render doc: {err}")))?;
     String::from_utf8(w)
@@ -99,11 +99,11 @@ pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
     let cst = parse_policies(ps).wrap_err("cannot parse input policies")?;
     let ast = cst.to_policyset().wrap_err("cannot parse input policies")?;
     let (tokens, end_of_file_comment) =
-        get_token_stream(ps).ok_or(miette!("cannot get token stream"))?;
+        get_token_stream(ps).ok_or_else(|| miette!("cannot get token stream"))?;
     let mut context = config::Context { config, tokens };
     let mut formatted_policies = cst
         .as_inner()
-        .ok_or(miette!("fail to get input policy CST"))?
+        .ok_or_else(|| miette!("fail to get input policy CST"))?
         .0
         .iter()
         .map(|p| Ok(remove_empty_lines(&tree_to_pretty(p, &mut context)?)))

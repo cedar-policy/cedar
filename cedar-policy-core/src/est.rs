@@ -139,7 +139,7 @@ impl Clause {
         mapping: &BTreeMap<EntityUID, EntityUID>,
     ) -> Result<Self, JsonDeserializationError> {
         use Clause::{Unless, When};
-        match self.clone() {
+        match self {
             When(e) => Ok(When(e.sub_entity_literals(mapping)?)),
             Unless(e) => Ok(Unless(e.sub_entity_literals(mapping)?)),
         }
@@ -4791,8 +4791,8 @@ mod issue_1061 {
                 ]
             }
         );
-        let est = serde_json::from_value::<est::Policy>(src.clone())
-            .expect("Failed to deserialize policy JSON");
+        let est =
+            serde_json::from_value::<est::Policy>(src).expect("Failed to deserialize policy JSON");
         let ast_from_est = est
             .try_into_ast_policy(None)
             .expect("Failed to convert EST to AST");

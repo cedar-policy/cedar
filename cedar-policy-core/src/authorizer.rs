@@ -410,7 +410,7 @@ mod test {
         pset.add_static(parser::parse_policy(Some(PolicyID::from_string("2")), src2).unwrap())
             .unwrap();
 
-        let r = a.is_authorized_core(q.clone(), &pset, &es).decision();
+        let r = a.is_authorized_core(q, &pset, &es).decision();
         assert_eq!(r, Some(Decision::Allow));
     }
 
@@ -642,7 +642,7 @@ mod test {
 // GRCOV_BEGIN_COVERAGE
 
 /// Authorization response returned from the `Authorizer`
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Response {
     /// Authorization decision
     pub decision: Decision,
@@ -651,7 +651,7 @@ pub struct Response {
 }
 
 /// Policy evaluation response returned from the `Authorizer`.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct EvaluationResponse {
     /// `PolicyID`s of the fully evaluated policies with a permit [`Effect`].
     pub satisfied_permits: HashSet<PolicyID>,
@@ -666,7 +666,7 @@ pub struct EvaluationResponse {
 }
 
 /// Diagnostics providing more information on how a `Decision` was reached
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Diagnostics {
     /// `PolicyID`s of the policies that contributed to the decision. If no
     /// policies applied to the request, this set will be empty.

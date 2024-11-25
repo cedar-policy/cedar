@@ -40,8 +40,8 @@ use super::node::Node;
 use super::unescape::{to_pattern, to_unescaped_string};
 use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
 use crate::ast::{
-    self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
-    PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
+    self, ActionConstraint, CallStyle, Integer, Pattern, PatternElem, PolicySetError,
+    PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
 };
 use crate::est::extract_single_argument;
 use crate::fuzzy_match::fuzzy_search_limited;
@@ -1315,7 +1315,7 @@ impl Node<Option<cst::Member>> {
                 // String literals are handled the same ways as expressions
                 (StrLit { lit, loc }, [next, rest @ ..]) => {
                     let str_lit_expr = match to_unescaped_string(lit) {
-                        Ok(s) => construct_expr_string(s, loc.clone()),
+                        Ok(s) => construct_expr_string(s, loc),
                         Err(escape_errs) => {
                             return Err(ParseErrors::new_from_nonempty(
                                 escape_errs
@@ -1340,7 +1340,7 @@ impl Node<Option<cst::Member>> {
                 // method call on name - error
                 (Name { name, .. }, [Field(f), Call(_), ..]) => {
                     return Err(self
-                        .to_ast_err(ToASTErrorKind::NoMethods(name.clone(), f.clone()))
+                        .to_ast_err(ToASTErrorKind::NoMethods(name, f.clone()))
                         .into());
                 }
                 // method call on variable
@@ -1349,7 +1349,7 @@ impl Node<Option<cst::Member>> {
                     // move the id out of the slice as well, to avoid cloning the internal string
                     let id = mem::replace(id, ast::UnreservedId::empty());
                     (
-                        id.to_meth(construct_expr_var(var, var_loc.clone()), args, &self.loc)?,
+                        id.to_meth(construct_expr_var(var, var_loc), args, &self.loc)?,
                         rest,
                     )
                 }
@@ -1359,7 +1359,7 @@ impl Node<Option<cst::Member>> {
                     let id = mem::replace(i, ast::UnreservedId::empty());
                     (
                         construct_expr_attr(
-                            construct_expr_var(var, var_loc.clone()),
+                            construct_expr_var(var, var_loc),
                             id.to_smolstr(),
                             self.loc.clone(),
                         ),
@@ -1370,7 +1370,7 @@ impl Node<Option<cst::Member>> {
                 (Name { name, .. }, [Field(f), ..]) => {
                     return Err(self
                         .to_ast_err(ToASTErrorKind::InvalidAccess {
-                            lhs: name.clone(),
+                            lhs: name,
                             field: f.to_smolstr(),
                         })
                         .into());
@@ -1379,7 +1379,7 @@ impl Node<Option<cst::Member>> {
                 (Name { name, .. }, [Index(i), ..]) => {
                     return Err(self
                         .to_ast_err(ToASTErrorKind::InvalidIndex {
-                            lhs: name.clone(),
+                            lhs: name,
                             field: i.clone(),
                         })
                         .into());
@@ -1389,11 +1389,7 @@ impl Node<Option<cst::Member>> {
                 (Var { var, loc: var_loc }, [Index(i), rest @ ..]) => {
                     let i = mem::take(i);
                     (
-                        construct_expr_attr(
-                            construct_expr_var(var, var_loc.clone()),
-                            i,
-                            self.loc.clone(),
-                        ),
+                        construct_expr_attr(construct_expr_var(var, var_loc), i, self.loc.clone()),
                         rest,
                     )
                 }
@@ -1921,7 +1917,9 @@ fn construct_expr_attr(e: ast::Expr, s: SmolStr, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).get_attr(e, s)
 }
 fn construct_expr_like(e: ast::Expr, s: Vec<PatternElem>, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_loc(loc).like(e, s)
+    ast::ExprBuilder::new()
+        .with_source_loc(loc)
+        .like(e, Pattern::from(s))
 }
 fn construct_expr_is(e: ast::Expr, n: ast::EntityType, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new()
@@ -2974,7 +2972,7 @@ mod tests {
 
     #[test]
     fn pattern_roundtrip() {
-        let test_pattern = &vec![
+        let test_pattern = Pattern::from(vec![
             PatternElem::Char('h'),
             PatternElem::Char('e'),
             PatternElem::Char('l'),
@@ -2985,14 +2983,14 @@ mod tests {
             PatternElem::Char('*'),
             PatternElem::Char('\\'),
             PatternElem::Char('*'),
-        ];
+        ]);
         let e1 = ast::Expr::like(ast::Expr::val("hello"), test_pattern.clone());
         let s1 = format!("{e1}");
         // Char('\\') prints to r#"\\"# and Char('*') prints to r#"\*"#.
         assert_eq!(s1, r#""hello" like "hello\\0\*\\\*""#);
         let e2 = assert_parse_expr_succeeds(&s1);
         assert_matches!(e2.expr_kind(), ast::ExprKind::Like { pattern, .. } => {
-            assert_eq!(pattern.get_elems(), test_pattern);
+            assert_eq!(pattern.get_elems(), test_pattern.get_elems());
         });
         let s2 = format!("{e2}");
         assert_eq!(s1, s2);

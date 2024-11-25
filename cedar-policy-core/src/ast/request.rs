@@ -295,7 +295,7 @@ impl From<&Request> for proto::Request {
 }
 
 /// `Context` field of a `Request`
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 // Serialization is used for differential testing, which requires that `Context`
 // is serialized as a `RestrictedExpr`.
 #[serde(into = "RestrictedExpr")]

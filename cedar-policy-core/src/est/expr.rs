@@ -115,7 +115,7 @@ impl<'de> Deserialize<'de> for Expr {
 }
 
 /// Represent an element of a pattern literal
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum PatternElem {
@@ -125,8 +125,8 @@ pub enum PatternElem {
     Literal(SmolStr),
 }
 
-impl From<Vec<PatternElem>> for crate::ast::Pattern {
-    fn from(value: Vec<PatternElem>) -> Self {
+impl From<&[PatternElem]> for crate::ast::Pattern {
+    fn from(value: &[PatternElem]) -> Self {
         let mut elems = Vec::new();
         for elem in value {
             match elem {
@@ -138,7 +138,7 @@ impl From<Vec<PatternElem>> for crate::ast::Pattern {
                 }
             }
         }
-        Self::new(elems)
+        Self::from(elems)
     }
 }
 
@@ -638,7 +638,7 @@ impl Expr {
     /// extension function call, including method calls
     pub fn ext_call(fn_name: SmolStr, args: Vec<Expr>) -> Self {
         Expr::ExtFuncCall(ExtFuncCall {
-            call: [(fn_name, args)].into_iter().collect(),
+            call: HashMap::from([(fn_name, args)]),
         })
     }
 
@@ -656,12 +656,12 @@ impl Expr {
         mapping: &BTreeMap<EntityUID, EntityUID>,
     ) -> Result<Self, JsonDeserializationError> {
         match self.clone() {
-            Expr::ExprNoExt(e) => match e.clone() {
+            Expr::ExprNoExt(e) => match e {
                 ExprNoExt::Value(v) => Ok(Expr::ExprNoExt(ExprNoExt::Value(
                     v.sub_entity_literals(mapping)?,
                 ))),
-                ExprNoExt::Var(_) => Ok(self.clone()),
-                ExprNoExt::Slot(_) => Ok(self.clone()),
+                ExprNoExt::Var(_) => Ok(self),
+                ExprNoExt::Slot(_) => Ok(self),
                 ExprNoExt::Not { arg } => Ok(Expr::ExprNoExt(ExprNoExt::Not {
                     arg: Arc::new((*arg).clone().sub_entity_literals(mapping)?),
                 })),
@@ -901,7 +901,7 @@ impl Expr {
             }
             Expr::ExprNoExt(ExprNoExt::Like { left, pattern }) => Ok(ast::Expr::like(
                 (*left).clone().try_into_ast(id)?,
-                crate::ast::Pattern::from(pattern).iter().cloned(),
+                crate::ast::Pattern::from(pattern.as_slice()),
             )),
             Expr::ExprNoExt(ExprNoExt::Is {
                 left,
@@ -965,7 +965,7 @@ impl Expr {
                             )
                         })?;
                         if !fn_name.is_known_extension_func_name() {
-                            return Err(FromJsonError::UnknownExtensionFunction(fn_name.clone()));
+                            return Err(FromJsonError::UnknownExtensionFunction(fn_name));
                         }
                         Ok(ast::Expr::call_extension_fn(
                             fn_name,
@@ -1810,7 +1810,7 @@ impl std::fmt::Display for ExprNoExt {
                 write!(
                     f,
                     " like \"{}\"",
-                    crate::ast::Pattern::from(pattern.clone())
+                    crate::ast::Pattern::from(pattern.as_slice())
                 )
             }
             ExprNoExt::Is {

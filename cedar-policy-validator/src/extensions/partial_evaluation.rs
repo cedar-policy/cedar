@@ -23,10 +23,10 @@ use crate::extension_schema::{ExtensionFunctionType, ExtensionSchema};
 use crate::types::{self, Type};
 use cedar_policy_core::extensions::partial_evaluation;
 
-/// Note on safety:
-/// This module depends on the Cedar parser only constructing AST with valid extension calls
-/// If any of the panics in this file are triggered, that means that this file has become
-/// out-of-date with the decimal extension definition in Core.
+// Note on safety:
+// This module depends on the Cedar parser only constructing AST with valid extension calls
+// If any of the panics in this file are triggered, that means that this file has become
+// out-of-date with the decimal extension definition in Core.
 
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]

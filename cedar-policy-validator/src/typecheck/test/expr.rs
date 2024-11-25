@@ -21,7 +21,7 @@
 use std::{str::FromStr, vec};
 
 use cedar_policy_core::{
-    ast::{BinaryOp, EntityUID, Expr, Name, PatternElem, SlotId, Value, Var},
+    ast::{BinaryOp, EntityUID, Expr, Name, Pattern, PatternElem, SlotId, Value, Var},
     extensions::Extensions,
 };
 use itertools::Itertools;
@@ -986,11 +986,11 @@ fn like_typechecks() {
     assert_typechecks_empty_schema(
         Expr::like(
             Expr::val("foo"),
-            [
+            Pattern::from(vec![
                 PatternElem::Char('b'),
                 PatternElem::Char('a'),
                 PatternElem::Char('r'),
-            ],
+            ]),
         ),
         Type::primitive_boolean(),
     );

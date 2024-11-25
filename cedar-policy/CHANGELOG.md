@@ -16,6 +16,7 @@ Cedar Language Version: TBD
 ### Added
 
 - Added protobuf schemas and (de)serialization code using on `prost` crate behind the experimental `protobufs` flag.
+- Added protobuf and JSON generation code to `cedar-policy-cli`.
 - Added a new get helper method to Context that allows easy extraction of generic values from the context by key. This method simplifies the common use case of retrieving values from Context objects.
 - Implemented [RFC 62 (extended `has` operator)](https://github.com/cedar-policy/rfcs/blob/main/text/0062-extended-has.md)  (#1327, resolving #1329)
 

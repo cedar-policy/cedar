@@ -139,7 +139,7 @@ pub fn parse_template(
     let cst = text_to_cst::parse_policy(text)?;
     let template = cst.to_policy_template(id)?;
     if template.slots().count() == 0 {
-        Err(err::ToASTError::new(err::ToASTErrorKind::expected_template(), cst.loc.clone()).into())
+        Err(err::ToASTError::new(err::ToASTErrorKind::expected_template(), cst.loc).into())
     } else {
         Ok(template)
     }

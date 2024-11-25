@@ -20,7 +20,7 @@
 // to add a separate test specifically for README examples by introducing a
 // private, empty, and unused function with `#[doc = include_str!("../README.md")]`.
 #![doc = include_str!("../README.md")]
-#![warn(clippy::pedantic, clippy::nursery)]
+#![warn(clippy::pedantic, clippy::use_self, clippy::option_if_let_else)]
 #![deny(
     missing_docs,
     rustdoc::broken_intra_doc_links,
@@ -33,11 +33,7 @@
     clippy::doc_lazy_continuation,
     clippy::too_long_first_doc_paragraph
 )]
-#![allow(
-    clippy::needless_doctest_main,
-    clippy::must_use_candidate,
-    clippy::missing_const_for_fn
-)]
+#![allow(clippy::must_use_candidate)]
 // enable doc_auto_cfg feature if docsrs cfg is present
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]

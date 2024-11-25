@@ -643,7 +643,7 @@ impl AttributeAccess {
         loop {
             if let Some(Type::EntityOrRecord(EntityRecordKind::Entity(lub))) = expr.data() {
                 return AttributeAccess::EntityLUB(lub.clone(), attrs);
-            } else if let ExprKind::Var(Var::Context) = expr.expr_kind() {
+            } else if matches!(expr.expr_kind(), ExprKind::Var(Var::Context)) {
                 return match req_env.action_entity_uid() {
                     Some(action) => AttributeAccess::Context(action.clone(), attrs),
                     None => AttributeAccess::Other(attrs),

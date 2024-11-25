@@ -184,7 +184,7 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
 
     // Same request with empty context
     let request2 = Request::new(
-        principal.clone(),
+        principal,
         action.clone(),
         resource.clone(),
         Context::empty(),

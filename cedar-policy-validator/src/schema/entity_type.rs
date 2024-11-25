@@ -105,12 +105,9 @@ impl TCNode<EntityType> for ValidatorEntityType {
 #[cfg(feature = "protobufs")]
 impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
     fn from(v: &ValidatorEntityType) -> Self {
-        let tags = match &v.tags {
-            Some(tags) => Some(proto::Tag {
-                optional_type: Some(proto::tag::OptionalType::Type(proto::Type::from(tags))),
-            }),
-            None => None,
-        };
+        let tags = v.tags.as_ref().map(|tags| proto::Tag {
+            optional_type: Some(proto::tag::OptionalType::Type(proto::Type::from(tags))),
+        });
         Self {
             name: Some(ast::proto::EntityType::from(&v.name)),
             descendants: v

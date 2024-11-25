@@ -4032,7 +4032,7 @@ mod level_validation_tests {
         assert_matches!(err, ValidationError::EntityDerefLevelViolation(_));
         match err {
             ValidationError::EntityDerefLevelViolation(inner) => {
-                assert!(format!("{}", inner.to_string()).contains("Actual level is 2"));
+                assert!(format!("{inner}").contains("Actual level is 2"));
             }
             _ => unreachable!(),
         };

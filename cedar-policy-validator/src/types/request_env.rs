@@ -22,7 +22,7 @@ use super::Type;
 
 /// Represents a request type environment. In principle, this contains full
 /// types for the four variables (principal, action, resource, context).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RequestEnv<'a> {
     /// Contains the four variables bound in the type environment. These together
     /// represent the full type of (principal, action, resource, context)

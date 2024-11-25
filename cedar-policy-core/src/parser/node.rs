@@ -43,7 +43,7 @@ impl<T> Node<T> {
     pub fn map<R>(self, f: impl FnOnce(T) -> R) -> Node<R> {
         Node {
             node: f(self.node),
-            loc: self.loc.clone(),
+            loc: self.loc,
         }
     }
 

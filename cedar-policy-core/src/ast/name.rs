@@ -558,8 +558,8 @@ impl From<&proto::Name> for Name {
         let path: Arc<Vec<Id>> = Arc::new(v.path.iter().map(Id::new_unchecked).collect());
         Self(InternalName {
             id: Id::new_unchecked(&v.id),
-            path: path,
-            loc: loc,
+            path,
+            loc,
         })
     }
 }
@@ -574,7 +574,7 @@ impl From<&Name> for proto::Name {
 
         Self {
             id: String::from(v.0.id.as_ref()),
-            path: path,
+            path,
             loc: v.0.loc.as_ref().map(proto::Loc::from),
         }
     }

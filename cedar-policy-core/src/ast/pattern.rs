@@ -82,11 +82,9 @@ pub struct Pattern {
 }
 
 impl Pattern {
-    /// Explicitly create a pattern literal out of a vector of pattern elements
-    pub fn new(elems: impl IntoIterator<Item = PatternElem>) -> Self {
-        Self {
-            elems: Arc::new(elems.into_iter().collect()),
-        }
+    /// Explicitly create a pattern literal out of a shared vector of pattern elements
+    fn new(elems: Arc<Vec<PatternElem>>) -> Self {
+        Self { elems }
     }
 
     /// Getter to the wrapped vector
@@ -102,6 +100,24 @@ impl Pattern {
     /// Length of elems vector
     pub fn len(&self) -> usize {
         self.elems.len()
+    }
+}
+
+impl From<Arc<Vec<PatternElem>>> for Pattern {
+    fn from(value: Arc<Vec<PatternElem>>) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<Vec<PatternElem>> for Pattern {
+    fn from(value: Vec<PatternElem>) -> Self {
+        Self::new(Arc::new(value))
+    }
+}
+
+impl FromIterator<PatternElem> for Pattern {
+    fn from_iter<T: IntoIterator<Item = PatternElem>>(iter: T) -> Self {
+        Self::new(Arc::new(iter.into_iter().collect()))
     }
 }
 
@@ -195,23 +211,23 @@ pub mod test {
         type Output = Pattern;
         fn add(self, rhs: Self) -> Self::Output {
             let elems = [self.get_elems(), rhs.get_elems()].concat();
-            Pattern::new(elems)
+            Pattern::from(elems)
         }
     }
 
     // Map a string into a pattern literal with `PatternElem::Char`
     fn string_map(text: &str) -> Pattern {
-        Pattern::new(text.chars().map(PatternElem::Char))
+        text.chars().map(PatternElem::Char).collect()
     }
 
     // Create a star pattern literal
     fn star() -> Pattern {
-        Pattern::new(vec![PatternElem::Wildcard])
+        Pattern::from(vec![PatternElem::Wildcard])
     }
 
     // Create an empty pattern literal
     fn empty() -> Pattern {
-        Pattern::new(vec![])
+        Pattern::from(vec![])
     }
 
     #[test]

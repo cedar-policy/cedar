@@ -138,8 +138,8 @@ impl From<&proto::expr::Literal> for Literal {
             .as_ref()
             .expect("`as_ref()` for field that should exist")
         {
-            proto::expr::literal::Lit::B(b) => Literal::Bool(b.clone()),
-            proto::expr::literal::Lit::I(l) => Literal::Long(l.clone()),
+            proto::expr::literal::Lit::B(b) => Literal::Bool(*b),
+            proto::expr::literal::Lit::I(l) => Literal::Long(*l),
             proto::expr::literal::Lit::S(s) => Literal::String(s.clone().into()),
             proto::expr::literal::Lit::Euid(e) => Literal::EntityUID(EntityUID::from(e).into()),
         }
@@ -151,10 +151,10 @@ impl From<&Literal> for proto::expr::Literal {
     fn from(v: &Literal) -> Self {
         match v {
             Literal::Bool(b) => Self {
-                lit: Some(proto::expr::literal::Lit::B(b.clone())),
+                lit: Some(proto::expr::literal::Lit::B(*b)),
             },
             Literal::Long(l) => Self {
-                lit: Some(proto::expr::literal::Lit::I(l.clone())),
+                lit: Some(proto::expr::literal::Lit::I(*l)),
             },
             Literal::String(s) => Self {
                 lit: Some(proto::expr::literal::Lit::S(s.to_string())),
