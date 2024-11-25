@@ -1263,5 +1263,97 @@ mod tests {
         };
         "#,
         );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has 1+1
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has a - 1
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has a*3 + 1
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has 3*a
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+                principal has -a.b
+              };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has !a.b
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has a::b.c
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has A::""
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has A::"".a
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has ?principal
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has ?principal.a
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+            principal has (b).a
+          };
+        "#,
+        );
+        assert_parse_fails(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has a.(b)
+        };
+        "#,
+        );
+        assert_parse_fails(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has a.1
+        };
+        "#,
+        );
     }
 }
