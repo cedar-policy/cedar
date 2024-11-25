@@ -100,7 +100,11 @@ impl Diagnostic for MixedScriptIdentifier {
 
 /// Warning for identifiers containing confusable characters
 #[derive(Debug, Clone, PartialEq, Error, Eq, Hash)]
-#[error("for policy `{policy_id}`, identifier `{id}` contains the character `{}` which falls outside of the General Security Profile for Identifiers", .confusable_character.escape_debug())]
+#[error(
+    "for policy `{policy_id}`, identifier `{}` contains the character `{}` which is not a printable ASCII character and falls outside of the General Security Profile for Identifiers",
+    .id.escape_debug(),
+    .confusable_character.escape_debug()
+)]
 pub struct ConfusableIdentifier {
     /// Source location
     pub source_loc: Option<Loc>,
