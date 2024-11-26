@@ -1,0 +1,28 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-formatter/tests/extended_has.cedar
+---
+// An example from RFC
+permit (
+  principal is User,
+  action == Action::"preview",
+  resource == Movie::"Blockbuster"
+)
+when
+{
+  // extended has
+  principal
+  has
+    // contactInfo
+    contactInfo.
+      // address
+      address
+      .
+      // zip
+      zip &&
+  // we are safe to access all attributes
+  principal.contactInfo
+    .address
+    .zip == "90210"
+};
