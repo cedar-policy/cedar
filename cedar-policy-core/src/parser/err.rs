@@ -159,7 +159,7 @@ pub enum ToASTErrorKind {
     /// Returned when a policy has an extra scope element
     #[error("this policy has an extra element in the scope: {0}")]
     #[diagnostic(help("{POLICY_SCOPE_HELP}"))]
-    ExtraScopeElement(cst::VariableDef),
+    ExtraScopeElement(Box<cst::VariableDef>),
     /// Returned when a policy uses a reserved keyword as an identifier.
     #[error("this identifier is reserved and cannot be used: {0}")]
     ReservedIdentifier(cst::Ident),
