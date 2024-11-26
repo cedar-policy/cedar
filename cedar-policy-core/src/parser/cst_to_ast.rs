@@ -291,7 +291,10 @@ impl cst::Policy {
             vars.map(|extra_var| {
                 extra_var
                     .try_as_inner()
-                    .map(|def| extra_var.to_ast_err(ToASTErrorKind::ExtraScopeElement(def.clone())))
+                    .map(|def| {
+                        extra_var
+                            .to_ast_err(ToASTErrorKind::ExtraScopeElement(Box::new(def.clone())))
+                    })
                     .unwrap_or_else(|e| e)
                     .into()
             }),
