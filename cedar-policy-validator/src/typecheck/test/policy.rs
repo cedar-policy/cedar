@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 use cedar_policy_core::{
     ast::{EntityUID, Expr, PolicyID, Template},
+    extensions::Extensions,
     parser::{parse_policy, parse_policy_or_template},
 };
 
@@ -37,7 +38,7 @@ use crate::{
     typecheck::{PolicyCheck, Typechecker},
     types::{EntityLUB, Type},
     validation_errors::{AttributeAccess, LubContext, LubHelp},
-    RawName, ValidationMode, ValidationWarning,
+    RawName, ValidationMode, ValidationWarning, ValidatorSchema,
 };
 
 fn simple_schema_file() -> json_schema::NamespaceDefinition<RawName> {
@@ -1038,6 +1039,119 @@ fn validate_policy_with_common_type_schema() {
             r#"permit(principal, action == Action::"act", resource) when { principal.flag };"#,
         )
         .expect("Policy should parse."),
+    );
+}
+
+#[test]
+fn extended_has() {
+    let schema_src = r#"
+        entity A {
+          x?: {
+            y?: {
+              z?: Long,
+            }
+          }   
+        };
+
+        action "action" appliesTo {
+          principal: A,
+          resource: A,
+        };
+    "#;
+    let (schema, _) =
+        ValidatorSchema::from_cedarschema_str(schema_src, Extensions::none()).unwrap();
+
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"action", resource) when {
+        principal has x.y.z && principal.x.y.z > 1
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"action", resource) when {
+        principal has x.y && principal.x.y has z
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"action", resource) when {
+        principal has x && principal.x has y.z
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+
+    let src = r#"
+    permit(principal, action == Action::"action", resource) when {
+        principal has x.y && principal.x.y.z > 1
+    };
+    "#;
+    let policy = parse_policy(None, src).unwrap();
+    let errors = assert_policy_typecheck_fails(schema.clone(), policy);
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::unsafe_optional_attribute_access(
+            get_loc(src, "principal.x.y.z"),
+            PolicyID::from_string("policy0"),
+            AttributeAccess::EntityLUB(
+                EntityLUB::single_entity("A".parse().unwrap()),
+                vec!["z".into(), "y".into(), "x".into()],
+            )
+        )
+    );
+
+    let src = r#"
+    permit(principal, action == Action::"action", resource) when {
+        principal has x && principal.x.y has z
+    };
+    "#;
+    let policy = parse_policy(None, src).unwrap();
+    let errors = assert_policy_typecheck_fails(schema.clone(), policy);
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::unsafe_optional_attribute_access(
+            get_loc(src, "principal.x.y"),
+            PolicyID::from_string("policy0"),
+            AttributeAccess::EntityLUB(
+                EntityLUB::single_entity("A".parse().unwrap()),
+                vec!["y".into(), "x".into()],
+            )
+        )
+    );
+
+    let src = r#"
+    permit(principal, action == Action::"action", resource) when {
+        principal has x.y.z && principal.x.y.a > 1
+    };
+    "#;
+    let policy = parse_policy(None, src).unwrap();
+    let errors = assert_policy_typecheck_fails(schema.clone(), policy);
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(
+        error,
+        ValidationError::unsafe_attribute_access(
+            get_loc(src, "principal.x.y.a"),
+            PolicyID::from_string("policy0"),
+            AttributeAccess::EntityLUB(
+                EntityLUB::single_entity("A".parse().unwrap()),
+                vec!["a".into(), "y".into(), "x".into(),],
+            ),
+            Some("z".into()),
+            false
+        )
     );
 }
 
