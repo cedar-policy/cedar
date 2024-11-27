@@ -1048,7 +1048,6 @@ impl Node<Option<cst::Add>> {
         } = initial.try_as_inner()?
         {
             let cst::Member { item, access } = item_node.try_as_inner()?;
-            //let item = item.to_expr_or_special()?;
             // Among successful conversion from `Primary` to `ExprOrSpecial`,
             // an `Ident` or `Str` becomes `ExprOrSpecial::StrLit`,
             // `ExprOrSpecial::Var`, and `ExprOrSpecial::Name`. Other
