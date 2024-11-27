@@ -855,9 +855,7 @@ impl From<&proto::Expr> for Expr {
             .expect("`as_ref()` for field that should exist");
 
         match ety {
-            proto::expr::expr_kind::Data::Lit(lit) => {
-                Expr::val(Literal::from(lit))
-            }
+            proto::expr::expr_kind::Data::Lit(lit) => Expr::val(Literal::from(lit)),
 
             proto::expr::expr_kind::Data::Var(var) => {
                 let pvar =
