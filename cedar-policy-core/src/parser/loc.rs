@@ -17,9 +17,6 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-#[cfg(feature = "protobufs")]
-use crate::ast::proto;
-
 /// Represents a source location: index/range, and a reference to the source
 /// code which that index/range indexes into
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]

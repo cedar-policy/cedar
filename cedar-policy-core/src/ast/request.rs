@@ -138,7 +138,7 @@ impl From<&EntityUIDEntry> for proto::EntityUidEntry {
                     "Unknown EntityUID is not currently supported by the Protobuf interface"
                 );
             }
-            EntityUIDEntry::Known { euid, loc } => Self {
+            EntityUIDEntry::Known { euid, .. } => Self {
                 euid: Some(proto::EntityUid::from(euid.as_ref())),
             },
         }
