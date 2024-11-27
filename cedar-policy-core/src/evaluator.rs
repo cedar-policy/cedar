@@ -5525,7 +5525,7 @@ pub mod test {
     }
 
     #[test]
-    fn parital_if_noerrors() {
+    fn partial_if_noerrors() {
         let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
         let cons = Expr::val(1);
         let alt = Expr::val(2);
@@ -6143,5 +6143,73 @@ pub mod test {
             "b".into(),
         );
         assert_matches!(eval.partial_eval_expr(&e), Err(_));
+    }
+
+    #[test]
+    fn interpret_extended_has() {
+        let es = Entities::new();
+        let eval = Evaluator::new(empty_request(), &es, Extensions::none());
+        assert_matches!(eval.interpret_inline_policy(&parse_expr(r#"
+    {a: {b: {c: 1}}} has a.b.c
+        "#).unwrap()), Ok(v) => {
+            assert_eq!(v, Value::from(true));
+        });
+        assert_matches!(eval.interpret_inline_policy(&parse_expr(r#"
+    {a: {b: {c: 1}}} has a.b
+        "#).unwrap()), Ok(v) => {
+            assert_eq!(v, Value::from(true));
+        });
+        assert_matches!(eval.interpret_inline_policy(&parse_expr(r#"
+    {a: {b: {c: 1}}} has a
+        "#).unwrap()), Ok(v) => {
+            assert_eq!(v, Value::from(true));
+        });
+        assert_matches!(eval.interpret_inline_policy(&parse_expr(r#"
+    {a: {b: {c: 1}}} has b.c
+        "#).unwrap()), Ok(v) => {
+            assert_eq!(v, Value::from(false));
+        });
+        assert_matches!(eval.interpret_inline_policy(&parse_expr(r#"
+    {a: {b: {c: 1}}} has c
+        "#).unwrap()), Ok(v) => {
+            assert_eq!(v, Value::from(false));
+        });
+        assert_matches!(eval.interpret_inline_policy(&parse_expr(r#"
+    {a: {b: {c: 1}}} has d
+        "#).unwrap()), Ok(v) => {
+            assert_eq!(v, Value::from(false));
+        });
+        assert_matches!(eval.interpret_inline_policy(&parse_expr(r#"
+    {a: {b: {c: 1}}} has "🚫"
+        "#).unwrap()), Ok(v) => {
+            assert_eq!(v, Value::from(false));
+        });
+
+        assert_matches!(eval.interpret_inline_policy(&parse_expr(r#"
+    {a: {b: {c: 1}}} has a.b.c && {a: {b: {c: 1}}}.a.b.c == 1
+        "#).unwrap()), Ok(v) => {
+            assert_eq!(v, Value::from(true));
+        });
+        assert_matches!(eval.interpret_inline_policy(&parse_expr(r#"
+    {a: {b: {c: 1}}} has a.b && {a: {b: {c: 1}}}.a.b == {c: 1}
+        "#).unwrap()), Ok(v) => {
+            assert_eq!(v, Value::from(true));
+        });
+        assert_matches!(eval.interpret_inline_policy(&parse_expr(r#"
+    {a: {b: {c: 1}}} has a && {a: {b: {c: 1}}}.a == {b: {c: 1}}
+        "#).unwrap()), Ok(v) => {
+            assert_eq!(v, Value::from(true));
+        });
+        assert_matches!(eval.interpret_inline_policy(&parse_expr(r#"
+    {a: {b: {d: 1}}} has a.b.c && {a: {b: {d: 1}}}.a.b.c == 1
+        "#).unwrap()), Ok(v) => {
+            assert_eq!(v, Value::from(false));
+        });
+
+        assert_matches!(eval.interpret_inline_policy(&parse_expr(r#"
+        {a: {b: {c: 1}}} has a.b && {a: {b: {c: 1}}}.a.b.d == 1
+            "#).unwrap()), Err(EvaluationError::RecordAttrDoesNotExist(err)) => {
+            assert_eq!(err.attr, "d");
+        });
     }
 }

@@ -523,7 +523,7 @@ impl Name {
         self.0.basename().clone().try_into().unwrap()
     }
 
-    /// Test if a [`Name`] is an [`Id`]
+    /// Test if a [`Name`] is an [`UnreservedId`]
     pub fn is_unqualified(&self) -> bool {
         self.0.is_unqualified()
     }

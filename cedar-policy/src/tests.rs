@@ -6314,11 +6314,10 @@ mod reserved_keywords_in_policies {
                         id.into(),
                         "attribute names can either be identifiers or string literals".into(),
                     );
-                    assert_invalid_expression_with_help(
+                    assert_invalid_expression(
                         format!("principal has {id}"),
-                        format!("invalid attribute name: {id}"),
-                        id.into(),
-                        "attribute names can either be identifiers or string literals".into(),
+                        RESERVED_IDENT_MSG(id),
+                        format!("{id}"),
                     );
                 }
                 "if" => {
@@ -6330,7 +6329,7 @@ mod reserved_keywords_in_policies {
                     assert_invalid_expression(
                         format!("principal has {id}"),
                         RESERVED_IDENT_MSG(id),
-                        format!("principal has {id}"),
+                        format!("{id}"),
                     );
                 }
                 _ => {

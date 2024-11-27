@@ -46,6 +46,7 @@ use crate::ast::{
 use crate::est::extract_single_argument;
 use crate::fuzzy_match::fuzzy_search_limited;
 use itertools::Either;
+use nonempty::nonempty;
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 use std::cmp::Ordering;
@@ -950,10 +951,13 @@ impl Node<Option<cst::Relation>> {
             }
             cst::Relation::Has { target, field } => {
                 let maybe_target = target.to_expr();
-                let maybe_field = field.to_expr_or_special()?.into_valid_attr();
+                let maybe_field = Ok(match field.to_has_rhs()? {
+                    Either::Left(s) => nonempty![s],
+                    Either::Right(ids) => ids.map(|id| id.to_smolstr()),
+                });
                 let (target, field) = flatten_tuple_2(maybe_target, maybe_field)?;
                 Ok(ExprOrSpecial::Expr {
-                    expr: construct_expr_has(target, field, self.loc.clone()),
+                    expr: construct_exprs_extended_has(target, field, self.loc.clone()),
                     loc: self.loc.clone(),
                 })
             }
@@ -1001,6 +1005,114 @@ impl Node<Option<cst::Add>> {
     fn to_expr(&self) -> Result<ast::Expr> {
         self.to_expr_or_special()?.into_expr()
     }
+
+    // Peel the grammar onion until we see valid RHS
+    // This function is added to implement RFC 62 (extended `has` operator).
+    // We could modify existing code instead of having this function. However,
+    // the former requires adding a weird variant to `ExprOrSpecial` to
+    // accommodate a sequence of identifiers as RHS, which greatly complicates
+    // the conversion from CSTs to `ExprOrSpecial`. Hence, this function is
+    // added to directly tackle the CST to AST conversion for the has operator,
+    // This design choice should be noninvasive to existing CST to AST logic,
+    // despite producing deadcode.
+    pub(crate) fn to_has_rhs(&self) -> Result<Either<SmolStr, NonEmpty<UnreservedId>>> {
+        let inner @ cst::Add { initial, extended } = self.try_as_inner()?;
+        let err = |loc| {
+            ToASTError::new(ToASTErrorKind::InvalidHasRHS(inner.to_string().into()), loc).into()
+        };
+        let construct_attrs =
+            |first, rest: &[Node<Option<cst::MemAccess>>]| -> Result<NonEmpty<UnreservedId>> {
+                let mut acc = nonempty![first];
+                rest.iter().try_for_each(|ma_node| {
+                    let ma = ma_node.try_as_inner()?;
+                    match ma {
+                        cst::MemAccess::Field(id) => {
+                            acc.push(id.to_unreserved_ident()?);
+                            Ok(())
+                        }
+                        _ => Err(err(ma_node.loc.clone())),
+                    }
+                })?;
+                Ok(acc)
+            };
+        if !extended.is_empty() {
+            return Err(err(self.loc.clone()));
+        }
+        let cst::Mult { initial, extended } = initial.try_as_inner()?;
+        if !extended.is_empty() {
+            return Err(err(self.loc.clone()));
+        }
+        if let cst::Unary {
+            op: None,
+            item: item_node,
+        } = initial.try_as_inner()?
+        {
+            let cst::Member { item, access } = item_node.try_as_inner()?;
+            // Among successful conversion from `Primary` to `ExprOrSpecial`,
+            // an `Ident` or `Str` becomes `ExprOrSpecial::StrLit`,
+            // `ExprOrSpecial::Var`, and `ExprOrSpecial::Name`. Other
+            // syntactical variants become `ExprOrSpecial::Expr`.
+            match item.try_as_inner()? {
+                cst::Primary::EList(_)
+                | cst::Primary::Expr(_)
+                | cst::Primary::RInits(_)
+                | cst::Primary::Ref(_)
+                | cst::Primary::Slot(_) => Err(err(item.loc.clone())),
+                cst::Primary::Literal(_) | cst::Primary::Name(_) => {
+                    let item = item.to_expr_or_special()?;
+                    match (item, access.as_slice()) {
+                        (ExprOrSpecial::StrLit { lit, loc }, []) => Ok(Either::Left(
+                            to_unescaped_string(lit).map_err(|escape_errs| {
+                                ParseErrors::new_from_nonempty(escape_errs.map(|e| {
+                                    ToASTError::new(ToASTErrorKind::Unescape(e), loc.clone()).into()
+                                }))
+                            })?,
+                        )),
+                        (ExprOrSpecial::Var { var, .. }, rest) => {
+                            // PANIC SAFETY: any variable should be a valid identifier
+                            #[allow(clippy::unwrap_used)]
+                            let first = construct_string_from_var(var).parse().unwrap();
+                            Ok(Either::Right(construct_attrs(first, rest)?))
+                        }
+                        (ExprOrSpecial::Name { name, loc }, rest) => {
+                            if name.is_unqualified() {
+                                let first = name.basename();
+
+                                Ok(Either::Right(construct_attrs(first, rest)?))
+                            } else {
+                                Err(ToASTError::new(
+                                    ToASTErrorKind::PathAsAttribute(inner.to_string()),
+                                    loc,
+                                )
+                                .into())
+                            }
+                        }
+                        // Attempt to return a precise error message for RHS like `true.<...>`
+                        (ExprOrSpecial::Expr { loc, expr }, _) if expr.is_true() => {
+                            Err(ToASTError::new(
+                                ToASTErrorKind::ReservedIdentifier(cst::Ident::True),
+                                loc,
+                            )
+                            .into())
+                        }
+                        // Attempt to return a precise error message for RHS like `false.<...>`
+                        (ExprOrSpecial::Expr { loc, expr }, _) if expr.is_false() => {
+                            Err(ToASTError::new(
+                                ToASTErrorKind::ReservedIdentifier(cst::Ident::False),
+                                loc,
+                            )
+                            .into())
+                        }
+                        (ExprOrSpecial::Expr { loc, .. }, _) => Err(err(loc)),
+                        _ => Err(err(self.loc.clone())),
+                    }
+                }
+            }
+        } else {
+            Err(err(self.loc.clone()))
+        }
+    }
+
     pub(crate) fn to_expr_or_special(&self) -> Result<ExprOrSpecial<'_>> {
         let add = self.try_as_inner()?;
 
@@ -1775,8 +1887,51 @@ fn construct_expr_mul(
     }
     expr
 }
-fn construct_expr_has(t: ast::Expr, s: SmolStr, loc: Loc) -> ast::Expr {
+
+fn construct_expr_has_attr(t: ast::Expr, s: SmolStr, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).has_attr(t, s)
+}
+fn construct_expr_get_attr(t: ast::Expr, s: SmolStr, loc: Loc) -> ast::Expr {
+    ast::ExprBuilder::new().with_source_loc(loc).get_attr(t, s)
+}
+fn construct_exprs_extended_has(t: ast::Expr, attrs: NonEmpty<SmolStr>, loc: Loc) -> ast::Expr {
+    let (first, rest) = attrs.split_first();
+    let has_expr = construct_expr_has_attr(t.clone(), first.to_owned(), loc.clone());
+    let get_expr = construct_expr_get_attr(t, first.to_owned(), loc.clone());
+    // Foldl on the attribute list
+    // It produces the following for `principal has contactInfo.address.zip`
+    //     Expr.and
+    //   (Expr.and
+    //     (Expr.hasAttr (Expr.var .principal) "contactInfo")
+    //     (Expr.hasAttr
+    //       (Expr.getAttr (Expr.var .principal) "contactInfo")
+    //       "address"))
+    //   (Expr.hasAttr
+    //     (Expr.getAttr
+    //       (Expr.getAttr (Expr.var .principal) "contactInfo")
+    //       "address")
+    //     "zip")
+    // This is sound. However, the evaluator has to recur multiple times to the
+    // left-most node to evaluate the existence of the first attribute. The
+    // desugared expression should be the following to avoid the issue above,
+    // Expr.and
+    //   Expr.hasAttr (Expr.var .principal) "contactInfo"
+    //   (Expr.and
+    //      (Expr.hasAttr (Expr.getAttr (Expr.var .principal) "contactInfo")"address")
+    //      (Expr.hasAttr ..., "zip"))
+    rest.iter()
+        .fold((has_expr, get_expr), |(has_expr, get_expr), attr| {
+            (
+                construct_expr_and(
+                    has_expr,
+                    construct_expr_has_attr(get_expr.clone(), attr.to_owned(), loc.clone()),
+                    std::iter::empty(),
+                    &loc,
+                ),
+                construct_expr_get_attr(get_expr, attr.to_owned(), loc.clone()),
+            )
+        })
+        .0
 }
 fn construct_expr_attr(e: ast::Expr, s: SmolStr, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).get_attr(e, s)
@@ -2694,8 +2849,8 @@ mod tests {
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("invalid attribute name: 1")
-                .help("attribute names can either be identifiers or string literals")
+            &ExpectedErrorMessageBuilder::error("invalid RHS of a `has` operation: 1")
+                .help("valid RHS of a `has` operation is either a sequence of identifiers separated by `.` or a string literal")
                 .exactly_one_underline("1")
                 .build(),
         );
@@ -2909,8 +3064,8 @@ mod tests {
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("invalid attribute name: 1")
-                .help("attribute names can either be identifiers or string literals")
+            &ExpectedErrorMessageBuilder::error("invalid RHS of a `has` operation: 1")
+                .help("valid RHS of a `has` operation is either a sequence of identifiers separated by `.` or a string literal")
                 .exactly_one_underline("1")
                 .build(),
         );
@@ -4719,5 +4874,254 @@ mod tests {
                     .build()
             );
         });
+    }
+
+    #[test]
+    fn extended_has() {
+        assert_matches!(
+            parse_policy(
+                None,
+                r#"
+        permit(
+  principal is User,
+  action == Action::"preview",
+  resource == Movie::"Blockbuster"
+) when {
+  principal has contactInfo.address.zip &&
+  principal.contactInfo.address.zip == "90210"
+};
+        "#
+            ),
+            Ok(_)
+        );
+
+        assert_matches!(parse_expr(r#"context has a.b"#), Ok(e) => {
+            assert!(e.eq_shape(&parse_expr(r#"(context has a) && (context.a has b)"#).unwrap()));
+        });
+
+        assert_matches!(parse_expr(r#"context has a.b.c"#), Ok(e) => {
+            assert!(e.eq_shape(&parse_expr(r#"((context has a) && (context.a has b)) && (context.a.b has c)"#).unwrap()));
+        });
+
+        let policy = r#"permit(principal, action, resource) when {
+            principal has a.if
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "this identifier is reserved and cannot be used: if",
+                ).exactly_one_underline(r#"if"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has if.a
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "this identifier is reserved and cannot be used: if",
+                ).exactly_one_underline(r#"if"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has true.if
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "this identifier is reserved and cannot be used: true",
+                ).exactly_one_underline(r#"true"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has a.__cedar
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "The name `__cedar` contains `__cedar`, which is reserved",
+                ).exactly_one_underline(r#"__cedar"#).build());
+            }
+        );
+
+        let help_msg = "valid RHS of a `has` operation is either a sequence of identifiers separated by `.` or a string literal";
+
+        let policy = r#"permit(principal, action, resource) when {
+            principal has 1 + 1
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: 1 + 1",
+                ).help(help_msg).
+                exactly_one_underline(r#"1 + 1"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has a - 1
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: a - 1",
+                ).help(help_msg).exactly_one_underline(r#"a - 1"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has a*3 + 1
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: a * 3 + 1",
+                ).help(help_msg).exactly_one_underline(r#"a*3 + 1"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has 3*a
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: 3 * a",
+                ).help(help_msg).exactly_one_underline(r#"3*a"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has -a.b
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: -a.b",
+                ).help(help_msg).exactly_one_underline(r#"-a.b"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has !a.b
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: !a.b",
+                ).help(help_msg).exactly_one_underline(r#"!a.b"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has a::b.c
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "`a::b.c` cannot be used as an attribute as it contains a namespace",
+                ).exactly_one_underline(r#"a::b"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has A::""
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: A::\"\"",
+                ).help(help_msg).exactly_one_underline(r#"A::"""#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has A::"".a
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: A::\"\".a",
+                ).help(help_msg).exactly_one_underline(r#"A::"""#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has ?principal
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: ?principal",
+                ).help(help_msg).exactly_one_underline(r#"?principal"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has ?principal.a
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: ?principal.a",
+                ).help(help_msg).exactly_one_underline(r#"?principal"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has (b).a
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: (b).a",
+                ).help(help_msg).exactly_one_underline(r#"(b)"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has [b].a
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: [b].a",
+                ).help(help_msg).exactly_one_underline(r#"[b]"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has {b:1}.a
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: {b: 1}.a",
+                ).help(help_msg).exactly_one_underline(r#"{b:1}"#).build());
+            }
+        );
     }
 }
