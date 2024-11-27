@@ -4485,6 +4485,77 @@ mod test {
             );
         }
     }
+
+    #[test]
+    fn extended_has() {
+        let policy_text = r#"
+        permit(principal, action, resource) when
+        { principal has a.b.c };"#;
+        let cst = parser::text_to_cst::parse_policy(policy_text).unwrap();
+        let est: Policy = cst.node.unwrap().try_into().unwrap();
+        assert_eq!(
+            est,
+            serde_json::from_value(json!({
+               "effect": "permit",
+                   "principal": { "op": "All" },
+                   "action": { "op": "All" },
+                   "resource": { "op": "All" },
+                   "conditions": [
+                       {
+                           "kind": "when",
+                           "body": {
+                               "&&": {
+                                   "left": {
+                                       "&&": {
+                                           "left": {
+                                               "has": {
+                                                   "left": {
+                                                       "Var": "principal",
+                                                   },
+                                                   "attr": "a"
+                                               }
+                                           },
+                                           "right": {
+                                               "has": {
+                                                   "left": {
+                                                       ".": {
+                                                           "left": {
+                                                               "Var": "principal",
+                                                           },
+                                                           "attr": "a",
+                                                       },
+                                                   },
+                                                   "attr": "b"
+                                               }
+                                           },
+                                       }
+                                   },
+                                   "right": {
+                                       "has": {
+                                           "left": {
+                                               ".": {
+                                                   "left": {
+                                                       ".": {
+                                                           "left": {
+                                                               "Var": "principal",
+                                                           },
+                                                           "attr": "a"
+                                                       }
+                                                   },
+                                                   "attr": "b",
+                                               }
+                                           },
+                                           "attr": "c",
+                                       }
+                                   },
+                               },
+                           },
+                       }
+                   ]
+            }))
+            .unwrap()
+        );
+    }
 }
 
 #[cfg(test)]

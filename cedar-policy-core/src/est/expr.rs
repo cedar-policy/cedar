@@ -29,6 +29,7 @@ use crate::parser::util::flatten_tuple_2;
 use crate::parser::{Loc, Node};
 use either::Either;
 use itertools::Itertools;
+use nonempty::nonempty;
 use serde::{de::Visitor, Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::{SmolStr, ToSmolStr};
@@ -1170,11 +1171,23 @@ impl TryFrom<&Node<Option<cst::Relation>>> for Expr {
                 Ok(expr)
             }
             cst::Relation::Has { target, field } => {
-                let target_expr = target.try_into()?;
-                field
-                    .to_expr_or_special()?
-                    .into_valid_attr()
-                    .map(|attr| Expr::has_attr(target_expr, attr))
+                let target_expr: Expr = target.try_into()?;
+                let attrs = match field.to_has_rhs()? {
+                    Either::Left(attr) => nonempty![attr],
+                    Either::Right(ids) => ids.map(|id| id.to_smolstr()),
+                };
+                let (first, rest) = attrs.split_first();
+                let has_expr = Expr::has_attr(target_expr.clone(), first.clone());
+                let get_expr = Expr::get_attr(target_expr, first.clone());
+                Ok(rest
+                    .iter()
+                    .fold((has_expr, get_expr), |(has_expr, get_expr), attr| {
+                        (
+                            Expr::and(has_expr, Expr::has_attr(get_expr.clone(), attr.to_owned())),
+                            Expr::get_attr(get_expr, attr.to_owned()),
+                        )
+                    })
+                    .0)
             }
             cst::Relation::Like { target, pattern } => {
                 let target_expr = target.try_into()?;
