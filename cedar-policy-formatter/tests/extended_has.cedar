@@ -23,6 +23,19 @@ permit(
   resource == Movie::"Blockbuster"
 ) when {
   principal has 
+  contactInfo.
+  address.
+  zip &&
+  principal.contactInfo.address.zip == "90210"
+};
+
+// Same example with long attributes
+permit(
+  principal is User,
+  action == Action::"preview",
+  resource == Movie::"Blockbuster"
+) when {
+  principal has 
   contactInfooooooooooooooooooooooooooooooooooooooooooooooo.
   addressssssssssssssssssssss.
   zipppppppppppp &&
