@@ -37,10 +37,11 @@ prost = { version = "0.13.3", optional = true }
 
 [features]
 # by default, enable all Cedar extensions
-default = ["ipaddr", "decimal"]
+default = ["ipaddr", "decimal", "datetime"]
 # when enabling a feature, make sure that the Core feature is also enabled
 ipaddr = ["cedar-policy-core/ipaddr"]
 decimal = ["cedar-policy-core/decimal"]
+datetime = ["cedar-policy-core/datetime"]
 partial-eval = ["cedar-policy-core/partial-eval"]
 
 # Enables `Arbitrary` implementations for several types in this crate
@@ -63,3 +64,6 @@ miette = { version = "7.1.0", features = ["fancy"] }
 lalrpop = "0.22.0"
 # protobuf dependency
 prost-build = { version = "0.13.3", optional = true }
+
+[lints]
+workspace = true

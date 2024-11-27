@@ -416,7 +416,7 @@ pub mod request_validation_errors {
 
 /// Struct which carries enough information that it can impl Core's
 /// `ContextSchema`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextSchema(
     // INVARIANT: The `Type` stored in this struct must be representable as a
     // `SchemaType` to avoid panicking in `context_type`.

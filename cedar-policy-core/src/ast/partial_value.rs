@@ -60,7 +60,7 @@ impl From<Expr> for PartialValue {
 
 /// Errors encountered when converting `PartialValue` to `Value`
 // CAUTION: this type is publicly exported in `cedar-policy`.
-#[derive(Debug, PartialEq, Diagnostic, Error)]
+#[derive(Debug, PartialEq, Eq, Diagnostic, Error)]
 pub enum PartialValueToValueError {
     /// The `PartialValue` is a residual, i.e., contains an unknown
     #[diagnostic(transparent)]
@@ -72,7 +72,7 @@ pub enum PartialValueToValueError {
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
-#[derive(Debug, PartialEq, Diagnostic, Error)]
+#[derive(Debug, PartialEq, Eq, Diagnostic, Error)]
 #[error("value contains a residual expression: `{residual}`")]
 pub struct ContainsUnknown {
     /// Residual expression which contains an unknown

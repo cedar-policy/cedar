@@ -87,7 +87,7 @@ impl Validator {
     ) -> (EntityDerefLevel, Option<EntityDerefLevelViolation>) {
         let p = v.into_iter().min_by(|(l1, _), (l2, _)| l1.cmp(l2));
         match p {
-            Some(p) => p.clone(),
+            Some(p) => p,
             None => (EntityDerefLevel { level: 0 }, None),
         }
     }

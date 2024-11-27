@@ -487,11 +487,13 @@ impl ValidationWarning {
         source_loc: Option<Loc>,
         policy_id: PolicyID,
         id: impl Into<String>,
+        confusable_character: char,
     ) -> Self {
         validation_warnings::ConfusableIdentifier {
             source_loc,
             policy_id,
             id: id.into(),
+            confusable_character,
         }
         .into()
     }

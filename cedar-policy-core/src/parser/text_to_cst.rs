@@ -18,7 +18,7 @@
 //! It converts text to a CST
 
 lalrpop_mod!(
-    #[allow(warnings, unused)]
+    #[allow(warnings, unused, missing_debug_implementations)]
     //PANIC SAFETY: lalrpop uses unwraps, and we are trusting lalrpop to generate correct code
     #[allow(clippy::unwrap_used)]
     //PANIC SAFETY: lalrpop uses slicing, and we are trusting lalrpop to generate correct code
@@ -1023,15 +1023,7 @@ mod tests {
         "#,
         );
         // should have successfully parsed 4 policies
-        assert_eq!(
-            policies
-                .0
-                .into_iter()
-                .filter_map(|p| p.node)
-                .collect::<Vec<_>>()
-                .len(),
-            4
-        );
+        assert_eq!(policies.0.into_iter().filter_map(|p| p.node).count(), 4);
     }
 
     #[test]
@@ -1210,6 +1202,158 @@ mod tests {
             &ExpectedErrorMessageBuilder::error("unexpected token `!`")
                 .exactly_one_underline_with_label("!", "expected identifier")
                 .build(),
+        );
+    }
+
+    #[test]
+    fn extended_has() {
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has a.b
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has a.if
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has if.a
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has if.if
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has true.if
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has if.true
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has if.then.else.in.like.has.is.__cedar
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has 1+1
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has a - 1
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has a*3 + 1
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has 3*a
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+                principal has -a.b
+              };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has !a.b
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has a::b.c
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has A::""
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has A::"".a
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has ?principal
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has ?principal.a
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+            principal has (b).a
+          };
+        "#,
+        );
+        assert_parse_fails(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has a.(b)
+        };
+        "#,
+        );
+        assert_parse_fails(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has a.1
+        };
+        "#,
         );
     }
 }

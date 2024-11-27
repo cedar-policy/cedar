@@ -38,9 +38,9 @@ pub use err::*;
 
 pub use ast::Effect;
 pub use authorizer::Decision;
-use cedar_policy_core::ast;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
+use cedar_policy_core::ast::{self, RestrictedExpr};
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{ContextSchema, Dereference};
 use cedar_policy_core::est::{self, TemplateLink};
@@ -581,7 +581,7 @@ impl Entities {
     /// # let entity = entities.get(&euid).unwrap();
     /// # assert_eq!(entity.attr("age").unwrap().unwrap(), EvalResult::Long(19));
     /// # let ip = entity.attr("ip_addr").unwrap().unwrap();
-    /// # assert_eq!(ip, EvalResult::ExtensionValue("10.0.1.101/32".to_string()));
+    /// # assert_eq!(ip, EvalResult::ExtensionValue("ip(\"10.0.1.101\")".to_string()));
     /// ```
     pub fn from_json_str(json: &str, schema: Option<&Schema>) -> Result<Self, EntitiesError> {
         let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
@@ -763,7 +763,7 @@ impl IntoIterator for Entities {
 
 /// Authorizer object, which provides responses to authorization queries
 #[repr(transparent)]
-#[derive(Debug, RefCast)]
+#[derive(Debug, Clone, RefCast)]
 pub struct Authorizer(authorizer::Authorizer);
 
 impl Default for Authorizer {
@@ -1237,7 +1237,7 @@ impl From<ValidationMode> for cedar_policy_validator::ValidationMode {
 
 /// Validator object, which provides policy validation and typechecking.
 #[repr(transparent)]
-#[derive(Debug, RefCast)]
+#[derive(Debug, Clone, RefCast)]
 pub struct Validator(cedar_policy_validator::Validator);
 
 impl Validator {
@@ -1281,7 +1281,7 @@ impl Validator {
 
 /// Contains all the type information used to construct a `Schema` that can be
 /// used to validate a policy.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SchemaFragment {
     value: cedar_policy_validator::ValidatorSchemaFragment<
         cedar_policy_validator::ConditionalName,
@@ -1640,7 +1640,7 @@ impl Schema {
 /// The result includes the list of issues found by validation and whether validation succeeds or fails.
 /// Validation succeeds if there are no fatal errors. There may still be
 /// non-fatal warnings present when validation passes.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ValidationResult {
     validation_errors: Vec<ValidationError>,
     validation_warnings: Vec<ValidationWarning>,
@@ -3399,7 +3399,7 @@ impl FromStr for RestrictedExpression {
 /// for partial evaluation.
 #[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RequestBuilder<S> {
     principal: ast::EntityUIDEntry,
     action: ast::EntityUIDEntry,
@@ -3412,7 +3412,7 @@ pub struct RequestBuilder<S> {
 /// A marker type that indicates [`Schema`] is not set for a request
 #[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct UnsetSchema;
 
 #[cfg(feature = "partial-eval")]
@@ -3525,7 +3525,7 @@ impl RequestBuilder<&Schema> {
 /// It represents an authorization request asking the question, "Can this
 /// principal take this action on this resource in this context?"
 #[repr(transparent)]
-#[derive(Debug, RefCast)]
+#[derive(Debug, Clone, RefCast)]
 pub struct Request(pub(crate) ast::Request);
 
 impl Request {
@@ -3563,6 +3563,12 @@ impl Request {
             schema.map(|schema| &schema.0),
             Extensions::all_available(),
         )?))
+    }
+
+    /// Get the context component of the request. Returns `None` if the context is
+    /// "unknown" (i.e., constructed using the partial evaluation APIs).
+    pub fn context(&self) -> Option<&Context> {
+        self.0.context().map(Context::ref_cast)
     }
 
     /// Get the principal component of the request. Returns `None` if the principal is
@@ -3631,6 +3637,36 @@ impl Context {
             pairs.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
             Extensions::all_available(),
         )?))
+    }
+
+    /// Retrieves a value from the Context by its key.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key to look up in the context
+    ///
+    /// # Returns
+    ///
+    /// * `Some(EvalResult)` - If the key exists in the context, returns its value
+    /// * `None` - If the key doesn't exist or if the context is not a Value type
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use cedar_policy::{Context, Request, EntityUid};
+    /// # use std::str::FromStr;
+    /// let context = Context::from_json_str(r#"{"rayId": "abc123"}"#, None).unwrap();
+    /// if let Some(value) = context.get("rayId") {
+    ///     // value here is an EvalResult, convertible from the internal Value type
+    ///     println!("Found value: {:?}", value);
+    /// }
+    /// assert_eq!(context.get("nonexistent"), None);
+    /// ```
+    pub fn get(&self, key: &str) -> Option<EvalResult> {
+        match &self.0 {
+            ast::Context::Value(map) => map.get(key).map(|v| EvalResult::from(v.clone())),
+            ast::Context::RestrictedResidual(_) => None,
+        }
     }
 
     /// Create a `Context` from a string containing JSON (which must be a JSON
@@ -3860,7 +3896,7 @@ impl std::fmt::Display for Context {
 }
 
 /// Result of Evaluation
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EvalResult {
     /// Boolean value
     Bool(bool),
@@ -3880,7 +3916,7 @@ pub enum EvalResult {
 }
 
 /// Sets of Cedar values
-#[derive(Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Set(BTreeSet<EvalResult>);
 
 impl Set {
@@ -3906,7 +3942,7 @@ impl Set {
 }
 
 /// A record of Cedar values
-#[derive(Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Record(BTreeMap<String, EvalResult>);
 
 impl Record {
@@ -3957,7 +3993,9 @@ impl From<ast::Value> for EvalResult {
                     .map(|(k, v)| (k.to_string(), v.clone().into()))
                     .collect(),
             )),
-            ast::ValueKind::ExtensionValue(ev) => Self::ExtensionValue(ev.to_string()),
+            ast::ValueKind::ExtensionValue(ev) => {
+                Self::ExtensionValue(RestrictedExpr::from(ev.as_ref().clone()).to_string())
+            }
         }
     }
 }
@@ -4441,6 +4479,32 @@ action CreateList in Create appliesTo {
         .collect::<HashSet<EntityTypeName>>();
         assert_eq!(entities, expected);
     }
+
+    #[test]
+    fn test_request_context() {
+        // Create a context with some test data
+        let context =
+            Context::from_json_str(r#"{"testKey": "testValue", "numKey": 42}"#, None).unwrap();
+
+        // Create entity UIDs for the request
+        let principal: EntityUid = "User::\"alice\"".parse().unwrap();
+        let action: EntityUid = "Action::\"view\"".parse().unwrap();
+        let resource: EntityUid = "Resource::\"doc123\"".parse().unwrap();
+
+        // Create the request
+        let request = Request::new(
+            principal, action, resource, context, None, // no schema validation for this test
+        )
+        .unwrap();
+
+        // Test context() method
+        let retrieved_context = request.context().expect("Context should be present");
+
+        // Test get() method on the retrieved context
+        assert!(retrieved_context.get("testKey").is_some());
+        assert!(retrieved_context.get("numKey").is_some());
+        assert!(retrieved_context.get("nonexistent").is_none());
+    }
 }
 
 /// Given a schema and policy set, compute an entity manifest.
@@ -4455,5 +4519,5 @@ pub fn compute_entity_manifest(
     schema: &Schema,
     pset: &PolicySet,
 ) -> Result<EntityManifest, EntityManifestError> {
-    entity_manifest::compute_entity_manifest(&schema.0, &pset.ast).map_err(Into::into)
+    entity_manifest::compute_entity_manifest(&schema.0, &pset.ast).map_err(std::convert::Into::into)
 }

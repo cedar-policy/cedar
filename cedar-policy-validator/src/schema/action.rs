@@ -163,7 +163,7 @@ impl From<&proto::ValidatorActionId> for ValidatorActionId {
     #[allow(clippy::expect_used)]
     fn from(v: &proto::ValidatorActionId) -> Self {
         let extensions_none = Extensions::none();
-        let eval = RestrictedEvaluator::new(&extensions_none);
+        let eval = RestrictedEvaluator::new(extensions_none);
         Self {
             name: ast::EntityUID::from(
                 v.name
@@ -308,7 +308,7 @@ impl ValidatorApplySpec<ConditionalName> {
             .principal_apply_spec
             .into_iter()
             .map(|cname| {
-                let internal_name = cname.resolve(all_defs)?.clone();
+                let internal_name = cname.resolve(all_defs)?;
                 internal_name_to_entity_type(internal_name).map_err(Into::into)
             })
             .partition_result::<_, Vec<SchemaError>, _, _>();
@@ -316,7 +316,7 @@ impl ValidatorApplySpec<ConditionalName> {
             .resource_apply_spec
             .into_iter()
             .map(|cname| {
-                let internal_name = cname.resolve(all_defs)?.clone();
+                let internal_name = cname.resolve(all_defs)?;
                 internal_name_to_entity_type(internal_name).map_err(Into::into)
             })
             .partition_result::<_, Vec<SchemaError>, _, _>();

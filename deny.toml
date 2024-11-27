@@ -2,11 +2,12 @@
 unlicensed = "deny"
 copyleft = "deny"
 default = "deny"
-unused-allowed-license = "deny"
+unused-allowed-license = "allow"
 confidence-threshold = 0.95
 allow = [
     "Apache-2.0",
     "MIT",
     "ISC",
     "Unicode-DFS-2016",
+    "Unicode-3.0",
 ]

@@ -53,7 +53,7 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
             let schema_action = self
                 .schema
                 .action(uid)
-                .ok_or(EntitySchemaConformanceError::undeclared_action(uid.clone()))?;
+                .ok_or_else(|| EntitySchemaConformanceError::undeclared_action(uid.clone()))?;
             // check that the action exactly matches the schema's definition
             if !entity.deep_eq(&schema_action) {
                 return Err(EntitySchemaConformanceError::action_declaration_mismatch(

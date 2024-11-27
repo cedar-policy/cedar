@@ -660,6 +660,26 @@ impl Type {
             },
         }
     }
+
+    /// Returns `true` when the type is a type of an entity
+    #[cfg(feature = "entity-manifest")]
+    pub(crate) fn is_entity_type(&self) -> bool {
+        matches!(
+            self,
+            Type::EntityOrRecord(EntityRecordKind::Entity(_))
+                | Type::EntityOrRecord(EntityRecordKind::AnyEntity)
+                | Type::EntityOrRecord(EntityRecordKind::ActionEntity { .. })
+        )
+    }
+
+    pub(crate) fn support_operator_overloading(&self) -> bool {
+        match self {
+            Self::ExtensionType { name } => {
+                Extensions::types_with_operator_overloading().contains(name)
+            }
+            _ => false,
+        }
+    }
 }
 
 impl Display for Type {
@@ -892,7 +912,7 @@ impl EntityLUB {
     /// just that entity type.
     pub(crate) fn single_entity(entity_type_name: EntityType) -> Self {
         Self {
-            lub_elements: [entity_type_name].into_iter().collect(),
+            lub_elements: BTreeSet::from([entity_type_name]),
         }
     }
 
@@ -1787,11 +1807,11 @@ mod test {
         if let Ok(lub_ty) = &lub {
             // Also assert that types are subtypes of the LUB
             assert!(
-                Type::is_subtype(&schema, &lhs, &lub_ty, mode),
+                Type::is_subtype(&schema, &lhs, lub_ty, mode),
                 "{lhs:?} </: ({mode:?}) {lub_ty:?}"
             );
             assert!(
-                Type::is_subtype(&schema, &rhs, &lub_ty, mode),
+                Type::is_subtype(&schema, &rhs, lub_ty, mode),
                 "{rhs:?} </: ({mode:?}) {lub_ty:?}"
             );
 

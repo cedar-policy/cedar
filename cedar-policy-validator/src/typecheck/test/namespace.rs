@@ -145,10 +145,10 @@ fn namespaced_entity_can_type_error() {
     let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
-        ValidationError::expected_type(
+        ValidationError::expected_one_of_types(
             get_loc(src, r#"N::S::Foo::"alice""#),
             expr_id_placeholder(),
-            Type::primitive_long(),
+            std::iter::once(Type::primitive_long()),
             Type::named_entity_reference_from_str("N::S::Foo"),
             None,
         )

@@ -291,9 +291,7 @@ impl<'a> ExpectedErrorMessage<'a> {
         if expected_num_labels != actual_num_labels {
             return false;
         }
-        if expected_num_labels == 0 {
-            true
-        } else {
+        if expected_num_labels != 0 {
             let src =
                 src.expect("src can be `None` only in the case where we expect no underlines");
             for (expected, actual) in self
@@ -318,8 +316,8 @@ impl<'a> ExpectedErrorMessage<'a> {
                     return false;
                 }
             }
-            true
         }
+        true
     }
 
     /// Internal helper: assert the underlines match
@@ -386,9 +384,8 @@ impl<'a> std::fmt::Display for ExpectedErrorMessage<'a> {
             writeln!(f, "and expected the following underlined segments:")?;
             for (underline, label) in &self.underlines {
                 writeln!(f, "  {underline}")?;
-                match label {
-                    Some(label) => writeln!(f, "  with label {label}")?,
-                    None => (),
+                if let Some(label) = label {
+                    writeln!(f, "  with label {label}")?
                 }
             }
         }

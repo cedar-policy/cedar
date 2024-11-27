@@ -19,7 +19,11 @@ default = ["ipaddr", "decimal"]
 decimal = ["cedar-policy/decimal"]
 ipaddr = ["cedar-policy/ipaddr"]
 integration-testing = []
+entity-manifest = ["cedar-policy/entity-manifest"]
 
 [dev-dependencies]
 assert_cmd = "2.0"
 tempfile = "3"
+
+[lints]
+workspace = true

@@ -2334,15 +2334,15 @@ mod schema_based_parsing_tests {
         };
         assert_matches!(
             parsed.attr("home_ip"),
-            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "222.222.222.101/32"
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"ip("222.222.222.101")"#
         );
         assert_matches!(
             parsed.attr("work_ip"),
-            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "2.2.2.0/24"
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"ip("2.2.2.0/24")"#
         );
         assert_matches!(
             parsed.attr("trust_score"),
-            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "5.7000"
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"decimal("5.7")"#
         );
 
         // simple type mismatch with expected type
@@ -2817,15 +2817,15 @@ mod schema_based_parsing_tests {
         };
         assert_matches!(
             parsed.attr("home_ip"),
-            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "222.222.222.101/32"
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"ip("222.222.222.101")"#
         );
         assert_matches!(
             parsed.attr("work_ip"),
-            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "2.2.2.0/24"
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"ip("2.2.2.0/24")"#
         );
         assert_matches!(
             parsed.attr("trust_score"),
-            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "5.7000"
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"decimal("5.7")"#
         );
 
         // simple type mismatch with expected type
@@ -4032,7 +4032,7 @@ mod level_validation_tests {
         assert_matches!(err, ValidationError::EntityDerefLevelViolation(_));
         match err {
             ValidationError::EntityDerefLevelViolation(inner) => {
-                assert!(format!("{}", inner.to_string()).contains("Actual level is 2"));
+                assert!(format!("{inner}").contains("Actual level is 2"));
             }
             _ => unreachable!(),
         };
@@ -4689,7 +4689,7 @@ mod decimal_ip_constructors {
     fn expr_ip() {
         let ip = Expression::new_ip("10.10.10.10");
         assert_matches!(evaluate_empty(&ip),
-                Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, "10.10.10.10/32")
+                Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, r#"ip("10.10.10.10")"#)
         );
     }
 
@@ -4697,7 +4697,7 @@ mod decimal_ip_constructors {
     fn expr_ip_network() {
         let ip = Expression::new_ip("10.10.10.10/16");
         assert_matches!(evaluate_empty(&ip),
-            Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, "10.10.10.10/16")
+            Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, r#"ip("10.10.10.10/16")"#)
         );
     }
 
@@ -6297,14 +6297,14 @@ mod reserved_keywords_in_policies {
             });
 
         // No restrictions on OTHER_SPECIAL_IDENTS
-        for id in OTHER_SPECIAL_IDENTS.iter() {
+        for id in &OTHER_SPECIAL_IDENTS {
             assert_valid_expression(format!("{{ {id}: 1 }}"));
             assert_valid_expression(format!("principal has {id}"));
             assert_valid_expression(format!("principal.{id} == \"foo\""));
         }
 
         // RESERVED_IDENTS cannot be used as keys without quotes
-        for id in RESERVED_IDENTS.into_iter() {
+        for id in RESERVED_IDENTS {
             // slightly different errors depending on `id`; related to #407
             match id {
                 "true" | "false" => {
@@ -6314,11 +6314,10 @@ mod reserved_keywords_in_policies {
                         id.into(),
                         "attribute names can either be identifiers or string literals".into(),
                     );
-                    assert_invalid_expression_with_help(
+                    assert_invalid_expression(
                         format!("principal has {id}"),
-                        format!("invalid attribute name: {id}"),
-                        id.into(),
-                        "attribute names can either be identifiers or string literals".into(),
+                        RESERVED_IDENT_MSG(id),
+                        format!("{id}"),
                     );
                 }
                 "if" => {
@@ -6330,7 +6329,7 @@ mod reserved_keywords_in_policies {
                     assert_invalid_expression(
                         format!("principal has {id}"),
                         RESERVED_IDENT_MSG(id),
-                        format!("principal has {id}"),
+                        format!("{id}"),
                     );
                 }
                 _ => {
@@ -6355,7 +6354,7 @@ mod reserved_keywords_in_policies {
         }
 
         // RESERVED_NAMESPACE cannot be used as keys without quotes
-        for id in RESERVED_NAMESPACE.into_iter() {
+        for id in RESERVED_NAMESPACE {
             assert_invalid_expression(
                 format!("{{ {id}: 1 }}"),
                 RESERVED_NAMESPACE_MSG(id),
@@ -6377,13 +6376,13 @@ mod reserved_keywords_in_policies {
     #[test]
     fn test_reserved_namespace_elements() {
         // No restrictions on OTHER_SPECIAL_IDENTS
-        for id in OTHER_SPECIAL_IDENTS.iter() {
+        for id in &OTHER_SPECIAL_IDENTS {
             assert_valid_expression(format!("foo::{id}::\"bar\""));
             assert_valid_expression(format!("principal is {id}::foo"));
         }
 
         // RESERVED_IDENTS cannot be used in namespaces
-        for id in RESERVED_IDENTS.into_iter() {
+        for id in RESERVED_IDENTS {
             assert_invalid_expression(
                 format!("foo::{id}::\"bar\""),
                 RESERVED_IDENT_MSG(id),
@@ -6397,7 +6396,7 @@ mod reserved_keywords_in_policies {
         }
 
         // RESERVED_NAMESPACE cannot be used in namespaces
-        for id in RESERVED_NAMESPACE.into_iter() {
+        for id in RESERVED_NAMESPACE {
             assert_invalid_expression(
                 format!("foo::{id}::\"bar\""),
                 RESERVED_NAMESPACE_MSG(&format!("foo::{id}")),
@@ -6416,7 +6415,7 @@ mod reserved_keywords_in_policies {
         // No keyword is allowed as an extension function names since we check
         // against the known extension functions at parse time.
 
-        for id in RESERVED_IDENTS.into_iter() {
+        for id in RESERVED_IDENTS {
             assert_invalid_expression(
                 format!("extension::function::{id}(\"foo\")"),
                 RESERVED_IDENT_MSG(id),
@@ -6429,7 +6428,7 @@ mod reserved_keywords_in_policies {
             );
         }
 
-        for id in RESERVED_NAMESPACE.into_iter() {
+        for id in RESERVED_NAMESPACE {
             assert_invalid_expression(
                 format!("extension::function::{id}(\"foo\")"),
                 RESERVED_NAMESPACE_MSG(&format!("extension::function::{id}")),
@@ -6442,7 +6441,7 @@ mod reserved_keywords_in_policies {
             );
         }
 
-        for id in OTHER_SPECIAL_IDENTS.into_iter() {
+        for id in OTHER_SPECIAL_IDENTS {
             assert_invalid_expression(
                 format!("extension::function::{id}(\"foo\")"),
                 format!("`extension::function::{id}` is not a valid function"),

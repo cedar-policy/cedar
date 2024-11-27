@@ -290,7 +290,7 @@ impl From<&proto::EntityUid> for EntityUID {
                     .expect("`as_ref()` for field that should exist"),
             ),
             eid: Eid::new(v.eid.clone()),
-            loc: loc,
+            loc,
         }
     }
 }
@@ -303,7 +303,7 @@ impl From<&EntityUID> for proto::EntityUid {
         Self {
             ty: Some(proto::EntityType::from(&v.ty)),
             eid: eid_ref.to_owned(),
-            loc: loc,
+            loc,
         }
     }
 }
@@ -569,14 +569,7 @@ impl Entity {
         Ok(())
     }
 
-    /// Mark the given `UID` as an ancestor of this `Entity`.
-    // When fuzzing, `add_ancestor()` is fully `pub`.
-    #[cfg(not(fuzzing))]
-    pub(crate) fn add_ancestor(&mut self, uid: EntityUID) {
-        self.ancestors.insert(uid);
-    }
     /// Mark the given `UID` as an ancestor of this `Entity`
-    #[cfg(fuzzing)]
     pub fn add_ancestor(&mut self, uid: EntityUID) {
         self.ancestors.insert(uid);
     }
@@ -697,7 +690,7 @@ impl From<&proto::Entity> for Entity {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &proto::Entity) -> Self {
-        let eval = RestrictedEvaluator::new(&Extensions::none());
+        let eval = RestrictedEvaluator::new(Extensions::none());
 
         let attrs: BTreeMap<SmolStr, PartialValueSerializedAsExpr> = v
             .attrs
@@ -914,10 +907,10 @@ mod test {
             .collect::<HashMap<SmolStr, _>>();
         let entity = Entity::new(
             r#"Foo::"bar""#.parse().unwrap(),
-            attrs.clone(),
+            attrs,
             HashSet::new(),
             BTreeMap::new(),
-            &Extensions::none(),
+            Extensions::none(),
         )
         .unwrap();
         assert_eq!(entity, Entity::from(&proto::Entity::from(&entity)));

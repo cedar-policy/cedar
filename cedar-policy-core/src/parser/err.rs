@@ -159,7 +159,7 @@ pub enum ToASTErrorKind {
     /// Returned when a policy has an extra scope element
     #[error("this policy has an extra element in the scope: {0}")]
     #[diagnostic(help("{POLICY_SCOPE_HELP}"))]
-    ExtraScopeElement(cst::VariableDef),
+    ExtraScopeElement(Box<cst::VariableDef>),
     /// Returned when a policy uses a reserved keyword as an identifier.
     #[error("this identifier is reserved and cannot be used: {0}")]
     ReservedIdentifier(cst::Ident),
@@ -237,6 +237,10 @@ pub enum ToASTErrorKind {
     #[error("invalid attribute name: {0}")]
     #[diagnostic(help("attribute names can either be identifiers or string literals"))]
     InvalidAttribute(SmolStr),
+    /// Returned when the RHS of a `has` operation is invalid
+    #[error("invalid RHS of a `has` operation: {0}")]
+    #[diagnostic(help("valid RHS of a `has` operation is either a sequence of identifiers separated by `.` or a string literal"))]
+    InvalidHasRHS(SmolStr),
     /// Returned when attempting to use an attribute with a namespace
     #[error("`{0}` cannot be used as an attribute as it contains a namespace")]
     PathAsAttribute(String),

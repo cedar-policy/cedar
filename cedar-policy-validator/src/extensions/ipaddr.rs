@@ -26,10 +26,10 @@ use itertools::Itertools;
 
 use super::eval_extension_constructor;
 
-/// Note on safety:
-/// This module depends on the Cedar parser only constructing AST with valid extension calls
-/// If any of the panics in this file are triggered, that means that this file has become
-/// out-of-date with the ipaddr extension definition in Core.
+// Note on safety:
+// This module depends on the Cedar parser only constructing AST with valid extension calls
+// If any of the panics in this file are triggered, that means that this file has become
+// out-of-date with the ipaddr extension definition in Core.
 
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]

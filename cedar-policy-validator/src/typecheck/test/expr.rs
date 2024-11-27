@@ -20,7 +20,11 @@
 
 use std::{str::FromStr, vec};
 
-use cedar_policy_core::ast::{BinaryOp, EntityUID, Expr, PatternElem, SlotId, Var};
+use cedar_policy_core::{
+    ast::{BinaryOp, EntityUID, Expr, Name, Pattern, PatternElem, SlotId, Value, Var},
+    extensions::Extensions,
+};
+use itertools::Itertools;
 use serde_json::json;
 use smol_str::SmolStr;
 
@@ -982,11 +986,11 @@ fn like_typechecks() {
     assert_typechecks_empty_schema(
         Expr::like(
             Expr::val("foo"),
-            [
+            Pattern::from(vec![
                 PatternElem::Char('b'),
                 PatternElem::Char('a'),
                 PatternElem::Char('r'),
-            ],
+            ]),
         ),
         Type::primitive_boolean(),
     );
@@ -1010,37 +1014,210 @@ fn like_typecheck_fails() {
     );
 }
 
+#[inline]
+fn get_datetime_constructor_name() -> Name {
+    "datetime".parse().unwrap()
+}
+
+#[inline]
+fn get_duration_constructor_name() -> Name {
+    "duration".parse().unwrap()
+}
+
 #[test]
 fn less_than_typechecks() {
     assert_typechecks_empty_schema(
         Expr::less(Expr::val(1), Expr::val(2)),
         Type::primitive_boolean(),
-    )
+    );
+    assert_typechecks_empty_schema(
+        Expr::less(
+            Expr::call_extension_fn(
+                get_datetime_constructor_name(),
+                vec![Value::from("1970-01-01").into()],
+            ),
+            Expr::call_extension_fn(
+                get_datetime_constructor_name(),
+                vec![Value::from("1970-01-02").into()],
+            ),
+        ),
+        Type::primitive_boolean(),
+    );
+    assert_typechecks_empty_schema(
+        Expr::lesseq(
+            Expr::call_extension_fn(
+                get_datetime_constructor_name(),
+                vec![Value::from("1970-01-01").into()],
+            ),
+            Expr::call_extension_fn(
+                get_datetime_constructor_name(),
+                vec![Value::from("1970-01-02").into()],
+            ),
+        ),
+        Type::primitive_boolean(),
+    );
+    assert_typechecks_empty_schema(
+        Expr::less(
+            Expr::call_extension_fn(
+                get_duration_constructor_name(),
+                vec![Value::from("1h").into()],
+            ),
+            Expr::call_extension_fn(
+                get_duration_constructor_name(),
+                vec![Value::from("2h").into()],
+            ),
+        ),
+        Type::primitive_boolean(),
+    );
+    assert_typechecks_empty_schema(
+        Expr::lesseq(
+            Expr::call_extension_fn(
+                get_duration_constructor_name(),
+                vec![Value::from("1h").into()],
+            ),
+            Expr::call_extension_fn(
+                get_duration_constructor_name(),
+                vec![Value::from("2h").into()],
+            ),
+        ),
+        Type::primitive_boolean(),
+    );
 }
 
 #[test]
 fn less_than_typecheck_fails() {
+    let expected_types = std::iter::once(Type::primitive_long())
+        .chain(
+            Extensions::types_with_operator_overloading()
+                .into_iter()
+                .map(Type::extension),
+        )
+        .collect_vec();
     let src = "true < false";
     let errors =
         assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
     assert_sets_equal(
         errors,
         [
-            ValidationError::expected_type(
+            ValidationError::expected_one_of_types(
                 get_loc(src, "true"),
                 expr_id_placeholder(),
-                Type::primitive_long(),
+                expected_types.clone(),
                 Type::singleton_boolean(true),
                 None,
             ),
-            ValidationError::expected_type(
+            ValidationError::expected_one_of_types(
                 get_loc(src, "false"),
                 expr_id_placeholder(),
-                Type::primitive_long(),
+                expected_types.clone(),
                 Type::singleton_boolean(false),
                 None,
             ),
         ],
+    );
+
+    let src = "true < \"\"";
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    assert_sets_equal(
+        errors,
+        [
+            ValidationError::expected_one_of_types(
+                get_loc(src, "true"),
+                expr_id_placeholder(),
+                expected_types.clone(),
+                Type::singleton_boolean(true),
+                None,
+            ),
+            ValidationError::expected_one_of_types(
+                get_loc(src, "\"\""),
+                expr_id_placeholder(),
+                expected_types.clone(),
+                Type::primitive_string(),
+                None,
+            ),
+        ],
+    );
+
+    let src = "true < 1";
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    assert_sets_equal(
+        errors,
+        [ValidationError::expected_type(
+            get_loc(src, "true"),
+            expr_id_placeholder(),
+            Type::primitive_long(),
+            Type::singleton_boolean(true),
+            None,
+        )],
+    );
+
+    let src = r#"true < duration("1h")"#;
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    assert_sets_equal(
+        errors,
+        [ValidationError::expected_type(
+            get_loc(src, "true"),
+            expr_id_placeholder(),
+            Type::ExtensionType {
+                name: get_duration_constructor_name(),
+            },
+            Type::singleton_boolean(true),
+            None,
+        )],
+    );
+
+    // Error reporting favors long
+    let src = r#"duration("1d") < 1"#;
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    assert_sets_equal(
+        errors,
+        [ValidationError::expected_type(
+            get_loc(src, r#"duration("1d")"#),
+            expr_id_placeholder(),
+            Type::primitive_long(),
+            Type::ExtensionType {
+                name: get_duration_constructor_name(),
+            },
+            None,
+        )],
+    );
+
+    let src = r#"1 < duration("1d")"#;
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    assert_sets_equal(
+        errors,
+        [ValidationError::expected_type(
+            get_loc(src, r#"duration("1d")"#),
+            expr_id_placeholder(),
+            Type::primitive_long(),
+            Type::ExtensionType {
+                name: get_duration_constructor_name(),
+            },
+            None,
+        )],
+    );
+
+    let src = r#"datetime("1970-01-01") < duration("1d")"#;
+    let errors =
+        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    assert_sets_equal(
+        errors,
+        [ValidationError::expected_type(
+            get_loc(src, r#"duration("1d")"#),
+            expr_id_placeholder(),
+            Type::ExtensionType {
+                name: get_datetime_constructor_name(),
+            },
+            Type::ExtensionType {
+                name: get_duration_constructor_name(),
+            },
+            None,
+        )],
     );
 }
 

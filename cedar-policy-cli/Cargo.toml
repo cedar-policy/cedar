@@ -13,12 +13,18 @@ repository.workspace = true
 [dependencies]
 cedar-policy = { version = "=4.1.0", path = "../cedar-policy" }
 cedar-policy-formatter = { version = "=4.1.0", path = "../cedar-policy-formatter" }
+cedar-policy-core = { package= "cedar-policy-core", git = "https://github.com/cedar-policy/cedar.git", branch = "main", version = "=4.1.0"}
+cedar-policy-validator = { package= "cedar-policy-validator", git = "https://github.com/cedar-policy/cedar.git", branch = "main", version = "=4.1.0"}
 clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 miette = { version = "7.1.0", features = ["fancy"] }
 thiserror = "2.0"
 semver = "1.0.23"
+prost = {version = "0.13", optional = true}
+
+[build-dependencies]
+prost-build = {version = "0.13", optional = true}
 
 [features]
 default = []
@@ -26,6 +32,7 @@ experimental = ["permissive-validate", "partial-validate", "partial-eval"]
 permissive-validate = ["cedar-policy/permissive-validate"]
 partial-validate = ["cedar-policy/partial-validate"]
 partial-eval = ["cedar-policy/partial-eval"]
+protobufs = ["dep:prost", "dep:prost-build", "cedar-policy/protobufs", "cedar-policy-core/protobufs", "cedar-policy-validator/protobufs"]
 
 [dev-dependencies]
 assert_cmd = "2.0"
@@ -39,3 +46,6 @@ rstest = "0.23.0"
 [[bin]]
 name = "cedar"
 path = "src/main.rs"
+
+[lints]
+workspace = true

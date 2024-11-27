@@ -37,7 +37,7 @@ pub fn get_comment(text: &str) -> impl Iterator<Item = &str> + std::fmt::Debug {
 }
 
 // Represent Cedar comments
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Comment<'src> {
     leading_comment: Vec<&'src str>,
     trailing_comment: &'src str,
@@ -86,7 +86,7 @@ impl Display for Comment<'_> {
 }
 
 // Cedar tokens
-#[derive(Logos, Clone, Debug, PartialEq)]
+#[derive(Logos, Clone, Debug, PartialEq, Eq)]
 pub enum Token {
     #[regex(r"\s*", logos::skip)]
     Whitespace,
@@ -302,7 +302,7 @@ impl fmt::Display for Token {
 
 // A wrapper for token span (i.e., (Token, Span))
 // We use this wrapper for easier processing of comments
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WrappedToken<'src> {
     pub token: Token,
     pub comment: Comment<'src>,

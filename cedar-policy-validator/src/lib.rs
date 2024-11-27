@@ -15,11 +15,8 @@
  */
 
 //! Validator for Cedar policies
-#![forbid(unsafe_code)]
-#![warn(rust_2018_idioms)]
 #![deny(
     missing_docs,
-    missing_debug_implementations,
     rustdoc::broken_intra_doc_links,
     rustdoc::private_intra_doc_links,
     rustdoc::invalid_codeblock_attributes,
@@ -28,7 +25,6 @@
     rustdoc::bare_urls,
     clippy::doc_markdown
 )]
-#![allow(clippy::result_large_err, clippy::large_enum_variant)] // see #878
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
 
 #[cfg(feature = "protobufs")]
@@ -105,7 +101,7 @@ impl ValidationMode {
 #[cfg(feature = "protobufs")]
 impl From<&ValidationMode> for proto::ValidationMode {
     // PANIC SAFETY: experimental feature
-    #[allow(clippy::allow_unimplemented)]
+    #[allow(clippy::unimplemented)]
     fn from(v: &ValidationMode) -> Self {
         match v {
             ValidationMode::Strict => proto::ValidationMode::Strict,
@@ -128,7 +124,7 @@ impl From<&proto::ValidationMode> for ValidationMode {
 
 /// Structure containing the context needed for policy validation. This is
 /// currently only the `EntityType`s and `ActionType`s from a single schema.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Validator {
     schema: ValidatorSchema,
 }

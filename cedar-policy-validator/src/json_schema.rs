@@ -268,7 +268,7 @@ impl<'de> Deserialize<'de> for CommonTypeId {
 }
 
 /// Error when a common-type basename is reserved
-#[derive(Debug, Error, PartialEq, Clone)]
+#[derive(Debug, Error, PartialEq, Eq, Clone)]
 #[error("this is reserved and cannot be the basename of a common-type declaration: {id}")]
 pub struct ReservedCommonTypeBasenameError {
     /// `id` that is a reserved common-type basename
@@ -413,7 +413,7 @@ impl NamespaceDefinition<ConditionalName> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`EntityType`], including recursively.
 /// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
@@ -487,7 +487,7 @@ impl EntityType<ConditionalName> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`AttributesOrContext`], including recursively.
 /// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -562,7 +562,7 @@ impl AttributesOrContext<ConditionalName> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`ActionType`], including recursively.
 /// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
@@ -643,7 +643,7 @@ impl ActionType<ConditionalName> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`ApplySpec`], including recursively.
 /// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
@@ -1027,7 +1027,7 @@ impl Type<ConditionalName> {
         match self {
             Self::Type(tv) => Ok(Type::Type(tv.fully_qualify_type_references(all_defs)?)),
             Self::CommonTypeRef { type_name } => Ok(Type::CommonTypeRef {
-                type_name: type_name.resolve(all_defs)?.clone(),
+                type_name: type_name.resolve(all_defs)?,
             }),
         }
     }
@@ -1266,7 +1266,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                                         )
                                     })
                                     .collect(),
-                                additional_attributes: additional_attributes,
+                                additional_attributes,
                             })))
                         } else {
                             Err(serde::de::Error::missing_field(Attributes.as_str()))
@@ -1734,10 +1734,10 @@ impl TypeVariant<ConditionalName> {
             Self::String => Ok(TypeVariant::String),
             Self::Extension { name } => Ok(TypeVariant::Extension { name }),
             Self::Entity { name } => Ok(TypeVariant::Entity {
-                name: name.resolve(all_defs)?.clone(),
+                name: name.resolve(all_defs)?,
             }),
             Self::EntityOrCommon { type_name } => Ok(TypeVariant::EntityOrCommon {
-                type_name: type_name.resolve(all_defs)?.clone(),
+                type_name: type_name.resolve(all_defs)?,
             }),
             Self::Set { element } => Ok(TypeVariant::Set {
                 element: Box::new(element.fully_qualify_type_references(all_defs)?),

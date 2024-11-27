@@ -100,7 +100,7 @@ pub enum PolicySetFromJsonError {
 }
 
 /// Errors while linking a policy
-#[derive(Debug, PartialEq, Diagnostic, Error)]
+#[derive(Debug, PartialEq, Eq, Diagnostic, Error)]
 pub enum LinkingError {
     /// Template contains this slot, but a value wasn't provided for it
     #[error("failed to link template: no value provided for `{slot}`")]

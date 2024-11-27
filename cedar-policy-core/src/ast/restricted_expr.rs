@@ -263,7 +263,7 @@ impl From<ValueKind> for RestrictedExpr {
             .expect("can't have duplicate keys, because the input `map` was already a BTreeMap"),
             ValueKind::ExtensionValue(ev) => {
                 let ev = Arc::unwrap_or_clone(ev);
-                RestrictedExpr::call_extension_fn(ev.constructor, ev.args)
+                ev.into()
             }
         }
     }
@@ -287,7 +287,7 @@ impl TryFrom<PartialValue> for RestrictedExpr {
 }
 
 /// Errors when converting `PartialValue` to `RestrictedExpr`
-#[derive(Debug, PartialEq, Diagnostic, Error)]
+#[derive(Debug, PartialEq, Eq, Diagnostic, Error)]
 pub enum PartialValueToRestrictedExprError {
     /// The `PartialValue` contains a nontrivial residual that isn't a valid `RestrictedExpr`
     #[error("residual is not a valid restricted expression: `{residual}`")]
