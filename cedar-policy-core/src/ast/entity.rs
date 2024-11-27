@@ -283,14 +283,13 @@ impl From<&proto::EntityUid> for EntityUID {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &proto::EntityUid) -> Self {
-        let loc: Option<Loc> = v.loc.as_ref().map(Loc::from);
         Self {
             ty: EntityType::from(
                 v.ty.as_ref()
                     .expect("`as_ref()` for field that should exist"),
             ),
             eid: Eid::new(v.eid.clone()),
-            loc,
+            loc: None,
         }
     }
 }
@@ -298,12 +297,10 @@ impl From<&proto::EntityUid> for EntityUID {
 #[cfg(feature = "protobufs")]
 impl From<&EntityUID> for proto::EntityUid {
     fn from(v: &EntityUID) -> Self {
-        let loc: Option<proto::Loc> = v.loc.as_ref().map(proto::Loc::from);
         let eid_ref: &str = v.eid.as_ref();
         Self {
             ty: Some(proto::EntityType::from(&v.ty)),
             eid: eid_ref.to_owned(),
-            loc,
         }
     }
 }

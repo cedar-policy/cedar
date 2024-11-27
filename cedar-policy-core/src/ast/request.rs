@@ -118,12 +118,11 @@ impl EntityUIDEntry {
 #[cfg(feature = "protobufs")]
 impl From<&proto::EntityUidEntry> for EntityUIDEntry {
     fn from(v: &proto::EntityUidEntry) -> Self {
-        let loc: Option<Loc> = v.loc.as_ref().map(Loc::from);
         // PANIC SAFETY: experimental feature
         #[allow(clippy::expect_used)]
         EntityUIDEntry::known(
             EntityUID::from(v.euid.as_ref().expect("euid.as_ref()")),
-            loc,
+            None,
         )
     }
 }
@@ -141,7 +140,6 @@ impl From<&EntityUIDEntry> for proto::EntityUidEntry {
             }
             EntityUIDEntry::Known { euid, loc } => Self {
                 euid: Some(proto::EntityUid::from(euid.as_ref())),
-                loc: loc.as_ref().map(proto::Loc::from),
             },
         }
     }
