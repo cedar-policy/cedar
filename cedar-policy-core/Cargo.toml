@@ -26,7 +26,7 @@ thiserror = "2.0"
 smol_str = { version = "0.3", features = ["serde"] }
 stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
-miette = { version = "7.1.0", features = ["serde"] }
+miette = { version = "7.4.0", features = ["serde"] }
 nonempty = "0.10.0"
 
 # decimal extension requires regex
@@ -35,7 +35,7 @@ regex = { version = "1.8", features = ["unicode"], optional = true }
 # wasm dependencies
 serde-wasm-bindgen = { version = "0.6", optional = true }
 tsify = { version = "0.4.5", optional = true }
-wasm-bindgen = { version = "0.2.82", optional = true }
+wasm-bindgen = { version = "0.2.97", optional = true }
 
 # datetime extension requires chrono
 chrono = { version = "0.4.38", optional = true, default-features = false}
@@ -68,7 +68,7 @@ prost-build = { version = "0.13.3", optional = true }
 
 [dev-dependencies]
 cool_asserts = "2.0"
-miette = { version = "7.1.0", features = ["fancy"] }
+miette = { version = "7.4.0", features = ["fancy"] }
 
 [lints]
 workspace = true
