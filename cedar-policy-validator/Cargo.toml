@@ -33,7 +33,7 @@ tsify = { version = "0.4.5", optional = true }
 wasm-bindgen = { version = "0.2.97", optional = true }
 
 # protobuf dependency
-prost = { version = "0.13.3", optional = true }
+prost = { version = "0.13", optional = true }
 
 [features]
 # by default, enable all Cedar extensions
@@ -63,7 +63,7 @@ miette = { version = "7.4.0", features = ["fancy"] }
 [build-dependencies]
 lalrpop = "0.22.0"
 # protobuf dependency
-prost-build = { version = "0.13.3", optional = true }
+prost-build = { version = "0.13", optional = true }
 
 [lints]
 workspace = true

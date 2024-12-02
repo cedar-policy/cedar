@@ -25,6 +25,7 @@ smol_str = { version = "0.3", features = ["serde"] }
 dhat = { version = "0.3.2", optional = true }
 serde_with = "3.3.0"
 nonempty = "0.10"
+prost = { version = "0.13", optional = true }
 
 # wasm dependencies
 serde-wasm-bindgen = { version = "0.6", optional = true }
@@ -52,7 +53,7 @@ entity-manifest = ["cedar-policy-validator/entity-manifest"]
 partial-eval = ["cedar-policy-core/partial-eval", "cedar-policy-validator/partial-eval"]
 permissive-validate = []
 partial-validate = ["cedar-policy-validator/partial-validate"]
-protobufs = ["cedar-policy-validator/protobufs", "cedar-policy-core/protobufs"]
+protobufs = ["dep:prost", "cedar-policy-validator/protobufs", "cedar-policy-core/protobufs"]
 level-validate = ["cedar-policy-validator/level-validate"]
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
