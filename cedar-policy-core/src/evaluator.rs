@@ -994,7 +994,7 @@ pub mod test {
 
     use cool_asserts::assert_matches;
 
-    // Many of these tests use this Request
+    /// Many of these tests use this Request
     pub fn basic_request() -> Request {
         Request::new(
             (EntityUID::with_eid("test_principal"), None),

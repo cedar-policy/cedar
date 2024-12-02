@@ -560,7 +560,7 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
             month.parse().unwrap(),
             day.parse().unwrap(),
         )
-        .ok_or(DateTimeParseError::InvalidDate(date_str.into()))
+        .ok_or_else(|| DateTimeParseError::InvalidDate(date_str.into()))
     };
 
     // A complete match; simply return
@@ -600,7 +600,7 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
 
     let date = date()?;
     let time = NaiveTime::from_hms_milli_opt(h, m, sec, ms)
-        .ok_or(DateTimeParseError::InvalidHMS(hms_str[1..].into()))?;
+        .ok_or_else(|| DateTimeParseError::InvalidHMS(hms_str[1..].into()))?;
     let offset: Result<TimeDelta, DateTimeParseError> = if captures.get(4).is_some() {
         let positive = &captures[5] == "+";
         // PANIC SAFETY: should be valid given the limit on the number of digits.

@@ -62,6 +62,8 @@
 
 // Don't warn on the test case names based on above scenario classification scheme
 #![allow(non_snake_case)]
+// PANIC SAFETY: testing code
+#![allow(clippy::indexing_slicing)]
 
 use super::{test::utils::collect_warnings, SchemaWarning, ValidatorSchema};
 use cedar_policy_core::extensions::Extensions;
