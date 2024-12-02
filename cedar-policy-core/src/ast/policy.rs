@@ -2298,7 +2298,7 @@ impl<'a> Iterator for EntityIterator<'a> {
 }
 
 #[cfg(test)]
-pub mod test_generators {
+pub(crate) mod test_generators {
     use super::*;
 
     pub fn all_por_constraints() -> impl Iterator<Item = PrincipalOrResourceConstraint> {

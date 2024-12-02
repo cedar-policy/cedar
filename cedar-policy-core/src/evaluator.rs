@@ -870,6 +870,8 @@ impl<'e> Evaluator<'e> {
         }
     }
 
+    /// Interpret an `Expr` in an empty `SlotEnv`. Also checks that the source
+    /// location is propagated to the result.
     #[cfg(test)]
     pub fn interpret_inline_policy(&self, e: &Expr) -> Result<Value> {
         match self.partial_interpret(e, &HashMap::new())? {
@@ -900,7 +902,7 @@ impl<'e> Evaluator<'e> {
     // GRCOV_BEGIN_COVERAGE
 }
 
-impl<'e> std::fmt::Debug for Evaluator<'e> {
+impl std::fmt::Debug for Evaluator<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -981,7 +983,7 @@ fn stack_size_check() -> Result<()> {
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 #[cfg(test)]
-pub mod test {
+pub(crate) mod test {
     use std::str::FromStr;
 
     use super::*;
@@ -994,7 +996,7 @@ pub mod test {
 
     use cool_asserts::assert_matches;
 
-    // Many of these tests use this Request
+    /// Many of these tests use this Request
     pub fn basic_request() -> Request {
         Request::new(
             (EntityUID::with_eid("test_principal"), None),
@@ -1021,7 +1023,7 @@ pub mod test {
         .unwrap()
     }
 
-    // Many of these tests use this basic `Entities`
+    /// Many of these tests use this basic `Entities`
     pub fn basic_entities() -> Entities {
         Entities::from_entities(
             vec![
@@ -1037,7 +1039,7 @@ pub mod test {
         .expect("failed to create basic entities")
     }
 
-    // This `Entities` has richer Entities
+    /// This `Entities` has richer Entities
     pub fn rich_entities() -> Entities {
         let entity_no_attrs_no_parents =
             Entity::with_uid(EntityUID::with_eid("entity_no_attrs_no_parents"));

@@ -1644,13 +1644,13 @@ impl<'a, T: Clone> ExprShapeOnly<'a, T> {
     }
 }
 
-impl<'a, T: Clone> PartialEq for ExprShapeOnly<'a, T> {
+impl<T: Clone> PartialEq for ExprShapeOnly<'_, T> {
     fn eq(&self, other: &Self) -> bool {
         self.0.eq_shape(&other.0)
     }
 }
 
-impl<'a, T: Clone> Hash for ExprShapeOnly<'a, T> {
+impl<T: Clone> Hash for ExprShapeOnly<'_, T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.hash_shape(state);
     }
@@ -1875,7 +1875,7 @@ pub enum Var {
 }
 
 #[cfg(test)]
-pub mod var_generator {
+mod var_generator {
     use super::Var;
     #[cfg(test)]
     pub fn all_vars() -> impl Iterator<Item = Var> {

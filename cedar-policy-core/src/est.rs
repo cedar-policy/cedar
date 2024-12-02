@@ -247,7 +247,7 @@ impl Policy {
         self,
         id: Option<ast::PolicyID>,
     ) -> Result<ast::Template, FromJsonError> {
-        let id = id.unwrap_or(ast::PolicyID::from_string("JSON policy"));
+        let id = id.unwrap_or_else(|| ast::PolicyID::from_string("JSON policy"));
         let mut conditions_iter = self
             .conditions
             .into_iter()

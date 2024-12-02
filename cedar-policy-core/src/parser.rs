@@ -108,7 +108,7 @@ pub fn parse_policy_or_template(
     id: Option<ast::PolicyID>,
     text: &str,
 ) -> Result<ast::Template, err::ParseErrors> {
-    let id = id.unwrap_or(ast::PolicyID::from_string("policy0"));
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
     cst.to_policy_template(id)
 }
@@ -120,7 +120,7 @@ pub fn parse_policy_or_template_to_est_and_ast(
     id: Option<ast::PolicyID>,
     text: &str,
 ) -> Result<(est::Policy, ast::Template), err::ParseErrors> {
-    let id = id.unwrap_or(ast::PolicyID::from_string("policy0"));
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
     let ast = cst.to_policy_template(id)?;
     let est = cst.try_into_inner()?.try_into()?;
@@ -135,7 +135,7 @@ pub fn parse_template(
     id: Option<ast::PolicyID>,
     text: &str,
 ) -> Result<ast::Template, err::ParseErrors> {
-    let id = id.unwrap_or(ast::PolicyID::from_string("policy0"));
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
     let template = cst.to_policy_template(id)?;
     if template.slots().count() == 0 {
@@ -153,7 +153,7 @@ pub fn parse_policy(
     id: Option<ast::PolicyID>,
     text: &str,
 ) -> Result<ast::StaticPolicy, err::ParseErrors> {
-    let id = id.unwrap_or(ast::PolicyID::from_string("policy0"));
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
     cst.to_policy(id)
 }
@@ -165,7 +165,7 @@ pub fn parse_policy_to_est_and_ast(
     id: Option<ast::PolicyID>,
     text: &str,
 ) -> Result<(est::Policy, ast::StaticPolicy), err::ParseErrors> {
-    let id = id.unwrap_or(ast::PolicyID::from_string("policy0"));
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
     let ast = cst.to_policy(id)?;
     let est = cst.try_into_inner()?.try_into()?;
