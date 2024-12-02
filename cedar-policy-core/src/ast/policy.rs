@@ -1758,6 +1758,12 @@ impl Diagnostic for UnexpectedSlotError {
             }),
         }
     }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        match self {
+            Self::FoundSlot(Slot { loc, .. }) => loc.as_ref().map(|l| l as &dyn miette::SourceCode),
+        }
+    }
 }
 
 impl From<EntityUID> for EntityReference {

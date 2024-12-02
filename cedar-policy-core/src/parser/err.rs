@@ -18,6 +18,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::{self, Display, Write};
 use std::iter;
 use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 
 use either::Either;
 use lalrpop_util as lalr;
@@ -472,12 +473,30 @@ pub mod parse_errors {
     use super::*;
 
     /// Details about a `ExpectedStaticPolicy` error.
-    #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
+    #[derive(Debug, Clone, Error, PartialEq, Eq)]
     #[error("expected a static policy, got a template containing the slot {}", slot.id)]
-    #[diagnostic(help("try removing the template slot(s) from this policy"))]
     pub struct ExpectedStaticPolicy {
         /// Slot that was found (which is not valid in a static policy)
         pub(crate) slot: ast::Slot,
+    }
+
+    impl Diagnostic for ExpectedStaticPolicy {
+        fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+            Some(Box::new(
+                "try removing the template slot(s) from this policy",
+            ))
+        }
+
+        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+            self.slot.loc.as_ref().map(|loc| {
+                let label = miette::LabeledSpan::underline(loc.span);
+                Box::new(std::iter::once(label)) as Box<dyn Iterator<Item = miette::LabeledSpan>>
+            })
+        }
+
+        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+            self.slot.loc.as_ref().map(|l| l as &dyn miette::SourceCode)
+        }
     }
 
     impl From<ast::UnexpectedSlotError> for ExpectedStaticPolicy {
@@ -573,6 +592,7 @@ pub mod parse_errors {
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub struct ToCSTError {
     err: OwnedRawParseError,
+    src: Arc<str>,
 }
 
 impl ToCSTError {
@@ -592,14 +612,15 @@ impl ToCSTError {
         }
     }
 
-    pub(crate) fn from_raw_parse_err(err: RawParseError<'_>) -> Self {
+    pub(crate) fn from_raw_parse_err(err: RawParseError<'_>, src: Arc<str>) -> Self {
         Self {
             err: err.map_token(|token| token.to_string()),
+            src,
         }
     }
 
-    pub(crate) fn from_raw_err_recovery(recovery: RawErrorRecovery<'_>) -> Self {
-        Self::from_raw_parse_err(recovery.error)
+    pub(crate) fn from_raw_err_recovery(recovery: RawErrorRecovery<'_>, src: Arc<str>) -> Self {
+        Self::from_raw_parse_err(recovery.error, src)
     }
 }
 
@@ -622,6 +643,10 @@ impl Display for ToCSTError {
 }
 
 impl Diagnostic for ToCSTError {
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        Some(&self.src as &dyn miette::SourceCode)
+    }
+
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         let primary_source_span = self.primary_source_span();
         let labeled_span = match &self.err {

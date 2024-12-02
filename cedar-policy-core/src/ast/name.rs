@@ -394,11 +394,12 @@ impl std::fmt::Display for ValidSlotId {
 }
 
 /// [`SlotId`] plus a source location
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Slot {
     /// [`SlotId`]
     pub id: SlotId,
     /// Source location, if available
+    #[serde(skip)]
     pub loc: Option<Loc>,
 }
 
