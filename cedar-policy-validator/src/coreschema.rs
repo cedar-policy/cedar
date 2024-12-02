@@ -244,7 +244,7 @@ impl ast::RequestSchema for ValidatorSchema {
     }
 }
 
-impl<'a> ast::RequestSchema for CoreSchema<'a> {
+impl ast::RequestSchema for CoreSchema<'_> {
     type Error = RequestValidationError;
     fn validate_request(
         &self,

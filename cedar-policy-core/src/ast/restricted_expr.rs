@@ -585,7 +585,7 @@ impl<'a> Deref for BorrowedRestrictedExpr<'a> {
     }
 }
 
-impl<'a> std::fmt::Display for BorrowedRestrictedExpr<'a> {
+impl std::fmt::Display for BorrowedRestrictedExpr<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", &self.0)
     }
@@ -609,13 +609,13 @@ impl<'a> RestrictedExprShapeOnly<'a> {
     }
 }
 
-impl<'a> PartialEq for RestrictedExprShapeOnly<'a> {
+impl PartialEq for RestrictedExprShapeOnly<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.0.eq_shape(&other.0)
     }
 }
 
-impl<'a> Hash for RestrictedExprShapeOnly<'a> {
+impl Hash for RestrictedExprShapeOnly<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.hash_shape(state);
     }

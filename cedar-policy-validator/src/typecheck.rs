@@ -141,7 +141,7 @@ impl<'a> Typechecker<'a> {
     pub fn typecheck_by_request_env<'b>(
         &'b self,
         t: &'b Template,
-    ) -> Vec<(RequestEnv<'_>, PolicyCheck)> {
+    ) -> Vec<(RequestEnv<'b>, PolicyCheck)> {
         self.apply_typecheck_fn_by_request_env(t, |request, expr| {
             let mut type_errors = Vec::new();
             let empty_prior_capability = CapabilitySet::new();
@@ -173,9 +173,9 @@ impl<'a> Typechecker<'a> {
         &'b self,
         t: &'b Template,
         typecheck_fn: F,
-    ) -> Vec<(RequestEnv<'_>, C)>
+    ) -> Vec<(RequestEnv<'b>, C)>
     where
-        F: Fn(&RequestEnv<'_>, &Expr) -> C,
+        F: Fn(&RequestEnv<'b>, &Expr) -> C,
     {
         let mut result_checks = Vec::new();
 
@@ -280,7 +280,7 @@ impl<'a> Typechecker<'a> {
         &'b self,
         env: RequestEnv<'b>,
         t: &'b Template,
-    ) -> Box<dyn Iterator<Item = RequestEnv<'_>> + 'b> {
+    ) -> Box<dyn Iterator<Item = RequestEnv<'b>> + 'b> {
         match env {
             RequestEnv::UndeclaredAction => Box::new(std::iter::once(RequestEnv::UndeclaredAction)),
             RequestEnv::DeclaredAction {
@@ -430,13 +430,13 @@ impl<'a> Typechecker<'a> {
                         .principal_slot()
                         .clone()
                         .map(Type::named_entity_reference)
-                        .unwrap_or(Type::any_entity_reference())
+                        .unwrap_or_else(Type::any_entity_reference)
                 } else if slotid.is_resource() {
                     request_env
                         .resource_slot()
                         .clone()
                         .map(Type::named_entity_reference)
-                        .unwrap_or(Type::any_entity_reference())
+                        .unwrap_or_else(Type::any_entity_reference)
                 } else {
                     Type::any_entity_reference()
                 }))

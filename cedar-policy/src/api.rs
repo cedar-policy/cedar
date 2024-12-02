@@ -74,10 +74,12 @@ pub(crate) mod version {
         static ref LANG_VERSION: Version = Version::new(4, 0, 0);
     }
     /// Get the Cedar SDK Semantic Versioning version
+    #[allow(clippy::module_name_repetitions)]
     pub fn get_sdk_version() -> Version {
         SDK_VERSION.clone()
     }
     /// Get the Cedar language version
+    #[allow(clippy::module_name_repetitions)]
     pub fn get_lang_version() -> Version {
         LANG_VERSION.clone()
     }
@@ -1680,7 +1682,7 @@ impl Schema {
     pub fn ancestors<'a>(
         &'a self,
         ty: &'a EntityTypeName,
-    ) -> Option<impl Iterator<Item = &EntityTypeName> + 'a> {
+    ) -> Option<impl Iterator<Item = &'a EntityTypeName> + 'a> {
         self.0
             .ancestors(&ty.0)
             .map(|iter| iter.map(RefCast::ref_cast))

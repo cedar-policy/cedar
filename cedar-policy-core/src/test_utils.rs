@@ -363,7 +363,7 @@ impl<'a> ExpectedErrorMessage<'a> {
     }
 }
 
-impl<'a> std::fmt::Display for ExpectedErrorMessage<'a> {
+impl std::fmt::Display for ExpectedErrorMessage<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.prefix {
             writeln!(f, "expected error to start with: {}", self.error)?;
@@ -416,7 +416,7 @@ impl<'a> From<&'a serde_json::Value> for OriginalInput<'a> {
     }
 }
 
-impl<'a> std::fmt::Display for OriginalInput<'a> {
+impl std::fmt::Display for OriginalInput<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::String(s) => write!(f, "{s}"),
