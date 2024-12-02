@@ -554,12 +554,11 @@ impl Name {
 #[cfg(feature = "protobufs")]
 impl From<&proto::Name> for Name {
     fn from(v: &proto::Name) -> Self {
-        let loc: Option<Loc> = v.loc.as_ref().map(Loc::from);
         let path: Arc<Vec<Id>> = Arc::new(v.path.iter().map(Id::new_unchecked).collect());
         Self(InternalName {
             id: Id::new_unchecked(&v.id),
             path,
-            loc,
+            loc: None,
         })
     }
 }
@@ -567,7 +566,7 @@ impl From<&proto::Name> for Name {
 #[cfg(feature = "protobufs")]
 impl From<&Name> for proto::Name {
     fn from(v: &Name) -> Self {
-        let mut path: Vec<String> = Vec::with_capacity(v.0.path.as_ref().len());
+        let mut path: Vec<String> = Vec::with_capacity(v.0.path.len());
         for value in v.0.path.as_ref() {
             path.push(String::from(value.as_ref()));
         }
@@ -575,7 +574,6 @@ impl From<&Name> for proto::Name {
         Self {
             id: String::from(v.0.id.as_ref()),
             path,
-            loc: v.0.loc.as_ref().map(proto::Loc::from),
         }
     }
 }

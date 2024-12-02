@@ -48,13 +48,11 @@ message Context {
 
 message EntityUidEntry {
     EntityUid euid = 1;
-    Loc loc = 2;
 }
 
 message EntityUid {
     EntityType ty = 1;
     string eid = 2;
-    Loc loc = 3;
 }
 
 message EntityType {
@@ -65,13 +63,6 @@ message EntityType {
 message Name {
     string id = 1;
     repeated string path = 2;
-    Loc loc = 3;
-}
-
-message Loc {
-    uint32 offset = 1;
-    uint32 length = 2;
-    string src = 3;
 }
 
 
@@ -93,7 +84,6 @@ message LiteralPolicy {
 
 message Annotation {
     string val = 1;
-    Loc loc = 2;
 }
 
 enum Effect {
@@ -103,7 +93,6 @@ enum Effect {
 
 message TemplateBody {
     string id = 1;
-    Loc loc = 2;
     // alias AnyId = string
     // alias Annotations = map<AnyId, Annotation>
     map<string, Annotation> annotations = 3;
@@ -188,7 +177,6 @@ message ActionConstraint {
 
 message Expr {
     ExprKind expr_kind = 1;
-    Loc source_loc = 2;
 
     message ExprKind {
         oneof data {
@@ -321,7 +309,7 @@ message Expr {
 // END POLICYSET MESSAGES
 
 
-// ENTER ENTITITES MESSAGES
+// ENTER ENTITIES MESSAGES
 
 message Entity {
     EntityUid uid = 1;
@@ -330,4 +318,4 @@ message Entity {
     map<string, Expr> tags = 4;
 }
 
-// END ENTITITES MESSAGES
+// END ENTITIES MESSAGES
