@@ -23,6 +23,7 @@ use crate::entities::json::{
 use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
 use crate::parser::cst::{self, Ident};
+use crate::parser::cst_to_ast;
 use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::unescape::to_unescaped_string;
 use crate::parser::util::flatten_tuple_2;
@@ -89,24 +90,19 @@ impl<'de> Deserialize<'de> for Expr {
                         return Err(serde::de::Error::custom(format!("JSON object representing an `Expr` should have only one key, but found two keys: `{k}` and `{k2}`")));
                     }
                 };
-                match ast::Name::parse_unqualified_name(&k)
-                    .map(|name| name.is_known_extension_func_name())
-                {
-                    Ok(true) => {
-                        // `k` is the name of an extension function. We assume that no such keys
-                        // are valid keys for `ExprNoExt`, so we must parse as an `ExtFuncCall`.
-                        let obj = serde_json::json!({ k: v });
-                        let extfunccall =
-                            serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
-                        Ok(Expr::ExtFuncCall(extfunccall))
-                    }
-                    _ => {
-                        // not a valid extension function, so we expect it to work for `ExprNoExt`.
-                        let obj = serde_json::json!({ k: v });
-                        let exprnoext =
-                            serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
-                        Ok(Expr::ExprNoExt(exprnoext))
-                    }
+                if cst_to_ast::is_known_extension_func_str(k.clone()) {
+                    // `k` is the name of an extension function or method. We assume that
+                    // no such keys are valid keys for `ExprNoExt`, so we must parse as an
+                    // `ExtFuncCall`.
+                    let obj = serde_json::json!({ k: v });
+                    let extfunccall = serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
+                    Ok(Expr::ExtFuncCall(extfunccall))
+                } else {
+                    // not a valid extension function or method, so we expect it
+                    // to work for `ExprNoExt`.
+                    let obj = serde_json::json!({ k: v });
+                    let exprnoext = serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
+                    Ok(Expr::ExprNoExt(exprnoext))
                 }
             }
         }
@@ -965,7 +961,7 @@ impl Expr {
                                 errs,
                             )
                         })?;
-                        if !fn_name.is_known_extension_func_name() {
+                        if !cst_to_ast::is_known_extension_func_name(&fn_name) {
                             return Err(FromJsonError::UnknownExtensionFunction(fn_name));
                         }
                         Ok(ast::Expr::call_extension_fn(

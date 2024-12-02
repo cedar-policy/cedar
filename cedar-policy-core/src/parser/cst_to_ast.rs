@@ -65,7 +65,11 @@ type Result<T> = std::result::Result<T, ParseErrors>;
 
 // for storing extension function names per callstyle
 struct ExtStyles<'a> {
+    /// All extension function names (just functions, not methods), as `Name`s
     functions: HashSet<&'a ast::Name>,
+    /// All unqualified extension function names (just functions, not methods), as `Id`s
+    unqualified_functions: HashSet<&'a ast::Id>,
+    /// All extension function methods. `UnreservedId` is appropriate because methods cannot be namespaced.
     methods: HashSet<ast::UnreservedId>,
 }
 
@@ -75,14 +79,23 @@ lazy_static::lazy_static! {
 }
 fn load_styles() -> ExtStyles<'static> {
     let mut functions = HashSet::new();
+    let mut unqualified_functions = HashSet::new();
     let mut methods = HashSet::new();
     for func in crate::extensions::Extensions::all_available().all_funcs() {
         match func.style() {
-            CallStyle::FunctionStyle => functions.insert(func.name()),
-            CallStyle::MethodStyle => methods.insert(func.name().basename()),
+            CallStyle::FunctionStyle => {
+                let name = func.name();
+                functions.insert(name);
+                if name.is_unqualified() {
+                    unqualified_functions.insert(name.basename_as_ref());
+                }
+            }
+            CallStyle::MethodStyle => {
+                methods.insert(func.name().basename());
+            }
         };
     }
-    ExtStyles { functions, methods }
+    ExtStyles { functions, unqualified_functions, methods }
 }
 
 impl Node<Option<cst::Policies>> {
@@ -1605,6 +1618,35 @@ impl Node<Option<cst::Name>> {
     }
 }
 
+/// If this [`ast::Name`] is a known extension function/method name or not
+pub(crate) fn is_known_extension_func_name(name: &ast::Name) -> bool {
+    EXTENSION_STYLES.functions.contains(name)
+        || (name.0.path.is_empty() && EXTENSION_STYLES.methods.contains(&name.basename()))
+}
+
+/// If this [`ast::Id`] is a known extension _method_ name or not
+fn is_known_extension_method_id(id: ast::Id) -> bool {
+    match ast::UnreservedId::try_from(id) {
+        Ok(id) => EXTENSION_STYLES.methods.contains(&id),
+        Err(_) => false, // hardcodes the assumption that no reserved ids are extension method names, but this was already implicit in that `EXTENSION_STYLES.methods` only holds `UnreservedId`s
+    }
+}
+
+/// If this [`ast::Id`] is a known extension function/method name or not
+pub(crate) fn is_known_extension_func_id(id: &ast::Id) -> bool {
+    EXTENSION_STYLES.unqualified_functions.contains(id) || is_known_extension_method_id(id.clone())
+}
+
+/// If this [`SmolStr`] is a known extension function/method name or not
+pub(crate) fn is_known_extension_func_str(s: SmolStr) -> bool {
+    // `new_unchecked()` is justified here not because `s` must be a valid
+    // identifier, but because even if it is not, it will not be in the list of
+    // `ast::Id`s that are known extension function names.
+    // This saves the cost of invoking the `ast::Id` parser via `FromStr`.
+    let id = ast::Id::new_unchecked(s);
+    is_known_extension_func_id(&id)
+}
+
 impl ast::Name {
     /// Convert the `Name` into a `String` attribute, which fails if it had any namespaces
     fn into_valid_attr(self, loc: Loc) -> Result<SmolStr> {
@@ -1613,12 +1655,6 @@ impl ast::Name {
         } else {
             Ok(self.0.id.into_smolstr())
         }
-    }
-
-    /// If this name is a known extension function/method name or not
-    pub(crate) fn is_known_extension_func_name(&self) -> bool {
-        EXTENSION_STYLES.functions.contains(self)
-            || (self.0.path.is_empty() && EXTENSION_STYLES.methods.contains(&self.basename()))
     }
 
     fn into_func(self, args: Vec<ast::Expr>, loc: Loc) -> Result<ast::Expr> {
