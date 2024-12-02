@@ -514,9 +514,9 @@ impl ValidatorSchema {
                     Self::record_attributes_or_none(
                         unresolved.resolve_common_type_refs(&common_types)?,
                     )
-                    .ok_or_else(|| ContextOrShapeNotRecordError(
-                        ContextOrShape::EntityTypeShape(name.clone()),
-                    ))?
+                    .ok_or_else(|| {
+                        ContextOrShapeNotRecordError(ContextOrShape::EntityTypeShape(name.clone()))
+                    })?
                 };
                 let tags = entity_type
                     .tags
@@ -556,9 +556,9 @@ impl ValidatorSchema {
                     Self::record_attributes_or_none(
                         unresolved.resolve_common_type_refs(&common_types)?,
                     )
-                    .ok_or_else(|| ContextOrShapeNotRecordError(
-                        ContextOrShape::ActionContext(name.clone()),
-                    ))?
+                    .ok_or_else(|| {
+                        ContextOrShapeNotRecordError(ContextOrShape::ActionContext(name.clone()))
+                    })?
                 };
                 Ok((
                     name.clone(),
