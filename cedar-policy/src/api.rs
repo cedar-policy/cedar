@@ -2019,6 +2019,7 @@ impl PolicySet {
     }
 
     /// Build the [`PolicySet`] from just the AST information
+    #[cfg_attr(not(feature = "protobufs"), allow(dead_code))]
     fn from_ast(ast: ast::PolicySet) -> Result<Self, PolicySetError> {
         Self::from_policies(ast.into_policies().map(Policy::from_ast))
     }
@@ -2687,6 +2688,7 @@ impl Template {
         })
     }
 
+    #[cfg_attr(not(feature = "protobufs"), allow(dead_code))]
     fn from_ast(ast: ast::Template) -> Self {
         Self {
             lossless: LosslessPolicy::Est(ast.clone().into()),
