@@ -282,7 +282,7 @@ impl<'a> arbitrary::Arbitrary<'a> for InternalName {
 
 struct NameVisitor;
 
-impl<'de> serde::de::Visitor<'de> for NameVisitor {
+impl serde::de::Visitor<'_> for NameVisitor {
     type Value = InternalName;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

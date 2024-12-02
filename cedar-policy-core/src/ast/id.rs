@@ -155,7 +155,7 @@ impl UnreservedId {
 
 struct IdVisitor;
 
-impl<'de> serde::de::Visitor<'de> for IdVisitor {
+impl serde::de::Visitor<'_> for IdVisitor {
     type Value = Id;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -286,7 +286,7 @@ impl AnyId {
 
 struct AnyIdVisitor;
 
-impl<'de> serde::de::Visitor<'de> for AnyIdVisitor {
+impl serde::de::Visitor<'_> for AnyIdVisitor {
     type Value = AnyId;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

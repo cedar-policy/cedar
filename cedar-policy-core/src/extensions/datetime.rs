@@ -249,7 +249,7 @@ impl ExtensionValue for DateTime {
 
 impl DateTime {
     const DAY_IN_MILLISECONDS: i64 = 1000 * 3600 * 24;
-    const UNIX_EPOCH_STR: &str = "1970-01-01";
+    const UNIX_EPOCH_STR: &'static str = "1970-01-01";
 
     fn offset(&self, duration: Duration) -> Option<Self> {
         self.epoch

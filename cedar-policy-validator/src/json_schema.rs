@@ -280,7 +280,7 @@ pub struct ReservedCommonTypeBasenameError {
 /// _that are being declared here_, which is always an `UnreservedId` and unambiguously
 /// refers to the [`InternalName`] with the implicit current/active namespace prepended.)
 /// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde_as]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(bound(serialize = "N: Serialize"))]
