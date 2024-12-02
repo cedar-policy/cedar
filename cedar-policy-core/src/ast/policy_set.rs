@@ -521,6 +521,11 @@ impl PolicySet {
         self.links.values()
     }
 
+    /// Consume the `PolicySet`, producing an iterator of all the policies in it
+    pub fn into_policies(self) -> impl Iterator<Item = Policy> {
+        self.links.into_values()
+    }
+
     /// Iterate over everything stored as template, including static policies.
     /// Ie: all_templates() should equal templates() ++ static_policies().map(|p| p.template())
     pub fn all_templates(&self) -> impl Iterator<Item = &Template> {

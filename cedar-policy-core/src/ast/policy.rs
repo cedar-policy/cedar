@@ -619,6 +619,15 @@ impl From<&proto::LiteralPolicy> for LiteralPolicy {
 }
 
 #[cfg(feature = "protobufs")]
+impl TryFrom<&proto::LiteralPolicy> for Policy {
+    type Error = ReificationError;
+    fn try_from(policy: &proto::LiteralPolicy) -> Result<Self, Self::Error> {
+        // TODO: do we need to provide a nonempty `templates` argument to `.reify()`
+        LiteralPolicy::from(policy).reify(&HashMap::new())
+    }
+}
+
+#[cfg(feature = "protobufs")]
 impl From<&LiteralPolicy> for proto::LiteralPolicy {
     fn from(v: &LiteralPolicy) -> Self {
         let template_id_str: &str = v.template_id.as_ref();

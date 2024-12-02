@@ -41,7 +41,7 @@ wasm-bindgen = { version = "0.2.82", optional = true }
 chrono = { version = "0.4.38", optional = true, default-features = false}
 
 # protobuf dependency
-prost = { version = "0.13.3", optional = true }
+prost = { version = "0.13", optional = true }
 
 [features]
 # by default, enable all Cedar extensions
@@ -64,7 +64,7 @@ protobufs = ["dep:prost", "dep:prost-build"]
 [build-dependencies]
 lalrpop = "0.22.0"
 # protobuf dependency
-prost-build = { version = "0.13.3", optional = true }
+prost-build = { version = "0.13", optional = true }
 
 [dev-dependencies]
 cool_asserts = "2.0"
