@@ -51,7 +51,7 @@ arbitrary = ["dep:arbitrary", "cedar-policy-core/arbitrary"]
 partial-validate = []
 level-validate = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
-protobufs = ["dep:prost", "dep:prost-build"]
+protobufs = ["dep:prost", "dep:prost-build", "cedar-policy-core/protobufs"]
 entity-manifest = []
 
 [dev-dependencies]
