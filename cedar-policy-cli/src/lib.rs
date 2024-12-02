@@ -38,8 +38,10 @@ use cedar_policy_formatter::{policies_str_to_pretty, Config};
 
 // Needed for the generated code to find `crate::cedar_policy_...`
 #[cfg(feature = "protobufs")]
+#[allow(clippy::single_component_path_imports)]
 use cedar_policy_core;
 #[cfg(feature = "protobufs")]
+#[allow(clippy::single_component_path_imports)]
 use cedar_policy_validator;
 
 #[cfg(feature = "protobufs")]
