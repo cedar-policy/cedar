@@ -95,13 +95,15 @@ impl<'de> Deserialize<'de> for Expr {
                     // no such keys are valid keys for `ExprNoExt`, so we must parse as an
                     // `ExtFuncCall`.
                     let obj = serde_json::json!({ k: v });
-                    let extfunccall = serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
+                    let extfunccall =
+                        serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
                     Ok(Expr::ExtFuncCall(extfunccall))
                 } else {
                     // not a valid extension function or method, so we expect it
                     // to work for `ExprNoExt`.
                     let obj = serde_json::json!({ k: v });
-                    let exprnoext = serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
+                    let exprnoext =
+                        serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
                     Ok(Expr::ExprNoExt(exprnoext))
                 }
             }

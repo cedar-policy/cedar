@@ -95,7 +95,11 @@ fn load_styles() -> ExtStyles<'static> {
             }
         };
     }
-    ExtStyles { functions, unqualified_functions, methods }
+    ExtStyles {
+        functions,
+        unqualified_functions,
+        methods,
+    }
 }
 
 impl Node<Option<cst::Policies>> {
