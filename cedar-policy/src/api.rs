@@ -2019,7 +2019,7 @@ impl PolicySet {
     }
 
     /// Build the [`PolicySet`] from just the AST information
-    pub fn from_ast(ast: ast::PolicySet) -> Result<Self, PolicySetError> {
+    fn from_ast(ast: ast::PolicySet) -> Result<Self, PolicySetError> {
         Self::from_policies(ast.into_policies().map(Policy::from_ast))
     }
 
