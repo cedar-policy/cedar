@@ -37,15 +37,15 @@ macro_rules! impl_diagnostic_from_source_loc_field {
 /// of a field of type `Option<Loc>`
 #[macro_export]
 macro_rules! impl_diagnostic_from_source_loc_opt_field {
-    ( $i:ident ) => {
+    ( $($id:ident).+ ) => {
         fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-            self.$i
+            self.$($id).+
                 .as_ref()
                 .map(|loc| &loc.src as &dyn miette::SourceCode)
         }
 
         fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-            self.$i
+            self.$($id).+
                 .as_ref()
                 .map(|loc| Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span))) as _)
         }

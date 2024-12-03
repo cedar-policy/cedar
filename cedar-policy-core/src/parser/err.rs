@@ -487,16 +487,7 @@ pub mod parse_errors {
             ))
         }
 
-        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-            self.slot.loc.as_ref().map(|loc| {
-                let label = miette::LabeledSpan::underline(loc.span);
-                Box::new(std::iter::once(label)) as Box<dyn Iterator<Item = miette::LabeledSpan>>
-            })
-        }
-
-        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-            self.slot.loc.as_ref().map(|l| l as &dyn miette::SourceCode)
-        }
+        impl_diagnostic_from_source_loc_opt_field!(slot.loc);
     }
 
     impl From<ast::UnexpectedSlotError> for ExpectedStaticPolicy {
