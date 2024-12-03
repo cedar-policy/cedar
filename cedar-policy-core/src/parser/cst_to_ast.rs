@@ -91,6 +91,7 @@ fn load_styles() -> ExtStyles<'static> {
                 }
             }
             CallStyle::MethodStyle => {
+                debug_assert!(func.name().is_unqualified());
                 methods.insert(func.name().basename());
             }
         };
