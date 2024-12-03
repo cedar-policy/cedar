@@ -90,7 +90,7 @@ impl<'de> Deserialize<'de> for Expr {
                         return Err(serde::de::Error::custom(format!("JSON object representing an `Expr` should have only one key, but found two keys: `{k}` and `{k2}`")));
                     }
                 };
-                if cst_to_ast::is_known_extension_func_str(k.clone()) {
+                if cst_to_ast::is_known_extension_func_str(&k) {
                     // `k` is the name of an extension function or method. We assume that
                     // no such keys are valid keys for `ExprNoExt`, so we must parse as an
                     // `ExtFuncCall`.
