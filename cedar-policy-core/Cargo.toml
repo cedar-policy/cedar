@@ -42,7 +42,7 @@ chrono = { version = "0.4.38", optional = true, default-features = false}
 
 # protobuf dependency
 prost = { version = "0.13", optional = true }
-derivative = "2.2.0"
+educe = "0.6.0"
 
 [features]
 # by default, enable all Cedar extensions

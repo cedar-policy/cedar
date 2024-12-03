@@ -16,7 +16,7 @@
 
 use crate::ast::*;
 use crate::parser::Loc;
-use derivative::Derivative;
+use educe::Educe;
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
@@ -1673,20 +1673,17 @@ impl From<&ResourceConstraint> for proto::ResourceConstraint {
 }
 
 /// A reference to an EntityUID that may be a Slot
-#[derive(Derivative, Serialize, Deserialize, Clone, Debug, Eq)]
-#[derivative(Hash, PartialEq, PartialOrd, Ord)]
-#[derivative(PartialOrd = "feature_allow_slow_enum")]
-#[derivative(Ord = "feature_allow_slow_enum")]
+#[derive(Educe, Serialize, Deserialize, Clone, Debug, Eq)]
+#[educe(Hash, PartialEq, PartialOrd, Ord)]
 pub enum EntityReference {
     /// Reference to a literal EUID
     EUID(Arc<EntityUID>),
     /// Template Slot
     Slot(
         #[serde(skip)]
-        #[derivative(PartialEq = "ignore")]
-        #[derivative(PartialOrd = "ignore")]
-        #[derivative(Ord = "ignore")]
-        #[derivative(Hash = "ignore")]
+        #[educe(PartialEq(ignore))]
+        #[educe(PartialOrd(ignore))]
+        #[educe(Hash(ignore))]
         Option<Loc>,
     ),
 }
