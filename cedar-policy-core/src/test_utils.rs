@@ -157,10 +157,6 @@ impl<'a> ExpectedErrorMessage<'a> {
     /// Return a boolean indicating whether a given error matches this expected message.
     /// (If you want to assert that it matches, use [`expect_err()`] instead,
     /// for much better assertion-failure messages.)
-    ///
-    /// `src` is the full source text (which the miette labels index into).
-    /// It can be omitted only in the case where we expect no underlines.
-    /// Panics if this invariant is violated.
     pub fn matches(&self, error: &impl miette::Diagnostic) -> bool {
         self.matches_error(error)
             && self.matches_help(error)
