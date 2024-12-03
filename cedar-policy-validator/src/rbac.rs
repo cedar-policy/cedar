@@ -361,19 +361,21 @@ impl Validator {
             PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)) => {
                 Box::new(self.schema.get_entity_types_in(euid.as_ref()).into_iter())
             }
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot)
-            | PrincipalOrResourceConstraint::In(EntityReference::Slot) => {
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_))
+            | PrincipalOrResourceConstraint::In(EntityReference::Slot(_)) => {
                 Box::new(self.schema.known_entity_types())
             }
             PrincipalOrResourceConstraint::Is(entity_type)
-            | PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot) => Box::new(
-                if self.schema.is_known_entity_type(entity_type) {
-                    Some(entity_type.as_ref())
-                } else {
-                    None
-                }
-                .into_iter(),
-            ),
+            | PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot(_)) => {
+                Box::new(
+                    if self.schema.is_known_entity_type(entity_type) {
+                        Some(entity_type.as_ref())
+                    } else {
+                        None
+                    }
+                    .into_iter(),
+                )
+            }
             PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::EUID(in_entity)) => {
                 Box::new(
                     self.schema

@@ -16,6 +16,7 @@
 
 use crate::ast::*;
 use crate::parser::Loc;
+use derivative::Derivative;
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
@@ -1495,10 +1496,10 @@ impl PrincipalConstraint {
     /// Fill in the Slot, if any, with the given EUID
     pub fn with_filled_slot(self, euid: Arc<EntityUID>) -> Self {
         match self.constraint {
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot) => Self {
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_)) => Self {
                 constraint: PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)),
             },
-            PrincipalOrResourceConstraint::In(EntityReference::Slot) => Self {
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(_)) => Self {
                 constraint: PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)),
             },
             _ => self,
@@ -1626,10 +1627,10 @@ impl ResourceConstraint {
     /// Fill in the Slot, if any, with the given EUID
     pub fn with_filled_slot(self, euid: Arc<EntityUID>) -> Self {
         match self.constraint {
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot) => Self {
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_)) => Self {
                 constraint: PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)),
             },
-            PrincipalOrResourceConstraint::In(EntityReference::Slot) => Self {
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(_)) => Self {
                 constraint: PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)),
             },
             _ => self,
@@ -1672,12 +1673,22 @@ impl From<&ResourceConstraint> for proto::ResourceConstraint {
 }
 
 /// A reference to an EntityUID that may be a Slot
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
+#[derive(Derivative, Serialize, Deserialize, Clone, Debug, Eq)]
+#[derivative(Hash, PartialEq, PartialOrd, Ord)]
+#[derivative(PartialOrd = "feature_allow_slow_enum")]
+#[derivative(Ord = "feature_allow_slow_enum")]
 pub enum EntityReference {
     /// Reference to a literal EUID
     EUID(Arc<EntityUID>),
     /// Template Slot
-    Slot,
+    Slot(
+        #[serde(skip)]
+        #[derivative(PartialEq = "ignore")]
+        #[derivative(PartialOrd = "ignore")]
+        #[derivative(Ord = "ignore")]
+        #[derivative(Hash = "ignore")]
+        Option<Loc>,
+    ),
 }
 
 impl EntityReference {
@@ -1694,7 +1705,10 @@ impl EntityReference {
     pub fn into_expr(&self, slot: SlotId) -> Expr {
         match self {
             EntityReference::EUID(euid) => Expr::val(euid.clone()),
-            EntityReference::Slot => Expr::slot(slot),
+            EntityReference::Slot(loc) => loc
+                .as_ref()
+                .map(|loc| ExprBuilder::new().with_source_loc(loc.clone()).slot(slot))
+                .unwrap_or(Expr::slot(slot)),
         }
     }
 }
@@ -1713,7 +1727,7 @@ impl From<&proto::EntityReference> for EntityReference {
                 match proto::entity_reference::Ty::try_from(ty.to_owned())
                     .expect("decode should succeed")
                 {
-                    proto::entity_reference::Ty::Slot => EntityReference::Slot,
+                    proto::entity_reference::Ty::Slot => EntityReference::Slot(None),
                 }
             }
             proto::entity_reference::Data::Euid(euid) => {
@@ -1732,7 +1746,7 @@ impl From<&EntityReference> for proto::EntityReference {
                     euid.as_ref(),
                 ))),
             },
-            EntityReference::Slot => Self {
+            EntityReference::Slot(_) => Self {
                 data: Some(proto::entity_reference::Data::Ty(
                     proto::entity_reference::Ty::Slot.into(),
                 )),
@@ -1831,12 +1845,12 @@ impl PrincipalOrResourceConstraint {
 
     /// Constrained to equal a slot
     pub fn is_eq_slot() -> Self {
-        PrincipalOrResourceConstraint::Eq(EntityReference::Slot)
+        PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None))
     }
 
     /// Constrained to be in a slot
     pub fn is_in_slot() -> Self {
-        PrincipalOrResourceConstraint::In(EntityReference::Slot)
+        PrincipalOrResourceConstraint::In(EntityReference::Slot(None))
     }
 
     /// Hierarchical constraint.
@@ -1846,7 +1860,7 @@ impl PrincipalOrResourceConstraint {
 
     /// Type constraint additionally constrained to be in a slot.
     pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>) -> Self {
-        PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot)
+        PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot(None))
     }
 
     /// Type constraint with a hierarchical constraint.
@@ -1907,11 +1921,11 @@ impl PrincipalOrResourceConstraint {
         match self {
             PrincipalOrResourceConstraint::Any => None,
             PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)) => Some(euid),
-            PrincipalOrResourceConstraint::In(EntityReference::Slot) => None,
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(_)) => None,
             PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)) => Some(euid),
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot) => None,
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_)) => None,
             PrincipalOrResourceConstraint::IsIn(_, EntityReference::EUID(euid)) => Some(euid),
-            PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot) => None,
+            PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot(_)) => None,
             PrincipalOrResourceConstraint::Is(_) => None,
         }
     }
@@ -2321,9 +2335,9 @@ pub(crate) mod test_generators {
         let v = vec![
             PrincipalOrResourceConstraint::any(),
             PrincipalOrResourceConstraint::is_eq(euid.clone()),
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot),
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None)),
             PrincipalOrResourceConstraint::is_in(euid),
-            PrincipalOrResourceConstraint::In(EntityReference::Slot),
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(None)),
         ];
 
         v.into_iter()
@@ -2607,7 +2621,7 @@ mod test {
             Some(&e)
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::In(EntityReference::Slot).get_euid(),
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(None)).get_euid(),
             None
         );
         assert_eq!(
@@ -2615,7 +2629,7 @@ mod test {
             Some(&e)
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot).get_euid(),
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None)).get_euid(),
             None
         );
         assert_eq!(
@@ -2633,7 +2647,7 @@ mod test {
         assert_eq!(
             PrincipalOrResourceConstraint::IsIn(
                 Arc::new("T".parse().unwrap()),
-                EntityReference::Slot
+                EntityReference::Slot(None)
             )
             .get_euid(),
             None
@@ -2694,7 +2708,7 @@ mod test {
 
     #[test]
     fn euid_into_expr() {
-        let e = EntityReference::Slot;
+        let e = EntityReference::Slot(None);
         assert_eq!(
             e.into_expr(SlotId::principal()),
             Expr::slot(SlotId::principal())
@@ -2708,7 +2722,7 @@ mod test {
 
     #[test]
     fn por_constraint_display() {
-        let t = PrincipalOrResourceConstraint::Eq(EntityReference::Slot);
+        let t = PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None));
         let s = t.display(PrincipalOrResource::Principal);
         assert_eq!(s, "principal == ?principal");
         let t = PrincipalOrResourceConstraint::Eq(EntityReference::euid(Arc::new(
@@ -2726,7 +2740,7 @@ mod test {
                 "expected a static policy, got a template containing the slot ?principal"
                 )
                 .help("try removing the template slot(s) from this policy")
-                .exactly_one_underline("permit(principal == ?principal, action, resource);")
+                .exactly_one_underline("?principal")
                 .build()
             );
         });
@@ -2781,8 +2795,8 @@ mod test {
             EntityReference::from(&proto::EntityReference::from(&er1))
         );
         assert_eq!(
-            EntityReference::Slot,
-            EntityReference::from(&proto::EntityReference::from(&EntityReference::Slot))
+            EntityReference::Slot(None),
+            EntityReference::from(&proto::EntityReference::from(&EntityReference::Slot(None)))
         );
 
         let read_euid: Arc<EntityUID> = Arc::new(EntityUID::with_eid("read"));
