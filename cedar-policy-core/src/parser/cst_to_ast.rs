@@ -65,8 +65,12 @@ type Result<T> = std::result::Result<T, ParseErrors>;
 
 // for storing extension function names per callstyle
 struct ExtStyles<'a> {
+    /// All extension function names (just functions, not methods), as `Name`s
     functions: HashSet<&'a ast::Name>,
+    /// All extension function methods. `UnreservedId` is appropriate because methods cannot be namespaced.
     methods: HashSet<ast::UnreservedId>,
+    /// All extension function and method names (both qualified and unqualified), in their string (`Display`) form
+    functions_and_methods_as_str: HashSet<SmolStr>,
 }
 
 // Store extension function call styles
@@ -76,13 +80,24 @@ lazy_static::lazy_static! {
 fn load_styles() -> ExtStyles<'static> {
     let mut functions = HashSet::new();
     let mut methods = HashSet::new();
+    let mut functions_and_methods_as_str = HashSet::new();
     for func in crate::extensions::Extensions::all_available().all_funcs() {
+        functions_and_methods_as_str.insert(func.name().to_smolstr());
         match func.style() {
-            CallStyle::FunctionStyle => functions.insert(func.name()),
-            CallStyle::MethodStyle => methods.insert(func.name().basename()),
+            CallStyle::FunctionStyle => {
+                functions.insert(func.name());
+            }
+            CallStyle::MethodStyle => {
+                debug_assert!(func.name().is_unqualified());
+                methods.insert(func.name().basename());
+            }
         };
     }
-    ExtStyles { functions, methods }
+    ExtStyles {
+        functions,
+        methods,
+        functions_and_methods_as_str,
+    }
 }
 
 impl Node<Option<cst::Policies>> {
@@ -1605,6 +1620,20 @@ impl Node<Option<cst::Name>> {
     }
 }
 
+/// If this [`ast::Name`] is a known extension function/method name or not
+pub(crate) fn is_known_extension_func_name(name: &ast::Name) -> bool {
+    EXTENSION_STYLES.functions.contains(name)
+        || (name.0.path.is_empty() && EXTENSION_STYLES.methods.contains(&name.basename()))
+}
+
+/// If this [`SmolStr`] is a known extension function/method name or not. Works
+/// with both qualified and unqualified `s`. (As of this writing, there are no
+/// qualified extension function/method names, so qualified `s` always results
+/// in `false`.)
+pub(crate) fn is_known_extension_func_str(s: &SmolStr) -> bool {
+    EXTENSION_STYLES.functions_and_methods_as_str.contains(s)
+}
+
 impl ast::Name {
     /// Convert the `Name` into a `String` attribute, which fails if it had any namespaces
     fn into_valid_attr(self, loc: Loc) -> Result<SmolStr> {
@@ -1613,12 +1642,6 @@ impl ast::Name {
         } else {
             Ok(self.0.id.into_smolstr())
         }
-    }
-
-    /// If this name is a known extension function/method name or not
-    pub(crate) fn is_known_extension_func_name(&self) -> bool {
-        EXTENSION_STYLES.functions.contains(self)
-            || (self.0.path.is_empty() && EXTENSION_STYLES.methods.contains(&self.basename()))
     }
 
     fn into_func(self, args: Vec<ast::Expr>, loc: Loc) -> Result<ast::Expr> {
