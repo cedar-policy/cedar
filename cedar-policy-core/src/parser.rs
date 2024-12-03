@@ -19,7 +19,7 @@
 /// Concrete Syntax Tree def used as parser first pass
 pub mod cst;
 /// Step two: convert CST to package AST
-mod cst_to_ast;
+pub mod cst_to_ast;
 /// error handling utilities
 pub mod err;
 /// implementations for formatting, like `Display`
