@@ -294,7 +294,7 @@ impl<'a> ExpectedErrorMessage<'a> {
         if expected_num_labels != 0 {
             let src = err
                 .source_code()
-                .expect("src can be `None` only in the case where we expect no underlines");
+                .expect("err.source_code() should be `Some` if we are expecting underlines");
             for (expected, actual) in self
                 .underlines
                 .iter()

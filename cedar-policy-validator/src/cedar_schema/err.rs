@@ -123,8 +123,7 @@ impl ParseError {
 impl ParseError {
     /// Extract a primary source span locating the error.
     pub fn primary_source_span(&self) -> SourceSpan {
-        let Self { err, .. } = self;
-        match err {
+        match &self.err {
             OwnedRawParseError::InvalidToken { location } => SourceSpan::from(*location),
             OwnedRawParseError::UnrecognizedEof { location, .. } => SourceSpan::from(*location),
             OwnedRawParseError::UnrecognizedToken {
