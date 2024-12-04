@@ -629,6 +629,7 @@ pub(super) struct WithWarnings<T> {
     pub warnings: Vec<miette::Report>,
 }
 
+/// Testing utilities used here and elsewhere
 // PANIC SAFETY unit tests
 #[allow(clippy::panic, clippy::indexing_slicing)]
 // Also disable some other clippy lints that are unimportant for testing code

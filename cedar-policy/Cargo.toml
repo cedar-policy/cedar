@@ -19,17 +19,18 @@ serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 lalrpop-util = { version = "0.22.0", features = ["lexer"] }
 itertools = "0.13"
-miette = "7.1.0"
+miette = "7.4.0"
 thiserror = "2.0"
 smol_str = { version = "0.3", features = ["serde"] }
 dhat = { version = "0.3.2", optional = true }
 serde_with = "3.3.0"
 nonempty = "0.10"
+prost = { version = "0.13", optional = true }
 
 # wasm dependencies
 serde-wasm-bindgen = { version = "0.6", optional = true }
 tsify = { version = "0.4.5", optional = true }
-wasm-bindgen = { version = "0.2.82", optional = true }
+wasm-bindgen = { version = "0.2.97", optional = true }
 semver = "1.0.23"
 lazy_static = "1.5.0"
 
@@ -52,7 +53,7 @@ entity-manifest = ["cedar-policy-validator/entity-manifest"]
 partial-eval = ["cedar-policy-core/partial-eval", "cedar-policy-validator/partial-eval"]
 permissive-validate = []
 partial-validate = ["cedar-policy-validator/partial-validate"]
-protobufs = ["cedar-policy-validator/protobufs", "cedar-policy-core/protobufs"]
+protobufs = ["dep:prost", "cedar-policy-validator/protobufs", "cedar-policy-core/protobufs"]
 level-validate = ["cedar-policy-validator/level-validate"]
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
@@ -61,7 +62,7 @@ wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 crate-type = ["rlib", "cdylib"]
 
 [dev-dependencies]
-miette = { version = "7.1.0", features = ["fancy"] }
+miette = { version = "7.4.0", features = ["fancy"] }
 cool_asserts = "2.0"
 criterion = "0.5"
 globset = "0.4"

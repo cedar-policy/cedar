@@ -3531,7 +3531,7 @@ mod schema_based_parsing_tests {
 
 #[cfg(feature = "protobufs")]
 #[cfg(test)]
-pub mod protobuf_tests {
+mod protobuf_tests {
     use super::*;
     use smol_str::SmolStr;
     use std::collections::{BTreeMap, HashSet};

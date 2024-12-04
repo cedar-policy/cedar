@@ -1006,7 +1006,7 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
                     // Nonetheless, instead of panicking if that internal
                     // invariant is violated, it's easy to return this dynamic
                     // error instead.
-                    .ok_or(CommonTypeInvariantViolationError { name: type_name }.into())
+                    .ok_or_else(|| CommonTypeInvariantViolationError { name: type_name }.into())
             }))
         }
         json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {

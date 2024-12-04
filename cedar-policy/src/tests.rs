@@ -6317,7 +6317,7 @@ mod reserved_keywords_in_policies {
                     assert_invalid_expression(
                         format!("principal has {id}"),
                         RESERVED_IDENT_MSG(id),
-                        format!("{id}"),
+                        id.to_string(),
                     );
                 }
                 "if" => {
@@ -6329,7 +6329,7 @@ mod reserved_keywords_in_policies {
                     assert_invalid_expression(
                         format!("principal has {id}"),
                         RESERVED_IDENT_MSG(id),
-                        format!("{id}"),
+                        id.to_string(),
                     );
                 }
                 _ => {

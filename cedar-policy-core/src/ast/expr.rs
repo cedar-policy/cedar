@@ -845,7 +845,6 @@ impl From<&proto::Expr> for Expr {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &proto::Expr) -> Self {
-        let source_loc: Option<Loc> = v.source_loc.as_ref().map(Loc::from);
         let pdata = v
             .expr_kind
             .as_ref()
@@ -856,20 +855,18 @@ impl From<&proto::Expr> for Expr {
             .expect("`as_ref()` for field that should exist");
 
         match ety {
-            proto::expr::expr_kind::Data::Lit(lit) => {
-                Expr::val(Literal::from(lit)).with_maybe_source_loc(source_loc)
-            }
+            proto::expr::expr_kind::Data::Lit(lit) => Expr::val(Literal::from(lit)),
 
             proto::expr::expr_kind::Data::Var(var) => {
                 let pvar =
                     proto::expr::Var::try_from(var.to_owned()).expect("decode should succeed");
-                Expr::var(Var::from(&pvar)).with_maybe_source_loc(source_loc)
+                Expr::var(Var::from(&pvar))
             }
 
             proto::expr::expr_kind::Data::Slot(slot) => {
                 let pslot =
                     proto::SlotId::try_from(slot.to_owned()).expect("decode should succeed");
-                Expr::slot(SlotId::from(&pslot)).with_maybe_source_loc(source_loc)
+                Expr::slot(SlotId::from(&pslot))
             }
 
             proto::expr::expr_kind::Data::If(msg) => {
@@ -893,7 +890,6 @@ impl From<&proto::Expr> for Expr {
                     Expr::from(then_expr),
                     Expr::from(else_expr),
                 )
-                .with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::Data::And(msg) => {
@@ -907,7 +903,7 @@ impl From<&proto::Expr> for Expr {
                     .as_ref()
                     .expect("`as_ref()` for field that should exist")
                     .as_ref();
-                Expr::and(Expr::from(left), Expr::from(right)).with_maybe_source_loc(source_loc)
+                Expr::and(Expr::from(left), Expr::from(right))
             }
 
             proto::expr::expr_kind::Data::Or(msg) => {
@@ -921,7 +917,7 @@ impl From<&proto::Expr> for Expr {
                     .as_ref()
                     .expect("`as_ref()` for field that should exist")
                     .as_ref();
-                Expr::or(Expr::from(left), Expr::from(right)).with_maybe_source_loc(source_loc)
+                Expr::or(Expr::from(left), Expr::from(right))
             }
 
             proto::expr::expr_kind::Data::UApp(msg) => {
@@ -933,7 +929,6 @@ impl From<&proto::Expr> for Expr {
                 let puop =
                     proto::expr::unary_app::Op::try_from(msg.op).expect("decode should succeed");
                 Expr::unary_app(UnaryOp::from(&puop), Expr::from(arg))
-                    .with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::Data::BApp(msg) => {
@@ -952,7 +947,6 @@ impl From<&proto::Expr> for Expr {
                     Expr::from(left.as_ref()),
                     Expr::from(right.as_ref()),
                 )
-                .with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::Data::ExtApp(msg) => Expr::call_extension_fn(
@@ -962,8 +956,7 @@ impl From<&proto::Expr> for Expr {
                         .expect("`as_ref()` for field that should exist"),
                 ),
                 msg.args.iter().map(Expr::from).collect(),
-            )
-            .with_maybe_source_loc(source_loc),
+            ),
 
             proto::expr::expr_kind::Data::GetAttr(msg) => {
                 let arg = msg
@@ -972,7 +965,6 @@ impl From<&proto::Expr> for Expr {
                     .expect("`as_ref()` for field that should exist")
                     .as_ref();
                 Expr::get_attr(Expr::from(arg), msg.attr.clone().into())
-                    .with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::Data::HasAttr(msg) => {
@@ -982,7 +974,6 @@ impl From<&proto::Expr> for Expr {
                     .expect("`as_ref()` for field that should exist")
                     .as_ref();
                 Expr::has_attr(Expr::from(arg), msg.attr.clone().into())
-                    .with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::Data::Like(msg) => {
@@ -995,7 +986,6 @@ impl From<&proto::Expr> for Expr {
                     Expr::from(arg),
                     msg.pattern.iter().map(PatternElem::from).collect(),
                 )
-                .with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::Data::Is(msg) => {
@@ -1012,11 +1002,10 @@ impl From<&proto::Expr> for Expr {
                             .expect("`as_ref()` for field that should exist"),
                     ),
                 )
-                .with_maybe_source_loc(source_loc)
             }
 
             proto::expr::expr_kind::Data::Set(msg) => {
-                Expr::set(msg.elements.iter().map(Expr::from)).with_maybe_source_loc(source_loc)
+                Expr::set(msg.elements.iter().map(Expr::from))
             }
 
             proto::expr::expr_kind::Data::Record(msg) => Expr::record(
@@ -1024,8 +1013,7 @@ impl From<&proto::Expr> for Expr {
                     .iter()
                     .map(|(key, value)| (key.into(), Expr::from(value))),
             )
-            .expect("Expr should be valid")
-            .with_maybe_source_loc(source_loc),
+            .expect("Expr should be valid"),
         }
     }
 }
@@ -1035,7 +1023,6 @@ impl From<&Expr> for proto::Expr {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::unimplemented)]
     fn from(v: &Expr) -> Self {
-        let source_loc: Option<proto::Loc> = v.source_loc.as_ref().map(proto::Loc::from);
         let expr_kind = match &v.expr_kind {
             ExprKind::Lit(l) => proto::expr::expr_kind::Data::Lit(proto::expr::Literal::from(l)),
             ExprKind::Var(v) => proto::expr::expr_kind::Data::Var(proto::expr::Var::from(v).into()),
@@ -1139,7 +1126,6 @@ impl From<&Expr> for proto::Expr {
             expr_kind: Some(Box::new(proto::expr::ExprKind {
                 data: Some(expr_kind),
             })),
-            source_loc,
         }
     }
 }
@@ -1658,13 +1644,13 @@ impl<'a, T: Clone> ExprShapeOnly<'a, T> {
     }
 }
 
-impl<'a, T: Clone> PartialEq for ExprShapeOnly<'a, T> {
+impl<T: Clone> PartialEq for ExprShapeOnly<'_, T> {
     fn eq(&self, other: &Self) -> bool {
         self.0.eq_shape(&other.0)
     }
 }
 
-impl<'a, T: Clone> Hash for ExprShapeOnly<'a, T> {
+impl<T: Clone> Hash for ExprShapeOnly<'_, T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.hash_shape(state);
     }
@@ -1889,7 +1875,7 @@ pub enum Var {
 }
 
 #[cfg(test)]
-pub mod var_generator {
+mod var_generator {
     use super::Var;
     #[cfg(test)]
     pub fn all_vars() -> impl Iterator<Item = Var> {

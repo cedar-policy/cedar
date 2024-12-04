@@ -65,7 +65,7 @@ use crate::{
 ///     processed, by converting [`RawName`]s into [`ConditionalName`]s
 /// - `N` = [`InternalName`]: a [`Fragment`] in which all names have been
 ///     resolved into fully-qualified [`InternalName`]s
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -309,7 +309,7 @@ impl<T> From<T> for Annotated<T> {
 /// _that are being declared here_, which is always an `UnreservedId` and unambiguously
 /// refers to the [`InternalName`] with the implicit current/active namespace prepended.)
 /// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde_as]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(bound(serialize = "N: Serialize"))]
@@ -778,7 +778,7 @@ impl ActionEntityUID<RawName> {
                 #[allow(clippy::expect_used)]
                 let raw_name = self
                     .ty
-                    .unwrap_or(RawName::from_str("Action").expect("valid raw name"));
+                    .unwrap_or_else(|| RawName::from_str("Action").expect("valid raw name"));
                 Some(raw_name.conditionally_qualify_with(ns, ReferenceType::Entity))
             },
         }
@@ -795,7 +795,7 @@ impl ActionEntityUID<RawName> {
                 #[allow(clippy::expect_used)]
                 let raw_name = self
                     .ty
-                    .unwrap_or(RawName::from_str("Action").expect("valid raw name"));
+                    .unwrap_or_else(|| RawName::from_str("Action").expect("valid raw name"));
                 Some(raw_name.qualify_with(ns))
             },
         }
@@ -1250,7 +1250,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
 
                         if let Some(attributes) = attributes {
                             let additional_attributes =
-                                additional_attributes.unwrap_or(partial_schema_default());
+                                additional_attributes.unwrap_or_else(partial_schema_default);
                             Ok(Type::Type(TypeVariant::Record(RecordType {
                                 attributes: attributes
                                     .0

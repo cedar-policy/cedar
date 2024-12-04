@@ -619,6 +619,15 @@ impl From<&proto::LiteralPolicy> for LiteralPolicy {
 }
 
 #[cfg(feature = "protobufs")]
+impl TryFrom<&proto::LiteralPolicy> for Policy {
+    type Error = ReificationError;
+    fn try_from(policy: &proto::LiteralPolicy) -> Result<Self, Self::Error> {
+        // TODO: do we need to provide a nonempty `templates` argument to `.reify()`
+        LiteralPolicy::from(policy).reify(&HashMap::new())
+    }
+}
+
+#[cfg(feature = "protobufs")]
 impl From<&LiteralPolicy> for proto::LiteralPolicy {
     fn from(v: &LiteralPolicy) -> Self {
         let template_id_str: &str = v.template_id.as_ref();
@@ -1219,7 +1228,6 @@ impl From<&proto::TemplateBody> for TemplateBody {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &proto::TemplateBody) -> Self {
-        let loc: Option<Loc> = v.loc.as_ref().map(Loc::from);
         let annotations: Annotations = Annotations::from_iter(
             v.annotations
                 .iter()
@@ -1231,7 +1239,7 @@ impl From<&proto::TemplateBody> for TemplateBody {
 
         let body: TemplateBody = TemplateBody::new(
             PolicyID::from_string(policy_id),
-            loc,
+            None,
             annotations,
             effect,
             PrincipalConstraint::from(
@@ -1263,7 +1271,6 @@ impl From<&proto::TemplateBody> for TemplateBody {
 impl From<&TemplateBody> for proto::TemplateBody {
     fn from(v: &TemplateBody) -> Self {
         let id_str: &str = v.id.as_ref();
-        let loc: Option<proto::Loc> = v.loc.as_ref().map(proto::Loc::from);
         let annotations: HashMap<String, proto::Annotation> = v
             .annotations
             .as_ref()
@@ -1276,7 +1283,6 @@ impl From<&TemplateBody> for proto::TemplateBody {
 
         Self {
             id: String::from(id_str),
-            loc,
             annotations,
             effect: proto::Effect::from(&v.effect).into(),
             principal_constraint: Some(proto::PrincipalConstraint::from(&v.principal_constraint)),
@@ -1389,7 +1395,7 @@ impl From<&proto::Annotation> for Annotation {
     fn from(v: &proto::Annotation) -> Self {
         Self {
             val: v.val.clone().into(),
-            loc: v.loc.as_ref().map(Loc::from),
+            loc: None,
         }
     }
 }
@@ -1399,7 +1405,6 @@ impl From<&Annotation> for proto::Annotation {
     fn from(v: &Annotation) -> Self {
         Self {
             val: v.val.to_string(),
-            loc: v.loc.as_ref().map(proto::Loc::from),
         }
     }
 }
@@ -2302,7 +2307,7 @@ impl<'a> Iterator for EntityIterator<'a> {
 }
 
 #[cfg(test)]
-pub mod test_generators {
+pub(crate) mod test_generators {
     use super::*;
 
     pub fn all_por_constraints() -> impl Iterator<Item = PrincipalOrResourceConstraint> {

@@ -21,7 +21,7 @@ use super::node::Node;
 
 /// Helper struct to handle non-existent nodes
 struct View<'a, T>(&'a Node<Option<T>>);
-impl<'a, T: fmt::Display> fmt::Display for View<'a, T> {
+impl<T: fmt::Display> fmt::Display for View<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(n) = &self.0.as_inner() {
             if f.alternate() {

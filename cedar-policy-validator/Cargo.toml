@@ -15,7 +15,7 @@ cedar-policy-core = { version = "=4.1.0", path = "../cedar-policy-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 serde_with = "3.0"
-miette = "7.1.0"
+miette = "7.4.0"
 thiserror = "2.0"
 itertools = "0.13"
 ref-cast = "1.0"
@@ -30,10 +30,10 @@ nonempty = "0.10.0"
 # wasm dependencies
 serde-wasm-bindgen = { version = "0.6", optional = true }
 tsify = { version = "0.4.5", optional = true }
-wasm-bindgen = { version = "0.2.82", optional = true }
+wasm-bindgen = { version = "0.2.97", optional = true }
 
 # protobuf dependency
-prost = { version = "0.13.3", optional = true }
+prost = { version = "0.13", optional = true }
 
 [features]
 # by default, enable all Cedar extensions
@@ -51,19 +51,19 @@ arbitrary = ["dep:arbitrary", "cedar-policy-core/arbitrary"]
 partial-validate = []
 level-validate = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
-protobufs = ["dep:prost", "dep:prost-build"]
+protobufs = ["dep:prost", "dep:prost-build", "cedar-policy-core/protobufs"]
 entity-manifest = []
 
 [dev-dependencies]
 similar-asserts = "1.5.0"
 cool_asserts = "2.0"
 cedar-policy-core = { version = "=4.1.0", path = "../cedar-policy-core", features = ["test-util"] }
-miette = { version = "7.1.0", features = ["fancy"] }
+miette = { version = "7.4.0", features = ["fancy"] }
 
 [build-dependencies]
 lalrpop = "0.22.0"
 # protobuf dependency
-prost-build = { version = "0.13.3", optional = true }
+prost-build = { version = "0.13", optional = true }
 
 [lints]
 workspace = true

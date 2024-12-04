@@ -102,8 +102,8 @@ message EntityRecordKind {
 }
 
 enum OpenTag {
-        OpenAttributes = 0;
-        ClosedAttributes = 1;
+    OpenAttributes = 0;
+    ClosedAttributes = 1;
 }
 
 message Attributes {
