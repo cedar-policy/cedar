@@ -2075,7 +2075,7 @@ impl PolicySet {
     /// Get the human-readable Cedar syntax representation of this policy set.
     /// This function is primarily intended for rendering JSON policies in the
     /// human-readable syntax, but it will also return the original policy text
-    /// when given a policy parsed from the human-readable syntax. 
+    /// when given a policy parsed from the human-readable syntax.
     ///
     /// This will return `None` if there are any linked policies in the policy
     /// set because they cannot be directly rendered in Cedar syntax. It also
@@ -2084,7 +2084,7 @@ impl PolicySet {
     /// with [`PolicySet::from_str`] is likely to yield different policy id
     /// assignments. For these reasons you should prefer serializing as JSON and
     /// only using this function to obtain a representation to display to human
-    /// users. 
+    /// users.
     ///
     /// This function does not format the policy according to any particular
     /// rules.  Policy formatting can be done through the Cedar policy CLI or
