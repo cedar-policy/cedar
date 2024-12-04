@@ -17,7 +17,7 @@
 use std::iter::once;
 
 use cedar_policy_core::{
-    ast::{Id, InternalName},
+    ast::{AnyId, Id, InternalName},
     parser::{Loc, Node},
 };
 use itertools::{Either, Itertools};
@@ -34,6 +34,14 @@ pub const BUILTIN_TYPES: [&str; 3] = ["Long", "String", "Bool"];
 pub(super) const CEDAR_NAMESPACE: &str = "__cedar";
 
 pub type Schema = Vec<Node<Namespace>>;
+
+pub type Annotation = (Node<AnyId>, Node<SmolStr>);
+/// An AST that can be annotated
+#[derive(Debug, Clone)]
+pub struct Annotated<T> {
+    pub data: T,
+    pub annotations: Vec<Node<Annotation>>,
+}
 
 /// A path is a non empty list of identifiers that forms a namespace + type
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

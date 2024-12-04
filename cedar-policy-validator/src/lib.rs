@@ -60,6 +60,7 @@ pub mod cedar_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
 
+pub mod annotations;
 pub mod types;
 
 /// Used to select how a policy will be validated.

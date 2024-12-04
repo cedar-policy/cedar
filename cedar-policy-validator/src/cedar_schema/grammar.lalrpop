@@ -18,7 +18,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use crate::cedar_schema::err::{RawErrorRecovery, RawUserError, UserError};
 use cedar_policy_core::parser::{Node, Loc, unescape::to_unescaped_string, cst::Ref};
-use cedar_policy_core::ast::Id;
+use cedar_policy_core::ast::{Id, AnyId};
 use smol_str::SmolStr;
 use smol_str::ToSmolStr;
 use crate::cedar_schema::ast::{
@@ -35,7 +35,10 @@ use crate::cedar_schema::ast::{
     TypeDecl,
     PrimitiveType,
     QualName,
-    PRAppDecl};
+    PRAppDecl,
+    Annotation,
+    Annotated,
+};
 use nonempty::{NonEmpty, nonempty};
 use itertools::Either;
 
@@ -86,9 +89,15 @@ match {
 
 }
 
-// Annotations := {'@' Ident '(' String ')'}
-Annotation: Node<()> = {
-    <l:@L> "@" <key:Ident> <value: ("(" <STR> ")")?> <r:@R> => Node::with_source_loc((), Loc::new(l..r, Arc::clone(src)))
+#[inline]
+AnyIdent: Node<AnyId> = {
+    <l:@L> <id:IDENTIFIER> <r:@R>
+        => Node::with_source_loc(AnyId::new_unchecked(id), Loc::new(l..r, Arc::clone(src))),
+}
+
+// Annotations := {'@' IDENTIFIER '(' String ')'}
+Annotation: Node<Annotation> = {
+    <l:@L> "@" <key:AnyIdent> <value: ("(" <STR> ")")> <r:@R> => Node::with_source_loc((key, value), Loc::new(l..r, Arc::clone(src)))
 }
 
 Annotated<E>: E = {

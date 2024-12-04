@@ -17,7 +17,7 @@
 //! Structures defining the JSON syntax for Cedar schemas
 
 use cedar_policy_core::{
-    ast::{Eid, EntityUID, InternalName, Name, UnreservedId},
+    ast::{AnyId, Eid, EntityUID, InternalName, Name, UnreservedId},
     entities::CedarValueJson,
     extensions::Extensions,
     FromNormalizedStr,
@@ -39,6 +39,7 @@ use std::{
 use thiserror::Error;
 
 use crate::{
+    annotations::Annotated,
     cedar_schema::{
         self, fmt::ToCedarSchemaSyntaxError, parser::parse_cedar_schema_fragment, SchemaWarning,
     },
@@ -273,31 +274,6 @@ impl<'de> Deserialize<'de> for CommonTypeId {
 pub struct ReservedCommonTypeBasenameError {
     /// `id` that is a reserved common-type basename
     pub(crate) id: UnreservedId,
-}
-
-/// Annotations
-pub type Annotations = BTreeMap<SmolStr, SmolStr>;
-
-/// A struct that can be annotated, e.g., entity types.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Annotated<T> {
-    /// The struct that's optionally annotated
-    #[serde(flatten)]
-    pub data: T,
-    /// Annotations
-    #[serde(default)]
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub annotations: Annotations,
-}
-
-impl<T> From<T> for Annotated<T> {
-    fn from(value: T) -> Self {
-        Self {
-            data: value,
-            annotations: BTreeMap::new(),
-        }
-    }
 }
 
 /// A single namespace definition from a Fragment.
@@ -1442,7 +1418,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Visitor<'de> for AnnotatedTypeVis
         let mut attributes: Option<AttributesTypeMap> = None;
         let mut additional_attributes: Option<bool> = None;
         let mut name: Option<SmolStr> = None;
-        let mut annotations: Option<BTreeMap<SmolStr, SmolStr>> = None;
+        let mut annotations: Option<BTreeMap<AnyId, SmolStr>> = None;
 
         // Gather all the fields in the object. Any fields that are not one of
         // the possible fields for some schema type will have been reported by
@@ -3219,7 +3195,7 @@ mod annotations {
                 "attributes" : {
                     "name" : {
                         "annotations": {
-                    "": ""
+                    "a": ""
                 },
                         "type" : "String"
                     },
@@ -3243,7 +3219,7 @@ mod annotations {
                         "User" : {
             "shape" : {
                 "annotations": {
-                    "": ""
+                    "a": ""
                 },
                 "type" : "Record",
                 "attributes" : {
