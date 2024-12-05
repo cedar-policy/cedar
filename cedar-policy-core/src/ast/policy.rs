@@ -1702,10 +1702,7 @@ impl EntityReference {
     pub fn into_expr(&self, slot: SlotId) -> Expr {
         match self {
             EntityReference::EUID(euid) => Expr::val(euid.clone()),
-            EntityReference::Slot(loc) => loc
-                .as_ref()
-                .map(|loc| ExprBuilder::new().with_source_loc(loc.clone()).slot(slot))
-                .unwrap_or(Expr::slot(slot)),
+            EntityReference::Slot(loc) => Expr::slot(slot).with_maybe_source_loc(loc.cloned()),
         }
     }
 }
