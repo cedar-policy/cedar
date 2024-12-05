@@ -16,7 +16,7 @@
 
 //! Convert a schema into the JSON format
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use cedar_policy_core::{
     ast::{Id, Name, UnreservedId},
@@ -107,26 +107,31 @@ fn is_valid_ext_type(ty: &Id, extensions: &Extensions<'_>) -> bool {
 }
 
 /// Convert a `Type` into the JSON representation of the type.
-pub fn cedar_type_to_json_type(ty: Node<Type>) -> json_schema::Type<RawName> {
+pub fn cedar_type_to_json_type(
+    ty: Node<Type>,
+) -> Result<json_schema::Type<RawName>, ToJsonSchemaError> {
     match ty.node {
-        Type::Set(t) => json_schema::Type::Type(json_schema::TypeVariant::Set {
-            element: Box::new(cedar_type_to_json_type(*t)),
-        }),
-        Type::Ident(p) => json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
-            type_name: RawName::from(p),
-        }),
-        Type::Record(fields) => {
-            json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
+        Type::Set(t) => Ok(json_schema::Type::Type(json_schema::TypeVariant::Set {
+            element: Box::new(cedar_type_to_json_type(*t)?),
+        })),
+        Type::Ident(p) => Ok(json_schema::Type::Type(
+            json_schema::TypeVariant::EntityOrCommon {
+                type_name: RawName::from(p),
+            },
+        )),
+        Type::Record(fields) => Ok(json_schema::Type::Type(json_schema::TypeVariant::Record(
+            json_schema::RecordType {
                 attributes: fields
                     .into_iter()
                     .map(|field| {
-                        let (key, value) = convert_attr_decl(field.node);
-                        (key, value.into())
+                        let field = annotations::Annotated::try_from(field.node)?;
+
+                        convert_attr_decl(field)
                     })
-                    .collect(),
+                    .collect::<Result<BTreeMap<_, _>, _>>()?,
                 additional_attributes: false,
-            }))
-        }
+            },
+        ))),
     }
 }
 
@@ -243,7 +248,7 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
                 Ok((
                     ctid,
                     annotations::Annotated {
-                        data: cedar_type_to_json_type(decl.data.def),
+                        data: cedar_type_to_json_type(decl.data.def)?,
                         annotations: decl.annotations,
                     },
                 ))
@@ -321,7 +326,7 @@ fn convert_app_decls(
                 }
                 None => {
                     context = Some(Node::with_source_loc(
-                        convert_context_decl(context_decl),
+                        convert_context_decl(context_decl)?,
                         loc,
                     ));
                 }
@@ -407,8 +412,8 @@ fn convert_entity_decl(
     // First build up the defined entity type
     let etype = json_schema::EntityType {
         member_of_types: e.member_of_types.into_iter().map(RawName::from).collect(),
-        shape: convert_attr_decls(e.attrs),
-        tags: e.tags.map(cedar_type_to_json_type),
+        shape: convert_attr_decls(e.attrs)?,
+        tags: e.tags.map(cedar_type_to_json_type).transpose()?,
     };
 
     // Then map over all of the bound names
@@ -423,26 +428,26 @@ fn convert_entity_decl(
 
 /// Create a [`json_schema::AttributesOrContext`] from a series of `AttrDecl`s
 fn convert_attr_decls(
-    attrs: impl IntoIterator<Item = Node<AttrDecl>>,
-) -> json_schema::AttributesOrContext<RawName> {
-    json_schema::RecordType {
+    attrs: impl IntoIterator<Item = Node<ast::Annotated<AttrDecl>>>,
+) -> Result<json_schema::AttributesOrContext<RawName>, ToJsonSchemaError> {
+    Ok(json_schema::RecordType {
         attributes: attrs
             .into_iter()
             .map(|attr| {
-                let (key, value) = convert_attr_decl(attr.node);
-                (key, value.into())
+                let attr = annotations::Annotated::try_from(attr.node)?;
+                convert_attr_decl(attr)
             })
-            .collect(),
+            .collect::<Result<BTreeMap<_, _>, ToJsonSchemaError>>()?,
         additional_attributes: false,
     }
-    .into()
+    .into())
 }
 
 /// Create a context decl
 fn convert_context_decl(
-    decl: Either<Path, Vec<Node<AttrDecl>>>,
-) -> json_schema::AttributesOrContext<RawName> {
-    json_schema::AttributesOrContext(match decl {
+    decl: Either<Path, Vec<Node<ast::Annotated<AttrDecl>>>>,
+) -> Result<json_schema::AttributesOrContext<RawName>, ToJsonSchemaError> {
+    Ok(json_schema::AttributesOrContext(match decl {
         Either::Left(p) => json_schema::Type::CommonTypeRef {
             type_name: p.into(),
         },
@@ -451,25 +456,30 @@ fn convert_context_decl(
                 attributes: attrs
                     .into_iter()
                     .map(|attr| {
-                        let (key, value) = convert_attr_decl(attr.node);
-                        (key, value.into())
+                        let attr = annotations::Annotated::try_from(attr.node)?;
+                        convert_attr_decl(attr)
                     })
-                    .collect(),
+                    .collect::<Result<BTreeMap<_, _>, ToJsonSchemaError>>()?,
                 additional_attributes: false,
             }))
         }
-    })
+    }))
 }
 
 /// Convert an attribute type from an `AttrDecl`
-fn convert_attr_decl(attr: AttrDecl) -> (SmolStr, json_schema::TypeOfAttribute<RawName>) {
-    (
-        attr.name.node,
+fn convert_attr_decl(
+    attr: annotations::Annotated<AttrDecl>,
+) -> Result<(SmolStr, json_schema::TypeOfAttribute<RawName>), ToJsonSchemaError> {
+    Ok((
+        attr.data.name.node,
         json_schema::TypeOfAttribute {
-            ty: json_schema::AnnotatedType(cedar_type_to_json_type(attr.ty).into()),
-            required: attr.required,
+            ty: json_schema::AnnotatedType(annotations::Annotated {
+                data: cedar_type_to_json_type(attr.data.ty)?,
+                annotations: attr.annotations,
+            }),
+            required: attr.data.required,
         },
-    )
+    ))
 }
 
 /// Takes a collection of results returning multiple errors

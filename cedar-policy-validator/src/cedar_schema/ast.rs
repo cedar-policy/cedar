@@ -251,7 +251,7 @@ pub struct EntityDecl {
     /// Entity Types this type is allowed to be related to via the `in` relation
     pub member_of_types: Vec<Path>,
     /// Attributes this entity has
-    pub attrs: Vec<Node<AttrDecl>>,
+    pub attrs: Vec<Node<Annotated<AttrDecl>>>,
     /// Tag type for this entity (`None` means no tags on this entity)
     pub tags: Option<Node<Type>>,
 }
@@ -264,7 +264,7 @@ pub enum Type {
     /// A [`Path`] that could either refer to a Common Type or an Entity Type
     Ident(Path),
     /// A Record
-    Record(Vec<Node<AttrDecl>>),
+    Record(Vec<Node<Annotated<AttrDecl>>>),
 }
 
 /// Primitive Type Definitions
@@ -333,7 +333,7 @@ pub enum AppDecl {
     /// Constraints on the `principal` or `resource`
     PR(PRAppDecl),
     /// Constraints on the `context`
-    Context(Either<Path, Vec<Node<AttrDecl>>>),
+    Context(Either<Path, Vec<Node<Annotated<AttrDecl>>>>),
 }
 
 /// An action declaration
