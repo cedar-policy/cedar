@@ -460,28 +460,19 @@ impl Diagnostic for FunctionArgumentValidation {
 
 /// Structure containing details about a hierarchy not respected error
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
-#[error("for policy `{policy_id}`, operands to `in` do not respect the entity hierarchy")]
+#[error("Internal invariant violated: `HierarchyNotRespected` error should never occur. Please file an issue")]
 pub struct HierarchyNotRespected {
     /// Source location
     pub source_loc: Option<Loc>,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
-    /// LHS (descendant) of the hierarchy relationship
-    pub in_lhs: Option<EntityType>,
-    /// RHS (ancestor) of the hierarchy relationship
-    pub in_rhs: Option<EntityType>,
 }
 
 impl Diagnostic for HierarchyNotRespected {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        match (&self.in_lhs, &self.in_rhs) {
-            (Some(in_lhs), Some(in_rhs)) => Some(Box::new(format!(
-                "`{in_lhs}` cannot be a descendant of `{in_rhs}`"
-            ))),
-            _ => None,
-        }
+        Some(Box::new("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the schema and policy that caused this error"))
     }
 }
 

@@ -155,12 +155,6 @@ pub enum ValidationError {
     #[diagnostic(transparent)]
     #[error(transparent)]
     NonLitExtConstructor(#[from] validation_errors::NonLitExtConstructor),
-    /// To pass strict validation a policy cannot contain an `in` expression
-    /// where the entity type on the left might not be able to be a member of
-    /// the entity type on the right.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    HierarchyNotRespected(#[from] validation_errors::HierarchyNotRespected),
     /// Returned when an internal invariant is violated (should not happen; if
     /// this is ever returned, please file an issue)
     #[error(transparent)]
@@ -369,21 +363,6 @@ impl ValidationError {
         validation_errors::NonLitExtConstructor {
             source_loc,
             policy_id,
-        }
-        .into()
-    }
-
-    pub(crate) fn hierarchy_not_respected(
-        source_loc: Option<Loc>,
-        policy_id: PolicyID,
-        in_lhs: Option<EntityType>,
-        in_rhs: Option<EntityType>,
-    ) -> Self {
-        validation_errors::HierarchyNotRespected {
-            source_loc,
-            policy_id,
-            in_lhs,
-            in_rhs,
         }
         .into()
     }
