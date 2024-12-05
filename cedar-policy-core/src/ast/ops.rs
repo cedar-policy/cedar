@@ -32,6 +32,20 @@ pub enum UnaryOp {
     ///
     /// Argument must have Long type
     Neg,
+    /// isEmpty test for sets
+    ///
+    /// Argument must have Set type
+    IsEmpty,
+}
+
+impl std::fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UnaryOp::Not => write!(f, "!_"),
+            UnaryOp::Neg => write!(f, "-_"),
+            UnaryOp::IsEmpty => write!(f, "isEmpty"),
+        }
+    }
 }
 
 #[cfg(feature = "protobufs")]
@@ -40,6 +54,7 @@ impl From<&proto::expr::unary_app::Op> for UnaryOp {
         match v {
             proto::expr::unary_app::Op::Not => UnaryOp::Not,
             proto::expr::unary_app::Op::Neg => UnaryOp::Neg,
+            proto::expr::unary_app::Op::IsEmpty => UnaryOp::IsEmpty,
         }
     }
 }
@@ -50,6 +65,7 @@ impl From<&UnaryOp> for proto::expr::unary_app::Op {
         match v {
             UnaryOp::Not => proto::expr::unary_app::Op::Not,
             UnaryOp::Neg => proto::expr::unary_app::Op::Neg,
+            UnaryOp::IsEmpty => proto::expr::unary_app::Op::IsEmpty,
         }
     }
 }
@@ -122,15 +138,6 @@ pub enum BinaryOp {
     ///
     /// First argument must have Entity type, second argument must have String type.
     HasTag,
-}
-
-impl std::fmt::Display for UnaryOp {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            UnaryOp::Not => write!(f, "!_"),
-            UnaryOp::Neg => write!(f, "-_"),
-        }
-    }
 }
 
 impl std::fmt::Display for BinaryOp {

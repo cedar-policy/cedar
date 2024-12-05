@@ -614,12 +614,9 @@ mod tests {
     /// Tests parser+evaluator with builtin methods `containsAll()`, `hasTag()`, `getTag()`
     #[test]
     fn interpret_methods() {
-        // The below tests check not only that we get the expected `Value`, but
-        // that it has the expected source location.
-        // See note on this in the above test.
-
         let src = r#"
             [2, 3, "foo"].containsAll([3, "foo"])
+            && context.violations.isEmpty()
             && principal.hasTag(resource.getTag(context.cur_time))
         "#;
         let request = eval::test::basic_request();

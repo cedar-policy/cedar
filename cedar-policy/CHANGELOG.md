@@ -15,6 +15,7 @@ Cedar Language Version: TBD
 
 ### Added
 
+- New `.isEmpty()` operator on sets (#1358, resolving #1356)
 - Added protobuf schemas and (de)serialization code using on `prost` crate behind the experimental `protobufs` flag.
 - Added protobuf and JSON generation code to `cedar-policy-cli`.
 - Added a new get helper method to Context that allows easy extraction of generic values from the context by key. This method simplifies the common use case of retrieving values from Context objects.

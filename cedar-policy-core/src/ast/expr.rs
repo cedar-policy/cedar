@@ -355,6 +355,10 @@ impl<T> Expr<T> {
             ExprKind::UnaryApp {
                 op: UnaryOp::Not, ..
             } => Some(Type::Bool),
+            ExprKind::UnaryApp {
+                op: UnaryOp::IsEmpty,
+                ..
+            } => Some(Type::Bool),
             ExprKind::BinaryApp {
                 op: BinaryOp::Add | BinaryOp::Mul | BinaryOp::Sub,
                 ..
@@ -523,6 +527,11 @@ impl Expr {
     /// Create a `containsAny` expression. Arguments must evaluate to Set type
     pub fn contains_any(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().contains_any(e1, e2)
+    }
+
+    /// Create a `isEmpty` expression. Argument must evaluate to Set type
+    pub fn is_empty(e: Expr) -> Self {
+        ExprBuilder::new().is_empty(e)
     }
 
     /// Create a `getTag` expression.
@@ -1396,6 +1405,14 @@ impl<T> ExprBuilder<T> {
         })
     }
 
+    /// Create an 'is_empty' expression. Argument must evaluate to Set type
+    pub fn is_empty(self, expr: Expr<T>) -> Expr<T> {
+        self.with_expr_kind(ExprKind::UnaryApp {
+            op: UnaryOp::IsEmpty,
+            arg: Arc::new(expr),
+        })
+    }
+
     /// Create a 'getTag' expression.
     /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
     pub fn get_tag(self, expr: Expr<T>, tag: Expr<T>) -> Expr<T> {
@@ -2245,6 +2262,10 @@ mod test {
             (
                 ExprBuilder::with_data(1).contains_any(temp.clone(), temp.clone()),
                 Expr::contains_any(Expr::val(1), Expr::val(1)),
+            ),
+            (
+                ExprBuilder::with_data(1).is_empty(temp.clone()),
+                Expr::is_empty(Expr::val(1)),
             ),
             (
                 ExprBuilder::with_data(1).set([temp.clone()]),
