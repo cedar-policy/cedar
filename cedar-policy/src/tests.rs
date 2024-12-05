@@ -5730,7 +5730,7 @@ mod request_validation_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error(
-                r#"context `<first-class record with 0 fields>` is not valid for `Action::"action"`"#,
+                r#"context `{}` is not valid for `Action::"action"`"#,
             )
             .build(),
         );
@@ -5748,7 +5748,7 @@ mod request_validation_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error(
-                r#"context `<first-class record with 1 fields>` is not valid for `Action::"action"`"#,
+                r#"context `{foo: 123}` is not valid for `Action::"action"`"#,
             )
             .build(),
         );

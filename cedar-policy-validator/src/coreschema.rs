@@ -792,7 +792,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `<first-class record with 0 fields>` is not valid for `Action::"edit_photo"`"#).build());
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `{}` is not valid for `Action::"edit_photo"`"#).build());
             }
         );
     }
@@ -818,7 +818,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `<first-class record with 2 fields>` is not valid for `Action::"edit_photo"`"#).build());
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `{admin_approval: true, extra: 42}` is not valid for `Action::"edit_photo"`"#).build());
             }
         );
     }
@@ -844,7 +844,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `<first-class record with 1 fields>` is not valid for `Action::"edit_photo"`"#).build());
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `{admin_approval: [true]}` is not valid for `Action::"edit_photo"`"#).build());
             }
         );
     }
@@ -873,7 +873,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `<first-class record with 1 fields>` is not valid for `Action::"edit_photo"`"#).build());
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `{admin_approval: [true, -1001]}` is not valid for `Action::"edit_photo"`"#).build());
             }
         );
     }
