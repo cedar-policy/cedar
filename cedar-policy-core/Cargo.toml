@@ -28,6 +28,7 @@ stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
 miette = { version = "7.4.0", features = ["serde"] }
 nonempty = "0.10.0"
+educe = "0.6.0"
 
 # decimal extension requires regex
 regex = { version = "1.8", features = ["unicode"], optional = true }
@@ -42,7 +43,6 @@ chrono = { version = "0.4.38", optional = true, default-features = false}
 
 # protobuf dependency
 prost = { version = "0.13", optional = true }
-educe = "0.6.0"
 
 [features]
 # by default, enable all Cedar extensions
