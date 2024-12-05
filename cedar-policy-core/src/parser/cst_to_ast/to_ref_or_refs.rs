@@ -33,7 +33,7 @@ use crate::{
 /// in the policy scope.
 trait RefKind: Sized {
     fn err_str() -> &'static str;
-    fn create_single_ref(e: EntityUID, loc: &Loc) -> Result<Self>;
+    fn create_single_ref(e: EntityUID) -> Result<Self>;
     fn create_multiple_refs(loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self>;
     fn create_slot(loc: &Loc) -> Result<Self>;
 }
@@ -45,7 +45,7 @@ impl RefKind for SingleEntity {
         "an entity uid"
     }
 
-    fn create_single_ref(e: EntityUID, _loc: &Loc) -> Result<Self> {
+    fn create_single_ref(e: EntityUID) -> Result<Self> {
         Ok(SingleEntity(e))
     }
 
@@ -77,11 +77,11 @@ impl RefKind for EntityReference {
         "an entity uid or matching template slot"
     }
 
-    fn create_slot(_loc: &Loc) -> Result<Self> {
-        Ok(EntityReference::Slot)
+    fn create_slot(loc: &Loc) -> Result<Self> {
+        Ok(EntityReference::Slot(Some(loc.clone())))
     }
 
-    fn create_single_ref(e: EntityUID, _loc: &Loc) -> Result<Self> {
+    fn create_single_ref(e: EntityUID) -> Result<Self> {
         Ok(EntityReference::euid(Arc::new(e)))
     }
 
@@ -122,7 +122,7 @@ impl RefKind for OneOrMultipleRefs {
         .into())
     }
 
-    fn create_single_ref(e: EntityUID, _loc: &Loc) -> Result<Self> {
+    fn create_single_ref(e: EntityUID) -> Result<Self> {
         Ok(OneOrMultipleRefs::Single(e))
     }
 
@@ -211,7 +211,7 @@ impl Node<Option<cst::Primary>> {
                     ))
                     .into())
             }
-            cst::Primary::Ref(x) => T::create_single_ref(x.to_ref()?, &self.loc),
+            cst::Primary::Ref(x) => T::create_single_ref(x.to_ref()?),
             cst::Primary::Name(name) => {
                 let found = match name.as_inner() {
                     Some(name) => format!("name `{name}`"),

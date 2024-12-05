@@ -28,6 +28,7 @@ stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
 miette = { version = "7.4.0", features = ["serde"] }
 nonempty = "0.10.0"
+educe = "0.6.0"
 
 # decimal extension requires regex
 regex = { version = "1.8", features = ["unicode"], optional = true }
