@@ -190,27 +190,63 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
         let (entity_types, action, common_types) = into_partition_decls(n.decls);
 
         // Convert entity type decls, collecting all errors
-        let entity_types = collect_all_errors(entity_types.into_iter().map(convert_entity_decl))?
-            .flatten()
-            .map(|(key, value)| (key, value.into()))
-            .collect();
+        let entity_types = collect_all_errors(entity_types.into_iter().map(|et| {
+            let et = annotations::Annotated::try_from(et)
+                .map_err(|err| ToJsonSchemaErrors::from(ToJsonSchemaError::from(err)))?;
+            convert_entity_decl(et.data).map(|i| {
+                i.map(move |(id, ty)| {
+                    (
+                        id,
+                        annotations::Annotated {
+                            data: ty,
+                            annotations: et.annotations.clone(),
+                        },
+                    )
+                })
+            })
+        }))?
+        .flatten()
+        .collect();
 
         // Convert action decls, collecting all errors
-        let actions = collect_all_errors(action.into_iter().map(convert_action_decl))?
-            .flatten()
-            .map(|(key, value)| (key, value.into()))
-            .collect();
+        let actions = collect_all_errors(action.into_iter().map(|action| {
+            let action = annotations::Annotated::try_from(action)
+                .map_err(|err| ToJsonSchemaErrors::from(ToJsonSchemaError::from(err)))?;
+
+            convert_action_decl(action.data).map(|i| {
+                i.map(move |(id, at)| {
+                    (
+                        id,
+                        annotations::Annotated {
+                            data: at,
+                            annotations: action.annotations.clone(),
+                        },
+                    )
+                })
+            })
+        }))?
+        .flatten()
+        .map(|(key, value)| (key, value.into()))
+        .collect();
 
         // Convert common type decls
         let common_types = common_types
             .into_iter()
             .map(|decl| {
-                let name_loc = decl.name.loc.clone();
-                let id = UnreservedId::try_from(decl.name.node)
+                let decl: annotations::Annotated<TypeDecl> =
+                    annotations::Annotated::try_from(decl)?;
+                let name_loc = decl.data.name.loc.clone();
+                let id = UnreservedId::try_from(decl.data.name.node)
                     .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), name_loc.clone()))?;
                 let ctid = json_schema::CommonTypeId::new(id)
                     .map_err(|e| ToJsonSchemaError::reserved_keyword(e.id, name_loc))?;
-                Ok((ctid, cedar_type_to_json_type(decl.def).into()))
+                Ok((
+                    ctid,
+                    annotations::Annotated {
+                        data: cedar_type_to_json_type(decl.data.def),
+                        annotations: decl.annotations,
+                    },
+                ))
             })
             .collect::<Result<_, ToJsonSchemaError>>()?;
 
@@ -627,14 +663,14 @@ fn update_namespace_record(
 }
 
 fn partition_decls(
-    decls: &[Node<Declaration>],
+    decls: &[ast::Annotated<Node<Declaration>>],
 ) -> (Vec<&EntityDecl>, Vec<&ActionDecl>, Vec<&TypeDecl>) {
     let mut entities = vec![];
     let mut actions = vec![];
     let mut types = vec![];
 
     for decl in decls.iter() {
-        match &decl.node {
+        match &decl.data.node {
             Declaration::Entity(e) => entities.push(e),
             Declaration::Action(a) => actions.push(a),
             Declaration::Type(t) => types.push(t),
@@ -645,17 +681,30 @@ fn partition_decls(
 }
 
 fn into_partition_decls(
-    decls: Vec<Node<Declaration>>,
-) -> (Vec<EntityDecl>, Vec<ActionDecl>, Vec<TypeDecl>) {
+    decls: Vec<ast::Annotated<Node<Declaration>>>,
+) -> (
+    Vec<ast::Annotated<EntityDecl>>,
+    Vec<ast::Annotated<ActionDecl>>,
+    Vec<ast::Annotated<TypeDecl>>,
+) {
     let mut entities = vec![];
     let mut actions = vec![];
     let mut types = vec![];
 
     for decl in decls.into_iter() {
-        match decl.node {
-            Declaration::Entity(e) => entities.push(e),
-            Declaration::Action(a) => actions.push(a),
-            Declaration::Type(t) => types.push(t),
+        match decl.data.node {
+            Declaration::Entity(e) => entities.push(ast::Annotated {
+                data: e,
+                annotations: decl.annotations,
+            }),
+            Declaration::Action(a) => actions.push(ast::Annotated {
+                data: a,
+                annotations: decl.annotations,
+            }),
+            Declaration::Type(t) => types.push(ast::Annotated {
+                data: t,
+                annotations: decl.annotations,
+            }),
         }
     }
 

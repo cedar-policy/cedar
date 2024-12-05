@@ -100,8 +100,8 @@ Annotation: Node<Annotation> = {
     <l:@L> "@" <key:AnyIdent> <value: ("(" <STR> ")")> <r:@R> => Node::with_source_loc((key, value), Loc::new(l..r, Arc::clone(src)))
 }
 
-Annotated<E>: E = {
-   <annotations: Annotation*> <e:E> => e,
+Annotated<E>: Annotated<E> = {
+   <annotations: Annotation*> <e:E> => Annotated {data: e, annotations},
 }
 
 // Schema := {Namespace}

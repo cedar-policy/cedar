@@ -207,7 +207,7 @@ pub struct Namespace {
     /// The name of this namespace. If [`None`], then this is the unqualified namespace
     pub name: Option<Path>,
     /// The [`Declaration`]s contained in this namespace
-    pub decls: Vec<Node<Declaration>>,
+    pub decls: Vec<Annotated<Node<Declaration>>>,
 }
 
 impl Namespace {
