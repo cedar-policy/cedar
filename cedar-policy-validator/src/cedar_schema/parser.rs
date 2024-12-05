@@ -62,12 +62,15 @@ fn parse_collect_errors<'a, P, T>(
 
     let errors = errs
         .into_iter()
-        .map(Into::into)
+        .map(|rc| ParseError::from_raw_error_recovery(rc, Arc::from(text)))
         .collect::<Vec<ParseError>>();
     let parsed = match result {
         Ok(parsed) => parsed,
         Err(e) => {
-            return Err(ParseErrors::new(e.into(), errors));
+            return Err(ParseErrors::new(
+                ParseError::from_raw_parse_error(e, Arc::from(text)),
+                errors,
+            ));
         }
     };
     match ParseErrors::from_iter(errors) {

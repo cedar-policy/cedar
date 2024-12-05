@@ -25,6 +25,10 @@ Cedar Language Version: TBD
 - Stopped emitting warnings for identifiers containing certain printable ASCII
   characters (e.g., `/` and `:`) (#1336, resolving #621)
 
+### Fixed
+
+- Attach source code to certain errors so that `miette::Report`s derived from these errors are self-contained (#1351, resolving #977 and #1335)
+
 ## [4.2.2] - 2024-11-11
 Cedar Language version: 4.1
 

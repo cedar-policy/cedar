@@ -52,13 +52,13 @@ fn parse_collect_errors<'a, P, T>(
 
     let errors = errs
         .into_iter()
-        .map(err::ToCSTError::from_raw_err_recovery)
+        .map(|rc| err::ToCSTError::from_raw_err_recovery(rc, Arc::from(text)))
         .map(Into::into);
     let parsed = match result {
         Ok(parsed) => parsed,
         Err(e) => {
             return Err(err::ParseErrors::new(
-                err::ToCSTError::from_raw_parse_err(e).into(),
+                err::ToCSTError::from_raw_parse_err(e, Arc::from(text)).into(),
                 errors,
             ));
         }

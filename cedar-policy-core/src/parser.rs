@@ -300,7 +300,7 @@ pub(crate) mod test_utils {
         msg: &ExpectedErrorMessage<'_>,
     ) {
         assert!(
-            errs.iter().any(|e| msg.matches(Some(src), e)),
+            errs.iter().any(|e| msg.matches(e)),
             "for the following input:\n{src}\nexpected some error to match the following:\n{msg}\nbut actual errors were:\n{:?}", // the Debug representation of `miette::Report` is the pretty one, for some reason
             miette::Report::new(errs.clone()),
         );
