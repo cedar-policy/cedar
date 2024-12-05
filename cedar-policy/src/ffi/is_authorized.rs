@@ -1582,7 +1582,7 @@ mod test {
         assert_exactly_one_error(
             &errs,
             "resource type `User` is not valid for `Action::\"view\"`",
-            None,
+            Some("valid resource types for `Action::\"view\"`: `Photo`"),
         );
         assert_is_authorized_json(bad_call_req_validation_disabled);
     }

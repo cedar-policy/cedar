@@ -204,6 +204,10 @@ impl ast::RequestSchema for ValidatorSchema {
                         return Err(request_validation_errors::InvalidPrincipalTypeError {
                             principal_ty: principal.entity_type().clone(),
                             action: Arc::clone(action),
+                            valid_principal_tys: validator_action_id
+                                .applies_to_principals()
+                                .cloned()
+                                .collect(),
                         }
                         .into());
                     }
@@ -213,6 +217,10 @@ impl ast::RequestSchema for ValidatorSchema {
                         return Err(request_validation_errors::InvalidResourceTypeError {
                             resource_ty: resource.entity_type().clone(),
                             action: Arc::clone(action),
+                            valid_resource_tys: validator_action_id
+                                .applies_to_resources()
+                                .cloned()
+                                .collect(),
                         }
                         .into());
                     }
@@ -296,6 +304,7 @@ pub enum RequestValidationError {
 /// Errors related to validation
 pub mod request_validation_errors {
     use cedar_policy_core::ast;
+    use itertools::Itertools;
     use miette::Diagnostic;
     use std::sync::Arc;
     use thiserror::Error;
@@ -349,11 +358,32 @@ pub mod request_validation_errors {
     /// not valid for the request action
     #[derive(Debug, Error, Diagnostic)]
     #[error("principal type `{principal_ty}` is not valid for `{action}`")]
+    #[diagnostic(help("{}", invalid_principal_type_help(&.valid_principal_tys, .action.as_ref())))]
     pub struct InvalidPrincipalTypeError {
         /// Principal type which is not valid
         pub(super) principal_ty: ast::EntityType,
         /// Action which it is not valid for
         pub(super) action: Arc<ast::EntityUID>,
+        /// Principal types which actually are valid for that `action`
+        pub(super) valid_principal_tys: Vec<ast::EntityType>,
+    }
+
+    fn invalid_principal_type_help(
+        valid_principal_tys: &[ast::EntityType],
+        action: &ast::EntityUID,
+    ) -> String {
+        if valid_principal_tys.is_empty() {
+            format!("no principal types are valid for `{action}`")
+        } else {
+            format!(
+                "valid principal types for `{action}`: {}",
+                valid_principal_tys
+                    .iter()
+                    .sorted_unstable()
+                    .map(|et| format!("`{et}`"))
+                    .join(", ")
+            )
+        }
     }
 
     impl InvalidPrincipalTypeError {
@@ -366,17 +396,43 @@ pub mod request_validation_errors {
         pub fn action(&self) -> &ast::EntityUID {
             &self.action
         }
+
+        /// Principal types which actually are valid for that action
+        pub fn valid_principal_tys(&self) -> impl Iterator<Item = &ast::EntityType> {
+            self.valid_principal_tys.iter()
+        }
     }
 
     /// Request resource is of a type that is declared in the schema, but is
     /// not valid for the request action
     #[derive(Debug, Error, Diagnostic)]
     #[error("resource type `{resource_ty}` is not valid for `{action}`")]
+    #[diagnostic(help("{}", invalid_resource_type_help(&.valid_resource_tys, .action.as_ref())))]
     pub struct InvalidResourceTypeError {
         /// Resource type which is not valid
         pub(super) resource_ty: ast::EntityType,
         /// Action which it is not valid for
         pub(super) action: Arc<ast::EntityUID>,
+        /// Resource types which actually are valid for that `action`
+        pub(super) valid_resource_tys: Vec<ast::EntityType>,
+    }
+
+    fn invalid_resource_type_help(
+        valid_resource_tys: &[ast::EntityType],
+        action: &ast::EntityUID,
+    ) -> String {
+        if valid_resource_tys.is_empty() {
+            format!("no resource types are valid for `{action}`")
+        } else {
+            format!(
+                "valid resource types for `{action}`: {}",
+                valid_resource_tys
+                    .iter()
+                    .sorted_unstable()
+                    .map(|et| format!("`{et}`"))
+                    .join(", ")
+            )
+        }
     }
 
     impl InvalidResourceTypeError {
@@ -388,6 +444,11 @@ pub mod request_validation_errors {
         /// The action which it is not valid for
         pub fn action(&self) -> &ast::EntityUID {
             &self.action
+        }
+
+        /// Resource types which actually are valid for that action
+        pub fn valid_resource_tys(&self) -> impl Iterator<Item = &ast::EntityType> {
+            self.valid_resource_tys.iter()
         }
     }
 
@@ -756,7 +817,13 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"principal type `Album` is not valid for `Action::"view_photo"`"#).build());
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"principal type `Album` is not valid for `Action::"view_photo"`"#)
+                        .help(r#"valid principal types for `Action::"view_photo"`: `Group`, `User`"#)
+                        .build(),
+                );
             }
         );
     }
@@ -774,7 +841,13 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"resource type `Group` is not valid for `Action::"view_photo"`"#).build());
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"resource type `Group` is not valid for `Action::"view_photo"`"#)
+                        .help(r#"valid resource types for `Action::"view_photo"`: `Photo`"#)
+                        .build(),
+                );
             }
         );
     }
