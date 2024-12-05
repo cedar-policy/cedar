@@ -70,7 +70,7 @@ pub fn cedar_schema_to_json_schema(
     // that namespace make it into the JSON schema structure under that
     // namespace's key.
     let (qualified_namespaces, unqualified_namespace) =
-        split_unqualified_namespace(schema.into_iter().map(|n| n.node));
+        split_unqualified_namespace(schema.into_iter());
     // Create a single iterator for all namespaces
     let all_namespaces = qualified_namespaces
         .chain(unqualified_namespace)
@@ -173,9 +173,9 @@ fn convert_namespace(
         .name
         .clone()
         .map(|p| {
-            let internal_name = RawName::from(p.node).qualify_with(None); // namespace names are always written already-fully-qualified in the Cedar schema syntax
+            let internal_name = RawName::from(p.clone()).qualify_with(None); // namespace names are always written already-fully-qualified in the Cedar schema syntax
             Name::try_from(internal_name)
-                .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), p.loc))
+                .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), p.loc().clone()))
         })
         .transpose()?;
     let def = namespace.try_into()?;
@@ -477,9 +477,9 @@ impl NamespaceRecord {
             .name
             .clone()
             .map(|n| {
-                let internal_name = RawName::from(n.node).qualify_with(None); // namespace names are already fully-qualified
+                let internal_name = RawName::from(n.clone()).qualify_with(None); // namespace names are already fully-qualified
                 Name::try_from(internal_name)
-                    .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), n.loc))
+                    .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), n.loc().clone()))
             })
             .transpose()?;
         let (entities, actions, types) = partition_decls(&namespace.decls);
@@ -507,7 +507,7 @@ impl NamespaceRecord {
         let record = NamespaceRecord {
             entities,
             common_types,
-            loc: namespace.name.as_ref().map(|n| n.loc.clone()),
+            loc: namespace.name.as_ref().map(|n| n.loc().clone()),
         };
 
         Ok((ns, record))

@@ -35,7 +35,7 @@ pub const BUILTIN_TYPES: [&str; 3] = ["Long", "String", "Bool"];
 
 pub(super) const CEDAR_NAMESPACE: &str = "__cedar";
 
-pub type Schema = Vec<Node<Annotated<Namespace>>>;
+pub type Schema = Vec<Annotated<Namespace>>;
 
 pub type Annotation = (Node<AnyId>, Node<SmolStr>);
 /// An AST that can be annotated
@@ -205,7 +205,7 @@ impl QualName {
 #[derive(Debug, Clone)]
 pub struct Namespace {
     /// The name of this namespace. If [`None`], then this is the unqualified namespace
-    pub name: Option<Node<Path>>,
+    pub name: Option<Path>,
     /// The [`Declaration`]s contained in this namespace
     pub decls: Vec<Node<Declaration>>,
 }
