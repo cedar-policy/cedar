@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use std::iter::once;
+use std::{collections::BTreeMap, iter::once};
 
 use cedar_policy_core::{
     ast::{AnyId, Id, InternalName},
@@ -29,11 +29,13 @@ use smol_str::ToSmolStr;
 
 use crate::json_schema;
 
+use super::err::DuplicateAnnotations;
+
 pub const BUILTIN_TYPES: [&str; 3] = ["Long", "String", "Bool"];
 
 pub(super) const CEDAR_NAMESPACE: &str = "__cedar";
 
-pub type Schema = Vec<Node<Namespace>>;
+pub type Schema = Vec<Node<Annotated<Namespace>>>;
 
 pub type Annotation = (Node<AnyId>, Node<SmolStr>);
 /// An AST that can be annotated
@@ -41,6 +43,32 @@ pub type Annotation = (Node<AnyId>, Node<SmolStr>);
 pub struct Annotated<T> {
     pub data: T,
     pub annotations: Vec<Node<Annotation>>,
+}
+
+impl<T> TryFrom<Annotated<T>> for crate::annotations::Annotated<T> {
+    type Error = DuplicateAnnotations;
+    fn try_from(value: Annotated<T>) -> Result<Self, Self::Error> {
+        let mut annotations: BTreeMap<AnyId, (Loc, SmolStr)> = BTreeMap::new();
+        for annotation in value.annotations {
+            let (key, value) = annotation.node;
+            if let Some((old_loc, _)) =
+                annotations.insert(key.node.clone(), (key.loc.clone(), value.node))
+            {
+                return Err(DuplicateAnnotations {
+                    annotation: key.node,
+                    loc1: old_loc,
+                    loc2: key.loc,
+                });
+            }
+        }
+        Ok(crate::annotations::Annotated {
+            data: value.data,
+            annotations: annotations
+                .into_iter()
+                .map(|(key, (_, value))| (key, value))
+                .collect(),
+        })
+    }
 }
 
 /// A path is a non empty list of identifiers that forms a namespace + type

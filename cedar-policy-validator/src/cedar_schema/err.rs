@@ -22,6 +22,7 @@ use std::{
 };
 
 use cedar_policy_core::{
+    ast::AnyId,
     impl_diagnostic_from_source_loc_field, impl_diagnostic_from_two_source_loc_fields,
     impl_diagnostic_from_two_source_loc_opt_fields,
     parser::{
@@ -401,6 +402,10 @@ pub enum ToJsonSchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ReservedSchemaKeyword(#[from] ReservedSchemaKeyword),
+    /// Duplicate annotations
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateAnnotations(#[from] DuplicateAnnotations),
 }
 
 impl ToJsonSchemaError {
@@ -479,6 +484,18 @@ impl ToJsonSchemaError {
             loc,
         })
     }
+}
+
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[error("duplicate annotations: `{annotation}`")]
+pub struct DuplicateAnnotations {
+    pub(crate) annotation: AnyId,
+    pub(crate) loc1: Loc,
+    pub(crate) loc2: Loc,
+}
+
+impl Diagnostic for DuplicateAnnotations {
+    impl_diagnostic_from_two_source_loc_fields!(loc1, loc2);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

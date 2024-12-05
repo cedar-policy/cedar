@@ -30,12 +30,12 @@ use std::collections::hash_map::Entry;
 
 use super::{
     ast::{
-        ActionDecl, AppDecl, AttrDecl, Decl, Declaration, EntityDecl, Namespace, PRAppDecl, Path,
-        QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, PR,
+        self, ActionDecl, AppDecl, AttrDecl, Decl, Declaration, EntityDecl, Namespace, PRAppDecl,
+        Path, QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, PR,
     },
     err::{schema_warnings, SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
 };
-use crate::{cedar_schema, json_schema, RawName};
+use crate::{annotations, cedar_schema, json_schema, RawName};
 
 impl From<cedar_schema::Path> for RawName {
     fn from(p: cedar_schema::Path) -> Self {
@@ -76,11 +76,22 @@ pub fn cedar_schema_to_json_schema(
         .chain(unqualified_namespace)
         .collect::<Vec<_>>();
 
-    let names = build_namespace_bindings(all_namespaces.iter())?;
+    let names = build_namespace_bindings(all_namespaces.iter().map(|ns| &ns.data))?;
     let warnings = compute_namespace_warnings(&names, extensions);
-    let fragment = collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?
-        .map(|(key, value)| (key, value.into()))
-        .collect();
+    let fragment = collect_all_errors(all_namespaces.into_iter().map(|ns| {
+        let ns = annotations::Annotated::try_from(ns)
+            .map_err(|err| ToJsonSchemaErrors::from(ToJsonSchemaError::from(err)))?;
+        convert_namespace(ns.data).map(|(n, nsd)| {
+            (
+                n,
+                annotations::Annotated {
+                    data: nsd,
+                    annotations: ns.annotations,
+                },
+            )
+        })
+    }))?
+    .collect();
     Ok((
         json_schema::Fragment(fragment),
         warnings.collect::<Vec<_>>().into_iter(),
@@ -122,16 +133,19 @@ pub fn cedar_type_to_json_type(ty: Node<Type>) -> json_schema::Type<RawName> {
 // Split namespaces into two groups: named namespaces and the implicit unqualified namespace
 // The rhs of the tuple will be [`None`] if there are no items in the unqualified namespace.
 fn split_unqualified_namespace(
-    namespaces: impl IntoIterator<Item = Namespace>,
-) -> (impl Iterator<Item = Namespace>, Option<Namespace>) {
+    namespaces: impl IntoIterator<Item = ast::Annotated<Namespace>>,
+) -> (
+    impl Iterator<Item = ast::Annotated<Namespace>>,
+    Option<ast::Annotated<Namespace>>,
+) {
     // First split every namespace into those with explicit names and those without
     let (qualified, unqualified): (Vec<_>, Vec<_>) =
-        namespaces.into_iter().partition(|n| n.name.is_some());
+        namespaces.into_iter().partition(|n| n.data.name.is_some());
 
     // Now combine all the decls in namespaces without names into one unqualified namespace
     let mut unqualified_decls = vec![];
     for mut unqualified_namespace in unqualified.into_iter() {
-        unqualified_decls.append(&mut unqualified_namespace.decls);
+        unqualified_decls.append(&mut unqualified_namespace.data.decls);
     }
 
     if unqualified_decls.is_empty() {
@@ -141,7 +155,13 @@ fn split_unqualified_namespace(
             name: None,
             decls: unqualified_decls,
         };
-        (qualified.into_iter(), Some(unqual))
+        (
+            qualified.into_iter(),
+            Some(ast::Annotated {
+                data: unqual,
+                annotations: vec![],
+            }),
+        )
     }
 }
 

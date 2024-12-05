@@ -110,10 +110,10 @@ pub Schema: ASchema = {
 }
 
 // Namespace := 'namespace' Path '{' {Decl} '}'
-Namespace: Node<Namespace> = {
+Namespace: Node<Annotated<Namespace>> = {
     <l:@L> <annotations: Annotation*> NAMESPACE <p: Path> "{" <decls: Annotated<Decl>*> "}" <r:@R>
-        => Node::with_source_loc(Namespace { name: Some(Node::with_source_loc(p, Loc::new(l..r, Arc::clone(src)))), decls}, Loc::new(l..r, Arc::clone(src))),
-     <l:@L> <decl: Annotated<Decl>> <r:@R> => Node::with_source_loc(Namespace {name: None, decls: vec![decl]}, Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(Annotated {data: Namespace { name: Some(Node::with_source_loc(p, Loc::new(l..r, Arc::clone(src)))), decls}, annotations}, Loc::new(l..r, Arc::clone(src))),
+     <l:@L> <decl: Annotated<Decl>> <r:@R> => Node::with_source_loc(Annotated {data: Namespace {name: None, decls: vec![decl]}, annotations: vec![]}, Loc::new(l..r, Arc::clone(src))),
 }
 
 // Decl := Entity | Action | TypeDecl
