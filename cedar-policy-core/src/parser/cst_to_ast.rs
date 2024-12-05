@@ -596,19 +596,28 @@ impl Node<Option<cst::VariableDef>> {
                 (cst::RelOp::Eq, None) => Ok(PrincipalOrResourceConstraint::Eq(eref)),
                 (cst::RelOp::Eq, Some(_)) => Err(self.to_ast_err(ToASTErrorKind::IsWithEq)),
                 (cst::RelOp::In, None) => Ok(PrincipalOrResourceConstraint::In(eref)),
-                (cst::RelOp::In, Some(entity_type)) => Ok(PrincipalOrResourceConstraint::IsIn(
-                    Arc::new(entity_type.to_expr_or_special()?.into_entity_type()?),
-                    eref,
-                )),
+                (cst::RelOp::In, Some(entity_type)) => {
+                    match entity_type.to_expr_or_special()?.into_entity_type() {
+                        Ok(et) => Ok(PrincipalOrResourceConstraint::IsIn(Arc::new(et), eref)),
+                        Err(eos) => Err(eos.to_ast_err(ToASTErrorKind::InvalidIsType {
+                            lhs: var.to_string(),
+                            rhs: eos.loc().snippet().unwrap_or("<invalid>").to_string(),
+                        })),
+                    }
+                }
                 (cst::RelOp::InvalidSingleEq, _) => {
                     Err(self.to_ast_err(ToASTErrorKind::InvalidSingleEq))
                 }
                 (op, _) => Err(self.to_ast_err(ToASTErrorKind::InvalidScopeOperator(*op))),
             }
         } else if let Some(entity_type) = &vardef.entity_type {
-            Ok(PrincipalOrResourceConstraint::Is(Arc::new(
-                entity_type.to_expr_or_special()?.into_entity_type()?,
-            )))
+            match entity_type.to_expr_or_special()?.into_entity_type() {
+                Ok(et) => Ok(PrincipalOrResourceConstraint::Is(Arc::new(et))),
+                Err(eos) => Err(eos.to_ast_err(ToASTErrorKind::InvalidIsType {
+                    lhs: var.to_string(),
+                    rhs: eos.loc().snippet().unwrap_or("<invalid>").to_string(),
+                })),
+            }
         } else {
             Ok(PrincipalOrResourceConstraint::Any)
         }?;
@@ -758,16 +767,17 @@ pub(crate) enum ExprOrSpecial<'a> {
 }
 
 impl ExprOrSpecial<'_> {
+    fn loc(&self) -> &Loc {
+        match self {
+            Self::Expr { loc, .. } => loc,
+            Self::Var { loc, .. } => loc,
+            Self::Name { loc, .. } => loc,
+            Self::StrLit { loc, .. } => loc,
+        }
+    }
+
     fn to_ast_err(&self, kind: impl Into<ToASTErrorKind>) -> ToASTError {
-        ToASTError::new(
-            kind.into(),
-            match self {
-                ExprOrSpecial::Expr { loc, .. } => loc.clone(),
-                ExprOrSpecial::Var { loc, .. } => loc.clone(),
-                ExprOrSpecial::Name { loc, .. } => loc.clone(),
-                ExprOrSpecial::StrLit { loc, .. } => loc.clone(),
-            },
-        )
+        ToASTError::new(kind.into(), self.loc().clone())
     }
 
     fn into_expr(self) -> Result<ast::Expr> {
@@ -847,20 +857,18 @@ impl ExprOrSpecial<'_> {
         }
     }
 
-    fn into_entity_type(self) -> Result<ast::EntityType> {
+    /// Returns `Err` if `self` is not an `ast::EntityType`. The `Err` will give you the `self` reference back
+    fn into_entity_type(self) -> std::result::Result<ast::EntityType, Self> {
         self.into_name().map(ast::EntityType::from)
     }
 
-    fn into_name(self) -> Result<ast::Name> {
+    /// Returns `Err` if `self` is not an `ast::Name`. The `Err` will give you the `self` reference back
+    fn into_name(self) -> std::result::Result<ast::Name, Self> {
         match self {
-            Self::StrLit { lit, .. } => Err(self
-                .to_ast_err(ToASTErrorKind::InvalidIsType(lit.to_string()))
-                .into()),
+            Self::StrLit { .. } => Err(self),
             Self::Var { var, .. } => Ok(ast::Name::unqualified_name(var.into())),
             Self::Name { name, .. } => Ok(name),
-            Self::Expr { ref expr, .. } => Err(self
-                .to_ast_err(ToASTErrorKind::InvalidIsType(expr.to_string()))
-                .into()),
+            Self::Expr { .. } => Err(self),
         }
     }
 }
@@ -991,7 +999,19 @@ impl Node<Option<cst::Relation>> {
                 in_entity,
             } => {
                 let maybe_target = target.to_expr();
-                let maybe_entity_type = entity_type.to_expr_or_special()?.into_entity_type();
+                let maybe_entity_type = entity_type
+                    .to_expr_or_special()?
+                    .into_entity_type()
+                    .map_err(|eos| {
+                        eos.to_ast_err(ToASTErrorKind::InvalidIsType {
+                            lhs: maybe_target
+                                .as_ref()
+                                .map(|expr| expr.to_string())
+                                .unwrap_or_else(|_| "..".to_string()),
+                            rhs: eos.loc().snippet().unwrap_or("<invalid>").to_string(),
+                        })
+                        .into()
+                    });
                 let (t, n) = flatten_tuple_2(maybe_target, maybe_entity_type)?;
                 match in_entity {
                     Some(in_entity) => {
@@ -3895,17 +3915,15 @@ mod tests {
                 r#"permit(principal is User::"alice", action, resource);"#,
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice"`"#,
-                ).help(
-                    "try using `==` to test for equality"
-                ).exactly_one_underline("User::\"alice\"").build(),
+                ).help(r#"try using `==` to test for equality: `principal == User::"alice"`"#)
+                .exactly_one_underline("User::\"alice\"").build(),
             ),
             (
                 r#"permit(principal, action, resource is File::"f");"#,
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `File::"f"`"#,
-                ).help(
-                    "try using `==` to test for equality"
-                ).exactly_one_underline("File::\"f\"").build(),
+                ).help(r#"try using `==` to test for equality: `resource == File::"f"`"#)
+                .exactly_one_underline("File::\"f\"").build(),
             ),
             (
                 r#"permit(principal is User in 1, action, resource);"#,
@@ -3933,9 +3951,8 @@ mod tests {
                 r#"permit(principal is User::"Alice" in Group::"f", action, resource);"#,
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `User::"Alice"`"#,
-                ).help(
-                    "try using `==` to test for equality"
-                ).exactly_one_underline("User::\"Alice\"").build(),
+                ).help(r#"try using `==` to test for equality: `principal == User::"Alice"`"#)
+                .exactly_one_underline("User::\"Alice\"").build(),
             ),
             (
                 r#"permit(principal, action, resource is File in File);"#,
@@ -3952,7 +3969,7 @@ mod tests {
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `File::"file"`"#,
                 ).help(
-                    "try using `==` to test for equality"
+                    r#"try using `==` to test for equality: `resource == File::"file"`"#
                 ).exactly_one_underline("File::\"file\"").build(),
             ),
             (
@@ -3960,7 +3977,7 @@ mod tests {
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
                 ).help(
-                    "try using `==` to test for equality"
+                    "try using `==` to test for equality: `principal == 1`"
                 ).exactly_one_underline("1").build(),
             ),
             (
@@ -3968,7 +3985,7 @@ mod tests {
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
                 ).help(
-                    "try using `==` to test for equality"
+                    "try using `==` to test for equality: `resource == 1`"
                 ).exactly_one_underline("1").build(),
             ),
             (
@@ -4040,7 +4057,7 @@ mod tests {
                 ExpectedErrorMessageBuilder::error(
                     "right hand side of an `is` expression must be an entity type name, but got `?principal`",
                 ).help(
-                    "try using `==` to test for equality"
+                    "try using `==` to test for equality: `principal == ?principal`"
                 ).exactly_one_underline("?principal").build(),
             ),
             (
@@ -4048,7 +4065,7 @@ mod tests {
                 ExpectedErrorMessageBuilder::error(
                     "right hand side of an `is` expression must be an entity type name, but got `?resource`",
                 ).help(
-                    "try using `==` to test for equality"
+                    "try using `==` to test for equality: `resource == ?resource`"
                 ).exactly_one_underline("?resource").build(),
             ),
             (
@@ -4056,7 +4073,7 @@ mod tests {
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
                 ).help(
-                    "try using `==` to test for equality"
+                    "try using `==` to test for equality: `principal == 1`"
                 ).exactly_one_underline("1").build(),
             ),
             (
@@ -4064,15 +4081,15 @@ mod tests {
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice"`"#,
                 ).help(
-                    "try using `==` to test for equality"
+                    r#"try using `==` to test for equality: `principal == User::"alice"`"#
                 ).exactly_one_underline("User::\"alice\"").build(),
             ),
             (
                 r#"permit(principal, action, resource) when { principal is ! User::"alice" in Group::"friends" };"#,
                 ExpectedErrorMessageBuilder::error(
-                    r#"right hand side of an `is` expression must be an entity type name, but got `!User::"alice"`"#,
+                    r#"right hand side of an `is` expression must be an entity type name, but got `! User::"alice"`"#,
                 ).help(
-                    "try using `==` to test for equality"
+                    r#"try using `==` to test for equality: `principal == ! User::"alice"`"#
                 ).exactly_one_underline("! User::\"alice\"").build(),
             ),
             (
@@ -4080,7 +4097,7 @@ mod tests {
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice" + User::"alice"`"#,
                 ).help(
-                    "try using `==` to test for equality"
+                    r#"try using `==` to test for equality: `principal == User::"alice" + User::"alice"`"#
                 ).exactly_one_underline("User::\"alice\" + User::\"alice\"").build(),
             ),
             (
@@ -4103,12 +4120,19 @@ mod tests {
                     .build(),
             ),
             (
-                // TODO #1252: Improve error message and help text for `is <string-lit>`
+                r#"permit(principal is "User", action, resource);"#,
+                ExpectedErrorMessageBuilder::error(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `"User"`"#,
+                ).help(
+                    "try removing the quotes: `principal is User`"
+                ).exactly_one_underline("\"User\"").build(),
+            ),
+            (
                 r#"permit(principal, action, resource) when { principal is "User" };"#,
                 ExpectedErrorMessageBuilder::error(
-                    r#"right hand side of an `is` expression must be an entity type name, but got `User`"#,
+                    r#"right hand side of an `is` expression must be an entity type name, but got `"User"`"#,
                 ).help(
-                    "try using `==` to test for equality"
+                    "try removing the quotes: `principal is User`"
                 ).exactly_one_underline("\"User\"").build(),
             ),
         ];

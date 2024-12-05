@@ -18,6 +18,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::{self, Display, Write};
 use std::iter;
 use std::ops::{Deref, DerefMut};
+use std::str::FromStr;
 use std::sync::Arc;
 
 use either::Either;
@@ -257,9 +258,14 @@ pub enum ToASTErrorKind {
     #[error("right hand side of a `like` expression must be a pattern literal, but got `{0}`")]
     InvalidPattern(String),
     /// Returned when the right hand side of a `is` expression is not an entity type name
-    #[error("right hand side of an `is` expression must be an entity type name, but got `{0}`")]
-    #[diagnostic(help("try using `==` to test for equality"))]
-    InvalidIsType(String),
+    #[error("right hand side of an `is` expression must be an entity type name, but got `{rhs}`")]
+    #[diagnostic(help("{}", invalid_is_help(&.lhs, &.rhs)))]
+    InvalidIsType {
+        /// LHS of the invalid `is` expression, as a string
+        lhs: String,
+        /// RHS of the invalid `is` expression, as a string
+        rhs: String,
+    },
     /// Returned when an unexpected node is in the policy scope
     #[error("expected {expected}, found {got}")]
     WrongNode {
@@ -400,6 +406,22 @@ pub enum ToASTErrorKind {
     #[error("when `is` and `in` are used together, `is` must come first")]
     #[diagnostic(help("try `_ is _ in _`"))]
     InvertedIsIn,
+}
+
+fn invalid_is_help(lhs: &str, rhs: &str) -> String {
+    // in the specific case where rhs is double-quotes surrounding a valid
+    // (possibly reserved) identifier, give a different help message
+    match strip_surrounding_doublequotes(rhs).map(ast::Id::from_str) {
+        Some(Ok(stripped)) => format!("try removing the quotes: `{lhs} is {stripped}`"),
+        _ => format!("try using `==` to test for equality: `{lhs} == {rhs}`"),
+    }
+}
+
+/// If `s` has exactly `"` as both its first and last character, returns `Some`
+/// with the first and last character removed.
+/// In all other cases, returns `None`.
+fn strip_surrounding_doublequotes(s: &str) -> Option<&str> {
+    s.strip_prefix('"')?.strip_suffix('"')
 }
 
 impl ToASTErrorKind {
