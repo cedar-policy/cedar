@@ -17,6 +17,7 @@
 use crate::ast::*;
 use crate::parser::Loc;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::str::FromStr;
 use std::sync::Arc;
 
 use itertools::Itertools;
@@ -484,38 +485,49 @@ impl std::fmt::Display for ValueKind {
                 fast,
                 authoritative,
             }) => {
-                match authoritative.len() {
-                    0 => write!(f, "[]"),
-                    n @ 1..=5 => {
-                        write!(f, "[")?;
-                        if let Some(rc) = fast {
-                            // sort the elements, because we want the Display output to be
-                            // deterministic, particularly for tests which check equality
-                            // of error messages
-                            for (i, item) in rc.as_ref().iter().sorted_unstable().enumerate() {
-                                write!(f, "{item}")?;
-                                if i < n - 1 {
-                                    write!(f, ", ")?;
-                                }
-                            }
-                        } else {
-                            // don't need to sort the elements in this case because BTreeSet iterates
-                            // in a deterministic order already
-                            for (i, item) in authoritative.as_ref().iter().enumerate() {
-                                write!(f, "{item}")?;
-                                if i < n - 1 {
-                                    write!(f, ", ")?;
-                                }
-                            }
+                write!(f, "[")?;
+                if let Some(rc) = fast {
+                    // sort the elements, because we want the Display output to be
+                    // deterministic, particularly for tests which check equality
+                    // of error messages
+                    for (i, item) in rc.as_ref().iter().sorted_unstable().enumerate() {
+                        write!(f, "{item}")?;
+                        if i < authoritative.len() - 1 {
+                            write!(f, ", ")?;
                         }
-                        write!(f, "]")?;
-                        Ok(())
                     }
-                    n => write!(f, "<set with {} elements>", n),
+                } else {
+                    // don't need to sort the elements in this case because BTreeSet iterates
+                    // in a deterministic order already
+                    for (i, item) in authoritative.as_ref().iter().enumerate() {
+                        write!(f, "{item}")?;
+                        if i < authoritative.len() - 1 {
+                            write!(f, ", ")?;
+                        }
+                    }
                 }
+                write!(f, "]")?;
+                Ok(())
             }
             Self::Record(record) => {
-                write!(f, "<first-class record with {} fields>", record.len())
+                write!(f, "{{")?;
+                for (i, (k, v)) in record.as_ref().iter().enumerate() {
+                    match UnreservedId::from_str(k) {
+                        Ok(k) => {
+                            // we can omit the quotes around the key, it's a valid identifier and not a reserved keyword
+                            write!(f, "{k}: {v}")?;
+                        }
+                        Err(_) => {
+                            // put quotes around the key
+                            write!(f, "\"{k}\": {v}")?;
+                        }
+                    }
+                    if i < record.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, "}}")?;
+                Ok(())
             }
             Self::ExtensionValue(ev) => write!(f, "{}", RestrictedExpr::from(ev.as_ref().clone())),
         }
