@@ -27,7 +27,7 @@ use std::{
     collections::HashMap,
     fmt::{self, Display},
     fs::OpenOptions,
-    path::Path,
+    path::{Path, PathBuf},
     process::{ExitCode, Termination},
     str::FromStr,
     time::Instant,
@@ -171,18 +171,13 @@ pub enum SchemaTranslationDirection {
     CedarToJson,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Default, Clone, Copy, ValueEnum)]
 pub enum SchemaFormat {
     /// the Cedar format
+    #[default]
     Cedar,
     /// JSON format
     Json,
-}
-
-impl Default for SchemaFormat {
-    fn default() -> Self {
-        Self::Cedar
-    }
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -197,18 +192,15 @@ pub enum ValidationMode {
 
 #[derive(Args, Debug)]
 pub struct ValidateArgs {
-    /// File containing the schema
-    #[arg(short, long = "schema", value_name = "FILE")]
-    pub schema_file: String,
+    /// Schema args (incorporated by reference)
+    #[command(flatten)]
+    pub schema: SchemaArgs,
     /// Policies args (incorporated by reference)
     #[command(flatten)]
     pub policies: PoliciesArgs,
     /// Report a validation failure for non-fatal warnings
     #[arg(long)]
     pub deny_warnings: bool,
-    /// Schema format (Cedar or JSON)
-    #[arg(long, value_enum, default_value_t = SchemaFormat::Cedar)]
-    pub schema_format: SchemaFormat,
     /// Validate the policy using this mode.
     /// The options `permissive` and `partial` are experimental
     /// and will cause the CLI to exit if it was not built with the
@@ -490,6 +482,64 @@ impl PoliciesArgs {
     }
 }
 
+/// This struct contains the arguments that together specify an input schema.
+#[derive(Args, Debug)]
+pub struct SchemaArgs {
+    /// File containing the schema
+    #[arg(short, long = "schema", value_name = "FILE")]
+    pub schema_file: PathBuf,
+    /// Schema format
+    #[arg(long, value_enum, default_value_t)]
+    pub schema_format: SchemaFormat,
+}
+
+impl SchemaArgs {
+    /// Turn this `SchemaArgs` into the appropriate `Schema` object
+    fn get_schema(&self) -> Result<Schema> {
+        read_schema_from_file(&self.schema_file, self.schema_format)
+    }
+}
+
+/// This struct contains the arguments that together specify an input schema,
+/// for commands where the schema is optional.
+#[derive(Args, Debug)]
+pub struct OptionalSchemaArgs {
+    /// File containing the schema
+    #[arg(short, long = "schema", value_name = "FILE")]
+    pub schema_file: Option<PathBuf>,
+    /// Schema format
+    #[arg(long, value_enum, default_value_t)]
+    pub schema_format: SchemaFormat,
+}
+
+impl OptionalSchemaArgs {
+    /// Turn this `OptionalSchemaArgs` into the appropriate `Schema` object, or `None`
+    fn get_schema(&self) -> Result<Option<Schema>> {
+        let Some(schema_file) = &self.schema_file else {
+            return Ok(None);
+        };
+        read_schema_from_file(schema_file, self.schema_format).map(Some)
+    }
+}
+
+fn read_schema_from_file(path: impl AsRef<Path>, format: SchemaFormat) -> Result<Schema> {
+    let path = path.as_ref();
+    let schema_src = read_from_file(path, "schema")?;
+    match format {
+        SchemaFormat::Json => Schema::from_json_str(&schema_src)
+            .wrap_err_with(|| format!("failed to parse schema from file {}", path.display())),
+        SchemaFormat::Cedar => {
+            let (schema, warnings) = Schema::from_cedarschema_str(&schema_src)
+                .wrap_err_with(|| format!("failed to parse schema from file {}", path.display()))?;
+            for warning in warnings {
+                let report = miette::Report::new(warning);
+                eprintln!("{:?}", report);
+            }
+            Ok(schema)
+        }
+    }
+}
+
 #[derive(Args, Debug)]
 pub struct AuthorizeArgs {
     /// Request args (incorporated by reference)
@@ -498,15 +548,12 @@ pub struct AuthorizeArgs {
     /// Policies args (incorporated by reference)
     #[command(flatten)]
     pub policies: PoliciesArgs,
-    /// File containing schema information
+    /// Schema args (incorporated by reference)
     ///
     /// Used to populate the store with action entities and for schema-based
     /// parsing of entity hierarchy, if present
-    #[arg(short, long = "schema", value_name = "FILE")]
-    pub schema_file: Option<String>,
-    /// Schema format (Cedar or JSON)
-    #[arg(long, value_enum, default_value_t = SchemaFormat::Cedar)]
-    pub schema_format: SchemaFormat,
+    #[command(flatten)]
+    pub schema: OptionalSchemaArgs,
     /// File containing JSON representation of the Cedar entity hierarchy
     #[arg(long = "entities", value_name = "FILE")]
     pub entities_file: String,
@@ -663,14 +710,12 @@ pub struct EvaluateArgs {
     /// Request args (incorporated by reference)
     #[command(flatten)]
     pub request: RequestArgs,
-    /// File containing schema information
+    /// Schema args (incorporated by reference)
+    ///
     /// Used to populate the store with action entities and for schema-based
     /// parsing of entity hierarchy, if present
-    #[arg(short, long = "schema", value_name = "FILE")]
-    pub schema_file: Option<String>,
-    /// Schema format (Cedar or JSON)
-    #[arg(long, value_enum, default_value_t = SchemaFormat::Cedar)]
-    pub schema_format: SchemaFormat,
+    #[command(flatten)]
+    pub schema: OptionalSchemaArgs,
     /// File containing JSON representation of the Cedar entity hierarchy.
     /// This is optional; if not present, we'll just use an empty hierarchy.
     #[arg(long = "entities", value_name = "FILE")]
@@ -753,7 +798,7 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
         }
     };
 
-    let schema = match read_schema_file(&args.schema_file, args.schema_format) {
+    let schema = match args.schema.get_schema() {
         Ok(schema) => schema,
         Err(e) => {
             println!("{e:?}");
@@ -783,14 +828,9 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
 
 pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
     println!();
-    let schema = match args
-        .schema_file
-        .as_ref()
-        .map(|f| read_schema_file(f, args.schema_format))
-    {
-        None => None,
-        Some(Ok(schema)) => Some(schema),
-        Some(Err(e)) => {
+    let schema = match args.schema.get_schema() {
+        Ok(opt) => opt,
+        Err(e) => {
             println!("{e:?}");
             return (CedarExitCode::Failure, EvalResult::Bool(false));
         }
@@ -1222,8 +1262,7 @@ pub fn authorize(args: &AuthorizeArgs) -> CedarExitCode {
         &args.request,
         &args.policies,
         &args.entities_file,
-        args.schema_file.as_ref(),
-        args.schema_format,
+        &args.schema,
         args.timing,
     );
     match ans {
@@ -1468,36 +1507,12 @@ enum JsonPolicyType {
     PolicySet,
 }
 
-fn read_schema_file(
-    filename: impl AsRef<Path> + std::marker::Copy,
-    format: SchemaFormat,
-) -> Result<Schema> {
-    let schema_src = read_from_file(filename, "schema")?;
-    match format {
-        SchemaFormat::Json => Schema::from_json_str(&schema_src).wrap_err_with(|| {
-            format!(
-                "failed to parse schema from file {}",
-                filename.as_ref().display()
-            )
-        }),
-        SchemaFormat::Cedar => {
-            let (schema, warnings) = Schema::from_cedarschema_str(&schema_src)?;
-            for warning in warnings {
-                let report = miette::Report::new(warning);
-                eprintln!("{:?}", report);
-            }
-            Ok(schema)
-        }
-    }
-}
-
 /// This uses the Cedar API to call the authorization engine.
 fn execute_request(
     request: &RequestArgs,
     policies: &PoliciesArgs,
     entities_filename: impl AsRef<Path>,
-    schema_filename: Option<impl AsRef<Path> + std::marker::Copy>,
-    schema_format: SchemaFormat,
+    schema: &OptionalSchemaArgs,
     compute_duration: bool,
 ) -> Result<Response, Vec<Report>> {
     let mut errs = vec![];
@@ -1508,10 +1523,9 @@ fn execute_request(
             PolicySet::new()
         }
     };
-    let schema = match schema_filename.map(|f| read_schema_file(f, schema_format)) {
-        None => None,
-        Some(Ok(schema)) => Some(schema),
-        Some(Err(e)) => {
+    let schema = match schema.get_schema() {
+        Ok(opt) => opt,
+        Err(e) => {
             errs.push(e);
             None
         }

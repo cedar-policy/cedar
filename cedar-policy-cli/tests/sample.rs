@@ -19,11 +19,13 @@
 // PANIC SAFETY tests
 #![allow(clippy::unwrap_used)]
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use cedar_policy::EvalResult;
 use cedar_policy::SlotId;
 use cedar_policy_cli::check_parse;
+use cedar_policy_cli::OptionalSchemaArgs;
+use cedar_policy_cli::SchemaArgs;
 use cedar_policy_cli::SchemaFormat;
 use cedar_policy_cli::{
     authorize, evaluate, link, validate, Arguments, AuthorizeArgs, CedarExitCode, CheckParseArgs,
@@ -87,8 +89,10 @@ fn run_authorize_test_with_linked_policies(
             policy_format: PolicyFormat::Cedar,
             template_linked_file: links_file.map(Into::into),
         },
-        schema_file: None,
-        schema_format: SchemaFormat::default(),
+        schema: OptionalSchemaArgs {
+            schema_file: None,
+            schema_format: SchemaFormat::default(),
+        },
         entities_file: entities_file.into(),
         verbose: true,
         timing: false,
@@ -142,8 +146,10 @@ fn run_authorize_test_context(
             policy_format: PolicyFormat::Cedar,
             template_linked_file: None,
         },
-        schema_file: None,
-        schema_format: SchemaFormat::default(),
+        schema: OptionalSchemaArgs {
+            schema_file: None,
+            schema_format: SchemaFormat::default(),
+        },
         entities_file: entities_file.into(),
         verbose: true,
         timing: false,
@@ -172,8 +178,10 @@ fn run_authorize_test_json(
             policy_format: PolicyFormat::Cedar,
             template_linked_file: None,
         },
-        schema_file: None,
-        schema_format: SchemaFormat::default(),
+        schema: OptionalSchemaArgs {
+            schema_file: None,
+            schema_format: SchemaFormat::default(),
+        },
         entities_file: entities_file.into(),
         verbose: true,
         timing: false,
@@ -554,15 +562,18 @@ fn test_authorize_samples() {
 #[track_caller]
 fn test_validate_samples(
     #[case] policies_file: impl Into<String>,
-    #[case] schema_file: impl Into<String>,
+    #[case] schema_file: impl AsRef<Path>,
     #[case] exit_code: CedarExitCode,
 ) {
     let policies_file = policies_file.into();
-    let schema_file = schema_file.into();
+    let schema_file = schema_file.as_ref();
 
     // Run with JSON schema
     let cmd = ValidateArgs {
-        schema_file: schema_file.clone(),
+        schema: SchemaArgs {
+            schema_file: schema_file.into(),
+            schema_format: SchemaFormat::Json,
+        },
         policies: PoliciesArgs {
             policies_file: Some(policies_file.clone()),
             policy_format: PolicyFormat::Cedar,
@@ -570,17 +581,16 @@ fn test_validate_samples(
         },
         deny_warnings: false,
         validation_mode: cedar_policy_cli::ValidationMode::Strict,
-        schema_format: SchemaFormat::Json,
     };
     let output = validate(&cmd);
     assert_eq!(exit_code, output, "{:#?}", cmd);
 
     // Run with Cedar schema
     let cmd = ValidateArgs {
-        schema_file: schema_file
-            .strip_suffix(".json")
-            .expect("`schema_file` should be the JSON schema")
-            .to_string(),
+        schema: SchemaArgs {
+            schema_file: schema_file.with_extension(""), // remove the `.json` extension to get the filename of the Cedar schema
+            schema_format: SchemaFormat::Cedar,
+        },
         policies: PoliciesArgs {
             policies_file: Some(policies_file),
             policy_format: PolicyFormat::Cedar,
@@ -588,7 +598,6 @@ fn test_validate_samples(
         },
         deny_warnings: false,
         validation_mode: cedar_policy_cli::ValidationMode::Strict,
-        schema_format: SchemaFormat::Cedar,
     };
     let output = validate(&cmd);
     assert_eq!(exit_code, output, "{:#?}", cmd)
@@ -690,8 +699,10 @@ fn test_evaluate_samples(
     #[case] expected: EvalResult,
 ) {
     let cmd = EvaluateArgs {
-        schema_file: None,
-        schema_format: SchemaFormat::default(),
+        schema: OptionalSchemaArgs {
+            schema_file: None,
+            schema_format: SchemaFormat::default(),
+        },
         entities_file: Some(entities_file.into()),
         request: RequestArgs {
             principal: None,
