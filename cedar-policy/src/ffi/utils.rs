@@ -735,7 +735,7 @@ mod test {
             &err,
             &ExpectedErrorMessageBuilder::error("failed to parse policy from string")
                 .source("expected a static policy, got a template containing the slot ?principal")
-                .exactly_one_underline(src)
+                .exactly_one_underline("?principal")
                 .help("try removing the template slot(s) from this policy")
                 .build(),
         );
@@ -907,7 +907,7 @@ mod test {
                 "failed to parse policy with id `policy0` from string",
             )
             .source("expected a static policy, got a template containing the slot ?principal")
-            .exactly_one_underline("permit(principal == ?principal, action, resource);")
+            .exactly_one_underline("?principal")
             .help("try removing the template slot(s) from this policy")
             .build(),
         );

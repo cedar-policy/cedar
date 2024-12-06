@@ -367,6 +367,10 @@ impl<'e> Evaluator<'e> {
                             .into()),
                         }
                     }
+                    UnaryOp::IsEmpty => {
+                        let s = arg.get_as_set()?;
+                        Ok(s.is_empty().into())
+                    }
                 },
                 // NOTE, there was a bug here found during manual review. (I forgot to wrap in unary_app call)
                 // Could be a nice target for fault injection
@@ -1013,6 +1017,7 @@ pub(crate) mod test {
                         ])
                         .unwrap(),
                     ),
+                    ("violations".into(), RestrictedExpr::set([])),
                 ],
                 Extensions::none(),
             )
@@ -4371,7 +4376,69 @@ pub(crate) mod test {
     }
 
     #[test]
-    fn interpret_contains_all_and_contains_any() -> Result<()> {
+    fn interpret_is_empty() {
+        let request = basic_request();
+        let entities = basic_entities();
+        let eval = Evaluator::new(request, &entities, Extensions::none());
+        // [].isEmpty()
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::is_empty(Expr::set([]),)),
+            Ok(Value::from(true))
+        );
+        // [1].isEmpty()
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::is_empty(Expr::set(vec![Expr::val(1)]),)),
+            Ok(Value::from(false))
+        );
+        // [false].isEmpty()
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::is_empty(Expr::set(vec![Expr::val(false)]),)),
+            Ok(Value::from(false))
+        );
+        // [1,2,3,4,5,User::"alice"].isEmpty()
+        assert_eq!(
+            eval.interpret_inline_policy(&Expr::is_empty(Expr::set(vec![
+                Expr::val(1),
+                Expr::val(2),
+                Expr::val(3),
+                Expr::val(4),
+                Expr::val(5),
+                Expr::val(EntityUID::with_eid("jane"))
+            ]))),
+            Ok(Value::from(false))
+        );
+        // 0.isEmpty()
+        assert_matches!(
+            eval.interpret_inline_policy(&Expr::is_empty(
+                Expr::val(0)
+            )),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("type error: expected set, got long").build(),
+                );
+            }
+        );
+        // { foo: [] }.isEmpty()
+        assert_matches!(
+            eval.interpret_inline_policy(&Expr::is_empty(
+                Expr::record([
+                    ("foo".into(), Expr::set([]))
+                ]).unwrap()
+            )),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("type error: expected set, got record").build(),
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn interpret_contains_all_and_contains_any() {
         let request = basic_request();
         let entities = basic_entities();
         let eval = Evaluator::new(request, &entities, Extensions::none());
@@ -4632,7 +4699,6 @@ pub(crate) mod test {
                 assert_eq!(advice, None);
             }
         );
-        Ok(())
     }
 
     #[test]
@@ -5813,6 +5879,10 @@ pub(crate) mod test {
         assert_eq!(r, PartialValue::Residual(e));
 
         let e = Expr::unary_app(UnaryOp::Not, Expr::unknown(Unknown::new_untyped("a")));
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        assert_eq!(r, PartialValue::Residual(e));
+
+        let e = Expr::unary_app(UnaryOp::IsEmpty, Expr::unknown(Unknown::new_untyped("a")));
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(r, PartialValue::Residual(e));
     }

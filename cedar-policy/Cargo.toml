@@ -11,9 +11,9 @@ homepage.workspace = true
 repository = "https://github.com/cedar-policy/cedar"
 
 [dependencies]
-cedar-policy-core = { version = "=4.1.0", path = "../cedar-policy-core" }
-cedar-policy-validator = { version = "=4.1.0", path = "../cedar-policy-validator" }
-cedar-policy-formatter = { version = "=4.1.0", path = "../cedar-policy-formatter" }
+cedar-policy-core = { version = "=4.3.0", path = "../cedar-policy-core" }
+cedar-policy-validator = { version = "=4.3.0", path = "../cedar-policy-validator" }
+cedar-policy-formatter = { version = "=4.3.0", path = "../cedar-policy-formatter" }
 ref-cast = "1.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
@@ -48,7 +48,7 @@ corpus-timing = []
 
 # Experimental features.
 # Enable all experimental features with `cargo build --features "experimental"`
-experimental = ["partial-eval", "permissive-validate", "partial-validate", "level-validate", "entity-manifest"]
+experimental = ["partial-eval", "permissive-validate", "partial-validate", "level-validate", "entity-manifest", "protobufs"]
 entity-manifest = ["cedar-policy-validator/entity-manifest"]
 partial-eval = ["cedar-policy-core/partial-eval", "cedar-policy-validator/partial-eval"]
 permissive-validate = []
@@ -66,7 +66,7 @@ miette = { version = "7.4.0", features = ["fancy"] }
 cool_asserts = "2.0"
 criterion = "0.5"
 globset = "0.4"
-cedar-policy-core = { version = "=4.1.0", features = [
+cedar-policy-core = { version = "=4.3.0", features = [
     "test-util",
 ], path = "../cedar-policy-core" }
 # NON-CRYPTOGRAPHIC random number generators

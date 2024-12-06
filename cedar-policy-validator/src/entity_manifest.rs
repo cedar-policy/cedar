@@ -538,8 +538,19 @@ fn entity_manifest_from_expr(
             .union(&entity_manifest_from_expr(right)?.empty_paths())),
         ExprKind::UnaryApp { op, arg } => {
             match op {
-                // both unary ops are on booleans, so they are simple
+                // these unary ops are on primitive types, so they are simple
                 UnaryOp::Not | UnaryOp::Neg => Ok(entity_manifest_from_expr(arg)?.empty_paths()),
+                UnaryOp::IsEmpty => {
+                    // PANIC SAFETY: Typechecking succeeded, so type annotations are present.
+                    #[allow(clippy::expect_used)]
+                    let ty = arg
+                        .data()
+                        .as_ref()
+                        .expect("Expected annotated types after typechecking");
+                    Ok(entity_manifest_from_expr(arg)?
+                        .full_type_required(ty)
+                        .empty_paths())
+                }
             }
         }
         ExprKind::BinaryApp {
