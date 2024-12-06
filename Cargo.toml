@@ -23,7 +23,7 @@ debug = "line-tables-only"  # this adds more debug symbols/info to the binary th
 [workspace.package]
 # Check the minimum supported Rust version with `cargo install cargo-msrv && cargo msrv --min 1.X.0` where `X` is something lower than the version noted here (to confirm that versions lower than the one noted here _don't_ work)
 rust-version = "1.77"
-version = "4.1.0"
+version = "4.3.0"
 homepage = "https://cedarpolicy.com"
 keywords = ["cedar", "authorization", "policy", "security"]
 categories = ["compilers", "config"]
