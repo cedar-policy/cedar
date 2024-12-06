@@ -215,9 +215,6 @@ pub enum UnexpectedTypeHelp {
     /// Try using `== ""`
     #[error(r#"try using `== ""` to test if a string is empty"#)]
     TryUsingEqEmptyString,
-    /// Try using `== {}`
-    #[error("try using `== {{}}` to test if a record is empty")]
-    TryUsingEqEmptyRecord,
     /// Cedar doesn't support type tests
     #[error("Cedar only supports run time type tests for entities")]
     TypeTestNotSupported,

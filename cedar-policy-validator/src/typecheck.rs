@@ -2401,9 +2401,6 @@ impl<'a> Typechecker<'a> {
                         Type::Primitive {
                             primitive_type: Primitive::String,
                         } => Some(UnexpectedTypeHelp::TryUsingEqEmptyString),
-                        Type::EntityOrRecord(EntityRecordKind::Record { .. }) => {
-                            Some(UnexpectedTypeHelp::TryUsingEqEmptyRecord)
-                        }
                         _ => None,
                     },
                 );
