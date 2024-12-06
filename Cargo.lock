@@ -296,11 +296,11 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy"
-version = "4.1.0"
+version = "4.3.0"
 dependencies = [
- "cedar-policy-core 4.1.0",
+ "cedar-policy-core 4.3.0",
  "cedar-policy-formatter",
- "cedar-policy-validator 4.1.0",
+ "cedar-policy-validator 4.3.0",
  "cool_asserts",
  "criterion",
  "dhat",
@@ -327,13 +327,13 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy-cli"
-version = "4.1.0"
+version = "4.3.0"
 dependencies = [
  "assert_cmd",
  "cedar-policy",
- "cedar-policy-core 4.1.0 (git+https://github.com/cedar-policy/cedar.git?branch=main)",
+ "cedar-policy-core 4.1.0",
  "cedar-policy-formatter",
- "cedar-policy-validator 4.1.0 (git+https://github.com/cedar-policy/cedar.git?branch=main)",
+ "cedar-policy-validator 4.1.0",
  "clap",
  "glob",
  "miette",
@@ -351,6 +351,33 @@ dependencies = [
 [[package]]
 name = "cedar-policy-core"
 version = "4.1.0"
+source = "git+https://github.com/cedar-policy/cedar.git?branch=main#2900ee4ce7d3c34ae644c31057920152e58c97eb"
+dependencies = [
+ "chrono",
+ "educe",
+ "either",
+ "itertools 0.13.0",
+ "lalrpop",
+ "lalrpop-util",
+ "lazy_static",
+ "miette",
+ "nonempty",
+ "prost",
+ "prost-build",
+ "ref-cast",
+ "regex",
+ "rustc_lexer",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "smol_str",
+ "stacker",
+ "thiserror 2.0.3",
+]
+
+[[package]]
+name = "cedar-policy-core"
+version = "4.3.0"
 dependencies = [
  "arbitrary",
  "chrono",
@@ -380,36 +407,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "cedar-policy-core"
-version = "4.1.0"
-source = "git+https://github.com/cedar-policy/cedar.git?branch=main#2e60d27a9536ad41824233c06e6fc7a701a404c4"
-dependencies = [
- "chrono",
- "either",
- "itertools 0.13.0",
- "lalrpop",
- "lalrpop-util",
- "lazy_static",
- "miette",
- "nonempty",
- "prost",
- "prost-build",
- "ref-cast",
- "regex",
- "rustc_lexer",
- "serde",
- "serde_json",
- "serde_with",
- "smol_str",
- "stacker",
- "thiserror 2.0.3",
-]
-
-[[package]]
 name = "cedar-policy-formatter"
-version = "4.1.0"
+version = "4.3.0"
 dependencies = [
- "cedar-policy-core 4.1.0",
+ "cedar-policy-core 4.3.0",
  "insta",
  "itertools 0.13.0",
  "lazy_static",
@@ -423,9 +424,33 @@ dependencies = [
 [[package]]
 name = "cedar-policy-validator"
 version = "4.1.0"
+source = "git+https://github.com/cedar-policy/cedar.git?branch=main#2900ee4ce7d3c34ae644c31057920152e58c97eb"
+dependencies = [
+ "cedar-policy-core 4.1.0",
+ "itertools 0.13.0",
+ "lalrpop",
+ "lalrpop-util",
+ "lazy_static",
+ "miette",
+ "nonempty",
+ "prost",
+ "prost-build",
+ "ref-cast",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "smol_str",
+ "stacker",
+ "thiserror 2.0.3",
+ "unicode-security",
+]
+
+[[package]]
+name = "cedar-policy-validator"
+version = "4.3.0"
 dependencies = [
  "arbitrary",
- "cedar-policy-core 4.1.0",
+ "cedar-policy-core 4.3.0",
  "cool_asserts",
  "itertools 0.13.0",
  "lalrpop",
@@ -450,37 +475,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "cedar-policy-validator"
-version = "4.1.0"
-source = "git+https://github.com/cedar-policy/cedar.git?branch=main#2e60d27a9536ad41824233c06e6fc7a701a404c4"
-dependencies = [
- "cedar-policy-core 4.1.0 (git+https://github.com/cedar-policy/cedar.git?branch=main)",
- "itertools 0.13.0",
- "lalrpop",
- "lalrpop-util",
- "lazy_static",
- "miette",
- "nonempty",
- "prost",
- "prost-build",
- "ref-cast",
- "serde",
- "serde_json",
- "serde_with",
- "smol_str",
- "stacker",
- "thiserror 2.0.3",
- "unicode-security",
-]
-
-[[package]]
 name = "cedar-testing"
-version = "4.1.0"
+version = "4.3.0"
 dependencies = [
  "assert_cmd",
  "cedar-policy",
- "cedar-policy-core 4.1.0",
- "cedar-policy-validator 4.1.0",
+ "cedar-policy-core 4.3.0",
+ "cedar-policy-validator 4.3.0",
  "miette",
  "serde",
  "serde_json",
@@ -490,13 +491,13 @@ dependencies = [
 
 [[package]]
 name = "cedar-wasm"
-version = "4.1.0"
+version = "4.3.0"
 dependencies = [
  "cargo-lock",
  "cedar-policy",
- "cedar-policy-core 4.1.0",
+ "cedar-policy-core 4.3.0",
  "cedar-policy-formatter",
- "cedar-policy-validator 4.1.0",
+ "cedar-policy-validator 4.3.0",
  "console_error_panic_hook",
  "cool_asserts",
  "itertools 0.13.0",
