@@ -982,6 +982,28 @@ fn contains_all_typecheck_literals_false() {
 }
 
 #[test]
+fn is_empty_typechecks() {
+    assert_typechecks_empty_schema(
+        Expr::is_empty(Expr::set([Expr::val(1)])),
+        Type::primitive_boolean(),
+    );
+}
+
+#[test]
+fn is_empty_typecheck_fails() {
+    let src = "\"crab\".isEmpty()";
+    let errors = assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+    let error = assert_exactly_one_diagnostic(errors);
+    assert_eq!(error, ValidationError::expected_type(
+        get_loc(src, "\"crab\""),
+        expr_id_placeholder(),
+        Type::any_set(),
+        Type::primitive_string(),
+        Some(UnexpectedTypeHelp::TryUsingEqEmptyString),
+    ))
+}
+
+#[test]
 fn like_typechecks() {
     assert_typechecks_empty_schema(
         Expr::like(
