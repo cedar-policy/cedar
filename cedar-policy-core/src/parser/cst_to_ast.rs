@@ -4745,7 +4745,7 @@ mod tests {
         let src = "!!!!!!false";
         assert_matches!(parse_expr(src), Err(e) => {
             expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "too many occurrences of `!_`",
+                "too many occurrences of `!`",
                 ).help(
                 "cannot chain more the 4 applications of a unary operator"
             ).exactly_one_underline("!!!!!!false").build());
@@ -4753,7 +4753,7 @@ mod tests {
         let src = "-------0";
         assert_matches!(parse_expr(src), Err(e) => {
             expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "too many occurrences of `-_`",
+                "too many occurrences of `-`",
                 ).help(
                 "cannot chain more the 4 applications of a unary operator"
             ).exactly_one_underline("-------0").build());

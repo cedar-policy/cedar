@@ -213,7 +213,7 @@ pub enum UnexpectedTypeHelp {
     #[error("try using `in` for entity hierarchy membership")]
     TryUsingIn,
     /// Try using `== ""`
-    #[error("try using `== ""` to test if a string is empty")]
+    #[error(r#"try using `== ""` to test if a string is empty"#)]
     TryUsingEqEmptyString,
     /// Try using `== {}`
     #[error("try using `== {{}}` to test if a record is empty")]
