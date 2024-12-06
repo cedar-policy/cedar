@@ -492,7 +492,7 @@ impl ast::UnreservedId {
             "isEmpty" => {
                 require_zero_arguments(args.into_iter(), "isEmpty", loc)?;
                 Ok(construct_method_is_empty(e, loc.clone()))
-            },
+            }
             "getTag" => extract_single_argument(args.into_iter(), "getTag", loc)
                 .map(|arg| construct_method_get_tag(e, arg, loc.clone())),
             "hasTag" => extract_single_argument(args.into_iter(), "hasTag", loc)
