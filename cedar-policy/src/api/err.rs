@@ -410,9 +410,9 @@ pub enum ValidationError {
     #[diagnostic(transparent)]
     #[error(transparent)]
     NonLitExtConstructor(#[from] validation_errors::NonLitExtConstructor),
-    /// To pass strict validation a policy cannot contain an `in` expression
-    /// where the entity type on the left might not be able to be a member of
-    /// the entity type on the right.
+    /// This error type is no longer ever returned, but remains here for
+    /// backwards-compatibility (removing the variant entirely would be a
+    /// breaking change).
     #[error(transparent)]
     #[diagnostic(transparent)]
     HierarchyNotRespected(#[from] validation_errors::HierarchyNotRespected),
@@ -497,9 +497,6 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             }
             cedar_policy_validator::ValidationError::NonLitExtConstructor(e) => {
                 Self::NonLitExtConstructor(e.into())
-            }
-            cedar_policy_validator::ValidationError::HierarchyNotRespected(e) => {
-                Self::HierarchyNotRespected(e.into())
             }
             cedar_policy_validator::ValidationError::InternalInvariantViolation(e) => {
                 Self::InternalInvariantViolation(e.into())
