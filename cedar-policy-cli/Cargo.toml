@@ -13,8 +13,8 @@ repository.workspace = true
 [dependencies]
 cedar-policy = { version = "=4.3.0", path = "../cedar-policy" }
 cedar-policy-formatter = { version = "=4.3.0", path = "../cedar-policy-formatter" }
-cedar-policy-core = { package= "cedar-policy-core", git = "https://github.com/cedar-policy/cedar.git", branch = "main", version = "4.*"}
-cedar-policy-validator = { package= "cedar-policy-validator", git = "https://github.com/cedar-policy/cedar.git", branch = "main", version = "4.*"}
+cedar-policy-core = { version = "=4.3.0", path = "../cedar-policy-core" }
+cedar-policy-validator = { version = "=4.3.0", path = "../cedar-policy-validator" }
 clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -28,7 +28,7 @@ prost-build = {version = "0.13", optional = true}
 
 [features]
 default = []
-experimental = ["permissive-validate", "partial-validate", "partial-eval"]
+experimental = ["permissive-validate", "partial-validate", "partial-eval", "protobufs"]
 permissive-validate = ["cedar-policy/permissive-validate"]
 partial-validate = ["cedar-policy/partial-validate"]
 partial-eval = ["cedar-policy/partial-eval"]
