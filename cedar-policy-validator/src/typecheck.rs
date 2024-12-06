@@ -2397,7 +2397,15 @@ impl<'a> Typechecker<'a> {
                     arg,
                     Type::any_set(),
                     type_errors,
-                    |_| None,
+                    |actual| match actual {
+                        Type::Primitive {
+                            primitive_type: Primitive::String,
+                        } => Some(UnexpectedTypeHelp::TryUsingEqEmptyString),
+                        Type::EntityOrRecord(EntityRecordKind::Record { .. }) => {
+                            Some(UnexpectedTypeHelp::TryUsingEqEmptyRecord)
+                        }
+                        _ => None,
+                    },
                 );
                 ans_arg.then_typecheck(|typ_expr_arg, _| {
                     TypecheckAnswer::success(
