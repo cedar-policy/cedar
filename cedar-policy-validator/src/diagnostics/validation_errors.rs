@@ -212,6 +212,9 @@ pub enum UnexpectedTypeHelp {
     /// Try using `in`
     #[error("try using `in` for entity hierarchy membership")]
     TryUsingIn,
+    /// Try using `== ""`
+    #[error(r#"try using `== ""` to test if a string is empty"#)]
+    TryUsingEqEmptyString,
     /// Cedar doesn't support type tests
     #[error("Cedar only supports run time type tests for entities")]
     TypeTestNotSupported,

@@ -236,6 +236,7 @@ message Expr {
         enum Op {
             Not = 0;
             Neg = 1;
+            IsEmpty = 2;
         }
     }
 

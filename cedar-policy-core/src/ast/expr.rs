@@ -185,30 +185,6 @@ impl From<PartialValue> for Expr {
     }
 }
 
-impl<T> ExprKind<T> {
-    /// Describe this operator for error messages.
-    pub fn operator_description(self: &ExprKind<T>) -> String {
-        match self {
-            ExprKind::Lit(_) => "literal".to_string(),
-            ExprKind::Var(_) => "variable".to_string(),
-            ExprKind::Slot(_) => "slot".to_string(),
-            ExprKind::Unknown(_) => "unknown".to_string(),
-            ExprKind::If { .. } => "if".to_string(),
-            ExprKind::And { .. } => "&&".to_string(),
-            ExprKind::Or { .. } => "||".to_string(),
-            ExprKind::UnaryApp { op, .. } => op.to_string(),
-            ExprKind::BinaryApp { op, .. } => op.to_string(),
-            ExprKind::ExtensionFunctionApp { fn_name, .. } => fn_name.to_string(),
-            ExprKind::GetAttr { .. } => "get attribute".to_string(),
-            ExprKind::HasAttr { .. } => "has attribute".to_string(),
-            ExprKind::Like { .. } => "like".to_string(),
-            ExprKind::Is { .. } => "is".to_string(),
-            ExprKind::Set(_) => "set".to_string(),
-            ExprKind::Record(_) => "record".to_string(),
-        }
-    }
-}
-
 impl<T> Expr<T> {
     fn new(expr_kind: ExprKind<T>, source_loc: Option<Loc>, data: T) -> Self {
         Self {
@@ -354,6 +330,10 @@ impl<T> Expr<T> {
             } => Some(Type::Long),
             ExprKind::UnaryApp {
                 op: UnaryOp::Not, ..
+            } => Some(Type::Bool),
+            ExprKind::UnaryApp {
+                op: UnaryOp::IsEmpty,
+                ..
             } => Some(Type::Bool),
             ExprKind::BinaryApp {
                 op: BinaryOp::Add | BinaryOp::Mul | BinaryOp::Sub,
@@ -523,6 +503,11 @@ impl Expr {
     /// Create a `containsAny` expression. Arguments must evaluate to Set type
     pub fn contains_any(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().contains_any(e1, e2)
+    }
+
+    /// Create a `isEmpty` expression. Argument must evaluate to Set type
+    pub fn is_empty(e: Expr) -> Self {
+        ExprBuilder::new().is_empty(e)
     }
 
     /// Create a `getTag` expression.
@@ -1396,6 +1381,14 @@ impl<T> ExprBuilder<T> {
         })
     }
 
+    /// Create an 'is_empty' expression. Argument must evaluate to Set type
+    pub fn is_empty(self, expr: Expr<T>) -> Expr<T> {
+        self.with_expr_kind(ExprKind::UnaryApp {
+            op: UnaryOp::IsEmpty,
+            arg: Arc::new(expr),
+        })
+    }
+
     /// Create a 'getTag' expression.
     /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
     pub fn get_tag(self, expr: Expr<T>, tag: Expr<T>) -> Expr<T> {
@@ -2245,6 +2238,10 @@ mod test {
             (
                 ExprBuilder::with_data(1).contains_any(temp.clone(), temp.clone()),
                 Expr::contains_any(Expr::val(1), Expr::val(1)),
+            ),
+            (
+                ExprBuilder::with_data(1).is_empty(temp.clone()),
+                Expr::is_empty(Expr::val(1)),
             ),
             (
                 ExprBuilder::with_data(1).set([temp.clone()]),

@@ -43,7 +43,7 @@ use crate::ast::{
     self, ActionConstraint, CallStyle, Integer, Pattern, PatternElem, PolicySetError,
     PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
 };
-use crate::est::extract_single_argument;
+use crate::est::{extract_single_argument, require_zero_arguments};
 use crate::fuzzy_match::fuzzy_search_limited;
 use itertools::Either;
 use nonempty::nonempty;
@@ -489,6 +489,10 @@ impl ast::UnreservedId {
                 .map(|arg| construct_method_contains_all(e, arg, loc.clone())),
             "containsAny" => extract_single_argument(args.into_iter(), "containsAny", loc)
                 .map(|arg| construct_method_contains_any(e, arg, loc.clone())),
+            "isEmpty" => {
+                require_zero_arguments(args.into_iter(), "isEmpty", loc)?;
+                Ok(construct_method_is_empty(e, loc.clone()))
+            }
             "getTag" => extract_single_argument(args.into_iter(), "getTag", loc)
                 .map(|arg| construct_method_get_tag(e, arg, loc.clone())),
             "hasTag" => extract_single_argument(args.into_iter(), "hasTag", loc)
@@ -1671,7 +1675,7 @@ impl ast::Name {
             if EXTENSION_STYLES.methods.contains(&id)
                 || matches!(
                     id.as_ref(),
-                    "contains" | "containsAll" | "containsAny" | "getTag" | "hasTag"
+                    "contains" | "containsAll" | "containsAny" | "isEmpty" | "getTag" | "hasTag"
                 )
             {
                 return Err(ToASTError::new(
@@ -2010,6 +2014,9 @@ fn construct_method_contains_any(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast:
     ast::ExprBuilder::new()
         .with_source_loc(loc)
         .contains_any(e0, e1)
+}
+fn construct_method_is_empty(e: ast::Expr, loc: Loc) -> ast::Expr {
+    ast::ExprBuilder::new().with_source_loc(loc).is_empty(e)
 }
 fn construct_method_get_tag(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).get_tag(e0, e1)
@@ -4224,6 +4231,14 @@ mod tests {
                 .build(),
             ),
             (
+                r#"[].isEmpty([])"#,
+                ExpectedErrorMessageBuilder::error(
+                    "call to `isEmpty` requires exactly 0 arguments, but got 1 argument",
+                )
+                .exactly_one_underline("[].isEmpty([])")
+                .build(),
+            ),
+            (
                 r#""1.1.1.1".ip()"#,
                 ExpectedErrorMessageBuilder::error("`ip` is a function, not a method")
                     .help("use a function-style call `ip(..)`")
@@ -4730,7 +4745,7 @@ mod tests {
         let src = "!!!!!!false";
         assert_matches!(parse_expr(src), Err(e) => {
             expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "too many occurrences of `!_`",
+                "too many occurrences of `!`",
                 ).help(
                 "cannot chain more the 4 applications of a unary operator"
             ).exactly_one_underline("!!!!!!false").build());
@@ -4738,7 +4753,7 @@ mod tests {
         let src = "-------0";
         assert_matches!(parse_expr(src), Err(e) => {
             expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "too many occurrences of `-_`",
+                "too many occurrences of `-`",
                 ).help(
                 "cannot chain more the 4 applications of a unary operator"
             ).exactly_one_underline("-------0").build());

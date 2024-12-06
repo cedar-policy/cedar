@@ -2220,6 +2220,7 @@ mod test {
                 principal.owners.contains("foo")
                 && principal.owners.containsAny([1, Linux::Group::"sudoers"])
                 && [2+3, "spam"].containsAll(resource.foos)
+                && context.violations.isEmpty()
             };
         "#;
         let cst = parser::text_to_cst::parse_policy(policy)
@@ -2247,66 +2248,82 @@ mod test {
                                 "left": {
                                     "&&": {
                                         "left": {
-                                            "contains": {
+                                            "&&": {
                                                 "left": {
-                                                    ".": {
+                                                    "contains": {
                                                         "left": {
-                                                            "Var": "principal"
+                                                            ".": {
+                                                                "left": {
+                                                                    "Var": "principal"
+                                                                },
+                                                                "attr": "owners"
+                                                            }
                                                         },
-                                                        "attr": "owners"
+                                                        "right": {
+                                                            "Value": "foo"
+                                                        }
                                                     }
                                                 },
                                                 "right": {
-                                                    "Value": "foo"
+                                                    "containsAny": {
+                                                        "left": {
+                                                            ".": {
+                                                                "left": {
+                                                                    "Var": "principal"
+                                                                },
+                                                                "attr": "owners"
+                                                            }
+                                                        },
+                                                        "right": {
+                                                            "Set": [
+                                                                { "Value": 1 },
+                                                                { "Value": {
+                                                                    "__entity": {
+                                                                        "type": "Linux::Group",
+                                                                        "id": "sudoers"
+                                                                    }
+                                                                } }
+                                                            ]
+                                                        }
+                                                    }
                                                 }
                                             }
                                         },
                                         "right": {
-                                            "containsAny": {
+                                            "containsAll": {
                                                 "left": {
-                                                    ".": {
-                                                        "left": {
-                                                            "Var": "principal"
-                                                        },
-                                                        "attr": "owners"
-                                                    }
+                                                    "Set": [
+                                                        { "+": {
+                                                            "left": {
+                                                                "Value": 2
+                                                            },
+                                                            "right": {
+                                                                "Value": 3
+                                                            }
+                                                        } },
+                                                        { "Value": "spam" },
+                                                    ]
                                                 },
                                                 "right": {
-                                                    "Set": [
-                                                        { "Value": 1 },
-                                                        { "Value": {
-                                                            "__entity": {
-                                                                "type": "Linux::Group",
-                                                                "id": "sudoers"
-                                                            }
-                                                        } }
-                                                    ]
+                                                    ".": {
+                                                        "left": {
+                                                            "Var": "resource"
+                                                        },
+                                                        "attr": "foos"
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 },
                                 "right": {
-                                    "containsAll": {
-                                        "left": {
-                                            "Set": [
-                                                { "+": {
-                                                    "left": {
-                                                        "Value": 2
-                                                    },
-                                                    "right": {
-                                                        "Value": 3
-                                                    }
-                                                } },
-                                                { "Value": "spam" },
-                                            ]
-                                        },
-                                        "right": {
+                                    "isEmpty": {
+                                        "arg": {
                                             ".": {
                                                 "left": {
-                                                    "Var": "resource"
+                                                    "Var": "context"
                                                 },
-                                                "attr": "foos"
+                                                "attr": "violations"
                                             }
                                         }
                                     }

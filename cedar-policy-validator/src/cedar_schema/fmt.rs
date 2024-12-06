@@ -96,8 +96,7 @@ impl<N: Display> Display for json_schema::RecordType<N> {
 
 /// Create a non-empty with borrowed contents from a slice
 fn non_empty_slice<T>(v: &[T]) -> Option<NonEmpty<&T>> {
-    let vs: Vec<&T> = v.iter().collect();
-    NonEmpty::from_vec(vs)
+    NonEmpty::collect(v.iter())
 }
 
 fn fmt_vec<T: Display>(f: &mut std::fmt::Formatter<'_>, ets: NonEmpty<T>) -> std::fmt::Result {
