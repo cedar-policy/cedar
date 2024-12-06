@@ -2534,8 +2534,8 @@ namespace TinyTodo {
     @doc("a common type representing a set of tasks")
     type Tasks = Set<Task>;
 
-    @doc("an entity type representing a list")
-    @doc("any entity type is a child of type `Application`")
+    @doc1("an entity type representing a list")
+    @doc2("any entity type is a child of type `Application`")
     entity List in [Application] = {
         @doc("editors of a list")
         "editors": Team,

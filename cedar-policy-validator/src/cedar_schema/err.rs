@@ -43,21 +43,35 @@ use super::ast::PR;
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum UserError {
     #[error("An empty list was passed")]
-    EmptyList,
+    EmptyList(Node<()>),
     #[error("Invalid escape codes")]
-    StringEscape(NonEmpty<UnescapeError>),
+    StringEscape(Node<NonEmpty<UnescapeError>>),
     #[error("`{0}` is a reserved identifier")]
-    ReservedIdentifierUsed(SmolStr),
+    ReservedIdentifierUsed(Node<SmolStr>),
+    #[error("duplicate annotations: `{}`", .0)]
+    DuplicateAnnotations(AnyId, Node<()>, Node<()>),
+}
+
+impl UserError {
+    // Extract a primary source span locating the error.
+    pub(crate) fn primary_source_span(&self) -> SourceSpan {
+        match self {
+            Self::EmptyList(n) => n.loc.span,
+            Self::StringEscape(n) => n.loc.span,
+            Self::ReservedIdentifierUsed(n) => n.loc.span,
+            // use the first occurrence as the primary source span
+            Self::DuplicateAnnotations(_, n, _) => n.loc.span,
+        }
+    }
 }
 
 pub(crate) type RawLocation = usize;
 pub(crate) type RawToken<'a> = lalr::lexer::Token<'a>;
-pub(crate) type RawUserError = Node<UserError>;
 
-pub(crate) type RawParseError<'a> = lalr::ParseError<RawLocation, RawToken<'a>, RawUserError>;
-pub(crate) type RawErrorRecovery<'a> = lalr::ErrorRecovery<RawLocation, RawToken<'a>, RawUserError>;
+pub(crate) type RawParseError<'a> = lalr::ParseError<RawLocation, RawToken<'a>, UserError>;
+pub(crate) type RawErrorRecovery<'a> = lalr::ErrorRecovery<RawLocation, RawToken<'a>, UserError>;
 
-type OwnedRawParseError = lalr::ParseError<RawLocation, String, RawUserError>;
+type OwnedRawParseError = lalr::ParseError<RawLocation, String, UserError>;
 
 lazy_static! {
     static ref SCHEMA_TOKEN_CONFIG: ExpectedTokenConfig = ExpectedTokenConfig {
@@ -133,7 +147,7 @@ impl ParseError {
             OwnedRawParseError::ExtraToken {
                 token: (token_start, _, token_end),
             } => SourceSpan::from(*token_start..*token_end),
-            OwnedRawParseError::User { error } => error.loc.span,
+            OwnedRawParseError::User { error } => error.primary_source_span(),
         }
     }
 }
@@ -152,9 +166,7 @@ impl Display for ParseError {
                 token: (_, token, _),
                 ..
             } => write!(f, "extra token `{token}`"),
-            OwnedRawParseError::User {
-                error: Node { node, .. },
-            } => write!(f, "{node}"),
+            OwnedRawParseError::User { error } => write!(f, "{error}"),
         }
     }
 }
@@ -164,21 +176,36 @@ impl std::error::Error for ParseError {}
 impl Diagnostic for ParseError {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         let primary_source_span = self.primary_source_span();
-        let Self { err } = self;
-        let labeled_span = match err {
-            OwnedRawParseError::InvalidToken { .. } => LabeledSpan::underline(primary_source_span),
-            OwnedRawParseError::UnrecognizedEof { expected, .. } => LabeledSpan::new_with_span(
-                expected_to_string(expected, &SCHEMA_TOKEN_CONFIG),
-                primary_source_span,
-            ),
-            OwnedRawParseError::UnrecognizedToken { expected, .. } => LabeledSpan::new_with_span(
-                expected_to_string(expected, &SCHEMA_TOKEN_CONFIG),
-                primary_source_span,
-            ),
-            OwnedRawParseError::ExtraToken { .. } => LabeledSpan::underline(primary_source_span),
-            OwnedRawParseError::User { .. } => LabeledSpan::underline(primary_source_span),
-        };
-        Some(Box::new(std::iter::once(labeled_span)))
+        match &self.err {
+            OwnedRawParseError::InvalidToken { .. } => Some(Box::new(std::iter::once(
+                LabeledSpan::underline(primary_source_span),
+            ))),
+            OwnedRawParseError::UnrecognizedEof { expected, .. } => {
+                Some(Box::new(std::iter::once(LabeledSpan::new_with_span(
+                    expected_to_string(expected, &SCHEMA_TOKEN_CONFIG),
+                    primary_source_span,
+                ))))
+            }
+            OwnedRawParseError::UnrecognizedToken { expected, .. } => {
+                Some(Box::new(std::iter::once(LabeledSpan::new_with_span(
+                    expected_to_string(expected, &SCHEMA_TOKEN_CONFIG),
+                    primary_source_span,
+                ))))
+            }
+            OwnedRawParseError::ExtraToken { .. } => Some(Box::new(std::iter::once(
+                LabeledSpan::underline(primary_source_span),
+            ))),
+            OwnedRawParseError::User {
+                error: UserError::DuplicateAnnotations(_, n1, n2),
+            } => Some(Box::new(
+                std::iter::once(n1.loc.span)
+                    .chain(std::iter::once(n2.loc.span))
+                    .map(|s| LabeledSpan::underline(s)),
+            )),
+            OwnedRawParseError::User { .. } => Some(Box::new(std::iter::once(
+                LabeledSpan::underline(primary_source_span),
+            ))),
+        }
     }
 }
 
@@ -402,10 +429,6 @@ pub enum ToJsonSchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ReservedSchemaKeyword(#[from] ReservedSchemaKeyword),
-    /// Duplicate annotations
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    DuplicateAnnotations(#[from] DuplicateAnnotations),
 }
 
 impl ToJsonSchemaError {
@@ -484,18 +507,6 @@ impl ToJsonSchemaError {
             loc,
         })
     }
-}
-
-#[derive(Debug, Clone, Error, PartialEq, Eq)]
-#[error("duplicate annotations: `{annotation}`")]
-pub struct DuplicateAnnotations {
-    pub(crate) annotation: AnyId,
-    pub(crate) loc1: Loc,
-    pub(crate) loc2: Loc,
-}
-
-impl Diagnostic for DuplicateAnnotations {
-    impl_diagnostic_from_two_source_loc_fields!(loc1, loc2);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

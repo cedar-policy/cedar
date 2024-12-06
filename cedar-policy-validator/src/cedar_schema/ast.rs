@@ -27,9 +27,9 @@ use smol_str::SmolStr;
 #[allow(unused_imports)]
 use smol_str::ToSmolStr;
 
-use crate::json_schema;
+use crate::{annotations::Annotated, json_schema};
 
-use super::err::DuplicateAnnotations;
+use super::err::UserError;
 
 pub const BUILTIN_TYPES: [&str; 3] = ["Long", "String", "Bool"];
 
@@ -37,38 +37,30 @@ pub(super) const CEDAR_NAMESPACE: &str = "__cedar";
 
 pub type Schema = Vec<Annotated<Namespace>>;
 
-pub type Annotation = (Node<AnyId>, Node<SmolStr>);
-/// An AST that can be annotated
-#[derive(Debug, Clone)]
-pub struct Annotated<T> {
-    pub data: T,
-    pub annotations: Vec<Node<Annotation>>,
-}
-
-impl<T> TryFrom<Annotated<T>> for crate::annotations::Annotated<T> {
-    type Error = DuplicateAnnotations;
-    fn try_from(value: Annotated<T>) -> Result<Self, Self::Error> {
-        let mut annotations: BTreeMap<AnyId, (Loc, SmolStr)> = BTreeMap::new();
-        for annotation in value.annotations {
-            let (key, value) = annotation.node;
-            if let Some((old_loc, _)) =
-                annotations.insert(key.node.clone(), (key.loc.clone(), value.node))
-            {
-                return Err(DuplicateAnnotations {
-                    annotation: key.node,
-                    loc1: old_loc,
-                    loc2: key.loc,
-                });
-            }
+pub fn deduplicate_annotations<T>(
+    data: T,
+    annotations: Vec<Node<(Node<AnyId>, Node<SmolStr>)>>,
+) -> Result<Annotated<T>, UserError> {
+    let mut unique_annotations: BTreeMap<AnyId, (Loc, SmolStr)> = BTreeMap::new();
+    for annotation in annotations {
+        let (key, value) = annotation.node;
+        if let Some((old_loc, _)) =
+            unique_annotations.insert(key.node.clone(), (key.loc.clone(), value.node))
+        {
+            return Err(UserError::DuplicateAnnotations(
+                key.node,
+                Node::with_source_loc((), old_loc),
+                Node::with_source_loc((), key.loc),
+            ));
         }
-        Ok(crate::annotations::Annotated {
-            data: value.data,
-            annotations: annotations
-                .into_iter()
-                .map(|(key, (_, value))| (key, value))
-                .collect(),
-        })
     }
+    Ok(crate::annotations::Annotated {
+        data,
+        annotations: unique_annotations
+            .into_iter()
+            .map(|(key, (_, value))| (key, value))
+            .collect(),
+    })
 }
 
 /// A path is a non empty list of identifiers that forms a namespace + type

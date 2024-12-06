@@ -30,8 +30,8 @@ use std::collections::hash_map::Entry;
 
 use super::{
     ast::{
-        self, ActionDecl, AppDecl, AttrDecl, Decl, Declaration, EntityDecl, Namespace, PRAppDecl,
-        Path, QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, PR,
+        ActionDecl, AppDecl, AttrDecl, Decl, Declaration, EntityDecl, Namespace, PRAppDecl, Path,
+        QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, PR,
     },
     err::{schema_warnings, SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
 };
@@ -79,8 +79,6 @@ pub fn cedar_schema_to_json_schema(
     let names = build_namespace_bindings(all_namespaces.iter().map(|ns| &ns.data))?;
     let warnings = compute_namespace_warnings(&names, extensions);
     let fragment = collect_all_errors(all_namespaces.into_iter().map(|ns| {
-        let ns = annotations::Annotated::try_from(ns)
-            .map_err(|err| ToJsonSchemaErrors::from(ToJsonSchemaError::from(err)))?;
         convert_namespace(ns.data).map(|(n, nsd)| {
             (
                 n,
@@ -107,41 +105,33 @@ fn is_valid_ext_type(ty: &Id, extensions: &Extensions<'_>) -> bool {
 }
 
 /// Convert a `Type` into the JSON representation of the type.
-pub fn cedar_type_to_json_type(
-    ty: Node<Type>,
-) -> Result<json_schema::Type<RawName>, ToJsonSchemaError> {
+pub fn cedar_type_to_json_type(ty: Node<Type>) -> json_schema::Type<RawName> {
     match ty.node {
-        Type::Set(t) => Ok(json_schema::Type::Type(json_schema::TypeVariant::Set {
-            element: Box::new(cedar_type_to_json_type(*t)?),
-        })),
-        Type::Ident(p) => Ok(json_schema::Type::Type(
-            json_schema::TypeVariant::EntityOrCommon {
-                type_name: RawName::from(p),
-            },
-        )),
-        Type::Record(fields) => Ok(json_schema::Type::Type(json_schema::TypeVariant::Record(
-            json_schema::RecordType {
+        Type::Set(t) => json_schema::Type::Type(json_schema::TypeVariant::Set {
+            element: Box::new(cedar_type_to_json_type(*t)),
+        }),
+        Type::Ident(p) => json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+            type_name: RawName::from(p),
+        }),
+        Type::Record(fields) => {
+            json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
                 attributes: fields
                     .into_iter()
-                    .map(|field| {
-                        let field = annotations::Annotated::try_from(field.node)?;
-
-                        convert_attr_decl(field)
-                    })
-                    .collect::<Result<BTreeMap<_, _>, _>>()?,
+                    .map(|field| convert_attr_decl(field.node))
+                    .collect(),
                 additional_attributes: false,
-            },
-        ))),
+            }))
+        }
     }
 }
 
 // Split namespaces into two groups: named namespaces and the implicit unqualified namespace
 // The rhs of the tuple will be [`None`] if there are no items in the unqualified namespace.
 fn split_unqualified_namespace(
-    namespaces: impl IntoIterator<Item = ast::Annotated<Namespace>>,
+    namespaces: impl IntoIterator<Item = annotations::Annotated<Namespace>>,
 ) -> (
-    impl Iterator<Item = ast::Annotated<Namespace>>,
-    Option<ast::Annotated<Namespace>>,
+    impl Iterator<Item = annotations::Annotated<Namespace>>,
+    Option<annotations::Annotated<Namespace>>,
 ) {
     // First split every namespace into those with explicit names and those without
     let (qualified, unqualified): (Vec<_>, Vec<_>) =
@@ -162,9 +152,9 @@ fn split_unqualified_namespace(
         };
         (
             qualified.into_iter(),
-            Some(ast::Annotated {
+            Some(annotations::Annotated {
                 data: unqual,
-                annotations: vec![],
+                annotations: BTreeMap::new(),
             }),
         )
     }
@@ -196,8 +186,6 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
 
         // Convert entity type decls, collecting all errors
         let entity_types = collect_all_errors(entity_types.into_iter().map(|et| {
-            let et = annotations::Annotated::try_from(et)
-                .map_err(|err| ToJsonSchemaErrors::from(ToJsonSchemaError::from(err)))?;
             convert_entity_decl(et.data).map(|i| {
                 i.map(move |(id, ty)| {
                     (
@@ -215,9 +203,6 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
 
         // Convert action decls, collecting all errors
         let actions = collect_all_errors(action.into_iter().map(|action| {
-            let action = annotations::Annotated::try_from(action)
-                .map_err(|err| ToJsonSchemaErrors::from(ToJsonSchemaError::from(err)))?;
-
             convert_action_decl(action.data).map(|i| {
                 i.map(move |(id, at)| {
                     (
@@ -238,8 +223,6 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
         let common_types = common_types
             .into_iter()
             .map(|decl| {
-                let decl: annotations::Annotated<TypeDecl> =
-                    annotations::Annotated::try_from(decl)?;
                 let name_loc = decl.data.name.loc.clone();
                 let id = UnreservedId::try_from(decl.data.name.node)
                     .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), name_loc.clone()))?;
@@ -248,7 +231,7 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
                 Ok((
                     ctid,
                     annotations::Annotated {
-                        data: cedar_type_to_json_type(decl.data.def)?,
+                        data: cedar_type_to_json_type(decl.data.def),
                         annotations: decl.annotations,
                     },
                 ))
@@ -326,7 +309,7 @@ fn convert_app_decls(
                 }
                 None => {
                     context = Some(Node::with_source_loc(
-                        convert_context_decl(context_decl)?,
+                        convert_context_decl(context_decl),
                         loc,
                     ));
                 }
@@ -412,8 +395,8 @@ fn convert_entity_decl(
     // First build up the defined entity type
     let etype = json_schema::EntityType {
         member_of_types: e.member_of_types.into_iter().map(RawName::from).collect(),
-        shape: convert_attr_decls(e.attrs)?,
-        tags: e.tags.map(cedar_type_to_json_type).transpose()?,
+        shape: convert_attr_decls(e.attrs),
+        tags: e.tags.map(cedar_type_to_json_type),
     };
 
     // Then map over all of the bound names
@@ -428,26 +411,23 @@ fn convert_entity_decl(
 
 /// Create a [`json_schema::AttributesOrContext`] from a series of `AttrDecl`s
 fn convert_attr_decls(
-    attrs: impl IntoIterator<Item = Node<ast::Annotated<AttrDecl>>>,
-) -> Result<json_schema::AttributesOrContext<RawName>, ToJsonSchemaError> {
-    Ok(json_schema::RecordType {
+    attrs: impl IntoIterator<Item = Node<annotations::Annotated<AttrDecl>>>,
+) -> json_schema::AttributesOrContext<RawName> {
+    json_schema::RecordType {
         attributes: attrs
             .into_iter()
-            .map(|attr| {
-                let attr = annotations::Annotated::try_from(attr.node)?;
-                convert_attr_decl(attr)
-            })
-            .collect::<Result<BTreeMap<_, _>, ToJsonSchemaError>>()?,
+            .map(|attr| convert_attr_decl(attr.node))
+            .collect(),
         additional_attributes: false,
     }
-    .into())
+    .into()
 }
 
 /// Create a context decl
 fn convert_context_decl(
-    decl: Either<Path, Vec<Node<ast::Annotated<AttrDecl>>>>,
-) -> Result<json_schema::AttributesOrContext<RawName>, ToJsonSchemaError> {
-    Ok(json_schema::AttributesOrContext(match decl {
+    decl: Either<Path, Vec<Node<annotations::Annotated<AttrDecl>>>>,
+) -> json_schema::AttributesOrContext<RawName> {
+    json_schema::AttributesOrContext(match decl {
         Either::Left(p) => json_schema::Type::CommonTypeRef {
             type_name: p.into(),
         },
@@ -455,31 +435,28 @@ fn convert_context_decl(
             json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
                 attributes: attrs
                     .into_iter()
-                    .map(|attr| {
-                        let attr = annotations::Annotated::try_from(attr.node)?;
-                        convert_attr_decl(attr)
-                    })
-                    .collect::<Result<BTreeMap<_, _>, ToJsonSchemaError>>()?,
+                    .map(|attr| convert_attr_decl(attr.node))
+                    .collect(),
                 additional_attributes: false,
             }))
         }
-    }))
+    })
 }
 
 /// Convert an attribute type from an `AttrDecl`
 fn convert_attr_decl(
     attr: annotations::Annotated<AttrDecl>,
-) -> Result<(SmolStr, json_schema::TypeOfAttribute<RawName>), ToJsonSchemaError> {
-    Ok((
+) -> (SmolStr, json_schema::TypeOfAttribute<RawName>) {
+    (
         attr.data.name.node,
         json_schema::TypeOfAttribute {
             ty: json_schema::AnnotatedType(annotations::Annotated {
-                data: cedar_type_to_json_type(attr.data.ty)?,
+                data: cedar_type_to_json_type(attr.data.ty),
                 annotations: attr.annotations,
             }),
             required: attr.data.required,
         },
-    ))
+    )
 }
 
 /// Takes a collection of results returning multiple errors
@@ -673,7 +650,7 @@ fn update_namespace_record(
 }
 
 fn partition_decls(
-    decls: &[ast::Annotated<Node<Declaration>>],
+    decls: &[annotations::Annotated<Node<Declaration>>],
 ) -> (Vec<&EntityDecl>, Vec<&ActionDecl>, Vec<&TypeDecl>) {
     let mut entities = vec![];
     let mut actions = vec![];
@@ -691,11 +668,11 @@ fn partition_decls(
 }
 
 fn into_partition_decls(
-    decls: Vec<ast::Annotated<Node<Declaration>>>,
+    decls: Vec<annotations::Annotated<Node<Declaration>>>,
 ) -> (
-    Vec<ast::Annotated<EntityDecl>>,
-    Vec<ast::Annotated<ActionDecl>>,
-    Vec<ast::Annotated<TypeDecl>>,
+    Vec<annotations::Annotated<EntityDecl>>,
+    Vec<annotations::Annotated<ActionDecl>>,
+    Vec<annotations::Annotated<TypeDecl>>,
 ) {
     let mut entities = vec![];
     let mut actions = vec![];
@@ -703,15 +680,15 @@ fn into_partition_decls(
 
     for decl in decls.into_iter() {
         match decl.data.node {
-            Declaration::Entity(e) => entities.push(ast::Annotated {
+            Declaration::Entity(e) => entities.push(annotations::Annotated {
                 data: e,
                 annotations: decl.annotations,
             }),
-            Declaration::Action(a) => actions.push(ast::Annotated {
+            Declaration::Action(a) => actions.push(annotations::Annotated {
                 data: a,
                 annotations: decl.annotations,
             }),
-            Declaration::Type(t) => types.push(ast::Annotated {
+            Declaration::Type(t) => types.push(annotations::Annotated {
                 data: t,
                 annotations: decl.annotations,
             }),
