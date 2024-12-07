@@ -16,7 +16,7 @@
 
 //! Convert a schema into the JSON format
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use cedar_policy_core::{
     ast::{Id, Name, UnreservedId},
@@ -35,7 +35,7 @@ use super::{
     },
     err::{schema_warnings, SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
 };
-use crate::{cedar_schema, json_schema, RawName};
+use crate::{annotations, cedar_schema, json_schema, RawName};
 
 impl From<cedar_schema::Path> for RawName {
     fn from(p: cedar_schema::Path) -> Self {
@@ -70,15 +70,26 @@ pub fn cedar_schema_to_json_schema(
     // that namespace make it into the JSON schema structure under that
     // namespace's key.
     let (qualified_namespaces, unqualified_namespace) =
-        split_unqualified_namespace(schema.into_iter().map(|n| n.node));
+        split_unqualified_namespace(schema.into_iter());
     // Create a single iterator for all namespaces
     let all_namespaces = qualified_namespaces
         .chain(unqualified_namespace)
         .collect::<Vec<_>>();
 
-    let names = build_namespace_bindings(all_namespaces.iter())?;
+    let names = build_namespace_bindings(all_namespaces.iter().map(|ns| &ns.data))?;
     let warnings = compute_namespace_warnings(&names, extensions);
-    let fragment = collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?.collect();
+    let fragment = collect_all_errors(all_namespaces.into_iter().map(|ns| {
+        convert_namespace(ns.data).map(|(n, nsd)| {
+            (
+                n,
+                annotations::Annotated {
+                    data: nsd,
+                    annotations: ns.annotations,
+                },
+            )
+        })
+    }))?
+    .collect();
     Ok((
         json_schema::Fragment(fragment),
         warnings.collect::<Vec<_>>().into_iter(),
@@ -117,16 +128,19 @@ pub fn cedar_type_to_json_type(ty: Node<Type>) -> json_schema::Type<RawName> {
 // Split namespaces into two groups: named namespaces and the implicit unqualified namespace
 // The rhs of the tuple will be [`None`] if there are no items in the unqualified namespace.
 fn split_unqualified_namespace(
-    namespaces: impl IntoIterator<Item = Namespace>,
-) -> (impl Iterator<Item = Namespace>, Option<Namespace>) {
+    namespaces: impl IntoIterator<Item = annotations::Annotated<Namespace>>,
+) -> (
+    impl Iterator<Item = annotations::Annotated<Namespace>>,
+    Option<annotations::Annotated<Namespace>>,
+) {
     // First split every namespace into those with explicit names and those without
     let (qualified, unqualified): (Vec<_>, Vec<_>) =
-        namespaces.into_iter().partition(|n| n.name.is_some());
+        namespaces.into_iter().partition(|n| n.data.name.is_some());
 
     // Now combine all the decls in namespaces without names into one unqualified namespace
     let mut unqualified_decls = vec![];
     for mut unqualified_namespace in unqualified.into_iter() {
-        unqualified_decls.append(&mut unqualified_namespace.decls);
+        unqualified_decls.append(&mut unqualified_namespace.data.decls);
     }
 
     if unqualified_decls.is_empty() {
@@ -136,7 +150,13 @@ fn split_unqualified_namespace(
             name: None,
             decls: unqualified_decls,
         };
-        (qualified.into_iter(), Some(unqual))
+        (
+            qualified.into_iter(),
+            Some(annotations::Annotated {
+                data: unqual,
+                annotations: BTreeMap::new(),
+            }),
+        )
     }
 }
 
@@ -148,9 +168,9 @@ fn convert_namespace(
         .name
         .clone()
         .map(|p| {
-            let internal_name = RawName::from(p.node).qualify_with(None); // namespace names are always written already-fully-qualified in the Cedar schema syntax
+            let internal_name = RawName::from(p.clone()).qualify_with(None); // namespace names are always written already-fully-qualified in the Cedar schema syntax
             Name::try_from(internal_name)
-                .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), p.loc))
+                .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), p.loc().clone()))
         })
         .transpose()?;
     let def = namespace.try_into()?;
@@ -165,25 +185,56 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
         let (entity_types, action, common_types) = into_partition_decls(n.decls);
 
         // Convert entity type decls, collecting all errors
-        let entity_types = collect_all_errors(entity_types.into_iter().map(convert_entity_decl))?
-            .flatten()
-            .collect();
+        let entity_types = collect_all_errors(entity_types.into_iter().map(|et| {
+            convert_entity_decl(et.data).map(|i| {
+                i.map(move |(id, ty)| {
+                    (
+                        id,
+                        annotations::Annotated {
+                            data: ty,
+                            annotations: et.annotations.clone(),
+                        },
+                    )
+                })
+            })
+        }))?
+        .flatten()
+        .collect();
 
         // Convert action decls, collecting all errors
-        let actions = collect_all_errors(action.into_iter().map(convert_action_decl))?
-            .flatten()
-            .collect();
+        let actions = collect_all_errors(action.into_iter().map(|action| {
+            convert_action_decl(action.data).map(|i| {
+                i.map(move |(id, at)| {
+                    (
+                        id,
+                        annotations::Annotated {
+                            data: at,
+                            annotations: action.annotations.clone(),
+                        },
+                    )
+                })
+            })
+        }))?
+        .flatten()
+        .map(|(key, value)| (key, value.into()))
+        .collect();
 
         // Convert common type decls
         let common_types = common_types
             .into_iter()
             .map(|decl| {
-                let name_loc = decl.name.loc.clone();
-                let id = UnreservedId::try_from(decl.name.node)
+                let name_loc = decl.data.name.loc.clone();
+                let id = UnreservedId::try_from(decl.data.name.node)
                     .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), name_loc.clone()))?;
                 let ctid = json_schema::CommonTypeId::new(id)
                     .map_err(|e| ToJsonSchemaError::reserved_keyword(e.id, name_loc))?;
-                Ok((ctid, cedar_type_to_json_type(decl.def)))
+                Ok((
+                    ctid,
+                    annotations::Annotated {
+                        data: cedar_type_to_json_type(decl.data.def),
+                        annotations: decl.annotations,
+                    },
+                ))
             })
             .collect::<Result<_, ToJsonSchemaError>>()?;
 
@@ -360,7 +411,7 @@ fn convert_entity_decl(
 
 /// Create a [`json_schema::AttributesOrContext`] from a series of `AttrDecl`s
 fn convert_attr_decls(
-    attrs: impl IntoIterator<Item = Node<AttrDecl>>,
+    attrs: impl IntoIterator<Item = Node<annotations::Annotated<AttrDecl>>>,
 ) -> json_schema::AttributesOrContext<RawName> {
     json_schema::RecordType {
         attributes: attrs
@@ -374,7 +425,7 @@ fn convert_attr_decls(
 
 /// Create a context decl
 fn convert_context_decl(
-    decl: Either<Path, Vec<Node<AttrDecl>>>,
+    decl: Either<Path, Vec<Node<annotations::Annotated<AttrDecl>>>>,
 ) -> json_schema::AttributesOrContext<RawName> {
     json_schema::AttributesOrContext(match decl {
         Either::Left(p) => json_schema::Type::CommonTypeRef {
@@ -393,12 +444,17 @@ fn convert_context_decl(
 }
 
 /// Convert an attribute type from an `AttrDecl`
-fn convert_attr_decl(attr: AttrDecl) -> (SmolStr, json_schema::TypeOfAttribute<RawName>) {
+fn convert_attr_decl(
+    attr: annotations::Annotated<AttrDecl>,
+) -> (SmolStr, json_schema::TypeOfAttribute<RawName>) {
     (
-        attr.name.node,
+        attr.data.name.node,
         json_schema::TypeOfAttribute {
-            ty: cedar_type_to_json_type(attr.ty),
-            required: attr.required,
+            ty: json_schema::AnnotatedType(annotations::Annotated {
+                data: cedar_type_to_json_type(attr.data.ty),
+                annotations: attr.annotations,
+            }),
+            required: attr.data.required,
         },
     )
 }
@@ -444,9 +500,9 @@ impl NamespaceRecord {
             .name
             .clone()
             .map(|n| {
-                let internal_name = RawName::from(n.node).qualify_with(None); // namespace names are already fully-qualified
+                let internal_name = RawName::from(n.clone()).qualify_with(None); // namespace names are already fully-qualified
                 Name::try_from(internal_name)
-                    .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), n.loc))
+                    .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), n.loc().clone()))
             })
             .transpose()?;
         let (entities, actions, types) = partition_decls(&namespace.decls);
@@ -474,7 +530,7 @@ impl NamespaceRecord {
         let record = NamespaceRecord {
             entities,
             common_types,
-            loc: namespace.name.as_ref().map(|n| n.loc.clone()),
+            loc: namespace.name.as_ref().map(|n| n.loc().clone()),
         };
 
         Ok((ns, record))
@@ -594,14 +650,14 @@ fn update_namespace_record(
 }
 
 fn partition_decls(
-    decls: &[Node<Declaration>],
+    decls: &[annotations::Annotated<Node<Declaration>>],
 ) -> (Vec<&EntityDecl>, Vec<&ActionDecl>, Vec<&TypeDecl>) {
     let mut entities = vec![];
     let mut actions = vec![];
     let mut types = vec![];
 
     for decl in decls.iter() {
-        match &decl.node {
+        match &decl.data.node {
             Declaration::Entity(e) => entities.push(e),
             Declaration::Action(a) => actions.push(a),
             Declaration::Type(t) => types.push(t),
@@ -612,17 +668,30 @@ fn partition_decls(
 }
 
 fn into_partition_decls(
-    decls: Vec<Node<Declaration>>,
-) -> (Vec<EntityDecl>, Vec<ActionDecl>, Vec<TypeDecl>) {
+    decls: Vec<annotations::Annotated<Node<Declaration>>>,
+) -> (
+    Vec<annotations::Annotated<EntityDecl>>,
+    Vec<annotations::Annotated<ActionDecl>>,
+    Vec<annotations::Annotated<TypeDecl>>,
+) {
     let mut entities = vec![];
     let mut actions = vec![];
     let mut types = vec![];
 
     for decl in decls.into_iter() {
-        match decl.node {
-            Declaration::Entity(e) => entities.push(e),
-            Declaration::Action(a) => actions.push(a),
-            Declaration::Type(t) => types.push(t),
+        match decl.data.node {
+            Declaration::Entity(e) => entities.push(annotations::Annotated {
+                data: e,
+                annotations: decl.annotations,
+            }),
+            Declaration::Action(a) => actions.push(annotations::Annotated {
+                data: a,
+                annotations: decl.annotations,
+            }),
+            Declaration::Type(t) => types.push(annotations::Annotated {
+                data: t,
+                annotations: decl.annotations,
+            }),
         }
     }
 
