@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-use super::id::Id;
+use super::{id::Id, PrincipalOrResource, UnreservedId};
+use educe::Educe;
 use itertools::Itertools;
 use miette::Diagnostic;
 use ref_cast::RefCast;
@@ -23,6 +24,7 @@ use smol_str::ToSmolStr;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
+use thiserror::Error;
 
 use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::Loc;
@@ -31,51 +33,24 @@ use crate::FromNormalizedStr;
 #[cfg(feature = "protobufs")]
 use crate::ast::proto;
 
-use super::{PrincipalOrResource, UnreservedId};
-use thiserror::Error;
-
 /// Represents the name of an entity type, function, etc.
 /// The name may include namespaces.
 /// Clone is O(1).
 ///
 /// This type may contain any name valid for use internally, including names
 /// with reserved `__cedar` components (and also names without `__cedar`).
-#[derive(Debug, Clone)]
+#[derive(Educe, Debug, Clone)]
+#[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct InternalName {
     /// Basename
     pub(crate) id: Id,
     /// Namespaces
     pub(crate) path: Arc<Vec<Id>>,
     /// Location of the name in source
+    #[educe(PartialEq(ignore))]
+    #[educe(Hash(ignore))]
+    #[educe(PartialOrd(ignore))]
     pub(crate) loc: Option<Loc>,
-}
-
-/// `PartialEq` implementation ignores the `loc`.
-impl PartialEq for InternalName {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id && self.path == other.path
-    }
-}
-impl Eq for InternalName {}
-
-impl std::hash::Hash for InternalName {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // hash the id and path, in line with the `PartialEq` impl which
-        // compares the id and path.
-        self.id.hash(state);
-        self.path.hash(state);
-    }
-}
-
-impl PartialOrd for InternalName {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-impl Ord for InternalName {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.id.cmp(&other.id).then(self.path.cmp(&other.path))
-    }
 }
 
 /// A shortcut for [`InternalName::unqualified_name`]
@@ -394,29 +369,15 @@ impl std::fmt::Display for ValidSlotId {
 }
 
 /// [`SlotId`] plus a source location
-#[derive(Debug, Clone)]
+#[derive(Educe, Debug, Clone)]
+#[educe(PartialEq, Eq, Hash)]
 pub struct Slot {
     /// [`SlotId`]
     pub id: SlotId,
     /// Source location, if available
+    #[educe(PartialEq(ignore))]
+    #[educe(Hash(ignore))]
     pub loc: Option<Loc>,
-}
-
-/// `PartialEq` implementation ignores the `loc`. Slots are equal if their ids
-/// are equal.
-impl PartialEq for Slot {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-impl Eq for Slot {}
-
-impl std::hash::Hash for Slot {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // hash only the id, in line with the `PartialEq` impl which compares
-        // only the id
-        self.id.hash(state);
-    }
 }
 
 #[cfg(test)]
