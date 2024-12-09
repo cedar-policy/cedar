@@ -118,17 +118,14 @@ pub enum Commands {
     New(NewArgs),
     /// Partially evaluate an authorization request
     PartiallyAuthorize(PartiallyAuthorizeArgs),
-    /// Ouput a JSON file for consumption by Lean
-    #[command(subcommand)]
-    WriteDRTJson(serialization::AnalysisCommands),
     /// Output a protobuf binary file for consumption by Lean
     #[cfg(feature = "protobufs")]
     #[command(subcommand)]
-    WriteDRTProto(serialization::AnalysisCommands),
+    WriteDRTProto(protobufs::AnalysisCommands),
     /// Output a protobuf binary file for consumption by Lean
     #[cfg(feature = "protobufs")]
     #[command(subcommand)]
-    WriteDRTProtoFromJSON(serialization::AnalyzeCommandsFromJson),
+    WriteDRTProtoFromJSON(protobufs::AnalyzeCommandsFromJson),
     /// Print Cedar language version
     LanguageVersion,
 }
@@ -1603,17 +1600,25 @@ fn execute_partial_request(
     }
 }
 
-pub mod serialization {
+#[cfg(feature = "protobufs")]
+pub mod protobufs {
+    // PANIC SAFETY experimental feature
+    #![allow(clippy::unwrap_used)]
+    // PANIC SAFETY experimental feature
+    #![allow(clippy::expect_used)]
+
+    use crate::{proto, CedarExitCode};
     use cedar_policy_core::{ast::PolicySet, extensions::Extensions, parser::parse_policyset};
     use cedar_policy_validator::CedarSchemaError;
     use clap::{Args, Subcommand};
-    use serde::Serialize;
+    use prost::Message;
+    use serde::{Deserialize, Serialize};
+    use std::fs::File;
+    use std::io::Write;
     use std::path::{Path, PathBuf};
     use thiserror::Error;
 
-    use crate::CedarExitCode;
-
-    /// Captures all possible errors in CLI operations in the `serialization` module
+    /// Captures all possible errors in CLI operations in the `protobufs` module
     #[derive(Debug, Error)]
     pub enum CliError {
         /// Error opening or reading a file
@@ -1754,176 +1759,148 @@ pub mod serialization {
         }
     }
 
-    #[cfg(feature = "protobufs")]
-    pub mod protobuf {
-        // PANIC SAFETY experimental feature
-        #![allow(clippy::unwrap_used)]
-        // PANIC SAFETY experimental feature
-        #![allow(clippy::expect_used)]
+    #[derive(Debug, Serialize)]
+    pub struct ValidationRequest<'a> {
+        pub schema: &'a cedar_policy_validator::ValidatorSchema,
+        pub policies: &'a PolicySet,
+        pub mode: cedar_policy_validator::ValidationMode,
+    }
 
-        use std::fs::File;
-        use std::io::Write;
-        use std::path::PathBuf;
-
-        use super::{
-            read_policies_from_file, AnalysisCommands, AnalyzeCommandsFromJson,
-            AnalyzeCommandsFromJsonArgs, EquivRequest,
-        };
-        use super::{EquivalenceArgs, Result};
-        use crate::serialization::read_schema_from_file;
-        use crate::{proto, CedarExitCode};
-        use cedar_policy_core::ast::PolicySet;
-        use cedar_policy_core::parser::parse_policyset;
-        use prost::Message;
-        use serde::{Deserialize, Serialize};
-
-        #[derive(Debug, Serialize)]
-        pub struct ValidationRequest<'a> {
-            pub schema: &'a cedar_policy_validator::ValidatorSchema,
-            pub policies: &'a PolicySet,
-            pub mode: cedar_policy_validator::ValidationMode,
-        }
-
-        impl From<ValidationRequest<'_>> for proto::ValidationRequestMsg {
-            fn from(v: ValidationRequest<'_>) -> Self {
-                Self {
-                    schema: Some(cedar_policy_validator::proto::ValidatorSchema::from(
-                        v.schema,
-                    )),
-                    policies: Some(cedar_policy_core::ast::proto::LiteralPolicySet::from(
-                        v.policies,
-                    )),
-                    mode: cedar_policy_validator::proto::ValidationMode::from(&v.mode).into(),
-                }
-            }
-        }
-
-        impl From<EquivRequest<'_>> for proto::EquivRequestMsg {
-            fn from(v: EquivRequest<'_>) -> Self {
-                Self {
-                    schema: Some(cedar_policy_validator::proto::ValidatorSchema::from(
-                        v.schema,
-                    )),
-                    old_policies: Some(cedar_policy_core::ast::proto::LiteralPolicySet::from(
-                        v.old_policies,
-                    )),
-                    new_policies: Some(cedar_policy_core::ast::proto::LiteralPolicySet::from(
-                        v.new_policies,
-                    )),
-                }
-            }
-        }
-
-        pub fn read_equivalence_drt_from_files(
-            args: EquivalenceArgs,
-        ) -> Result<proto::EquivRequestMsg> {
-            let schema = &read_schema_from_file(&args.schema_file)?;
-            let old_policies = &read_policies_from_file(&args.old_policies_file)?;
-            let new_policies = &read_policies_from_file(&args.new_policies_file)?;
-
-            let equiv_request = EquivRequest {
-                schema,
-                old_policies,
-                new_policies,
-            };
-            let equiv_request_proto = proto::EquivRequestMsg::from(equiv_request);
-            Ok(equiv_request_proto)
-        }
-
-        pub fn write_drt_proto_for_equivalence_from_files(args: EquivalenceArgs) -> Result<()> {
-            let equiv_request_proto: proto::EquivRequestMsg =
-                read_equivalence_drt_from_files(args)?;
-            write_drt_proto_for_equivalence(equiv_request_proto, "equiv_request.binpb".into())
-        }
-
-        #[derive(Debug, Deserialize)]
-        struct ComparisonRequest {
-            schema: String,
-            old_policy_set: String,
-            new_policy_set: String,
-        }
-
-        pub fn read_equivalence_drt_from_json(
-            args: AnalyzeCommandsFromJsonArgs,
-        ) -> Result<proto::EquivRequestMsg> {
-            use std::str::FromStr;
-
-            let comparison_request: ComparisonRequest =
-                serde_json::from_str(args.data.as_ref()).expect("Failed to parse");
-
-            let schema =
-                cedar_policy_validator::ValidatorSchema::from_str(&comparison_request.schema)
-                    .expect("Failed to deserialize schema");
-
-            let old_policies = parse_policyset(&comparison_request.old_policy_set).unwrap();
-
-            let new_policies = parse_policyset(&comparison_request.new_policy_set).unwrap();
-
-            Ok(proto::EquivRequestMsg {
+    impl From<ValidationRequest<'_>> for proto::ValidationRequestMsg {
+        fn from(v: ValidationRequest<'_>) -> Self {
+            Self {
                 schema: Some(cedar_policy_validator::proto::ValidatorSchema::from(
-                    &schema,
+                    v.schema,
+                )),
+                policies: Some(cedar_policy_core::ast::proto::LiteralPolicySet::from(
+                    v.policies,
+                )),
+                mode: cedar_policy_validator::proto::ValidationMode::from(&v.mode).into(),
+            }
+        }
+    }
+
+    impl From<EquivRequest<'_>> for proto::EquivRequestMsg {
+        fn from(v: EquivRequest<'_>) -> Self {
+            Self {
+                schema: Some(cedar_policy_validator::proto::ValidatorSchema::from(
+                    v.schema,
                 )),
                 old_policies: Some(cedar_policy_core::ast::proto::LiteralPolicySet::from(
-                    &old_policies,
+                    v.old_policies,
                 )),
                 new_policies: Some(cedar_policy_core::ast::proto::LiteralPolicySet::from(
-                    &new_policies,
+                    v.new_policies,
                 )),
-            })
-        }
-
-        pub fn write_drt_proto_for_equivalence_from_json(
-            args: AnalyzeCommandsFromJsonArgs,
-        ) -> Result<()> {
-            let output_path = args.output_path.clone();
-            let equiv_request_proto: proto::EquivRequestMsg = read_equivalence_drt_from_json(args)?;
-            write_drt_proto_for_equivalence(equiv_request_proto, output_path)
-        }
-
-        pub fn write_drt_proto_for_equivalence(
-            equiv_request_proto: proto::EquivRequestMsg,
-            output_location: PathBuf,
-        ) -> Result<()> {
-            let mut buf: Vec<u8> = vec![];
-            buf.reserve(equiv_request_proto.encoded_len());
-            equiv_request_proto
-                .encode(&mut buf)
-                .expect("Serialization failed");
-
-            let mut file = File::create(output_location).unwrap();
-            // Write a slice of bytes to the file
-            file.write_all(&buf).unwrap();
-
-            Ok(())
-        }
-
-        pub fn write_drt_proto(acmd: AnalysisCommands) -> CedarExitCode {
-            let res = match acmd {
-                AnalysisCommands::Equivalence(args) => {
-                    write_drt_proto_for_equivalence_from_files(args)
-                }
-            };
-            match res {
-                Ok(()) => CedarExitCode::Success,
-                Err(e) => {
-                    eprintln!("{e}");
-                    CedarExitCode::Failure
-                }
             }
         }
+    }
 
-        pub fn write_drt_proto_from_json(acmd: AnalyzeCommandsFromJson) -> CedarExitCode {
-            let res = match acmd {
-                AnalyzeCommandsFromJson::Equivalence(args) => {
-                    write_drt_proto_for_equivalence_from_json(args)
-                }
-            };
-            match res {
-                Ok(()) => CedarExitCode::Success,
-                Err(e) => {
-                    eprintln!("{e}");
-                    CedarExitCode::Failure
-                }
+    pub fn read_equivalence_drt_from_files(
+        args: EquivalenceArgs,
+    ) -> Result<proto::EquivRequestMsg> {
+        let schema = &read_schema_from_file(&args.schema_file)?;
+        let old_policies = &read_policies_from_file(&args.old_policies_file)?;
+        let new_policies = &read_policies_from_file(&args.new_policies_file)?;
+
+        let equiv_request = EquivRequest {
+            schema,
+            old_policies,
+            new_policies,
+        };
+        let equiv_request_proto = proto::EquivRequestMsg::from(equiv_request);
+        Ok(equiv_request_proto)
+    }
+
+    pub fn write_drt_proto_for_equivalence_from_files(args: EquivalenceArgs) -> Result<()> {
+        let equiv_request_proto: proto::EquivRequestMsg = read_equivalence_drt_from_files(args)?;
+        write_drt_proto_for_equivalence(equiv_request_proto, "equiv_request.binpb".into())
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct ComparisonRequest {
+        schema: String,
+        old_policy_set: String,
+        new_policy_set: String,
+    }
+
+    pub fn read_equivalence_drt_from_json(
+        args: AnalyzeCommandsFromJsonArgs,
+    ) -> Result<proto::EquivRequestMsg> {
+        use std::str::FromStr;
+
+        let comparison_request: ComparisonRequest =
+            serde_json::from_str(args.data.as_ref()).expect("Failed to parse");
+
+        let schema = cedar_policy_validator::ValidatorSchema::from_str(&comparison_request.schema)
+            .expect("Failed to deserialize schema");
+
+        let old_policies = parse_policyset(&comparison_request.old_policy_set).unwrap();
+
+        let new_policies = parse_policyset(&comparison_request.new_policy_set).unwrap();
+
+        Ok(proto::EquivRequestMsg {
+            schema: Some(cedar_policy_validator::proto::ValidatorSchema::from(
+                &schema,
+            )),
+            old_policies: Some(cedar_policy_core::ast::proto::LiteralPolicySet::from(
+                &old_policies,
+            )),
+            new_policies: Some(cedar_policy_core::ast::proto::LiteralPolicySet::from(
+                &new_policies,
+            )),
+        })
+    }
+
+    pub fn write_drt_proto_for_equivalence_from_json(
+        args: AnalyzeCommandsFromJsonArgs,
+    ) -> Result<()> {
+        let output_path = args.output_path.clone();
+        let equiv_request_proto: proto::EquivRequestMsg = read_equivalence_drt_from_json(args)?;
+        write_drt_proto_for_equivalence(equiv_request_proto, output_path)
+    }
+
+    pub fn write_drt_proto_for_equivalence(
+        equiv_request_proto: proto::EquivRequestMsg,
+        output_location: PathBuf,
+    ) -> Result<()> {
+        let mut buf: Vec<u8> = vec![];
+        buf.reserve(equiv_request_proto.encoded_len());
+        equiv_request_proto
+            .encode(&mut buf)
+            .expect("Serialization failed");
+
+        let mut file = File::create(output_location).unwrap();
+        // Write a slice of bytes to the file
+        file.write_all(&buf).unwrap();
+
+        Ok(())
+    }
+
+    pub fn write_drt_proto(acmd: AnalysisCommands) -> CedarExitCode {
+        let res = match acmd {
+            AnalysisCommands::Equivalence(args) => write_drt_proto_for_equivalence_from_files(args),
+        };
+        match res {
+            Ok(()) => CedarExitCode::Success,
+            Err(e) => {
+                eprintln!("{e}");
+                CedarExitCode::Failure
+            }
+        }
+    }
+
+    pub fn write_drt_proto_from_json(acmd: AnalyzeCommandsFromJson) -> CedarExitCode {
+        let res = match acmd {
+            AnalyzeCommandsFromJson::Equivalence(args) => {
+                write_drt_proto_for_equivalence_from_json(args)
+            }
+        };
+        match res {
+            Ok(()) => CedarExitCode::Success,
+            Err(e) => {
+                eprintln!("{e}");
+                CedarExitCode::Failure
             }
         }
     }
