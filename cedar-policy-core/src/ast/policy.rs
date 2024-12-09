@@ -1358,12 +1358,16 @@ impl From<BTreeMap<AnyId, Annotation>> for Annotations {
 }
 
 /// Struct which holds the value of a particular annotation
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug, PartialOrd, Ord)]
+#[derive(Educe, Serialize, Deserialize, Clone, Debug)]
+#[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Annotation {
     /// Annotation value
     pub val: SmolStr,
     /// Source location. Note this is the location of _the entire key-value
     /// pair_ for the annotation, not just `val` above
+    #[educe(PartialEq(ignore))]
+    #[educe(Hash(ignore))]
+    #[educe(PartialOrd(ignore))]
     pub loc: Option<Loc>,
 }
 
