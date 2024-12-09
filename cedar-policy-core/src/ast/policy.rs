@@ -563,7 +563,7 @@ pub type SlotEnv = HashMap<SlotId, EntityUID>;
 
 /// Represents either an static policy or a template linked policy
 /// This is the serializable version because it simply refers to the Template by its Id;
-#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LiteralPolicy {
     /// ID of the template this policy is an instance of
     template_id: PolicyID,
@@ -723,14 +723,6 @@ impl std::hash::Hash for LiteralPolicy {
             id.hash(state);
             euid.hash(state);
         }
-    }
-}
-
-impl std::cmp::PartialEq for LiteralPolicy {
-    fn eq(&self, other: &Self) -> bool {
-        self.template_id() == other.template_id()
-            && self.link_id == other.link_id
-            && self.values == other.values
     }
 }
 
@@ -1006,11 +998,14 @@ impl From<StaticPolicy> for Arc<Template> {
 
 /// Policy datatype. This is used for both templates (in which case it contains
 /// slots) and static policies (in which case it contains zero slots).
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Educe, Serialize, Deserialize, Clone, Debug)]
+#[educe(PartialEq, Eq, Hash)]
 pub struct TemplateBody {
     /// ID of this policy
     id: PolicyID,
     /// Source location spanning the entire policy
+    #[educe(PartialEq(ignore))]
+    #[educe(Hash(ignore))]
     loc: Option<Loc>,
     /// Annotations available for external applications, as key-value store.
     /// Note that the keys are `AnyId`, so Cedar reserved words like `if` and `has`

@@ -15,8 +15,8 @@
  */
 
 use std::fmt::{self, Debug, Display};
-use std::hash::{Hash, Hasher};
 
+use educe::Educe;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 
@@ -24,12 +24,15 @@ use super::err::{ToASTError, ToASTErrorKind};
 use super::loc::Loc;
 
 /// Metadata for our syntax trees
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Educe, Debug, Clone, Deserialize, Serialize)]
+#[educe(PartialEq, Eq, Hash)]
 pub struct Node<T> {
     /// Main data represented
     pub node: T,
 
     /// Source location
+    #[educe(PartialEq(ignore))]
+    #[educe(Hash(ignore))]
     pub loc: Loc,
 }
 
@@ -136,21 +139,6 @@ impl<T: Diagnostic> Diagnostic for Node<T> {
 
     fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
         self.node.diagnostic_source()
-    }
-}
-
-// Ignore the metadata this node contains
-impl<T: PartialEq> PartialEq for Node<T> {
-    /// ignores metadata
-    fn eq(&self, other: &Self) -> bool {
-        self.node == other.node
-    }
-}
-impl<T: Eq> Eq for Node<T> {}
-impl<T: Hash> Hash for Node<T> {
-    /// ignores metadata
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.node.hash(state);
     }
 }
 
