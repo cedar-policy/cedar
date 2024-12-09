@@ -19,6 +19,7 @@ use crate::parser::Loc;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::sync::Arc;
 
+use educe::Educe;
 use itertools::Itertools;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
@@ -27,13 +28,16 @@ use thiserror::Error;
 
 /// This describes all the values which could be the dynamic result of evaluating an `Expr`.
 /// Cloning is O(1).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[educe(PartialEq, Eq, PartialOrd, Ord)]
 #[serde(into = "Expr")]
 #[serde(try_from = "Expr")]
 pub struct Value {
     /// Underlying actual value
     pub value: ValueKind,
     /// Source location associated with the value, if any
+    #[educe(PartialEq(ignore))]
+    #[educe(PartialOrd(ignore))]
     pub loc: Option<Loc>,
 }
 
@@ -51,20 +55,6 @@ pub enum ValueKind {
     Record(Arc<BTreeMap<SmolStr, Value>>),
     /// Evaluating an `Expr` can result in an extension value
     ExtensionValue(Arc<RepresentableExtensionValue>),
-}
-
-// Custom impl of `Ord`, ignoring the `Loc`s
-impl Ord for Value {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.value.cmp(&other.value)
-    }
-}
-
-impl PartialOrd<Value> for Value {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        // delegate to `Ord`
-        Some(self.cmp(other))
-    }
 }
 
 impl Value {
@@ -397,8 +387,7 @@ impl FromIterator<Literal> for Set {
 }
 
 // Trying to derive `PartialEq` for `ValueKind` fails with a compile error (at
-// least, as of this writing) due to the `Arc<dyn>`, so we write out the
-// implementation manually.
+// least, as of this writing), so we write out the implementation manually.
 impl PartialEq for ValueKind {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -413,15 +402,6 @@ impl PartialEq for ValueKind {
 
 impl Eq for ValueKind {}
 
-// The implementation of `PartialEq` for `Value` ignores the `Loc` of the values.
-impl PartialEq for Value {
-    fn eq(&self, other: &Value) -> bool {
-        self.value == other.value
-    }
-}
-
-impl Eq for Value {}
-
 // PartialEq on Set is optimized to take advantage of the internal invariant documented on `Set`
 impl PartialEq for Set {
     fn eq(&self, other: &Self) -> bool {
@@ -433,7 +413,6 @@ impl PartialEq for Set {
         }
     }
 }
-
 impl Eq for Set {}
 
 // Ord on Set compares only the `authoritative` version; note that HashSet
