@@ -42,7 +42,7 @@ impl<N: Display> Display for json_schema::Fragment<N> {
 impl<N: Display> Display for json_schema::NamespaceDefinition<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (n, ty) in &self.common_types {
-            writeln!(f, "type {n} = {};", ty)?
+            writeln!(f, "type {n} = {};", ty.0.data)?
         }
         for (n, ty) in &self.entity_types {
             writeln!(f, "entity {n}{};", ty)?

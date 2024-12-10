@@ -294,7 +294,7 @@ pub struct NamespaceDefinition<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub common_types: BTreeMap<CommonTypeId, Type<N>>,
+    pub common_types: BTreeMap<CommonTypeId, AnnotatedType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     pub entity_types: BTreeMap<UnreservedId, EntityType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
@@ -336,17 +336,25 @@ impl NamespaceDefinition<RawName> {
             common_types: self
                 .common_types
                 .into_iter()
-                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns).into()))
+                .map(|(k, v)| {
+                    (
+                        k,
+                        AnnotatedType(Annotated {
+                            data: v.0.data.conditionally_qualify_type_references(ns),
+                            annotations: v.0.annotations,
+                        }),
+                    )
+                })
                 .collect(),
             entity_types: self
                 .entity_types
                 .into_iter()
-                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns).into()))
+                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
                 .collect(),
             actions: self
                 .actions
                 .into_iter()
-                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns).into()))
+                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
                 .collect(),
             annotations: self.annotations,
         }
@@ -368,17 +376,25 @@ impl NamespaceDefinition<ConditionalName> {
             common_types: self
                 .common_types
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?.into())))
+                .map(|(k, v)| {
+                    Ok((
+                        k,
+                        AnnotatedType(Annotated {
+                            data: v.0.data.fully_qualify_type_references(all_defs)?,
+                            annotations: v.0.annotations,
+                        }),
+                    ))
+                })
                 .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
             entity_types: self
                 .entity_types
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?.into())))
+                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
                 .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
             actions: self
                 .actions
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?.into())))
+                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
                 .collect::<Result<_>>()?,
             annotations: self.annotations,
         })
@@ -3214,10 +3230,9 @@ mod annotations {
             "actions": {},
             "commonTypes": {
                 "Task": {
-                // Will allow later
-                //"annotations": {
-                //    "doc": "a common type representing a task"
-                //},
+                "annotations": {
+                    "doc": "a common type representing a task"
+                },
                 "type": "Record",
                 "attributes": {
                     "id": {

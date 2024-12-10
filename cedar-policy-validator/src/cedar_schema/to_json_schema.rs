@@ -35,7 +35,11 @@ use super::{
     },
     err::{schema_warnings, SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
 };
-use crate::{annotations, cedar_schema, json_schema, RawName};
+use crate::{
+    annotations, cedar_schema,
+    json_schema::{self, AnnotatedType},
+    RawName,
+};
 
 impl From<cedar_schema::Path> for RawName {
     fn from(p: cedar_schema::Path) -> Self {
@@ -196,7 +200,13 @@ impl TryFrom<annotations::Annotated<Namespace>> for json_schema::NamespaceDefini
                     .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), name_loc.clone()))?;
                 let ctid = json_schema::CommonTypeId::new(id)
                     .map_err(|e| ToJsonSchemaError::reserved_keyword(e.id, name_loc))?;
-                Ok((ctid, cedar_type_to_json_type(decl.data.def)))
+                Ok((
+                    ctid,
+                    AnnotatedType(annotations::Annotated {
+                        data: cedar_type_to_json_type(decl.data.def),
+                        annotations: decl.annotations,
+                    }),
+                ))
             })
             .collect::<Result<_, ToJsonSchemaError>>()?;
 

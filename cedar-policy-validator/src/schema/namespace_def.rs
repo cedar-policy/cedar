@@ -132,8 +132,14 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
 
         // Convert the common types, actions and entity types from the schema
         // file into the representation used by the validator.
-        let common_types =
-            CommonTypeDefs::from_raw_common_types(namespace_def.common_types, namespace.as_ref())?;
+        let common_types = CommonTypeDefs::from_raw_common_types(
+            namespace_def
+                .common_types
+                .into_iter()
+                .map(|(key, value)| (key, value.0.data))
+                .collect(),
+            namespace.as_ref(),
+        )?;
         let actions =
             ActionsDef::from_raw_actions(namespace_def.actions, namespace.as_ref(), extensions)?;
         let entity_types =
