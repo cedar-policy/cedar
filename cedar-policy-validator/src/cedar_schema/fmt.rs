@@ -31,8 +31,8 @@ impl<N: Display> Display for json_schema::Fragment<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (ns, def) in &self.0 {
             match ns {
-                None => write!(f, "{}", def.data)?,
-                Some(ns) => write!(f, "namespace {ns} {{\n{}}}\n", def.data)?,
+                None => write!(f, "{}", def)?,
+                Some(ns) => write!(f, "namespace {ns} {{\n{}}}\n", def)?,
             }
         }
         Ok(())
@@ -42,13 +42,13 @@ impl<N: Display> Display for json_schema::Fragment<N> {
 impl<N: Display> Display for json_schema::NamespaceDefinition<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (n, ty) in &self.common_types {
-            writeln!(f, "type {n} = {};", ty.data)?
+            writeln!(f, "type {n} = {};", ty)?
         }
         for (n, ty) in &self.entity_types {
-            writeln!(f, "entity {n}{};", ty.data)?
+            writeln!(f, "entity {n}{};", ty)?
         }
         for (n, a) in &self.actions {
-            writeln!(f, "action \"{}\"{};", n.escape_debug(), a.data)?
+            writeln!(f, "action \"{}\"{};", n.escape_debug(), a)?
         }
         Ok(())
     }
@@ -208,7 +208,6 @@ pub fn json_schema_to_cedar_schema_str<N: Display>(
     let mut name_collisions: Vec<SmolStr> = Vec::new();
     for (name, ns) in json_schema.0.iter().filter(|(name, _)| !name.is_none()) {
         let entity_types: HashSet<SmolStr> = ns
-            .data
             .entity_types
             .keys()
             .map(|ty_name| {
@@ -218,7 +217,6 @@ pub fn json_schema_to_cedar_schema_str<N: Display>(
             })
             .collect();
         let common_types: HashSet<SmolStr> = ns
-            .data
             .common_types
             .keys()
             .map(|ty_name| {

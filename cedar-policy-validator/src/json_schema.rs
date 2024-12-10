@@ -39,7 +39,7 @@ use std::{
 use thiserror::Error;
 
 use crate::{
-    annotations::Annotated,
+    annotations::{Annotated, Annotations},
     cedar_schema::{
         self, fmt::ToCedarSchemaSyntaxError, parser::parse_cedar_schema_fragment, SchemaWarning,
     },
@@ -78,37 +78,33 @@ pub struct Fragment<N>(
         feature = "wasm",
         tsify(type = "Record<string, NamespaceDefinition<N>>")
     )]
-    pub BTreeMap<Option<Name>, Annotated<NamespaceDefinition<N>>>,
+    pub BTreeMap<Option<Name>, NamespaceDefinition<N>>,
 );
 
 /// Custom deserializer to ensure that the empty namespace is mapped to `None`
 fn deserialize_schema_fragment<'de, D, N: Deserialize<'de> + From<RawName>>(
     deserializer: D,
-) -> std::result::Result<BTreeMap<Option<Name>, Annotated<NamespaceDefinition<N>>>, D::Error>
+) -> std::result::Result<BTreeMap<Option<Name>, NamespaceDefinition<N>>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let raw: BTreeMap<SmolStr, Annotated<NamespaceDefinition<N>>> =
+    let raw: BTreeMap<SmolStr, NamespaceDefinition<N>> =
         serde_with::rust::maps_duplicate_key_is_error::deserialize(deserializer)?;
-    Ok(
-        BTreeMap::from_iter(
-            raw.into_iter()
-                .map(|(key, value)| {
-                    let key = if key.is_empty() {
-                        None
-                    } else {
-                        Some(Name::from_normalized_str(&key).map_err(|err| {
-                            serde::de::Error::custom(format!("invalid namespace `{key}`: {err}"))
-                        })?)
-                    };
-                    Ok((key, value))
-                })
-                .collect::<std::result::Result<
-                    Vec<(Option<Name>, Annotated<NamespaceDefinition<N>>)>,
-                    D::Error,
-                >>()?,
-        ),
-    )
+    Ok(BTreeMap::from_iter(
+        raw.into_iter()
+            .map(|(key, value)| {
+                let key = if key.is_empty() {
+                    None
+                } else {
+                    Some(Name::from_normalized_str(&key).map_err(|err| {
+                        serde::de::Error::custom(format!("invalid namespace `{key}`: {err}"))
+                    })?)
+                };
+                Ok((key, value))
+            })
+            .collect::<std::result::Result<Vec<(Option<Name>, NamespaceDefinition<N>)>, D::Error>>(
+            )?,
+    ))
 }
 
 impl<N: Serialize> Serialize for Fragment<N> {
@@ -298,11 +294,16 @@ pub struct NamespaceDefinition<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub common_types: BTreeMap<CommonTypeId, Annotated<Type<N>>>,
+    pub common_types: BTreeMap<CommonTypeId, Type<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub entity_types: BTreeMap<UnreservedId, Annotated<EntityType<N>>>,
+    pub entity_types: BTreeMap<UnreservedId, EntityType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub actions: BTreeMap<SmolStr, Annotated<ActionType<N>>>,
+    pub actions: BTreeMap<SmolStr, ActionType<N>>,
+    /// Annotations
+    #[serde(default)]
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
+    pub annotations: Annotations,
 }
 
 impl<N> NamespaceDefinition<N> {
@@ -320,6 +321,7 @@ impl<N> NamespaceDefinition<N> {
                 .into_iter()
                 .map(|(key, value)| (key, value.into()))
                 .collect(),
+            annotations: BTreeMap::new(),
         }
     }
 }
@@ -334,18 +336,19 @@ impl NamespaceDefinition<RawName> {
             common_types: self
                 .common_types
                 .into_iter()
-                .map(|(k, v)| (k, v.data.conditionally_qualify_type_references(ns).into()))
+                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns).into()))
                 .collect(),
             entity_types: self
                 .entity_types
                 .into_iter()
-                .map(|(k, v)| (k, v.data.conditionally_qualify_type_references(ns).into()))
+                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns).into()))
                 .collect(),
             actions: self
                 .actions
                 .into_iter()
-                .map(|(k, v)| (k, v.data.conditionally_qualify_type_references(ns).into()))
+                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns).into()))
                 .collect(),
+            annotations: self.annotations,
         }
     }
 }
@@ -365,18 +368,19 @@ impl NamespaceDefinition<ConditionalName> {
             common_types: self
                 .common_types
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.data.fully_qualify_type_references(all_defs)?.into())))
+                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?.into())))
                 .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
             entity_types: self
                 .entity_types
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.data.fully_qualify_type_references(all_defs)?.into())))
+                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?.into())))
                 .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
             actions: self
                 .actions
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.data.fully_qualify_type_references(all_defs)?.into())))
+                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?.into())))
                 .collect::<Result<_>>()?,
+            annotations: self.annotations,
         })
     }
 }
@@ -409,6 +413,11 @@ pub struct EntityType<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Type<N>>,
+    /// Annotations
+    #[serde(default)]
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
+    pub annotations: Annotations,
 }
 
 impl EntityType<RawName> {
@@ -427,6 +436,7 @@ impl EntityType<RawName> {
             tags: self
                 .tags
                 .map(|ty| ty.conditionally_qualify_type_references(ns)),
+            annotations: self.annotations,
         }
     }
 }
@@ -453,6 +463,7 @@ impl EntityType<ConditionalName> {
                 .tags
                 .map(|ty| ty.fully_qualify_type_references(all_defs))
                 .transpose()?,
+            annotations: self.annotations,
         })
     }
 }
@@ -559,6 +570,11 @@ pub struct ActionType<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub member_of: Option<Vec<ActionEntityUID<N>>>,
+    /// Annotations
+    #[serde(default)]
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
+    pub annotations: Annotations,
 }
 
 impl ActionType<RawName> {
@@ -577,6 +593,7 @@ impl ActionType<RawName> {
                     .map(|aeuid| aeuid.conditionally_qualify_type_references(ns))
                     .collect()
             }),
+            annotations: self.annotations,
         }
     }
 }
@@ -606,6 +623,7 @@ impl ActionType<ConditionalName> {
                         .collect::<std::result::Result<_, ActionNotDefinedError>>()
                 })
                 .transpose()?,
+            annotations: self.annotations,
         })
     }
 }
@@ -2331,7 +2349,7 @@ mod test {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error(r#"missing field `entityTypes` at line 3 column 42"#)
+                &ExpectedErrorMessageBuilder::error(r#"unknown field `User`, expected one of `commonTypes`, `entityTypes`, `actions`, `annotations` at line 3 column 35"#)
                     .help("JSON formatted schema must specify a namespace. If you want to use the empty namespace, explicitly specify it with `{ \"\": {..} }`")
                     .build());
         });
@@ -2756,11 +2774,11 @@ mod entity_tags {
     fn basic() {
         let json = example_json_schema();
         assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
-            let user = &frag.0.get(&None).unwrap().data.entity_types.get(&"User".parse().unwrap()).unwrap().data;
+            let user = &frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
             assert_matches!(&user.tags, Some(Type::Type(TypeVariant::Set { element })) => {
                 assert_matches!(&**element, Type::Type(TypeVariant::String)); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
             });
-            let doc = &frag.0.get(&None).unwrap().data.entity_types.get(&"Document".parse().unwrap()).unwrap().data;
+            let doc = &frag.0.get(&None).unwrap().entity_types.get(&"Document".parse().unwrap()).unwrap();
             assert_matches!(&doc.tags, Some(Type::Type(TypeVariant::Set { element })) => {
                 assert_matches!(&**element, Type::Type(TypeVariant::String)); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
             });
@@ -2790,7 +2808,7 @@ mod entity_tags {
             "actions": {}
         }});
         assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
-            let user = &frag.0.get(&None).unwrap().data.entity_types.get(&"User".parse().unwrap()).unwrap().data;
+            let user = &frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
             assert_matches!(&user.tags, Some(Type::CommonTypeRef { type_name }) => {
                 assert_eq!(&format!("{type_name}"), "T");
             });
@@ -2817,7 +2835,7 @@ mod entity_tags {
             "actions": {}
         }});
         assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
-            let user = &frag.0.get(&None).unwrap().data.entity_types.get(&"User".parse().unwrap()).unwrap().data;
+            let user = &frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
             assert_matches!(&user.tags, Some(Type::Type(TypeVariant::Entity{ name })) => {
                 assert_eq!(&format!("{name}"), "User");
             });
@@ -2874,6 +2892,7 @@ mod test_json_roundtrip {
                 common_types: BTreeMap::new(),
                 entity_types: BTreeMap::new(),
                 actions: BTreeMap::new(),
+                annotations: BTreeMap::new(),
             }
             .into(),
         )]));
@@ -2888,6 +2907,7 @@ mod test_json_roundtrip {
                 common_types: BTreeMap::new(),
                 entity_types: BTreeMap::new(),
                 actions: BTreeMap::new(),
+                annotations: BTreeMap::new(),
             }
             .into(),
         )]));
@@ -2909,6 +2929,7 @@ mod test_json_roundtrip {
                             additional_attributes: false,
                         }))),
                         tags: None,
+                        annotations: BTreeMap::new(),
                     }
                     .into(),
                 )]),
@@ -2927,9 +2948,11 @@ mod test_json_roundtrip {
                             ))),
                         }),
                         member_of: None,
+                        annotations: BTreeMap::new(),
                     }
                     .into(),
                 )]),
+                annotations: BTreeMap::new(),
             }
             .into(),
         )]));
@@ -2954,10 +2977,12 @@ mod test_json_roundtrip {
                                 },
                             ))),
                             tags: None,
+                            annotations: BTreeMap::new(),
                         }
                         .into(),
                     )]),
                     actions: BTreeMap::new(),
+                    annotations: BTreeMap::new(),
                 }
                 .into(),
             ),
@@ -2981,9 +3006,11 @@ mod test_json_roundtrip {
                                 ))),
                             }),
                             member_of: None,
+                            annotations: BTreeMap::new(),
                         }
                         .into(),
                     )]),
+                    annotations: BTreeMap::new(),
                 }
                 .into(),
             ),
@@ -3140,9 +3167,12 @@ mod test_duplicates_error {
 
 #[cfg(test)]
 mod annotations {
-    use cool_asserts::assert_matches;
+    use std::collections::BTreeMap;
 
-    use crate::RawName;
+    use cool_asserts::assert_matches;
+    use smol_str::SmolStr;
+
+    use crate::{json_schema::EntityType, RawName};
 
     use super::Fragment;
 
@@ -3161,15 +3191,33 @@ mod annotations {
         let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
         assert_matches!(schema, Ok(_));
 
+        let src = serde_json::json!(
+        {
+
+                    "UserGroup": {
+                        "shape44": {
+                            "type": "Record",
+                            "attributes": {}
+                        },
+                        "memberOfTypes": [
+                            "UserGroup"
+                        ]
+                    }
+                });
+        let schema: Result<BTreeMap<SmolStr, EntityType<RawName>>, _> = serde_json::from_value(src);
+        println!("{schema:?}");
+        assert_matches!(schema, Err(_));
+
         let src = serde_json::json!({
             "": {
             "entityTypes": {},
             "actions": {},
             "commonTypes": {
                 "Task": {
-                "annotations": {
-                    "doc": "a common type representing a task"
-                },
+                // Will allow later
+                //"annotations": {
+                //    "doc": "a common type representing a task"
+                //},
                 "type": "Record",
                 "attributes": {
                     "id": {

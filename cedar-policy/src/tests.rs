@@ -1345,7 +1345,7 @@ mod schema_tests {
                 expect_err(
                     "",
                     &Report::new(e),
-                    &ExpectedErrorMessageBuilder::error("invalid entry: found duplicate key at line 48 column 13")
+                    &ExpectedErrorMessageBuilder::error("invalid entry: found duplicate key at line 39 column 17")
                         .build(),
                 )
         );

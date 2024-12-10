@@ -19,14 +19,14 @@
 use std::collections::BTreeMap;
 
 use cedar_policy_core::ast::AnyId;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use smol_str::SmolStr;
 
 /// Annotations
 pub type Annotations = BTreeMap<AnyId, SmolStr>;
 
 /// A struct that can be annotated, e.g., entity types.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct Annotated<T> {
@@ -34,9 +34,7 @@ pub struct Annotated<T> {
     #[serde(flatten)]
     pub data: T,
     /// Annotations
-    #[serde(default)]
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     pub annotations: Annotations,
 }
 

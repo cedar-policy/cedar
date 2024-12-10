@@ -123,7 +123,7 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
                 .map(|(fragment_ns, ns_def)| {
                     ValidatorNamespaceDef::from_namespace_definition(
                         fragment_ns.map(Into::into),
-                        ns_def.data,
+                        ns_def,
                         action_behavior,
                         extensions,
                     )

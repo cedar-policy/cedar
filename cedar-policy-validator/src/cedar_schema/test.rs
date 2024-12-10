@@ -49,15 +49,7 @@ mod demo_tests {
         "#;
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::none()).unwrap();
-        let foo = &schema
-            .0
-            .get(&None)
-            .unwrap()
-            .data
-            .actions
-            .get("Foo")
-            .unwrap()
-            .data;
+        let foo = &schema.0.get(&None).unwrap().actions.get("Foo").unwrap();
         assert_matches!(foo,
             json_schema::ActionType {
                 applies_to : Some(json_schema::ApplySpec {
@@ -219,9 +211,9 @@ mod demo_tests {
         "#;
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
-        let unqual = &schema.0.get(&None).unwrap().data;
+        let unqual = &schema.0.get(&None).unwrap();
         let foo = unqual.actions.get("Foo").unwrap();
-        assert_matches!(&foo.data,
+        assert_matches!(&foo,
                 json_schema::ActionType {
                     applies_to : Some(json_schema::ApplySpec {
                         resource_types,
@@ -259,9 +251,9 @@ mod demo_tests {
         "#;
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
-        let unqual = &schema.0.get(&None).unwrap().data;
+        let unqual = &schema.0.get(&None).unwrap();
         let foo = unqual.actions.get("Foo").unwrap();
-        assert_matches!(&foo.data,
+        assert_matches!(&foo,
                 json_schema::ActionType {
                     applies_to : Some(json_schema::ApplySpec {
                         resource_types,
@@ -344,6 +336,7 @@ mod demo_tests {
             attributes: None,
             applies_to: None,
             member_of: None,
+            annotations: BTreeMap::new(),
         };
         let namespace =
             json_schema::NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
@@ -447,6 +440,7 @@ namespace Baz {action "Foo" appliesTo {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
+                    annotations: BTreeMap::new(),
                 }
                 .into(),
             )]),
@@ -460,9 +454,11 @@ namespace Baz {action "Foo" appliesTo {
                         context: json_schema::AttributesOrContext::default(),
                     }),
                     member_of: None,
+                    annotations: BTreeMap::new(),
                 }
                 .into(),
             )]),
+            annotations: BTreeMap::new(),
         };
         let fragment = json_schema::Fragment(BTreeMap::from([(None, namespace.into())]));
         let src = fragment.to_cedarschema().unwrap();
@@ -547,11 +543,9 @@ namespace Baz {action "Foo" appliesTo {
             .expect("`Github` name space did not exist");
         // User
         let user = &github
-            .data
             .entity_types
             .get(&"User".parse().unwrap())
-            .expect("No `User`")
-            .data;
+            .expect("No `User`");
         assert_empty_record(user);
         assert_eq!(
             &user.member_of_types,
@@ -559,11 +553,9 @@ namespace Baz {action "Foo" appliesTo {
         );
         // UserGroup
         let usergroup = &github
-            .data
             .entity_types
             .get(&"UserGroup".parse().unwrap())
-            .expect("No `UserGroup`")
-            .data;
+            .expect("No `UserGroup`");
         assert_empty_record(usergroup);
         assert_eq!(
             &usergroup.member_of_types,
@@ -571,11 +563,9 @@ namespace Baz {action "Foo" appliesTo {
         );
         // Repository
         let repo = &github
-            .data
             .entity_types
             .get(&"Repository".parse().unwrap())
-            .expect("No `Repository`")
-            .data;
+            .expect("No `Repository`");
         assert!(repo.member_of_types.is_empty());
         let groups = ["readers", "writers", "triagers", "admins", "maintainers"];
         for group in groups {
@@ -592,11 +582,9 @@ namespace Baz {action "Foo" appliesTo {
             });
         }
         let issue = &github
-            .data
             .entity_types
             .get(&"Issue".parse().unwrap())
-            .expect("No `Issue`")
-            .data;
+            .expect("No `Issue`");
         assert!(issue.member_of_types.is_empty());
         assert_matches!(&issue.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
@@ -618,11 +606,9 @@ namespace Baz {action "Foo" appliesTo {
             );
         });
         let org = &github
-            .data
             .entity_types
             .get(&"Org".parse().unwrap())
-            .expect("No `Org`")
-            .data;
+            .expect("No `Org`");
         assert!(org.member_of_types.is_empty());
         let groups = ["members", "owners", "memberOfTypes"];
         for group in groups {
@@ -685,11 +671,9 @@ namespace Baz {action "Foo" appliesTo {
             .get(&Some("DocCloud".parse().unwrap()))
             .expect("No `DocCloud` namespace");
         let user = &doccloud
-            .data
             .entity_types
             .get(&"User".parse().unwrap())
-            .expect("No `User`")
-            .data;
+            .expect("No `User`");
         assert_eq!(&user.member_of_types, &vec!["Group".parse().unwrap()]);
         assert_matches!(&user.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
@@ -711,11 +695,9 @@ namespace Baz {action "Foo" appliesTo {
             );
         });
         let group = &doccloud
-            .data
             .entity_types
             .get(&"Group".parse().unwrap())
-            .expect("No `Group`")
-            .data;
+            .expect("No `Group`");
         assert_eq!(
             &group.member_of_types,
             &vec!["DocumentShare".parse().unwrap()]
@@ -732,11 +714,9 @@ namespace Baz {action "Foo" appliesTo {
             );
         });
         let document = &doccloud
-            .data
             .entity_types
             .get(&"Document".parse().unwrap())
-            .expect("No `Group`")
-            .data;
+            .expect("No `Group`");
         assert!(document.member_of_types.is_empty());
         assert_matches!(&document.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
@@ -780,20 +760,16 @@ namespace Baz {action "Foo" appliesTo {
             );
         });
         let document_share = &doccloud
-            .data
             .entity_types
             .get(&"DocumentShare".parse().unwrap())
-            .expect("No `DocumentShare`")
-            .data;
+            .expect("No `DocumentShare`");
         assert!(document_share.member_of_types.is_empty());
         assert_empty_record(document_share);
 
         let public = &doccloud
-            .data
             .entity_types
             .get(&"Public".parse().unwrap())
-            .expect("No `Public`")
-            .data;
+            .expect("No `Public`");
         assert_eq!(
             &public.member_of_types,
             &vec!["DocumentShare".parse().unwrap()]
@@ -801,11 +777,9 @@ namespace Baz {action "Foo" appliesTo {
         assert_empty_record(public);
 
         let drive = &doccloud
-            .data
             .entity_types
             .get(&"Drive".parse().unwrap())
-            .expect("No `Drive`")
-            .data;
+            .expect("No `Drive`");
         assert!(drive.member_of_types.is_empty());
         assert_empty_record(drive);
     }
@@ -913,11 +887,9 @@ namespace Baz {action "Foo" appliesTo {
         assert!(warnings.collect::<Vec<_>>().is_empty());
         let service = fragment.0.get(&Some("Service".parse().unwrap())).unwrap();
         let resource = &service
-            .data
             .entity_types
             .get(&"Resource".parse().unwrap())
-            .unwrap()
-            .data;
+            .unwrap();
         assert_matches!(&resource.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
@@ -1453,12 +1425,7 @@ mod translator_tests {
         let (frag, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let demo = frag.0.get(&Some("Demo".parse().unwrap())).unwrap();
-        let user = &demo
-            .data
-            .entity_types
-            .get(&"User".parse().unwrap())
-            .unwrap()
-            .data;
+        let user = &demo.entity_types.get(&"User".parse().unwrap()).unwrap();
         assert_matches!(&user.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
@@ -1562,12 +1529,7 @@ mod translator_tests {
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
-        let foo = &ns
-            .data
-            .entity_types
-            .get(&"Foo".parse().unwrap())
-            .unwrap()
-            .data;
+        let foo = &ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["namespace".parse().unwrap()]);
     }
 
@@ -1598,12 +1560,7 @@ mod translator_tests {
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
-        let foo = &ns
-            .data
-            .entity_types
-            .get(&"Foo".parse().unwrap())
-            .unwrap()
-            .data;
+        let foo = &ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["Set".parse().unwrap()]);
     }
 
@@ -1617,12 +1574,7 @@ mod translator_tests {
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
-        let foo = &ns
-            .data
-            .entity_types
-            .get(&"Foo".parse().unwrap())
-            .unwrap()
-            .data;
+        let foo = &ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["appliesTo".parse().unwrap()]);
     }
 
@@ -1636,12 +1588,7 @@ mod translator_tests {
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
-        let foo = &ns
-            .data
-            .entity_types
-            .get(&"Foo".parse().unwrap())
-            .unwrap()
-            .data;
+        let foo = &ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["principal".parse().unwrap()]);
     }
 
@@ -1655,12 +1602,7 @@ mod translator_tests {
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
-        let foo = &ns
-            .data
-            .entity_types
-            .get(&"Foo".parse().unwrap())
-            .unwrap()
-            .data;
+        let foo = &ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["resource".parse().unwrap()]);
     }
 
@@ -1674,12 +1616,7 @@ mod translator_tests {
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
-        let foo = &ns
-            .data
-            .entity_types
-            .get(&"Foo".parse().unwrap())
-            .unwrap()
-            .data;
+        let foo = &ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["action".parse().unwrap()]);
     }
 
@@ -1693,12 +1630,7 @@ mod translator_tests {
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
-        let foo = &ns
-            .data
-            .entity_types
-            .get(&"Foo".parse().unwrap())
-            .unwrap()
-            .data;
+        let foo = &ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["context".parse().unwrap()]);
     }
 
@@ -1712,12 +1644,7 @@ mod translator_tests {
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
-        let foo = &ns
-            .data
-            .entity_types
-            .get(&"Foo".parse().unwrap())
-            .unwrap()
-            .data;
+        let foo = &ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["attributes".parse().unwrap()]);
     }
 
@@ -1731,12 +1658,7 @@ mod translator_tests {
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
-        let foo = &ns
-            .data
-            .entity_types
-            .get(&"Foo".parse().unwrap())
-            .unwrap()
-            .data;
+        let foo = &ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["Bool".parse().unwrap()]);
     }
 
@@ -1750,12 +1672,7 @@ mod translator_tests {
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
-        let foo = &ns
-            .data
-            .entity_types
-            .get(&"Foo".parse().unwrap())
-            .unwrap()
-            .data;
+        let foo = &ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["Long".parse().unwrap()]);
     }
 
@@ -1769,12 +1686,7 @@ mod translator_tests {
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
-        let foo = &ns
-            .data
-            .entity_types
-            .get(&"Foo".parse().unwrap())
-            .unwrap()
-            .data;
+        let foo = &ns.entity_types.get(&"Foo".parse().unwrap()).unwrap();
         assert_eq!(foo.member_of_types, vec!["String".parse().unwrap()]);
     }
 
@@ -2407,14 +2319,14 @@ mod entity_tags {
         let src = "entity E;";
         assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
             assert!(warnings.is_empty());
-            let entity_type = &frag.0.get(&None).unwrap().data.entity_types.get(&"E".parse().unwrap()).unwrap().data;
+            let entity_type = &frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
             assert_matches!(&entity_type.tags, None);
         });
 
         let src = "entity E tags String;";
         assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
             assert!(warnings.is_empty());
-            let entity_type = &frag.0.get(&None).unwrap().data.entity_types.get(&"E".parse().unwrap()).unwrap().data;
+            let entity_type = &frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
             assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name })) => {
                 assert_eq!(&format!("{type_name}"), "String");
             });
@@ -2423,7 +2335,7 @@ mod entity_tags {
         let src = "entity E tags Set<String>;";
         assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
             assert!(warnings.is_empty());
-            let entity_type = &frag.0.get(&None).unwrap().data.entity_types.get(&"E".parse().unwrap()).unwrap().data;
+            let entity_type = &frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
             assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::Set { element })) => {
                 assert_matches!(&**element, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
                     assert_eq!(&format!("{type_name}"), "String");
@@ -2434,7 +2346,7 @@ mod entity_tags {
         let src = "entity E { foo: String } tags { foo: String };";
         assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
             assert!(warnings.is_empty());
-            let entity_type = &frag.0.get(&None).unwrap().data.entity_types.get(&"E".parse().unwrap()).unwrap().data;
+            let entity_type = &frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
             assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::Record(rty))) => {
                 assert_matches!(rty.attributes.get("foo"), Some(json_schema::TypeOfAttribute { ty, required }) => {
                     assert_matches!(&ty.0.data, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
@@ -2448,7 +2360,7 @@ mod entity_tags {
         let src = "type T = String; entity E tags T;";
         assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
             assert!(warnings.is_empty());
-            let entity_type = &frag.0.get(&None).unwrap().data.entity_types.get(&"E".parse().unwrap()).unwrap().data;
+            let entity_type = &frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
             assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name })) => {
                 assert_eq!(&format!("{type_name}"), "T");
             });
@@ -2457,7 +2369,7 @@ mod entity_tags {
         let src = "entity E tags E;";
         assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
             assert!(warnings.is_empty());
-            let entity_type = &frag.0.get(&None).unwrap().data.entity_types.get(&"E".parse().unwrap()).unwrap().data;
+            let entity_type = &frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
             assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name })) => {
                 assert_eq!(&format!("{type_name}"), "E");
             });

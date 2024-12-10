@@ -78,18 +78,7 @@ pub fn cedar_schema_to_json_schema(
 
     let names = build_namespace_bindings(all_namespaces.iter().map(|ns| &ns.data))?;
     let warnings = compute_namespace_warnings(&names, extensions);
-    let fragment = collect_all_errors(all_namespaces.into_iter().map(|ns| {
-        convert_namespace(ns.data).map(|(n, nsd)| {
-            (
-                n,
-                annotations::Annotated {
-                    data: nsd,
-                    annotations: ns.annotations,
-                },
-            )
-        })
-    }))?
-    .collect();
+    let fragment = collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?.collect();
     Ok((
         json_schema::Fragment(fragment),
         warnings.collect::<Vec<_>>().into_iter(),
@@ -162,9 +151,10 @@ fn split_unqualified_namespace(
 
 /// Converts a CST namespace to a JSON namespace
 fn convert_namespace(
-    namespace: Namespace,
+    namespace: annotations::Annotated<Namespace>,
 ) -> Result<(Option<Name>, json_schema::NamespaceDefinition<RawName>), ToJsonSchemaErrors> {
     let ns_name = namespace
+        .data
         .name
         .clone()
         .map(|p| {
@@ -177,47 +167,25 @@ fn convert_namespace(
     Ok((ns_name, def))
 }
 
-impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
+impl TryFrom<annotations::Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName> {
     type Error = ToJsonSchemaErrors;
 
-    fn try_from(n: Namespace) -> Result<json_schema::NamespaceDefinition<RawName>, Self::Error> {
+    fn try_from(
+        n: annotations::Annotated<Namespace>,
+    ) -> Result<json_schema::NamespaceDefinition<RawName>, Self::Error> {
         // Partition the decls into entities, actions, and common types
-        let (entity_types, action, common_types) = into_partition_decls(n.decls);
+        let (entity_types, action, common_types) = into_partition_decls(n.data.decls);
 
         // Convert entity type decls, collecting all errors
-        let entity_types = collect_all_errors(entity_types.into_iter().map(|et| {
-            convert_entity_decl(et.data).map(|i| {
-                i.map(move |(id, ty)| {
-                    (
-                        id,
-                        annotations::Annotated {
-                            data: ty,
-                            annotations: et.annotations.clone(),
-                        },
-                    )
-                })
-            })
-        }))?
-        .flatten()
-        .collect();
+        let entity_types = collect_all_errors(entity_types.into_iter().map(convert_entity_decl))?
+            .flatten()
+            .collect();
 
         // Convert action decls, collecting all errors
-        let actions = collect_all_errors(action.into_iter().map(|action| {
-            convert_action_decl(action.data).map(|i| {
-                i.map(move |(id, at)| {
-                    (
-                        id,
-                        annotations::Annotated {
-                            data: at,
-                            annotations: action.annotations.clone(),
-                        },
-                    )
-                })
-            })
-        }))?
-        .flatten()
-        .map(|(key, value)| (key, value.into()))
-        .collect();
+        let actions = collect_all_errors(action.into_iter().map(convert_action_decl))?
+            .flatten()
+            .map(|(key, value)| (key, value.into()))
+            .collect();
 
         // Convert common type decls
         let common_types = common_types
@@ -228,13 +196,7 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
                     .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), name_loc.clone()))?;
                 let ctid = json_schema::CommonTypeId::new(id)
                     .map_err(|e| ToJsonSchemaError::reserved_keyword(e.id, name_loc))?;
-                Ok((
-                    ctid,
-                    annotations::Annotated {
-                        data: cedar_type_to_json_type(decl.data.def),
-                        annotations: decl.annotations,
-                    },
-                ))
+                Ok((ctid, cedar_type_to_json_type(decl.data.def)))
             })
             .collect::<Result<_, ToJsonSchemaError>>()?;
 
@@ -242,19 +204,20 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
             common_types,
             entity_types,
             actions,
+            annotations: n.annotations,
         })
     }
 }
 
 /// Converts action type decls
 fn convert_action_decl(
-    a: ActionDecl,
+    a: annotations::Annotated<ActionDecl>,
 ) -> Result<impl Iterator<Item = (SmolStr, json_schema::ActionType<RawName>)>, ToJsonSchemaErrors> {
     let ActionDecl {
         names,
         parents,
         app_decls,
-    } = a;
+    } = a.data;
     // Create the internal type from the 'applies_to' clause and 'member_of'
     let applies_to = app_decls
         .map(|decls| convert_app_decls(&names.first().node, &names.first().loc, decls))
@@ -269,6 +232,7 @@ fn convert_action_decl(
         attributes: None, // Action attributes are currently unsupported in the Cedar schema format
         applies_to: Some(applies_to),
         member_of,
+        annotations: a.annotations,
     };
     // Then map that type across all of the bound names
     Ok(names.into_iter().map(move |name| (name.node, ty.clone())))
@@ -387,21 +351,28 @@ fn convert_id(node: Node<Id>) -> Result<UnreservedId, ToJsonSchemaError> {
 
 /// Convert Entity declarations
 fn convert_entity_decl(
-    e: EntityDecl,
+    e: annotations::Annotated<EntityDecl>,
 ) -> Result<
     impl Iterator<Item = (UnreservedId, json_schema::EntityType<RawName>)>,
     ToJsonSchemaErrors,
 > {
     // First build up the defined entity type
     let etype = json_schema::EntityType {
-        member_of_types: e.member_of_types.into_iter().map(RawName::from).collect(),
-        shape: convert_attr_decls(e.attrs),
-        tags: e.tags.map(cedar_type_to_json_type),
+        member_of_types: e
+            .data
+            .member_of_types
+            .into_iter()
+            .map(RawName::from)
+            .collect(),
+        shape: convert_attr_decls(e.data.attrs),
+        tags: e.data.tags.map(cedar_type_to_json_type),
+        annotations: e.annotations,
     };
 
     // Then map over all of the bound names
     collect_all_errors(
-        e.names
+        e.data
+            .names
             .into_iter()
             .map(move |name| -> Result<_, ToJsonSchemaErrors> {
                 Ok((convert_id(name)?, etype.clone()))

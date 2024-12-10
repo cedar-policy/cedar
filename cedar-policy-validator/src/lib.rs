@@ -268,7 +268,10 @@ impl Validator {
 #[cfg(test)]
 mod test {
     use itertools::Itertools;
-    use std::{collections::HashMap, sync::Arc};
+    use std::{
+        collections::{BTreeMap, HashMap},
+        sync::Arc,
+    };
 
     use crate::types::Type;
     use crate::validation_errors::UnrecognizedActionIdHelp;
@@ -294,6 +297,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: BTreeMap::new(),
                     },
                 ),
                 (
@@ -302,6 +306,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: BTreeMap::new(),
                     },
                 ),
             ],
@@ -315,6 +320,7 @@ mod test {
                     }),
                     member_of: None,
                     attributes: None,
+                    annotations: BTreeMap::new(),
                 },
             )],
         );
