@@ -73,8 +73,7 @@ pub fn cedar_schema_to_json_schema(
     // namespaces with matching non-empty names, so that all definitions from
     // that namespace make it into the JSON schema structure under that
     // namespace's key.
-    let (qualified_namespaces, unqualified_namespace) =
-        split_unqualified_namespace(schema.into_iter());
+    let (qualified_namespaces, unqualified_namespace) = split_unqualified_namespace(schema);
     // Create a single iterator for all namespaces
     let all_namespaces = qualified_namespaces
         .chain(unqualified_namespace)
@@ -188,7 +187,7 @@ impl TryFrom<annotations::Annotated<Namespace>> for json_schema::NamespaceDefini
         // Convert action decls, collecting all errors
         let actions = collect_all_errors(action.into_iter().map(convert_action_decl))?
             .flatten()
-            .map(|(key, value)| (key, value.into()))
+            .map(|(key, value)| (key, value))
             .collect();
 
         // Convert common type decls

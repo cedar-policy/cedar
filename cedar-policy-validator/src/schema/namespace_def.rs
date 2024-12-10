@@ -1028,20 +1028,18 @@ pub(crate) fn try_record_type_into_validator_type(
     if cfg!(not(feature = "partial-validate")) && rty.additional_attributes {
         Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
     } else {
-        Ok(parse_record_attributes(
-            rty.attributes.into_iter().map(|(key, value)| (key, value)),
-            extensions,
-        )?
-        .map(move |attrs| {
-            Type::record_with_attributes(
-                attrs,
-                if rty.additional_attributes {
-                    OpenTag::OpenAttributes
-                } else {
-                    OpenTag::ClosedAttributes
-                },
-            )
-        }))
+        Ok(
+            parse_record_attributes(rty.attributes.into_iter(), extensions)?.map(move |attrs| {
+                Type::record_with_attributes(
+                    attrs,
+                    if rty.additional_attributes {
+                        OpenTag::OpenAttributes
+                    } else {
+                        OpenTag::ClosedAttributes
+                    },
+                )
+            }),
+        )
     }
 }
 

@@ -315,11 +315,11 @@ impl<N> NamespaceDefinition<N> {
             common_types: BTreeMap::new(),
             entity_types: entity_types
                 .into_iter()
-                .map(|(key, value)| (key, value.into()))
+                .map(|(key, value)| (key, value))
                 .collect(),
             actions: actions
                 .into_iter()
-                .map(|(key, value)| (key, value.into()))
+                .map(|(key, value)| (key, value))
                 .collect(),
             annotations: BTreeMap::new(),
         }
@@ -1271,8 +1271,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                                             TypeOfAttribute {
                                                 ty: AnnotatedType(ty.0.data.into_n().into()),
                                                 required,
-                                            }
-                                            .into(),
+                                            },
                                         )
                                     })
                                     .collect(),
@@ -1565,7 +1564,7 @@ impl RecordType<RawName> {
             attributes: self
                 .attributes
                 .into_iter()
-                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns).into()))
+                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
                 .collect(),
             additional_attributes: self.additional_attributes,
         }
@@ -1587,7 +1586,7 @@ impl RecordType<ConditionalName> {
             attributes: self
                 .attributes
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?.into())))
+                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
                 .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
             additional_attributes: self.additional_attributes,
         })
@@ -1693,8 +1692,7 @@ impl TypeVariant<RawName> {
                                     ty.0.data.conditionally_qualify_type_references(ns).into(),
                                 ),
                                 required,
-                            }
-                            .into(),
+                            },
                         )
                     },
                 )),
@@ -1718,7 +1716,7 @@ impl TypeVariant<RawName> {
             }) => TypeVariant::Record(RecordType {
                 attributes: attributes
                     .into_iter()
-                    .map(|(k, v)| (k, v.into_n().into()))
+                    .map(|(k, v)| (k, v.into_n()))
                     .collect(),
                 additional_attributes,
             }),
@@ -1769,8 +1767,7 @@ impl TypeVariant<ConditionalName> {
                                     ty.0.data.fully_qualify_type_references(all_defs)?.into(),
                                 ),
                                 required,
-                            }
-                            .into(),
+                            },
                         ))
                     })
                     .collect::<std::result::Result<BTreeMap<_, _>, TypeNotDefinedError>>()?,

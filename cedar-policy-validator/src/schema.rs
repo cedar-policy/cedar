@@ -1364,8 +1364,7 @@ impl<'a> CommonTypeResolver<'a> {
                                             Self::resolve_type(resolve_table, attr_ty.ty.0.data)?
                                                 .into(),
                                         ),
-                                    }
-                                    .into(),
+                                    },
                                 ))
                             })
                             .collect::<Result<Vec<(_, _)>>>()?,

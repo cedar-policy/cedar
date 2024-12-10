@@ -205,7 +205,7 @@ impl Diagnostic for ParseError {
             } => Some(Box::new(
                 std::iter::once(n1.loc.span)
                     .chain(std::iter::once(n2.loc.span))
-                    .map(|s| LabeledSpan::underline(s)),
+                    .map(LabeledSpan::underline),
             )),
             OwnedRawParseError::User { .. } => Some(Box::new(std::iter::once(
                 LabeledSpan::underline(primary_source_span),
