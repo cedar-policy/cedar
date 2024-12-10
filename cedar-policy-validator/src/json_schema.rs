@@ -3207,23 +3207,6 @@ mod annotations {
         let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
         assert_matches!(schema, Ok(_));
 
-        let src = serde_json::json!(
-        {
-
-                    "UserGroup": {
-                        "shape44": {
-                            "type": "Record",
-                            "attributes": {}
-                        },
-                        "memberOfTypes": [
-                            "UserGroup"
-                        ]
-                    }
-                });
-        let schema: Result<BTreeMap<SmolStr, EntityType<RawName>>, _> = serde_json::from_value(src);
-        println!("{schema:?}");
-        assert_matches!(schema, Err(_));
-
         let src = serde_json::json!({
             "": {
             "entityTypes": {},
@@ -3344,5 +3327,89 @@ mod annotations {
                 }});
         let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
         assert_matches!(schema, Ok(_));
+    }
+
+    #[test]
+    fn unknown_fields() {
+        let src = serde_json::json!(
+        {
+
+            "UserGroup": {
+                "shape44": {
+                    "type": "Record",
+                    "attributes": {}
+                },
+                "memberOfTypes": [
+                    "UserGroup"
+                ]
+            }});
+        let et: Result<BTreeMap<SmolStr, EntityType<RawName>>, _> = serde_json::from_value(src);
+        assert_matches!(et, Err(errs) => {
+            assert_eq!(errs.to_string(), "unknown field `shape44`, expected one of `memberOfTypes`, `shape`, `tags`, `annotations`");
+        });
+
+        let src = serde_json::json!(
+        {
+           "" : {
+            "entityTypes": {},
+            "actions": {},
+            "foo": "",
+            "annotations": {
+                "doc": "this is a doc"
+            }
+           }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(errs) => {
+            assert_eq!(errs.to_string(), "unknown field `foo`, expected one of `commonTypes`, `entityTypes`, `actions`, `annotations`");
+        });
+
+        let src = serde_json::json!(
+        {
+           "" : {
+            "entityTypes": {},
+            "actions": {},
+            "commonTypes": {
+                "a": {
+                    "type": "Long",
+                    "annotations": {
+                        "foo": ""
+                    },
+                    "bar": 1
+                }
+            }
+           }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(errs) => {
+            assert_eq!(errs.to_string(), "unknown field `bar`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`, `annotations`");
+        });
+
+        let src = serde_json::json!(
+        {
+           "" : {
+            "entityTypes": {},
+            "actions": {},
+            "commonTypes": {
+                "a": {
+                    "type": "Record",
+                    "annotations": {
+                        "foo": ""
+                    },
+                    "attributes": {
+                        "a": {
+                            "required": false,
+                            "bar": 1,
+                            "type": "Long"
+                        }
+                    }
+                }
+            }
+           }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(errs) => {
+            assert_eq!(errs.to_string(), "unknown field `bar`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`, `annotations`");
+        });
     }
 }
