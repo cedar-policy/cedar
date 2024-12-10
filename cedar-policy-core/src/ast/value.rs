@@ -158,6 +158,19 @@ impl Value {
     pub fn eq_and_same_source_loc(&self, other: &Self) -> bool {
         self == other && self.source_loc() == other.source_loc()
     }
+
+    /// Alternate `Display` impl, that truncates large sets/records (including recursively).
+    ///
+    /// `n`: the maximum number of set elements, or record key-value pairs, that
+    /// will be shown before eliding the rest with `..`.
+    /// `None` means no bound.
+    pub fn bounded_display(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        n: Option<usize>,
+    ) -> std::fmt::Result {
+        self.value.bounded_display(f, n)
+    }
 }
 
 impl ValueKind {
@@ -203,6 +216,99 @@ impl ValueKind {
         match &self {
             Self::Lit(lit) => Some(lit),
             _ => None,
+        }
+    }
+
+    /// Alternate `Display` impl, that truncates large sets/records (including recursively).
+    ///
+    /// `n`: the maximum number of set elements, or record key-value pairs, that
+    /// will be shown before eliding the rest with `..`.
+    /// `None` means no bound.
+    pub fn bounded_display(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        n: Option<usize>,
+    ) -> std::fmt::Result {
+        match self {
+            Self::Lit(lit) => write!(f, "{lit}"),
+            Self::Set(Set {
+                fast,
+                authoritative,
+            }) => {
+                write!(f, "[")?;
+                let truncated = n.map(|n| authoritative.len() > n).unwrap_or(false);
+                if let Some(rc) = fast {
+                    // sort the elements, because we want the Display output to be
+                    // deterministic, particularly for tests which check equality
+                    // of error messages
+                    let elements = match n {
+                        Some(n) => Box::new(rc.as_ref().iter().sorted_unstable().take(n))
+                            as Box<dyn Iterator<Item = &Literal>>,
+                        None => Box::new(rc.as_ref().iter().sorted_unstable())
+                            as Box<dyn Iterator<Item = &Literal>>,
+                    };
+                    for (i, item) in elements.enumerate() {
+                        write!(f, "{item}")?;
+                        if i < authoritative.len() - 1 {
+                            write!(f, ", ")?;
+                        }
+                    }
+                } else {
+                    // don't need to sort the elements in this case because BTreeSet iterates
+                    // in a deterministic order already
+                    let elements = match n {
+                        Some(n) => Box::new(authoritative.as_ref().iter().take(n))
+                            as Box<dyn Iterator<Item = &Value>>,
+                        None => Box::new(authoritative.as_ref().iter())
+                            as Box<dyn Iterator<Item = &Value>>,
+                    };
+                    for (i, item) in elements.enumerate() {
+                        item.bounded_display(f, n)?;
+                        if i < authoritative.len() - 1 {
+                            write!(f, ", ")?;
+                        }
+                    }
+                }
+                if truncated {
+                    write!(f, ".. ")?;
+                }
+                write!(f, "]")?;
+                Ok(())
+            }
+            Self::Record(record) => {
+                write!(f, "{{")?;
+                let truncated = n.map(|n| record.len() > n).unwrap_or(false);
+                // no need to sort the elements because BTreeMap iterates in a
+                // deterministic order already
+                let elements = match n {
+                    Some(n) => Box::new(record.as_ref().iter().take(n))
+                        as Box<dyn Iterator<Item = (&SmolStr, &Value)>>,
+                    None => Box::new(record.as_ref().iter())
+                        as Box<dyn Iterator<Item = (&SmolStr, &Value)>>,
+                };
+                for (i, (k, v)) in elements.enumerate() {
+                    match UnreservedId::from_str(k) {
+                        Ok(k) => {
+                            // we can omit the quotes around the key, it's a valid identifier and not a reserved keyword
+                            write!(f, "{k}: ")?;
+                        }
+                        Err(_) => {
+                            // put quotes around the key
+                            write!(f, "\"{k}\": ")?;
+                        }
+                    }
+                    v.bounded_display(f, n)?;
+                    if i < record.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                if truncated {
+                    write!(f, ".. ")?;
+                }
+                write!(f, "}}")?;
+                Ok(())
+            }
+            Self::ExtensionValue(ev) => write!(f, "{}", RestrictedExpr::from(ev.as_ref().clone())),
         }
     }
 }
@@ -479,58 +585,7 @@ impl std::fmt::Display for Value {
 
 impl std::fmt::Display for ValueKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Lit(lit) => write!(f, "{}", lit),
-            Self::Set(Set {
-                fast,
-                authoritative,
-            }) => {
-                write!(f, "[")?;
-                if let Some(rc) = fast {
-                    // sort the elements, because we want the Display output to be
-                    // deterministic, particularly for tests which check equality
-                    // of error messages
-                    for (i, item) in rc.as_ref().iter().sorted_unstable().enumerate() {
-                        write!(f, "{item}")?;
-                        if i < authoritative.len() - 1 {
-                            write!(f, ", ")?;
-                        }
-                    }
-                } else {
-                    // don't need to sort the elements in this case because BTreeSet iterates
-                    // in a deterministic order already
-                    for (i, item) in authoritative.as_ref().iter().enumerate() {
-                        write!(f, "{item}")?;
-                        if i < authoritative.len() - 1 {
-                            write!(f, ", ")?;
-                        }
-                    }
-                }
-                write!(f, "]")?;
-                Ok(())
-            }
-            Self::Record(record) => {
-                write!(f, "{{")?;
-                for (i, (k, v)) in record.as_ref().iter().enumerate() {
-                    match UnreservedId::from_str(k) {
-                        Ok(k) => {
-                            // we can omit the quotes around the key, it's a valid identifier and not a reserved keyword
-                            write!(f, "{k}: {v}")?;
-                        }
-                        Err(_) => {
-                            // put quotes around the key
-                            write!(f, "\"{k}\": {v}")?;
-                        }
-                    }
-                    if i < record.len() - 1 {
-                        write!(f, ", ")?;
-                    }
-                }
-                write!(f, "}}")?;
-                Ok(())
-            }
-            Self::ExtensionValue(ev) => write!(f, "{}", RestrictedExpr::from(ev.as_ref().clone())),
-        }
+        self.bounded_display(f, None)
     }
 }
 
