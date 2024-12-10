@@ -37,7 +37,7 @@ use std::sync::Arc;
 
 use crate::{
     cedar_schema::SchemaWarning,
-    json_schema,
+    json_schema::{self, AnnotatedType},
     types::{Attributes, EntityRecordKind, OpenTag, Type},
 };
 
@@ -123,7 +123,7 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
                 .map(|(fragment_ns, ns_def)| {
                     ValidatorNamespaceDef::from_namespace_definition(
                         fragment_ns.map(Into::into),
-                        ns_def,
+                        ns_def.data,
                         action_behavior,
                         extensions,
                     )
@@ -1360,8 +1360,12 @@ impl<'a> CommonTypeResolver<'a> {
                                     attr,
                                     json_schema::TypeOfAttribute {
                                         required: attr_ty.required,
-                                        ty: Self::resolve_type(resolve_table, attr_ty.ty)?,
-                                    },
+                                        ty: AnnotatedType(
+                                            Self::resolve_type(resolve_table, attr_ty.ty.0.data)?
+                                                .into(),
+                                        ),
+                                    }
+                                    .into(),
                                 ))
                             })
                             .collect::<Result<Vec<(_, _)>>>()?,
