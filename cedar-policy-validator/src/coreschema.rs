@@ -454,7 +454,7 @@ pub mod request_validation_errors {
 
     /// Context does not comply with the shape specified for the request action
     #[derive(Debug, Error, Diagnostic)]
-    #[error("context `{context}` is not valid for `{action}`")]
+    #[error("context `{}` is not valid for `{action}`", pretty_print(&.context))]
     pub struct InvalidContextError {
         /// Context which is not valid
         pub(super) context: ast::Context,
@@ -471,6 +471,43 @@ pub mod request_validation_errors {
         /// The action which it is not valid for
         pub fn action(&self) -> &ast::EntityUID {
             &self.action
+        }
+    }
+
+    const MAX_KEYS_TO_PRETTY_PRINT: usize = 5;
+
+    fn pretty_print(context: &ast::Context) -> String {
+        if context.num_keys() <= MAX_KEYS_TO_PRETTY_PRINT {
+            // just print the context using its `Display` impl
+            context.to_string()
+        } else {
+            // shares a lot of code with the `Display` impl for `ValueKind`, but we need to add `, ..` just before the last `}`
+            let try_creating_string = || -> Result<String, std::fmt::Error> {
+                use std::fmt::Write;
+                use std::str::FromStr;
+                let mut s = String::new();
+                write!(s, "{{")?;
+                for (k, v) in context.clone().into_iter().take(MAX_KEYS_TO_PRETTY_PRINT) {
+                    match ast::UnreservedId::from_str(&k) {
+                        Ok(k) => {
+                            // we can omit the quotes around the key, it's a valid identifier and not a reserved keyword
+                            write!(s, "{k}: {v}, ")?;
+                        }
+                        Err(_) => {
+                            // put quotes around the key
+                            write!(s, "\"{k}\": {v}, ")?;
+                        }
+                    }
+                }
+                write!(s, ".. }}")?;
+                Ok(s)
+            };
+            try_creating_string().unwrap_or_else(|_| {
+                // failed to pretty-print just the first MAX_KEYS_TO_PRETTY_PRINT
+                // pairs (this should never happen), just fall back on printing
+                // the whole context, which is guaranteed to not fail
+                context.to_string()
+            })
         }
     }
 }
@@ -947,6 +984,48 @@ mod test {
             ),
             Err(e) => {
                 expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `{admin_approval: [true, -1001]}` is not valid for `Action::"edit_photo"`"#).build());
+            }
+        );
+    }
+
+    /// request context which is large enough that we don't print the whole thing in the error message
+    #[test]
+    fn context_large() {
+        let large_context_with_extra_attributes = ast::Context::from_pairs(
+            [
+                ("admin_approval".into(), ast::RestrictedExpr::val(true)),
+                ("extra1".into(), ast::RestrictedExpr::val(false)),
+                ("also extra".into(), ast::RestrictedExpr::val("spam")),
+                (
+                    "extra2".into(),
+                    ast::RestrictedExpr::set([ast::RestrictedExpr::val(-100)]),
+                ),
+                (
+                    "extra3".into(),
+                    ast::RestrictedExpr::val(
+                        ast::EntityUID::with_eid_and_type("User", "alice").unwrap(),
+                    ),
+                ),
+                ("extra4".into(), ast::RestrictedExpr::val("foobar")),
+            ],
+            Extensions::all_available(),
+        )
+        .unwrap();
+        assert_matches!(
+            ast::Request::new(
+                (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
+                large_context_with_extra_attributes,
+                Some(&schema()),
+                Extensions::all_available(),
+            ),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"context `{admin_approval: true, "also extra": "spam", extra1: false, extra2: [(-100)], extra3: User::"alice", .. }` is not valid for `Action::"edit_photo"`"#).build(),
+                );
             }
         );
     }
