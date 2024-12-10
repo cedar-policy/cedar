@@ -19,6 +19,7 @@ use crate::{
     extensions::Extensions,
     parser::{err::ParseErrors, Loc},
 };
+use educe::Educe;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -40,9 +41,12 @@ extern crate tsify;
 /// where the expression was written in policy source code, and some generic
 /// data which is stored on each node of the AST.
 /// Cloning is O(1).
-#[derive(Serialize, Deserialize, Hash, Debug, Clone, PartialEq, Eq)]
+#[derive(Educe, Serialize, Deserialize, Debug, Clone)]
+#[educe(PartialEq, Eq, Hash)]
 pub struct Expr<T = ()> {
     expr_kind: ExprKind<T>,
+    #[educe(PartialEq(ignore))]
+    #[educe(Hash(ignore))]
     source_loc: Option<Loc>,
     data: T,
 }
