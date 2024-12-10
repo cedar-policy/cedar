@@ -1326,7 +1326,7 @@ impl<N> From<TypeVariant<N>> for Type<N> {
     }
 }
 
-/// The fields for a `Type`. Used for implementing deserialization.
+/// The fields for a `AnnotatedType` (i.e., an attribute type). Used for implementing deserialization.
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Deserialize)]
 #[serde(field_identifier, rename_all = "camelCase")]
 enum AnnotatedTypeFields {
@@ -1375,7 +1375,10 @@ impl AnnotatedTypeFields {
     }
 }
 
-/// ...
+/// Attribute type with annotations
+// We need to write a custom JSON deserializer because the derived deserializer
+// of `Annotated<Type<N>>` rejects JSON values like,
+// { "annotations": { "a": ""}, "type": "foo"}
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct AnnotatedType<N>(pub Annotated<Type<N>>);
 

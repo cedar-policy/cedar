@@ -27,6 +27,8 @@ pub type Annotations = BTreeMap<AnyId, SmolStr>;
 
 /// A struct that can be annotated, e.g., entity types.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct Annotated<T> {
     /// The struct that's optionally annotated
     #[serde(flatten)]
