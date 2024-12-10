@@ -18,7 +18,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use crate::cedar_schema::err::{RawErrorRecovery, UserError};
 use cedar_policy_core::parser::{Node, Loc, unescape::to_unescaped_string, cst::Ref};
-use cedar_policy_core::ast::{Id, AnyId};
+use cedar_policy_core::ast::{Id, AnyId, Annotations};
 use smol_str::SmolStr;
 use smol_str::ToSmolStr;
 use crate::cedar_schema::ast::{
@@ -38,7 +38,7 @@ use crate::cedar_schema::ast::{
     PRAppDecl,
     deduplicate_annotations,
 };
-use crate::annotations::Annotated;
+use crate::json_schema::Annotated;
 use nonempty::{NonEmpty, nonempty};
 use itertools::Either;
 use std::collections::BTreeMap;
@@ -121,7 +121,7 @@ Namedspace: Namespace = {
 // Namespace := 'namespace' Path '{' {Decl} '}'
 Namespace: Annotated<Namespace> = {
     <ns: Annotated<Namedspace>> => ns,
-    <decl: Annotated<Decl>> <r:@R> => Annotated {data: Namespace {name: None, decls: vec![decl]}, annotations: BTreeMap::new()},
+    <decl: Annotated<Decl>> <r:@R> => Annotated {data: Namespace {name: None, decls: vec![decl]}, annotations: Annotations::new()},
 }
 
 // Decl := Entity | Action | TypeDecl

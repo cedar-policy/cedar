@@ -16,10 +16,10 @@
 
 //! Convert a schema into the JSON format
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use cedar_policy_core::{
-    ast::{Id, Name, UnreservedId},
+    ast::{Annotations, Id, Name, UnreservedId},
     extensions::Extensions,
     parser::{Loc, Node},
 };
@@ -36,8 +36,8 @@ use super::{
     err::{schema_warnings, SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
 };
 use crate::{
-    annotations, cedar_schema,
-    json_schema::{self, AnnotatedType},
+    cedar_schema,
+    json_schema::{self, Annotated, AnnotatedType},
     RawName,
 };
 
@@ -120,10 +120,10 @@ pub fn cedar_type_to_json_type(ty: Node<Type>) -> json_schema::Type<RawName> {
 // Split namespaces into two groups: named namespaces and the implicit unqualified namespace
 // The rhs of the tuple will be [`None`] if there are no items in the unqualified namespace.
 fn split_unqualified_namespace(
-    namespaces: impl IntoIterator<Item = annotations::Annotated<Namespace>>,
+    namespaces: impl IntoIterator<Item = Annotated<Namespace>>,
 ) -> (
-    impl Iterator<Item = annotations::Annotated<Namespace>>,
-    Option<annotations::Annotated<Namespace>>,
+    impl Iterator<Item = Annotated<Namespace>>,
+    Option<Annotated<Namespace>>,
 ) {
     // First split every namespace into those with explicit names and those without
     let (qualified, unqualified): (Vec<_>, Vec<_>) =
@@ -144,9 +144,9 @@ fn split_unqualified_namespace(
         };
         (
             qualified.into_iter(),
-            Some(annotations::Annotated {
+            Some(Annotated {
                 data: unqual,
-                annotations: BTreeMap::new(),
+                annotations: Annotations::new(),
             }),
         )
     }
@@ -154,7 +154,7 @@ fn split_unqualified_namespace(
 
 /// Converts a CST namespace to a JSON namespace
 fn convert_namespace(
-    namespace: annotations::Annotated<Namespace>,
+    namespace: Annotated<Namespace>,
 ) -> Result<(Option<Name>, json_schema::NamespaceDefinition<RawName>), ToJsonSchemaErrors> {
     let ns_name = namespace
         .data
@@ -170,11 +170,11 @@ fn convert_namespace(
     Ok((ns_name, def))
 }
 
-impl TryFrom<annotations::Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName> {
+impl TryFrom<Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName> {
     type Error = ToJsonSchemaErrors;
 
     fn try_from(
-        n: annotations::Annotated<Namespace>,
+        n: Annotated<Namespace>,
     ) -> Result<json_schema::NamespaceDefinition<RawName>, Self::Error> {
         // Partition the decls into entities, actions, and common types
         let (entity_types, action, common_types) = into_partition_decls(n.data.decls);
@@ -201,7 +201,7 @@ impl TryFrom<annotations::Annotated<Namespace>> for json_schema::NamespaceDefini
                     .map_err(|e| ToJsonSchemaError::reserved_keyword(e.id, name_loc))?;
                 Ok((
                     ctid,
-                    AnnotatedType(annotations::Annotated {
+                    AnnotatedType(Annotated {
                         data: cedar_type_to_json_type(decl.data.def),
                         annotations: decl.annotations,
                     }),
@@ -220,7 +220,7 @@ impl TryFrom<annotations::Annotated<Namespace>> for json_schema::NamespaceDefini
 
 /// Converts action type decls
 fn convert_action_decl(
-    a: annotations::Annotated<ActionDecl>,
+    a: Annotated<ActionDecl>,
 ) -> Result<impl Iterator<Item = (SmolStr, json_schema::ActionType<RawName>)>, ToJsonSchemaErrors> {
     let ActionDecl {
         names,
@@ -360,7 +360,7 @@ fn convert_id(node: Node<Id>) -> Result<UnreservedId, ToJsonSchemaError> {
 
 /// Convert Entity declarations
 fn convert_entity_decl(
-    e: annotations::Annotated<EntityDecl>,
+    e: Annotated<EntityDecl>,
 ) -> Result<
     impl Iterator<Item = (UnreservedId, json_schema::EntityType<RawName>)>,
     ToJsonSchemaErrors,
@@ -391,7 +391,7 @@ fn convert_entity_decl(
 
 /// Create a [`json_schema::AttributesOrContext`] from a series of `AttrDecl`s
 fn convert_attr_decls(
-    attrs: impl IntoIterator<Item = Node<annotations::Annotated<AttrDecl>>>,
+    attrs: impl IntoIterator<Item = Node<Annotated<AttrDecl>>>,
 ) -> json_schema::AttributesOrContext<RawName> {
     json_schema::RecordType {
         attributes: attrs
@@ -405,7 +405,7 @@ fn convert_attr_decls(
 
 /// Create a context decl
 fn convert_context_decl(
-    decl: Either<Path, Vec<Node<annotations::Annotated<AttrDecl>>>>,
+    decl: Either<Path, Vec<Node<Annotated<AttrDecl>>>>,
 ) -> json_schema::AttributesOrContext<RawName> {
     json_schema::AttributesOrContext(match decl {
         Either::Left(p) => json_schema::Type::CommonTypeRef {
@@ -425,12 +425,12 @@ fn convert_context_decl(
 
 /// Convert an attribute type from an `AttrDecl`
 fn convert_attr_decl(
-    attr: annotations::Annotated<AttrDecl>,
+    attr: Annotated<AttrDecl>,
 ) -> (SmolStr, json_schema::TypeOfAttribute<RawName>) {
     (
         attr.data.name.node,
         json_schema::TypeOfAttribute {
-            ty: json_schema::AnnotatedType(annotations::Annotated {
+            ty: json_schema::AnnotatedType(Annotated {
                 data: cedar_type_to_json_type(attr.data.ty),
                 annotations: attr.annotations,
             }),
@@ -630,7 +630,7 @@ fn update_namespace_record(
 }
 
 fn partition_decls(
-    decls: &[annotations::Annotated<Node<Declaration>>],
+    decls: &[Annotated<Node<Declaration>>],
 ) -> (Vec<&EntityDecl>, Vec<&ActionDecl>, Vec<&TypeDecl>) {
     let mut entities = vec![];
     let mut actions = vec![];
@@ -648,11 +648,11 @@ fn partition_decls(
 }
 
 fn into_partition_decls(
-    decls: Vec<annotations::Annotated<Node<Declaration>>>,
+    decls: Vec<Annotated<Node<Declaration>>>,
 ) -> (
-    Vec<annotations::Annotated<EntityDecl>>,
-    Vec<annotations::Annotated<ActionDecl>>,
-    Vec<annotations::Annotated<TypeDecl>>,
+    Vec<Annotated<EntityDecl>>,
+    Vec<Annotated<ActionDecl>>,
+    Vec<Annotated<TypeDecl>>,
 ) {
     let mut entities = vec![];
     let mut actions = vec![];
@@ -660,15 +660,15 @@ fn into_partition_decls(
 
     for decl in decls.into_iter() {
         match decl.data.node {
-            Declaration::Entity(e) => entities.push(annotations::Annotated {
+            Declaration::Entity(e) => entities.push(Annotated {
                 data: e,
                 annotations: decl.annotations,
             }),
-            Declaration::Action(a) => actions.push(annotations::Annotated {
+            Declaration::Action(a) => actions.push(Annotated {
                 data: a,
                 annotations: decl.annotations,
             }),
-            Declaration::Type(t) => types.push(annotations::Annotated {
+            Declaration::Type(t) => types.push(Annotated {
                 data: t,
                 annotations: decl.annotations,
             }),

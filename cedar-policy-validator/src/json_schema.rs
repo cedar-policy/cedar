@@ -17,7 +17,7 @@
 //! Structures defining the JSON syntax for Cedar schemas
 
 use cedar_policy_core::{
-    ast::{AnyId, Eid, EntityUID, InternalName, Name, UnreservedId},
+    ast::{Annotations, Eid, EntityUID, InternalName, Name, UnreservedId},
     entities::CedarValueJson,
     extensions::Extensions,
     FromNormalizedStr,
@@ -39,13 +39,23 @@ use std::{
 use thiserror::Error;
 
 use crate::{
-    annotations::{Annotated, Annotations},
     cedar_schema::{
         self, fmt::ToCedarSchemaSyntaxError, parser::parse_cedar_schema_fragment, SchemaWarning,
     },
     err::{schema_errors::*, Result},
     AllDefs, CedarSchemaError, CedarSchemaParseError, ConditionalName, RawName, ReferenceType,
 };
+
+/// A struct that can be annotated, e.g., entity types.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Annotated<T> {
+    /// The struct that's optionally annotated
+    #[serde(flatten)]
+    pub data: T,
+    /// Annotations
+    #[serde(skip_serializing_if = "Annotations::is_empty")]
+    pub annotations: Annotations,
+}
 
 /// A [`Fragment`] is split into multiple namespace definitions, and is just a
 /// map from namespace name to namespace definition (i.e., definitions of common
@@ -301,8 +311,7 @@ pub struct NamespaceDefinition<N> {
     pub actions: BTreeMap<SmolStr, ActionType<N>>,
     /// Annotations
     #[serde(default)]
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
+    #[serde(skip_serializing_if = "Annotations::is_empty")]
     pub annotations: Annotations,
 }
 
@@ -321,7 +330,7 @@ impl<N> NamespaceDefinition<N> {
                 .into_iter()
                 .map(|(key, value)| (key, value))
                 .collect(),
-            annotations: BTreeMap::new(),
+            annotations: Annotations::new(),
         }
     }
 }
@@ -431,8 +440,7 @@ pub struct EntityType<N> {
     pub tags: Option<Type<N>>,
     /// Annotations
     #[serde(default)]
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
+    #[serde(skip_serializing_if = "Annotations::is_empty")]
     pub annotations: Annotations,
 }
 
@@ -588,8 +596,7 @@ pub struct ActionType<N> {
     pub member_of: Option<Vec<ActionEntityUID<N>>>,
     /// Annotations
     #[serde(default)]
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
+    #[serde(skip_serializing_if = "Annotations::is_empty")]
     pub annotations: Annotations,
 }
 
@@ -1269,7 +1276,10 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                                         (
                                             k,
                                             TypeOfAttribute {
-                                                ty: AnnotatedType(ty.0.data.into_n().into()),
+                                                ty: AnnotatedType(Annotated {
+                                                    data: ty.0.data.into_n(),
+                                                    annotations: ty.0.annotations,
+                                                }),
                                                 required,
                                             },
                                         )
@@ -1454,7 +1464,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Visitor<'de> for AnnotatedTypeVis
         let mut attributes: Option<AttributesTypeMap> = None;
         let mut additional_attributes: Option<bool> = None;
         let mut name: Option<SmolStr> = None;
-        let mut annotations: Option<BTreeMap<AnyId, SmolStr>> = None;
+        let mut annotations: Option<cedar_policy_core::ast::Annotations> = None;
 
         // Gather all the fields in the object. Any fields that are not one of
         // the possible fields for some schema type will have been reported by
@@ -1688,9 +1698,10 @@ impl TypeVariant<RawName> {
                         (
                             attr,
                             TypeOfAttribute {
-                                ty: AnnotatedType(
-                                    ty.0.data.conditionally_qualify_type_references(ns).into(),
-                                ),
+                                ty: AnnotatedType(Annotated {
+                                    data: ty.0.data.conditionally_qualify_type_references(ns),
+                                    annotations: ty.0.annotations,
+                                }),
                                 required,
                             },
                         )
@@ -1763,9 +1774,10 @@ impl TypeVariant<ConditionalName> {
                         Ok((
                             attr,
                             TypeOfAttribute {
-                                ty: AnnotatedType(
-                                    ty.0.data.fully_qualify_type_references(all_defs)?.into(),
-                                ),
+                                ty: AnnotatedType(Annotated {
+                                    data: ty.0.data.fully_qualify_type_references(all_defs)?,
+                                    annotations: ty.0.annotations,
+                                }),
                                 required,
                             },
                         ))
@@ -1868,7 +1880,10 @@ pub struct TypeOfAttribute<N> {
 impl TypeOfAttribute<RawName> {
     fn into_n<N: From<RawName>>(self) -> TypeOfAttribute<N> {
         TypeOfAttribute {
-            ty: AnnotatedType(self.ty.0.data.into_n().into()),
+            ty: AnnotatedType(Annotated {
+                data: self.ty.0.data.into_n(),
+                annotations: self.ty.0.annotations,
+            }),
             required: self.required,
         }
     }
@@ -1879,13 +1894,10 @@ impl TypeOfAttribute<RawName> {
         ns: Option<&InternalName>,
     ) -> TypeOfAttribute<ConditionalName> {
         TypeOfAttribute {
-            ty: AnnotatedType(
-                self.ty
-                    .0
-                    .data
-                    .conditionally_qualify_type_references(ns)
-                    .into(),
-            ),
+            ty: AnnotatedType(Annotated {
+                data: self.ty.0.data.conditionally_qualify_type_references(ns),
+                annotations: self.ty.0.annotations,
+            }),
             required: self.required,
         }
     }
@@ -1903,13 +1915,10 @@ impl TypeOfAttribute<ConditionalName> {
         all_defs: &AllDefs,
     ) -> std::result::Result<TypeOfAttribute<InternalName>, TypeNotDefinedError> {
         Ok(TypeOfAttribute {
-            ty: AnnotatedType(
-                self.ty
-                    .0
-                    .data
-                    .fully_qualify_type_references(all_defs)?
-                    .into(),
-            ),
+            ty: AnnotatedType(Annotated {
+                data: self.ty.0.data.fully_qualify_type_references(all_defs)?,
+                annotations: self.ty.0.annotations,
+            }),
             required: self.required,
         })
     }
@@ -1919,7 +1928,10 @@ impl TypeOfAttribute<ConditionalName> {
 impl<'a> arbitrary::Arbitrary<'a> for TypeOfAttribute<RawName> {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
-            ty: AnnotatedType(u.arbitrary::<Type<RawName>>()?.into()),
+            ty: AnnotatedType(Annotated {
+                data: u.arbitrary::<Type<RawName>>()?,
+                annotations: cedar_policy_core::ast::Annotations::new(),
+            }),
             required: u.arbitrary()?,
         })
     }
@@ -2905,7 +2917,7 @@ mod test_json_roundtrip {
                 common_types: BTreeMap::new(),
                 entity_types: BTreeMap::new(),
                 actions: BTreeMap::new(),
-                annotations: BTreeMap::new(),
+                annotations: Annotations::new(),
             }
             .into(),
         )]));
@@ -2920,7 +2932,7 @@ mod test_json_roundtrip {
                 common_types: BTreeMap::new(),
                 entity_types: BTreeMap::new(),
                 actions: BTreeMap::new(),
-                annotations: BTreeMap::new(),
+                annotations: Annotations::new(),
             }
             .into(),
         )]));
@@ -2942,7 +2954,7 @@ mod test_json_roundtrip {
                             additional_attributes: false,
                         }))),
                         tags: None,
-                        annotations: BTreeMap::new(),
+                        annotations: Annotations::new(),
                     }
                     .into(),
                 )]),
@@ -2961,11 +2973,11 @@ mod test_json_roundtrip {
                             ))),
                         }),
                         member_of: None,
-                        annotations: BTreeMap::new(),
+                        annotations: Annotations::new(),
                     }
                     .into(),
                 )]),
-                annotations: BTreeMap::new(),
+                annotations: Annotations::new(),
             }
             .into(),
         )]));
@@ -2990,12 +3002,12 @@ mod test_json_roundtrip {
                                 },
                             ))),
                             tags: None,
-                            annotations: BTreeMap::new(),
+                            annotations: Annotations::new(),
                         }
                         .into(),
                     )]),
                     actions: BTreeMap::new(),
-                    annotations: BTreeMap::new(),
+                    annotations: Annotations::new(),
                 }
                 .into(),
             ),
@@ -3019,11 +3031,11 @@ mod test_json_roundtrip {
                                 ))),
                             }),
                             member_of: None,
-                            annotations: BTreeMap::new(),
+                            annotations: Annotations::new(),
                         }
                         .into(),
                     )]),
-                    annotations: BTreeMap::new(),
+                    annotations: Annotations::new(),
                 }
                 .into(),
             ),

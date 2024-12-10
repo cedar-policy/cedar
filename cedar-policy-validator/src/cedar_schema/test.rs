@@ -23,8 +23,8 @@ mod demo_tests {
         iter::{empty, once},
     };
 
-    use cedar_policy_core::extensions::Extensions;
     use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
+    use cedar_policy_core::{ast::Annotations, extensions::Extensions};
     use cool_asserts::assert_matches;
     use smol_str::ToSmolStr;
 
@@ -336,7 +336,7 @@ mod demo_tests {
             attributes: None,
             applies_to: None,
             member_of: None,
-            annotations: BTreeMap::new(),
+            annotations: Annotations::new(),
         };
         let namespace =
             json_schema::NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
@@ -438,7 +438,7 @@ namespace Baz {action "Foo" appliesTo {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
-                    annotations: BTreeMap::new(),
+                    annotations: Annotations::new(),
                 },
             )]),
             actions: BTreeMap::from([(
@@ -451,10 +451,10 @@ namespace Baz {action "Foo" appliesTo {
                         context: json_schema::AttributesOrContext::default(),
                     }),
                     member_of: None,
-                    annotations: BTreeMap::new(),
+                    annotations: Annotations::new(),
                 },
             )]),
-            annotations: BTreeMap::new(),
+            annotations: Annotations::new(),
         };
         let fragment = json_schema::Fragment(BTreeMap::from([(None, namespace)]));
         let src = fragment.to_cedarschema().unwrap();

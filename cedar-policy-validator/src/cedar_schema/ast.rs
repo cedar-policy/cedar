@@ -17,7 +17,7 @@
 use std::{collections::BTreeMap, iter::once};
 
 use cedar_policy_core::{
-    ast::{AnyId, Id, InternalName},
+    ast::{Annotation, AnyId, Id, InternalName},
     parser::{Loc, Node},
 };
 use itertools::{Either, Itertools};
@@ -27,7 +27,7 @@ use smol_str::SmolStr;
 #[allow(unused_imports)]
 use smol_str::ToSmolStr;
 
-use crate::{annotations::Annotated, json_schema};
+use crate::json_schema::{self, Annotated};
 
 use super::err::UserError;
 
@@ -54,11 +54,16 @@ pub fn deduplicate_annotations<T>(
             unique_annotations.insert(key, value);
         }
     }
-    Ok(crate::annotations::Annotated {
+    Ok(Annotated {
         data,
         annotations: unique_annotations
             .into_iter()
-            .map(|(key, value)| (key.node, value.map_or(SmolStr::default(), |n| n.node)))
+            .map(|(key, value)| {
+                (
+                    key.node,
+                    Annotation::with_optional_value(value.map(|n| n.node), None),
+                )
+            })
             .collect(),
     })
 }

@@ -59,8 +59,6 @@ pub use str_checks::confusable_string_checks;
 pub mod cedar_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
-
-pub mod annotations;
 pub mod types;
 
 /// Used to select how a policy will be validated.
@@ -268,10 +266,7 @@ impl Validator {
 #[cfg(test)]
 mod test {
     use itertools::Itertools;
-    use std::{
-        collections::{BTreeMap, HashMap},
-        sync::Arc,
-    };
+    use std::{collections::HashMap, sync::Arc};
 
     use crate::types::Type;
     use crate::validation_errors::UnrecognizedActionIdHelp;
@@ -279,7 +274,7 @@ mod test {
 
     use super::*;
     use cedar_policy_core::{
-        ast::{self, PolicyID},
+        ast::{self, Annotations, PolicyID},
         parser::{self, Loc},
     };
 
@@ -297,7 +292,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
-                        annotations: BTreeMap::new(),
+                        annotations: Annotations::new(),
                     },
                 ),
                 (
@@ -306,7 +301,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
-                        annotations: BTreeMap::new(),
+                        annotations: Annotations::new(),
                     },
                 ),
             ],
@@ -320,7 +315,7 @@ mod test {
                     }),
                     member_of: None,
                     attributes: None,
-                    annotations: BTreeMap::new(),
+                    annotations: Annotations::new(),
                 },
             )],
         );
