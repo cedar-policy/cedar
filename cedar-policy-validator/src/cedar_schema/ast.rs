@@ -39,26 +39,26 @@ pub type Schema = Vec<Annotated<Namespace>>;
 
 pub fn deduplicate_annotations<T>(
     data: T,
-    annotations: Vec<Node<(Node<AnyId>, Node<SmolStr>)>>,
+    annotations: Vec<Node<(Node<AnyId>, Option<Node<SmolStr>>)>>,
 ) -> Result<Annotated<T>, UserError> {
-    let mut unique_annotations: BTreeMap<AnyId, (Loc, SmolStr)> = BTreeMap::new();
+    let mut unique_annotations: BTreeMap<Node<AnyId>, Option<Node<SmolStr>>> = BTreeMap::new();
     for annotation in annotations {
         let (key, value) = annotation.node;
-        if let Some((old_loc, _)) =
-            unique_annotations.insert(key.node.clone(), (key.loc.clone(), value.node))
-        {
+        if let Some((old_key, _)) = unique_annotations.get_key_value(&key) {
             return Err(UserError::DuplicateAnnotations(
                 key.node,
-                Node::with_source_loc((), old_loc),
+                Node::with_source_loc((), old_key.loc.clone()),
                 Node::with_source_loc((), key.loc),
             ));
+        } else {
+            unique_annotations.insert(key, value);
         }
     }
     Ok(crate::annotations::Annotated {
         data,
         annotations: unique_annotations
             .into_iter()
-            .map(|(key, (_, value))| (key, value))
+            .map(|(key, value)| (key.node, value.map_or(SmolStr::default(), |n| n.node)))
             .collect(),
     })
 }

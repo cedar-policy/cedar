@@ -2473,6 +2473,45 @@ mod annotations {
     use crate::cedar_schema::parser::parse_schema;
 
     #[test]
+    fn no_keys() {
+        assert_matches!(
+            parse_schema(
+                r#"
+        @doc("This entity defines our central user type")
+entity User {
+    @manager
+    manager : User,
+    @team
+    team : String
+};
+        "#
+            ),
+            Ok(_)
+        );
+    }
+
+    #[test]
+    fn duplicate_keys() {
+        assert_matches!(
+            parse_schema(
+                r#"
+        @doc("This entity defines our central user type")
+        @doc
+entity User {
+    @manager
+    manager : User,
+    @team
+    team : String
+};
+        "#
+            ),
+            Err(errs) => {
+                assert_eq!(errs.0.as_ref().first().to_string(), "duplicate annotations: `doc`");
+            }
+        );
+    }
+
+    #[test]
     fn rfc_examples() {
         // basic
         assert_matches!(
