@@ -5587,6 +5587,10 @@ mod request_validation_tests {
                 "entityTypes": {
                     "Principal": {},
                     "Resource": {},
+                    "Cat": {},
+                    "Duck": {},
+                    "Folder": {},
+                    "Widget": {},
                 },
                 "actions": {
                     "action": {
@@ -5601,6 +5605,22 @@ mod request_validation_tests {
                                     }
                                 }
                             }
+                        }
+                    },
+                    "manipulate": {
+                        "appliesTo": {
+                            "principalTypes": ["Principal", "Cat", "Duck"],
+                            "resourceTypes": ["Resource", "Folder", "Widget"],
+                            "context": {
+                                "type": "Record",
+                                "attributes": {},
+                            },
+                        }
+                    },
+                    "group": {
+                        "appliesTo": {
+                            "principalTypes": [],
+                            "resourceTypes": [],
                         }
                     }
                 }
@@ -5690,6 +5710,43 @@ mod request_validation_tests {
             &ExpectedErrorMessageBuilder::error(
                 r#"principal type `Resource` is not valid for `Action::"action"`"#,
             )
+            .help(r#"valid principal types for `Action::"action"`: `Principal`"#)
+            .build(),
+        );
+
+        let err = Request::new(
+            EntityUid::from_strs("Resource", "principal"),
+            EntityUid::from_strs("Action", "manipulate"),
+            EntityUid::from_strs("Resource", "resource"),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"principal type `Resource` is not valid for `Action::"manipulate"`"#,
+            )
+            .help(r#"valid principal types for `Action::"manipulate"`: `Cat`, `Duck`, `Principal`"#)
+            .build(),
+        );
+
+        let err = Request::new(
+            EntityUid::from_strs("Resource", "principal"),
+            EntityUid::from_strs("Action", "group"),
+            EntityUid::from_strs("Resource", "resource"),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"principal type `Resource` is not valid for `Action::"group"`"#,
+            )
+            .help(r#"no principal types are valid for `Action::"group"`"#)
             .build(),
         );
     }
@@ -5711,6 +5768,25 @@ mod request_validation_tests {
             &ExpectedErrorMessageBuilder::error(
                 r#"resource type `Principal` is not valid for `Action::"action"`"#,
             )
+            .help(r#"valid resource types for `Action::"action"`: `Resource`"#)
+            .build(),
+        );
+
+        let err = Request::new(
+            EntityUid::from_strs("Principal", "principal"),
+            EntityUid::from_strs("Action", "manipulate"),
+            EntityUid::from_strs("Principal", "resource"),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"resource type `Principal` is not valid for `Action::"manipulate"`"#,
+            )
+            .help(r#"valid resource types for `Action::"manipulate"`: `Folder`, `Resource`, `Widget`"#)
             .build(),
         );
     }
@@ -5730,7 +5806,7 @@ mod request_validation_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error(
-                r#"context `<first-class record with 0 fields>` is not valid for `Action::"action"`"#,
+                r#"context `{}` is not valid for `Action::"action"`"#,
             )
             .build(),
         );
@@ -5748,7 +5824,7 @@ mod request_validation_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error(
-                r#"context `<first-class record with 1 fields>` is not valid for `Action::"action"`"#,
+                r#"context `{foo: 123}` is not valid for `Action::"action"`"#,
             )
             .build(),
         );
@@ -6202,7 +6278,7 @@ mod version_tests {
 
     #[test]
     fn test_sdk_version() {
-        assert_eq!(get_sdk_version().to_string(), "4.1.0");
+        assert_eq!(get_sdk_version().to_string(), "4.3.0");
     }
 
     #[test]

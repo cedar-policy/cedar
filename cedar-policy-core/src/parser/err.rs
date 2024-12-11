@@ -18,6 +18,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::{self, Display, Write};
 use std::iter;
 use std::ops::{Deref, DerefMut};
+use std::str::FromStr;
+use std::sync::Arc;
 
 use either::Either;
 use lalrpop_util as lalr;
@@ -256,9 +258,14 @@ pub enum ToASTErrorKind {
     #[error("right hand side of a `like` expression must be a pattern literal, but got `{0}`")]
     InvalidPattern(String),
     /// Returned when the right hand side of a `is` expression is not an entity type name
-    #[error("right hand side of an `is` expression must be an entity type name, but got `{0}`")]
-    #[diagnostic(help("try using `==` to test for equality"))]
-    InvalidIsType(String),
+    #[error("right hand side of an `is` expression must be an entity type name, but got `{rhs}`")]
+    #[diagnostic(help("{}", invalid_is_help(&.lhs, &.rhs)))]
+    InvalidIsType {
+        /// LHS of the invalid `is` expression, as a string
+        lhs: String,
+        /// RHS of the invalid `is` expression, as a string
+        rhs: String,
+    },
     /// Returned when an unexpected node is in the policy scope
     #[error("expected {expected}, found {got}")]
     WrongNode {
@@ -401,6 +408,22 @@ pub enum ToASTErrorKind {
     InvertedIsIn,
 }
 
+fn invalid_is_help(lhs: &str, rhs: &str) -> String {
+    // in the specific case where rhs is double-quotes surrounding a valid
+    // (possibly reserved) identifier, give a different help message
+    match strip_surrounding_doublequotes(rhs).map(ast::Id::from_str) {
+        Some(Ok(stripped)) => format!("try removing the quotes: `{lhs} is {stripped}`"),
+        _ => format!("try using `==` to test for equality: `{lhs} == {rhs}`"),
+    }
+}
+
+/// If `s` has exactly `"` as both its first and last character, returns `Some`
+/// with the first and last character removed.
+/// In all other cases, returns `None`.
+fn strip_surrounding_doublequotes(s: &str) -> Option<&str> {
+    s.strip_prefix('"')?.strip_suffix('"')
+}
+
 impl ToASTErrorKind {
     /// Constructor for the [`ToASTErrorKind::WrongNode`] error
     pub fn wrong_node(
@@ -472,12 +495,21 @@ pub mod parse_errors {
     use super::*;
 
     /// Details about a `ExpectedStaticPolicy` error.
-    #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
+    #[derive(Debug, Clone, Error, PartialEq, Eq)]
     #[error("expected a static policy, got a template containing the slot {}", slot.id)]
-    #[diagnostic(help("try removing the template slot(s) from this policy"))]
     pub struct ExpectedStaticPolicy {
         /// Slot that was found (which is not valid in a static policy)
         pub(crate) slot: ast::Slot,
+    }
+
+    impl Diagnostic for ExpectedStaticPolicy {
+        fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+            Some(Box::new(
+                "try removing the template slot(s) from this policy",
+            ))
+        }
+
+        impl_diagnostic_from_source_loc_opt_field!(slot.loc);
     }
 
     impl From<ast::UnexpectedSlotError> for ExpectedStaticPolicy {
@@ -573,6 +605,7 @@ pub mod parse_errors {
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub struct ToCSTError {
     err: OwnedRawParseError,
+    src: Arc<str>,
 }
 
 impl ToCSTError {
@@ -592,14 +625,15 @@ impl ToCSTError {
         }
     }
 
-    pub(crate) fn from_raw_parse_err(err: RawParseError<'_>) -> Self {
+    pub(crate) fn from_raw_parse_err(err: RawParseError<'_>, src: Arc<str>) -> Self {
         Self {
             err: err.map_token(|token| token.to_string()),
+            src,
         }
     }
 
-    pub(crate) fn from_raw_err_recovery(recovery: RawErrorRecovery<'_>) -> Self {
-        Self::from_raw_parse_err(recovery.error)
+    pub(crate) fn from_raw_err_recovery(recovery: RawErrorRecovery<'_>, src: Arc<str>) -> Self {
+        Self::from_raw_parse_err(recovery.error, src)
     }
 }
 
@@ -622,6 +656,10 @@ impl Display for ToCSTError {
 }
 
 impl Diagnostic for ToCSTError {
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        Some(&self.src as &dyn miette::SourceCode)
+    }
+
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         let primary_source_span = self.primary_source_span();
         let labeled_span = match &self.err {

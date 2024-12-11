@@ -204,6 +204,10 @@ impl ast::RequestSchema for ValidatorSchema {
                         return Err(request_validation_errors::InvalidPrincipalTypeError {
                             principal_ty: principal.entity_type().clone(),
                             action: Arc::clone(action),
+                            valid_principal_tys: validator_action_id
+                                .applies_to_principals()
+                                .cloned()
+                                .collect(),
                         }
                         .into());
                     }
@@ -213,6 +217,10 @@ impl ast::RequestSchema for ValidatorSchema {
                         return Err(request_validation_errors::InvalidResourceTypeError {
                             resource_ty: resource.entity_type().clone(),
                             action: Arc::clone(action),
+                            valid_resource_tys: validator_action_id
+                                .applies_to_resources()
+                                .cloned()
+                                .collect(),
                         }
                         .into());
                     }
@@ -296,6 +304,7 @@ pub enum RequestValidationError {
 /// Errors related to validation
 pub mod request_validation_errors {
     use cedar_policy_core::ast;
+    use itertools::Itertools;
     use miette::Diagnostic;
     use std::sync::Arc;
     use thiserror::Error;
@@ -349,11 +358,32 @@ pub mod request_validation_errors {
     /// not valid for the request action
     #[derive(Debug, Error, Diagnostic)]
     #[error("principal type `{principal_ty}` is not valid for `{action}`")]
+    #[diagnostic(help("{}", invalid_principal_type_help(&.valid_principal_tys, .action.as_ref())))]
     pub struct InvalidPrincipalTypeError {
         /// Principal type which is not valid
         pub(super) principal_ty: ast::EntityType,
         /// Action which it is not valid for
         pub(super) action: Arc<ast::EntityUID>,
+        /// Principal types which actually are valid for that `action`
+        pub(super) valid_principal_tys: Vec<ast::EntityType>,
+    }
+
+    fn invalid_principal_type_help(
+        valid_principal_tys: &[ast::EntityType],
+        action: &ast::EntityUID,
+    ) -> String {
+        if valid_principal_tys.is_empty() {
+            format!("no principal types are valid for `{action}`")
+        } else {
+            format!(
+                "valid principal types for `{action}`: {}",
+                valid_principal_tys
+                    .iter()
+                    .sorted_unstable()
+                    .map(|et| format!("`{et}`"))
+                    .join(", ")
+            )
+        }
     }
 
     impl InvalidPrincipalTypeError {
@@ -366,17 +396,43 @@ pub mod request_validation_errors {
         pub fn action(&self) -> &ast::EntityUID {
             &self.action
         }
+
+        /// Principal types which actually are valid for that action
+        pub fn valid_principal_tys(&self) -> impl Iterator<Item = &ast::EntityType> {
+            self.valid_principal_tys.iter()
+        }
     }
 
     /// Request resource is of a type that is declared in the schema, but is
     /// not valid for the request action
     #[derive(Debug, Error, Diagnostic)]
     #[error("resource type `{resource_ty}` is not valid for `{action}`")]
+    #[diagnostic(help("{}", invalid_resource_type_help(&.valid_resource_tys, .action.as_ref())))]
     pub struct InvalidResourceTypeError {
         /// Resource type which is not valid
         pub(super) resource_ty: ast::EntityType,
         /// Action which it is not valid for
         pub(super) action: Arc<ast::EntityUID>,
+        /// Resource types which actually are valid for that `action`
+        pub(super) valid_resource_tys: Vec<ast::EntityType>,
+    }
+
+    fn invalid_resource_type_help(
+        valid_resource_tys: &[ast::EntityType],
+        action: &ast::EntityUID,
+    ) -> String {
+        if valid_resource_tys.is_empty() {
+            format!("no resource types are valid for `{action}`")
+        } else {
+            format!(
+                "valid resource types for `{action}`: {}",
+                valid_resource_tys
+                    .iter()
+                    .sorted_unstable()
+                    .map(|et| format!("`{et}`"))
+                    .join(", ")
+            )
+        }
     }
 
     impl InvalidResourceTypeError {
@@ -389,11 +445,16 @@ pub mod request_validation_errors {
         pub fn action(&self) -> &ast::EntityUID {
             &self.action
         }
+
+        /// Resource types which actually are valid for that action
+        pub fn valid_resource_tys(&self) -> impl Iterator<Item = &ast::EntityType> {
+            self.valid_resource_tys.iter()
+        }
     }
 
     /// Context does not comply with the shape specified for the request action
     #[derive(Debug, Error, Diagnostic)]
-    #[error("context `{context}` is not valid for `{action}`")]
+    #[error("context `{}` is not valid for `{action}`", pretty_print(&.context))]
     pub struct InvalidContextError {
         /// Context which is not valid
         pub(super) context: ast::Context,
@@ -410,6 +471,43 @@ pub mod request_validation_errors {
         /// The action which it is not valid for
         pub fn action(&self) -> &ast::EntityUID {
             &self.action
+        }
+    }
+
+    const MAX_KEYS_TO_PRETTY_PRINT: usize = 5;
+
+    fn pretty_print(context: &ast::Context) -> String {
+        if context.num_keys() <= MAX_KEYS_TO_PRETTY_PRINT {
+            // just print the context using its `Display` impl
+            context.to_string()
+        } else {
+            // shares a lot of code with the `Display` impl for `ValueKind`, but we need to add `, ..` just before the last `}`
+            let try_creating_string = || -> Result<String, std::fmt::Error> {
+                use std::fmt::Write;
+                use std::str::FromStr;
+                let mut s = String::new();
+                write!(s, "{{")?;
+                for (k, v) in context.clone().into_iter().take(MAX_KEYS_TO_PRETTY_PRINT) {
+                    match ast::UnreservedId::from_str(&k) {
+                        Ok(k) => {
+                            // we can omit the quotes around the key, it's a valid identifier and not a reserved keyword
+                            write!(s, "{k}: {v}, ")?;
+                        }
+                        Err(_) => {
+                            // put quotes around the key
+                            write!(s, "\"{k}\": {v}, ")?;
+                        }
+                    }
+                }
+                write!(s, ".. }}")?;
+                Ok(s)
+            };
+            try_creating_string().unwrap_or_else(|_| {
+                // failed to pretty-print just the first MAX_KEYS_TO_PRETTY_PRINT
+                // pairs (this should never happen), just fall back on printing
+                // the whole context, which is guaranteed to not fail
+                context.to_string()
+            })
         }
     }
 }
@@ -756,7 +854,13 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"principal type `Album` is not valid for `Action::"view_photo"`"#).build());
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"principal type `Album` is not valid for `Action::"view_photo"`"#)
+                        .help(r#"valid principal types for `Action::"view_photo"`: `Group`, `User`"#)
+                        .build(),
+                );
             }
         );
     }
@@ -774,7 +878,13 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"resource type `Group` is not valid for `Action::"view_photo"`"#).build());
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"resource type `Group` is not valid for `Action::"view_photo"`"#)
+                        .help(r#"valid resource types for `Action::"view_photo"`: `Photo`"#)
+                        .build(),
+                );
             }
         );
     }
@@ -792,7 +902,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `<first-class record with 0 fields>` is not valid for `Action::"edit_photo"`"#).build());
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `{}` is not valid for `Action::"edit_photo"`"#).build());
             }
         );
     }
@@ -818,7 +928,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `<first-class record with 2 fields>` is not valid for `Action::"edit_photo"`"#).build());
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `{admin_approval: true, extra: 42}` is not valid for `Action::"edit_photo"`"#).build());
             }
         );
     }
@@ -844,7 +954,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `<first-class record with 1 fields>` is not valid for `Action::"edit_photo"`"#).build());
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `{admin_approval: [true]}` is not valid for `Action::"edit_photo"`"#).build());
             }
         );
     }
@@ -873,7 +983,49 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `<first-class record with 1 fields>` is not valid for `Action::"edit_photo"`"#).build());
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `{admin_approval: [true, -1001]}` is not valid for `Action::"edit_photo"`"#).build());
+            }
+        );
+    }
+
+    /// request context which is large enough that we don't print the whole thing in the error message
+    #[test]
+    fn context_large() {
+        let large_context_with_extra_attributes = ast::Context::from_pairs(
+            [
+                ("admin_approval".into(), ast::RestrictedExpr::val(true)),
+                ("extra1".into(), ast::RestrictedExpr::val(false)),
+                ("also extra".into(), ast::RestrictedExpr::val("spam")),
+                (
+                    "extra2".into(),
+                    ast::RestrictedExpr::set([ast::RestrictedExpr::val(-100)]),
+                ),
+                (
+                    "extra3".into(),
+                    ast::RestrictedExpr::val(
+                        ast::EntityUID::with_eid_and_type("User", "alice").unwrap(),
+                    ),
+                ),
+                ("extra4".into(), ast::RestrictedExpr::val("foobar")),
+            ],
+            Extensions::all_available(),
+        )
+        .unwrap();
+        assert_matches!(
+            ast::Request::new(
+                (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
+                large_context_with_extra_attributes,
+                Some(&schema()),
+                Extensions::all_available(),
+            ),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"context `{admin_approval: true, "also extra": "spam", extra1: false, extra2: [(-100)], extra3: User::"alice", .. }` is not valid for `Action::"edit_photo"`"#).build(),
+                );
             }
         );
     }

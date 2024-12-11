@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-use crate::ast::CallStyle;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "protobufs")]
@@ -32,6 +31,20 @@ pub enum UnaryOp {
     ///
     /// Argument must have Long type
     Neg,
+    /// isEmpty test for sets
+    ///
+    /// Argument must have Set type
+    IsEmpty,
+}
+
+impl std::fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UnaryOp::Not => write!(f, "!"),
+            UnaryOp::Neg => write!(f, "-"),
+            UnaryOp::IsEmpty => write!(f, "isEmpty"),
+        }
+    }
 }
 
 #[cfg(feature = "protobufs")]
@@ -40,6 +53,7 @@ impl From<&proto::expr::unary_app::Op> for UnaryOp {
         match v {
             proto::expr::unary_app::Op::Not => UnaryOp::Not,
             proto::expr::unary_app::Op::Neg => UnaryOp::Neg,
+            proto::expr::unary_app::Op::IsEmpty => UnaryOp::IsEmpty,
         }
     }
 }
@@ -50,6 +64,7 @@ impl From<&UnaryOp> for proto::expr::unary_app::Op {
         match v {
             UnaryOp::Not => proto::expr::unary_app::Op::Not,
             UnaryOp::Neg => proto::expr::unary_app::Op::Neg,
+            UnaryOp::IsEmpty => proto::expr::unary_app::Op::IsEmpty,
         }
     }
 }
@@ -124,25 +139,16 @@ pub enum BinaryOp {
     HasTag,
 }
 
-impl std::fmt::Display for UnaryOp {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            UnaryOp::Not => write!(f, "!_"),
-            UnaryOp::Neg => write!(f, "-_"),
-        }
-    }
-}
-
 impl std::fmt::Display for BinaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BinaryOp::Eq => write!(f, "_==_"),
-            BinaryOp::Less => write!(f, "_<_"),
-            BinaryOp::LessEq => write!(f, "_<=_"),
-            BinaryOp::Add => write!(f, "_+_"),
-            BinaryOp::Sub => write!(f, "_-_"),
-            BinaryOp::Mul => write!(f, "_*_"),
-            BinaryOp::In => write!(f, "_in_"),
+            BinaryOp::Eq => write!(f, "=="),
+            BinaryOp::Less => write!(f, "<"),
+            BinaryOp::LessEq => write!(f, "<="),
+            BinaryOp::Add => write!(f, "+"),
+            BinaryOp::Sub => write!(f, "-"),
+            BinaryOp::Mul => write!(f, "*"),
+            BinaryOp::In => write!(f, "in"),
             BinaryOp::Contains => write!(f, "contains"),
             BinaryOp::ContainsAll => write!(f, "containsAll"),
             BinaryOp::ContainsAny => write!(f, "containsAny"),
@@ -188,15 +194,6 @@ impl From<&BinaryOp> for proto::expr::binary_app::Op {
             BinaryOp::ContainsAny => proto::expr::binary_app::Op::ContainsAny,
             BinaryOp::GetTag => proto::expr::binary_app::Op::GetTag,
             BinaryOp::HasTag => proto::expr::binary_app::Op::HasTag,
-        }
-    }
-}
-
-impl std::fmt::Display for CallStyle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::FunctionStyle => write!(f, "function-style"),
-            Self::MethodStyle => write!(f, "method-style"),
         }
     }
 }

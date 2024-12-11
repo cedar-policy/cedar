@@ -2324,6 +2324,28 @@ impl<'a> Typechecker<'a> {
                     )
                 })
             }
+            UnaryOp::IsEmpty => {
+                let ans_arg = self.expect_type(
+                    request_env,
+                    prior_capability,
+                    arg,
+                    Type::any_set(),
+                    type_errors,
+                    |actual| match actual {
+                        Type::Primitive {
+                            primitive_type: Primitive::String,
+                        } => Some(UnexpectedTypeHelp::TryUsingEqEmptyString),
+                        _ => None,
+                    },
+                );
+                ans_arg.then_typecheck(|typ_expr_arg, _| {
+                    TypecheckAnswer::success(
+                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                            .with_same_source_loc(unary_expr)
+                            .is_empty(typ_expr_arg),
+                    )
+                })
+            }
         }
     }
 

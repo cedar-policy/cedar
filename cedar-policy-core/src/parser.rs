@@ -300,7 +300,7 @@ pub(crate) mod test_utils {
         msg: &ExpectedErrorMessage<'_>,
     ) {
         assert!(
-            errs.iter().any(|e| msg.matches(Some(src), e)),
+            errs.iter().any(|e| msg.matches(e)),
             "for the following input:\n{src}\nexpected some error to match the following:\n{msg}\nbut actual errors were:\n{:?}", // the Debug representation of `miette::Report` is the pretty one, for some reason
             miette::Report::new(errs.clone()),
         );
@@ -614,12 +614,9 @@ mod tests {
     /// Tests parser+evaluator with builtin methods `containsAll()`, `hasTag()`, `getTag()`
     #[test]
     fn interpret_methods() {
-        // The below tests check not only that we get the expected `Value`, but
-        // that it has the expected source location.
-        // See note on this in the above test.
-
         let src = r#"
             [2, 3, "foo"].containsAll([3, "foo"])
+            && context.violations.isEmpty()
             && principal.hasTag(resource.getTag(context.cur_time))
         "#;
         let request = eval::test::basic_request();

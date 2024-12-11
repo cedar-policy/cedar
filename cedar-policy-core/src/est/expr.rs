@@ -303,6 +303,12 @@ pub enum ExprNoExt {
         /// Right-hand argument (inside the `()`)
         right: Arc<Expr>,
     },
+    /// `isEmpty()`
+    #[serde(rename = "isEmpty")]
+    IsEmpty {
+        /// Argument
+        arg: Arc<Expr>,
+    },
     /// `getTag()`
     #[serde(rename = "getTag")]
     GetTag {
@@ -557,6 +563,11 @@ impl Expr {
         })
     }
 
+    /// `arg.isEmpty()`
+    pub fn is_empty(arg: Arc<Expr>) -> Self {
+        Expr::ExprNoExt(ExprNoExt::IsEmpty { arg })
+    }
+
     /// `left.getTag(right)`
     pub fn get_tag(left: Arc<Expr>, right: Expr) -> Self {
         Expr::ExprNoExt(ExprNoExt::GetTag {
@@ -731,6 +742,9 @@ impl Expr {
                         right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
                     }))
                 }
+                ExprNoExt::IsEmpty { arg } => Ok(Expr::ExprNoExt(ExprNoExt::IsEmpty {
+                    arg: Arc::new((*arg).clone().sub_entity_literals(mapping)?),
+                })),
                 ExprNoExt::GetTag { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::GetTag {
                     left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
                     right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
@@ -884,6 +898,9 @@ impl Expr {
                 (*left).clone().try_into_ast(id.clone())?,
                 (*right).clone().try_into_ast(id)?,
             )),
+            Expr::ExprNoExt(ExprNoExt::IsEmpty { arg }) => {
+                Ok(ast::Expr::is_empty((*arg).clone().try_into_ast(id)?))
+            }
             Expr::ExprNoExt(ExprNoExt::GetTag { left, right }) => Ok(ast::Expr::get_tag(
                 (*left).clone().try_into_ast(id.clone())?,
                 (*right).clone().try_into_ast(id)?,
@@ -1011,6 +1028,7 @@ impl<T: Clone> From<ast::Expr<T>> for Expr {
                 match op {
                     ast::UnaryOp::Not => Expr::not(arg),
                     ast::UnaryOp::Neg => Expr::neg(arg),
+                    ast::UnaryOp::IsEmpty => Expr::is_empty(Arc::new(arg)),
                 }
             }
             ast::ExprKind::BinaryApp { op, arg1, arg2 } => {
@@ -1492,6 +1510,10 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
                                     left,
                                     extract_single_argument(args, "containsAny()", &access.loc)?,
                                 )),
+                                "isEmpty" => {
+                                    require_zero_arguments(args, "isEmpty()", &access.loc)?;
+                                    Either::Right(Expr::is_empty(left))
+                                }
                                 "getTag" => Either::Right(Expr::get_tag(
                                     left,
                                     extract_single_argument(args, "getTag()", &access.loc)?,
@@ -1557,6 +1579,21 @@ pub fn extract_single_argument<T>(
             loc.clone(),
         ))),
         (Some(first), None) => Ok(first),
+    }
+}
+
+/// Return a wrong arity error if the iterator has any elements.
+pub fn require_zero_arguments<T>(
+    args: impl ExactSizeIterator<Item = T>,
+    fn_name: &'static str,
+    loc: &Loc,
+) -> Result<(), ParseErrors> {
+    match args.len() {
+        0 => Ok(()),
+        n => Err(ParseErrors::singleton(ToASTError::new(
+            ToASTErrorKind::wrong_arity(fn_name, 0, n),
+            loc.clone(),
+        ))),
     }
 }
 
@@ -1800,6 +1837,10 @@ impl std::fmt::Display for ExprNoExt {
                 maybe_with_parens(f, left)?;
                 write!(f, ".containsAny({right})")
             }
+            ExprNoExt::IsEmpty { arg } => {
+                maybe_with_parens(f, arg)?;
+                write!(f, ".isEmpty()")
+            }
             ExprNoExt::GetTag { left, right } => {
                 maybe_with_parens(f, left)?;
                 write!(f, ".getTag({right})")
@@ -1924,6 +1965,7 @@ fn maybe_with_parens(f: &mut std::fmt::Formatter<'_>, expr: &Expr) -> std::fmt::
         Expr::ExprNoExt(ExprNoExt::Contains { .. }) |
         Expr::ExprNoExt(ExprNoExt::ContainsAll { .. }) |
         Expr::ExprNoExt(ExprNoExt::ContainsAny { .. }) |
+        Expr::ExprNoExt(ExprNoExt::IsEmpty { .. }) |
         Expr::ExprNoExt(ExprNoExt::GetAttr { .. }) |
         Expr::ExprNoExt(ExprNoExt::HasAttr { .. }) |
         Expr::ExprNoExt(ExprNoExt::GetTag { .. }) |

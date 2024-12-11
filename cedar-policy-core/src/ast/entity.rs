@@ -22,6 +22,7 @@ use crate::parser::err::ParseErrors;
 use crate::parser::Loc;
 use crate::transitive_closure::TCNode;
 use crate::FromNormalizedStr;
+use educe::Educe;
 use itertools::Itertools;
 use miette::Diagnostic;
 use ref_cast::RefCast;
@@ -128,7 +129,8 @@ impl std::fmt::Display for EntityType {
 }
 
 /// Unique ID for an entity. These represent entities in the AST.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Educe, Serialize, Deserialize, Debug, Clone)]
+#[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct EntityUID {
     /// Typename of the entity
     ty: EntityType,
@@ -136,35 +138,10 @@ pub struct EntityUID {
     eid: Eid,
     /// Location of the entity in policy source
     #[serde(skip)]
+    #[educe(PartialEq(ignore))]
+    #[educe(Hash(ignore))]
+    #[educe(PartialOrd(ignore))]
     loc: Option<Loc>,
-}
-
-/// `PartialEq` implementation ignores the `loc`.
-impl PartialEq for EntityUID {
-    fn eq(&self, other: &Self) -> bool {
-        self.ty == other.ty && self.eid == other.eid
-    }
-}
-impl Eq for EntityUID {}
-
-impl std::hash::Hash for EntityUID {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // hash the ty and eid, in line with the `PartialEq` impl which compares
-        // the ty and eid.
-        self.ty.hash(state);
-        self.eid.hash(state);
-    }
-}
-
-impl PartialOrd for EntityUID {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-impl Ord for EntityUID {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.ty.cmp(&other.ty).then(self.eid.cmp(&other.eid))
-    }
 }
 
 impl StaticallyTyped for EntityUID {
@@ -616,6 +593,7 @@ impl Entity {
     }
 }
 
+/// `Entity`s are equal if their UIDs are equal
 impl PartialEq for Entity {
     fn eq(&self, other: &Self) -> bool {
         self.uid() == other.uid()
