@@ -38,8 +38,10 @@ use cedar_policy_formatter::{policies_str_to_pretty, Config};
 
 // Needed for the generated code to find `crate::cedar_policy_...`
 #[cfg(feature = "protobufs")]
+#[allow(clippy::single_component_path_imports)]
 use cedar_policy_core;
 #[cfg(feature = "protobufs")]
+#[allow(clippy::single_component_path_imports)]
 use cedar_policy_validator;
 
 #[cfg(feature = "protobufs")]
@@ -1864,11 +1866,7 @@ pub mod protobufs {
         equiv_request_proto: proto::EquivRequestMsg,
         output_location: PathBuf,
     ) -> Result<()> {
-        let mut buf: Vec<u8> = vec![];
-        buf.reserve(equiv_request_proto.encoded_len());
-        equiv_request_proto
-            .encode(&mut buf)
-            .expect("Serialization failed");
+        let buf = equiv_request_proto.encode_to_vec();
 
         let mut file = File::create(output_location).unwrap();
         // Write a slice of bytes to the file
