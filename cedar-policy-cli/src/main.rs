@@ -75,7 +75,7 @@ mod test {
         let test_data_root = PathBuf::from(r"../sample-data/sandbox_b");
         let mut schema_file = test_data_root.clone();
         schema_file.push("schema.cedarschema");
-        let mut old_policies_file = test_data_root.clone();
+        let mut old_policies_file = test_data_root;
         old_policies_file.push("policies_4.cedar");
         let new_policies_file = old_policies_file.clone();
 

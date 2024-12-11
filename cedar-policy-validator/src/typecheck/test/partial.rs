@@ -39,7 +39,7 @@ pub(crate) fn assert_partial_typecheck(
     let mut errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
-        &Template::link_static_policy(policy.clone()).0,
+        &Template::link_static_policy(policy).0,
         &mut errors,
         &mut warnings,
     );
@@ -58,7 +58,7 @@ pub(crate) fn assert_partial_typecheck_fails(
     let mut errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
-        &Template::link_static_policy(policy.clone()).0,
+        &Template::link_static_policy(policy).0,
         &mut errors,
         &mut warnings,
     );
@@ -77,7 +77,7 @@ pub(crate) fn assert_partial_typecheck_warns(
     let mut errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
-        &Template::link_static_policy(policy.clone()).0,
+        &Template::link_static_policy(policy).0,
         &mut errors,
         &mut warnings,
     );
@@ -460,7 +460,7 @@ mod fails_empty_schema {
         let src = r#"permit(principal, action, resource) when { resource.bar && false };"#;
         let p = parse_policy(None, src).unwrap();
         assert_typecheck_warns_empty_schema(
-            p.clone(),
+            p,
             [ValidationWarning::impossible_policy(
                 get_loc(src, src),
                 PolicyID::from_string("policy0"),
@@ -473,7 +473,7 @@ mod fails_empty_schema {
         let src = r#"permit(principal, action, resource) when { {foo: 1}.bar };"#;
         let p = parse_policy(None, src).unwrap();
         assert_typecheck_fails_empty_schema(
-            p.clone(),
+            p,
             [ValidationError::unsafe_attribute_access(
                 get_loc(src, "{foo: 1}.bar"),
                 PolicyID::from_string("policy0"),
