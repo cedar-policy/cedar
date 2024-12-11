@@ -1866,10 +1866,7 @@ pub mod protobufs {
         equiv_request_proto: proto::EquivRequestMsg,
         output_location: PathBuf,
     ) -> Result<()> {
-        let mut buf = Vec::with_capacity(equiv_request_proto.encoded_len());
-        equiv_request_proto
-            .encode(&mut buf)
-            .expect("Serialization failed");
+        let buf = equiv_request_proto.encode_to_vec();
 
         let mut file = File::create(output_location).unwrap();
         // Write a slice of bytes to the file
