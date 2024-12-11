@@ -1866,8 +1866,7 @@ pub mod protobufs {
         equiv_request_proto: proto::EquivRequestMsg,
         output_location: PathBuf,
     ) -> Result<()> {
-        let mut buf: Vec<u8> = vec![];
-        buf.reserve(equiv_request_proto.encoded_len());
+        let mut buf = Vec::with_capacity(equiv_request_proto.encoded_len());
         equiv_request_proto
             .encode(&mut buf)
             .expect("Serialization failed");
