@@ -427,10 +427,21 @@ impl Context {
             .from_json_file(json)
     }
 
+    /// Get the number of keys in this `Context`.
+    pub fn num_keys(&self) -> usize {
+        match self {
+            Context::Value(record) => record.len(),
+            Context::RestrictedResidual(record) => record.len(),
+        }
+    }
+
     /// Private helper function to implement `into_iter()` for `Context`.
     /// Gets an iterator over the (key, value) pairs in the `Context`, cloning
     /// only if necessary.
-    fn into_values(self) -> Box<dyn Iterator<Item = (SmolStr, RestrictedExpr)>> {
+    ///
+    /// Note that some error messages rely on this function returning keys in
+    /// sorted order, or else the error message will not be fully deterministic.
+    fn into_pairs(self) -> Box<dyn Iterator<Item = (SmolStr, RestrictedExpr)>> {
         match self {
             Context::Value(record) => Box::new(
                 Arc::unwrap_or_clone(record)
@@ -507,11 +518,10 @@ mod iter {
 
 impl IntoIterator for Context {
     type Item = (SmolStr, RestrictedExpr);
-
     type IntoIter = iter::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        iter::IntoIter(self.into_values())
+        iter::IntoIter(self.into_pairs())
     }
 }
 
