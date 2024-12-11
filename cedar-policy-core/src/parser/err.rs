@@ -259,7 +259,7 @@ pub enum ToASTErrorKind {
     InvalidPattern(String),
     /// Returned when the right hand side of a `is` expression is not an entity type name
     #[error("right hand side of an `is` expression must be an entity type name, but got `{rhs}`")]
-    #[diagnostic(help("{}", invalid_is_help(&.lhs, &.rhs)))]
+    #[diagnostic(help("{}", invalid_is_help(lhs, rhs)))]
     InvalidIsType {
         /// LHS of the invalid `is` expression, as a string
         lhs: String,

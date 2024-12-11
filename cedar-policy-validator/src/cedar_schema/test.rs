@@ -504,7 +504,7 @@ namespace Baz {action "Foo" appliesTo {
 
     #[test]
     fn test_github() {
-        let (fragment, warnings) = json_schema::Fragment::from_cedarschema_str(
+        let (fragment, mut warnings) = json_schema::Fragment::from_cedarschema_str(
             r#"namespace GitHub {
             entity User in [UserGroup,Team];
             entity UserGroup in [UserGroup];
@@ -528,7 +528,7 @@ namespace Baz {action "Foo" appliesTo {
             Extensions::all_available(),
         )
         .expect("Schema should parse");
-        assert!(warnings.collect::<Vec<_>>().is_empty());
+        assert!(warnings.next().is_none());
         let github = fragment
             .0
             .get(&Some("GitHub".parse().unwrap()))
@@ -633,7 +633,7 @@ namespace Baz {action "Foo" appliesTo {
 
     #[test]
     fn test_doc_cloud() {
-        let (fragment, warnings) = json_schema::Fragment::from_cedarschema_str(
+        let (fragment, mut warnings) = json_schema::Fragment::from_cedarschema_str(
             r#"namespace DocCloud {
             entity User in [Group] {
                 personalGroup: Group,
@@ -657,7 +657,7 @@ namespace Baz {action "Foo" appliesTo {
             Extensions::all_available(),
         )
         .expect("failed to parse");
-        assert!(warnings.collect::<Vec<_>>().is_empty());
+        assert!(warnings.next().is_none());
         let doccloud = fragment
             .0
             .get(&Some("DocCloud".parse().unwrap()))
@@ -783,9 +783,9 @@ namespace Baz {action "Foo" appliesTo {
         entity B;
         action Foo appliesTo { principal : A, resource : B  };
         "#;
-        let (_, warnings) =
+        let (_, mut warnings) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
-        assert!(warnings.collect::<Vec<_>>().is_empty());
+        assert!(warnings.next().is_none());
     }
 
     #[test]
@@ -853,9 +853,9 @@ namespace Baz {action "Foo" appliesTo {
         }
         "#;
 
-        let (_, warnings) =
+        let (_, mut warnings) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
-        assert!(warnings.collect::<Vec<_>>().is_empty());
+        assert!(warnings.next().is_none());
     }
 
     #[test]
@@ -874,9 +874,9 @@ namespace Baz {action "Foo" appliesTo {
             };
         }
         "#;
-        let (fragment, warnings) =
+        let (fragment, mut warnings) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
-        assert!(warnings.collect::<Vec<_>>().is_empty());
+        assert!(warnings.next().is_none());
         let service = fragment.0.get(&Some("Service".parse().unwrap())).unwrap();
         let resource = service
             .entity_types
