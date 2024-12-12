@@ -454,13 +454,15 @@ pub mod request_validation_errors {
 
     /// Context does not comply with the shape specified for the request action
     #[derive(Debug, Error, Diagnostic)]
-    #[error("context `{}` is not valid for `{action}`", ast::BoundedToString::to_string(.context, Some(5)))]
+    #[error("context `{}` is not valid for `{action}`", ast::BoundedToString::to_string(.context, Some(BOUNDEDDISPLAY_BOUND_FOR_INVALID_CONTEXT_ERROR)))]
     pub struct InvalidContextError {
         /// Context which is not valid
         pub(super) context: ast::Context,
         /// Action which it is not valid for
         pub(super) action: Arc<ast::EntityUID>,
     }
+
+    const BOUNDEDDISPLAY_BOUND_FOR_INVALID_CONTEXT_ERROR: usize = 5;
 
     impl InvalidContextError {
         /// The context which is not valid

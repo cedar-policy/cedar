@@ -772,8 +772,8 @@ impl<T: Clone> std::fmt::Display for Expr<T> {
 
 impl<T: Clone> BoundedDisplay for Expr<T> {
     fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
-        // Like for the `std::fmt::Display` impl, we convert to EST and use the
-        // EST pretty-printer. Note that converting AST->EST is lossless and infallible.
+        // Like the `std::fmt::Display` impl, we convert to EST and use the EST
+        // pretty-printer. Note that converting AST->EST is lossless and infallible.
         BoundedDisplay::fmt(&crate::est::Expr::from(self.clone()), f, n)
     }
 }
