@@ -532,7 +532,7 @@ namespace Baz {action "Foo" appliesTo {
             Extensions::all_available(),
         )
         .expect("Schema should parse");
-        assert!(warnings.collect::<Vec<_>>().is_empty());
+        assert_eq!(warnings.collect::<Vec<_>>(), vec![]);
         let github = fragment
             .0
             .get(&Some("GitHub".parse().unwrap()))
@@ -661,7 +661,7 @@ namespace Baz {action "Foo" appliesTo {
             Extensions::all_available(),
         )
         .expect("failed to parse");
-        assert!(warnings.collect::<Vec<_>>().is_empty());
+        assert_eq!(warnings.collect::<Vec<_>>(), vec![]);
         let doccloud = fragment
             .0
             .get(&Some("DocCloud".parse().unwrap()))
@@ -789,7 +789,7 @@ namespace Baz {action "Foo" appliesTo {
         "#;
         let (_, warnings) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
-        assert!(warnings.collect::<Vec<_>>().is_empty());
+        assert_eq!(warnings.collect::<Vec<_>>(), vec![]);
     }
 
     #[test]
@@ -859,7 +859,7 @@ namespace Baz {action "Foo" appliesTo {
 
         let (_, warnings) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
-        assert!(warnings.collect::<Vec<_>>().is_empty());
+        assert_eq!(warnings.collect::<Vec<_>>(), vec![]);
     }
 
     #[test]
@@ -880,7 +880,7 @@ namespace Baz {action "Foo" appliesTo {
         "#;
         let (fragment, warnings) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
-        assert!(warnings.collect::<Vec<_>>().is_empty());
+        assert_eq!(warnings.collect::<Vec<_>>(), vec![]);
         let service = fragment.0.get(&Some("Service".parse().unwrap())).unwrap();
         let resource = &service
             .entity_types

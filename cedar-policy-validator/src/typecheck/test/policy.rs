@@ -1138,7 +1138,7 @@ fn extended_has() {
     };
     "#;
     let policy = parse_policy(None, src).unwrap();
-    let errors = assert_policy_typecheck_fails(schema.clone(), policy);
+    let errors = assert_policy_typecheck_fails(schema, policy);
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
