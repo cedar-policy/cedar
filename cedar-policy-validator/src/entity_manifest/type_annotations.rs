@@ -69,16 +69,16 @@ impl RootAccessTrie {
                         match key {
                             EntityRoot::Literal(lit) => slice.to_typed(
                                 request_type,
-                                &Type::euid_literal(lit.clone(), schema).ok_or(
+                                &Type::euid_literal(lit.clone(), schema).ok_or_else(|| {
                                     MismatchedMissingEntityError {
                                         entity: lit.clone(),
-                                    },
-                                )?,
+                                    }
+                                })?,
                                 schema,
                             )?,
                             EntityRoot::Var(Var::Action) => {
                                 let ty = Type::euid_literal(request_type.action.clone(), schema)
-                                    .ok_or(MismatchedMissingEntityError {
+                                    .ok_or_else(|| MismatchedMissingEntityError {
                                         entity: request_type.action.clone(),
                                     })?;
                                 slice.to_typed(request_type, &ty, schema)?
@@ -96,7 +96,7 @@ impl RootAccessTrie {
                             EntityRoot::Var(Var::Context) => {
                                 let ty = &schema
                                     .get_action_id(&request_type.action.clone())
-                                    .ok_or(MismatchedMissingEntityError {
+                                    .ok_or_else(|| MismatchedMissingEntityError {
                                         entity: request_type.action.clone(),
                                     })?
                                     .context;

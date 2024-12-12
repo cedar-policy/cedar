@@ -2378,10 +2378,7 @@ impl Protobuf for PolicySet {
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
         let ast = proto::try_decode::<ast::proto::LiteralPolicySet, _, _>(buf)?
             .expect("proto-encoded policy set should be a valid policy set");
-        Ok(
-            PolicySet::from_ast(ast)
-                .expect("proto-encoded policy set should be a valid policy set"),
-        )
+        Ok(Self::from_ast(ast).expect("proto-encoded policy set should be a valid policy set"))
     }
 }
 

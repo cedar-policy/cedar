@@ -586,7 +586,7 @@ fn multi_namespace_action_eq() {
         r#"permit(principal, action, resource) when { NS1::Action::"B" == NS2::Action::"B" };"#,
     )
     .unwrap();
-    let warnings = assert_policy_typecheck_warns(schema.clone(), policy.clone());
+    let warnings = assert_policy_typecheck_warns(schema, policy.clone());
     let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
@@ -653,7 +653,7 @@ fn multi_namespace_action_in() {
         r#"permit(principal, action in NS4::Action::"Group", resource);"#,
     )
     .unwrap();
-    let warnings = assert_policy_typecheck_warns(schema.clone(), policy.clone());
+    let warnings = assert_policy_typecheck_warns(schema, policy.clone());
     let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
@@ -687,7 +687,7 @@ fn test_cedar_policy_642() {
     .unwrap();
 
     assert_policy_typechecks(
-        schema.clone(),
+        schema,
         parse_policy(
             None,
             r#"

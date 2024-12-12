@@ -304,7 +304,7 @@ fn union_fields(first: &Fields, second: &Fields) -> Fields {
     for (key, value) in second {
         res.entry(key.clone())
             .and_modify(|existing| existing.union_mut(value))
-            .or_insert(value.clone());
+            .or_insert_with(|| value.clone());
     }
     res
 }
@@ -375,7 +375,7 @@ impl RootAccessTrie {
             self.trie
                 .entry(key.clone())
                 .and_modify(|existing| existing.union_mut(value))
-                .or_insert(value.clone());
+                .or_insert_with(|| value.clone());
         }
     }
 }

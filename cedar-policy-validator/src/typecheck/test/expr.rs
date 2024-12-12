@@ -1158,7 +1158,7 @@ fn less_than_typecheck_fails() {
             ValidationError::expected_one_of_types(
                 get_loc(src, "\"\""),
                 expr_id_placeholder(),
-                expected_types.clone(),
+                expected_types,
                 Type::primitive_string(),
                 None,
             ),

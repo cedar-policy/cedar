@@ -2246,7 +2246,7 @@ impl AsRef<str> for PolicyID {
 }
 
 #[cfg(feature = "arbitrary")]
-impl<'u> arbitrary::Arbitrary<'u> for PolicyID {
+impl arbitrary::Arbitrary<'_> for PolicyID {
     fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<PolicyID> {
         let s: String = u.arbitrary()?;
         Ok(PolicyID::from_string(s))

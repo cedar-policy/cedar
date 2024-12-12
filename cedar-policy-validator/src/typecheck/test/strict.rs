@@ -721,7 +721,7 @@ fn qualified_record_attr() {
 
     let src = "permit(principal, action, resource) when { context == {num_of_things: 1}};";
     let p = parse_policy_or_template(None, src).unwrap();
-    let errors = assert_policy_typecheck_fails(schema, p.clone());
+    let errors = assert_policy_typecheck_fails(schema, p);
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,

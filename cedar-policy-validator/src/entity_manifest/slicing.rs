@@ -140,7 +140,7 @@ struct EntitySlicer<'a> {
     entities: &'a Entities,
 }
 
-impl<'a> EntityLoader for EntitySlicer<'a> {
+impl EntityLoader for EntitySlicer<'_> {
     fn load_entities(
         &mut self,
         to_load: &[EntityRequest],

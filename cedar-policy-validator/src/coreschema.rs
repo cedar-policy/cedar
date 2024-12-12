@@ -358,7 +358,7 @@ pub mod request_validation_errors {
     /// not valid for the request action
     #[derive(Debug, Error, Diagnostic)]
     #[error("principal type `{principal_ty}` is not valid for `{action}`")]
-    #[diagnostic(help("{}", invalid_principal_type_help(&.valid_principal_tys, .action.as_ref())))]
+    #[diagnostic(help("{}", invalid_principal_type_help(valid_principal_tys, .action.as_ref())))]
     pub struct InvalidPrincipalTypeError {
         /// Principal type which is not valid
         pub(super) principal_ty: ast::EntityType,
@@ -407,7 +407,7 @@ pub mod request_validation_errors {
     /// not valid for the request action
     #[derive(Debug, Error, Diagnostic)]
     #[error("resource type `{resource_ty}` is not valid for `{action}`")]
-    #[diagnostic(help("{}", invalid_resource_type_help(&.valid_resource_tys, .action.as_ref())))]
+    #[diagnostic(help("{}", invalid_resource_type_help(valid_resource_tys, .action.as_ref())))]
     pub struct InvalidResourceTypeError {
         /// Resource type which is not valid
         pub(super) resource_ty: ast::EntityType,
@@ -454,7 +454,7 @@ pub mod request_validation_errors {
 
     /// Context does not comply with the shape specified for the request action
     #[derive(Debug, Error, Diagnostic)]
-    #[error("context `{}` is not valid for `{action}`", pretty_print(&.context))]
+    #[error("context `{}` is not valid for `{action}`", pretty_print(context))]
     pub struct InvalidContextError {
         /// Context which is not valid
         pub(super) context: ast::Context,
@@ -923,7 +923,7 @@ mod test {
                 (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
                 (ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(), None),
                 (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
-                context_with_extra_attr.clone(),
+                context_with_extra_attr,
                 Some(&schema()),
                 Extensions::all_available(),
             ),
@@ -949,7 +949,7 @@ mod test {
                 (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
                 (ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(), None),
                 (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
-                context_with_wrong_type_attr.clone(),
+                context_with_wrong_type_attr,
                 Some(&schema()),
                 Extensions::all_available(),
             ),
@@ -978,7 +978,7 @@ mod test {
                 (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
                 (ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(), None),
                 (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
-                context_with_heterogeneous_set.clone(),
+                context_with_heterogeneous_set,
                 Some(&schema()),
                 Extensions::all_available(),
             ),
