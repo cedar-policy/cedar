@@ -31,8 +31,8 @@ use thiserror::Error;
 use crate::ast::proto;
 
 use super::{
-    BorrowedRestrictedExpr, EntityType, EntityUID, Expr, ExprKind, ExpressionConstructionError,
-    PartialValue, RestrictedExpr, Unknown, Value, ValueKind, Var,
+    BorrowedRestrictedExpr, BoundedDisplay, EntityType, EntityUID, Expr, ExprKind,
+    ExpressionConstructionError, PartialValue, RestrictedExpr, Unknown, Value, ValueKind, Var,
 };
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
@@ -563,6 +563,12 @@ impl std::default::Default for Context {
 impl std::fmt::Display for Context {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", PartialValue::from(self.clone()))
+    }
+}
+
+impl BoundedDisplay for Context {
+    fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
+        BoundedDisplay::fmt(&PartialValue::from(self.clone()), f, n)
     }
 }
 
