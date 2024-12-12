@@ -454,7 +454,7 @@ pub mod request_validation_errors {
 
     /// Context does not comply with the shape specified for the request action
     #[derive(Debug, Error, Diagnostic)]
-    #[error("context `{}` is not valid for `{action}`", pretty_print(&.context))]
+    #[error("context `{}` is not valid for `{action}`", ast::BoundedToString::to_string(.context, Some(5)))]
     pub struct InvalidContextError {
         /// Context which is not valid
         pub(super) context: ast::Context,
@@ -471,43 +471,6 @@ pub mod request_validation_errors {
         /// The action which it is not valid for
         pub fn action(&self) -> &ast::EntityUID {
             &self.action
-        }
-    }
-
-    const MAX_KEYS_TO_PRETTY_PRINT: usize = 5;
-
-    fn pretty_print(context: &ast::Context) -> String {
-        if context.num_keys() <= MAX_KEYS_TO_PRETTY_PRINT {
-            // just print the context using its `Display` impl
-            context.to_string()
-        } else {
-            // shares a lot of code with the `Display` impl for `ValueKind`, but we need to add `, ..` just before the last `}`
-            let try_creating_string = || -> Result<String, std::fmt::Error> {
-                use std::fmt::Write;
-                use std::str::FromStr;
-                let mut s = String::new();
-                write!(s, "{{")?;
-                for (k, v) in context.clone().into_iter().take(MAX_KEYS_TO_PRETTY_PRINT) {
-                    match ast::UnreservedId::from_str(&k) {
-                        Ok(k) => {
-                            // we can omit the quotes around the key, it's a valid identifier and not a reserved keyword
-                            write!(s, "{k}: {v}, ")?;
-                        }
-                        Err(_) => {
-                            // put quotes around the key
-                            write!(s, "\"{k}\": {v}, ")?;
-                        }
-                    }
-                }
-                write!(s, ".. }}")?;
-                Ok(s)
-            };
-            try_creating_string().unwrap_or_else(|_| {
-                // failed to pretty-print just the first MAX_KEYS_TO_PRETTY_PRINT
-                // pairs (this should never happen), just fall back on printing
-                // the whole context, which is guaranteed to not fail
-                context.to_string()
-            })
         }
     }
 }
@@ -1024,7 +987,7 @@ mod test {
                 expect_err(
                     "",
                     &miette::Report::new(e),
-                    &ExpectedErrorMessageBuilder::error(r#"context `{admin_approval: true, "also extra": "spam", extra1: false, extra2: [(-100)], extra3: User::"alice", .. }` is not valid for `Action::"edit_photo"`"#).build(),
+                    &ExpectedErrorMessageBuilder::error(r#"context `{admin_approval: true, "also extra": "spam", extra1: false, extra2: [-100], extra3: User::"alice", .. }` is not valid for `Action::"edit_photo"`"#).build(),
                 );
             }
         );
