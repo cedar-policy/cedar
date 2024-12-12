@@ -77,7 +77,7 @@ fn ip_extension_typecheck_fails() {
     );
     let src = "ip(\"127.0.0.1\").isIpv4(3)";
     let expr = Expr::from_str(src).expect("parsing should succeed");
-    let errors = assert_typecheck_fails_empty_schema(expr.clone(), Type::primitive_boolean());
+    let errors = assert_typecheck_fails_empty_schema(expr, Type::primitive_boolean());
     let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
@@ -145,8 +145,7 @@ fn decimal_extension_typecheck_fails() {
     );
     let src = "decimal(\"foo\")";
     let expr = Expr::from_str(src).expect("parsing should succeed");
-    let errors =
-        assert_typecheck_fails_empty_schema(expr.clone(), Type::extension(decimal_name.clone()));
+    let errors = assert_typecheck_fails_empty_schema(expr, Type::extension(decimal_name.clone()));
     let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
@@ -158,7 +157,7 @@ fn decimal_extension_typecheck_fails() {
     );
     let src = "decimal(\"1.23\").lessThan(3, 4)";
     let expr = Expr::from_str(src).expect("parsing should succeed");
-    let errors = assert_typecheck_fails_empty_schema(expr.clone(), Type::primitive_boolean());
+    let errors = assert_typecheck_fails_empty_schema(expr, Type::primitive_boolean());
     let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
@@ -200,7 +199,7 @@ fn datetime_extension_typechecks() {
     assert_typechecks_empty_schema(expr, Type::extension(duration_name.clone()));
     let expr =
         Expr::from_str(r#"datetime("2024-10-28").toDate()"#).expect("parsing should succeed");
-    assert_typechecks_empty_schema(expr, Type::extension(datetime_name.clone()));
+    assert_typechecks_empty_schema(expr, Type::extension(datetime_name));
     let expr =
         Expr::from_str(r#"datetime("2024-10-28").toTime()"#).expect("parsing should succeed");
     assert_typechecks_empty_schema(expr, Type::extension(duration_name.clone()));
@@ -224,7 +223,7 @@ fn datetime_extension_typechecks() {
     assert_typechecks_empty_schema(expr, Type::primitive_boolean());
 
     let expr = Expr::from_str("duration(\"1h\")").expect("parsing should succeed");
-    assert_typechecks_empty_schema(expr, Type::extension(duration_name.clone()));
+    assert_typechecks_empty_schema(expr, Type::extension(duration_name));
     let expr =
         Expr::from_str(r#"duration("1h").toMilliseconds()"#).expect("parsing should succeed");
     assert_typechecks_empty_schema(expr, Type::primitive_long());
@@ -264,8 +263,7 @@ fn datetime_extension_typecheck_fails() {
     );
     let src = "datetime(\"foo\")";
     let expr = Expr::from_str(src).expect("parsing should succeed");
-    let errors =
-        assert_typecheck_fails_empty_schema(expr.clone(), Type::extension(datetime_name.clone()));
+    let errors = assert_typecheck_fails_empty_schema(expr, Type::extension(datetime_name.clone()));
     let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
@@ -292,8 +290,7 @@ fn datetime_extension_typecheck_fails() {
     );
     let src = "duration(\"foo\")";
     let expr = Expr::from_str(src).expect("parsing should succeed");
-    let errors =
-        assert_typecheck_fails_empty_schema(expr.clone(), Type::extension(duration_name.clone()));
+    let errors = assert_typecheck_fails_empty_schema(expr, Type::extension(duration_name.clone()));
     let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
@@ -306,8 +303,7 @@ fn datetime_extension_typecheck_fails() {
 
     let src = r#"datetime("2024-10-28").offset(3, 4)"#;
     let expr = Expr::from_str(src).expect("parsing should succeed");
-    let errors =
-        assert_typecheck_fails_empty_schema(expr.clone(), Type::extension(datetime_name.clone()));
+    let errors = assert_typecheck_fails_empty_schema(expr, Type::extension(datetime_name.clone()));
     let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,

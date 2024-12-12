@@ -1851,7 +1851,6 @@ mod test {
                             AsRef::<str>::as_ref(s).into(),
                             AttributeType::required_attribute(t.clone())
                         ))
-                        .collect::<BTreeMap<_, _>>()
                 ),
                 entity_lub.get_attribute_types(&schema),
                 "Incorrect computed record type for LUB for {mode:?}."
@@ -2613,7 +2612,7 @@ mod test {
         assert_least_upper_bound(
             action_schema(),
             ValidationMode::Permissive,
-            action_view_ty.clone(),
+            action_view_ty,
             Type::any_record(),
             Err(LubHelp::EntityRecord),
         );

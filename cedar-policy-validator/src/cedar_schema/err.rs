@@ -635,7 +635,7 @@ pub mod schema_warnings {
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Clone, Error)]
+    #[derive(Eq, PartialEq, Debug, Clone, Error)]
     #[error("The name `{name}` shadows a builtin Cedar name. You'll have to refer to the builtin as `__cedar::{name}`.")]
     pub struct ShadowsBuiltinWarning {
         pub(crate) name: SmolStr,
@@ -655,7 +655,7 @@ pub mod schema_warnings {
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Clone, Error)]
+    #[derive(Eq, PartialEq, Debug, Clone, Error)]
     #[error("The common type name {name} shadows an entity name")]
     pub struct ShadowsEntityWarning {
         pub(crate) name: SmolStr,
@@ -690,7 +690,7 @@ pub mod schema_warnings {
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
-#[derive(Debug, Clone, Error, Diagnostic)]
+#[derive(Eq, PartialEq, Debug, Clone, Error, Diagnostic)]
 #[non_exhaustive]
 pub enum SchemaWarning {
     /// Warning when a declaration shadows a builtin type
