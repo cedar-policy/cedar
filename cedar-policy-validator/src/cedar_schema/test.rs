@@ -1988,6 +1988,266 @@ mod translator_tests {
         .map(|_| ());
         assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::ReservedSchemaKeyword(_)));
     }
+
+    #[track_caller]
+    fn test_translation(src: &str, json_value: serde_json::Value) {
+        let (schema, _) = cedar_schema_to_json_schema(
+            parse_schema(src).expect("should parse Cedar schema"),
+            Extensions::none(),
+        )
+        .expect("should translate to JSON schema");
+        assert_eq!(serde_json::to_value(schema).unwrap(), json_value);
+    }
+    #[test]
+    fn annotations() {
+        // namespace annotations
+        test_translation(
+            r#"
+            @a1
+            @a2("")
+            @a3("foo")
+            namespace N {
+              entity E;
+            }
+            "#,
+            serde_json::json!({
+                "N": {
+                    "entityTypes": {
+                        "E": {}
+                    },
+                    "actions": {},
+                    "annotations": {
+                        "a1": "",
+                        "a2": "",
+                        "a3": "foo",
+                    }
+                }
+            }),
+        );
+
+        // common type annotations
+        test_translation(
+            r#"
+            @comment("A->B")
+            type A = B;
+            @comment("B->A")
+            type B = A;
+            "#,
+            serde_json::json!({
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                       "A": {
+                        "type": "EntityOrCommon",
+                        "name": "B",
+                        "annotations": {
+                            "comment": "A->B",
+                        }
+                       },
+                       "B": {
+                        "type": "EntityOrCommon",
+                        "name": "A",
+                        "annotations": {
+                            "comment": "B->A",
+                        }
+                       }
+                    }
+                }
+            }),
+        );
+
+        // entity type annotations
+        test_translation(
+            r#"
+            @a1
+            @a2("")
+            @a3("foo")
+            namespace N {
+              @ae1("🌕")
+              @ae2("moon")
+              entity Moon;
+            }
+            @ae("🌎")
+            entity Earth;
+            "#,
+            serde_json::json!({
+                "": {
+                    "entityTypes": {
+                        "Earth": {
+                            "annotations": {
+                                "ae": "🌎",
+                            }
+                        }
+                    },
+                    "actions": {},
+                },
+                "N": {
+                    "entityTypes": {
+                        "Moon": {
+                            "annotations": {
+                                "ae1": "🌕",
+                                "ae2": "moon",
+                            }
+                        }
+                    },
+                    "actions": {},
+                    "annotations": {
+                        "a1": "",
+                        "a2": "",
+                        "a3": "foo",
+                    }
+                }
+            }),
+        );
+        test_translation(
+            r#"
+            @ae("🍎🍏")
+            entity Apple1, Apple2;
+            "#,
+            serde_json::json!({
+                "": {
+                    "entityTypes": {
+                        "Apple1": {
+                            "annotations": {
+                                "ae": "🍎🍏",
+                            }
+                        },
+                        "Apple2": {
+                            "annotations": {
+                                "ae": "🍎🍏",
+                            }
+                        }
+                    },
+                    "actions": {},
+                }
+            }),
+        );
+
+        // action annotations
+        test_translation(
+            r#"
+            @a1
+            @a2("")
+            @a3("foo")
+            namespace N {
+              @ae1("🌕")
+              @ae2("moon")
+              entity Moon;
+            }
+            @a("🌌")
+            action "🚀","🛸" appliesTo {
+                principal: [Astronaut, ET],
+                resource: Earth,
+            };
+            "#,
+            serde_json::json!({
+                "": {
+                    "entityTypes": {},
+                    "actions": {
+                        "🚀": {
+                            "annotations": {
+                                "a": "🌌",
+                            },
+                            "appliesTo": {
+                                "principalTypes": ["Astronaut", "ET"],
+                                "resourceTypes": ["Earth"],
+                            }
+                        },
+                        "🛸": {
+                            "annotations": {
+                                "a": "🌌",
+                            },
+                            "appliesTo": {
+                                "principalTypes": ["Astronaut", "ET"],
+                                "resourceTypes": ["Earth"],
+                            }
+                        }
+                    },
+                },
+                "N": {
+                    "entityTypes": {
+                        "Moon": {
+                            "annotations": {
+                                "ae1": "🌕",
+                                "ae2": "moon",
+                            }
+                        }
+                    },
+                    "actions": {},
+                    "annotations": {
+                        "a1": "",
+                        "a2": "",
+                        "a3": "foo",
+                    }
+                }
+            }),
+        );
+
+        // attribute annotations
+        test_translation(
+            r#"
+            type Stars = {
+                @a1
+                "🌕": Long,
+                @a2
+                "🌎": Long,
+                @a3
+                "🛰️": {
+                  @a4("Rocket")
+                  "🚀": Long,
+                  "🌌": Long,
+                }
+            };
+            "#,
+            serde_json::json!({
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "Stars": {
+                            "type": "Record",
+                            "attributes": {
+                                "🌕": {
+                                    "type": "EntityOrCommon",
+                                    "name": "Long",
+                                    "annotations": {
+                                        "a1": "",
+                                    }
+                                },
+                                "🌎": {
+                                    "type": "EntityOrCommon",
+                                    "name": "Long",
+                                    "annotations": {
+                                        "a2": "",
+                                    }
+                                },
+                                "🛰️": {
+                                    "type": "Record",
+                                    "annotations": {
+                                        "a3": "",
+                                    },
+                                    "attributes": {
+                                        "🚀": {
+                                            "type": "EntityOrCommon",
+                                            "name": "Long",
+                                            "annotations": {
+                                                "a4": "Rocket",
+                                            }
+                                        },
+                                        "🌌": {
+                                            "type": "EntityOrCommon",
+                                            "name": "Long",
+                                        }
+                                    }
+                                },
+                            },
+                       },
+                    }
+                }
+            }),
+        );
+    }
 }
 
 #[cfg(test)]
