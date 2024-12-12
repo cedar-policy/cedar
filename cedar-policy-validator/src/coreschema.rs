@@ -454,7 +454,7 @@ pub mod request_validation_errors {
 
     /// Context does not comply with the shape specified for the request action
     #[derive(Debug, Error, Diagnostic)]
-    #[error("context `{}` is not valid for `{action}`", ast::BoundedToString::to_string(.context, Some(BOUNDEDDISPLAY_BOUND_FOR_INVALID_CONTEXT_ERROR)))]
+    #[error("context `{}` is not valid for `{action}`", ast::BoundedToString::to_string_bounded(.context, BOUNDEDDISPLAY_BOUND_FOR_INVALID_CONTEXT_ERROR))]
     pub struct InvalidContextError {
         /// Context which is not valid
         pub(super) context: ast::Context,

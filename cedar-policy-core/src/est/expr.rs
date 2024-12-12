@@ -1793,7 +1793,7 @@ fn display_cedarvaluejson(
 
 impl std::fmt::Display for ExprNoExt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        BoundedDisplay::fmt(self, f, None)
+        BoundedDisplay::fmt_unbounded(self, f)
     }
 }
 
@@ -2002,7 +2002,7 @@ impl BoundedDisplay for ExprNoExt {
 
 impl std::fmt::Display for ExtFuncCall {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        BoundedDisplay::fmt(self, f, None)
+        BoundedDisplay::fmt_unbounded(self, f)
     }
 }
 

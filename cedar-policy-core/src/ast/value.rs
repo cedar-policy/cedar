@@ -554,6 +554,20 @@ pub trait BoundedDisplay {
     /// Write `self` to the writer `f`, truncating set elements or key-value
     /// pairs if necessary based on `n`
     fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result;
+
+    /// Convenience method, equivalent to `fmt()` with `n` as `Some`.
+    ///
+    /// You should generally not re-implement this, just use the default implementation.
+    fn fmt_bounded(&self, f: &mut impl std::fmt::Write, n: usize) -> std::fmt::Result {
+        self.fmt(f, Some(n))
+    }
+
+    /// Convenience method, equivalent to `fmt()` with `n` as `None`.
+    ///
+    /// You should generally not re-implement this, just use the default implementation.
+    fn fmt_unbounded(&self, f: &mut impl std::fmt::Write) -> std::fmt::Result {
+        self.fmt(f, None)
+    }
 }
 
 /// Like `ToString`, but optionally truncates embedded sets/records to `n`
@@ -568,6 +582,20 @@ pub trait BoundedToString {
     /// Convert `self` to a `String`, truncating set elements or key-value pairs
     /// if necessary based on `n`
     fn to_string(&self, n: Option<usize>) -> String;
+
+    /// Convenience method, equivalent to `to_string()` with `n` as `Some`.
+    ///
+    /// You should generally not re-implement this, just use the default implementation.
+    fn to_string_bounded(&self, n: usize) -> String {
+        self.to_string(Some(n))
+    }
+
+    /// Convenience method, equivalent to `to_string()` with `n` as `None`.
+    ///
+    /// You should generally not re-implement this, just use the default implementation.
+    fn to_string_unbounded(&self) -> String {
+        self.to_string(None)
+    }
 }
 
 /// Like the impl of `ToString` for `T: Display` in the standard library,
@@ -592,7 +620,7 @@ impl std::fmt::Display for Value {
 
 impl std::fmt::Display for ValueKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        BoundedDisplay::fmt(self, f, None)
+        BoundedDisplay::fmt_unbounded(self, f)
     }
 }
 
