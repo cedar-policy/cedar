@@ -26,6 +26,8 @@ use super::AnyId;
 
 /// Struct which holds the annotations for a policy
 #[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct Annotations(
     #[serde(default)]
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
@@ -99,6 +101,8 @@ impl From<BTreeMap<AnyId, Annotation>> for Annotations {
 #[derive(Educe, Clone, Debug, Serialize, Deserialize)]
 #[educe(Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(transparent)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct Annotation {
     /// Annotation value
     pub val: SmolStr,
