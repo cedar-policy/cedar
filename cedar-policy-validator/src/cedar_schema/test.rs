@@ -23,8 +23,8 @@ mod demo_tests {
         iter::{empty, once},
     };
 
-    use cedar_policy_core::extensions::Extensions;
     use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
+    use cedar_policy_core::{ast::Annotations, extensions::Extensions};
     use cool_asserts::assert_matches;
     use smol_str::ToSmolStr;
 
@@ -213,7 +213,7 @@ mod demo_tests {
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let unqual = schema.0.get(&None).unwrap();
         let foo = unqual.actions.get("Foo").unwrap();
-        assert_matches!(foo,
+        assert_matches!(&foo,
                 json_schema::ActionType {
                     applies_to : Some(json_schema::ApplySpec {
                         resource_types,
@@ -336,6 +336,7 @@ mod demo_tests {
             attributes: None,
             applies_to: None,
             member_of: None,
+            annotations: Annotations::new(),
         };
         let namespace =
             json_schema::NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
@@ -437,6 +438,7 @@ namespace Baz {action "Foo" appliesTo {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
+                    annotations: Annotations::new(),
                 },
             )]),
             actions: BTreeMap::from([(
@@ -449,8 +451,10 @@ namespace Baz {action "Foo" appliesTo {
                         context: json_schema::AttributesOrContext::default(),
                     }),
                     member_of: None,
+                    annotations: Annotations::new(),
                 },
             )]),
+            annotations: Annotations::new(),
         };
         let fragment = json_schema::Fragment(BTreeMap::from([(None, namespace)]));
         let src = fragment.to_cedarschema().unwrap();
@@ -544,7 +548,7 @@ namespace Baz {action "Foo" appliesTo {
             &vec!["UserGroup".parse().unwrap(), "Team".parse().unwrap()]
         );
         // UserGroup
-        let usergroup = github
+        let usergroup = &github
             .entity_types
             .get(&"UserGroup".parse().unwrap())
             .expect("No `UserGroup`");
@@ -733,7 +737,7 @@ namespace Baz {action "Foo" appliesTo {
                 }),
             );
             assert_has_type(
-                attributes.get("viewACL").unwrap(),
+                &attributes.get("viewACL").unwrap(),
                 json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "DocumentShare".parse().unwrap(),
                 }),
@@ -878,7 +882,7 @@ namespace Baz {action "Foo" appliesTo {
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         assert!(warnings.collect::<Vec<_>>().is_empty());
         let service = fragment.0.get(&Some("Service".parse().unwrap())).unwrap();
-        let resource = service
+        let resource = &service
             .entity_types
             .get(&"Resource".parse().unwrap())
             .unwrap();
@@ -886,8 +890,8 @@ namespace Baz {action "Foo" appliesTo {
             attributes,
             additional_attributes: false,
         }))) => {
-            assert_matches!(attributes.get("tag"), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
-                assert_matches!(ty, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
+            assert_matches!(attributes.get("tag"), Some(json_schema::TypeOfAttribute { ty, required: true, .. }) => {
+                assert_matches!(&ty, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
                     assert_eq!(type_name, &"AWS::Tag".parse().unwrap());
                 });
             });
@@ -917,7 +921,7 @@ namespace Baz {action "Foo" appliesTo {
         assert_labeled_span("type t =", "expected `{`, identifier, or `Set`");
         assert_labeled_span(
             "entity User {",
-            "expected `}`, identifier, or string literal",
+            "expected `@`, `}`, identifier, or string literal",
         );
         assert_labeled_span("entity User { name:", "expected `{`, identifier, or `Set`");
     }
@@ -1417,18 +1421,18 @@ mod translator_tests {
         let (frag, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let demo = frag.0.get(&Some("Demo".parse().unwrap())).unwrap();
-        let user = demo.entity_types.get(&"User".parse().unwrap()).unwrap();
+        let user = &demo.entity_types.get(&"User".parse().unwrap()).unwrap();
         assert_matches!(&user.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
         }))) => {
-            assert_matches!(attributes.get("name"), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
+            assert_matches!(attributes.get("name"), Some(json_schema::TypeOfAttribute { ty, required: true, .. }) => {
                 let expected = json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "id".parse().unwrap(),
                 });
                 assert_eq!(ty, &expected);
             });
-            assert_matches!(attributes.get("email"), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
+            assert_matches!(attributes.get("email"), Some(json_schema::TypeOfAttribute { ty, required: true, .. }) => {
                 let expected = json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "email_address".parse().unwrap(),
                 });
@@ -2340,7 +2344,7 @@ mod entity_tags {
             assert!(warnings.is_empty());
             let entity_type = frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
             assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::Record(rty))) => {
-                assert_matches!(rty.attributes.get("foo"), Some(json_schema::TypeOfAttribute { ty, required }) => {
+                assert_matches!(rty.attributes.get("foo"), Some(json_schema::TypeOfAttribute { ty, required, .. }) => {
                     assert_matches!(ty, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
                         assert_eq!(&format!("{type_name}"), "String");
                     });
@@ -2366,5 +2370,137 @@ mod entity_tags {
                 assert_eq!(&format!("{type_name}"), "E");
             });
         });
+    }
+}
+
+// RFC 48 test cases
+#[cfg(test)]
+mod annotations {
+    use cool_asserts::assert_matches;
+
+    use crate::cedar_schema::parser::parse_schema;
+
+    #[test]
+    fn no_keys() {
+        assert_matches!(
+            parse_schema(
+                r#"
+        @doc("This entity defines our central user type")
+entity User {
+    @manager
+    manager : User,
+    @team
+    team : String
+};
+        "#
+            ),
+            Ok(_)
+        );
+    }
+
+    #[test]
+    fn duplicate_keys() {
+        assert_matches!(
+            parse_schema(
+                r#"
+        @doc("This entity defines our central user type")
+        @doc
+entity User {
+    @manager
+    manager : User,
+    @team
+    team : String
+};
+        "#
+            ),
+            Err(errs) => {
+                assert_eq!(errs.0.as_ref().first().to_string(), "duplicate annotations: `doc`");
+            }
+        );
+    }
+
+    #[test]
+    fn rfc_examples() {
+        // basic
+        assert_matches!(
+            parse_schema(
+                r#"
+        @doc("This entity defines our central user type")
+entity User { 
+    manager : User,
+    team : String
+};
+        "#
+            ),
+            Ok(_)
+        );
+        // basic + namespace
+        assert_matches!(
+            parse_schema(
+                r#"
+        @doc("this is namespace foo")
+        namespace foo {
+@doc("This entity defines our central user type")
+entity User { 
+    manager : User,
+    team : String
+};
+    }
+        "#
+            ),
+            Ok(_)
+        );
+        // entity attribute annotation
+        assert_matches!(
+            parse_schema(
+                r#"
+@doc("This entity defines our central user type")
+entity User { 
+    manager : User,
+
+    @doc("Which team user belongs to")    
+    @docLink("https://schemaDocs.example.com/User/team")
+    team : String
+};
+"#
+            ),
+            Ok(_)
+        );
+        // full example
+        assert_matches!(
+            parse_schema(
+                r#"
+        @doc("this is the namespace")
+namespace TinyTodo {
+    @doc("a common type representing a task")
+    type Task = {
+        "id": Long,
+        "name": String,
+        "state": String,
+    };
+    @doc("a common type representing a set of tasks")
+    type Tasks = Set<Task>;
+
+    @doc1("an entity type representing a list")
+    @doc2("any entity type is a child of type `Application`")
+    entity List in [Application] = {
+        @doc("editors of a list")
+        "editors": Team,
+        "name": String,
+        "owner": User,
+        @doc("readers of a list")
+        "readers": Team,
+        "tasks": Tasks,
+    };
+
+    @doc("actions that a user can operate on a list")
+    action DeleteList, GetList, UpdateList appliesTo {
+        principal: [User],
+        resource: [List]
+    };
+}"#
+            ),
+            Ok(_)
+        );
     }
 }

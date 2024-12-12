@@ -488,6 +488,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
+                    annotations: Annotations::new(),
                 },
             )],
             [],
@@ -523,6 +524,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
+                    annotations: Annotations::new(),
                 },
             )],
             [],
@@ -575,6 +577,7 @@ mod test {
                     applies_to: None,
                     member_of: None,
                     attributes: None,
+                    annotations: Annotations::new(),
                 },
             )],
         );
@@ -609,6 +612,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
+                    annotations: Annotations::new(),
                 },
             )],
             [],
@@ -634,6 +638,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
+                    annotations: Annotations::new(),
                 },
             )],
             [],
@@ -659,6 +664,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
+                    annotations: Annotations::new(),
                 },
             )],
             [],
@@ -704,6 +710,7 @@ mod test {
                     applies_to: None,
                     member_of: None,
                     attributes: None,
+                    annotations: Annotations::new(),
                 },
             )],
         );
@@ -736,6 +743,7 @@ mod test {
                     applies_to: None,
                     member_of: None,
                     attributes: None,
+                    annotations: Annotations::new(),
                 },
             )],
         );
@@ -935,6 +943,7 @@ mod test {
                     applies_to: None,
                     member_of: None,
                     attributes: None,
+                    annotations: Annotations::new(),
                 },
             )],
         );
@@ -962,6 +971,7 @@ mod test {
                     applies_to: None,
                     member_of: None,
                     attributes: None,
+                    annotations: Annotations::new(),
                 },
             )],
         );
@@ -989,6 +999,7 @@ mod test {
                     applies_to: None,
                     member_of: None,
                     attributes: None,
+                    annotations: Annotations::new(),
                 },
             )],
         );
@@ -1015,6 +1026,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
+                    annotations: Annotations::new(),
                 },
             )],
             [],
@@ -1049,6 +1061,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: Annotations::new(),
                     },
                 ),
                 (
@@ -1057,6 +1070,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: Annotations::new(),
                     },
                 ),
             ],
@@ -1070,6 +1084,7 @@ mod test {
                     }),
                     member_of: Some(vec![]),
                     attributes: None,
+                    annotations: Annotations::new(),
                 },
             )],
         )
@@ -1440,6 +1455,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: Annotations::new(),
                     },
                 ),
                 (
@@ -1448,6 +1464,7 @@ mod test {
                         member_of_types: vec![resource_parent_type.parse().unwrap()],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: Annotations::new(),
                     },
                 ),
                 (
@@ -1456,6 +1473,7 @@ mod test {
                         member_of_types: vec![resource_grandparent_type.parse().unwrap()],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: Annotations::new(),
                     },
                 ),
                 (
@@ -1464,6 +1482,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: Annotations::new(),
                     },
                 ),
             ],
@@ -1481,6 +1500,7 @@ mod test {
                             action_parent_name.into(),
                         )]),
                         attributes: None,
+                        annotations: Annotations::new(),
                     },
                 ),
                 (
@@ -1492,6 +1512,7 @@ mod test {
                             action_grandparent_name.into(),
                         )]),
                         attributes: None,
+                        annotations: Annotations::new(),
                     },
                 ),
                 (
@@ -1500,6 +1521,7 @@ mod test {
                         applies_to: None,
                         member_of: Some(vec![]),
                         attributes: None,
+                        annotations: Annotations::new(),
                     },
                 ),
             ],

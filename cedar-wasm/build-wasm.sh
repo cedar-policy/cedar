@@ -96,6 +96,7 @@ process_types_file() {
 
     echo "type SmolStr = string;" >> "$types_file"
     echo "export type TypeOfAttribute<N> = Type<N> & { required?: boolean };" >> "$types_file"
+    echo "export type CommonType<N> = Type<N> & { annotations?: Annotations };" >> "$types_file"
 }
 
 check_types_file() {

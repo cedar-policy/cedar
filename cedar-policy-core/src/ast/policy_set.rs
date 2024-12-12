@@ -597,7 +597,8 @@ mod test {
     use super::*;
     use crate::{
         ast::{
-            ActionConstraint, Annotations, Effect, Expr, PrincipalConstraint, ResourceConstraint,
+            annotation::Annotations, ActionConstraint, Effect, Expr, PrincipalConstraint,
+            ResourceConstraint,
         },
         parser,
     };

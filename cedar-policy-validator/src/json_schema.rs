@@ -17,7 +17,7 @@
 //! Structures defining the JSON syntax for Cedar schemas
 
 use cedar_policy_core::{
-    ast::{Eid, EntityUID, InternalName, Name, UnreservedId},
+    ast::{Annotations, Eid, EntityUID, InternalName, Name, UnreservedId},
     entities::CedarValueJson,
     extensions::Extensions,
     FromNormalizedStr,
@@ -45,6 +45,19 @@ use crate::{
     err::{schema_errors::*, Result},
     AllDefs, CedarSchemaError, CedarSchemaParseError, ConditionalName, RawName, ReferenceType,
 };
+
+/// Represent a common type
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Deserialize)]
+#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
+pub struct CommonType<N> {
+    /// The referred type
+    #[serde(flatten)]
+    pub ty: Type<N>,
+    /// Annotations
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Annotations::is_empty")]
+    pub annotations: Annotations,
+}
 
 /// A [`Fragment`] is split into multiple namespace definitions, and is just a
 /// map from namespace name to namespace definition (i.e., definitions of common
@@ -293,11 +306,15 @@ pub struct NamespaceDefinition<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub common_types: BTreeMap<CommonTypeId, Type<N>>,
+    pub common_types: BTreeMap<CommonTypeId, CommonType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     pub entity_types: BTreeMap<UnreservedId, EntityType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     pub actions: BTreeMap<SmolStr, ActionType<N>>,
+    /// Annotations
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Annotations::is_empty")]
+    pub annotations: Annotations,
 }
 
 impl<N> NamespaceDefinition<N> {
@@ -307,8 +324,15 @@ impl<N> NamespaceDefinition<N> {
     ) -> Self {
         Self {
             common_types: BTreeMap::new(),
-            entity_types: entity_types.into_iter().collect(),
-            actions: actions.into_iter().collect(),
+            entity_types: entity_types
+                .into_iter()
+                .map(|(key, value)| (key, value))
+                .collect(),
+            actions: actions
+                .into_iter()
+                .map(|(key, value)| (key, value))
+                .collect(),
+            annotations: Annotations::new(),
         }
     }
 }
@@ -323,7 +347,15 @@ impl NamespaceDefinition<RawName> {
             common_types: self
                 .common_types
                 .into_iter()
-                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
+                .map(|(k, v)| {
+                    (
+                        k,
+                        CommonType {
+                            ty: v.ty.conditionally_qualify_type_references(ns),
+                            annotations: v.annotations,
+                        },
+                    )
+                })
                 .collect(),
             entity_types: self
                 .entity_types
@@ -335,6 +367,7 @@ impl NamespaceDefinition<RawName> {
                 .into_iter()
                 .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
                 .collect(),
+            annotations: self.annotations,
         }
     }
 }
@@ -354,7 +387,15 @@ impl NamespaceDefinition<ConditionalName> {
             common_types: self
                 .common_types
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
+                .map(|(k, v)| {
+                    Ok((
+                        k,
+                        CommonType {
+                            ty: v.ty.fully_qualify_type_references(all_defs)?,
+                            annotations: v.annotations,
+                        },
+                    ))
+                })
                 .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
             entity_types: self
                 .entity_types
@@ -366,6 +407,7 @@ impl NamespaceDefinition<ConditionalName> {
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
                 .collect::<Result<_>>()?,
+            annotations: self.annotations,
         })
     }
 }
@@ -398,6 +440,10 @@ pub struct EntityType<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Type<N>>,
+    /// Annotations
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Annotations::is_empty")]
+    pub annotations: Annotations,
 }
 
 impl EntityType<RawName> {
@@ -416,6 +462,7 @@ impl EntityType<RawName> {
             tags: self
                 .tags
                 .map(|ty| ty.conditionally_qualify_type_references(ns)),
+            annotations: self.annotations,
         }
     }
 }
@@ -442,6 +489,7 @@ impl EntityType<ConditionalName> {
                 .tags
                 .map(|ty| ty.fully_qualify_type_references(all_defs))
                 .transpose()?,
+            annotations: self.annotations,
         })
     }
 }
@@ -548,6 +596,10 @@ pub struct ActionType<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub member_of: Option<Vec<ActionEntityUID<N>>>,
+    /// Annotations
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Annotations::is_empty")]
+    pub annotations: Annotations,
 }
 
 impl ActionType<RawName> {
@@ -566,6 +618,7 @@ impl ActionType<RawName> {
                     .map(|aeuid| aeuid.conditionally_qualify_type_references(ns))
                     .collect()
             }),
+            annotations: self.annotations,
         }
     }
 }
@@ -595,6 +648,7 @@ impl ActionType<ConditionalName> {
                         .collect::<std::result::Result<_, ActionNotDefinedError>>()
                 })
                 .transpose()?,
+            annotations: self.annotations,
         })
     }
 }
@@ -1220,15 +1274,26 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                                 attributes: attributes
                                     .0
                                     .into_iter()
-                                    .map(|(k, TypeOfAttribute { ty, required })| {
-                                        (
+                                    .map(
+                                        |(
                                             k,
                                             TypeOfAttribute {
-                                                ty: ty.into_n(),
+                                                ty,
                                                 required,
+                                                annotations,
                                             },
-                                        )
-                                    })
+                                        )| {
+                                            (
+                                                k,
+                                                TypeOfAttribute {
+                                                    ty: ty.into_n(),
+
+                                                    required,
+                                                    annotations,
+                                                },
+                                            )
+                                        },
+                                    )
                                     .collect(),
                                 additional_attributes,
                             })))
@@ -1479,12 +1544,21 @@ impl TypeVariant<RawName> {
                 additional_attributes,
             }) => TypeVariant::Record(RecordType {
                 attributes: BTreeMap::from_iter(attributes.into_iter().map(
-                    |(attr, TypeOfAttribute { ty, required })| {
+                    |(
+                        attr,
+                        TypeOfAttribute {
+                            ty,
+                            required,
+                            annotations,
+                        },
+                    )| {
                         (
                             attr,
                             TypeOfAttribute {
                                 ty: ty.conditionally_qualify_type_references(ns),
+
                                 required,
+                                annotations,
                             },
                         )
                     },
@@ -1552,15 +1626,25 @@ impl TypeVariant<ConditionalName> {
             }) => Ok(TypeVariant::Record(RecordType {
                 attributes: attributes
                     .into_iter()
-                    .map(|(attr, TypeOfAttribute { ty, required })| {
-                        Ok((
+                    .map(
+                        |(
                             attr,
                             TypeOfAttribute {
-                                ty: ty.fully_qualify_type_references(all_defs)?,
+                                ty,
                                 required,
+                                annotations,
                             },
-                        ))
-                    })
+                        )| {
+                            Ok((
+                                attr,
+                                TypeOfAttribute {
+                                    ty: ty.fully_qualify_type_references(all_defs)?,
+                                    required,
+                                    annotations,
+                                },
+                            ))
+                        },
+                    )
                     .collect::<std::result::Result<BTreeMap<_, _>, TypeNotDefinedError>>()?,
                 additional_attributes,
             })),
@@ -1592,7 +1676,12 @@ impl<'a> arbitrary::Arbitrary<'a> for Type<RawName> {
                     let attr_names: BTreeSet<String> = u.arbitrary()?;
                     attr_names
                         .into_iter()
-                        .map(|attr_name| Ok((attr_name.into(), u.arbitrary()?)))
+                        .map(|attr_name| {
+                            Ok((
+                                attr_name.into(),
+                                u.arbitrary::<TypeOfAttribute<RawName>>()?.into(),
+                            ))
+                        })
                         .collect::<arbitrary::Result<_>>()?
                 };
                 TypeVariant::Record(RecordType {
@@ -1645,6 +1734,10 @@ pub struct TypeOfAttribute<N> {
     /// Underlying type of the attribute
     #[serde(flatten)]
     pub ty: Type<N>,
+    /// Annotations
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Annotations::is_empty")]
+    pub annotations: Annotations,
     /// Whether the attribute is required
     #[serde(default = "record_attribute_required_default")]
     #[serde(skip_serializing_if = "is_record_attribute_required_default")]
@@ -1655,7 +1748,9 @@ impl TypeOfAttribute<RawName> {
     fn into_n<N: From<RawName>>(self) -> TypeOfAttribute<N> {
         TypeOfAttribute {
             ty: self.ty.into_n(),
+
             required: self.required,
+            annotations: self.annotations,
         }
     }
 
@@ -1666,7 +1761,9 @@ impl TypeOfAttribute<RawName> {
     ) -> TypeOfAttribute<ConditionalName> {
         TypeOfAttribute {
             ty: self.ty.conditionally_qualify_type_references(ns),
+
             required: self.required,
+            annotations: self.annotations,
         }
     }
 }
@@ -1684,7 +1781,9 @@ impl TypeOfAttribute<ConditionalName> {
     ) -> std::result::Result<TypeOfAttribute<InternalName>, TypeNotDefinedError> {
         Ok(TypeOfAttribute {
             ty: self.ty.fully_qualify_type_references(all_defs)?,
+
             required: self.required,
+            annotations: self.annotations,
         })
     }
 }
@@ -1693,8 +1792,10 @@ impl TypeOfAttribute<ConditionalName> {
 impl<'a> arbitrary::Arbitrary<'a> for TypeOfAttribute<RawName> {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
-            ty: u.arbitrary()?,
+            ty: u.arbitrary::<Type<RawName>>()?,
+
             required: u.arbitrary()?,
+            annotations: cedar_policy_core::ast::Annotations::new(),
         })
     }
 
@@ -2136,7 +2237,7 @@ mod test {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error(r#"unknown field `User`, expected one of `commonTypes`, `entityTypes`, `actions` at line 3 column 35"#)
+                &ExpectedErrorMessageBuilder::error(r#"unknown field `User`, expected one of `commonTypes`, `entityTypes`, `actions`, `annotations` at line 3 column 35"#)
                     .help("JSON formatted schema must specify a namespace. If you want to use the empty namespace, explicitly specify it with `{ \"\": {..} }`")
                     .build());
         });
@@ -2561,11 +2662,11 @@ mod entity_tags {
     fn basic() {
         let json = example_json_schema();
         assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
-            let user = frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
+            let user = &frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
             assert_matches!(&user.tags, Some(Type::Type(TypeVariant::Set { element })) => {
                 assert_matches!(&**element, Type::Type(TypeVariant::String)); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
             });
-            let doc = frag.0.get(&None).unwrap().entity_types.get(&"Document".parse().unwrap()).unwrap();
+            let doc = &frag.0.get(&None).unwrap().entity_types.get(&"Document".parse().unwrap()).unwrap();
             assert_matches!(&doc.tags, Some(Type::Type(TypeVariant::Set { element })) => {
                 assert_matches!(&**element, Type::Type(TypeVariant::String)); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
             });
@@ -2595,7 +2696,7 @@ mod entity_tags {
             "actions": {}
         }});
         assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
-            let user = frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
+            let user = &frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
             assert_matches!(&user.tags, Some(Type::CommonTypeRef { type_name }) => {
                 assert_eq!(&format!("{type_name}"), "T");
             });
@@ -2622,7 +2723,7 @@ mod entity_tags {
             "actions": {}
         }});
         assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
-            let user = frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
+            let user = &frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
             assert_matches!(&user.tags, Some(Type::Type(TypeVariant::Entity{ name })) => {
                 assert_eq!(&format!("{name}"), "User");
             });
@@ -2679,7 +2780,9 @@ mod test_json_roundtrip {
                 common_types: BTreeMap::new(),
                 entity_types: BTreeMap::new(),
                 actions: BTreeMap::new(),
-            },
+                annotations: Annotations::new(),
+            }
+            .into(),
         )]));
         roundtrip(fragment);
     }
@@ -2692,7 +2795,9 @@ mod test_json_roundtrip {
                 common_types: BTreeMap::new(),
                 entity_types: BTreeMap::new(),
                 actions: BTreeMap::new(),
-            },
+                annotations: Annotations::new(),
+            }
+            .into(),
         )]));
         roundtrip(fragment);
     }
@@ -2712,7 +2817,9 @@ mod test_json_roundtrip {
                             additional_attributes: false,
                         }))),
                         tags: None,
-                    },
+                        annotations: Annotations::new(),
+                    }
+                    .into(),
                 )]),
                 actions: BTreeMap::from([(
                     "action".into(),
@@ -2729,9 +2836,13 @@ mod test_json_roundtrip {
                             ))),
                         }),
                         member_of: None,
-                    },
+                        annotations: Annotations::new(),
+                    }
+                    .into(),
                 )]),
-            },
+                annotations: Annotations::new(),
+            }
+            .into(),
         )]));
         roundtrip(fragment);
     }
@@ -2754,10 +2865,14 @@ mod test_json_roundtrip {
                                 },
                             ))),
                             tags: None,
-                        },
+                            annotations: Annotations::new(),
+                        }
+                        .into(),
                     )]),
                     actions: BTreeMap::new(),
-                },
+                    annotations: Annotations::new(),
+                }
+                .into(),
             ),
             (
                 None,
@@ -2779,9 +2894,13 @@ mod test_json_roundtrip {
                                 ))),
                             }),
                             member_of: None,
-                        },
+                            annotations: Annotations::new(),
+                        }
+                        .into(),
                     )]),
-                },
+                    annotations: Annotations::new(),
+                }
+                .into(),
             ),
         ]));
         roundtrip(fragment);
@@ -2819,7 +2938,7 @@ mod test_duplicates_error {
             "Foo": {
               "entityTypes" : {
                 "Bar": {},
-                "Bar": {},
+                "Bar": {}
               },
               "actions": {}
             }
@@ -2931,5 +3050,237 @@ mod test_duplicates_error {
             }
         }"#;
         Fragment::from_json_str(src).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod annotations {
+    use std::collections::BTreeMap;
+
+    use cool_asserts::assert_matches;
+    use smol_str::SmolStr;
+
+    use crate::{json_schema::EntityType, RawName};
+
+    use super::Fragment;
+
+    #[test]
+    fn basic() {
+        let src = serde_json::json!(
+        {
+           "" : {
+            "entityTypes": {},
+            "actions": {},
+            "annotations": {
+                "doc": "this is a doc"
+            }
+           }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Ok(_));
+
+        let src = serde_json::json!({
+            "": {
+            "entityTypes": {},
+            "actions": {},
+            "commonTypes": {
+                "Task": {
+                "annotations": {
+                    "doc": "a common type representing a task"
+                },
+                "type": "Record",
+                "attributes": {
+                    "id": {
+                    "type": "Long",
+                    "annotations": {
+                        "doc": "task id"
+                    }
+                    },
+                    "name": {
+                    "type": "String"
+                    },
+                    "state": {
+                    "type": "String"
+                    }
+                }
+        }}}});
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Ok(_));
+
+        let src = serde_json::json!({
+                    "": {
+                    "entityTypes": {
+                        "User" : {
+            "shape" : {
+                "type" : "Record",
+                "attributes" : {
+                    "name" : {
+                        "annotations": {
+                    "a": ""
+                },
+                        "type" : "String"
+                    },
+                    "age" : {
+                        "type" : "Long"
+                    }
+                }
+            }
+        }
+                    },
+                    "actions": {},
+                    "commonTypes": {}
+                }});
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Ok(_));
+
+        // annotations cannot be in "shape"
+        let src = serde_json::json!({
+                    "": {
+                    "entityTypes": {
+                        "User" : {
+            "shape" : {
+                "annotations": {
+                    "a": ""
+                },
+                "type" : "Record",
+                "attributes" : {
+                    "name" : {
+                        "type" : "String"
+                    },
+                    "age" : {
+                        "type" : "Long"
+                    }
+                }
+            }
+        }
+                    },
+                    "actions": {},
+                    "commonTypes": {}
+                }});
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(_));
+
+        // nested record
+        let src = serde_json::json!({
+                    "": {
+                    "entityTypes": {
+                        "User" : {
+            "shape" : {
+                "type" : "Record",
+                "attributes" : {
+                    "name" : {
+                        "annotations": {
+                    "a": "b"
+                },
+                        "type" : "Record",
+                        "attributes": {
+                            "a": {
+                                "type": "Record",
+                                "annotations": {
+                                    "c": "d"
+                                },
+                                "attributes": {
+                                    "...": {
+                                        "type": "Long"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "age" : {
+                        "type" : "Long"
+                    }
+                }
+            }
+        }
+                    },
+                    "actions": {},
+                    "commonTypes": {}
+                }});
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Ok(_));
+    }
+
+    #[test]
+    fn unknown_fields() {
+        let src = serde_json::json!(
+        {
+
+            "UserGroup": {
+                "shape44": {
+                    "type": "Record",
+                    "attributes": {}
+                },
+                "memberOfTypes": [
+                    "UserGroup"
+                ]
+            }});
+        let et: Result<BTreeMap<SmolStr, EntityType<RawName>>, _> = serde_json::from_value(src);
+        assert_matches!(et, Err(errs) => {
+            assert_eq!(errs.to_string(), "unknown field `shape44`, expected one of `memberOfTypes`, `shape`, `tags`, `annotations`");
+        });
+
+        let src = serde_json::json!(
+        {
+           "" : {
+            "entityTypes": {},
+            "actions": {},
+            "foo": "",
+            "annotations": {
+                "doc": "this is a doc"
+            }
+           }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(errs) => {
+            assert_eq!(errs.to_string(), "unknown field `foo`, expected one of `commonTypes`, `entityTypes`, `actions`, `annotations`");
+        });
+
+        let src = serde_json::json!(
+        {
+           "" : {
+            "entityTypes": {},
+            "actions": {},
+            "commonTypes": {
+                "a": {
+                    "type": "Long",
+                    "annotations": {
+                        "foo": ""
+                    },
+                    "bar": 1
+                }
+            }
+           }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(errs) => {
+            assert_eq!(errs.to_string(), "unknown field `bar`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`");
+        });
+
+        let src = serde_json::json!(
+        {
+           "" : {
+            "entityTypes": {},
+            "actions": {},
+            "commonTypes": {
+                "a": {
+                    "type": "Record",
+                    "annotations": {
+                        "foo": ""
+                    },
+                    "attributes": {
+                        "a": {
+                            "bar": 1,
+                            "type": "Long"
+                        }
+                    }
+                }
+            }
+           }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(errs) => {
+            assert_eq!(errs.to_string(), "unknown field `bar`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`");
+        });
     }
 }

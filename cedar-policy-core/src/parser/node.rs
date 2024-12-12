@@ -25,13 +25,14 @@ use super::loc::Loc;
 
 /// Metadata for our syntax trees
 #[derive(Educe, Debug, Clone, Deserialize, Serialize)]
-#[educe(PartialEq, Eq, Hash)]
+#[educe(PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct Node<T> {
     /// Main data represented
     pub node: T,
 
     /// Source location
     #[educe(PartialEq(ignore))]
+    #[educe(PartialOrd(ignore))]
     #[educe(Hash(ignore))]
     pub loc: Loc,
 }

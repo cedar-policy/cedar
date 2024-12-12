@@ -59,7 +59,6 @@ pub use str_checks::confusable_string_checks;
 pub mod cedar_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
-
 pub mod types;
 
 /// Used to select how a policy will be validated.
@@ -275,7 +274,7 @@ mod test {
 
     use super::*;
     use cedar_policy_core::{
-        ast::{self, PolicyID},
+        ast::{self, Annotations, PolicyID},
         parser::{self, Loc},
     };
 
@@ -293,6 +292,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: Annotations::new(),
                     },
                 ),
                 (
@@ -301,6 +301,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: Annotations::new(),
                     },
                 ),
             ],
@@ -314,6 +315,7 @@ mod test {
                     }),
                     member_of: None,
                     attributes: None,
+                    annotations: Annotations::new(),
                 },
             )],
         );

@@ -180,6 +180,8 @@ impl std::fmt::Debug for Authorizer {
 #[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
+    use crate::ast::Annotations;
+
     use super::*;
     use crate::parser;
 

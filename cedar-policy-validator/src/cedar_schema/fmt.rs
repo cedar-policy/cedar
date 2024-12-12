@@ -31,8 +31,8 @@ impl<N: Display> Display for json_schema::Fragment<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (ns, def) in &self.0 {
             match ns {
-                None => write!(f, "{def}")?,
-                Some(ns) => write!(f, "namespace {ns} {{\n{def}}}\n")?,
+                None => write!(f, "{}", def)?,
+                Some(ns) => write!(f, "namespace {ns} {{\n{}}}\n", def)?,
             }
         }
         Ok(())
@@ -42,13 +42,13 @@ impl<N: Display> Display for json_schema::Fragment<N> {
 impl<N: Display> Display for json_schema::NamespaceDefinition<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (n, ty) in &self.common_types {
-            writeln!(f, "type {n} = {ty};")?
+            writeln!(f, "type {n} = {};", ty.ty)?
         }
         for (n, ty) in &self.entity_types {
-            writeln!(f, "entity {n}{ty};")?
+            writeln!(f, "entity {n}{};", ty)?
         }
         for (n, a) in &self.actions {
-            writeln!(f, "action \"{}\"{a};", n.escape_debug())?
+            writeln!(f, "action \"{}\"{};", n.escape_debug(), a)?
         }
         Ok(())
     }

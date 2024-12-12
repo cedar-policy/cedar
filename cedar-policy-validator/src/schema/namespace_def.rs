@@ -132,8 +132,14 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
 
         // Convert the common types, actions and entity types from the schema
         // file into the representation used by the validator.
-        let common_types =
-            CommonTypeDefs::from_raw_common_types(namespace_def.common_types, namespace.as_ref())?;
+        let common_types = CommonTypeDefs::from_raw_common_types(
+            namespace_def
+                .common_types
+                .into_iter()
+                .map(|(key, value)| (key, value.ty))
+                .collect(),
+            namespace.as_ref(),
+        )?;
         let actions =
             ActionsDef::from_raw_actions(namespace_def.actions, namespace.as_ref(), extensions)?;
         let entity_types =
@@ -1023,7 +1029,7 @@ pub(crate) fn try_record_type_into_validator_type(
         Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
     } else {
         Ok(
-            parse_record_attributes(rty.attributes, extensions)?.map(move |attrs| {
+            parse_record_attributes(rty.attributes.into_iter(), extensions)?.map(move |attrs| {
                 Type::record_with_attributes(
                     attrs,
                     if rty.additional_attributes {
