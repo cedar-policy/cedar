@@ -35,6 +35,15 @@ pub struct Annotations(
     BTreeMap<AnyId, Annotation>,
 );
 
+impl std::fmt::Display for Annotations {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (k, v) in &self.0 {
+            writeln!(f, "@{k}({v})")?
+        }
+        Ok(())
+    }
+}
+
 impl Annotations {
     /// Create a new empty `Annotations` (with no annotations)
     pub fn new() -> Self {
@@ -113,6 +122,12 @@ pub struct Annotation {
     #[educe(PartialEq(ignore))]
     #[educe(PartialOrd(ignore))]
     pub loc: Option<Loc>,
+}
+
+impl std::fmt::Display for Annotation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "\"{}\"", self.val.escape_debug())
+    }
 }
 
 impl Annotation {

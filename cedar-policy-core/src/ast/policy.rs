@@ -1197,9 +1197,7 @@ impl From<StaticPolicy> for TemplateBody {
 
 impl std::fmt::Display for TemplateBody {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (k, v) in self.annotations.iter() {
-            writeln!(f, "@{}(\"{}\")", k, v.val.escape_debug())?
-        }
+        self.annotations.fmt(f)?;
         write!(
             f,
             "{}(\n  {},\n  {},\n  {}\n) when {{\n  {}\n}};",
