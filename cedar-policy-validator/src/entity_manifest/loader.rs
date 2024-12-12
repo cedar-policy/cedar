@@ -435,7 +435,7 @@ fn compute_ancestors_request(
 
     while !to_visit.is_empty() {
         let mut next_to_visit = vec![];
-        for entity_request in to_visit.into_iter() {
+        for entity_request in to_visit {
             // check the is_ancestor flag for entities
             // the is_ancestor flag on sets of entities is handled by find_remaining_entities
             if entity_request.access_trie.is_ancestor {
