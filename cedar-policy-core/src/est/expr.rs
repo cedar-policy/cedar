@@ -15,7 +15,7 @@
  */
 
 use super::FromJsonError;
-use crate::ast::{self, EntityUID, InputInteger};
+use crate::ast::{self, BoundedDisplay, EntityUID, InputInteger};
 use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
     CedarValueJson, FnAndArg, TypeAndId,
@@ -384,7 +384,7 @@ pub enum ExprNoExt {
     Record(
         #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
         #[cfg_attr(feature = "wasm", tsify(type = "Record<string, Expr>"))]
-        HashMap<SmolStr, Expr>,
+        BTreeMap<SmolStr, Expr>,
     ),
 }
 
@@ -641,7 +641,7 @@ impl Expr {
     }
 
     /// e.g. {foo: 1+2, bar: !(context has department)}
-    pub fn record(map: HashMap<SmolStr, Expr>) -> Self {
+    pub fn record(map: BTreeMap<SmolStr, Expr>) -> Self {
         Expr::ExprNoExt(ExprNoExt::Record(map))
     }
 
@@ -798,7 +798,7 @@ impl Expr {
                     Ok(Expr::ExprNoExt(ExprNoExt::Set(new_v)))
                 }
                 ExprNoExt::Record(m) => {
-                    let mut new_m = HashMap::new();
+                    let mut new_m = BTreeMap::new();
                     for (k, v) in m {
                         new_m.insert(k, v.sub_entity_literals(mapping)?);
                     }
@@ -1447,7 +1447,7 @@ fn interpret_primary(
                 let s = k.to_expr_or_special().and_then(|es| es.into_valid_attr())?;
                 Ok((s, v.try_into()?))
             })
-            .collect::<Result<HashMap<SmolStr, Expr>, ParseErrors>>()
+            .collect::<Result<BTreeMap<SmolStr, Expr>, ParseErrors>>()
             .map(Expr::record)
             .map(Either::Right),
     }
@@ -1677,12 +1677,25 @@ impl std::fmt::Display for Expr {
     }
 }
 
-fn display_cedarvaluejson(f: &mut std::fmt::Formatter<'_>, v: &CedarValueJson) -> std::fmt::Result {
+impl BoundedDisplay for Expr {
+    fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
+        match self {
+            Self::ExprNoExt(e) => BoundedDisplay::fmt(e, f, n),
+            Self::ExtFuncCall(e) => BoundedDisplay::fmt(e, f, n),
+        }
+    }
+}
+
+fn display_cedarvaluejson(
+    f: &mut impl std::fmt::Write,
+    v: &CedarValueJson,
+    n: Option<usize>,
+) -> std::fmt::Result {
     match v {
         // Add parentheses around negative numeric literals otherwise
         // round-tripping fuzzer fails for expressions like `(-1)["a"]`.
-        CedarValueJson::Long(n) if *n < 0 => write!(f, "({n})"),
-        CedarValueJson::Long(n) => write!(f, "{n}"),
+        CedarValueJson::Long(i) if *i < 0 => write!(f, "({i})"),
+        CedarValueJson::Long(i) => write!(f, "{i}"),
         CedarValueJson::Bool(b) => write!(f, "{b}"),
         CedarValueJson::String(s) => write!(f, "\"{}\"", s.escape_debug()),
         CedarValueJson::EntityEscape { __entity } => {
@@ -1705,40 +1718,71 @@ fn display_cedarvaluejson(f: &mut std::fmt::Formatter<'_>, v: &CedarValueJson) -
             });
             match style {
                 Some(ast::CallStyle::MethodStyle) => {
-                    display_cedarvaluejson(f, arg)?;
+                    display_cedarvaluejson(f, arg, n)?;
                     write!(f, ".{ext_fn}()")?;
                     Ok(())
                 }
                 Some(ast::CallStyle::FunctionStyle) | None => {
                     write!(f, "{ext_fn}(")?;
-                    display_cedarvaluejson(f, arg)?;
+                    display_cedarvaluejson(f, arg, n)?;
                     write!(f, ")")?;
                     Ok(())
                 }
             }
         }
         CedarValueJson::Set(v) => {
-            write!(f, "[")?;
-            for (i, val) in v.iter().enumerate() {
-                display_cedarvaluejson(f, val)?;
-                if i < (v.len() - 1) {
-                    write!(f, ", ")?;
+            match n {
+                Some(n) if v.len() > n => {
+                    // truncate to n elements
+                    write!(f, "[")?;
+                    for val in v.iter().take(n) {
+                        display_cedarvaluejson(f, val, Some(n))?;
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "..]")?;
+                    Ok(())
+                }
+                _ => {
+                    // no truncation
+                    write!(f, "[")?;
+                    for (i, val) in v.iter().enumerate() {
+                        display_cedarvaluejson(f, val, n)?;
+                        if i < v.len() - 1 {
+                            write!(f, ", ")?;
+                        }
+                    }
+                    write!(f, "]")?;
+                    Ok(())
                 }
             }
-            write!(f, "]")?;
-            Ok(())
         }
-        CedarValueJson::Record(m) => {
-            write!(f, "{{")?;
-            for (i, (k, v)) in m.iter().enumerate() {
-                write!(f, "\"{}\": ", k.escape_debug())?;
-                display_cedarvaluejson(f, v)?;
-                if i < (m.len() - 1) {
-                    write!(f, ", ")?;
+        CedarValueJson::Record(r) => {
+            match n {
+                Some(n) if r.len() > n => {
+                    // truncate to n key-value pairs
+                    write!(f, "{{")?;
+                    for (k, v) in r.iter().take(n) {
+                        write!(f, "\"{}\": ", k.escape_debug())?;
+                        display_cedarvaluejson(f, v, Some(n))?;
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "..}}")?;
+                    Ok(())
+                }
+                _ => {
+                    // no truncation
+                    write!(f, "{{")?;
+                    for (i, (k, v)) in r.iter().enumerate() {
+                        write!(f, "\"{}\": ", k.escape_debug())?;
+                        display_cedarvaluejson(f, v, n)?;
+                        if i < r.len() - 1 {
+                            write!(f, ", ")?;
+                        }
+                    }
+                    write!(f, "}}")?;
+                    Ok(())
                 }
             }
-            write!(f, "}}")?;
-            Ok(())
         }
         CedarValueJson::Null => {
             write!(f, "null")?;
@@ -1749,13 +1793,19 @@ fn display_cedarvaluejson(f: &mut std::fmt::Formatter<'_>, v: &CedarValueJson) -
 
 impl std::fmt::Display for ExprNoExt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        BoundedDisplay::fmt_unbounded(self, f)
+    }
+}
+
+impl BoundedDisplay for ExprNoExt {
+    fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
         match &self {
-            ExprNoExt::Value(v) => display_cedarvaluejson(f, v),
+            ExprNoExt::Value(v) => display_cedarvaluejson(f, v, n),
             ExprNoExt::Var(v) => write!(f, "{v}"),
             ExprNoExt::Slot(id) => write!(f, "{id}"),
             ExprNoExt::Not { arg } => {
                 write!(f, "!")?;
-                maybe_with_parens(f, arg)
+                maybe_with_parens(f, arg, n)
             }
             ExprNoExt::Neg { arg } => {
                 // Always add parentheses instead of calling
@@ -1766,99 +1816,99 @@ impl std::fmt::Display for ExprNoExt {
                 write!(f, "-({arg})")
             }
             ExprNoExt::Eq { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " == ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::NotEq { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " != ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::In { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " in ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::Less { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " < ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::LessEq { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " <= ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::Greater { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " > ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::GreaterEq { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " >= ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::And { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " && ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::Or { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " || ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::Add { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " + ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::Sub { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " - ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::Mul { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " * ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::Contains { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, ".contains({right})")
             }
             ExprNoExt::ContainsAll { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, ".containsAll({right})")
             }
             ExprNoExt::ContainsAny { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, ".containsAny({right})")
             }
             ExprNoExt::IsEmpty { arg } => {
-                maybe_with_parens(f, arg)?;
+                maybe_with_parens(f, arg, n)?;
                 write!(f, ".isEmpty()")
             }
             ExprNoExt::GetTag { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, ".getTag({right})")
             }
             ExprNoExt::HasTag { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, ".hasTag({right})")
             }
             ExprNoExt::GetAttr { left, attr } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, "[\"{}\"]", attr.escape_debug())
             }
             ExprNoExt::HasAttr { left, attr } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " has \"{}\"", attr.escape_debug())
             }
             ExprNoExt::Like { left, pattern } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(
                     f,
                     " like \"{}\"",
@@ -1870,12 +1920,12 @@ impl std::fmt::Display for ExprNoExt {
                 entity_type,
                 in_expr,
             } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " is {entity_type}")?;
                 match in_expr {
                     Some(in_expr) => {
                         write!(f, " in ")?;
-                        maybe_with_parens(f, in_expr)
+                        maybe_with_parens(f, in_expr, n)
                     }
                     None => Ok(()),
                 }
@@ -1886,26 +1936,78 @@ impl std::fmt::Display for ExprNoExt {
                 else_expr,
             } => {
                 write!(f, "if ")?;
-                maybe_with_parens(f, cond_expr)?;
+                maybe_with_parens(f, cond_expr, n)?;
                 write!(f, " then ")?;
-                maybe_with_parens(f, then_expr)?;
+                maybe_with_parens(f, then_expr, n)?;
                 write!(f, " else ")?;
-                maybe_with_parens(f, else_expr)
+                maybe_with_parens(f, else_expr, n)
             }
-            ExprNoExt::Set(v) => write!(f, "[{}]", v.iter().join(", ")),
-            ExprNoExt::Record(m) => write!(
-                f,
-                "{{{}}}",
-                m.iter()
-                    .map(|(k, v)| format!("\"{}\": {}", k.escape_debug(), v))
-                    .join(", ")
-            ),
+            ExprNoExt::Set(v) => {
+                match n {
+                    Some(n) if v.len() > n => {
+                        // truncate to n elements
+                        write!(f, "[")?;
+                        for element in v.iter().take(n) {
+                            BoundedDisplay::fmt(element, f, Some(n))?;
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "..]")?;
+                        Ok(())
+                    }
+                    _ => {
+                        // no truncation
+                        write!(f, "[")?;
+                        for (i, element) in v.iter().enumerate() {
+                            BoundedDisplay::fmt(element, f, n)?;
+                            if i < v.len() - 1 {
+                                write!(f, ", ")?;
+                            }
+                        }
+                        write!(f, "]")?;
+                        Ok(())
+                    }
+                }
+            }
+            ExprNoExt::Record(m) => {
+                match n {
+                    Some(n) if m.len() > n => {
+                        // truncate to n key-value pairs
+                        write!(f, "{{")?;
+                        for (k, v) in m.iter().take(n) {
+                            write!(f, "\"{}\": ", k.escape_debug())?;
+                            BoundedDisplay::fmt(v, f, Some(n))?;
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "..}}")?;
+                        Ok(())
+                    }
+                    _ => {
+                        // no truncation
+                        write!(f, "{{")?;
+                        for (i, (k, v)) in m.iter().enumerate() {
+                            write!(f, "\"{}\": ", k.escape_debug())?;
+                            BoundedDisplay::fmt(v, f, n)?;
+                            if i < m.len() - 1 {
+                                write!(f, ", ")?;
+                            }
+                        }
+                        write!(f, "}}")?;
+                        Ok(())
+                    }
+                }
+            }
         }
     }
 }
 
 impl std::fmt::Display for ExtFuncCall {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        BoundedDisplay::fmt_unbounded(self, f)
+    }
+}
+
+impl BoundedDisplay for ExtFuncCall {
+    fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
         // PANIC SAFETY: safe due to INVARIANT on `ExtFuncCall`
         #[allow(clippy::unreachable)]
         let Some((fn_name, args)) = self.call.iter().next() else {
@@ -1921,7 +2023,7 @@ impl std::fmt::Display for ExtFuncCall {
         });
         match (style, args.iter().next()) {
             (Some(ast::CallStyle::MethodStyle), Some(receiver)) => {
-                maybe_with_parens(f, receiver)?;
+                maybe_with_parens(f, receiver, n)?;
                 write!(f, ".{}({})", fn_name, args.iter().skip(1).join(", "))
             }
             (_, _) => {
@@ -1931,18 +2033,22 @@ impl std::fmt::Display for ExtFuncCall {
     }
 }
 
-/// returns the `Display` representation of the Expr, adding parens around
+/// returns the `BoundedDisplay` representation of the Expr, adding parens around
 /// the entire string if necessary.
 /// E.g., won't add parens for constants or `principal` etc, but will for things
 /// like `(2 < 5)`.
 /// When in doubt, add the parens.
-fn maybe_with_parens(f: &mut std::fmt::Formatter<'_>, expr: &Expr) -> std::fmt::Result {
+fn maybe_with_parens(
+    f: &mut impl std::fmt::Write,
+    expr: &Expr,
+    n: Option<usize>,
+) -> std::fmt::Result {
     match expr {
         Expr::ExprNoExt(ExprNoExt::Set(_)) |
         Expr::ExprNoExt(ExprNoExt::Record(_)) |
         Expr::ExprNoExt(ExprNoExt::Value(_)) |
         Expr::ExprNoExt(ExprNoExt::Var(_)) |
-        Expr::ExprNoExt(ExprNoExt::Slot(_)) => write!(f, "{expr}"),
+        Expr::ExprNoExt(ExprNoExt::Slot(_)) => BoundedDisplay::fmt(expr, f, n),
 
         // we want parens here because things like parse((!x).y)
         // would be printed into !x.y which has a different meaning
@@ -1973,7 +2079,12 @@ fn maybe_with_parens(f: &mut std::fmt::Formatter<'_>, expr: &Expr) -> std::fmt::
         Expr::ExprNoExt(ExprNoExt::Like { .. }) |
         Expr::ExprNoExt(ExprNoExt::Is { .. }) |
         Expr::ExprNoExt(ExprNoExt::If { .. }) |
-        Expr::ExtFuncCall { .. } => write!(f, "({expr})"),
+        Expr::ExtFuncCall { .. } => {
+            write!(f, "(")?;
+            BoundedDisplay::fmt(expr, f, n)?;
+            write!(f, ")")?;
+            Ok(())
+        }
     }
 }
 
@@ -1983,9 +2094,10 @@ fn maybe_with_parens(f: &mut std::fmt::Formatter<'_>, expr: &Expr) -> std::fmt::
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 mod test {
-    use crate::parser::err::ParseError;
+    use crate::parser::{err::ParseError, parse_expr};
 
     use super::*;
+    use ast::BoundedToString;
     use cool_asserts::assert_matches;
 
     #[test]
@@ -2011,5 +2123,66 @@ mod test {
                 }
             );
         });
+    }
+
+    #[test]
+    fn display_and_bounded_display() {
+        let expr = Expr::from(parse_expr(r#"[100, [3, 4, 5], -20, "foo"]"#).unwrap());
+        assert_eq!(format!("{expr}"), r#"[100, [3, 4, 5], (-20), "foo"]"#);
+        assert_eq!(
+            BoundedToString::to_string(&expr, None),
+            r#"[100, [3, 4, 5], (-20), "foo"]"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(4)),
+            r#"[100, [3, 4, 5], (-20), "foo"]"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(3)),
+            r#"[100, [3, 4, 5], (-20), ..]"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(2)),
+            r#"[100, [3, 4, ..], ..]"#
+        );
+        assert_eq!(BoundedToString::to_string(&expr, Some(1)), r#"[100, ..]"#);
+        assert_eq!(BoundedToString::to_string(&expr, Some(0)), r#"[..]"#);
+
+        let expr = Expr::from(
+            parse_expr(
+                r#"{
+            a: 12,
+            b: [3, 4, true],
+            c: -20,
+            "hello ∞ world": "∂µß≈¥"
+        }"#,
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            format!("{expr}"),
+            r#"{"a": 12, "b": [3, 4, true], "c": (-20), "hello ∞ world": "∂µß≈¥"}"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, None),
+            r#"{"a": 12, "b": [3, 4, true], "c": (-20), "hello ∞ world": "∂µß≈¥"}"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(4)),
+            r#"{"a": 12, "b": [3, 4, true], "c": (-20), "hello ∞ world": "∂µß≈¥"}"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(3)),
+            r#"{"a": 12, "b": [3, 4, true], "c": (-20), ..}"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(2)),
+            r#"{"a": 12, "b": [3, 4, ..], ..}"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(1)),
+            r#"{"a": 12, ..}"#
+        );
+        assert_eq!(BoundedToString::to_string(&expr, Some(0)), r#"{..}"#);
     }
 }

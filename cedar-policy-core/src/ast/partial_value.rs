@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use super::{Expr, Unknown, Value};
+use super::{BoundedDisplay, Expr, Unknown, Value};
 use crate::parser::Loc;
 use itertools::Either;
 use miette::Diagnostic;
@@ -95,6 +95,15 @@ impl std::fmt::Display for PartialValue {
         match self {
             PartialValue::Value(v) => write!(f, "{v}"),
             PartialValue::Residual(r) => write!(f, "{r}"),
+        }
+    }
+}
+
+impl BoundedDisplay for PartialValue {
+    fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
+        match self {
+            PartialValue::Value(v) => BoundedDisplay::fmt(v, f, n),
+            PartialValue::Residual(r) => BoundedDisplay::fmt(r, f, n),
         }
     }
 }

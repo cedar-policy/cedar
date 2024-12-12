@@ -148,18 +148,11 @@ impl Value {
     pub fn eq_and_same_source_loc(&self, other: &Self) -> bool {
         self == other && self.source_loc() == other.source_loc()
     }
+}
 
-    /// Alternate `Display` impl, that truncates large sets/records (including recursively).
-    ///
-    /// `n`: the maximum number of set elements, or record key-value pairs, that
-    /// will be shown before eliding the rest with `..`.
-    /// `None` means no bound.
-    pub fn bounded_display(
-        &self,
-        f: &mut std::fmt::Formatter<'_>,
-        n: Option<usize>,
-    ) -> std::fmt::Result {
-        self.value.bounded_display(f, n)
+impl BoundedDisplay for Value {
+    fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
+        BoundedDisplay::fmt(&self.value, f, n)
     }
 }
 
@@ -208,17 +201,10 @@ impl ValueKind {
             _ => None,
         }
     }
+}
 
-    /// Alternate `Display` impl, that truncates large sets/records (including recursively).
-    ///
-    /// `n`: the maximum number of set elements, or record key-value pairs, that
-    /// will be shown before eliding the rest with `..`.
-    /// `None` means no bound.
-    pub fn bounded_display(
-        &self,
-        f: &mut std::fmt::Formatter<'_>,
-        n: Option<usize>,
-    ) -> std::fmt::Result {
+impl BoundedDisplay for ValueKind {
+    fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
         match self {
             Self::Lit(lit) => write!(f, "{lit}"),
             Self::Set(Set {
@@ -253,7 +239,7 @@ impl ValueKind {
                             as Box<dyn Iterator<Item = &Value>>,
                     };
                     for (i, item) in elements.enumerate() {
-                        item.bounded_display(f, n)?;
+                        BoundedDisplay::fmt(item, f, n)?;
                         if i < authoritative.len() - 1 {
                             write!(f, ", ")?;
                         }
@@ -287,7 +273,7 @@ impl ValueKind {
                             write!(f, "\"{k}\": ")?;
                         }
                     }
-                    v.bounded_display(f, n)?;
+                    BoundedDisplay::fmt(v, f, n)?;
                     if i < record.len() - 1 {
                         write!(f, ", ")?;
                     }
@@ -556,6 +542,76 @@ impl StaticallyTyped for ValueKind {
     }
 }
 
+/// Like `Display`, but optionally truncates embedded sets/records to `n`
+/// elements/pairs, including recursively.
+///
+/// `n`: the maximum number of set elements, or record key-value pairs, that
+/// will be shown before eliding the rest with `..`.
+/// `None` means no bound.
+///
+/// Intended for error messages, to avoid very large/long error messages.
+pub trait BoundedDisplay {
+    /// Write `self` to the writer `f`, truncating set elements or key-value
+    /// pairs if necessary based on `n`
+    fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result;
+
+    /// Convenience method, equivalent to `fmt()` with `n` as `Some`.
+    ///
+    /// You should generally not re-implement this, just use the default implementation.
+    fn fmt_bounded(&self, f: &mut impl std::fmt::Write, n: usize) -> std::fmt::Result {
+        self.fmt(f, Some(n))
+    }
+
+    /// Convenience method, equivalent to `fmt()` with `n` as `None`.
+    ///
+    /// You should generally not re-implement this, just use the default implementation.
+    fn fmt_unbounded(&self, f: &mut impl std::fmt::Write) -> std::fmt::Result {
+        self.fmt(f, None)
+    }
+}
+
+/// Like `ToString`, but optionally truncates embedded sets/records to `n`
+/// elements/pairs, including recursively.
+///
+/// `n`: the maximum number of set elements, or record key-value pairs, that
+/// will be shown before eliding the rest with `..`.
+/// `None` means no bound.
+///
+/// Intended for error messages, to avoid very large/long error messages.
+pub trait BoundedToString {
+    /// Convert `self` to a `String`, truncating set elements or key-value pairs
+    /// if necessary based on `n`
+    fn to_string(&self, n: Option<usize>) -> String;
+
+    /// Convenience method, equivalent to `to_string()` with `n` as `Some`.
+    ///
+    /// You should generally not re-implement this, just use the default implementation.
+    fn to_string_bounded(&self, n: usize) -> String {
+        self.to_string(Some(n))
+    }
+
+    /// Convenience method, equivalent to `to_string()` with `n` as `None`.
+    ///
+    /// You should generally not re-implement this, just use the default implementation.
+    fn to_string_unbounded(&self) -> String {
+        self.to_string(None)
+    }
+}
+
+/// Like the impl of `ToString` for `T: Display` in the standard library,
+/// this impl of `BoundedToString` for `T: BoundedDisplay` panics if the `BoundedDisplay`
+/// implementation returns an error, which would indicate an incorrect `BoundedDisplay`
+/// implementation since `fmt::Write`-ing to a `String` never returns an error.
+impl<T: BoundedDisplay> BoundedToString for T {
+    fn to_string(&self, n: Option<usize>) -> String {
+        let mut s = String::new();
+        // PANIC SAFETY: `std::fmt::Write` does not return errors when writing to a `String`
+        #[allow(clippy::expect_used)]
+        BoundedDisplay::fmt(self, &mut s, n).expect("a `BoundedDisplay` implementation returned an error when writing to a `String`, which shouldn't happen");
+        s
+    }
+}
+
 impl std::fmt::Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.value)
@@ -564,7 +620,7 @@ impl std::fmt::Display for Value {
 
 impl std::fmt::Display for ValueKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.bounded_display(f, None)
+        BoundedDisplay::fmt_unbounded(self, f)
     }
 }
 
@@ -758,9 +814,9 @@ mod test {
 
     #[test]
     fn pretty_printer() {
-        assert_eq!(Value::from("abc").to_string(), r#""abc""#);
-        assert_eq!(Value::from("\t").to_string(), r#""\t""#);
-        assert_eq!(Value::from("🐈").to_string(), r#""🐈""#);
+        assert_eq!(ToString::to_string(&Value::from("abc")), r#""abc""#);
+        assert_eq!(ToString::to_string(&Value::from("\t")), r#""\t""#);
+        assert_eq!(ToString::to_string(&Value::from("🐈")), r#""🐈""#);
     }
 
     #[test]
