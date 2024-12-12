@@ -37,7 +37,7 @@ use std::sync::Arc;
 
 use crate::{
     cedar_schema::SchemaWarning,
-    json_schema::{self, Annotated, AnnotatedType},
+    json_schema,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
 };
 
@@ -1360,13 +1360,8 @@ impl<'a> CommonTypeResolver<'a> {
                                     attr,
                                     json_schema::TypeOfAttribute {
                                         required: attr_ty.required,
-                                        ty: AnnotatedType(Annotated {
-                                            data: Self::resolve_type(
-                                                resolve_table,
-                                                attr_ty.ty.0.data,
-                                            )?,
-                                            annotations: attr_ty.ty.0.annotations,
-                                        }),
+                                        ty: Self::resolve_type(resolve_table, attr_ty.ty)?,
+                                        annotations: attr_ty.annotations,
                                     },
                                 ))
                             })

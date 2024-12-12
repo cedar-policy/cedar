@@ -30,14 +30,14 @@ use std::collections::hash_map::Entry;
 
 use super::{
     ast::{
-        ActionDecl, AppDecl, AttrDecl, Decl, Declaration, EntityDecl, Namespace, PRAppDecl, Path,
-        QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, PR,
+        ActionDecl, Annotated, AppDecl, AttrDecl, Decl, Declaration, EntityDecl, Namespace,
+        PRAppDecl, Path, QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, PR,
     },
     err::{schema_warnings, SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
 };
 use crate::{
     cedar_schema,
-    json_schema::{self, Annotated, AnnotatedType},
+    json_schema::{self, CommonType},
     RawName,
 };
 
@@ -201,10 +201,10 @@ impl TryFrom<Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName>
                     .map_err(|e| ToJsonSchemaError::reserved_keyword(e.id, name_loc))?;
                 Ok((
                     ctid,
-                    AnnotatedType(Annotated {
-                        data: cedar_type_to_json_type(decl.data.def),
+                    CommonType {
+                        ty: cedar_type_to_json_type(decl.data.def),
                         annotations: decl.annotations,
-                    }),
+                    },
                 ))
             })
             .collect::<Result<_, ToJsonSchemaError>>()?;
@@ -430,11 +430,10 @@ fn convert_attr_decl(
     (
         attr.data.name.node,
         json_schema::TypeOfAttribute {
-            ty: json_schema::AnnotatedType(Annotated {
-                data: cedar_type_to_json_type(attr.data.ty),
-                annotations: attr.annotations,
-            }),
+            ty: cedar_type_to_json_type(attr.data.ty),
+
             required: attr.data.required,
+            annotations: attr.annotations,
         },
     )
 }

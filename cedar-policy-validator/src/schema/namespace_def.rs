@@ -136,7 +136,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
             namespace_def
                 .common_types
                 .into_iter()
-                .map(|(key, value)| (key, value.0.data))
+                .map(|(key, value)| (key, value.ty))
                 .collect(),
             namespace.as_ref(),
         )?;
@@ -1057,7 +1057,7 @@ fn parse_record_attributes(
             Ok((
                 attr,
                 (
-                    try_jsonschema_type_into_validator_type(ty.ty.0.data, extensions)?,
+                    try_jsonschema_type_into_validator_type(ty.ty, extensions)?,
                     ty.required,
                 ),
             ))

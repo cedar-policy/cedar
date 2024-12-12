@@ -37,8 +37,8 @@ use crate::cedar_schema::ast::{
     QualName,
     PRAppDecl,
     deduplicate_annotations,
+    Annotated,
 };
-use crate::json_schema::Annotated;
 use nonempty::{NonEmpty, nonempty};
 use itertools::Either;
 use std::collections::BTreeMap;

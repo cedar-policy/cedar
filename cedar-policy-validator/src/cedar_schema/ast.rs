@@ -17,7 +17,7 @@
 use std::{collections::BTreeMap, iter::once};
 
 use cedar_policy_core::{
-    ast::{Annotation, AnyId, Id, InternalName},
+    ast::{Annotation, Annotations, AnyId, Id, InternalName},
     parser::{Loc, Node},
 };
 use itertools::{Either, Itertools};
@@ -27,13 +27,22 @@ use smol_str::SmolStr;
 #[allow(unused_imports)]
 use smol_str::ToSmolStr;
 
-use crate::json_schema::{self, Annotated};
+use crate::json_schema;
 
 use super::err::UserError;
 
 pub const BUILTIN_TYPES: [&str; 3] = ["Long", "String", "Bool"];
 
 pub(super) const CEDAR_NAMESPACE: &str = "__cedar";
+
+/// A struct that can be annotated, e.g., entity types.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Annotated<T> {
+    /// The struct that's optionally annotated
+    pub data: T,
+    /// Annotations
+    pub annotations: Annotations,
+}
 
 pub type Schema = Vec<Annotated<Namespace>>;
 

@@ -627,7 +627,7 @@ namespace Baz {action "Foo" appliesTo {
         expected: json_schema::Type<N>,
     ) {
         assert!(e.required);
-        assert_eq!(&e.ty.0.data, &expected);
+        assert_eq!(&e.ty, &expected);
     }
 
     #[track_caller]
@@ -890,8 +890,8 @@ namespace Baz {action "Foo" appliesTo {
             attributes,
             additional_attributes: false,
         }))) => {
-            assert_matches!(attributes.get("tag"), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
-                assert_matches!(&ty.0.data, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
+            assert_matches!(attributes.get("tag"), Some(json_schema::TypeOfAttribute { ty, required: true, .. }) => {
+                assert_matches!(&ty, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
                     assert_eq!(type_name, &"AWS::Tag".parse().unwrap());
                 });
             });
@@ -1426,17 +1426,17 @@ mod translator_tests {
             attributes,
             additional_attributes: false,
         }))) => {
-            assert_matches!(attributes.get("name"), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
+            assert_matches!(attributes.get("name"), Some(json_schema::TypeOfAttribute { ty, required: true, .. }) => {
                 let expected = json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "id".parse().unwrap(),
                 });
-                assert_eq!(ty.0.data, expected);
+                assert_eq!(ty, &expected);
             });
-            assert_matches!(attributes.get("email"), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
+            assert_matches!(attributes.get("email"), Some(json_schema::TypeOfAttribute { ty, required: true, .. }) => {
                 let expected = json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "email_address".parse().unwrap(),
                 });
-                assert_eq!(ty.0.data, expected);
+                assert_eq!(ty, &expected);
             });
         });
         assert_matches!(ValidatorSchema::try_from(frag), Err(e) => {
@@ -2344,8 +2344,8 @@ mod entity_tags {
             assert!(warnings.is_empty());
             let entity_type = frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
             assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::Record(rty))) => {
-                assert_matches!(rty.attributes.get("foo"), Some(json_schema::TypeOfAttribute { ty, required }) => {
-                    assert_matches!(&ty.0.data, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
+                assert_matches!(rty.attributes.get("foo"), Some(json_schema::TypeOfAttribute { ty, required, .. }) => {
+                    assert_matches!(ty, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
                         assert_eq!(&format!("{type_name}"), "String");
                     });
                     assert!(*required);
