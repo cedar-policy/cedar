@@ -371,7 +371,7 @@ impl RequestArgs {
 
 #[cfg(feature = "partial-eval")]
 impl PartialRequestArgs {
-    fn get_request(&self) -> Result<Request> {
+    fn get_request(&self, schema: Option<&Schema>) -> Result<Request> {
         let mut builder = RequestBuilder::default();
         let qjson: PartialRequestJSON = match self.request_json_file.as_ref() {
             Some(jsonfile) => {
@@ -441,7 +441,7 @@ impl PartialRequestArgs {
         if let Some(context) = qjson
             .context
             .map(|json| {
-                Context::from_json_value(json.clone(), None)
+                Context::from_json_value(json.clone(), schema.map(|s| (s, &action)))
                     .wrap_err_with(|| format!("fail to convert context json {json} to Context"))
             })
             .transpose()?
@@ -573,6 +573,12 @@ pub struct PartiallyAuthorizeArgs {
     /// Policies args (incorporated by reference)
     #[command(flatten)]
     pub policies: PoliciesArgs,
+    /// Schema args (incorporated by reference)
+    ///
+    /// Used to populate the store with action entities and for schema-based
+    /// parsing of entity hierarchy, if present
+    #[command(flatten)]
+    pub schema: OptionalSchemaArgs,
     /// File containing JSON representation of the Cedar entity hierarchy
     #[arg(long = "entities", value_name = "FILE")]
     pub entities_file: String,
@@ -1563,6 +1569,7 @@ fn execute_partial_request(
     request: &PartialRequestArgs,
     policies: &PoliciesArgs,
     entities_filename: impl AsRef<Path>,
+    schema: &OptionalSchemaArgs,
     compute_duration: bool,
 ) -> Result<PartialResponse, Vec<Report>> {
     let mut errs = vec![];
@@ -1573,14 +1580,21 @@ fn execute_partial_request(
             PolicySet::new()
         }
     };
-    let entities = match load_entities(entities_filename, None) {
+    let schema = match schema.get_schema() {
+        Ok(opt) => opt,
+        Err(e) => {
+            errs.push(e);
+            None
+        }
+    };
+    let entities = match load_entities(entities_filename, schema.as_ref()) {
         Ok(entities) => entities,
         Err(e) => {
             errs.push(e);
             Entities::empty()
         }
     };
-    match request.get_request() {
+    match request.get_request(schema.as_ref()) {
         Ok(request) if errs.is_empty() => {
             let authorizer = Authorizer::new();
             let auth_start = Instant::now();
