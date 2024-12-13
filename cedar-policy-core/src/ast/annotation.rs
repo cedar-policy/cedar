@@ -64,7 +64,7 @@ impl Annotations {
     }
 }
 
-/// Wraps the [`BTreeMap`]` into an opaque type so we can change it later if need be
+/// Wraps the [`BTreeMap`] into an opaque type so we can change it later if need be
 #[derive(Debug)]
 pub struct IntoIter(std::collections::btree_map::IntoIter<AnyId, Annotation>);
 
