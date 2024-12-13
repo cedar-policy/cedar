@@ -93,7 +93,8 @@ match {
 #[inline]
 AnyIdent: Node<AnyId> = {
     <l:@L> <id:IDENTIFIER> <r:@R>
-        => Node::with_source_loc(AnyId::new_unchecked(id), Loc::new(l..r, Arc::clone(src))),
+        // `IDENTIFIER` should produce a valid `AnyId`
+        => Node::with_source_loc(AnyId::from_str(id).unwrap(), Loc::new(l..r, Arc::clone(src))),
 }
 
 // Annotations := {'@' IDENTIFIER '(' String ')'}

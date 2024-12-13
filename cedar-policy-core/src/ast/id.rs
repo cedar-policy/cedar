@@ -276,7 +276,7 @@ impl AnyId {
     ///
     /// This method was created for the `From<cst::Ident> for AnyId` impl to use.
     /// See notes on `Id::new_unchecked()`.
-    pub fn new_unchecked(s: impl Into<SmolStr>) -> AnyId {
+    pub(crate) fn new_unchecked(s: impl Into<SmolStr>) -> AnyId {
         AnyId(s.into())
     }
 

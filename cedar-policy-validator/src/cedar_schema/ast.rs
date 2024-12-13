@@ -68,10 +68,11 @@ pub fn deduplicate_annotations<T>(
         annotations: unique_annotations
             .into_iter()
             .map(|(key, value)| {
-                (
-                    key.node,
-                    Annotation::with_optional_value(value.map(|n| n.node), None),
-                )
+                let (val, loc) = match value {
+                    Some(n) => (Some(n.node), Some(n.loc)),
+                    None => (None, None),
+                };
+                (key.node, Annotation::with_optional_value(val, loc))
             })
             .collect(),
     })

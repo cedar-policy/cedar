@@ -187,7 +187,6 @@ impl TryFrom<Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName>
         // Convert action decls, collecting all errors
         let actions = collect_all_errors(action.into_iter().map(convert_action_decl))?
             .flatten()
-            .map(|(key, value)| (key, value))
             .collect();
 
         // Convert common type decls
@@ -431,7 +430,6 @@ fn convert_attr_decl(
         attr.data.name.node,
         json_schema::TypeOfAttribute {
             ty: cedar_type_to_json_type(attr.data.ty),
-
             required: attr.data.required,
             annotations: attr.annotations.into(),
         },

@@ -31,7 +31,7 @@ impl<N: Display> Display for json_schema::Fragment<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (ns, def) in &self.0 {
             match ns {
-                None => write!(f, "{}", def)?,
+                None => write!(f, "{def}")?,
                 Some(ns) => write!(f, "{}namespace {ns} {{\n{}}}\n", def.annotations, def)?,
             }
         }

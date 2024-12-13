@@ -47,7 +47,7 @@ use crate::{
     AllDefs, CedarSchemaError, CedarSchemaParseError, ConditionalName, RawName, ReferenceType,
 };
 
-/// Represent a common type
+/// Represents the definition of a common type in the schema.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, Deserialize)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 pub struct CommonType<N> {
@@ -325,14 +325,8 @@ impl<N> NamespaceDefinition<N> {
     ) -> Self {
         Self {
             common_types: BTreeMap::new(),
-            entity_types: entity_types
-                .into_iter()
-                .map(|(key, value)| (key, value))
-                .collect(),
-            actions: actions
-                .into_iter()
-                .map(|(key, value)| (key, value))
-                .collect(),
+            entity_types: entity_types.into_iter().collect(),
+            actions: actions.into_iter().collect(),
             annotations: Annotations::new(),
         }
     }
@@ -1762,7 +1756,6 @@ impl TypeOfAttribute<RawName> {
     ) -> TypeOfAttribute<ConditionalName> {
         TypeOfAttribute {
             ty: self.ty.conditionally_qualify_type_references(ns),
-
             required: self.required,
             annotations: self.annotations,
         }
@@ -1782,7 +1775,6 @@ impl TypeOfAttribute<ConditionalName> {
     ) -> std::result::Result<TypeOfAttribute<InternalName>, TypeNotDefinedError> {
         Ok(TypeOfAttribute {
             ty: self.ty.fully_qualify_type_references(all_defs)?,
-
             required: self.required,
             annotations: self.annotations,
         })
@@ -1794,7 +1786,6 @@ impl<'a> arbitrary::Arbitrary<'a> for TypeOfAttribute<RawName> {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
             ty: u.arbitrary::<Type<RawName>>()?,
-
             required: u.arbitrary()?,
             annotations: cedar_policy_core::est::Annotations::new(),
         })
