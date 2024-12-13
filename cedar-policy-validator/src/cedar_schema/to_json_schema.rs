@@ -203,7 +203,7 @@ impl TryFrom<Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName>
                     ctid,
                     CommonType {
                         ty: cedar_type_to_json_type(decl.data.def),
-                        annotations: decl.annotations,
+                        annotations: decl.annotations.into(),
                     },
                 ))
             })
@@ -213,7 +213,7 @@ impl TryFrom<Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName>
             common_types,
             entity_types,
             actions,
-            annotations: n.annotations,
+            annotations: n.annotations.into(),
         })
     }
 }
@@ -241,7 +241,7 @@ fn convert_action_decl(
         attributes: None, // Action attributes are currently unsupported in the Cedar schema format
         applies_to: Some(applies_to),
         member_of,
-        annotations: a.annotations,
+        annotations: a.annotations.into(),
     };
     // Then map that type across all of the bound names
     Ok(names.into_iter().map(move |name| (name.node, ty.clone())))
@@ -375,7 +375,7 @@ fn convert_entity_decl(
             .collect(),
         shape: convert_attr_decls(e.data.attrs),
         tags: e.data.tags.map(cedar_type_to_json_type),
-        annotations: e.annotations,
+        annotations: e.annotations.into(),
     };
 
     // Then map over all of the bound names
@@ -433,7 +433,7 @@ fn convert_attr_decl(
             ty: cedar_type_to_json_type(attr.data.ty),
 
             required: attr.data.required,
-            annotations: attr.annotations,
+            annotations: attr.annotations.into(),
         },
     )
 }

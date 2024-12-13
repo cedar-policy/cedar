@@ -21,7 +21,8 @@
 use std::{str::FromStr, vec};
 
 use cedar_policy_core::{
-    ast::{Annotations, BinaryOp, EntityUID, Expr, Name, Pattern, PatternElem, SlotId, Value, Var},
+    ast::{BinaryOp, EntityUID, Expr, Name, Pattern, PatternElem, SlotId, Value, Var},
+    est::Annotations,
     extensions::Extensions,
 };
 use itertools::Itertools;

@@ -274,7 +274,8 @@ mod test {
 
     use super::*;
     use cedar_policy_core::{
-        ast::{self, Annotations, PolicyID},
+        ast::{self, PolicyID},
+        est::Annotations,
         parser::{self, Loc},
     };
 

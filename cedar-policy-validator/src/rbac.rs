@@ -397,10 +397,8 @@ mod test {
     use std::collections::{HashMap, HashSet};
 
     use cedar_policy_core::{
-        ast::{
-            Annotations, Effect, Eid, EntityUID, Expr, PolicyID, PrincipalConstraint,
-            ResourceConstraint,
-        },
+        ast::{Effect, Eid, EntityUID, Expr, PolicyID, PrincipalConstraint, ResourceConstraint},
+        est::Annotations,
         parser::{parse_policy, parse_policy_or_template},
         test_utils::{expect_err, ExpectedErrorMessageBuilder},
     };
@@ -497,7 +495,7 @@ mod test {
         let policy = Template::new(
             PolicyID::from_string("policy0"),
             None,
-            Annotations::new(),
+            ast::Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -587,7 +585,7 @@ mod test {
         let policy = Template::new(
             PolicyID::from_string("policy0"),
             None,
-            Annotations::new(),
+            ast::Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::is_eq(entity),
@@ -818,7 +816,7 @@ mod test {
         let policy = Template::new(
             PolicyID::from_string("policy0"),
             None,
-            Annotations::new(),
+            ast::Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::is_eq(entity),
@@ -879,7 +877,7 @@ mod test {
         let policy = Template::new(
             PolicyID::from_string("policy0"),
             None,
-            Annotations::new(),
+            ast::Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq(Arc::new(EntityUID::from_components(
                 entity_type,
@@ -1151,7 +1149,7 @@ mod test {
         let policy = Template::new(
             PolicyID::from_string("policy0"),
             None,
-            Annotations::new(),
+            ast::Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq(Arc::new(principal)),
             ActionConstraint::is_eq(action),
@@ -1531,7 +1529,7 @@ mod test {
         let policy = Template::new(
             PolicyID::from_string("policy0"),
             None,
-            Annotations::new(),
+            ast::Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::is_in([action_grandparent_euid]),

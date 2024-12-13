@@ -24,7 +24,7 @@ mod demo_tests {
     };
 
     use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
-    use cedar_policy_core::{ast::Annotations, extensions::Extensions};
+    use cedar_policy_core::{est::Annotations, extensions::Extensions};
     use cool_asserts::assert_matches;
     use smol_str::ToSmolStr;
 
