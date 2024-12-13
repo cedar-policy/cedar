@@ -1796,7 +1796,7 @@ impl<'a> arbitrary::Arbitrary<'a> for TypeOfAttribute<RawName> {
             ty: u.arbitrary::<Type<RawName>>()?,
 
             required: u.arbitrary()?,
-            annotations: cedar_policy_core::est::annotation::Annotations::new(),
+            annotations: cedar_policy_core::est::Annotations::new(),
         })
     }
 
