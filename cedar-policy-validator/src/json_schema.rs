@@ -3073,7 +3073,63 @@ mod annotations {
            }
         });
         let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
-        assert_matches!(schema, Ok(_));
+        assert!(schema.is_ok());
+
+        let src = serde_json::json!(
+        {
+           "" : {
+            "entityTypes": {
+                "a": {
+                    "annotations": {
+                        "a": "",
+                        "b": "c",
+                    },
+                    "shape": {
+                        "type": "Long",
+                    }
+                }
+            },
+            "actions": {},
+            "annotations": {
+                "doc": "this is a doc"
+            }
+           }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert!(schema.is_ok());
+
+        let src = serde_json::json!(
+        {
+           "" : {
+            "entityTypes": {
+                "a": {
+                    "annotations": {
+                        "a": "",
+                        "b": "c",
+                    },
+                    "shape": {
+                        "type": "Long",
+                    }
+                }
+            },
+            "actions": {
+                "a": {
+                    "annotations": {
+                        "doc": "this is a doc"
+                    },
+                    "appliesTo": {
+                        "principalTypes": ["A"],
+                        "resourceTypes": ["B"],
+                    }
+                },
+            },
+            "annotations": {
+                "doc": "this is a doc"
+            }
+           }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert!(schema.is_ok());
 
         let src = serde_json::json!({
             "": {
@@ -3101,7 +3157,7 @@ mod annotations {
                 }
         }}}});
         let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
-        assert_matches!(schema, Ok(_));
+        assert!(schema.is_ok());
 
         let src = serde_json::json!({
                     "": {
@@ -3127,34 +3183,7 @@ mod annotations {
                     "commonTypes": {}
                 }});
         let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
-        assert_matches!(schema, Ok(_));
-
-        // annotations cannot be in "shape"
-        let src = serde_json::json!({
-                    "": {
-                    "entityTypes": {
-                        "User" : {
-            "shape" : {
-                "annotations": {
-                    "a": ""
-                },
-                "type" : "Record",
-                "attributes" : {
-                    "name" : {
-                        "type" : "String"
-                    },
-                    "age" : {
-                        "type" : "Long"
-                    }
-                }
-            }
-        }
-                    },
-                    "actions": {},
-                    "commonTypes": {}
-                }});
-        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
-        assert_matches!(schema, Err(_));
+        assert!(schema.is_ok());
 
         // nested record
         let src = serde_json::json!({
@@ -3194,7 +3223,7 @@ mod annotations {
                     "commonTypes": {}
                 }});
         let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
-        assert_matches!(schema, Ok(_));
+        assert!(schema.is_ok());
     }
 
     #[track_caller]
