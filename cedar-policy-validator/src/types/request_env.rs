@@ -98,7 +98,7 @@ impl<'a> RequestEnv<'a> {
     /// [`Type`] of the `action` for this request environment
     pub fn action_type(&self, schema: &ValidatorSchema) -> Option<Type> {
         match self.action_entity_uid() {
-            Some(action) => Type::euid_literal(action.clone(), schema),
+            Some(action) => Type::euid_literal(action, schema),
             None => Some(Type::any_entity_reference()),
         }
     }

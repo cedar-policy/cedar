@@ -791,8 +791,7 @@ impl<'e> Evaluator<'e> {
                         if res.is_projectable() {
                             map.as_ref()
                                 .iter()
-                                .filter_map(|(k, v)| if k == attr { Some(v) } else { None })
-                                .next()
+                                .find_map(|(k, v)| if k == attr { Some(v) } else { None })
                                 .ok_or_else(|| {
                                     EvaluationError::record_attr_does_not_exist(
                                         attr.clone(),

@@ -220,7 +220,7 @@ pub enum ToASTErrorKind {
     #[diagnostic(transparent)]
     InvalidActionType(#[from] parse_errors::InvalidActionType),
     /// Returned when a condition clause is empty
-    #[error("{}condition clause cannot be empty", match .0 { Some(ident) => format!("`{}` ", ident), None => "".to_string() })]
+    #[error("{}condition clause cannot be empty", match .0 { Some(ident) => format!("`{}` ", ident), None => String::new() })]
     EmptyClause(Option<cst::Ident>),
     /// Returned when membership chains do not resolve to an expression,
     /// violating an internal invariant
@@ -775,11 +775,11 @@ pub fn expected_to_string(expected: &[String], config: &ExpectedTokenConfig) -> 
         .map(|e| e.as_str())
         .collect::<BTreeSet<_>>();
     if expected.contains(config.identifier_sentinel) {
-        for token in config.special_identifier_tokens.iter() {
+        for token in &config.special_identifier_tokens {
             expected.remove(*token);
         }
         if !expected.contains(config.first_set_sentinel) {
-            for token in config.first_set_identifier_tokens.iter() {
+            for token in &config.first_set_identifier_tokens {
                 expected.remove(*token);
             }
         }
@@ -834,7 +834,7 @@ impl ParseErrors {
 
     /// Flatten a `Vec<ParseErrors>` into a single `ParseErrors`, returning
     /// `None` if the input vector is empty.
-    pub(crate) fn flatten(v: Vec<ParseErrors>) -> Option<Self> {
+    pub(crate) fn flatten(v: &[ParseErrors]) -> Option<Self> {
         let (first, rest) = v.split_first()?;
         let mut first = first.clone();
         rest.iter()
@@ -853,7 +853,7 @@ impl ParseErrors {
             .into_iter()
             .filter_map(|r| r.map_err(|e| errs.push(e)).ok())
             .collect();
-        if let Some(combined_errs) = Self::flatten(errs) {
+        if let Some(combined_errs) = Self::flatten(&errs) {
             Err(combined_errs)
         } else {
             Ok(oks)

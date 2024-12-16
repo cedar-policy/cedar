@@ -131,7 +131,7 @@ fn split_unqualified_namespace(
 
     // Now combine all the decls in namespaces without names into one unqualified namespace
     let mut unqualified_decls = vec![];
-    for mut unqualified_namespace in unqualified.into_iter() {
+    for mut unqualified_namespace in unqualified {
         unqualified_decls.append(&mut unqualified_namespace.data.decls);
     }
 
@@ -197,7 +197,7 @@ impl TryFrom<Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName>
                 let id = UnreservedId::try_from(decl.data.name.node)
                     .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), name_loc.clone()))?;
                 let ctid = json_schema::CommonTypeId::new(id)
-                    .map_err(|e| ToJsonSchemaError::reserved_keyword(e.id, name_loc))?;
+                    .map_err(|e| ToJsonSchemaError::reserved_keyword(&e.id, name_loc))?;
                 Ok((
                     ctid,
                     CommonType {
@@ -273,7 +273,7 @@ fn convert_app_decls(
             } => match context {
                 Some(existing_context) => {
                     return Err(ToJsonSchemaError::duplicate_context(
-                        name.clone(),
+                        name,
                         existing_context.loc,
                         loc,
                     )
@@ -300,7 +300,7 @@ fn convert_app_decls(
             } => match principal_types {
                 Some(existing_tys) => {
                     return Err(ToJsonSchemaError::duplicate_principal(
-                        name.clone(),
+                        name,
                         existing_tys.loc,
                         loc,
                     )
@@ -325,12 +325,9 @@ fn convert_app_decls(
                 loc,
             } => match resource_types {
                 Some(existing_tys) => {
-                    return Err(ToJsonSchemaError::duplicate_resource(
-                        name.clone(),
-                        existing_tys.loc,
-                        loc,
-                    )
-                    .into());
+                    return Err(
+                        ToJsonSchemaError::duplicate_resource(name, existing_tys.loc, loc).into(),
+                    );
                 }
                 None => {
                     resource_types = Some(Node::with_source_loc(
@@ -344,10 +341,10 @@ fn convert_app_decls(
     Ok(json_schema::ApplySpec {
         resource_types: resource_types
             .map(|node| node.node)
-            .ok_or_else(|| ToJsonSchemaError::no_resource(name.clone(), name_loc.clone()))?,
+            .ok_or_else(|| ToJsonSchemaError::no_resource(name, name_loc.clone()))?,
         principal_types: principal_types
             .map(|node| node.node)
-            .ok_or_else(|| ToJsonSchemaError::no_principal(name.clone(), name_loc.clone()))?,
+            .ok_or_else(|| ToJsonSchemaError::no_principal(name, name_loc.clone()))?,
         context: context.map(|c| c.node).unwrap_or_default(),
     })
 }
@@ -447,7 +444,7 @@ where
 {
     let mut answers = vec![];
     let mut errs = vec![];
-    for r in iter.into_iter() {
+    for r in iter {
         match r {
             Ok(a) => {
                 answers.push(a);
@@ -524,7 +521,7 @@ where
     for (key, node) in i {
         match map.entry(key.clone()) {
             Entry::Occupied(entry) => Err(ToJsonSchemaError::duplicate_decls(
-                key,
+                &key,
                 entry.get().loc.clone(),
                 node.loc,
             )),
@@ -551,7 +548,7 @@ fn make_warning_for_shadowing<'a>(
     extensions: &'a Extensions<'a>,
 ) -> impl Iterator<Item = SchemaWarning> + 'a {
     let mut warnings = vec![];
-    for (common_name, common_src_node) in n.common_types.iter() {
+    for (common_name, common_src_node) in &n.common_types {
         // Check if it shadows a entity name in the same namespace
         if let Some(entity_src_node) = n.entities.get(common_name) {
             let warning = schema_warnings::ShadowsEntityWarning {
@@ -614,7 +611,7 @@ fn update_namespace_record(
 ) -> Result<(), ToJsonSchemaErrors> {
     match map.entry(name.clone()) {
         Entry::Occupied(entry) => Err(ToJsonSchemaError::duplicate_namespace(
-            name.map_or("".into(), |n| n.to_smolstr()),
+            &name.map_or("".into(), |n| n.to_smolstr()),
             record.loc,
             entry.get().loc.clone(),
         )
@@ -633,7 +630,7 @@ fn partition_decls(
     let mut actions = vec![];
     let mut types = vec![];
 
-    for decl in decls.iter() {
+    for decl in decls {
         match &decl.data.node {
             Declaration::Entity(e) => entities.push(e),
             Declaration::Action(a) => actions.push(a),
@@ -655,7 +652,7 @@ fn into_partition_decls(
     let mut actions = vec![];
     let mut types = vec![];
 
-    for decl in decls.into_iter() {
+    for decl in decls {
         match decl.data.node {
             Declaration::Entity(e) => entities.push(Annotated {
                 data: e,
