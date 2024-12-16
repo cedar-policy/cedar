@@ -19,6 +19,7 @@
 #![allow(clippy::panic)]
 // PANIC SAFETY unit tests
 #![allow(clippy::indexing_slicing)]
+#![allow(clippy::cognitive_complexity)]
 
 pub(crate) mod test_utils;
 

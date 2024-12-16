@@ -986,6 +986,7 @@ fn stack_size_check() -> Result<()> {
 
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
+#[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
 pub(crate) mod test {
     use std::str::FromStr;

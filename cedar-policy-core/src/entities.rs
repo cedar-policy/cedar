@@ -508,6 +508,7 @@ pub enum TCComputation {
 #[cfg(test)]
 // PANIC SAFETY unit tests
 #[allow(clippy::panic)]
+#[allow(clippy::cognitive_complexity)]
 mod json_parsing_tests {
 
     use super::*;
@@ -1731,13 +1732,13 @@ mod json_parsing_tests {
     }
 
     /// helper function
-    fn test_entities() -> (Entity, Entity, Entity, Entity) {
-        (
+    fn test_entities() -> [Entity; 4] {
+        [
             Entity::with_uid(EntityUID::with_eid("test_principal")),
             Entity::with_uid(EntityUID::with_eid("test_action")),
             Entity::with_uid(EntityUID::with_eid("test_resource")),
             Entity::with_uid(EntityUID::with_eid("test")),
-        )
+        ]
     }
 
     /// Test that we can take an Entities, write it to JSON, parse that JSON
@@ -1751,7 +1752,7 @@ mod json_parsing_tests {
         );
 
         let entities = Entities::from_entities(
-            <[Entity; 4]>::from(test_entities()),
+            test_entities(),
             None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
             Extensions::none(),
@@ -1959,9 +1960,8 @@ mod json_parsing_tests {
 
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
+#[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
-// PANIC SAFETY unit tests
-#[allow(clippy::panic)]
 mod entities_tests {
     use super::*;
 
@@ -2052,6 +2052,7 @@ mod entities_tests {
 
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
+#[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
 mod schema_based_parsing_tests {
     use super::json::NullEntityTypeDescription;
@@ -2174,11 +2175,10 @@ mod schema_based_parsing_tests {
                         (
                             "inner3".into(),
                             AttributeType::required(SchemaType::Record {
-                                attrs: [(
+                                attrs: std::iter::once((
                                     "innerinner".into(),
                                     AttributeType::required(employee_ty()),
-                                )]
-                                .into_iter()
+                                ))
                                 .collect(),
                                 open_attrs: false,
                             }),

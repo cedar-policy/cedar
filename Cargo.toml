@@ -55,8 +55,6 @@ needless_doctest_main = "allow"
 # see #878
 result_large_err = "allow"
 large_enum_variant = "allow"
-cognitive_complexity = "allow"
-
 
 redundant_clone = "deny"
 # Error on potential panics

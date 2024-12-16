@@ -106,7 +106,7 @@ fn run_link_test(
     links_file: impl Into<String>,
     template_id: impl Into<String>,
     linked_id: impl Into<String>,
-    env: HashMap<SlotId, String>,
+    env: impl IntoIterator<Item = (SlotId, String)>,
     expected: CedarExitCode,
 ) {
     let cmd = LinkArgs {
@@ -117,7 +117,9 @@ fn run_link_test(
         },
         template_id: template_id.into(),
         new_id: linked_id.into(),
-        arguments: Arguments { data: env },
+        arguments: Arguments {
+            data: HashMap::from_iter(env),
+        },
     };
     let output = link(&cmd);
     assert_eq!(output, expected);
@@ -792,7 +794,7 @@ fn test_link_samples() {
         &linked_file_name,
         "AccessVacation",
         "AliceAccess",
-        std::iter::once((SlotId::principal(), "User::\"alice\"".to_string())).collect(),
+        [(SlotId::principal(), "User::\"alice\"".to_string())],
         CedarExitCode::Failure,
     );
 
@@ -801,7 +803,7 @@ fn test_link_samples() {
         &linked_file_name,
         "AccessVacation",
         "AliceAccess",
-        std::iter::once((SlotId::principal(), "invalid".to_string())).collect(),
+        [(SlotId::principal(), "invalid".to_string())],
         CedarExitCode::Failure,
     );
 
@@ -810,7 +812,7 @@ fn test_link_samples() {
         &linked_file_name,
         "AccessVacation",
         "AliceAccess",
-        std::iter::once((SlotId::principal(), "User::\"alice\"".to_string())).collect(),
+        [(SlotId::principal(), "User::\"alice\"".to_string())],
         CedarExitCode::Success,
     );
 
@@ -839,7 +841,7 @@ fn test_link_samples() {
         &linked_file_name,
         "AccessVacation",
         "BobAccess",
-        std::iter::once((SlotId::principal(), "User::\"bob\"".to_string())).collect(),
+        [(SlotId::principal(), "User::\"bob\"".to_string())],
         CedarExitCode::Success,
     );
 

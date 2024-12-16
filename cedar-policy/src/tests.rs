@@ -17,6 +17,7 @@
 #![cfg(test)]
 // PANIC SAFETY unit tests
 #![allow(clippy::panic)]
+#![allow(clippy::cognitive_complexity, clippy::too_many_lines)]
 
 use super::*;
 
