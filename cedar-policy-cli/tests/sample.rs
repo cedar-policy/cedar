@@ -792,9 +792,7 @@ fn test_link_samples() {
         &linked_file_name,
         "AccessVacation",
         "AliceAccess",
-        [(SlotId::principal(), "User::\"alice\"".to_string())]
-            .into_iter()
-            .collect(),
+        std::iter::once((SlotId::principal(), "User::\"alice\"".to_string())).collect(),
         CedarExitCode::Failure,
     );
 
@@ -803,9 +801,7 @@ fn test_link_samples() {
         &linked_file_name,
         "AccessVacation",
         "AliceAccess",
-        [(SlotId::principal(), "invalid".to_string())]
-            .into_iter()
-            .collect(),
+        std::iter::once((SlotId::principal(), "invalid".to_string())).collect(),
         CedarExitCode::Failure,
     );
 
@@ -814,9 +810,7 @@ fn test_link_samples() {
         &linked_file_name,
         "AccessVacation",
         "AliceAccess",
-        [(SlotId::principal(), "User::\"alice\"".to_string())]
-            .into_iter()
-            .collect(),
+        std::iter::once((SlotId::principal(), "User::\"alice\"".to_string())).collect(),
         CedarExitCode::Success,
     );
 
@@ -845,9 +839,7 @@ fn test_link_samples() {
         &linked_file_name,
         "AccessVacation",
         "BobAccess",
-        [(SlotId::principal(), "User::\"bob\"".to_string())]
-            .into_iter()
-            .collect(),
+        std::iter::once((SlotId::principal(), "User::\"bob\"".to_string())).collect(),
         CedarExitCode::Success,
     );
 

@@ -737,7 +737,7 @@ namespace Baz {action "Foo" appliesTo {
                 }),
             );
             assert_has_type(
-                &attributes.get("viewACL").unwrap(),
+                attributes.get("viewACL").unwrap(),
                 json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "DocumentShare".parse().unwrap(),
                 }),

@@ -1750,9 +1750,8 @@ mod json_parsing_tests {
             roundtrip(&empty_entities).expect("should roundtrip without errors")
         );
 
-        let (e0, e1, e2, e3) = test_entities();
         let entities = Entities::from_entities(
-            [e0, e1, e2, e3],
+            <[Entity; 4]>::from(test_entities()),
             None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
             Extensions::none(),
@@ -1969,8 +1968,10 @@ mod entities_tests {
     #[test]
     fn empty_entities() {
         let e = Entities::new();
-        let es = e.iter().collect::<Vec<_>>();
-        assert!(es.is_empty(), "This vec should be empty");
+        assert!(
+            e.iter().next().is_none(),
+            "The entity store should be empty"
+        );
     }
 
     /// helper function
@@ -2079,9 +2080,7 @@ mod schema_based_parsing_tests {
                 r#"Action::"view""# => Some(Arc::new(Entity::new_with_attr_partial_value(
                     action.clone(),
                     [(SmolStr::from("foo"), PartialValue::from(34))],
-                    [r#"Action::"readOnly""#.parse().expect("valid uid")]
-                        .into_iter()
-                        .collect(),
+                    std::iter::once(r#"Action::"readOnly""#.parse().expect("valid uid")).collect(),
                 ))),
                 r#"Action::"readOnly""# => Some(Arc::new(Entity::with_uid(
                     r#"Action::"readOnly""#.parse().expect("valid uid"),
