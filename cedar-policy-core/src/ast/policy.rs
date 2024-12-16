@@ -256,7 +256,7 @@ impl Template {
     ) -> Result<Policy, LinkingError> {
         // INVARIANT (policy total map) Relies on check_binding to uphold the invariant
         Template::check_binding(&template, &values)
-            .map(|_| Policy::new(template, Some(new_id), values))
+            .map(|()| Policy::new(template, Some(new_id), values))
     }
 
     /// Take a static policy and create a template and a template-linked policy for it.
@@ -1586,9 +1586,7 @@ impl EntityReference {
     pub fn into_expr(&self, slot: SlotId) -> Expr {
         match self {
             EntityReference::EUID(euid) => Expr::val(euid.clone()),
-            EntityReference::Slot(loc) => {
-                Expr::slot(slot).with_maybe_source_loc(loc.as_ref().cloned())
-            }
+            EntityReference::Slot(loc) => Expr::slot(slot).with_maybe_source_loc(loc.clone()),
         }
     }
 }
@@ -2701,11 +2699,11 @@ mod test {
             Name::from_normalized_str("B::C::D").unwrap(),
         ));
         let prc1: PrincipalOrResourceConstraint =
-            PrincipalOrResourceConstraint::is_eq(euid1.to_owned());
+            PrincipalOrResourceConstraint::is_eq(euid1.clone());
         let prc2: PrincipalOrResourceConstraint =
-            PrincipalOrResourceConstraint::is_in(euid1.to_owned());
+            PrincipalOrResourceConstraint::is_in(euid1.clone());
         let prc3: PrincipalOrResourceConstraint =
-            PrincipalOrResourceConstraint::is_entity_type(name1.to_owned());
+            PrincipalOrResourceConstraint::is_entity_type(name1.clone());
         let prc4: PrincipalOrResourceConstraint =
             PrincipalOrResourceConstraint::is_entity_type_in(name1, euid1);
         assert_eq!(

@@ -34,9 +34,10 @@ use super::eval_extension_constructor;
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
 fn get_argument_types(fname: &Name, ipaddr_ty: &Type) -> Vec<types::Type> {
-    if !fname.as_ref().is_unqualified() {
-        panic!("unexpected ipaddr extension function name: {fname}")
-    }
+    assert!(
+        fname.as_ref().is_unqualified(),
+        "unexpected ipaddr extension function name: {fname}"
+    );
     match fname.basename().as_ref() {
         "ip" => vec![Type::primitive_string()],
         "isIpv4" | "isIpv6" | "isLoopback" | "isMulticast" => vec![ipaddr_ty.clone()],
@@ -48,9 +49,10 @@ fn get_argument_types(fname: &Name, ipaddr_ty: &Type) -> Vec<types::Type> {
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
 fn get_return_type(fname: &Name, ipaddr_ty: &Type) -> Type {
-    if !fname.as_ref().is_unqualified() {
-        panic!("unexpected ipaddr extension function name: {fname}")
-    }
+    assert!(
+        fname.as_ref().is_unqualified(),
+        "unexpected ipaddr extension function name: {fname}"
+    );
     match fname.basename().as_ref() {
         "ip" => ipaddr_ty.clone(),
         "isIpv4" | "isIpv6" | "isLoopback" | "isMulticast" | "isInRange" => {
@@ -63,9 +65,10 @@ fn get_return_type(fname: &Name, ipaddr_ty: &Type) -> Type {
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
 fn get_argument_check(fname: &Name) -> Option<ArgumentCheckFn> {
-    if !fname.as_ref().is_unqualified() {
-        panic!("unexpected ipaddr extension function name: {fname}")
-    }
+    assert!(
+        fname.as_ref().is_unqualified(),
+        "unexpected ipaddr extension function name: {fname}"
+    );
     match fname.basename().as_ref() {
         "ip" => {
             let fname = fname.clone();

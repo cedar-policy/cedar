@@ -308,8 +308,8 @@ impl EvaluationError {
         evaluation_errors::ExtensionFunctionExecutionError {
             extension_name,
             msg,
-            source_loc,
             advice,
+            source_loc,
         }
         .into()
     }

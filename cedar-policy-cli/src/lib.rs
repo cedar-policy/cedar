@@ -1214,12 +1214,9 @@ fn add_template_links_to_set(path: impl AsRef<Path>, policy_set: &mut PolicySet)
 
 /// Given a file containing template links, return a `Vec` of those links
 fn load_links_from_file(path: impl AsRef<Path>) -> Result<Vec<TemplateLinked>> {
-    let f = match std::fs::File::open(path) {
-        Ok(f) => f,
-        Err(_) => {
-            // If the file doesn't exist, then give back the empty entity set
-            return Ok(vec![]);
-        }
+    let Ok(f) = std::fs::File::open(path) else {
+        // If the file doesn't exist, then give back the empty entity set
+        return Ok(vec![]);
     };
     if f.metadata()
         .into_diagnostic()
@@ -1433,7 +1430,7 @@ fn read_cedar_policy_set(
     filename: Option<impl AsRef<Path> + std::marker::Copy>,
 ) -> Result<PolicySet> {
     let context = "policy set";
-    let ps_str = read_from_file_or_stdin(filename, context)?;
+    let ps_str = read_from_file_or_stdin(filename.as_ref(), context)?;
     let ps = PolicySet::from_str(&ps_str)
         .map_err(|err| {
             let name = filename.map_or_else(
@@ -1452,7 +1449,7 @@ fn read_json_policy_set(
     filename: Option<impl AsRef<Path> + std::marker::Copy>,
 ) -> Result<PolicySet> {
     let context = "JSON policy";
-    let json_source = read_from_file_or_stdin(filename, context)?;
+    let json_source = read_from_file_or_stdin(filename.as_ref(), context)?;
     let json = serde_json::from_str::<serde_json::Value>(&json_source).into_diagnostic()?;
     let policy_type = get_json_policy_type(&json)?;
 

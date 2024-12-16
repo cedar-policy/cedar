@@ -151,7 +151,7 @@ impl AccessTrie {
                 };
 
                 let mut new_children = HashMap::new();
-                for (field, child) in self.children.iter() {
+                for (field, child) in &self.children {
                     // if the schema doesn't mention an attribute,
                     // it's safe to drop it.
                     // this can come up with the `has` operator
