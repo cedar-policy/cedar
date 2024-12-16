@@ -31,7 +31,7 @@ prost = { version = "0.13", optional = true }
 serde-wasm-bindgen = { version = "0.6", optional = true }
 tsify = { version = "0.4.5", optional = true }
 wasm-bindgen = { version = "0.2.97", optional = true }
-semver = "1.0.23"
+semver = "1.0.24"
 lazy_static = "1.5.0"
 
 [features]
