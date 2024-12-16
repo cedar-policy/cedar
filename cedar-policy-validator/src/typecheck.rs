@@ -205,7 +205,7 @@ impl<'a> Typechecker<'a> {
         let mut env_checks = Vec::new();
         for request in self.unlinked_request_envs() {
             let mut policy_checks = Vec::new();
-            for t in policy_templates.iter() {
+            for t in policy_templates {
                 let condition_expr = t.condition();
                 for linked_env in self.link_request_env(&request, t) {
                     let mut type_errors = Vec::new();
@@ -1212,12 +1212,12 @@ impl<'a> Typechecker<'a> {
                 let rhs_ty = self.typecheck(request_env, prior_capability, arg2, type_errors);
                 lhs_ty.then_typecheck(|lhs_ty, _| {
                     rhs_ty.then_typecheck(|rhs_ty, _| {
-                        let type_of_eq = self.type_of_equality(
+                        let type_of_eq = Self::type_of_equality(
                             request_env,
                             arg1,
-                            lhs_ty.data(),
+                            lhs_ty.data().as_ref(),
                             arg2,
-                            rhs_ty.data(),
+                            rhs_ty.data().as_ref(),
                         );
 
                         if self.mode.is_strict() {
@@ -1227,8 +1227,8 @@ impl<'a> Typechecker<'a> {
                             self.enforce_strict_equality(
                                 bin_expr,
                                 annotated_eq,
-                                lhs_ty.data(),
-                                rhs_ty.data(),
+                                lhs_ty.data().as_ref(),
+                                rhs_ty.data().as_ref(),
                                 type_errors,
                                 LubContext::Equality,
                             )
@@ -1450,13 +1450,13 @@ impl<'a> Typechecker<'a> {
                                 self.enforce_strict_equality(
                                     bin_expr,
                                     annotated_expr,
-                                    &match expr_ty_arg1.data() {
+                                    match expr_ty_arg1.data() {
                                         Some(Type::Set {
                                             element_type: Some(ty),
-                                        }) => Some(*ty.clone()),
+                                        }) => Some(ty.as_ref()),
                                         _ => None,
                                     },
-                                    expr_ty_arg2.data(),
+                                    expr_ty_arg2.data().as_ref(),
                                     type_errors,
                                     LubContext::Contains,
                                 )
@@ -1512,8 +1512,8 @@ impl<'a> Typechecker<'a> {
                             self.enforce_strict_equality(
                                 bin_expr,
                                 annotated_expr,
-                                expr_ty_arg1.data(),
-                                expr_ty_arg2.data(),
+                                expr_ty_arg1.data().as_ref(),
+                                expr_ty_arg2.data().as_ref(),
                                 type_errors,
                                 LubContext::ContainsAnyAll,
                             )
@@ -1647,24 +1647,19 @@ impl<'a> Typechecker<'a> {
                         };
                         if prior_capability.contains(&Capability::new_borrowed_tag(arg1, arg2)) {
                             // Determine the set of possible tag types for this access.
-                            let tag_types = match self.tag_types(kind) {
-                                Ok(tag_types) => tag_types,
-                                Err(()) => {
-                                    // `kind` was not an entity type.
-                                    // should be unreachable, as we already typechecked that this matches
-                                    // `Type::any_entity_reference()`
-                                    type_errors.push(
-                                        ValidationError::internal_invariant_violation(
-                                            bin_expr.source_loc().cloned(),
-                                            self.policy_id.clone(),
-                                        ),
-                                    );
-                                    return TypecheckAnswer::fail(
-                                        ExprBuilder::new()
-                                            .with_same_source_loc(bin_expr)
-                                            .get_tag(expr_ty_arg1, expr_ty_arg2),
-                                    );
-                                }
+                            let Ok(tag_types) = self.tag_types(kind) else {
+                                // `kind` was not an entity type.
+                                // should be unreachable, as we already typechecked that this matches
+                                // `Type::any_entity_reference()`
+                                type_errors.push(ValidationError::internal_invariant_violation(
+                                    bin_expr.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                ));
+                                return TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .get_tag(expr_ty_arg1, expr_ty_arg2),
+                                );
                             };
                             if tag_types.is_empty() {
                                 // no entities in the LUB are allowed to have tags.
@@ -1745,8 +1740,8 @@ impl<'a> Typechecker<'a> {
         &self,
         unannotated_expr: &'b Expr,
         annotated_expr: Expr<Option<Type>>,
-        lhs_ty: &Option<Type>,
-        rhs_ty: &Option<Type>,
+        lhs_ty: Option<&Type>,
+        rhs_ty: Option<&Type>,
         type_errors: &mut Vec<ValidationError>,
         context: LubContext,
     ) -> TypecheckAnswer<'b> {
@@ -1785,12 +1780,11 @@ impl<'a> Typechecker<'a> {
 
     /// Get the type for an `==` expression given the input types.
     fn type_of_equality<'b>(
-        &self,
         request_env: &RequestEnv<'_>,
         lhs_expr: &'b Expr,
-        lhs_ty: &Option<Type>,
+        lhs_ty: Option<&Type>,
         rhs_expr: &'b Expr,
-        rhs_ty: &Option<Type>,
+        rhs_ty: Option<&Type>,
     ) -> Type {
         // If we know the types are disjoint, then we can return give the
         // expression type False. See `are_types_disjoint` definition for

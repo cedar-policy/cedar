@@ -47,21 +47,17 @@ impl PolicySet {
     pub fn get_policy(&self, id: &PolicyID) -> Option<Policy> {
         let maybe_static_policy = self.static_policies.get(id).cloned();
 
-        let maybe_link = self
-            .template_links
-            .iter()
-            .filter_map(|link| {
-                if &link.new_id == id {
-                    self.get_template(&link.template_id).and_then(|template| {
-                        let unwrapped_est_vals: HashMap<SlotId, EntityUidJson> =
-                            link.values.iter().map(|(k, v)| (*k, v.into())).collect();
-                        template.link(&unwrapped_est_vals).ok()
-                    })
-                } else {
-                    None
-                }
-            })
-            .next();
+        let maybe_link = self.template_links.iter().find_map(|link| {
+            if &link.new_id == id {
+                self.get_template(&link.template_id).and_then(|template| {
+                    let unwrapped_est_vals: HashMap<SlotId, EntityUidJson> =
+                        link.values.iter().map(|(k, v)| (*k, v.into())).collect();
+                    template.link(&unwrapped_est_vals).ok()
+                })
+            } else {
+                None
+            }
+        });
 
         maybe_static_policy.or(maybe_link)
     }

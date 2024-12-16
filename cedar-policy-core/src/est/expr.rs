@@ -1541,7 +1541,9 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
                                 }
                             }
                         }
-                        _ => return Err(access.to_ast_err(ToASTErrorKind::ExpressionCall).into()),
+                        Either::Right(_) => {
+                            return Err(access.to_ast_err(ToASTErrorKind::ExpressionCall).into())
+                        }
                     };
                 }
                 cst::MemAccess::Index(node) => {

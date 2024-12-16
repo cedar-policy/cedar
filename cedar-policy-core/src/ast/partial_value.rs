@@ -119,7 +119,7 @@ where
     let mut values = vec![];
     let mut residuals = vec![];
 
-    for item in i.into_iter() {
+    for item in i {
         match item {
             PartialValue::Value(a) => {
                 if residuals.is_empty() {
