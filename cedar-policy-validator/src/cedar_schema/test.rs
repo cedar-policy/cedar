@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#![allow(clippy::cognitive_complexity)]
 
 // PANIC SAFETY: unit tests
 #[allow(clippy::panic)]
@@ -737,7 +738,7 @@ namespace Baz {action "Foo" appliesTo {
                 }),
             );
             assert_has_type(
-                &attributes.get("viewACL").unwrap(),
+                attributes.get("viewACL").unwrap(),
                 json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "DocumentShare".parse().unwrap(),
                 }),

@@ -112,7 +112,7 @@ impl PolicySetModel {
                         panic!("template to link map should have Vec for existing template")
                     }
                 };
-                assert!(self.link_to_template_map.get(policy_name).is_none());
+                assert!(!self.link_to_template_map.contains_key(policy_name));
                 self.link_to_template_map
                     .insert(policy_name.to_owned(), template_name.clone());
             }
