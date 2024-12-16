@@ -105,7 +105,7 @@ fn fmt_vec<T: Display>(f: &mut std::fmt::Formatter<'_>, ets: NonEmpty<T>) -> std
     write!(f, "[{contents}]")
 }
 
-impl<N: Display> Display for json_schema::EntityType<N> {
+impl<N: Display> Display for json_schema::CommonEntityType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(non_empty) = non_empty_slice(&self.member_of_types) {
             write!(f, " in ")?;

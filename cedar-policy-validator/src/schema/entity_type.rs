@@ -34,30 +34,33 @@ use cedar_policy_core::ast;
 /// the struct are the same as the schema entity type structure, but the
 /// `member_of` relation is reversed to instead be `descendants`.
 #[derive(Clone, Debug, Serialize)]
-pub struct ValidatorEntityType {
-    /// The name of the entity type.
-    pub(crate) name: EntityType,
+pub enum ValidatorEntityType {
+    Common {
+        /// The name of the entity type.
+        name: EntityType,
 
-    /// The set of entity types that can be members of this entity type. When
-    /// this structure is initially constructed, the field will contain direct
-    /// children, but it will be updated to contain the closure of all
-    /// descendants before it is used in any validation.
-    pub descendants: HashSet<EntityType>,
+        /// The set of entity types that can be members of this entity type. When
+        /// this structure is initially constructed, the field will contain direct
+        /// children, but it will be updated to contain the closure of all
+        /// descendants before it is used in any validation.
+        descendants: HashSet<EntityType>,
 
-    /// The attributes associated with this entity.
-    pub(crate) attributes: Attributes,
+        /// The attributes associated with this entity.
+        attributes: Attributes,
 
-    /// Indicates that this entity type may have additional attributes
-    /// other than the declared attributes that may be accessed under partial
-    /// schema validation. We do not know if they are present, and do not know
-    /// their type when they are present. Attempting to access an undeclared
-    /// attribute under standard validation is an error regardless of this flag.
-    pub(crate) open_attributes: OpenTag,
+        /// Indicates that this entity type may have additional attributes
+        /// other than the declared attributes that may be accessed under partial
+        /// schema validation. We do not know if they are present, and do not know
+        /// their type when they are present. Attempting to access an undeclared
+        /// attribute under standard validation is an error regardless of this flag.
+        open_attributes: OpenTag,
 
-    /// Tag type for this entity type. `None` indicates that entities of this
-    /// type are not allowed to have tags.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) tags: Option<Type>,
+        /// Tag type for this entity type. `None` indicates that entities of this
+        /// type are not allowed to have tags.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tags: Option<Type>,
+    },
+    Enum(Vec<SmolStr>),
 }
 
 impl ValidatorEntityType {

@@ -289,7 +289,7 @@ mod test {
             [
                 (
                     foo_type.parse().unwrap(),
-                    json_schema::EntityType {
+                    json_schema::CommonEntityType {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
@@ -298,7 +298,7 @@ mod test {
                 ),
                 (
                     bar_type.parse().unwrap(),
-                    json_schema::EntityType {
+                    json_schema::CommonEntityType {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,

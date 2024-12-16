@@ -407,6 +407,34 @@ impl NamespaceDefinition<ConditionalName> {
     }
 }
 
+/// ...
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
+#[serde(untagged)]
+pub enum EntityTypeKind<N> {
+    /// ...
+    Common(CommonEntityType<N>),
+    /// ...
+    Enum {
+        #[serde(rename = "Enum")]
+        /// ...
+        choices: Vec<SmolStr>,
+    },
+}
+
+/// Represents the definition of a common type in the schema.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Deserialize)]
+#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
+pub struct EntityType<N> {
+    /// The referred type
+    #[serde(flatten)]
+    pub kind: EntityTypeKind<N>,
+    /// Annotations
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Annotations::is_empty")]
+    pub annotations: Annotations,
+}
+
 /// Represents the full definition of an entity type in the schema.
 /// Entity types describe the relationships in the entity store, including what
 /// entities can be members of groups of what types, and what attributes
@@ -421,7 +449,7 @@ impl NamespaceDefinition<ConditionalName> {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-pub struct EntityType<N> {
+pub struct CommonEntityType<N> {
     /// Entities of this [`EntityType`] are allowed to be members of entities of
     /// these types.
     #[serde(default)]
@@ -435,10 +463,6 @@ pub struct EntityType<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Type<N>>,
-    /// Annotations
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Annotations::is_empty")]
-    pub annotations: Annotations,
 }
 
 impl EntityType<RawName> {
@@ -447,18 +471,22 @@ impl EntityType<RawName> {
         self,
         ns: Option<&InternalName>,
     ) -> EntityType<ConditionalName> {
-        EntityType {
-            member_of_types: self
-                .member_of_types
-                .into_iter()
-                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // Only entity, not common, here for now; see #1064
-                .collect(),
-            shape: self.shape.conditionally_qualify_type_references(ns),
-            tags: self
-                .tags
-                .map(|ty| ty.conditionally_qualify_type_references(ns)),
-            annotations: self.annotations,
-        }
+        let Self { kind, annotations } = self;
+        let kind = match kind {
+            EntityTypeKind::Common(et) => EntityTypeKind::Common(CommonEntityType {
+                member_of_types: et
+                    .member_of_types
+                    .into_iter()
+                    .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // Only entity, not common, here for now; see #1064
+                    .collect(),
+                shape: et.shape.conditionally_qualify_type_references(ns),
+                tags: et
+                    .tags
+                    .map(|ty| ty.conditionally_qualify_type_references(ns)),
+            }),
+            EntityTypeKind::Enum { choices } => EntityTypeKind::Enum { choices },
+        };
+        EntityType { kind, annotations }
     }
 }
 
@@ -473,19 +501,28 @@ impl EntityType<ConditionalName> {
         self,
         all_defs: &AllDefs,
     ) -> std::result::Result<EntityType<InternalName>, TypeNotDefinedError> {
-        Ok(EntityType {
-            member_of_types: self
-                .member_of_types
-                .into_iter()
-                .map(|cname| cname.resolve(all_defs))
-                .collect::<std::result::Result<_, _>>()?,
-            shape: self.shape.fully_qualify_type_references(all_defs)?,
-            tags: self
-                .tags
-                .map(|ty| ty.fully_qualify_type_references(all_defs))
-                .transpose()?,
-            annotations: self.annotations,
-        })
+        let Self { kind, annotations } = self;
+        match kind {
+            EntityTypeKind::Common(et) => Ok(EntityType {
+                kind: EntityTypeKind::Common(CommonEntityType {
+                    member_of_types: et
+                        .member_of_types
+                        .into_iter()
+                        .map(|cname| cname.resolve(all_defs))
+                        .collect::<std::result::Result<_, _>>()?,
+                    shape: et.shape.fully_qualify_type_references(all_defs)?,
+                    tags: et
+                        .tags
+                        .map(|ty| ty.fully_qualify_type_references(all_defs))
+                        .transpose()?,
+                }),
+                annotations: annotations,
+            }),
+            EntityTypeKind::Enum { choices } => Ok(EntityType {
+                kind: EntityTypeKind::Enum { choices },
+                annotations,
+            }),
+        }
     }
 }
 
@@ -1834,7 +1871,7 @@ mod test {
             "memberOfTypes" : ["UserGroup"]
         }
         "#;
-        let et = serde_json::from_str::<EntityType<RawName>>(user).expect("Parse Error");
+        let et = serde_json::from_str::<CommonEntityType<RawName>>(user).expect("Parse Error");
         assert_eq!(et.member_of_types, vec!["UserGroup".parse().unwrap()]);
         assert_eq!(
             et.shape,
@@ -1850,7 +1887,7 @@ mod test {
         let src = r#"
               { }
         "#;
-        let et = serde_json::from_str::<EntityType<RawName>>(src).expect("Parse Error");
+        let et = serde_json::from_str::<CommonEntityType<RawName>>(src).expect("Parse Error");
         assert_eq!(et.member_of_types.len(), 0);
         assert_eq!(
             et.shape,
@@ -2242,7 +2279,7 @@ mod strengthened_types {
     use cool_asserts::assert_matches;
 
     use super::{
-        ActionEntityUID, ApplySpec, EntityType, Fragment, NamespaceDefinition, RawName, Type,
+        ActionEntityUID, ApplySpec, CommonEntityType, Fragment, NamespaceDefinition, RawName, Type,
     };
 
     /// Assert that `result` is an `Err`, and the error message matches `msg`
@@ -2385,28 +2422,28 @@ mod strengthened_types {
         {
            "memberOfTypes": [""]
         });
-        let schema: Result<EntityType<RawName>, _> = serde_json::from_value(src);
+        let schema: Result<CommonEntityType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name ``: unexpected end of input");
 
         let src = serde_json::json!(
         {
            "memberOfTypes": ["*"]
         });
-        let schema: Result<EntityType<RawName>, _> = serde_json::from_value(src);
+        let schema: Result<CommonEntityType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name `*`: unexpected token `*`");
 
         let src = serde_json::json!(
         {
            "memberOfTypes": ["A::"]
         });
-        let schema: Result<EntityType<RawName>, _> = serde_json::from_value(src);
+        let schema: Result<CommonEntityType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name `A::`: unexpected end of input");
 
         let src = serde_json::json!(
         {
            "memberOfTypes": ["::A"]
         });
-        let schema: Result<EntityType<RawName>, _> = serde_json::from_value(src);
+        let schema: Result<CommonEntityType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name `::A`: unexpected token `::`");
     }
 
@@ -2802,7 +2839,7 @@ mod test_json_roundtrip {
                 common_types: BTreeMap::new(),
                 entity_types: BTreeMap::from([(
                     "a".parse().unwrap(),
-                    EntityType {
+                    CommonEntityType {
                         member_of_types: vec!["a".parse().unwrap()],
                         shape: AttributesOrContext(Type::Type(TypeVariant::Record(RecordType {
                             attributes: BTreeMap::new(),
@@ -2848,7 +2885,7 @@ mod test_json_roundtrip {
                     common_types: BTreeMap::new(),
                     entity_types: BTreeMap::from([(
                         "a".parse().unwrap(),
-                        EntityType {
+                        CommonEntityType {
                             member_of_types: vec!["a".parse().unwrap()],
                             shape: AttributesOrContext(Type::Type(TypeVariant::Record(
                                 RecordType {
