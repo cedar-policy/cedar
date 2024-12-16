@@ -1914,8 +1914,6 @@ impl<'a> Typechecker<'a> {
                             .is_in(lhs_expr, rhs_expr),
                     );
                 }
-                let lhs_ty = lhs_expr.data().clone();
-                let rhs_ty = rhs_expr.data().clone();
                 let lhs_as_euid_lit = Typechecker::replace_action_var_with_euid(request_env, lhs);
                 let rhs_as_euid_lit = Typechecker::replace_action_var_with_euid(request_env, rhs);
                 match (lhs_as_euid_lit.expr_kind(), rhs_as_euid_lit.expr_kind()) {
@@ -1992,83 +1990,19 @@ impl<'a> Typechecker<'a> {
                     ),
                 }
                 .then_typecheck(|type_of_in, _| {
-                    if !self.mode.is_strict() {
-                        TypecheckAnswer::success(type_of_in)
-                    } else if matches!(type_of_in.data(), Some(Type::False)) {
+                    if self.mode.is_strict() && matches!(type_of_in.data(), Some(Type::False)) {
                         TypecheckAnswer::success(
                             ExprBuilder::with_data(Some(Type::False)).val(false),
                         )
-                    } else if matches!(type_of_in.data(), Some(Type::True)) {
+                    } else if self.mode.is_strict() && matches!(type_of_in.data(), Some(Type::True))
+                    {
                         TypecheckAnswer::success(ExprBuilder::with_data(Some(Type::True)).val(true))
                     } else {
-                        match (lhs_ty, rhs_ty) {
-                            (Some(lhs_ty), Some(rhs_ty)) => {
-                                match (
-                                    Self::get_as_single_entity_type(lhs_ty),
-                                    Self::get_as_single_entity_type(rhs_ty),
-                                ) {
-                                    (Some(lhs_name), Some(rhs_name)) => {
-                                        let lhs_ty_in_rhs_ty = self
-                                            .schema
-                                            .get_entity_type(&rhs_name)
-                                            .map(|ety| ety.descendants.contains(&lhs_name))
-                                            .unwrap_or(false);
-                                        // A schema may always declare that an action entity is a member of another action entity,
-                                        // regardless of their exact types (i.e., their namespaces), so we shouldn't treat it as an error.
-                                        let action_in_action =
-                                            lhs_name.is_action() && rhs_name.is_action();
-                                        if lhs_name == rhs_name
-                                            || action_in_action
-                                            || lhs_ty_in_rhs_ty
-                                        {
-                                            TypecheckAnswer::success(type_of_in)
-                                        } else {
-                                            // We could actually just return `Type::False`, but this is incurs a larger Dafny proof update.
-                                            type_errors.push(
-                                                ValidationError::hierarchy_not_respected(
-                                                    in_expr.source_loc().cloned(),
-                                                    self.policy_id.clone(),
-                                                    Some(lhs_name),
-                                                    Some(rhs_name),
-                                                ),
-                                            );
-                                            TypecheckAnswer::fail(type_of_in)
-                                        }
-                                    }
-                                    _ => {
-                                        type_errors.push(ValidationError::hierarchy_not_respected(
-                                            in_expr.source_loc().cloned(),
-                                            self.policy_id.clone(),
-                                            None,
-                                            None,
-                                        ));
-                                        TypecheckAnswer::fail(type_of_in)
-                                    }
-                                }
-                            }
-                            // An argument type is `None`, so one the arguments must have failed to typecheck already.
-                            // There's no other interesting error to report in this case.
-                            _ => TypecheckAnswer::fail(type_of_in),
-                        }
+                        TypecheckAnswer::success(type_of_in)
                     }
                 })
             })
         })
-    }
-
-    fn get_as_single_entity_type(ty: Type) -> Option<EntityType> {
-        match ty {
-            Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => lub.into_single_entity(),
-            Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => Some(name),
-            Type::Set {
-                element_type: Some(element_type),
-            } => match *element_type {
-                Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => lub.into_single_entity(),
-                Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => Some(name),
-                _ => None,
-            },
-            _ => None,
-        }
     }
 
     // Given an expression, if that expression is a literal or the `action`
