@@ -262,6 +262,8 @@ impl<'a> arbitrary::Arbitrary<'a> for UnreservedId {
 //
 // For now, internally, `AnyId`s are just owned `SmolString`s.
 #[derive(Serialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct AnyId(SmolStr);
 
 impl AnyId {

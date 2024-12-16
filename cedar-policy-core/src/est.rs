@@ -24,16 +24,17 @@ mod policy_set;
 pub use policy_set::*;
 mod scope_constraints;
 pub use scope_constraints::*;
+mod annotation;
+pub use annotation::*;
 
-use crate::ast;
 use crate::ast::EntityUID;
+use crate::ast::{self, Annotation};
 use crate::entities::json::{err::JsonDeserializationError, EntityUidJson};
 use crate::parser::cst;
 use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap};
 
 #[cfg(feature = "wasm")]
@@ -64,10 +65,8 @@ pub struct Policy {
     conditions: Vec<Clause>,
     /// annotations
     #[serde(default)]
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
-    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, string>"))]
-    annotations: BTreeMap<ast::AnyId, Option<SmolStr>>,
+    #[serde(skip_serializing_if = "Annotations::is_empty")]
+    annotations: Annotations,
 }
 
 /// Serde JSON structure for a `when` or `unless` clause in the EST format
@@ -151,7 +150,12 @@ impl TryFrom<cst::Policy> for Policy {
     fn try_from(policy: cst::Policy) -> Result<Policy, ParseErrors> {
         let maybe_effect = policy.effect.to_effect();
         let maybe_scope = policy.extract_scope();
-        let maybe_annotations = policy.get_ast_annotations(|v, _| v);
+        let maybe_annotations = policy.get_ast_annotations(|v, l| {
+            Some(Annotation {
+                val: v?,
+                loc: Some(l.clone()),
+            })
+        });
         let maybe_conditions = ParseErrors::transpose(policy.conds.into_iter().map(|node| {
             let (cond, loc) = node.into_inner();
             let cond = cond.ok_or_else(|| {
@@ -172,7 +176,7 @@ impl TryFrom<cst::Policy> for Policy {
             action: action.into(),
             resource: resource.into(),
             conditions,
-            annotations,
+            annotations: Annotations(annotations),
         })
     }
 }
@@ -261,8 +265,14 @@ impl Policy {
             id,
             None,
             self.annotations
+                .0
                 .into_iter()
-                .map(|(key, val)| (key, ast::Annotation::with_optional_value(val, None)))
+                .map(|(key, val)| {
+                    (
+                        key,
+                        ast::Annotation::with_optional_value(val.map(|v| v.val), None),
+                    )
+                })
                 .collect(),
             self.effect,
             self.principal.try_into()?,
@@ -306,13 +316,14 @@ impl From<ast::Policy> for Policy {
             action: ast.action_constraint().clone().into(),
             resource: ast.resource_constraint().into(),
             conditions: vec![ast.non_scope_constraints().clone().into()],
-            annotations: ast
-                .annotations()
-                // When converting from AST to EST, we will always interpret an
-                // empty-string annotation as an explicit `""` rather than
-                // `null` (which is implicitly equivalent to `""`).
-                .map(|(k, v)| (k.clone(), Some(v.val.clone())))
-                .collect(),
+            annotations: Annotations(
+                ast.annotations()
+                    // When converting from AST to EST, we will always interpret an
+                    // empty-string annotation as an explicit `""` rather than
+                    // `null` (which is implicitly equivalent to `""`).
+                    .map(|(k, v)| (k.clone(), Some(v.clone())))
+                    .collect(),
+            ),
         }
     }
 }
@@ -326,13 +337,14 @@ impl From<ast::Template> for Policy {
             action: ast.action_constraint().clone().into(),
             resource: ast.resource_constraint().clone().into(),
             conditions: vec![ast.non_scope_constraints().clone().into()],
-            annotations: ast
-                .annotations()
-                // When converting from AST to EST, we will always interpret an
-                // empty-string annotation as an explicit `""` rather than
-                // `null` (which is implicitly equivalent to `""`)
-                .map(|(k, v)| (k.clone(), Some(v.val.clone())))
-                .collect(),
+            annotations: Annotations(
+                ast.annotations()
+                    // When converting from AST to EST, we will always interpret an
+                    // empty-string annotation as an explicit `""` rather than
+                    // `null` (which is implicitly equivalent to `""`)
+                    .map(|(k, v)| (k.clone(), Some(v.clone())))
+                    .collect(),
+            ),
         }
     }
 }
@@ -345,10 +357,10 @@ impl<T: Clone> From<ast::Expr<T>> for Clause {
 
 impl std::fmt::Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (k, v) in self.annotations.iter() {
+        for (k, v) in self.annotations.0.iter() {
             write!(f, "@{k}")?;
             if let Some(v) = v {
-                write!(f, "(\"{}\")", v.escape_debug())?;
+                write!(f, "({v})")?;
             }
             writeln!(f)?;
         }

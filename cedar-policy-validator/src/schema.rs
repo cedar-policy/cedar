@@ -1361,6 +1361,7 @@ impl<'a> CommonTypeResolver<'a> {
                                     json_schema::TypeOfAttribute {
                                         required: attr_ty.required,
                                         ty: Self::resolve_type(resolve_table, attr_ty.ty)?,
+                                        annotations: attr_ty.annotations,
                                     },
                                 ))
                             })

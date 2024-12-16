@@ -32,7 +32,7 @@ impl<N: Display> Display for json_schema::Fragment<N> {
         for (ns, def) in &self.0 {
             match ns {
                 None => write!(f, "{def}")?,
-                Some(ns) => write!(f, "namespace {ns} {{\n{def}}}\n")?,
+                Some(ns) => write!(f, "{}namespace {ns} {{\n{}}}\n", def.annotations, def)?,
             }
         }
         Ok(())
@@ -42,13 +42,13 @@ impl<N: Display> Display for json_schema::Fragment<N> {
 impl<N: Display> Display for json_schema::NamespaceDefinition<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (n, ty) in &self.common_types {
-            writeln!(f, "type {n} = {ty};")?
+            writeln!(f, "{}type {n} = {};", ty.annotations, ty.ty)?
         }
         for (n, ty) in &self.entity_types {
-            writeln!(f, "entity {n}{ty};")?
+            writeln!(f, "{}entity {n}{};", ty.annotations, ty)?
         }
         for (n, a) in &self.actions {
-            writeln!(f, "action \"{}\"{a};", n.escape_debug())?
+            writeln!(f, "{}action \"{}\"{};", a.annotations, n.escape_debug(), a)?
         }
         Ok(())
     }
@@ -80,13 +80,14 @@ impl<N: Display> Display for json_schema::RecordType<N> {
         for (i, (n, ty)) in self.attributes.iter().enumerate() {
             write!(
                 f,
-                "\"{}\"{}: {}",
+                "{}\"{}\"{}: {}",
+                ty.annotations,
                 n.escape_debug(),
                 if ty.required { "" } else { "?" },
                 ty.ty
             )?;
             if i < (self.attributes.len() - 1) {
-                write!(f, ", ")?;
+                writeln!(f, ", ")?;
             }
         }
         write!(f, "}}")?;
@@ -242,6 +243,17 @@ mod tests {
 
     use crate::cedar_schema::parser::parse_cedar_schema_fragment;
 
+    #[track_caller]
+    fn test_round_trip(src: &str) {
+        let (cedar_schema, _) =
+            parse_cedar_schema_fragment(src, Extensions::none()).expect("should parse");
+        let printed_cedar_schema = cedar_schema.to_cedarschema().expect("should convert");
+        let (parsed_cedar_schema, _) =
+            parse_cedar_schema_fragment(&printed_cedar_schema, Extensions::none())
+                .expect("should parse");
+        assert_eq!(cedar_schema, parsed_cedar_schema);
+    }
+
     #[test]
     fn rfc_example() {
         let src = "entity User = {
@@ -250,12 +262,41 @@ mod tests {
           entity Document = {
             owner: User,
           } tags Set<String>;";
-        let (cedar_schema, _) =
-            parse_cedar_schema_fragment(src, Extensions::none()).expect("should parse");
-        let printed_cedar_schema = cedar_schema.to_cedarschema().expect("should convert");
-        let (parsed_cedar_schema, _) =
-            parse_cedar_schema_fragment(&printed_cedar_schema, Extensions::none())
-                .expect("should parse");
-        assert_eq!(cedar_schema, parsed_cedar_schema);
+        test_round_trip(src);
+    }
+
+    #[test]
+    fn annotations() {
+        let src = r#"@doc("this is the namespace")
+namespace TinyTodo {
+    @doc("a common type representing a task")
+    type Task = {
+        @doc("task id")
+        "id": Long,
+        "name": String,
+        "state": String,
+    };
+    @doc("a common type representing a set of tasks")
+    type Tasks = Set<Task>;
+
+    @doc("an entity type representing a list")
+    @docComment("any entity type is a child of type `Application`")
+    entity List in [Application] = {
+        @doc("editors of a list")
+        "editors": Team,
+        "name": String,
+        "owner": User,
+        @doc("readers of a list")
+        "readers": Team,
+        "tasks": Tasks,
+    };
+
+    @doc("actions that a user can operate on a list")
+    action DeleteList, GetList, UpdateList appliesTo {
+        principal: [User],
+        resource: [List]
+    };
+}"#;
+        test_round_trip(src);
     }
 }
