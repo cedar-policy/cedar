@@ -446,29 +446,32 @@ impl EntityTypesDef<ConditionalName> {
 /// references in `parents`, `attributes`, and `tags` may or may not be fully
 /// qualified yet, depending on `N`.
 #[derive(Debug, Clone)]
-pub struct EntityTypeFragment<N> {
-    /// Description of the attribute types for this entity type.
-    ///
-    /// This may contain references to common types which have not yet been
-    /// resolved/inlined (e.g., because they are not defined in this schema
-    /// fragment).
-    /// In the extreme case, this may itself be just a common type pointing to a
-    /// `Record` type defined in another fragment.
-    pub(super) attributes: json_schema::AttributesOrContext<N>,
-    /// Direct parent entity types for this entity type.
-    /// These entity types may be declared in a different namespace or schema
-    /// fragment.
-    ///
-    /// We will check for undeclared parent types when combining fragments into
-    /// a [`crate::ValidatorSchema`].
-    pub(super) parents: HashSet<N>,
-    /// Tag type for this entity type. `None` means no tags are allowed on this
-    /// entity type.
-    ///
-    /// This may contain references to common types which have not yet been
-    /// resolved/inlined (e.g., because they are not defined in this schema
-    /// fragment).
-    pub(super) tags: Option<json_schema::Type<N>>,
+pub enum EntityTypeFragment<N> {
+    Common {
+        /// Description of the attribute types for this entity type.
+        ///
+        /// This may contain references to common types which have not yet been
+        /// resolved/inlined (e.g., because they are not defined in this schema
+        /// fragment).
+        /// In the extreme case, this may itself be just a common type pointing to a
+        /// `Record` type defined in another fragment.
+        attributes: json_schema::AttributesOrContext<N>,
+        /// Direct parent entity types for this entity type.
+        /// These entity types may be declared in a different namespace or schema
+        /// fragment.
+        ///
+        /// We will check for undeclared parent types when combining fragments into
+        /// a [`crate::ValidatorSchema`].
+        parents: HashSet<N>,
+        /// Tag type for this entity type. `None` means no tags are allowed on this
+        /// entity type.
+        ///
+        /// This may contain references to common types which have not yet been
+        /// resolved/inlined (e.g., because they are not defined in this schema
+        /// fragment).
+        tags: Option<json_schema::Type<N>>,
+    },
+    Enum(Vec<SmolStr>),
 }
 
 impl EntityTypeFragment<ConditionalName> {

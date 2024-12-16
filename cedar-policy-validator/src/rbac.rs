@@ -482,7 +482,7 @@ mod test {
         let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 foo_type.parse().unwrap(),
-                json_schema::EntityType {
+                json_schema::CommonEntityType {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
@@ -518,7 +518,7 @@ mod test {
         let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 "foo_type".parse().unwrap(),
-                json_schema::EntityType {
+                json_schema::CommonEntityType {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
@@ -606,7 +606,7 @@ mod test {
         let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 p_name.parse().unwrap(),
-                json_schema::EntityType {
+                json_schema::CommonEntityType {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
@@ -632,7 +632,7 @@ mod test {
         let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 p_name.parse().unwrap(),
-                json_schema::EntityType {
+                json_schema::CommonEntityType {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
@@ -658,7 +658,7 @@ mod test {
         let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 p_name.parse().unwrap(),
-                json_schema::EntityType {
+                json_schema::CommonEntityType {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
@@ -1020,7 +1020,7 @@ mod test {
         let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 foo_type.parse().unwrap(),
-                json_schema::EntityType {
+                json_schema::CommonEntityType {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
@@ -1055,7 +1055,7 @@ mod test {
             [
                 (
                     principal_type.parse().unwrap(),
-                    json_schema::EntityType {
+                    json_schema::CommonEntityType {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
@@ -1064,7 +1064,7 @@ mod test {
                 ),
                 (
                     resource_type.parse().unwrap(),
-                    json_schema::EntityType {
+                    json_schema::CommonEntityType {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
@@ -1449,7 +1449,7 @@ mod test {
             [
                 (
                     principal_type.parse().unwrap(),
-                    json_schema::EntityType {
+                    json_schema::CommonEntityType {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
@@ -1458,7 +1458,7 @@ mod test {
                 ),
                 (
                     resource_type.parse().unwrap(),
-                    json_schema::EntityType {
+                    json_schema::CommonEntityType {
                         member_of_types: vec![resource_parent_type.parse().unwrap()],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
@@ -1467,7 +1467,7 @@ mod test {
                 ),
                 (
                     resource_parent_type.parse().unwrap(),
-                    json_schema::EntityType {
+                    json_schema::CommonEntityType {
                         member_of_types: vec![resource_grandparent_type.parse().unwrap()],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
@@ -1476,7 +1476,7 @@ mod test {
                 ),
                 (
                     resource_grandparent_type.parse().unwrap(),
-                    json_schema::EntityType {
+                    json_schema::CommonEntityType {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,

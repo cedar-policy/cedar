@@ -361,11 +361,11 @@ fn convert_id(node: Node<Id>) -> Result<UnreservedId, ToJsonSchemaError> {
 fn convert_entity_decl(
     e: Annotated<EntityDecl>,
 ) -> Result<
-    impl Iterator<Item = (UnreservedId, json_schema::EntityType<RawName>)>,
+    impl Iterator<Item = (UnreservedId, json_schema::CommonEntityType<RawName>)>,
     ToJsonSchemaErrors,
 > {
     // First build up the defined entity type
-    let etype = json_schema::EntityType {
+    let etype = json_schema::CommonEntityType {
         member_of_types: e
             .data
             .member_of_types
