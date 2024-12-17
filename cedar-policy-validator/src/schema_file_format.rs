@@ -688,7 +688,7 @@ fn is_partial_schema_default(b: &bool) -> bool {
 // do this automatically, but it returns an empty slice for the variants names
 // of `SchemaTypeVariant`.
 // https://docs.rs/serde-aux/latest/serde_aux/serde_introspection/fn.serde_introspect.html
-pub(crate) static SCHEMA_TYPE_VARIANT_TAGS: &[&str] = &[
+static SCHEMA_TYPE_VARIANT_TAGS: &[&str] = &[
     "String",
     "Long",
     "Boolean",
@@ -697,6 +697,10 @@ pub(crate) static SCHEMA_TYPE_VARIANT_TAGS: &[&str] = &[
     "Entity",
     "Extension",
 ];
+
+pub fn is_builtin_type_name(name: &str) -> bool {
+    SCHEMA_TYPE_VARIANT_TAGS.contains(&name)
+}
 
 impl SchemaType {
     /// Is this `SchemaType` an extension type, or does it contain one
