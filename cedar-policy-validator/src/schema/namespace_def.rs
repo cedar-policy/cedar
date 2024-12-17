@@ -38,9 +38,8 @@ use crate::{
     types::{AttributeType, Attributes, Type},
     ActionBehavior, ActionEntityUID, ActionType, NamespaceDefinition, SchemaType,
     SchemaTypeVariant, TypeOfAttribute,
+    is_builtin_type_name, types::OpenTag,
 };
-use crate::{is_builtin_type_name, types::OpenTag};
-
 /// The current schema format specification does not include multiple action entity
 /// types. All action entities are required to use a single `Action` entity
 /// type. However, the action entity type may be namespaced, so an action entity
