@@ -419,13 +419,13 @@ impl PartialRequestArgs {
         if let Some(action) = qjson
             .action
             .map(|s| {
-                s.parse()
+                s.parse::<EntityUid>()
                     .wrap_err_with(|| format!("failed to parse action {s} as entity Uid"))
             })
             .transpose()?
         {
-            builder = builder.action(action);
-        }
+            builder = builder.action(action.clone());
+        };
 
         if let Some(resource) = qjson
             .resource
@@ -441,7 +441,7 @@ impl PartialRequestArgs {
         if let Some(context) = qjson
             .context
             .map(|json| {
-                Context::from_json_value(json.clone(), schema.map(|s| (s, &action)))
+                Context::from_json_value(json.clone(), None)
                     .wrap_err_with(|| format!("fail to convert context json {json} to Context"))
             })
             .transpose()?
@@ -449,7 +449,12 @@ impl PartialRequestArgs {
             builder = builder.context(context);
         }
 
-        Ok(builder.build())
+        if let Some(schema) = schema {
+            let builder_schema = builder.schema(schema);
+            builder_schema.build().wrap_err_with(|| format!("failed to build request with validation:"))
+        } else {
+            Ok(builder.build())
+        }
     }
 }
 
