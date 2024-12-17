@@ -178,7 +178,7 @@ pub enum ExtensionFunctionLookupError {
 pub type Result<T> = std::result::Result<T, ExtensionFunctionLookupError>;
 
 #[cfg(test)]
-pub mod test {
+pub(crate) mod test {
     use super::*;
     use std::collections::HashSet;
 

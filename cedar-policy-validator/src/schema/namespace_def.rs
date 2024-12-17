@@ -32,15 +32,13 @@ use cedar_policy_core::{
 use smol_str::{SmolStr, ToSmolStr};
 
 use super::ValidatorApplySpec;
-use crate::types::OpenTag;
 use crate::{
     err::*,
-    schema_file_format,
-    types::{AttributeType, Attributes, Type},
+    is_builtin_type_name, schema_file_format,
+    types::{AttributeType, Attributes, OpenTag, Type},
     ActionBehavior, ActionEntityUID, ActionType, NamespaceDefinition, SchemaType,
-    SchemaTypeVariant, TypeOfAttribute, SCHEMA_TYPE_VARIANT_TAGS,
+    SchemaTypeVariant, TypeOfAttribute,
 };
-
 /// The current schema format specification does not include multiple action entity
 /// types. All action entities are required to use a single `Action` entity
 /// type. However, the action entity type may be namespaced, so an action entity
@@ -248,12 +246,6 @@ impl ValidatorNamespaceDef {
         })
     }
 
-    fn is_builtin_type_name(name: &SmolStr) -> bool {
-        SCHEMA_TYPE_VARIANT_TAGS
-            .iter()
-            .any(|type_name| name == type_name)
-    }
-
     fn build_type_defs(
         schema_file_type_def: HashMap<Id, SchemaType>,
         schema_namespace: Option<&Name>,
@@ -262,7 +254,7 @@ impl ValidatorNamespaceDef {
             .into_iter()
             .map(|(name, schema_ty)| -> Result<_> {
                 let name_str = name.clone().into_smolstr();
-                if Self::is_builtin_type_name(&name_str) {
+                if is_builtin_type_name(&name_str) {
                     return Err(SchemaError::DuplicateCommonType(name_str.to_string()));
                 }
                 let name =
