@@ -307,7 +307,7 @@ pub mod util {
 }
 
 #[cfg(test)]
-pub mod test {
+pub(crate) mod test {
     use super::*;
     use std::collections::HashSet;
 

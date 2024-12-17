@@ -698,7 +698,7 @@ impl PartialAuthorizationCall {
 // PANIC SAFETY unit tests
 #[allow(clippy::panic)]
 #[cfg(test)]
-pub mod test {
+mod test {
     use super::*;
 
     use crate::ffi::test_utils::*;

@@ -254,7 +254,7 @@ impl ValidatorSchema {
     pub fn ancestors<'a>(
         &'a self,
         ty: &'a EntityType,
-    ) -> Option<impl Iterator<Item = &EntityType> + 'a> {
+    ) -> Option<impl Iterator<Item = &'a EntityType> + 'a> {
         if self.entity_types.contains_key(ty) {
             Some(self.entity_types.values().filter_map(|ety| {
                 if ety.descendants.contains(ty) {
@@ -767,7 +767,7 @@ impl ValidatorSchema {
     /// includes all entity types that are descendants of the type of `entity`
     /// according  to the schema, and the type of `entity` itself because
     /// `entity in entity` evaluates to `true`.
-    pub(crate) fn get_entity_types_in<'a>(&'a self, entity: &'a EntityUID) -> Vec<&EntityType> {
+    pub(crate) fn get_entity_types_in<'a>(&'a self, entity: &'a EntityUID) -> Vec<&'a EntityType> {
         let mut descendants = self
             .get_entity_type(entity.entity_type())
             .map(|v_ety| v_ety.descendants.iter().collect::<Vec<_>>())
@@ -782,7 +782,7 @@ impl ValidatorSchema {
     pub(crate) fn get_entity_types_in_set<'a>(
         &'a self,
         euids: impl IntoIterator<Item = &'a EntityUID> + 'a,
-    ) -> impl Iterator<Item = &EntityType> {
+    ) -> impl Iterator<Item = &'a EntityType> {
         euids.into_iter().flat_map(|e| self.get_entity_types_in(e))
     }
 
