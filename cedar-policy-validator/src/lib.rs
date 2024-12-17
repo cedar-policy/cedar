@@ -154,7 +154,7 @@ impl Validator {
         &'a self,
         p: &'a Policy,
         mode: ValidationMode,
-    ) -> Option<impl Iterator<Item = ValidationError> + 'a> {
+    ) -> Option<impl Iterator<Item = ValidationError<'a>> + 'a> {
         // Ignore static policies since they are already handled by `validate_policy`
         if p.is_static() {
             return None;

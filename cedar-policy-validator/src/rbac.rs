@@ -38,7 +38,7 @@ impl Validator {
     pub(crate) fn validate_entity_types<'a>(
         &'a self,
         template: &'a Template,
-    ) -> impl Iterator<Item = ValidationError> + 'a {
+    ) -> impl Iterator<Item = ValidationError<'a>> + 'a {
         // All valid entity types in the schema. These will be used to generate
         // suggestion when an entity type is not found.
         let known_entity_types = self
@@ -89,7 +89,7 @@ impl Validator {
     pub(crate) fn validate_action_ids<'a>(
         &'a self,
         template: &'a Template,
-    ) -> impl Iterator<Item = ValidationError> + 'a {
+    ) -> impl Iterator<Item = ValidationError<'a>> + 'a {
         // Valid action id names that will be used to generate suggestions if an
         // action id is not found
         let known_action_ids = self
@@ -354,7 +354,7 @@ impl Validator {
     pub(crate) fn get_apply_specs_for_action<'a>(
         &'a self,
         action_constraint: &'a ActionConstraint,
-    ) -> impl Iterator<Item = &ValidatorApplySpec> + 'a {
+    ) -> impl Iterator<Item = &'a ValidatorApplySpec> + 'a {
         self.get_actions_satisfying_constraint(action_constraint)
             // Get the action type if the id string exists, and then the
             // applies_to list.

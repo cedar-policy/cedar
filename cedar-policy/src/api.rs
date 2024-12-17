@@ -1710,7 +1710,7 @@ impl Schema {
     pub fn ancestors<'a>(
         &'a self,
         ty: &'a EntityTypeName,
-    ) -> Option<impl Iterator<Item = &EntityTypeName> + 'a> {
+    ) -> Option<impl Iterator<Item = &'a EntityTypeName> + 'a> {
         self.0
             .ancestors(&ty.0)
             .map(|iter| iter.map(RefCast::ref_cast))
