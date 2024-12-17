@@ -1577,7 +1577,7 @@ pub enum Var {
 }
 
 #[cfg(test)]
-pub mod var_generator {
+pub(crate) mod var_generator {
     use super::Var;
     #[cfg(test)]
     pub fn all_vars() -> impl Iterator<Item = Var> {

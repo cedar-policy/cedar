@@ -634,7 +634,7 @@ pub(super) struct WithWarnings<T> {
 // Also disable some other clippy lints that are unimportant for testing code
 #[allow(clippy::module_name_repetitions, clippy::missing_panics_doc)]
 #[cfg(test)]
-pub mod test_utils {
+pub(crate) mod test_utils {
     use super::*;
 
     /// Assert that an error has the specified message and help fields.
