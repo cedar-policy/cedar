@@ -75,7 +75,7 @@ pub fn levenshtein_distance(word1: &str, word2: &str) -> usize {
 }
 
 #[cfg(test)]
-pub mod test {
+mod test {
     use super::*;
 
     ///the key differs by 1 letter from a word in words
