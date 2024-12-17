@@ -34,11 +34,10 @@ use smol_str::{SmolStr, ToSmolStr};
 use super::ValidatorApplySpec;
 use crate::{
     err::*,
-    schema_file_format,
-    types::{AttributeType, Attributes, Type, OpenTag},
+    is_builtin_type_name, schema_file_format,
+    types::{AttributeType, Attributes, OpenTag, Type},
     ActionBehavior, ActionEntityUID, ActionType, NamespaceDefinition, SchemaType,
     SchemaTypeVariant, TypeOfAttribute,
-    is_builtin_type_name,
 };
 /// The current schema format specification does not include multiple action entity
 /// types. All action entities are required to use a single `Action` entity
