@@ -35,10 +35,10 @@ use super::ValidatorApplySpec;
 use crate::{
     err::*,
     schema_file_format,
-    types::{AttributeType, Attributes, Type},
+    types::{AttributeType, Attributes, Type, OpenTag},
     ActionBehavior, ActionEntityUID, ActionType, NamespaceDefinition, SchemaType,
     SchemaTypeVariant, TypeOfAttribute,
-    is_builtin_type_name, types::OpenTag,
+    is_builtin_type_name,
 };
 /// The current schema format specification does not include multiple action entity
 /// types. All action entities are required to use a single `Action` entity
