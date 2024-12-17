@@ -297,7 +297,7 @@ impl Validator {
     pub(crate) fn get_apply_specs_for_action<'a>(
         &'a self,
         action_constraint: &'a ActionConstraint,
-    ) -> impl Iterator<Item = &ValidatorApplySpec<ast::EntityType>> + 'a {
+    ) -> impl Iterator<Item = &'a ValidatorApplySpec<ast::EntityType>> + 'a {
         self.get_actions_satisfying_constraint(action_constraint)
             // Get the action type if the id string exists, and then the
             // applies_to list.
