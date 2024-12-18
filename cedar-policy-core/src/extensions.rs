@@ -99,11 +99,16 @@ impl Extensions<'static> {
         &EXTENSIONS_NONE
     }
 
-    /// Iterate over extension types that support operator overloading
+    /// Obtain the non-empty vector of types supporting operator overloading
     pub fn types_with_operator_overloading() -> NonEmpty<Name> {
         // PANIC SAFETY: There are more than one element in `TYPES_WITH_OPERATOR_OVERLOADING`
         #[allow(clippy::unwrap_used)]
         NonEmpty::collect(TYPES_WITH_OPERATOR_OVERLOADING.iter().cloned()).unwrap()
+    }
+
+    /// Iterate over extension types that support operator overloading
+    pub fn iter_type_with_operator_overloading() -> impl Iterator<Item = &'static Name> {
+        TYPES_WITH_OPERATOR_OVERLOADING.iter()
     }
 }
 

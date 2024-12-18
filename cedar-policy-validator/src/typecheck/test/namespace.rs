@@ -148,7 +148,7 @@ fn namespaced_entity_can_type_error() {
         ValidationError::expected_one_of_types(
             get_loc(src, r#"N::S::Foo::"alice""#),
             expr_id_placeholder(),
-            std::iter::once(Type::primitive_long()),
+            vec![Type::primitive_long()],
             Type::named_entity_reference_from_str("N::S::Foo"),
             None,
         )
