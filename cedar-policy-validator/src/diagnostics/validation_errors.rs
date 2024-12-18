@@ -174,7 +174,7 @@ pub struct UnexpectedType {
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// Type(s) which were expected
-    pub expected: BTreeSet<Type>,
+    pub expected: Vec<Type>,
     /// Type which was encountered
     pub actual: Type,
     /// Optional help for resolving the error

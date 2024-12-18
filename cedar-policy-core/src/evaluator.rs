@@ -31,7 +31,7 @@ pub use err::EvaluationError;
 pub(crate) use err::*;
 use evaluation_errors::*;
 use itertools::Either;
-use nonempty::{nonempty, NonEmpty};
+use nonempty::nonempty;
 use smol_str::SmolStr;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -427,9 +427,11 @@ impl<'e> Evaluator<'e> {
                             (ValueKind::ExtensionValue(x), _) if x.supports_operator_overloading() => Err(EvaluationError::type_error_single(Type::Extension { name: x.typename() }, &arg2)),
                             (_, ValueKind::ExtensionValue(y)) if y.supports_operator_overloading() => Err(EvaluationError::type_error_single(Type::Extension { name: y.typename() }, &arg1)),
                             (ValueKind::ExtensionValue(x), ValueKind::ExtensionValue(y)) if x.typename() == y.typename() => Err(EvaluationError::type_error_with_advice(Extensions::types_with_operator_overloading().map(|name| Type::Extension { name} ), &arg1, "Only extension types `datetime` and `duration` support operator overloading".to_string())),
-                            // PANIC SAFETY: we're collecting a non-empty vec
-                            #[allow(clippy::unwrap_used)]
-                            _ => Err(EvaluationError::type_error_with_advice(NonEmpty::collect(Extensions::types_with_operator_overloading().map(|name| Type::Extension { name} ).into_iter().chain(std::iter::once(Type::Long))).unwrap(), &arg1, "Only `Long` and extension types `datetime`, `duration` support comparison".to_string()))
+                            _ => {
+                                let mut expected_types = Extensions::types_with_operator_overloading().map(|name| Type::Extension { name });
+                                expected_types.push(Type::Long);
+                                Err(EvaluationError::type_error_with_advice(expected_types, &arg1, "Only `Long` and extension types `datetime`, `duration` support comparison".to_string()))
+                            }
                         }
                     }
                     BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
