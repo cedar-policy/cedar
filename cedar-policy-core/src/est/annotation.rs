@@ -25,6 +25,7 @@ extern crate tsify;
 /// Similar to [`ast::Annotations`] but allow annotation value to be `null`
 #[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Annotations(
     #[serde(default)]
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
