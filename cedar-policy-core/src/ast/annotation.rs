@@ -26,6 +26,7 @@ use super::AnyId;
 
 /// Struct which holds the annotations for a policy
 #[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Annotations(
     #[serde(default)]
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
@@ -163,5 +164,19 @@ impl From<&Annotation> for crate::ast::proto::Annotation {
         Self {
             val: v.val.to_string(),
         }
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a> arbitrary::Arbitrary<'a> for Annotation {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self {
+            val: u.arbitrary::<&str>()?.into(),
+            loc: None,
+        })
+    }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+        <&str as arbitrary::Arbitrary>::size_hint(depth)
     }
 }

@@ -1787,15 +1787,16 @@ impl<'a> arbitrary::Arbitrary<'a> for TypeOfAttribute<RawName> {
         Ok(Self {
             ty: u.arbitrary::<Type<RawName>>()?,
             required: u.arbitrary()?,
-            annotations: cedar_policy_core::est::Annotations::new(),
+            annotations: u.arbitrary()?,
         })
     }
 
     fn size_hint(depth: usize) -> (usize, Option<usize>) {
-        arbitrary::size_hint::and(
+        arbitrary::size_hint::and_all(&[
             <Type<RawName> as arbitrary::Arbitrary>::size_hint(depth),
             <bool as arbitrary::Arbitrary>::size_hint(depth),
-        )
+            <cedar_policy_core::est::Annotations as arbitrary::Arbitrary>::size_hint(depth),
+        ])
     }
 }
 
