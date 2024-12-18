@@ -408,7 +408,8 @@ mod fails_empty_schema {
                 Extensions::types_with_operator_overloading()
                     .into_iter()
                     .map(Type::extension)
-                    .chain(std::iter::once(Type::primitive_long())),
+                    .chain(std::iter::once(Type::primitive_long()))
+                    .collect(),
                 Type::primitive_string(),
                 None,
             )],
