@@ -3588,6 +3588,7 @@ pub(crate) mod test {
 mod test_579; // located in separate file test_579.rs
 
 #[cfg(test)]
+#[allow(clippy::cognitive_complexity)]
 mod test_rfc70 {
     use super::test::utils::*;
     use super::ValidatorSchema;
@@ -4578,6 +4579,7 @@ mod test_rfc70 {
 
 /// Tests involving entity tags (RFC 82)
 #[cfg(test)]
+#[allow(clippy::cognitive_complexity)]
 mod entity_tags {
     use super::{test::utils::*, *};
     use cedar_policy_core::{

@@ -444,6 +444,7 @@ pub fn extension() -> Extension {
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 #[cfg(test)]
+#[allow(clippy::cognitive_complexity)]
 mod tests {
     use super::*;
     use crate::ast::{Expr, Type, Value};

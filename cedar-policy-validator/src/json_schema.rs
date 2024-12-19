@@ -2774,8 +2774,7 @@ mod test_json_roundtrip {
                 entity_types: BTreeMap::new(),
                 actions: BTreeMap::new(),
                 annotations: Annotations::new(),
-            }
-            .into(),
+            },
         )]));
         roundtrip(fragment);
     }
@@ -2789,8 +2788,7 @@ mod test_json_roundtrip {
                 entity_types: BTreeMap::new(),
                 actions: BTreeMap::new(),
                 annotations: Annotations::new(),
-            }
-            .into(),
+            },
         )]));
         roundtrip(fragment);
     }
@@ -2811,8 +2809,7 @@ mod test_json_roundtrip {
                         }))),
                         tags: None,
                         annotations: Annotations::new(),
-                    }
-                    .into(),
+                    },
                 )]),
                 actions: BTreeMap::from([(
                     "action".into(),
@@ -2830,12 +2827,10 @@ mod test_json_roundtrip {
                         }),
                         member_of: None,
                         annotations: Annotations::new(),
-                    }
-                    .into(),
+                    },
                 )]),
                 annotations: Annotations::new(),
-            }
-            .into(),
+            },
         )]));
         roundtrip(fragment);
     }
@@ -2859,13 +2854,11 @@ mod test_json_roundtrip {
                             ))),
                             tags: None,
                             annotations: Annotations::new(),
-                        }
-                        .into(),
+                        },
                     )]),
                     actions: BTreeMap::new(),
                     annotations: Annotations::new(),
-                }
-                .into(),
+                },
             ),
             (
                 None,
@@ -2888,12 +2881,10 @@ mod test_json_roundtrip {
                             }),
                             member_of: None,
                             annotations: Annotations::new(),
-                        }
-                        .into(),
+                        },
                     )]),
                     annotations: Annotations::new(),
-                }
-                .into(),
+                },
             ),
         ]));
         roundtrip(fragment);
