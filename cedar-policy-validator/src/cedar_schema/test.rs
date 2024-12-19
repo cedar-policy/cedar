@@ -434,7 +434,7 @@ namespace Baz {action "Foo" appliesTo {
             common_types: BTreeMap::new(),
             entity_types: BTreeMap::from([(
                 "a".parse().unwrap(),
-                json_schema::EntityType::<RawName> {
+                json_schema::CommonEntityType::<RawName> {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
@@ -631,7 +631,7 @@ namespace Baz {action "Foo" appliesTo {
     }
 
     #[track_caller]
-    fn assert_empty_record<N: std::fmt::Debug>(etyp: &json_schema::EntityType<N>) {
+    fn assert_empty_record<N: std::fmt::Debug>(etyp: &json_schema::CommonEntityType<N>) {
         assert!(etyp.shape.is_empty_record());
     }
 

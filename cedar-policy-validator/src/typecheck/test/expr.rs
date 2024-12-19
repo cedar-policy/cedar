@@ -64,7 +64,7 @@ fn slot_typechecks() {
 
 #[test]
 fn slot_in_typechecks() {
-    let etype = json_schema::EntityType {
+    let etype = json_schema::CommonEntityType {
         member_of_types: vec![],
         shape: json_schema::AttributesOrContext::default(),
         tags: None,
@@ -95,7 +95,7 @@ fn slot_in_typechecks() {
 
 #[test]
 fn slot_equals_typechecks() {
-    let etype = json_schema::EntityType {
+    let etype = json_schema::CommonEntityType {
         member_of_types: vec![],
         shape: json_schema::AttributesOrContext::default(),
         tags: None,
