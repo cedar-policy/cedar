@@ -94,6 +94,11 @@ impl TryInto<ValidatorSchemaFragment<ConditionalName, ConditionalName>>
 }
 
 impl<N, A> ValidatorSchemaFragment<N, A> {
+    /// Get an iterator of [`ValidatorNamespaceDef`] contained in this [`ValidatorSchemaFragment`]
+    pub fn namespace_definitions(&self) -> impl Iterator<Item = &ValidatorNamespaceDef<N, A>> {
+        self.0.iter()
+    }
+
     /// Construct a [`ValidatorSchemaFragment`] from multiple [`ValidatorNamespaceDef`]s
     pub fn from_namespaces(
         namespaces: impl IntoIterator<Item = ValidatorNamespaceDef<N, A>>,

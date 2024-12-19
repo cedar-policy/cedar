@@ -1362,6 +1362,29 @@ pub struct SchemaFragment {
 }
 
 impl SchemaFragment {
+    /// Get annotations on namespace definitions
+    /// There do not exist any namespace-level annotations on the empty
+    /// namespace
+    pub fn namespace_annotations(
+        &self,
+    ) -> impl Iterator<Item = (EntityNamespace, impl Iterator<Item = (&str, &str)>)> {
+        self.value.namespace_definitions().filter_map(|ns| {
+            let annotations = || {
+                ns.annotations()
+                    .map(|(key, value)| (key.as_ref(), value.val.as_str()))
+            };
+            match ns.namespace().cloned().map(ast::Name::try_from) {
+                Some(Ok(n)) => Some((EntityNamespace(n), annotations())),
+                None | Some(Err(_)) => {
+                    // There are no namespace-level annotations on the empty
+                    // namespace and there is no need to show annotations of the
+                    // built-in namespace.
+                    None
+                }
+            }
+        })
+    }
+
     /// Extract namespaces defined in this [`SchemaFragment`].
     ///
     /// `None` indicates the empty namespace.

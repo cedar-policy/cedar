@@ -21,7 +21,7 @@ use std::collections::{hash_map::Entry, BTreeMap, HashMap, HashSet};
 
 use cedar_policy_core::{
     ast::{
-        EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name,
+        self, EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name,
         PartialValueSerializedAsExpr, UnreservedId,
     },
     entities::{json::err::JsonDeserializationErrorContext, CedarValueJson},
@@ -87,6 +87,8 @@ pub struct ValidatorNamespaceDef<N, A> {
     pub(super) entity_types: EntityTypesDef<N>,
     /// Action declarations.
     pub(super) actions: ActionsDef<N, A>,
+    /// Annotations
+    pub(super) annotations: ast::Annotations,
 }
 
 impl<N, A> ValidatorNamespaceDef<N, A> {
@@ -119,6 +121,11 @@ impl<N, A> ValidatorNamespaceDef<N, A> {
 }
 
 impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
+    /// Get annotations of this [`ValidatorNamespaceDef<ConditionalName>`]
+    pub fn annotations(&self) -> impl Iterator<Item = (&ast::AnyId, &ast::Annotation)> {
+        self.annotations.iter()
+    }
+
     /// Construct a new [`ValidatorNamespaceDef<ConditionalName>`] from the raw [`json_schema::NamespaceDefinition`]
     pub fn from_namespace_definition(
         namespace: Option<InternalName>,
@@ -149,6 +156,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
             common_types,
             entity_types,
             actions,
+            annotations: namespace_def.annotations.into(),
         })
     }
 
@@ -165,6 +173,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
             common_types,
             entity_types: EntityTypesDef::new(),
             actions: ActionsDef::new(),
+            annotations: ast::Annotations::new(),
         })
     }
 
@@ -184,6 +193,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
             common_types,
             entity_types: EntityTypesDef::new(),
             actions: ActionsDef::new(),
+            annotations: ast::Annotations::new(),
         }
     }
 
@@ -207,6 +217,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
                 common_types,
                 entity_types,
                 actions,
+                annotations: self.annotations,
             }),
             (res1, res2, res3) => {
                 // PANIC SAFETY: at least one of the results is `Err`, so the input to `NonEmpty::collect()` cannot be an empty iterator
