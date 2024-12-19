@@ -107,6 +107,11 @@ where
         raw.into_iter()
             .map(|(key, value)| {
                 let key = if key.is_empty() {
+                    if !value.annotations.is_empty() {
+                        Err(serde::de::Error::custom(format!(
+                            "annotations are not allowed on the empty namespace"
+                        )))?
+                    }
                     None
                 } else {
                     Some(Name::from_normalized_str(&key).map_err(|err| {
@@ -3054,10 +3059,28 @@ mod annotations {
     use super::Fragment;
 
     #[test]
-    fn basic() {
+    fn empty_namespace() {
         let src = serde_json::json!(
         {
            "" : {
+            "entityTypes": {},
+            "actions": {},
+            "annotations": {
+                "doc": "this is a doc"
+            }
+           }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(err) => {
+            assert_eq!(&err.to_string(), "annotations are not allowed on the empty namespace");
+        });
+    }
+
+    #[test]
+    fn basic() {
+        let src = serde_json::json!(
+        {
+           "N" : {
             "entityTypes": {},
             "actions": {},
             "annotations": {
@@ -3070,7 +3093,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-           "" : {
+           "N" : {
             "entityTypes": {
                 "a": {
                     "annotations": {
@@ -3095,7 +3118,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-           "" : {
+           "N" : {
             "entityTypes": {
                 "a": {
                     "annotations": {
@@ -3127,7 +3150,7 @@ mod annotations {
         assert_matches!(schema, Ok(_));
 
         let src = serde_json::json!({
-            "": {
+            "N": {
             "entityTypes": {},
             "actions": {},
             "commonTypes": {
@@ -3155,7 +3178,7 @@ mod annotations {
         assert_matches!(schema, Ok(_));
 
         let src = serde_json::json!({
-            "": {
+            "N": {
                 "entityTypes": {
                     "User" : {
                         "shape" : {
@@ -3182,7 +3205,7 @@ mod annotations {
 
         // nested record
         let src = serde_json::json!({
-            "": {
+            "N": {
                 "entityTypes": {
                     "User" : {
                         "shape" : {
@@ -3243,7 +3266,7 @@ mod annotations {
     fn unknown_fields() {
         let src = serde_json::json!(
         {
-            "": {
+            "N": {
                 "entityTypes": {
             "UserGroup": {
                 "shape44": {
@@ -3260,7 +3283,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-            "": {
+            "N": {
                 "entityTypes": {},
                 "actions": {},
                 "commonTypes": {
@@ -3278,7 +3301,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-            "": {
+            "N": {
                 "entityTypes": {},
                 "actions": {},
                 "commonTypes": {
@@ -3293,7 +3316,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-            "": {
+            "N": {
                 "entityTypes": {},
                 "actions": {},
                 "commonTypes": {
@@ -3314,7 +3337,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-            "": {
+            "N": {
                 "entityTypes": {},
                 "actions": {},
                 "commonTypes": {
@@ -3343,7 +3366,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-            "": {
+            "N": {
                 "entityTypes": {
             "UserGroup": {
                 "shape": {
@@ -3363,7 +3386,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-            "": {
+            "N": {
                 "entityTypes": {},
                 "actions": {
                     "a": {
@@ -3381,7 +3404,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-           "" : {
+           "N" : {
             "entityTypes": {},
             "actions": {},
             "foo": "",
@@ -3412,7 +3435,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-           "" : {
+           "N" : {
             "entityTypes": {},
             "actions": {},
             "commonTypes": {
