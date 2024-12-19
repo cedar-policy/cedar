@@ -225,14 +225,14 @@ impl ValidationError {
     pub(crate) fn expected_one_of_types(
         source_loc: Option<Loc>,
         policy_id: PolicyID,
-        expected: impl IntoIterator<Item = Type>,
+        expected: Vec<Type>,
         actual: Type,
         help: Option<validation_errors::UnexpectedTypeHelp>,
     ) -> Self {
         validation_errors::UnexpectedType {
             source_loc,
             policy_id,
-            expected: expected.into_iter().collect::<BTreeSet<_>>(),
+            expected,
             actual,
             help,
         }

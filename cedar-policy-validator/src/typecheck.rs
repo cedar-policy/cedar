@@ -1245,8 +1245,8 @@ impl<'a> Typechecker<'a> {
             }
 
             BinaryOp::Less | BinaryOp::LessEq => {
-                let expected_types = Extensions::types_with_operator_overloading()
-                    .into_iter()
+                let expected_types = Extensions::iter_type_with_operator_overloading()
+                    .cloned()
                     .map(Type::extension)
                     .chain(std::iter::once(Type::primitive_long()))
                     .collect_vec();

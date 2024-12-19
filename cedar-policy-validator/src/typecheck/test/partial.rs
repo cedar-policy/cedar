@@ -405,11 +405,11 @@ mod fails_empty_schema {
             [ValidationError::expected_one_of_types(
                 get_loc(src, r#""a""#),
                 PolicyID::from_string("policy0"),
-                std::iter::once(Type::primitive_long()).chain(
-                    Extensions::types_with_operator_overloading()
-                        .into_iter()
-                        .map(Type::extension),
-                ),
+                Extensions::types_with_operator_overloading()
+                    .into_iter()
+                    .map(Type::extension)
+                    .chain(std::iter::once(Type::primitive_long()))
+                    .collect(),
                 Type::primitive_string(),
                 None,
             )],
@@ -653,11 +653,11 @@ mod fail_partial_schema {
             [ValidationError::expected_one_of_types(
                 get_loc(src, "principal.name"),
                 PolicyID::from_string("policy0"),
-                std::iter::once(Type::primitive_long()).chain(
-                    Extensions::types_with_operator_overloading()
-                        .into_iter()
-                        .map(Type::extension),
-                ),
+                Extensions::types_with_operator_overloading()
+                    .into_iter()
+                    .map(Type::extension)
+                    .chain(std::iter::once(Type::primitive_long()))
+                    .collect(),
                 Type::primitive_string(),
                 None,
             )],

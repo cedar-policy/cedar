@@ -34,6 +34,7 @@ mod names {
 
     lazy_static::lazy_static! {
         /// Extension type names that support operator overloading
+        // INVARIANT: this set must not be empty.
         pub static ref TYPES_WITH_OPERATOR_OVERLOADING : BTreeSet<Name> =
             BTreeSet::from_iter(
                 [Name::parse_unqualified_name("datetime").expect("valid identifier"),

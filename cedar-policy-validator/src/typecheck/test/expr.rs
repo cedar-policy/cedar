@@ -653,7 +653,7 @@ fn has_typecheck_fails() {
         ValidationError::expected_one_of_types(
             get_loc(src, "true"),
             expr_id_placeholder(),
-            [Type::any_entity_reference(), Type::any_record()],
+            vec![Type::any_entity_reference(), Type::any_record()],
             Type::singleton_boolean(true),
             None,
         )
@@ -701,7 +701,7 @@ fn record_get_attr_typecheck_fails() {
         ValidationError::expected_one_of_types(
             get_loc(src, "2"),
             expr_id_placeholder(),
-            [Type::any_entity_reference(), Type::any_record()],
+            vec![Type::any_entity_reference(), Type::any_record()],
             Type::primitive_long(),
             None,
         )
@@ -821,7 +821,7 @@ fn in_typecheck_fails() {
             ValidationError::expected_one_of_types(
                 get_loc(src, "true"),
                 expr_id_placeholder(),
-                [
+                vec![
                     Type::set(Type::any_entity_reference()),
                     Type::any_entity_reference(),
                 ],
@@ -1115,12 +1115,10 @@ fn less_than_typechecks() {
 
 #[test]
 fn less_than_typecheck_fails() {
-    let expected_types = std::iter::once(Type::primitive_long())
-        .chain(
-            Extensions::types_with_operator_overloading()
-                .into_iter()
-                .map(Type::extension),
-        )
+    let expected_types = Extensions::types_with_operator_overloading()
+        .into_iter()
+        .map(Type::extension)
+        .chain(std::iter::once(Type::primitive_long()))
         .collect_vec();
     let src = "true < false";
     let errors =
