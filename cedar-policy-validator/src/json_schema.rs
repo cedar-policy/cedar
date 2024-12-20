@@ -341,7 +341,7 @@ impl NamespaceDefinition<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&InternalName>,
+        ns: Option<&RawName>,
     ) -> NamespaceDefinition<ConditionalName> {
         NamespaceDefinition {
             common_types: self
@@ -450,7 +450,7 @@ impl EntityType<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&InternalName>,
+        ns: Option<&RawName>,
     ) -> EntityType<ConditionalName> {
         EntityType {
             member_of_types: self
@@ -545,7 +545,7 @@ impl AttributesOrContext<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&InternalName>,
+        ns: Option<&RawName>,
     ) -> AttributesOrContext<ConditionalName> {
         AttributesOrContext(self.0.conditionally_qualify_type_references(ns))
     }
@@ -606,7 +606,7 @@ impl ActionType<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&InternalName>,
+        ns: Option<&RawName>,
     ) -> ActionType<ConditionalName> {
         ActionType {
             attributes: self.attributes,
@@ -683,7 +683,7 @@ impl ApplySpec<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&InternalName>,
+        ns: Option<&RawName>,
     ) -> ApplySpec<ConditionalName> {
         ApplySpec {
             resource_types: self
@@ -786,7 +786,7 @@ impl ActionEntityUID<RawName> {
     /// (Conditionally) prefix this action entity UID's typename with the given namespace
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&InternalName>,
+        ns: Option<&RawName>,
     ) -> ActionEntityUID<ConditionalName> {
         // Upholding the INVARIANT on ActionEntityUID.ty: constructing an `ActionEntityUID<ConditionalName>`,
         // so in the constructed `ActionEntityUID`, `.ty` must be `Some` in all cases
@@ -1013,7 +1013,7 @@ impl Type<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&InternalName>,
+        ns: Option<&RawName>,
     ) -> Type<ConditionalName> {
         match self {
             Self::Type(tv) => Type::Type(tv.conditionally_qualify_type_references(ns)),
@@ -1418,7 +1418,7 @@ impl RecordType<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&InternalName>,
+        ns: Option<&RawName>,
     ) -> RecordType<ConditionalName> {
         RecordType {
             attributes: self
@@ -1523,7 +1523,7 @@ impl TypeVariant<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&InternalName>,
+        ns: Option<&RawName>,
     ) -> TypeVariant<ConditionalName> {
         match self {
             Self::Boolean => TypeVariant::Boolean,
@@ -1757,7 +1757,7 @@ impl TypeOfAttribute<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
-        ns: Option<&InternalName>,
+        ns: Option<&RawName>,
     ) -> TypeOfAttribute<ConditionalName> {
         TypeOfAttribute {
             ty: self.ty.conditionally_qualify_type_references(ns),

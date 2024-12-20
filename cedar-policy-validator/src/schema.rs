@@ -109,7 +109,7 @@ impl<N, A> ValidatorSchemaFragment<N, A> {
     /// Get the fully-qualified [`InternalName`]s for the namespaces in this
     /// fragment.
     /// `None` indicates the empty namespace.
-    pub fn namespaces(&self) -> impl Iterator<Item = Option<&InternalName>> {
+    pub fn namespaces(&self) -> impl Iterator<Item = Option<&RawName>> {
         self.0.iter().map(|d| d.namespace())
     }
 }
@@ -127,7 +127,7 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
                 .into_iter()
                 .map(|(fragment_ns, ns_def)| {
                     ValidatorNamespaceDef::from_namespace_definition(
-                        fragment_ns.map(Into::into),
+                        fragment_ns.map(|n| RawName::from_name(n.as_ref().clone())),
                         ns_def,
                         action_behavior,
                         extensions,
@@ -995,7 +995,7 @@ fn cedar_fragment(
     // PANIC SAFETY: this is a valid schema fragment. This code is tested by every test that constructs `ValidatorSchema`, and this fragment is the same every time, modulo active extensions.
     #[allow(clippy::unwrap_used)]
     ValidatorSchemaFragment(vec![ValidatorNamespaceDef::from_common_type_defs(
-        Some(InternalName::__cedar()),
+        Some(&RawName::from_name(InternalName::__cedar())),
         common_types,
     )
     .unwrap()])
@@ -2010,7 +2010,7 @@ pub(crate) mod test {
             })
         );
         let schema_ty = schema_ty.conditionally_qualify_type_references(Some(
-            &InternalName::parse_unqualified_name("NS").unwrap(),
+            &RawName::parse_unqualified_name("NS").unwrap(),
         ));
         let all_defs = AllDefs::from_entity_defs([
             InternalName::from_str("NS::Foo").unwrap(),
@@ -2036,7 +2036,7 @@ pub(crate) mod test {
             })
         );
         let schema_ty = schema_ty.conditionally_qualify_type_references(Some(
-            &InternalName::parse_unqualified_name("NS").unwrap(),
+            &RawName::parse_unqualified_name("NS").unwrap(),
         ));
         let all_defs = AllDefs::from_entity_defs([
             InternalName::from_str("NS::Foo").unwrap(),

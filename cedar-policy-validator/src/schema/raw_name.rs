@@ -125,7 +125,7 @@ impl RawName {
     /// in the empty namespace.
     pub fn conditionally_qualify_with(
         self,
-        ns: Option<&InternalName>,
+        ns: Option<&RawName>,
         reference_type: ReferenceType,
     ) -> ConditionalName {
         let possibilities = if self.is_unqualified() {
@@ -135,7 +135,7 @@ impl RawName {
                     // to something in the current namespace if available; otherwise, it
                     // refers to something in the empty namespace
                     nonempty![
-                        self.clone().qualify_with(Some(ns)),
+                        self.clone().qualify_with(Some(ns.as_ref())),
                         self.clone().qualify_with(None),
                     ]
                 }
@@ -169,6 +169,12 @@ impl std::str::FromStr for RawName {
     type Err = <InternalName as std::str::FromStr>::Err;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         InternalName::from_str(s).map(RawName)
+    }
+}
+
+impl AsRef<InternalName> for RawName {
+    fn as_ref(&self) -> &InternalName {
+        &self.0
     }
 }
 

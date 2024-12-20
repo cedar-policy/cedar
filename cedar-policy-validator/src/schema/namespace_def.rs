@@ -21,7 +21,7 @@ use std::collections::{hash_map::Entry, BTreeMap, HashMap, HashSet};
 
 use cedar_policy_core::{
     ast::{
-        self, EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name,
+        EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name,
         PartialValueSerializedAsExpr, UnreservedId,
     },
     entities::{json::err::JsonDeserializationErrorContext, CedarValueJson},
@@ -79,7 +79,7 @@ pub struct ValidatorNamespaceDef<N, A> {
     /// implicit `namespace` directly any longer.
     /// This `namespace` field is used only in tests and by the `cedar_policy`
     /// function `SchemaFragment::namespaces()`.
-    namespace: Option<InternalName>,
+    namespace: Option<RawName>,
     /// Common type definitions, which can be used to define entity
     /// type attributes, action contexts, and other common types.
     pub(super) common_types: CommonTypeDefs<N>,
@@ -87,8 +87,6 @@ pub struct ValidatorNamespaceDef<N, A> {
     pub(super) entity_types: EntityTypesDef<N>,
     /// Action declarations.
     pub(super) actions: ActionsDef<N, A>,
-    /// Annotations
-    pub(super) annotations: ast::Annotations,
 }
 
 impl<N, A> ValidatorNamespaceDef<N, A> {
@@ -115,20 +113,15 @@ impl<N, A> ValidatorNamespaceDef<N, A> {
 
     /// The fully-qualified [`InternalName`] of the namespace this is a definition of.
     /// `None` indicates this definition is for the empty namespace.
-    pub fn namespace(&self) -> Option<&InternalName> {
+    pub fn namespace(&self) -> Option<&RawName> {
         self.namespace.as_ref()
     }
 }
 
 impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
-    /// Get annotations of this [`ValidatorNamespaceDef<ConditionalName>`]
-    pub fn annotations(&self) -> impl Iterator<Item = (&ast::AnyId, &ast::Annotation)> {
-        self.annotations.iter()
-    }
-
     /// Construct a new [`ValidatorNamespaceDef<ConditionalName>`] from the raw [`json_schema::NamespaceDefinition`]
     pub fn from_namespace_definition(
-        namespace: Option<InternalName>,
+        namespace: Option<RawName>,
         namespace_def: json_schema::NamespaceDefinition<RawName>,
         action_behavior: ActionBehavior,
         extensions: &Extensions<'_>,
@@ -156,7 +149,6 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
             common_types,
             entity_types,
             actions,
-            annotations: namespace_def.annotations.into(),
         })
     }
 
@@ -164,16 +156,15 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
     /// only the given common-type definitions, which are already given in
     /// terms of [`ConditionalName`]s.
     pub fn from_common_type_defs(
-        namespace: Option<InternalName>,
+        namespace: Option<&RawName>,
         defs: HashMap<UnreservedId, json_schema::Type<ConditionalName>>,
     ) -> crate::err::Result<ValidatorNamespaceDef<ConditionalName, ConditionalName>> {
-        let common_types = CommonTypeDefs::from_conditionalname_typedefs(defs, namespace.as_ref())?;
+        let common_types = CommonTypeDefs::from_conditionalname_typedefs(defs, namespace)?;
         Ok(ValidatorNamespaceDef {
-            namespace,
+            namespace: namespace.cloned(),
             common_types,
             entity_types: EntityTypesDef::new(),
             actions: ActionsDef::new(),
-            annotations: ast::Annotations::new(),
         })
     }
 
@@ -184,7 +175,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
     /// Unlike `from_common_type_defs()`, this function cannot fail, because
     /// there is only one def so it cannot have a name collision with itself
     pub fn from_common_type_def(
-        namespace: Option<InternalName>,
+        namespace: Option<RawName>,
         def: (UnreservedId, json_schema::Type<ConditionalName>),
     ) -> ValidatorNamespaceDef<ConditionalName, ConditionalName> {
         let common_types = CommonTypeDefs::from_conditionalname_typedef(def, namespace.as_ref());
@@ -193,7 +184,6 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
             common_types,
             entity_types: EntityTypesDef::new(),
             actions: ActionsDef::new(),
-            annotations: ast::Annotations::new(),
         }
     }
 
@@ -217,7 +207,6 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
                 common_types,
                 entity_types,
                 actions,
-                annotations: self.annotations,
             }),
             (res1, res2, res3) => {
                 // PANIC SAFETY: at least one of the results is `Err`, so the input to `NonEmpty::collect()` cannot be an empty iterator
@@ -293,11 +282,12 @@ impl CommonTypeDefs<ConditionalName> {
     /// validator.
     pub(crate) fn from_raw_common_types(
         schema_file_type_def: impl IntoIterator<Item = (CommonTypeId, json_schema::Type<RawName>)>,
-        schema_namespace: Option<&InternalName>,
+        schema_namespace: Option<&RawName>,
     ) -> crate::err::Result<Self> {
         let mut defs = HashMap::new();
         for (id, schema_ty) in schema_file_type_def {
-            let name = RawName::new_from_unreserved(id.into()).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
+            let name = RawName::new_from_unreserved(id.into())
+                .qualify_with(schema_namespace.map(|ns| ns.as_ref())); // the declaration name is always (unconditionally) prefixed by the current/active namespace
             match defs.entry(name) {
                 Entry::Vacant(ventry) => {
                     ventry
@@ -319,11 +309,12 @@ impl CommonTypeDefs<ConditionalName> {
     /// directly supply [`ConditionalName`]s in the typedefs
     pub(crate) fn from_conditionalname_typedefs(
         input_type_defs: HashMap<UnreservedId, json_schema::Type<ConditionalName>>,
-        schema_namespace: Option<&InternalName>,
+        schema_namespace: Option<&RawName>,
     ) -> crate::err::Result<Self> {
         let mut defs = HashMap::with_capacity(input_type_defs.len());
         for (id, schema_ty) in input_type_defs {
-            let name = RawName::new_from_unreserved(id).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
+            let name = RawName::new_from_unreserved(id)
+                .qualify_with(schema_namespace.map(|ns| ns.as_ref())); // the declaration name is always (unconditionally) prefixed by the current/active namespace
             match defs.entry(name) {
                 Entry::Vacant(ventry) => {
                     ventry.insert(schema_ty);
@@ -346,11 +337,12 @@ impl CommonTypeDefs<ConditionalName> {
     /// with itself
     pub(crate) fn from_conditionalname_typedef(
         (id, schema_ty): (UnreservedId, json_schema::Type<ConditionalName>),
-        schema_namespace: Option<&InternalName>,
+        schema_namespace: Option<&RawName>,
     ) -> Self {
         Self {
             defs: HashMap::from_iter([(
-                RawName::new_from_unreserved(id).qualify_with(schema_namespace),
+                RawName::new_from_unreserved(id)
+                    .qualify_with(schema_namespace.map(|ns| ns.as_ref())),
                 schema_ty,
             )]),
         }
@@ -407,12 +399,13 @@ impl EntityTypesDef<ConditionalName> {
     /// validator.
     pub(crate) fn from_raw_entity_types(
         schema_files_types: impl IntoIterator<Item = (UnreservedId, json_schema::EntityType<RawName>)>,
-        schema_namespace: Option<&InternalName>,
+        schema_namespace: Option<&RawName>,
     ) -> crate::err::Result<Self> {
         let mut defs: HashMap<EntityType, _> = HashMap::new();
         for (id, entity_type) in schema_files_types {
             let ety = internal_name_to_entity_type(
-                RawName::new_from_unreserved(id).qualify_with(schema_namespace), // the declaration name is always (unconditionally) prefixed by the current/active namespace
+                RawName::new_from_unreserved(id)
+                    .qualify_with(schema_namespace.map(|ns| ns.as_ref())), // the declaration name is always (unconditionally) prefixed by the current/active namespace
             )?;
             match defs.entry(ety) {
                 Entry::Vacant(ventry) => {
@@ -488,7 +481,7 @@ impl EntityTypeFragment<ConditionalName> {
     /// validator.
     pub(crate) fn from_raw_entity_type(
         schema_file_type: json_schema::EntityType<RawName>,
-        schema_namespace: Option<&InternalName>,
+        schema_namespace: Option<&RawName>,
     ) -> Self {
         Self {
             attributes: schema_file_type
@@ -597,13 +590,13 @@ impl ActionsDef<ConditionalName, ConditionalName> {
     /// schema format to those used internally by the validator.
     pub(crate) fn from_raw_actions(
         schema_file_actions: impl IntoIterator<Item = (SmolStr, json_schema::ActionType<RawName>)>,
-        schema_namespace: Option<&InternalName>,
+        schema_namespace: Option<&RawName>,
         extensions: &Extensions<'_>,
     ) -> crate::err::Result<Self> {
         let mut actions = HashMap::new();
         for (action_id_str, action_type) in schema_file_actions {
             let action_uid = json_schema::ActionEntityUID::default_type(action_id_str.clone())
-                .qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
+                .qualify_with(schema_namespace.map(|ns| ns.as_ref())); // the declaration name is always (unconditionally) prefixed by the current/active namespace
             match actions.entry(action_uid.try_into()?) {
                 Entry::Vacant(ventry) => {
                     let frag = ActionFragment::from_raw_action(
@@ -679,7 +672,7 @@ impl ActionFragment<ConditionalName, ConditionalName> {
     pub(crate) fn from_raw_action(
         action_uid: &EntityUID,
         action_type: json_schema::ActionType<RawName>,
-        schema_namespace: Option<&InternalName>,
+        schema_namespace: Option<&RawName>,
         extensions: &Extensions<'_>,
     ) -> crate::err::Result<Self> {
         let (principal_types, resource_types, context) = action_type
