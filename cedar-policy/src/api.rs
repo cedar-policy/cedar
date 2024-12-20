@@ -1056,10 +1056,23 @@ impl PartialResponse {
         self.0.get(id.as_ref()).map(Policy::from_ast)
     }
 
-    /// Attempt to re-authorize this response given a mapping from unknowns to values
+    /// Attempt to re-authorize this response given a mapping from unknowns to values.
+    /// Consider ``reauthorize_with_iter`` if mappings are not naturally in a hashmap.
+    #[allow(clippy::needless_pass_by_value)]
     pub fn reauthorize(
         &self,
         mapping: HashMap<SmolStr, RestrictedExpression>,
+        auth: &Authorizer,
+        es: &Entities,
+    ) -> Result<Self, ReauthorizationError> {
+        self.reauthorize_with_iter(mapping.iter().map(|(k, v)| (k.as_str(), v)), auth, es)
+    }
+
+    /// Attempt to re-authorize this response given a mapping from unknowns to values, provided as an iterator.
+    /// Exhausts the iterator, returning any evaluation errors in the restricted expressions, regardless whether there is a matching unknown.
+    pub fn reauthorize_with_iter<'m>(
+        &self,
+        mapping: impl IntoIterator<Item = (&'m str, &'m RestrictedExpression)>,
         auth: &Authorizer,
         es: &Entities,
     ) -> Result<Self, ReauthorizationError> {
@@ -1070,7 +1083,7 @@ impl PartialResponse {
             .map(|(name, expr)| {
                 evaluator
                     .interpret(BorrowedRestrictedExpr::new_unchecked(expr.0.as_ref()))
-                    .map(|v| (name, v))
+                    .map(|v| (name.into(), v))
             })
             .collect::<Result<HashMap<_, _>, EvaluationError>>()?;
         let r = self.0.reauthorize(&mapping, &auth.0, &es.0)?;
