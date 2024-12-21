@@ -30,6 +30,7 @@ use cedar_policy_validator::entity_manifest;
 pub use cedar_policy_validator::entity_manifest::{
     AccessTrie, EntityManifest, EntityRoot, Fields, RootAccessTrie,
 };
+use cedar_policy_validator::json_schema;
 use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;
 
@@ -1361,7 +1362,77 @@ pub struct SchemaFragment {
     lossless: cedar_policy_validator::json_schema::Fragment<cedar_policy_validator::RawName>,
 }
 
+fn annotations_to_pairs(annotations: &est::Annotations) -> impl Iterator<Item = (&str, &str)> {
+    annotations
+        .0
+        .iter()
+        .map(|(key, value)| (key.as_ref(), value.as_ref().map_or("", |a| a.as_ref())))
+}
+
 impl SchemaFragment {
+    /// Get annotations of a non-empty namespace
+    /// We do not allow namespace-level annotations on the empty namespace
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`]
+    pub fn namespace_annotations(
+        &self,
+        namespace: EntityNamespace,
+    ) -> Option<impl Iterator<Item = (&str, &str)>> {
+        self.lossless
+            .0
+            .get(&Some(namespace.0))
+            .map(|ns_def| annotations_to_pairs(&ns_def.annotations))
+    }
+
+    /// Get annotations of a common type declaration
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`] or
+    /// `ty` is not a valid common type ID or `ty` is not found in the
+    /// corresponding namespace definition
+    pub fn common_type_annotations(
+        &self,
+        namespace: Option<EntityNamespace>,
+        ty: &str,
+    ) -> Option<impl Iterator<Item = (&str, &str)>> {
+        let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
+        let ty = json_schema::CommonTypeId::new(ast::UnreservedId::from_normalized_str(ty).ok()?)
+            .ok()?;
+        ns_def
+            .common_types
+            .get(&ty)
+            .map(|ty| annotations_to_pairs(&ty.annotations))
+    }
+
+    /// Get annotations of an entity type declaration
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`] or
+    /// `ty` is not a valid entity type name or `ty` is not found in the
+    /// corresponding namespace definition
+    pub fn entity_type_annotations(
+        &self,
+        namespace: Option<EntityNamespace>,
+        ty: &str,
+    ) -> Option<impl Iterator<Item = (&str, &str)>> {
+        let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
+        let ty = ast::UnreservedId::from_normalized_str(ty).ok()?;
+        ns_def
+            .entity_types
+            .get(&ty)
+            .map(|ty| annotations_to_pairs(&ty.annotations))
+    }
+
+    /// Get annotations of an action declaration
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`] or
+    /// `id` is not found in the corresponding namespace definition
+    pub fn action_type_annotations(
+        &self,
+        namespace: Option<EntityNamespace>,
+        id: EntityId,
+    ) -> Option<impl Iterator<Item = (&str, &str)>> {
+        let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
+        ns_def
+            .actions
+            .get(id.as_ref())
+            .map(|a| annotations_to_pairs(&a.annotations))
+    }
+
     /// Extract namespaces defined in this [`SchemaFragment`].
     ///
     /// `None` indicates the empty namespace.
