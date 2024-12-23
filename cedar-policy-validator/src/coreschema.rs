@@ -214,7 +214,7 @@ impl ast::RequestSchema for ValidatorSchema {
                     }
                 }
             }
-            EntityUIDEntry::Unknown { .. } | EntityUIDEntry::UnknownOfType { .. } => {
+            EntityUIDEntry::Unknown { .. } => {
                 // We could hypothetically ensure that the concrete parts of the
                 // request are valid for _some_ action, but this is probably more
                 // expensive than we want for this validation step.
@@ -635,7 +635,7 @@ mod test {
     fn success_principal_unknown() {
         assert_matches!(
             ast::Request::new_with_unknowns(
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
                 ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                     None,
@@ -661,7 +661,7 @@ mod test {
                     ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                     None,
                 ),
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
                 ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                     None,
@@ -687,7 +687,7 @@ mod test {
                     ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                     None,
                 ),
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
                 Some(ast::Context::empty()),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -726,9 +726,9 @@ mod test {
     fn success_everything_unspecified() {
         assert_matches!(
             ast::Request::new_with_unknowns(
-                ast::EntityUIDEntry::Unknown { loc: None },
-                ast::EntityUIDEntry::Unknown { loc: None },
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
+                ast::EntityUIDEntry::unknown(),
+                ast::EntityUIDEntry::unknown(),
                 None,
                 Some(&schema()),
                 Extensions::all_available(),
@@ -748,7 +748,7 @@ mod test {
                     ast::EntityUID::with_eid_and_type("Album", "abc123").unwrap(),
                     None,
                 ),
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
                 ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("User", "alice").unwrap(),
                     None,
