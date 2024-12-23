@@ -3735,7 +3735,7 @@ impl Request {
     pub fn principal(&self) -> Option<&EntityUid> {
         match self.0.principal() {
             ast::EntityUIDEntry::Known { euid, .. } => Some(EntityUid::ref_cast(euid.as_ref())),
-            ast::EntityUIDEntry::Unknown { .. } => None,
+            ast::EntityUIDEntry::Unknown { .. } | ast::EntityUIDEntry::UnknownOfType { .. } => None,
         }
     }
 
@@ -3744,7 +3744,7 @@ impl Request {
     pub fn action(&self) -> Option<&EntityUid> {
         match self.0.action() {
             ast::EntityUIDEntry::Known { euid, .. } => Some(EntityUid::ref_cast(euid.as_ref())),
-            ast::EntityUIDEntry::Unknown { .. } => None,
+            ast::EntityUIDEntry::Unknown { .. } | ast::EntityUIDEntry::UnknownOfType { .. } => None,
         }
     }
 
@@ -3753,7 +3753,7 @@ impl Request {
     pub fn resource(&self) -> Option<&EntityUid> {
         match self.0.resource() {
             ast::EntityUIDEntry::Known { euid, .. } => Some(EntityUid::ref_cast(euid.as_ref())),
-            ast::EntityUIDEntry::Unknown { .. } => None,
+            ast::EntityUIDEntry::Unknown { .. } | ast::EntityUIDEntry::UnknownOfType { .. } => None,
         }
     }
 }

@@ -81,6 +81,14 @@ pub enum EntityUIDEntry {
         /// Source location associated with the `EntityUIDEntry`, if any
         loc: Option<Loc>,
     },
+
+    /// An EntityUID left as unknown for partial evaluation, with a known type
+    UnknownOfType {
+        /// The type of the unknown EntityUID
+        ty: EntityType,
+        /// Source location associated with the `EntityUIDEntry`, if any
+        loc: Option<Loc>,
+    },
 }
 
 impl EntityUIDEntry {
@@ -95,6 +103,12 @@ impl EntityUIDEntry {
             EntityUIDEntry::Unknown { loc } => Expr::unknown(Unknown::new_untyped(var.to_string()))
                 .with_maybe_source_loc(loc.clone())
                 .into(),
+            EntityUIDEntry::UnknownOfType { ty, loc } => Expr::unknown(Unknown::new_with_type(
+                var.to_string(),
+                super::Type::Entity { ty: ty.clone() },
+            ))
+            .with_maybe_source_loc(loc.clone())
+            .into(),
         }
     }
 
@@ -110,7 +124,15 @@ impl EntityUIDEntry {
     pub fn uid(&self) -> Option<&EntityUID> {
         match self {
             Self::Known { euid, .. } => Some(euid),
+            Self::Unknown { .. } | Self::UnknownOfType { .. }=> None,
+        }
+    }
+
+    pub fn get_type(&self) -> Option<&EntityType> {
+        match self {
+            Self::Known { euid, .. } => Some(euid.entity_type()),
             Self::Unknown { .. } => None,
+            Self::UnknownOfType { ty, .. } => Some(ty),
         }
     }
 }
@@ -133,7 +155,7 @@ impl From<&EntityUIDEntry> for proto::EntityUidEntry {
     #[allow(clippy::unimplemented)]
     fn from(v: &EntityUIDEntry) -> Self {
         match v {
-            EntityUIDEntry::Unknown { loc: _ } => {
+            EntityUIDEntry::Unknown { loc: _ } | EntityUID::UnknownOfType { .. }=> {
                 unimplemented!(
                     "Unknown EntityUID is not currently supported by the Protobuf interface"
                 );
@@ -251,6 +273,7 @@ impl std::fmt::Display for Request {
         let display_euid = |maybe_euid: &EntityUIDEntry| match maybe_euid {
             EntityUIDEntry::Known { euid, .. } => format!("{euid}"),
             EntityUIDEntry::Unknown { .. } => "unknown".to_string(),
+            EntityUIDEntry::UnknownOfType { ty, .. } => format!("(unknown of type {})", ty),
         };
         write!(
             f,
