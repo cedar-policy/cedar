@@ -673,6 +673,16 @@ impl<'e> Evaluator<'e> {
                         Ok((v.get_as_entity()?.entity_type() == entity_type).into())
                     }
                     PartialValue::Residual(r) => {
+                        if let ExprKind::Unknown(Unknown {
+                            type_annotation:
+                                Some(Type::Entity {
+                                    ty: type_of_unknown,
+                                }),
+                            ..
+                        }) = r.expr_kind()
+                        {
+                            return Ok((type_of_unknown == entity_type).into());
+                        }
                         Ok(Expr::is_entity_type(r, entity_type.clone()).into())
                     }
                 }
@@ -6285,5 +6295,20 @@ pub(crate) mod test {
             "#).unwrap()), Err(EvaluationError::RecordAttrDoesNotExist(err)) => {
             assert_eq!(err.attr, "d");
         });
+    }
+
+    #[test]
+    fn typed_unknown_entity_id() {
+        let mut q = basic_request();
+        let entities = basic_entities();
+        q.principal = EntityUIDEntry::UnknownOfType {
+            ty: EntityType::from_str("different_test_type").expect("must parse"),
+            loc: None,
+        };
+        let eval = Evaluator::new(q, &entities, Extensions::none());
+
+        let e = Expr::is_entity_type(Expr::var(Var::Principal), EntityUID::test_entity_type());
+        let r = eval.partial_eval_expr(&e).unwrap();
+        assert_eq!(r, Either::Left(Value::from(false)));
     }
 }

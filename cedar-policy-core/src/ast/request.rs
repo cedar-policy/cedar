@@ -124,7 +124,7 @@ impl EntityUIDEntry {
     pub fn uid(&self) -> Option<&EntityUID> {
         match self {
             Self::Known { euid, .. } => Some(euid),
-            Self::Unknown { .. } | Self::UnknownOfType { .. }=> None,
+            Self::Unknown { .. } | Self::UnknownOfType { .. } => None,
         }
     }
 
@@ -155,7 +155,7 @@ impl From<&EntityUIDEntry> for proto::EntityUidEntry {
     #[allow(clippy::unimplemented)]
     fn from(v: &EntityUIDEntry) -> Self {
         match v {
-            EntityUIDEntry::Unknown { loc: _ } | EntityUID::UnknownOfType { .. }=> {
+            EntityUIDEntry::Unknown { loc: _ } | EntityUID::UnknownOfType { .. } => {
                 unimplemented!(
                     "Unknown EntityUID is not currently supported by the Protobuf interface"
                 );
