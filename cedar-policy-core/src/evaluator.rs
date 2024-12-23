@@ -5029,9 +5029,9 @@ pub(crate) mod test {
             .get(&PolicyID::from_string("policy0"))
             .expect("No such policy");
         let q = Request::new_with_unknowns(
-            EntityUIDEntry::Unknown { loc: None },
-            EntityUIDEntry::Unknown { loc: None },
-            EntityUIDEntry::Unknown { loc: None },
+            EntityUIDEntry::unknown(),
+            EntityUIDEntry::unknown(),
+            EntityUIDEntry::unknown(),
             Some(Context::empty()),
             Some(&RequestSchemaAllPass),
             Extensions::none(),
@@ -6301,10 +6301,10 @@ pub(crate) mod test {
     fn typed_unknown_entity_id() {
         let mut q = basic_request();
         let entities = basic_entities();
-        q.principal = EntityUIDEntry::UnknownOfType {
-            ty: EntityType::from_str("different_test_type").expect("must parse"),
-            loc: None,
-        };
+        q.principal = EntityUIDEntry::unknown_with_type(
+            EntityType::from_str("different_test_type").expect("must parse"),
+            None,
+        );
         let eval = Evaluator::new(q, &entities, Extensions::none());
 
         let e = Expr::is_entity_type(Expr::var(Var::Principal), EntityUID::test_entity_type());

@@ -3614,9 +3614,9 @@ pub struct UnsetSchema;
 impl Default for RequestBuilder<UnsetSchema> {
     fn default() -> Self {
         Self {
-            principal: ast::EntityUIDEntry::Unknown { loc: None },
-            action: ast::EntityUIDEntry::Unknown { loc: None },
-            resource: ast::EntityUIDEntry::Unknown { loc: None },
+            principal: ast::EntityUIDEntry::unknown(),
+            action: ast::EntityUIDEntry::unknown(),
+            resource: ast::EntityUIDEntry::unknown(),
             context: None,
             schema: UnsetSchema,
         }
@@ -3643,7 +3643,7 @@ impl<S> RequestBuilder<S> {
     #[must_use]
     pub fn unknown_principal_with_type(self, principal_type: ast::EntityType) -> Self {
         Self {
-            principal: ast::EntityUIDEntry::unknown_of_type(principal_type, None),
+            principal: ast::EntityUIDEntry::unknown_with_type(principal_type, None),
             ..self
         }
     }
@@ -3666,7 +3666,7 @@ impl<S> RequestBuilder<S> {
     #[must_use]
     pub fn unknown_action_with_type(self, action_type: ast::EntityType) -> Self {
         Self {
-            action: ast::EntityUIDEntry::unknown_of_type(action_type, None),
+            action: ast::EntityUIDEntry::unknown_with_type(action_type, None),
             ..self
         }
     }
@@ -3689,7 +3689,7 @@ impl<S> RequestBuilder<S> {
     #[must_use]
     pub fn unknown_resource_with_type(self, resource_type: ast::EntityType) -> Self {
         Self {
-            resource: ast::EntityUIDEntry::unknown_of_type(resource_type, None),
+            resource: ast::EntityUIDEntry::unknown_with_type(resource_type, None),
             ..self
         }
     }
@@ -3804,7 +3804,7 @@ impl Request {
     pub fn principal(&self) -> Option<&EntityUid> {
         match self.0.principal() {
             ast::EntityUIDEntry::Known { euid, .. } => Some(EntityUid::ref_cast(euid.as_ref())),
-            ast::EntityUIDEntry::Unknown { .. } | ast::EntityUIDEntry::UnknownOfType { .. } => None,
+            ast::EntityUIDEntry::Unknown { .. } => None,
         }
     }
 
@@ -3813,7 +3813,7 @@ impl Request {
     pub fn action(&self) -> Option<&EntityUid> {
         match self.0.action() {
             ast::EntityUIDEntry::Known { euid, .. } => Some(EntityUid::ref_cast(euid.as_ref())),
-            ast::EntityUIDEntry::Unknown { .. } | ast::EntityUIDEntry::UnknownOfType { .. } => None,
+            ast::EntityUIDEntry::Unknown { .. } => None,
         }
     }
 
@@ -3822,7 +3822,7 @@ impl Request {
     pub fn resource(&self) -> Option<&EntityUid> {
         match self.0.resource() {
             ast::EntityUIDEntry::Known { euid, .. } => Some(EntityUid::ref_cast(euid.as_ref())),
-            ast::EntityUIDEntry::Unknown { .. } | ast::EntityUIDEntry::UnknownOfType { .. } => None,
+            ast::EntityUIDEntry::Unknown { .. } => None,
         }
     }
 }

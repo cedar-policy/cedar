@@ -78,14 +78,9 @@ pub enum EntityUIDEntry {
     },
     /// An EntityUID left as unknown for partial evaluation
     Unknown {
-        /// Source location associated with the `EntityUIDEntry`, if any
-        loc: Option<Loc>,
-    },
+        /// The type of the unknown EntityUID, if known.
+        ty: Option<EntityType>,
 
-    /// An EntityUID left as unknown for partial evaluation, with a known type
-    UnknownOfType {
-        /// The type of the unknown EntityUID
-        ty: EntityType,
         /// Source location associated with the `EntityUIDEntry`, if any
         loc: Option<Loc>,
     },
@@ -100,12 +95,19 @@ impl EntityUIDEntry {
             EntityUIDEntry::Known { euid, loc } => {
                 Value::new(Arc::unwrap_or_clone(Arc::clone(euid)), loc.clone()).into()
             }
-            EntityUIDEntry::Unknown { loc } => Expr::unknown(Unknown::new_untyped(var.to_string()))
-                .with_maybe_source_loc(loc.clone())
-                .into(),
-            EntityUIDEntry::UnknownOfType { ty, loc } => Expr::unknown(Unknown::new_with_type(
+            EntityUIDEntry::Unknown { ty: None, loc } => {
+                Expr::unknown(Unknown::new_untyped(var.to_string()))
+                    .with_maybe_source_loc(loc.clone())
+                    .into()
+            }
+            EntityUIDEntry::Unknown {
+                ty: Some(known_type),
+                loc,
+            } => Expr::unknown(Unknown::new_with_type(
                 var.to_string(),
-                super::Type::Entity { ty: ty.clone() },
+                super::Type::Entity {
+                    ty: known_type.clone(),
+                },
             ))
             .with_maybe_source_loc(loc.clone())
             .into(),
@@ -120,15 +122,24 @@ impl EntityUIDEntry {
         }
     }
 
-    pub fn unknown_of_type(ty: EntityType, loc: Option<Loc>) -> Self {
-        Self::UnknownOfType { ty, loc }
+    /// Create an entry with an entirely unknown EntityUID
+    pub fn unknown() -> Self {
+        Self::Unknown {
+            ty: None,
+            loc: None,
+        }
+    }
+
+    /// Create an entry with an unknown EntityUID but known EntityType
+    pub fn unknown_with_type(ty: EntityType, loc: Option<Loc>) -> Self {
+        Self::Unknown { ty: Some(ty), loc }
     }
 
     /// Get the UID of the entry, or `None` if it is unknown (partial evaluation)
     pub fn uid(&self) -> Option<&EntityUID> {
         match self {
             Self::Known { euid, .. } => Some(euid),
-            Self::Unknown { .. } | Self::UnknownOfType { .. } => None,
+            Self::Unknown { .. } => None,
         }
     }
 
@@ -136,8 +147,7 @@ impl EntityUIDEntry {
     pub fn get_type(&self) -> Option<&EntityType> {
         match self {
             Self::Known { euid, .. } => Some(euid.entity_type()),
-            Self::Unknown { .. } => None,
-            Self::UnknownOfType { ty, .. } => Some(ty),
+            Self::Unknown { ty, .. } => ty.as_ref(),
         }
     }
 }
@@ -277,8 +287,11 @@ impl std::fmt::Display for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let display_euid = |maybe_euid: &EntityUIDEntry| match maybe_euid {
             EntityUIDEntry::Known { euid, .. } => format!("{euid}"),
-            EntityUIDEntry::Unknown { .. } => "unknown".to_string(),
-            EntityUIDEntry::UnknownOfType { ty, .. } => format!("(unknown of type {})", ty),
+            EntityUIDEntry::Unknown { ty: None, .. } => "unknown".to_string(),
+            EntityUIDEntry::Unknown {
+                ty: Some(known_type),
+                ..
+            } => format!("unknown of type {}", known_type),
         };
         write!(
             f,

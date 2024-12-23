@@ -414,14 +414,19 @@ impl EntityUIDEntry {
                     existing_value: euid.as_ref().clone().into(),
                     given_value: val.clone(),
                 }),
-                EntityUIDEntry::Unknown { .. } => Ok(EntityUIDEntry::known(uid.clone(), None)),
-                EntityUIDEntry::UnknownOfType { ty, .. } => {
-                    if ty == uid.entity_type() {
+                EntityUIDEntry::Unknown { ty: None, .. } => {
+                    Ok(EntityUIDEntry::known(uid.clone(), None))
+                }
+                EntityUIDEntry::Unknown {
+                    ty: Some(type_of_unknown),
+                    ..
+                } => {
+                    if type_of_unknown == uid.entity_type() {
                         Ok(EntityUIDEntry::known(uid.clone(), None))
                     } else {
                         Err(ConcretizationError::EntityTypeConfictError {
                             id: key.to_owned(),
-                            existing_value: ty.clone(),
+                            existing_value: type_of_unknown.clone(),
                             given_value: val.to_owned(),
                         })
                     }
@@ -602,9 +607,9 @@ mod test {
             h,
             errs,
             Arc::new(Request::new_unchecked(
-                EntityUIDEntry::Unknown { loc: None },
-                EntityUIDEntry::Unknown { loc: None },
-                EntityUIDEntry::Unknown { loc: None },
+                EntityUIDEntry::unknown(),
+                EntityUIDEntry::unknown(),
+                EntityUIDEntry::unknown(),
                 Some(Context::empty()),
             )),
         );
@@ -785,8 +790,8 @@ mod test {
 
         let partial_request = Request {
             principal: EntityUIDEntry::known(r#"NS::"a""#.parse().unwrap(), None),
-            action: EntityUIDEntry::Unknown { loc: None },
-            resource: EntityUIDEntry::Unknown { loc: None },
+            action: EntityUIDEntry::unknown(),
+            resource: EntityUIDEntry::unknown(),
             context: Some(context_unknown),
         };
 
