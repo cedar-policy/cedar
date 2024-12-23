@@ -1,15 +1,13 @@
-use std::sync::Arc;
-
-use crate::extensions::Extensions;
 use crate::{entities::Dereference, parser::Loc};
 use nonempty::nonempty;
 use smol_str::SmolStr;
+use std::sync::Arc;
 
+use super::concrete::{BinaryArithmetic, Relation, SetOp};
 use super::{
-    err, names, split, stack_size_check, BinaryOp, BinaryOpOverflowError, BorrowedRestrictedExpr,
-    EvaluationError, Evaluator, Expr, ExprKind, IntegerOverflowError, Literal, PartialValue,
-    RestrictedEvaluator, Result, Set, SlotEnv, StaticallyTyped, Type, TypeError, UnaryOp,
-    UnaryOpOverflowError, Value, ValueKind, Var,
+    err, names, split, stack_size_check, BinaryOp, BorrowedRestrictedExpr, EvaluationError,
+    Evaluator, Expr, ExprKind, Literal, PartialValue, RestrictedEvaluator, Result, SlotEnv,
+    StaticallyTyped, Type, TypeError, Value, ValueKind, Var,
 };
 use itertools::Either;
 
@@ -341,28 +339,7 @@ impl Evaluator<'_> {
                 }
             }
             ExprKind::UnaryApp { op, arg } => match self.partial_interpret(arg, slots)? {
-                PartialValue::Value(arg) => match op {
-                    UnaryOp::Not => match arg.get_as_bool()? {
-                        true => Ok(false.into()),
-                        false => Ok(true.into()),
-                    },
-                    UnaryOp::Neg => {
-                        let i = arg.get_as_long()?;
-                        match i.checked_neg() {
-                            Some(v) => Ok(v.into()),
-                            None => Err(IntegerOverflowError::UnaryOp(UnaryOpOverflowError {
-                                op: *op,
-                                arg,
-                                source_loc: loc.cloned(),
-                            })
-                            .into()),
-                        }
-                    }
-                    UnaryOp::IsEmpty => {
-                        let s = arg.get_as_set()?;
-                        Ok(s.is_empty().into())
-                    }
-                },
+                PartialValue::Value(arg) => Self::eval_unary(op, arg, loc).map(Into::into),
                 // NOTE, there was a bug here found during manual review. (I forgot to wrap in unary_app call)
                 // Could be a nice target for fault injection
                 PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::unary_app(*op, r))),
@@ -387,90 +364,24 @@ impl Evaluator<'_> {
                     }
                 };
                 match op {
-                    BinaryOp::Eq => Ok((arg1 == arg2).into()),
-                    // comparison and arithmetic operators, which only work on Longs
-                    BinaryOp::Less | BinaryOp::LessEq => {
-                        let long_op = if matches!(op, BinaryOp::Less) {
-                            |x, y| x < y
-                        } else {
-                            |x, y| x <= y
-                        };
-                        let ext_op = if matches!(op, BinaryOp::Less) {
-                            |x, y| x < y
-                        } else {
-                            |x, y| x <= y
-                        };
-                        match (arg1.value_kind(), arg2.value_kind()) {
-                            (
-                                ValueKind::Lit(Literal::Long(x)),
-                                ValueKind::Lit(Literal::Long(y)),
-                            ) => Ok(long_op(x, y).into()),
-                            (ValueKind::ExtensionValue(x), ValueKind::ExtensionValue(y))
-                                if x.supports_operator_overloading()
-                                    && y.supports_operator_overloading()
-                                    && x.typename() == y.typename() =>
-                            {
-                                Ok(ext_op(x, y).into())
-                            }
-                            // throw type errors
-                            (ValueKind::Lit(Literal::Long(_)), _) => Err(EvaluationError::type_error_single(Type::Long, &arg2)),
-                            (_, ValueKind::Lit(Literal::Long(_))) => Err(EvaluationError::type_error_single(Type::Long, &arg1)),
-                            (ValueKind::ExtensionValue(x), _) if x.supports_operator_overloading() => Err(EvaluationError::type_error_single(Type::Extension { name: x.typename() }, &arg2)),
-                            (_, ValueKind::ExtensionValue(y)) if y.supports_operator_overloading() => Err(EvaluationError::type_error_single(Type::Extension { name: y.typename() }, &arg1)),
-                            (ValueKind::ExtensionValue(x), ValueKind::ExtensionValue(y)) if x.typename() == y.typename() => Err(EvaluationError::type_error_with_advice(Extensions::types_with_operator_overloading().map(|name| Type::Extension { name} ), &arg1, "Only extension types `datetime` and `duration` support operator overloading".to_string())),
-                            _ => {
-                                let mut expected_types = Extensions::types_with_operator_overloading().map(|name| Type::Extension { name });
-                                expected_types.push(Type::Long);
-                                Err(EvaluationError::type_error_with_advice(expected_types, &arg1, "Only `Long` and extension types `datetime`, `duration` support comparison".to_string()))
-                            }
-                        }
+                    BinaryOp::Eq => Self::eval_relation(Relation::Eq, arg1, arg2).map(Into::into),
+                    BinaryOp::Less => {
+                        Self::eval_relation(Relation::Less, arg1, arg2).map(Into::into)
                     }
-                    BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
-                        let i1 = arg1.get_as_long()?;
-                        let i2 = arg2.get_as_long()?;
-                        match op {
-                            BinaryOp::Add => match i1.checked_add(i2) {
-                                Some(sum) => Ok(sum.into()),
-                                None => {
-                                    Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
-                                        op: *op,
-                                        arg1,
-                                        arg2,
-                                        source_loc: loc.cloned(),
-                                    })
-                                    .into())
-                                }
-                            },
-                            BinaryOp::Sub => match i1.checked_sub(i2) {
-                                Some(diff) => Ok(diff.into()),
-                                None => {
-                                    Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
-                                        op: *op,
-                                        arg1,
-                                        arg2,
-                                        source_loc: loc.cloned(),
-                                    })
-                                    .into())
-                                }
-                            },
-                            BinaryOp::Mul => match i1.checked_mul(i2) {
-                                Some(prod) => Ok(prod.into()),
-                                None => {
-                                    Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
-                                        op: *op,
-                                        arg1,
-                                        arg2,
-                                        source_loc: loc.cloned(),
-                                    })
-                                    .into())
-                                }
-                            },
-                            // PANIC SAFETY `op` is checked to be one of the above
-                            #[allow(clippy::unreachable)]
-                            _ => {
-                                unreachable!("Should have already checked that op was one of these")
-                            }
-                        }
+                    BinaryOp::LessEq => {
+                        Self::eval_relation(Relation::LessEq, arg1, arg2).map(Into::into)
+                    }
+                    BinaryOp::Add => {
+                        Self::eval_binary_arithmetic(BinaryArithmetic::Add, arg1, arg2, loc)
+                            .map(Into::into)
+                    }
+                    BinaryOp::Sub => {
+                        Self::eval_binary_arithmetic(BinaryArithmetic::Sub, arg1, arg2, loc)
+                            .map(Into::into)
+                    }
+                    BinaryOp::Mul => {
+                        Self::eval_binary_arithmetic(BinaryArithmetic::Mul, arg1, arg2, loc)
+                            .map(Into::into)
                     }
                     // hierarchy membership operator; see note on `BinaryOp::In`
                     BinaryOp::In => {
@@ -493,73 +404,21 @@ impl Evaluator<'_> {
                                 Expr::binary_app(BinaryOp::In, r, arg2.into()),
                             )),
                             Dereference::NoSuchEntity => {
-                                self.eval_in_concrete(uid1, None, arg2).map(Into::into)
+                                Self::eval_in(uid1, None, arg2).map(Into::into)
                             }
-                            Dereference::Data(entity1) => self
-                                .eval_in_concrete(uid1, Some(entity1), arg2)
-                                .map(Into::into),
+                            Dereference::Data(entity1) => {
+                                Self::eval_in(uid1, Some(entity1), arg2).map(Into::into)
+                            }
                         }
                     }
                     // contains, which works on Sets
-                    BinaryOp::Contains => match arg1.value {
-                        ValueKind::Set(Set { fast: Some(h), .. }) => match arg2.try_as_lit() {
-                            Some(lit) => Ok((h.contains(lit)).into()),
-                            None => Ok(false.into()), // we know it doesn't contain a non-literal
-                        },
-                        ValueKind::Set(Set {
-                            fast: None,
-                            authoritative,
-                        }) => Ok((authoritative.contains(&arg2)).into()),
-                        _ => Err(EvaluationError::type_error_single(Type::Set, &arg1)),
-                    },
+                    BinaryOp::Contains => Self::eval_contains(arg1, arg2).map(Into::into),
                     // ContainsAll and ContainsAny, which work on Sets
-                    BinaryOp::ContainsAll | BinaryOp::ContainsAny => {
-                        let arg1_set = arg1.get_as_set()?;
-                        let arg2_set = arg2.get_as_set()?;
-                        match (&arg1_set.fast, &arg2_set.fast) {
-                            (Some(arg1_set), Some(arg2_set)) => {
-                                // both sets are in fast form, ie, they only contain literals.
-                                // Fast hashset-based implementation.
-                                match op {
-                                    BinaryOp::ContainsAll => {
-                                        Ok((arg2_set.is_subset(arg1_set)).into())
-                                    }
-                                    BinaryOp::ContainsAny => {
-                                        Ok((!arg1_set.is_disjoint(arg2_set)).into())
-                                    }
-                                    // PANIC SAFETY `op` is checked to be one of these two above
-                                    #[allow(clippy::unreachable)]
-                                    _ => unreachable!(
-                                        "Should have already checked that op was one of these"
-                                    ),
-                                }
-                            }
-                            (_, _) => {
-                                // one or both sets are in slow form, ie, contain a non-literal.
-                                // Fallback to slow implementation.
-                                match op {
-                                    BinaryOp::ContainsAll => {
-                                        let is_subset = arg2_set
-                                            .authoritative
-                                            .iter()
-                                            .all(|item| arg1_set.authoritative.contains(item));
-                                        Ok(is_subset.into())
-                                    }
-                                    BinaryOp::ContainsAny => {
-                                        let not_disjoint = arg1_set
-                                            .authoritative
-                                            .iter()
-                                            .any(|item| arg2_set.authoritative.contains(item));
-                                        Ok(not_disjoint.into())
-                                    }
-                                    // PANIC SAFETY `op` is checked to be one of these two above
-                                    #[allow(clippy::unreachable)]
-                                    _ => unreachable!(
-                                        "Should have already checked that op was one of these"
-                                    ),
-                                }
-                            }
-                        }
+                    BinaryOp::ContainsAll => {
+                        Self::eval_set_op(SetOp::All, arg1, arg2).map(Into::into)
+                    }
+                    BinaryOp::ContainsAny => {
+                        Self::eval_set_op(SetOp::Any, arg1, arg2).map(Into::into)
                     }
                     // GetTag and HasTag, which require an Entity on the left and a String on the right
                     BinaryOp::GetTag | BinaryOp::HasTag => {
