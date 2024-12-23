@@ -170,7 +170,7 @@ impl From<&EntityUIDEntry> for proto::EntityUidEntry {
     #[allow(clippy::unimplemented)]
     fn from(v: &EntityUIDEntry) -> Self {
         match v {
-            EntityUIDEntry::Unknown { loc: _ } | EntityUID::UnknownOfType { .. } => {
+            EntityUIDEntry::Unknown { .. } => {
                 unimplemented!(
                     "Unknown EntityUID is not currently supported by the Protobuf interface"
                 );
