@@ -2046,6 +2046,7 @@ fn construct_expr_record(kvs: Vec<(SmolStr, ast::Expr)>, loc: Loc) -> Result<ast
 #[allow(clippy::panic)]
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::indexing_slicing)]
+#[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
 mod tests {
     use super::*;
