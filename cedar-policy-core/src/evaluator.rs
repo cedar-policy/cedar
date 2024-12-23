@@ -386,10 +386,16 @@ impl<'e> Evaluator<'e> {
                 ) {
                     (PartialValue::Value(v1), PartialValue::Value(v2)) => (v1, v2),
                     (PartialValue::Value(v1), PartialValue::Residual(e2)) => {
-                        return Ok(PartialValue::Residual(Expr::binary_app(*op, v1.into(), e2)))
+                        if let Some(val) = self.short_circuit_typed_residual(&v1, &e2, *op) {
+                            return Ok(val);
+                        }
+                        return Ok(PartialValue::Residual(Expr::binary_app(*op, v1.into(), e2)));
                     }
                     (PartialValue::Residual(e1), PartialValue::Value(v2)) => {
-                        return Ok(PartialValue::Residual(Expr::binary_app(*op, e1, v2.into())))
+                        if let Some(val) = self.short_circuit_typed_residual(&v2, &e1, *op) {
+                            return Ok(val);
+                        }
+                        return Ok(PartialValue::Residual(Expr::binary_app(*op, e1, v2.into())));
                     }
                     (PartialValue::Residual(e1), PartialValue::Residual(e2)) => {
                         return Ok(PartialValue::Residual(Expr::binary_app(*op, e1, e2)))
@@ -673,6 +679,16 @@ impl<'e> Evaluator<'e> {
                         Ok((v.get_as_entity()?.entity_type() == entity_type).into())
                     }
                     PartialValue::Residual(r) => {
+                        if let ExprKind::Unknown(Unknown {
+                            type_annotation:
+                                Some(Type::Entity {
+                                    ty: type_of_unknown,
+                                }),
+                            ..
+                        }) = r.expr_kind()
+                        {
+                            return Ok((type_of_unknown == entity_type).into());
+                        }
                         Ok(Expr::is_entity_type(r, entity_type.clone()).into())
                     }
                 }
@@ -899,6 +915,35 @@ impl<'e> Evaluator<'e> {
         match self.partial_interpret(p, &env)? {
             PartialValue::Value(v) => Ok(Either::Left(v)),
             PartialValue::Residual(r) => Ok(Either::Right(r)),
+        }
+    }
+
+    fn short_circuit_typed_residual(
+        &self,
+        v1: &Value,
+        e2: &Expr,
+        op: BinaryOp,
+    ) -> Option<PartialValue> {
+        match (op, v1.value_kind(), e2.expr_kind()) {
+            // We detect comparing a typed unknown entity id to a literal entity id, and short-circuit to false if the literal is not the same type
+            (
+                BinaryOp::Eq,
+                ValueKind::Lit(Literal::EntityUID(uid1)),
+                ExprKind::Unknown(Unknown {
+                    type_annotation:
+                        Some(Type::Entity {
+                            ty: type_of_unknown,
+                        }),
+                    ..
+                }),
+            ) => {
+                if uid1.entity_type() != type_of_unknown {
+                    Some(false.into())
+                } else {
+                    None
+                }
+            }
+            _ => None,
         }
     }
     // by default, Coverlay does not track coverage for lines after a line
@@ -5018,9 +5063,9 @@ pub(crate) mod test {
             .get(&PolicyID::from_string("policy0"))
             .expect("No such policy");
         let q = Request::new_with_unknowns(
-            EntityUIDEntry::Unknown { loc: None },
-            EntityUIDEntry::Unknown { loc: None },
-            EntityUIDEntry::Unknown { loc: None },
+            EntityUIDEntry::unknown(),
+            EntityUIDEntry::unknown(),
+            EntityUIDEntry::unknown(),
             Some(Context::empty()),
             Some(&RequestSchemaAllPass),
             Extensions::none(),
@@ -6285,5 +6330,34 @@ pub(crate) mod test {
             "#).unwrap()), Err(EvaluationError::RecordAttrDoesNotExist(err)) => {
             assert_eq!(err.attr, "d");
         });
+    }
+
+    #[test]
+    fn typed_unknown_entity_id() {
+        let mut q = basic_request();
+        let entities = basic_entities();
+        q.principal = EntityUIDEntry::unknown_with_type(
+            EntityType::from_str("different_test_type").expect("must parse"),
+            None,
+        );
+        let eval = Evaluator::new(q, &entities, Extensions::none());
+
+        let e = Expr::is_entity_type(Expr::var(Var::Principal), EntityUID::test_entity_type());
+        let r = eval.partial_eval_expr(&e).unwrap();
+        assert_eq!(r, Either::Left(Value::from(false)));
+
+        let e = Expr::is_eq(
+            Expr::var(Var::Principal),
+            Expr::val(EntityUID::with_eid("something")),
+        );
+        let r = eval.partial_eval_expr(&e).unwrap();
+        assert_eq!(r, Either::Left(Value::from(false)));
+
+        let e = Expr::noteq(
+            Expr::val(EntityUID::with_eid("something")),
+            Expr::var(Var::Principal),
+        );
+        let r = eval.partial_eval_expr(&e).unwrap();
+        assert_eq!(r, Either::Left(Value::from(true)));
     }
 }

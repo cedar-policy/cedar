@@ -3578,9 +3578,9 @@ pub struct UnsetSchema;
 impl Default for RequestBuilder<UnsetSchema> {
     fn default() -> Self {
         Self {
-            principal: ast::EntityUIDEntry::Unknown { loc: None },
-            action: ast::EntityUIDEntry::Unknown { loc: None },
-            resource: ast::EntityUIDEntry::Unknown { loc: None },
+            principal: ast::EntityUIDEntry::unknown(),
+            action: ast::EntityUIDEntry::unknown(),
+            resource: ast::EntityUIDEntry::unknown(),
             context: None,
             schema: UnsetSchema,
         }
@@ -3601,6 +3601,17 @@ impl<S> RequestBuilder<S> {
         }
     }
 
+    /// Set the principal to be unknown, but known to belong to a certain entity type.
+    ///
+    /// This information is taken into account when evaluating 'is', '==' and '!=' expressions.
+    #[must_use]
+    pub fn unknown_principal_with_type(self, principal_type: ast::EntityType) -> Self {
+        Self {
+            principal: ast::EntityUIDEntry::unknown_with_type(principal_type, None),
+            ..self
+        }
+    }
+
     /// Set the action.
     ///
     /// Note that you can create the `EntityUid` using `.parse()` on any
@@ -3613,6 +3624,17 @@ impl<S> RequestBuilder<S> {
         }
     }
 
+    /// Set the action to be unknown, but known to belong to a certain entity type.
+    ///
+    /// This information is taken into account when evaluating 'is', '==' and '!=' expressions.
+    #[must_use]
+    pub fn unknown_action_with_type(self, action_type: ast::EntityType) -> Self {
+        Self {
+            action: ast::EntityUIDEntry::unknown_with_type(action_type, None),
+            ..self
+        }
+    }
+
     /// Set the resource.
     ///
     /// Note that you can create the `EntityUid` using `.parse()` on any
@@ -3621,6 +3643,17 @@ impl<S> RequestBuilder<S> {
     pub fn resource(self, resource: EntityUid) -> Self {
         Self {
             resource: ast::EntityUIDEntry::known(resource.into(), None),
+            ..self
+        }
+    }
+
+    /// Set the resource to be unknown, but known to belong to a certain entity type.
+    ///
+    /// This information is taken into account when evaluating 'is', '==' and '!=' expressions.
+    #[must_use]
+    pub fn unknown_resource_with_type(self, resource_type: ast::EntityType) -> Self {
+        Self {
+            resource: ast::EntityUIDEntry::unknown_with_type(resource_type, None),
             ..self
         }
     }
