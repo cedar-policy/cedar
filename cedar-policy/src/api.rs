@@ -3637,11 +3637,11 @@ impl<S> RequestBuilder<S> {
         }
     }
 
-    /// Set the principal to be unknown, which is known to belong a certain entity type.
+    /// Set the principal to be unknown, but known to belong to a certain entity type.
     ///
     /// Currently, this is used only to in 'is' expressions in the policy.
     #[must_use]
-    pub fn some_principal_of_type(self, principal_type: ast::EntityType) -> Self {
+    pub fn unknown_principal_with_type(self, principal_type: ast::EntityType) -> Self {
         Self {
             principal: ast::EntityUIDEntry::unknown_of_type(principal_type, None),
             ..self
@@ -3660,6 +3660,17 @@ impl<S> RequestBuilder<S> {
         }
     }
 
+    /// Set the action to be unknown, but known to belong to a certain entity type.
+    ///
+    /// Currently, this is used only to in 'is' expressions in the policy.
+    #[must_use]
+    pub fn unknown_action_with_type(self, action_type: ast::EntityType) -> Self {
+        Self {
+            action: ast::EntityUIDEntry::unknown_of_type(action_type, None),
+            ..self
+        }
+    }
+
     /// Set the resource.
     ///
     /// Note that you can create the `EntityUid` using `.parse()` on any
@@ -3672,11 +3683,11 @@ impl<S> RequestBuilder<S> {
         }
     }
 
-    /// Set the resource to be unknown, which is known to belong a certain entity type.
+    /// Set the resource to be unknown, but known to belong to a certain entity type.
     ///
     /// Currently, this is used only to in 'is' expressions in the policy.
     #[must_use]
-    pub fn some_resource_of_type(self, resource_type: ast::EntityType) -> Self {
+    pub fn unknown_resource_with_type(self, resource_type: ast::EntityType) -> Self {
         Self {
             resource: ast::EntityUIDEntry::unknown_of_type(resource_type, None),
             ..self
