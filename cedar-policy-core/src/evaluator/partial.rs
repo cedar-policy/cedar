@@ -7,9 +7,9 @@ use smol_str::SmolStr;
 
 use super::{
     err, names, split, stack_size_check, BinaryOp, BinaryOpOverflowError, BorrowedRestrictedExpr,
-    Entity, EntityUID, EvaluationError, Evaluator, Expr, ExprKind, IntegerOverflowError, Literal,
-    PartialValue, RestrictedEvaluator, Result, Set, SlotEnv, StaticallyTyped, Type, TypeError,
-    UnaryOp, UnaryOpOverflowError, Value, ValueKind, Var,
+    EvaluationError, Evaluator, Expr, ExprKind, IntegerOverflowError, Literal, PartialValue,
+    RestrictedEvaluator, Result, Set, SlotEnv, StaticallyTyped, Type, TypeError, UnaryOp,
+    UnaryOpOverflowError, Value, ValueKind, Var,
 };
 use itertools::Either;
 
@@ -107,43 +107,6 @@ impl RestrictedEvaluator<'_> {
 }
 
 impl Evaluator<'_> {
-    fn eval_in(
-        &self,
-        uid1: &EntityUID,
-        entity1: Option<&Entity>,
-        arg2: Value,
-    ) -> Result<PartialValue> {
-        // `rhs` is a list of all the UIDs for which we need to
-        // check if `uid1` is a descendant of
-        let rhs = match arg2.value {
-            ValueKind::Lit(Literal::EntityUID(uid)) => vec![(*uid).clone()],
-            // we assume that iterating the `authoritative` BTreeSet is
-            // approximately the same cost as iterating the `fast` HashSet
-            ValueKind::Set(Set { authoritative, .. }) => authoritative
-                .iter()
-                .map(|val| Ok(val.get_as_entity()?.clone()))
-                .collect::<Result<Vec<EntityUID>>>()?,
-            _ => {
-                return Err(EvaluationError::type_error(
-                    nonempty![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
-                    &arg2,
-                ))
-            }
-        };
-        for uid2 in rhs {
-            if uid1 == &uid2
-                || entity1
-                    .map(|e1| e1.is_descendant_of(&uid2))
-                    .unwrap_or(false)
-            {
-                return Ok(true.into());
-            }
-        }
-        // if we get here, `uid1` is not a descendant of (or equal to)
-        // any UID in `rhs`
-        Ok(false.into())
-    }
-
     /// Evaluation of conditionals
     /// Must be sure to respect short-circuiting semantics
     fn eval_if(
@@ -271,6 +234,7 @@ impl Evaluator<'_> {
             }
         }
     }
+
     /// Interpret an `Expr` into a `Value` in this evaluation environment.
     ///
     /// May return a residual expression, if the input expression is symbolic.
@@ -528,8 +492,12 @@ impl Evaluator<'_> {
                             Dereference::Residual(r) => Ok(PartialValue::Residual(
                                 Expr::binary_app(BinaryOp::In, r, arg2.into()),
                             )),
-                            Dereference::NoSuchEntity => self.eval_in(uid1, None, arg2),
-                            Dereference::Data(entity1) => self.eval_in(uid1, Some(entity1), arg2),
+                            Dereference::NoSuchEntity => {
+                                self.eval_in_concrete(uid1, None, arg2).map(Into::into)
+                            }
+                            Dereference::Data(entity1) => self
+                                .eval_in_concrete(uid1, Some(entity1), arg2)
+                                .map(Into::into),
                         }
                     }
                     // contains, which works on Sets
