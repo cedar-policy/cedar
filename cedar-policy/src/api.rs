@@ -3639,7 +3639,7 @@ impl<S> RequestBuilder<S> {
 
     /// Set the principal to be unknown, but known to belong to a certain entity type.
     ///
-    /// Currently, this is used only to in 'is' expressions in the policy.
+    /// This information is taken into account when evaluating 'is', '==' and '!=' expressions.
     #[must_use]
     pub fn unknown_principal_with_type(self, principal_type: ast::EntityType) -> Self {
         Self {
@@ -3662,7 +3662,7 @@ impl<S> RequestBuilder<S> {
 
     /// Set the action to be unknown, but known to belong to a certain entity type.
     ///
-    /// Currently, this is used only to in 'is' expressions in the policy.
+    /// This information is taken into account when evaluating 'is', '==' and '!=' expressions.
     #[must_use]
     pub fn unknown_action_with_type(self, action_type: ast::EntityType) -> Self {
         Self {
@@ -3685,7 +3685,7 @@ impl<S> RequestBuilder<S> {
 
     /// Set the resource to be unknown, but known to belong to a certain entity type.
     ///
-    /// Currently, this is used only to in 'is' expressions in the policy.
+    /// This information is taken into account when evaluating 'is', '==' and '!=' expressions.
     #[must_use]
     pub fn unknown_resource_with_type(self, resource_type: ast::EntityType) -> Self {
         Self {
