@@ -120,6 +120,10 @@ impl EntityUIDEntry {
         }
     }
 
+    pub fn unknown_of_type(ty: EntityType, loc: Option<Loc>) -> Self {
+        Self::UnknownOfType { ty, loc }
+    }
+
     /// Get the UID of the entry, or `None` if it is unknown (partial evaluation)
     pub fn uid(&self) -> Option<&EntityUID> {
         match self {
@@ -128,6 +132,7 @@ impl EntityUIDEntry {
         }
     }
 
+    /// Get the type of the entry, or `None` if it is unknown (partial evaluation with no type annotation)
     pub fn get_type(&self) -> Option<&EntityType> {
         match self {
             Self::Known { euid, .. } => Some(euid.entity_type()),
