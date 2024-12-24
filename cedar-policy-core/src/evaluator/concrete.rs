@@ -3,10 +3,10 @@ use std::sync::Arc;
 use crate::{entities::Dereference, extensions::Extensions, parser::Loc};
 
 use super::{
-    err, names, stack_size_check, BinaryOp, BinaryOpOverflowError, Entity, EntityUID,
-    EvaluationError, Evaluator, Expr, ExprKind, IntegerOverflowError, Literal, Result, Set,
-    SlotEnv, StaticallyTyped, Type, TypeError, UnaryOp, UnaryOpOverflowError, Value, ValueKind,
-    Var,
+    err, names, stack_size_check, BinaryOp, BinaryOpOverflowError, BorrowedRestrictedExpr, Entity,
+    EntityUID, EvaluationError, Evaluator, Expr, ExprKind, IntegerOverflowError, Literal,
+    RestrictedEvaluator, Result, Set, SlotEnv, StaticallyTyped, Type, TypeError, UnaryOp,
+    UnaryOpOverflowError, Value, ValueKind, Var,
 };
 
 use nonempty::nonempty;
@@ -40,6 +40,71 @@ impl From<BinaryArithmetic> for BinaryOp {
 pub(crate) enum SetOp {
     All,
     Any,
+}
+
+impl RestrictedEvaluator<'_> {
+    /// Interpret a `RestrictedExpr` into a `Value` in this evaluation environment.
+    ///
+    /// May return an error, for instance if an extension function returns an error
+    pub fn interpret(&self, expr: BorrowedRestrictedExpr<'_>) -> Result<Value> {
+        stack_size_check()?;
+
+        let res = self.interpret_internal(&expr);
+
+        // set the returned value's source location to the same source location
+        // as the input expression had.
+        // we do this here so that we don't have to set/propagate the source
+        // location in every arm of the big `match` in `partial_interpret_internal()`.
+        // also, if there is an error, set its source location to the source
+        // location of the input expression as well, unless it already had a
+        // more specific location
+        res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().cloned()))
+            .map_err(|err| match err.source_loc() {
+                None => err.with_maybe_source_loc(expr.source_loc().cloned()),
+                Some(_) => err,
+            })
+    }
+
+    /// Internal function to interpret a `RestrictedExpr`. (External callers,
+    /// use `interpret()`.)
+    ///
+    /// Part of the reason this exists, instead of inlining this into
+    /// `interpret()`, is so that we can use `?` inside this function
+    /// without immediately shortcircuiting into a return from
+    /// `interpret()` -- ie, so we can make sure the source locations of
+    /// all errors are set properly before returning them from
+    /// `interpret()`.
+    fn interpret_internal(&self, expr: &BorrowedRestrictedExpr<'_>) -> Result<Value> {
+        match expr.as_ref().expr_kind() {
+            ExprKind::Lit(lit) => Ok(lit.clone().into()),
+            ExprKind::Set(items) => {
+                let vals = items
+                    .iter()
+                    .map(|item| self.interpret(BorrowedRestrictedExpr::new_unchecked(item))) // assuming the invariant holds for `e`, it will hold here
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(Value::set(vals, expr.source_loc().cloned()))
+            }
+            ExprKind::Unknown(_) => Err(EvaluationError::non_value(expr.as_ref().clone())),
+            ExprKind::Record(map) => {
+                let map = map
+                    .iter()
+                    .map(|(k, v)| Ok((k.clone(), self.interpret(BorrowedRestrictedExpr::new_unchecked(v))?))) // assuming the invariant holds for `e`, it will hold here
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(Value::record(map, expr.source_loc().cloned()).into())
+            }
+            ExprKind::ExtensionFunctionApp { fn_name, args } => {
+                let args = args
+                    .iter()
+                    .map(|arg| self.interpret(BorrowedRestrictedExpr::new_unchecked(arg))) // assuming the invariant holds for `e`, it will hold here
+                    .collect::<Result<Vec<_>>>()?;
+                        let efunc = self.extensions.func(fn_name)?;
+                        efunc.call(&args)?.try_into().map_err(|_| EvaluationError::non_value(expr.as_ref().clone()))
+            },
+            // PANIC SAFETY Unreachable via invariant on restricted expressions
+            #[allow(clippy::unreachable)]
+            expr => unreachable!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
+        }
+    }
 }
 
 impl Evaluator<'_> {

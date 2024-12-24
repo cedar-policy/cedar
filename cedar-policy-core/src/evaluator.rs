@@ -83,16 +83,6 @@ impl<'e> RestrictedEvaluator<'e> {
     pub fn new(extensions: &'e Extensions<'e>) -> Self {
         Self { extensions }
     }
-
-    /// Interpret a `RestrictedExpr` into a `Value` in this evaluation environment.
-    ///
-    /// May return an error, for instance if an extension function returns an error
-    pub fn interpret(&self, e: BorrowedRestrictedExpr<'_>) -> Result<Value> {
-        match self.partial_interpret(e)? {
-            PartialValue::Value(v) => Ok(v),
-            PartialValue::Residual(r) => Err(EvaluationError::non_value(r)),
-        }
-    }
 }
 
 impl<'e> Evaluator<'e> {
