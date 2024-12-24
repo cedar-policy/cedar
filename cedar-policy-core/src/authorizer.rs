@@ -22,7 +22,9 @@
 
 use crate::ast::*;
 use crate::entities::Entities;
+use crate::evaluator::EvaluationError;
 use crate::evaluator::Evaluator;
+use crate::evaluator::PartialEvaluator;
 use crate::extensions::Extensions;
 use itertools::{Either, Itertools};
 use serde::{Deserialize, Serialize};
@@ -79,19 +81,31 @@ impl Authorizer {
     /// The language spec and formal model give a precise definition of how this is
     /// computed.
     pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> Response {
-        self.is_authorized_core(q, pset, entities).concretize()
+        let eval = Evaluator::new(q.clone(), entities, self.extensions);
+        self.is_authorized_core(q, pset, |p| eval.evaluate(p).map(|b| Either::Left(b)))
+            .concretize()
     }
 
     /// Returns an authorization response for `q` with respect to the given `Slice`.
-    /// Partial Evaluation of is_authorized
     ///
-    pub fn is_authorized_core(
+    /// The language spec and formal model give a precise definition of how this is
+    /// computed.
+    pub fn is_authorized_partial(
         &self,
         q: Request,
         pset: &PolicySet,
         entities: &Entities,
     ) -> PartialResponse {
-        let eval = Evaluator::new(q.clone(), entities, self.extensions);
+        let eval = PartialEvaluator::new(q.clone(), entities, self.extensions);
+        self.is_authorized_core(q, pset, |p| eval.partial_evaluate(p))
+    }
+
+    fn is_authorized_core(
+        &self,
+        q: Request,
+        pset: &PolicySet,
+        evaluator: impl Fn(&Policy) -> std::result::Result<Either<bool, Expr>, EvaluationError>,
+    ) -> PartialResponse {
         let mut true_permits = vec![];
         let mut true_forbids = vec![];
         let mut false_permits = vec![];
@@ -102,7 +116,7 @@ impl Authorizer {
 
         for p in pset.policies() {
             let (id, annotations) = (p.id().clone(), p.annotations_arc().clone());
-            match eval.partial_evaluate(p) {
+            match evaluator(p) {
                 Ok(Either::Left(satisfied)) => match (satisfied, p.effect()) {
                     (true, Effect::Permit) => true_permits.push((id, annotations)),
                     (true, Effect::Forbid) => true_forbids.push((id, annotations)),
@@ -412,8 +426,8 @@ mod test {
         pset.add_static(parser::parse_policy(Some(PolicyID::from_string("2")), src2).unwrap())
             .unwrap();
 
-        let r = a.is_authorized_core(q, &pset, &es).decision();
-        assert_eq!(r, Some(Decision::Allow));
+        let r = a.is_authorized(q, &pset, &es).decision;
+        assert_eq!(r, Decision::Allow);
     }
 
     #[test]
@@ -451,16 +465,16 @@ mod test {
         pset.add_static(parser::parse_policy(Some(PolicyID::from_string("2")), src2).unwrap())
             .unwrap();
 
-        let r = a.is_authorized_core(q.clone(), &pset, &es).decision();
+        let r = a.is_authorized_partial(q.clone(), &pset, &es).decision();
         assert_eq!(r, Some(Decision::Allow));
 
         pset.add_static(parser::parse_policy(Some(PolicyID::from_string("3")), src3).unwrap())
             .unwrap();
 
-        let r = a.is_authorized_core(q.clone(), &pset, &es).decision();
+        let r = a.is_authorized_partial(q.clone(), &pset, &es).decision();
         assert_eq!(r, Some(Decision::Allow));
 
-        let r = a.is_authorized_core(q, &pset, &es);
+        let r = a.is_authorized_partial(q, &pset, &es);
         assert!(r
             .satisfied_permits
             .contains_key(&PolicyID::from_string("1")));
@@ -499,7 +513,7 @@ mod test {
         pset.add_static(parser::parse_policy(Some(PolicyID::from_string("2")), src2).unwrap())
             .unwrap();
 
-        let r = a.is_authorized_core(q.clone(), &pset, &es);
+        let r = a.is_authorized_partial(q.clone(), &pset, &es);
         let map = [("test".into(), Value::from(false))].into_iter().collect();
         let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Allow);
@@ -509,7 +523,7 @@ mod test {
         let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Deny);
 
-        let r = a.is_authorized_core(q, &pset, &es);
+        let r = a.is_authorized_partial(q, &pset, &es);
         assert!(r
             .satisfied_permits
             .contains_key(&PolicyID::from_string("1")));
@@ -535,7 +549,7 @@ mod test {
         let mut pset = PolicySet::new();
         let es = Entities::new();
 
-        let r = a.is_authorized_core(q.clone(), &pset, &es);
+        let r = a.is_authorized_partial(q.clone(), &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));
 
         let src1 = r#"
@@ -544,7 +558,7 @@ mod test {
 
         pset.add_static(parser::parse_policy(Some(PolicyID::from_string("1")), src1).unwrap())
             .unwrap();
-        let r = a.is_authorized_core(q.clone(), &pset, &es);
+        let r = a.is_authorized_partial(q.clone(), &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));
 
         let src2 = r#"
@@ -553,7 +567,7 @@ mod test {
 
         pset.add_static(parser::parse_policy(Some(PolicyID::from_string("2")), src2).unwrap())
             .unwrap();
-        let r = a.is_authorized_core(q.clone(), &pset, &es);
+        let r = a.is_authorized_partial(q.clone(), &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));
 
         let src3 = r#"
@@ -567,10 +581,10 @@ mod test {
             .unwrap();
         pset.add_static(parser::parse_policy(Some(PolicyID::from_string("4")), src4).unwrap())
             .unwrap();
-        let r = a.is_authorized_core(q.clone(), &pset, &es);
+        let r = a.is_authorized_partial(q.clone(), &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));
 
-        let r = a.is_authorized_core(q, &pset, &es);
+        let r = a.is_authorized_partial(q, &pset, &es);
         assert!(r
             .satisfied_permits
             .contains_key(&PolicyID::from_string("4")));
@@ -613,7 +627,7 @@ mod test {
         pset.add_static(parser::parse_policy(Some(PolicyID::from_string("2")), src2).unwrap())
             .unwrap();
 
-        let r = a.is_authorized_core(q.clone(), &pset, &es);
+        let r = a.is_authorized_partial(q.clone(), &pset, &es);
         let map = [("a".into(), Value::from(false))].into_iter().collect();
         let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Deny);
@@ -624,10 +638,10 @@ mod test {
 
         pset.add_static(parser::parse_policy(Some(PolicyID::from_string("3")), src3).unwrap())
             .unwrap();
-        let r = a.is_authorized_core(q.clone(), &pset, &es);
+        let r = a.is_authorized_partial(q.clone(), &pset, &es);
         assert_eq!(r.decision(), Some(Decision::Deny));
 
-        let r = a.is_authorized_core(q, &pset, &es);
+        let r = a.is_authorized_partial(q, &pset, &es);
         assert!(r.satisfied_permits.is_empty());
         assert!(r
             .satisfied_forbids

@@ -1,13 +1,15 @@
+use crate::entities::Entities;
+use crate::extensions::Extensions;
 use crate::{entities::Dereference, parser::Loc};
 use nonempty::nonempty;
 use smol_str::SmolStr;
 use std::sync::Arc;
 
-use super::concrete::{BinaryArithmetic, Relation, SetOp};
+use super::concrete::{BinaryArithmetic, Evaluator, Relation, SetOp};
 use super::{
-    err, names, split, stack_size_check, BinaryOp, BorrowedRestrictedExpr, EvaluationError,
-    Evaluator, Expr, ExprKind, Literal, PartialValue, RestrictedEvaluator, Result, SlotEnv,
-    StaticallyTyped, Type, TypeError, Value, ValueKind, Var,
+    err, names, split, stack_size_check, BinaryOp, BorrowedRestrictedExpr, EntityUIDEntry,
+    EvaluationError, Expr, ExprKind, Literal, PartialValue, Policy, Request, RestrictedEvaluator,
+    Result, SlotEnv, StaticallyTyped, Type, TypeError, Unknown, Value, ValueKind, Var,
 };
 use itertools::Either;
 
@@ -104,7 +106,104 @@ impl RestrictedEvaluator<'_> {
     }
 }
 
-impl Evaluator<'_> {
+/// Evaluator object.
+///
+/// Conceptually keeps the evaluation environment as part of its internal state,
+/// because we will be repeatedly invoking the evaluator on every policy in a
+/// Slice.
+pub struct PartialEvaluator<'e> {
+    /// `Principal` for the current request
+    principal: EntityUIDEntry,
+    /// `Action` for the current request
+    action: EntityUIDEntry,
+    /// `Resource` for the current request
+    resource: EntityUIDEntry,
+    /// `Context` for the current request; this will be a Record type
+    context: PartialValue,
+    /// Entities which we use to resolve entity references.
+    ///
+    /// This is a reference, because the `Evaluator` doesn't need ownership of
+    /// (or need to modify) the `Entities`. One advantage of this is that you
+    /// could create multiple `Evaluator`s without copying the `Entities`.
+    entities: &'e Entities,
+    /// Extensions which are active for this evaluation
+    extensions: &'e Extensions<'e>,
+}
+
+impl std::fmt::Debug for PartialEvaluator<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "<Evaluator with principal = {:?}, action = {:?}, resource = {:?}",
+            &self.principal, &self.action, &self.resource
+        )
+    }
+}
+
+impl<'e> PartialEvaluator<'e> {
+    /// Partially evaluate the given `Policy`, returning one of:
+    /// 1) A boolean, if complete evaluation was possible
+    /// 2) An error, if the policy is guaranteed to error
+    /// 3) A residual, if complete evaluation was impossible
+    ///    The bool indicates whether the policy applies, ie, "is satisfied" for the
+    ///    current `request`.
+    ///    This is _different than_ "if the current `request` should be allowed" --
+    ///    it doesn't consider whether we're processing a `Permit` policy or a
+    ///    `Forbid` policy.
+    pub fn partial_evaluate(&self, p: &Policy) -> Result<Either<bool, Expr>> {
+        match self.partial_interpret(&p.condition(), p.env())? {
+            PartialValue::Value(v) => v.get_as_bool().map(Either::Left),
+            PartialValue::Residual(e) => Ok(Either::Right(e)),
+        }
+    }
+
+    /// Interpret an `Expr` in an empty `SlotEnv`. Also checks that the source
+    /// location is propagated to the result.
+    #[cfg(test)]
+    pub fn interpret_inline_policy(&self, e: &Expr) -> Result<Value> {
+        use std::collections::HashMap;
+
+        match self.partial_interpret(e, &HashMap::new())? {
+            PartialValue::Value(v) => {
+                debug_assert!(e.source_loc().is_some() == v.source_loc().is_some());
+                Ok(v)
+            }
+            PartialValue::Residual(r) => {
+                debug_assert!(e.source_loc().is_some() == r.source_loc().is_some());
+                Err(err::EvaluationError::non_value(r))
+            }
+        }
+    }
+
+    /// Evaluate an expression, potentially leaving a residual
+    #[cfg(test)]
+    pub fn partial_eval_expr(&self, p: &Expr) -> Result<Either<Value, Expr>> {
+        let env = SlotEnv::new();
+        match self.partial_interpret(p, &env)? {
+            PartialValue::Value(v) => Ok(Either::Left(v)),
+            PartialValue::Residual(r) => Ok(Either::Right(r)),
+        }
+    }
+
+    /// Create a fresh `Evaluator` for the given `request`, which uses the given
+    /// `Entities` to resolve entity references. Use the given `Extension`s when
+    /// evaluating.
+    pub fn new(q: Request, entities: &'e Entities, extensions: &'e Extensions<'e>) -> Self {
+        Self {
+            principal: q.principal,
+            action: q.action,
+            resource: q.resource,
+            context: {
+                match q.context {
+                    None => PartialValue::unknown(Unknown::new_untyped("context")),
+                    Some(ctx) => ctx.into(),
+                }
+            },
+            entities,
+            extensions,
+        }
+    }
+
     /// Evaluation of conditionals
     /// Must be sure to respect short-circuiting semantics
     fn eval_if(
@@ -339,7 +438,7 @@ impl Evaluator<'_> {
                 }
             }
             ExprKind::UnaryApp { op, arg } => match self.partial_interpret(arg, slots)? {
-                PartialValue::Value(arg) => Self::eval_unary(op, arg, loc).map(Into::into),
+                PartialValue::Value(arg) => Evaluator::eval_unary(op, arg, loc).map(Into::into),
                 // NOTE, there was a bug here found during manual review. (I forgot to wrap in unary_app call)
                 // Could be a nice target for fault injection
                 PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::unary_app(*op, r))),
@@ -364,23 +463,25 @@ impl Evaluator<'_> {
                     }
                 };
                 match op {
-                    BinaryOp::Eq => Self::eval_relation(Relation::Eq, arg1, arg2).map(Into::into),
+                    BinaryOp::Eq => {
+                        Evaluator::eval_relation(Relation::Eq, arg1, arg2).map(Into::into)
+                    }
                     BinaryOp::Less => {
-                        Self::eval_relation(Relation::Less, arg1, arg2).map(Into::into)
+                        Evaluator::eval_relation(Relation::Less, arg1, arg2).map(Into::into)
                     }
                     BinaryOp::LessEq => {
-                        Self::eval_relation(Relation::LessEq, arg1, arg2).map(Into::into)
+                        Evaluator::eval_relation(Relation::LessEq, arg1, arg2).map(Into::into)
                     }
                     BinaryOp::Add => {
-                        Self::eval_binary_arithmetic(BinaryArithmetic::Add, arg1, arg2, loc)
+                        Evaluator::eval_binary_arithmetic(BinaryArithmetic::Add, arg1, arg2, loc)
                             .map(Into::into)
                     }
                     BinaryOp::Sub => {
-                        Self::eval_binary_arithmetic(BinaryArithmetic::Sub, arg1, arg2, loc)
+                        Evaluator::eval_binary_arithmetic(BinaryArithmetic::Sub, arg1, arg2, loc)
                             .map(Into::into)
                     }
                     BinaryOp::Mul => {
-                        Self::eval_binary_arithmetic(BinaryArithmetic::Mul, arg1, arg2, loc)
+                        Evaluator::eval_binary_arithmetic(BinaryArithmetic::Mul, arg1, arg2, loc)
                             .map(Into::into)
                     }
                     // hierarchy membership operator; see note on `BinaryOp::In`
@@ -404,21 +505,21 @@ impl Evaluator<'_> {
                                 Expr::binary_app(BinaryOp::In, r, arg2.into()),
                             )),
                             Dereference::NoSuchEntity => {
-                                Self::eval_in(uid1, None, arg2).map(Into::into)
+                                Evaluator::eval_in(uid1, None, arg2).map(Into::into)
                             }
                             Dereference::Data(entity1) => {
-                                Self::eval_in(uid1, Some(entity1), arg2).map(Into::into)
+                                Evaluator::eval_in(uid1, Some(entity1), arg2).map(Into::into)
                             }
                         }
                     }
                     // contains, which works on Sets
-                    BinaryOp::Contains => Self::eval_contains(arg1, arg2).map(Into::into),
+                    BinaryOp::Contains => Evaluator::eval_contains(arg1, arg2).map(Into::into),
                     // ContainsAll and ContainsAny, which work on Sets
                     BinaryOp::ContainsAll => {
-                        Self::eval_set_op(SetOp::All, arg1, arg2).map(Into::into)
+                        Evaluator::eval_set_op(SetOp::All, arg1, arg2).map(Into::into)
                     }
                     BinaryOp::ContainsAny => {
-                        Self::eval_set_op(SetOp::Any, arg1, arg2).map(Into::into)
+                        Evaluator::eval_set_op(SetOp::Any, arg1, arg2).map(Into::into)
                     }
                     // GetTag and HasTag, which require an Entity on the left and a String on the right
                     BinaryOp::GetTag | BinaryOp::HasTag => {
@@ -563,5 +664,1375 @@ impl Evaluator<'_> {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, sync::Arc};
+
+    use cool_asserts::assert_matches;
+    use itertools::Either;
+
+    use crate::{
+        ast::{
+            expression_construction_errors, BinaryOp, Context, EntityUID, EntityUIDEntry, Expr,
+            PartialValue, Pattern, PolicyID, Request, RequestSchemaAllPass, RestrictedExpr,
+            UnaryOp, Unknown, Value, ValueKind, Var,
+        },
+        entities::Entities,
+        evaluator::{
+            test::{basic_entities, basic_request, empty_request},
+            RestrictedEvaluator,
+        },
+        extensions::Extensions,
+        parser::{self, parse_policyset},
+    };
+
+    use super::PartialEvaluator;
+    use std::str::FromStr;
+
+    #[test]
+    fn simple_partial() {
+        let pset = parse_policyset(
+            r#"
+            permit(principal == Principal::"alice", action, resource);
+            "#,
+        )
+        .expect("Failed to parse");
+        let euid =
+            Arc::new(EntityUID::from_str(r#"Principal::"alice""#).expect("EUID failed to parse"));
+        let p = pset
+            .get(&PolicyID::from_string("policy0"))
+            .expect("No such policy");
+        let q = Request::new_with_unknowns(
+            EntityUIDEntry::Unknown { loc: None },
+            EntityUIDEntry::Unknown { loc: None },
+            EntityUIDEntry::Unknown { loc: None },
+            Some(Context::empty()),
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
+        let es = Entities::new();
+        let e = PartialEvaluator::new(q, &es, Extensions::none());
+        match e.partial_evaluate(p).expect("eval error") {
+            Either::Left(_) => panic!("Evalled to a value"),
+            Either::Right(expr) => {
+                println!("{expr}");
+                assert!(expr.contains_unknown());
+                let m: HashMap<_, _> = [("principal".into(), Value::from(euid))]
+                    .into_iter()
+                    .collect();
+                let new_expr = expr.substitute_typed(&m).unwrap();
+                assert_eq!(
+                    e.partial_interpret(&new_expr, &HashMap::new())
+                        .expect("Failed to eval"),
+                    PartialValue::Value(true.into())
+                );
+            }
+        }
+    }
+
+    fn partial_context_test(context_expr: Expr, e: Expr) -> Either<Value, Expr> {
+        let euid: EntityUID = r#"Test::"test""#.parse().unwrap();
+        let rexpr = RestrictedExpr::new(context_expr)
+            .expect("Context Expression was not a restricted expression");
+        let context = Context::from_expr(rexpr.as_borrowed(), Extensions::none()).unwrap();
+        let q = Request::new(
+            (euid.clone(), None),
+            (euid.clone(), None),
+            (euid, None),
+            context,
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(q, &es, Extensions::none());
+        eval.partial_eval_expr(&e).unwrap()
+    }
+
+    #[test]
+    fn partial_contexts1() {
+        // { "cell" : <unknown> }
+        let c_expr =
+            Expr::record([("cell".into(), Expr::unknown(Unknown::new_untyped("cell")))]).unwrap();
+        let expr = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::get_attr(Expr::var(Var::Context), "cell".into()),
+            Expr::val(2),
+        );
+        let expected = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::unknown(Unknown::new_untyped("cell")),
+            Expr::val(2),
+        );
+
+        let r = partial_context_test(c_expr, expr);
+
+        assert_eq!(r, Either::Right(expected));
+    }
+
+    #[test]
+    fn partial_contexts2() {
+        // { "loc" : "test", "cell" : <unknown> }
+        let c_expr = Expr::record([
+            ("loc".into(), Expr::val("test")),
+            ("cell".into(), Expr::unknown(Unknown::new_untyped("cell"))),
+        ])
+        .unwrap();
+        // context["cell"] == 2
+        let expr = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::get_attr(Expr::var(Var::Context), "cell".into()),
+            Expr::val(2),
+        );
+        let r = partial_context_test(c_expr.clone(), expr);
+        let expected = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::unknown(Unknown::new_untyped("cell")),
+            Expr::val(2),
+        );
+        assert_eq!(r, Either::Right(expected));
+
+        // context["loc"] == 2
+        let expr = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::get_attr(Expr::var(Var::Context), "loc".into()),
+            Expr::val(2),
+        );
+        let r = partial_context_test(c_expr, expr);
+        assert_eq!(r, Either::Left(false.into()));
+    }
+
+    #[test]
+    fn partial_contexts3() {
+        // { "loc" : "test", "cell" : { "row" : <unknown> } }
+        let row =
+            Expr::record([("row".into(), Expr::unknown(Unknown::new_untyped("row")))]).unwrap();
+        //assert!(row.is_partially_projectable());
+        let c_expr =
+            Expr::record([("loc".into(), Expr::val("test")), ("cell".into(), row)]).unwrap();
+        //assert!(c_expr.is_partially_projectable());
+        // context["cell"]["row"] == 2
+        let expr = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::get_attr(
+                Expr::get_attr(Expr::var(Var::Context), "cell".into()),
+                "row".into(),
+            ),
+            Expr::val(2),
+        );
+        let r = partial_context_test(c_expr, expr);
+        let expected = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::unknown(Unknown::new_untyped("row")),
+            Expr::val(2),
+        );
+        assert_eq!(r, Either::Right(expected));
+    }
+
+    #[test]
+    fn partial_contexts4() {
+        // { "loc" : "test", "cell" : { "row" : <unknown>, "col" : <unknown> } }
+        let row = Expr::record([
+            ("row".into(), Expr::unknown(Unknown::new_untyped("row"))),
+            ("col".into(), Expr::unknown(Unknown::new_untyped("col"))),
+        ])
+        .unwrap();
+        //assert!(row.is_partially_projectable());
+        let c_expr =
+            Expr::record([("loc".into(), Expr::val("test")), ("cell".into(), row)]).unwrap();
+        //assert!(c_expr.is_partially_projectable());
+        // context["cell"]["row"] == 2
+        let expr = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::get_attr(
+                Expr::get_attr(Expr::var(Var::Context), "cell".into()),
+                "row".into(),
+            ),
+            Expr::val(2),
+        );
+        let r = partial_context_test(c_expr.clone(), expr);
+        let expected = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::unknown(Unknown::new_untyped("row")),
+            Expr::val(2),
+        );
+        assert_eq!(r, Either::Right(expected));
+        // context["cell"]["col"] == 2
+        let expr = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::get_attr(
+                Expr::get_attr(Expr::var(Var::Context), "cell".into()),
+                "col".into(),
+            ),
+            Expr::val(2),
+        );
+        let r = partial_context_test(c_expr, expr);
+        let expected = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::unknown(Unknown::new_untyped("col")),
+            Expr::val(2),
+        );
+        assert_eq!(r, Either::Right(expected));
+    }
+
+    #[test]
+    fn partial_context_fail() {
+        let context = Context::from_expr(
+            RestrictedExpr::new_unchecked(
+                Expr::record([
+                    ("a".into(), Expr::val(3)),
+                    ("b".into(), Expr::unknown(Unknown::new_untyped("b"))),
+                ])
+                .unwrap(),
+            )
+            .as_borrowed(),
+            Extensions::none(),
+        )
+        .unwrap();
+        let euid: EntityUID = r#"Test::"test""#.parse().unwrap();
+        let q = Request::new(
+            (euid.clone(), None),
+            (euid.clone(), None),
+            (euid, None),
+            context,
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(q, &es, Extensions::none());
+        let e = Expr::get_attr(Expr::var(Var::Context), "foo".into());
+        assert_matches!(eval.partial_eval_expr(&e), Err(_))
+    }
+
+    #[test]
+    fn mikes_test() {
+        let policyset = parse_policyset(
+            r#"
+            permit(
+                principal == Principal::"p",
+                action == Action::"a",
+                resource == Table::"t"
+            ) when {
+                context.cell.row > 5 && context.cell.col < 2
+            };
+        "#,
+        )
+        .expect("Failed to parse");
+        let policy = policyset
+            .get(&PolicyID::from_string("policy0"))
+            .expect("No such policy");
+
+        let es = Entities::new();
+
+        let p: EntityUID = r#"Principal::"p""#.parse().expect("Failed to parse");
+        let a: EntityUID = r#"Action::"a""#.parse().expect("Failed to parse");
+        let r: EntityUID = r#"Table::"t""#.parse().expect("Failed to parse");
+
+        let c_expr = RestrictedExpr::new(
+            Expr::record([("cell".into(), Expr::unknown(Unknown::new_untyped("cell")))]).unwrap(),
+        )
+        .expect("should qualify as restricted");
+        let context = Context::from_expr(c_expr.as_borrowed(), Extensions::none()).unwrap();
+
+        let q = Request::new(
+            (p, None),
+            (a, None),
+            (r, None),
+            context,
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
+        let eval = PartialEvaluator::new(q, &es, Extensions::none());
+
+        let result = eval.partial_evaluate(policy).expect("Eval error");
+        match result {
+            Either::Left(_) => panic!("Got a value"),
+            Either::Right(r) => {
+                println!("{r}");
+            }
+        }
+    }
+
+    #[test]
+    fn if_semantics_residual_guard() {
+        let a = Expr::unknown(Unknown::new_untyped("guard"));
+        let b = Expr::and(Expr::val(1), Expr::val(2));
+        let c = Expr::val(true);
+
+        let e = Expr::ite(a, b.clone(), c);
+
+        let es = Entities::new();
+
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        assert_eq!(
+            r,
+            PartialValue::Residual(Expr::ite(
+                Expr::unknown(Unknown::new_untyped("guard")),
+                b,
+                Expr::val(true)
+            ))
+        )
+    }
+
+    #[test]
+    fn if_semantics_residual_reduce() {
+        let a = Expr::binary_app(
+            BinaryOp::Eq,
+            Expr::get_attr(Expr::var(Var::Context), "condition".into()),
+            Expr::val("value"),
+        );
+        let b = Expr::val("true branch");
+        let c = Expr::val("false branch");
+
+        let e = Expr::ite(a, b.clone(), c.clone());
+
+        let es = Entities::new();
+
+        let q = Request::new(
+            (EntityUID::with_eid("p"), None),
+            (EntityUID::with_eid("a"), None),
+            (EntityUID::with_eid("r"), None),
+            Context::from_expr(
+                RestrictedExpr::new_unchecked(
+                    Expr::record([(
+                        "condition".into(),
+                        Expr::unknown(Unknown::new_untyped("unknown_condition")),
+                    )])
+                    .unwrap(),
+                )
+                .as_borrowed(),
+                Extensions::none(),
+            )
+            .unwrap(),
+            Some(&RequestSchemaAllPass),
+            Extensions::none(),
+        )
+        .unwrap();
+        let eval = PartialEvaluator::new(q, &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        assert_eq!(
+            r,
+            PartialValue::Residual(Expr::ite(
+                Expr::binary_app(
+                    BinaryOp::Eq,
+                    Expr::unknown(Unknown::new_untyped("unknown_condition")),
+                    Expr::val("value"),
+                ),
+                b,
+                c
+            ))
+        );
+    }
+
+    #[test]
+    fn if_semantics_both_err() {
+        let a = Expr::unknown(Unknown::new_untyped("guard"));
+        let b = Expr::and(Expr::val(1), Expr::val(2));
+        let c = Expr::or(Expr::val(1), Expr::val(3));
+
+        let e = Expr::ite(a, b.clone(), c.clone());
+
+        let es = Entities::new();
+
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        assert_eq!(
+            eval.partial_interpret(&e, &HashMap::new()).unwrap(),
+            PartialValue::Residual(Expr::ite(
+                Expr::unknown(Unknown::new_untyped("guard")),
+                b,
+                c
+            ))
+        );
+    }
+
+    #[test]
+    fn and_semantics1() {
+        // Left-hand-side evaluates to `false`, should short-circuit to value
+        let e = Expr::and(
+            Expr::binary_app(BinaryOp::Eq, Expr::val(1), Expr::val(2)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
+        );
+
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        assert_eq!(r, PartialValue::Value(Value::from(false)));
+    }
+
+    #[test]
+    fn and_semantics2() {
+        // Left hand sides evaluates to `true`, can't drop it due to dynamic types
+        let e = Expr::and(
+            Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(2)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
+        );
+
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        assert_eq!(
+            r,
+            PartialValue::Residual(Expr::and(
+                Expr::val(true),
+                Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false))
+            ))
+        );
+    }
+
+    #[test]
+    fn and_semantics3() {
+        // Errors on left hand side should propagate
+        let e = Expr::and(
+            Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
+        );
+
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
+    }
+
+    #[test]
+    fn and_semantics4() {
+        // Left hand is residual, errors on right hand side should _not_ propagate
+        let e = Expr::and(
+            Expr::binary_app(
+                BinaryOp::Eq,
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::val(2),
+            ),
+            Expr::and(Expr::val("hello"), Expr::val("bye")),
+        );
+
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Ok(_));
+    }
+
+    #[test]
+    fn or_semantics1() {
+        // Left-hand-side evaluates to `true`, should short-circuit to value
+
+        let e = Expr::or(
+            Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(2)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
+        );
+
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        assert_eq!(r, PartialValue::Value(Value::from(true)));
+    }
+
+    #[test]
+    fn or_semantics2() {
+        // Left hand sides evaluates to `false`, can't drop it due to dynamic types
+        let e = Expr::or(
+            Expr::binary_app(BinaryOp::Eq, Expr::val(1), Expr::val(2)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
+        );
+
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        assert_eq!(
+            r,
+            PartialValue::Residual(Expr::or(
+                Expr::val(false),
+                Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false))
+            ))
+        );
+    }
+
+    #[test]
+    fn or_semantics3() {
+        // Errors on left hand side should propagate
+        let e = Expr::or(
+            Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
+            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
+        );
+
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
+    }
+
+    #[test]
+    fn or_semantics4() {
+        // Left hand is residual, errors on right hand side should _not_ propagate
+        let e = Expr::or(
+            Expr::binary_app(
+                BinaryOp::Eq,
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::val(2),
+            ),
+            Expr::and(Expr::val("hello"), Expr::val("bye")),
+        );
+
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Ok(_));
+    }
+
+    #[test]
+    fn record_semantics_err() {
+        let a = Expr::get_attr(
+            Expr::record([("value".into(), Expr::unknown(Unknown::new_untyped("test")))]).unwrap(),
+            "notpresent".into(),
+        );
+
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        assert_matches!(eval.partial_interpret(&a, &HashMap::new()), Err(_));
+    }
+
+    #[test]
+    fn record_semantics_key_present() {
+        let a = Expr::get_attr(
+            Expr::record([("value".into(), Expr::unknown(Unknown::new_untyped("test")))]).unwrap(),
+            "value".into(),
+        );
+
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&a, &HashMap::new()).unwrap();
+
+        let expected = PartialValue::unknown(Unknown::new_untyped("test"));
+
+        assert_eq!(r, expected);
+    }
+
+    #[test]
+    fn record_semantics_missing_attr() {
+        let a = Expr::get_attr(
+            Expr::record([
+                ("a".into(), Expr::unknown(Unknown::new_untyped("a"))),
+                ("b".into(), Expr::unknown(Unknown::new_untyped("c"))),
+            ])
+            .unwrap(),
+            "c".into(),
+        );
+
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        assert_matches!(eval.partial_interpret(&a, &HashMap::new()), Err(_));
+    }
+
+    #[test]
+    fn record_semantics_mult_unknowns() {
+        let a = Expr::get_attr(
+            Expr::record([
+                ("a".into(), Expr::unknown(Unknown::new_untyped("a"))),
+                ("b".into(), Expr::unknown(Unknown::new_untyped("b"))),
+            ])
+            .unwrap(),
+            "b".into(),
+        );
+
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&a, &HashMap::new()).unwrap();
+
+        let expected = PartialValue::unknown(Unknown::new_untyped("b"));
+
+        assert_eq!(r, expected);
+    }
+
+    #[test]
+    fn partial_if_noerrors() {
+        let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
+        let cons = Expr::val(1);
+        let alt = Expr::val(2);
+        let e = Expr::ite(guard.clone(), cons, alt);
+
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        let expected = Expr::ite(guard, Expr::val(1), Expr::val(2));
+
+        assert_eq!(r, PartialValue::Residual(expected));
+    }
+
+    #[test]
+    fn parital_if_cons_error() {
+        let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
+        let cons = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(true));
+        let alt = Expr::val(2);
+        let e = Expr::ite(guard.clone(), cons.clone(), alt);
+
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        let expected = Expr::ite(guard, cons, Expr::val(2));
+
+        assert_eq!(r, PartialValue::Residual(expected));
+    }
+
+    #[test]
+    fn parital_if_alt_error() {
+        let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
+        let cons = Expr::val(2);
+        let alt = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(true));
+        let e = Expr::ite(guard.clone(), cons, alt.clone());
+
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        let expected = Expr::ite(guard, Expr::val(2), alt);
+        assert_eq!(r, PartialValue::Residual(expected));
+    }
+
+    #[test]
+    fn parital_if_both_error() {
+        let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
+        let cons = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(true));
+        let alt = Expr::less(Expr::val("hello"), Expr::val("bye"));
+        let e = Expr::ite(guard.clone(), cons.clone(), alt.clone());
+
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        assert_eq!(
+            eval.partial_interpret(&e, &HashMap::new()).unwrap(),
+            PartialValue::Residual(Expr::ite(guard, cons, alt))
+        );
+    }
+
+    // err && res -> err
+    #[test]
+    fn partial_and_err_res() {
+        let lhs = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("test"));
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
+        let e = Expr::and(lhs, rhs);
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
+    }
+
+    // err || res -> err
+    #[test]
+    fn partial_or_err_res() {
+        let lhs = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("test"));
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
+        let e = Expr::or(lhs, rhs);
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
+    }
+
+    // true && res -> true && res
+    #[test]
+    fn partial_and_true_res() {
+        let lhs = Expr::binary_app(BinaryOp::Eq, Expr::val(1), Expr::val(1));
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
+        let e = Expr::and(lhs, rhs);
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        let expected = Expr::and(
+            Expr::val(true),
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
+        );
+        assert_eq!(r, PartialValue::Residual(expected));
+    }
+
+    // false && res -> false
+    #[test]
+    fn partial_and_false_res() {
+        let lhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(1));
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
+        let e = Expr::and(lhs, rhs);
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        assert_eq!(r, PartialValue::Value(Value::from(false)));
+    }
+
+    // res && true -> res && true
+    #[test]
+    fn partial_and_res_true() {
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
+        let rhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(2));
+        let e = Expr::and(lhs.clone(), rhs.clone());
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        let expected = Expr::and(lhs, rhs);
+        assert_eq!(r, PartialValue::Residual(expected));
+    }
+
+    #[test]
+    fn partial_and_res_false() {
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
+        let rhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(1));
+        let e = Expr::and(lhs.clone(), rhs.clone());
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        let expected = Expr::and(lhs, rhs);
+        assert_eq!(r, PartialValue::Residual(expected));
+    }
+
+    // res && res -> res && res
+    #[test]
+    fn partial_and_res_res() {
+        let lhs = Expr::unknown(Unknown::new_untyped("b"));
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
+        let e = Expr::and(lhs, rhs);
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        let expected = Expr::and(
+            Expr::unknown(Unknown::new_untyped("b")),
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
+        );
+        assert_eq!(r, PartialValue::Residual(expected));
+    }
+
+    // res && err -> res && err
+    #[test]
+    fn partial_and_res_err() {
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
+        let rhs = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("oops"));
+        let e = Expr::and(lhs, rhs.clone());
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        let expected = Expr::and(
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
+            rhs,
+        );
+        assert_eq!(r, PartialValue::Residual(expected));
+    }
+
+    // true || res -> true
+    #[test]
+    fn partial_or_true_res() {
+        let lhs = Expr::binary_app(BinaryOp::Eq, Expr::val(1), Expr::val(1));
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
+        let e = Expr::or(lhs, rhs);
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        assert_eq!(r, PartialValue::Value(Value::from(true)));
+    }
+
+    // false || res -> false || res
+    #[test]
+    fn partial_or_false_res() {
+        let lhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(1));
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
+        let e = Expr::or(lhs, rhs);
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        let expected = Expr::or(
+            Expr::val(false),
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
+        );
+        assert_eq!(r, PartialValue::Residual(expected));
+    }
+
+    // res || true -> res || true
+    #[test]
+    fn partial_or_res_true() {
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
+        let rhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(2));
+        let e = Expr::or(lhs.clone(), rhs.clone());
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        let expected = Expr::or(lhs, rhs);
+        assert_eq!(r, PartialValue::Residual(expected));
+    }
+
+    #[test]
+    fn partial_or_res_false() {
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
+        let rhs = Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(1));
+        let e = Expr::or(lhs.clone(), rhs.clone());
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        let expected = Expr::or(lhs, rhs);
+        assert_eq!(r, PartialValue::Residual(expected));
+    }
+
+    // res || res -> res || res
+    #[test]
+    fn partial_or_res_res() {
+        let lhs = Expr::unknown(Unknown::new_untyped("b"));
+        let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
+        let e = Expr::or(lhs, rhs);
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        let expected = Expr::or(
+            Expr::unknown(Unknown::new_untyped("b")),
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
+        );
+        assert_eq!(r, PartialValue::Residual(expected));
+    }
+
+    // res || err -> res || err
+    #[test]
+    fn partial_or_res_err() {
+        let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
+        let rhs = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("oops"));
+        let e = Expr::or(lhs, rhs.clone());
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        let expected = Expr::or(
+            Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into()),
+            rhs,
+        );
+        assert_eq!(r, PartialValue::Residual(expected));
+    }
+
+    #[test]
+    fn partial_unop() {
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let e = Expr::unary_app(UnaryOp::Neg, Expr::unknown(Unknown::new_untyped("a")));
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        assert_eq!(r, PartialValue::Residual(e));
+
+        let e = Expr::unary_app(UnaryOp::Not, Expr::unknown(Unknown::new_untyped("a")));
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        assert_eq!(r, PartialValue::Residual(e));
+
+        let e = Expr::unary_app(UnaryOp::IsEmpty, Expr::unknown(Unknown::new_untyped("a")));
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        assert_eq!(r, PartialValue::Residual(e));
+    }
+
+    #[test]
+    fn partial_binop() {
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let binops = [
+            BinaryOp::Add,
+            BinaryOp::Contains,
+            BinaryOp::ContainsAll,
+            BinaryOp::ContainsAny,
+            BinaryOp::Eq,
+            BinaryOp::In,
+            BinaryOp::Less,
+            BinaryOp::LessEq,
+            BinaryOp::Sub,
+        ];
+
+        for binop in binops {
+            // ensure PE evaluates left side
+            let e = Expr::binary_app(
+                binop,
+                Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(2)),
+                Expr::unknown(Unknown::new_untyped("a")),
+            );
+            let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+            let expected = Expr::binary_app(
+                binop,
+                Expr::val(3),
+                Expr::unknown(Unknown::new_untyped("a")),
+            );
+            assert_eq!(r, PartialValue::Residual(expected));
+            // ensure PE propagates left side errors
+            let e = Expr::binary_app(
+                binop,
+                Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
+                Expr::unknown(Unknown::new_untyped("a")),
+            );
+            assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
+            // ensure PE evaluates right side
+            let e = Expr::binary_app(
+                binop,
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(2)),
+            );
+            let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+            let expected = Expr::binary_app(
+                binop,
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::val(3),
+            );
+            assert_eq!(r, PartialValue::Residual(expected));
+            // ensure PE propagates right side errors
+            let e = Expr::binary_app(
+                binop,
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
+            );
+            assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
+            // Both left and right residuals
+            let e = Expr::binary_app(
+                binop,
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::unknown(Unknown::new_untyped("b")),
+            );
+            let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+            let expected = Expr::binary_app(
+                binop,
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::unknown(Unknown::new_untyped("b")),
+            );
+            assert_eq!(r, PartialValue::Residual(expected));
+        }
+    }
+
+    #[test]
+    fn partial_mul() {
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let e = Expr::mul(Expr::unknown(Unknown::new_untyped("a")), Expr::val(32));
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        assert_eq!(r, PartialValue::Residual(e));
+    }
+
+    #[test]
+    fn partial_ext_constructors() {
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let e = Expr::call_extension_fn(
+            "ip".parse().unwrap(),
+            vec![Expr::unknown(Unknown::new_untyped("a"))],
+        );
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        assert_eq!(r, PartialValue::Residual(e));
+    }
+
+    #[cfg(feature = "ipaddr")]
+    #[test]
+    fn partial_ext_unfold() {
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::all_available());
+
+        let a = Expr::call_extension_fn("ip".parse().unwrap(), vec![Expr::val("127.0.0.1/32")]);
+        let b = Expr::unknown(Unknown::new_untyped("a"));
+        let e = Expr::call_extension_fn("isInRange".parse().unwrap(), vec![a, b]);
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        assert_eq!(r, PartialValue::Residual(e));
+
+        let b = Expr::call_extension_fn("ip".parse().unwrap(), vec![Expr::val("127.0.0.1/32")]);
+        let a = Expr::unknown(Unknown::new_untyped("a"));
+        let e = Expr::call_extension_fn("isInRange".parse().unwrap(), vec![a, b]);
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        assert_eq!(r, PartialValue::Residual(e));
+
+        let b = Expr::call_extension_fn("ip".parse().unwrap(), vec![Expr::val("invalid")]);
+        let a = Expr::unknown(Unknown::new_untyped("a"));
+        let e = Expr::call_extension_fn("isInRange".parse().unwrap(), vec![a, b]);
+
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
+    }
+
+    #[test]
+    fn partial_like() {
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let e = Expr::like(
+            Expr::unknown(Unknown::new_untyped("a")),
+            Pattern::from(vec![]),
+        );
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        assert_eq!(r, PartialValue::Residual(e));
+    }
+
+    #[test]
+    fn partial_is() {
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let e = Expr::is_entity_type(
+            Expr::unknown(Unknown::new_untyped("a")),
+            "User".parse().unwrap(),
+        );
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        assert_eq!(r, PartialValue::Residual(e));
+    }
+
+    #[test]
+    fn partial_hasattr() {
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let e = Expr::has_attr(Expr::unknown(Unknown::new_untyped("a")), "test".into());
+
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+
+        assert_eq!(r, PartialValue::Residual(e));
+    }
+
+    #[test]
+    fn partial_set() {
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let e = Expr::set([
+            Expr::val(1),
+            Expr::unknown(Unknown::new_untyped("a")),
+            Expr::val(2),
+        ]);
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        assert_eq!(r, PartialValue::Residual(e));
+
+        let e = Expr::set([
+            Expr::val(1),
+            Expr::unknown(Unknown::new_untyped("a")),
+            Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(2)),
+        ]);
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        assert_eq!(
+            r,
+            PartialValue::Residual(Expr::set([
+                Expr::val(1),
+                Expr::unknown(Unknown::new_untyped("a")),
+                Expr::val(3)
+            ]))
+        );
+
+        let e = Expr::set([
+            Expr::val(1),
+            Expr::unknown(Unknown::new_untyped("a")),
+            Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("a")),
+        ]);
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
+    }
+
+    #[test]
+    fn partial_record() {
+        let es = Entities::new();
+        let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
+
+        let e = Expr::record([
+            ("a".into(), Expr::val(1)),
+            ("b".into(), Expr::unknown(Unknown::new_untyped("a"))),
+            ("c".into(), Expr::val(2)),
+        ])
+        .unwrap();
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        assert_eq!(r, PartialValue::Residual(e));
+
+        let e = Expr::record([
+            ("a".into(), Expr::val(1)),
+            ("a".into(), Expr::unknown(Unknown::new_untyped("a"))),
+        ]);
+        assert_eq!(
+            e,
+            Err(expression_construction_errors::DuplicateKeyError {
+                key: "a".into(),
+                context: "in record literal",
+            }
+            .into())
+        );
+
+        let e = Expr::record([
+            ("a".into(), Expr::unknown(Unknown::new_untyped("a"))),
+            ("a".into(), Expr::val(1)),
+        ]);
+        assert_eq!(
+            e,
+            Err(expression_construction_errors::DuplicateKeyError {
+                key: "a".into(),
+                context: "in record literal",
+            }
+            .into())
+        );
+
+        let e = Expr::record([
+            ("a".into(), Expr::val(1)),
+            ("b".into(), Expr::unknown(Unknown::new_untyped("a"))),
+            (
+                "c".into(),
+                Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(2)),
+            ),
+        ])
+        .unwrap();
+        let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
+        assert_eq!(
+            r,
+            PartialValue::Residual(
+                Expr::record([
+                    ("a".into(), Expr::val(1)),
+                    ("b".into(), Expr::unknown(Unknown::new_untyped("a"))),
+                    ("c".into(), Expr::val(3))
+                ])
+                .unwrap()
+            )
+        );
+
+        let e = Expr::record([
+            ("a".into(), Expr::val(1)),
+            ("b".into(), Expr::unknown(Unknown::new_untyped("a"))),
+            (
+                "c".into(),
+                Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("hello")),
+            ),
+        ])
+        .unwrap();
+        assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
+    }
+
+    #[test]
+    fn small() {
+        let e = parser::parse_expr("[[1]]").unwrap();
+        let re = RestrictedExpr::new(e).unwrap();
+        let eval = RestrictedEvaluator::new(Extensions::none());
+        let r = eval.partial_interpret(re.as_borrowed()).unwrap();
+        assert_matches!(r, PartialValue::Value(Value { value: ValueKind::Set(set), .. }) => {
+            assert_eq!(set.len(), 1);
+        });
+    }
+
+    #[test]
+    fn unprojectable_residual() {
+        let q = basic_request();
+        let entities = basic_entities();
+        let eval = PartialEvaluator::new(q, &entities, Extensions::none());
+
+        let e = Expr::get_attr(
+            Expr::record([
+                (
+                    "a".into(),
+                    Expr::binary_app(
+                        BinaryOp::Add,
+                        Expr::unknown(Unknown::new_untyped("a")),
+                        Expr::val(3),
+                    ),
+                ),
+                ("b".into(), Expr::val(83)),
+            ])
+            .unwrap(),
+            "b".into(),
+        );
+        let r = eval.partial_eval_expr(&e).unwrap();
+        assert_eq!(r, Either::Right(e));
+
+        let e = Expr::get_attr(
+            Expr::record([(
+                "a".into(),
+                Expr::binary_app(
+                    BinaryOp::Add,
+                    Expr::unknown(Unknown::new_untyped("a")),
+                    Expr::val(3),
+                ),
+            )])
+            .unwrap(),
+            "b".into(),
+        );
+        assert_matches!(eval.partial_eval_expr(&e), Err(_));
+    }
+
+    #[cfg(feature = "partial-eval")]
+    #[test]
+    fn partial_entity_stores_in_set() {
+        use crate::{ast::Type, evaluator::test::rich_entities};
+
+        let q = basic_request();
+        let entities = rich_entities().partial();
+        let child = EntityUID::with_eid("child");
+        let second = EntityUID::with_eid("joseph");
+        let missing = EntityUID::with_eid("non-present");
+        let parent = EntityUID::with_eid("parent");
+        let eval = PartialEvaluator::new(q, &entities, Extensions::none());
+
+        let e = Expr::binary_app(
+            BinaryOp::In,
+            Expr::val(child),
+            Expr::set([Expr::val(parent.clone()), Expr::val(second.clone())]),
+        );
+        let r = eval.partial_eval_expr(&e).unwrap();
+        assert_eq!(r, Either::Left(true.into()));
+
+        let e = Expr::binary_app(
+            BinaryOp::In,
+            Expr::val(missing.clone()),
+            Expr::set([Expr::val(parent.clone()), Expr::val(second.clone())]),
+        );
+        let r = eval.partial_eval_expr(&e).unwrap();
+        let expected_residual = Expr::binary_app(
+            BinaryOp::In,
+            Expr::unknown(Unknown::new_with_type(
+                format!("{missing}"),
+                Type::Entity {
+                    ty: EntityUID::test_entity_type(),
+                },
+            )),
+            Expr::set([Expr::val(parent.clone()), Expr::val(second.clone())]),
+        );
+        let expected_residual2 = Expr::binary_app(
+            BinaryOp::In,
+            Expr::unknown(Unknown::new_with_type(
+                format!("{missing}"),
+                Type::Entity {
+                    ty: EntityUID::test_entity_type(),
+                },
+            )),
+            Expr::set([Expr::val(second), Expr::val(parent)]),
+        );
+
+        // Either ordering is valid
+        assert!(r == Either::Right(expected_residual) || r == Either::Right(expected_residual2));
+    }
+
+    #[cfg(feature = "partial-eval")]
+    #[test]
+    fn partial_entity_stores_in() {
+        use crate::{ast::Type, evaluator::test::rich_entities};
+
+        let q = basic_request();
+        let entities = rich_entities().partial();
+        let child = EntityUID::with_eid("child");
+        let missing = EntityUID::with_eid("non-present");
+        let parent = EntityUID::with_eid("parent");
+        let eval = PartialEvaluator::new(q, &entities, Extensions::none());
+
+        let e = Expr::binary_app(BinaryOp::In, Expr::val(child), Expr::val(parent.clone()));
+        let r = eval.partial_eval_expr(&e).unwrap();
+        assert_eq!(r, Either::Left(true.into()));
+
+        let e = Expr::binary_app(
+            BinaryOp::In,
+            Expr::val(missing.clone()),
+            Expr::val(parent.clone()),
+        );
+        let r = eval.partial_eval_expr(&e).unwrap();
+        let expected_residual = Expr::binary_app(
+            BinaryOp::In,
+            Expr::unknown(Unknown::new_with_type(
+                format!("{missing}"),
+                Type::Entity {
+                    ty: EntityUID::test_entity_type(),
+                },
+            )),
+            Expr::val(parent),
+        );
+        assert_eq!(r, Either::Right(expected_residual));
+    }
+
+    #[cfg(feature = "partial-eval")]
+    #[test]
+    fn partial_entity_stores_hasattr() {
+        use crate::{ast::Type, evaluator::test::rich_entities};
+
+        let q = basic_request();
+        let entities = rich_entities().partial();
+        let has_attr = EntityUID::with_eid("entity_with_attrs");
+        let missing = EntityUID::with_eid("missing");
+        let eval = PartialEvaluator::new(q, &entities, Extensions::none());
+
+        let e = Expr::has_attr(Expr::val(has_attr), "spoon".into());
+        let r = eval.partial_eval_expr(&e).unwrap();
+        assert_eq!(r, Either::Left(true.into()));
+
+        let e = Expr::has_attr(Expr::val(missing.clone()), "spoon".into());
+        let r = eval.partial_eval_expr(&e).unwrap();
+        let expected_residual = Expr::has_attr(
+            Expr::unknown(Unknown::new_with_type(
+                format!("{missing}"),
+                Type::Entity {
+                    ty: EntityUID::test_entity_type(),
+                },
+            )),
+            "spoon".into(),
+        );
+        assert_eq!(r, Either::Right(expected_residual));
+    }
+
+    #[cfg(feature = "partial-eval")]
+    #[test]
+    fn partial_entity_stores_getattr() {
+        use crate::{ast::Type, evaluator::test::rich_entities};
+
+        let q = basic_request();
+        let entities = rich_entities().partial();
+        let has_attr = EntityUID::with_eid("entity_with_attrs");
+        let missing = EntityUID::with_eid("missing");
+        let eval = PartialEvaluator::new(q, &entities, Extensions::none());
+
+        let e = Expr::get_attr(Expr::val(has_attr), "spoon".into());
+        let r = eval.partial_eval_expr(&e).unwrap();
+        assert_eq!(r, Either::Left(787.into()));
+
+        let e = Expr::get_attr(Expr::val(missing.clone()), "spoon".into());
+        let r = eval.partial_eval_expr(&e).unwrap();
+        let expected_residual = Expr::get_attr(
+            Expr::unknown(Unknown::new_with_type(
+                format!("{missing}"),
+                Type::Entity {
+                    ty: EntityUID::test_entity_type(),
+                },
+            )),
+            "spoon".into(),
+        );
+        assert_eq!(r, Either::Right(expected_residual));
     }
 }

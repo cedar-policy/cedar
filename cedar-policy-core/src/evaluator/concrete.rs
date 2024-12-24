@@ -1,12 +1,16 @@
 use std::sync::Arc;
 
-use crate::{entities::Dereference, extensions::Extensions, parser::Loc};
+use crate::{
+    entities::{Dereference, Entities},
+    extensions::Extensions,
+    parser::Loc,
+};
 
 use super::{
     err, names, stack_size_check, BinaryOp, BinaryOpOverflowError, BorrowedRestrictedExpr, Entity,
-    EntityUID, EvaluationError, Evaluator, Expr, ExprKind, IntegerOverflowError, Literal,
-    RestrictedEvaluator, Result, Set, SlotEnv, StaticallyTyped, Type, TypeError, UnaryOp,
-    UnaryOpOverflowError, Value, ValueKind, Var,
+    EntityUID, EntityUIDEntry, EvaluationError, Expr, ExprKind, IntegerOverflowError, Literal,
+    PartialValue, Request, RestrictedEvaluator, Result, Set, SlotEnv, StaticallyTyped, Type,
+    TypeError, UnaryOp, UnaryOpOverflowError, Unknown, Value, ValueKind, Var,
 };
 
 use nonempty::nonempty;
@@ -107,7 +111,60 @@ impl RestrictedEvaluator<'_> {
     }
 }
 
-impl Evaluator<'_> {
+/// Evaluator object.
+///
+/// Conceptually keeps the evaluation environment as part of its internal state,
+/// because we will be repeatedly invoking the evaluator on every policy in a
+/// Slice.
+pub struct Evaluator<'e> {
+    /// `Principal` for the current request
+    principal: EntityUIDEntry,
+    /// `Action` for the current request
+    action: EntityUIDEntry,
+    /// `Resource` for the current request
+    resource: EntityUIDEntry,
+    /// `Context` for the current request; this will be a Record type
+    context: PartialValue,
+    /// Entities which we use to resolve entity references.
+    ///
+    /// This is a reference, because the `Evaluator` doesn't need ownership of
+    /// (or need to modify) the `Entities`. One advantage of this is that you
+    /// could create multiple `Evaluator`s without copying the `Entities`.
+    entities: &'e Entities,
+    /// Extensions which are active for this evaluation
+    extensions: &'e Extensions<'e>,
+}
+
+impl std::fmt::Debug for Evaluator<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "<Evaluator with principal = {:?}, action = {:?}, resource = {:?}",
+            &self.principal, &self.action, &self.resource
+        )
+    }
+}
+
+impl<'e> Evaluator<'e> {
+    /// Create a fresh `Evaluator` for the given `request`, which uses the given
+    /// `Entities` to resolve entity references. Use the given `Extension`s when
+    /// evaluating.
+    pub fn new(q: Request, entities: &'e Entities, extensions: &'e Extensions<'e>) -> Self {
+        Self {
+            principal: q.principal,
+            action: q.action,
+            resource: q.resource,
+            context: {
+                match q.context {
+                    None => PartialValue::unknown(Unknown::new_untyped("context")),
+                    Some(ctx) => ctx.into(),
+                }
+            },
+            entities,
+            extensions,
+        }
+    }
+
     pub(crate) fn eval_in(
         uid1: &EntityUID,
         entity1: Option<&Entity>,
@@ -413,7 +470,7 @@ impl Evaluator<'_> {
             }
             ExprKind::And { left, right } => {
                 if self.interpret(&left, slots)?.get_as_bool()? {
-                    self.interpret(&right, slots)
+                    self.interpret(&right, slots)?.get_as_bool().map(Into::into)
                 } else {
                     // We can short circuit here
                     Ok(false.into())
@@ -424,7 +481,7 @@ impl Evaluator<'_> {
                     // We can short circuit here
                     Ok(true.into())
                 } else {
-                    self.interpret(&right, slots)
+                    self.interpret(&right, slots)?.get_as_bool().map(Into::into)
                 }
             }
             ExprKind::UnaryApp { op, arg } => {
