@@ -970,7 +970,7 @@ impl Authorizer {
     ) -> PartialResponse {
         let response = self
             .0
-            .is_authorized_core(query.0.clone(), &policy_set.ast, &entities.0);
+            .is_authorized_partial(query.0.clone(), &policy_set.ast, &entities.0);
         PartialResponse(response)
     }
 }

@@ -319,7 +319,7 @@ impl PartialResponse {
     ) -> Result<Self, ReauthorizationError> {
         let policyset = self.all_policies(mapping)?;
         let new_request = self.concretize_request(mapping)?;
-        Ok(auth.is_authorized_core(new_request, &policyset, es))
+        Ok(auth.is_authorized_partial(new_request, &policyset, es))
     }
 
     fn all_policies(&self, mapping: &HashMap<SmolStr, Value>) -> Result<PolicySet, PolicySetError> {
@@ -815,7 +815,8 @@ mod test {
         let entities = Entities::new();
 
         let authorizer = Authorizer::new();
-        let partial_response = authorizer.is_authorized_core(partial_request, &policies, &entities);
+        let partial_response =
+            authorizer.is_authorized_partial(partial_request, &policies, &entities);
 
         let response_with_concrete_resource = partial_response
             .reauthorize(
