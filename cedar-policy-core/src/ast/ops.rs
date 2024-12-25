@@ -69,41 +69,59 @@ impl From<&UnaryOp> for proto::expr::unary_app::Op {
     }
 }
 
+/// Binary order relations
+///
+/// Arguments must have Long type or certain extension type
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, Copy)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub enum BinaryOrd {
+    /// <
+    Less,
+    /// <=
+    LessEq,
+}
+
+/// Binary arithmetic operations
+///
+/// Arguments must have Long type
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, Copy)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub enum BinaryArithmetic {
+    /// Integer addition
+    Add,
+    /// Integer subtraction
+    Sub,
+    /// Integer multiplication
+    Mul,
+}
+
+/// Binary set relations
+///
+/// Arguments must have Set type
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Copy)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+pub enum BinarySetRelation {
+    /// ContainsAll test for sets. Specifically, if the first set contains the second arg.
+    ContainsAll,
+    /// ContainsAny test for sets (is the intersection empty?)
+    ContainsAny,
+}
+
 /// Built-in operators with exactly two arguments
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Copy, Hash)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[serde(untagged)]
 pub enum BinaryOp {
     /// Equality
     ///
     /// Works on arguments of any type, ie "total equality". If you compare
     /// things of different types, `Eq` will return `false`, rather than error.
     Eq,
-
-    /// <
-    ///
+    /// Binary order relations
+    Ord(BinaryOrd),
+    /// Binary arithmetic operations
     /// Arguments must have Long type
-    Less,
-
-    /// <=
-    ///
-    /// Arguments must have Long type
-    LessEq,
-
-    /// Integer addition
-    ///
-    /// Arguments must have Long type
-    Add,
-
-    /// Integer subtraction
-    ///
-    /// Arguments must have Long type
-    Sub,
-
-    /// Integer multiplication
-    ///
-    /// Arguments must have Long type
-    Mul,
-
+    Arithmetic(BinaryArithmetic),
     /// Hierarchy membership. Specifically, is the first arg a member of the
     /// second.
     ///
@@ -118,15 +136,8 @@ pub enum BinaryOp {
     /// First argument must have Set type.
     Contains,
 
-    /// ContainsAll test for sets. Specifically, if the first set contains the second arg.
-    ///
-    /// Arguments must have Set type
-    ContainsAll,
-
-    /// ContainsAny test for sets (is the intersection empty?)
-    ///
-    /// Arguments must have Set type
-    ContainsAny,
+    /// Binary set relations
+    SetRelation(BinarySetRelation),
 
     /// Get a tag of an entity.
     ///
@@ -143,15 +154,15 @@ impl std::fmt::Display for BinaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BinaryOp::Eq => write!(f, "=="),
-            BinaryOp::Less => write!(f, "<"),
-            BinaryOp::LessEq => write!(f, "<="),
-            BinaryOp::Add => write!(f, "+"),
-            BinaryOp::Sub => write!(f, "-"),
-            BinaryOp::Mul => write!(f, "*"),
+            BinaryOp::Ord(BinaryOrd::Less) => write!(f, "<"),
+            BinaryOp::Ord(BinaryOrd::LessEq) => write!(f, "<="),
+            BinaryOp::Arithmetic(BinaryArithmetic::Add) => write!(f, "+"),
+            BinaryOp::Arithmetic(BinaryArithmetic::Sub) => write!(f, "-"),
+            BinaryOp::Arithmetic(BinaryArithmetic::Mul) => write!(f, "*"),
             BinaryOp::In => write!(f, "in"),
             BinaryOp::Contains => write!(f, "contains"),
-            BinaryOp::ContainsAll => write!(f, "containsAll"),
-            BinaryOp::ContainsAny => write!(f, "containsAny"),
+            BinaryOp::SetRelation(BinarySetRelation::ContainsAll) => write!(f, "containsAll"),
+            BinaryOp::SetRelation(BinarySetRelation::ContainsAny) => write!(f, "containsAny"),
             BinaryOp::GetTag => write!(f, "getTag"),
             BinaryOp::HasTag => write!(f, "hasTag"),
         }
@@ -163,15 +174,19 @@ impl From<&proto::expr::binary_app::Op> for BinaryOp {
     fn from(v: &proto::expr::binary_app::Op) -> Self {
         match v {
             proto::expr::binary_app::Op::Eq => BinaryOp::Eq,
-            proto::expr::binary_app::Op::Less => BinaryOp::Less,
-            proto::expr::binary_app::Op::LessEq => BinaryOp::LessEq,
-            proto::expr::binary_app::Op::Add => BinaryOp::Add,
-            proto::expr::binary_app::Op::Sub => BinaryOp::Sub,
-            proto::expr::binary_app::Op::Mul => BinaryOp::Mul,
+            proto::expr::binary_app::Op::Less => BinaryOp::Ord(BinaryOrd::Less),
+            proto::expr::binary_app::Op::LessEq => BinaryOp::Ord(BinaryOrd::LessEq),
+            proto::expr::binary_app::Op::Add => BinaryOp::Arithmetic(BinaryArithmetic::Add),
+            proto::expr::binary_app::Op::Sub => BinaryOp::Arithmetic(BinaryArithmetic::Sub),
+            proto::expr::binary_app::Op::Mul => BinaryOp::Arithmetic(BinaryArithmetic::Mul),
             proto::expr::binary_app::Op::In => BinaryOp::In,
             proto::expr::binary_app::Op::Contains => BinaryOp::Contains,
-            proto::expr::binary_app::Op::ContainsAll => BinaryOp::ContainsAll,
-            proto::expr::binary_app::Op::ContainsAny => BinaryOp::ContainsAny,
+            proto::expr::binary_app::Op::ContainsAll => {
+                BinaryOp::SetRelation(BinarySetRelation::ContainsAll)
+            }
+            proto::expr::binary_app::Op::ContainsAny => {
+                BinaryOp::SetRelation(BinarySetRelation::ContainsAny)
+            }
             proto::expr::binary_app::Op::GetTag => BinaryOp::GetTag,
             proto::expr::binary_app::Op::HasTag => BinaryOp::HasTag,
         }
@@ -183,15 +198,19 @@ impl From<&BinaryOp> for proto::expr::binary_app::Op {
     fn from(v: &BinaryOp) -> Self {
         match v {
             BinaryOp::Eq => proto::expr::binary_app::Op::Eq,
-            BinaryOp::Less => proto::expr::binary_app::Op::Less,
-            BinaryOp::LessEq => proto::expr::binary_app::Op::LessEq,
-            BinaryOp::Add => proto::expr::binary_app::Op::Add,
-            BinaryOp::Sub => proto::expr::binary_app::Op::Sub,
-            BinaryOp::Mul => proto::expr::binary_app::Op::Mul,
+            BinaryOp::Ord(BinaryOrd::Less) => proto::expr::binary_app::Op::Less,
+            BinaryOp::Ord(BinaryOrd::LessEq) => proto::expr::binary_app::Op::LessEq,
+            BinaryOp::Arithmetic(BinaryArithmetic::Add) => proto::expr::binary_app::Op::Add,
+            BinaryOp::Arithmetic(BinaryArithmetic::Sub) => proto::expr::binary_app::Op::Sub,
+            BinaryOp::Arithmetic(BinaryArithmetic::Mul) => proto::expr::binary_app::Op::Mul,
             BinaryOp::In => proto::expr::binary_app::Op::In,
             BinaryOp::Contains => proto::expr::binary_app::Op::Contains,
-            BinaryOp::ContainsAll => proto::expr::binary_app::Op::ContainsAll,
-            BinaryOp::ContainsAny => proto::expr::binary_app::Op::ContainsAny,
+            BinaryOp::SetRelation(BinarySetRelation::ContainsAll) => {
+                proto::expr::binary_app::Op::ContainsAll
+            }
+            BinaryOp::SetRelation(BinarySetRelation::ContainsAny) => {
+                proto::expr::binary_app::Op::ContainsAny
+            }
             BinaryOp::GetTag => proto::expr::binary_app::Op::GetTag,
             BinaryOp::HasTag => proto::expr::binary_app::Op::HasTag,
         }

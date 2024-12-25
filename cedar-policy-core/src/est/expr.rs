@@ -15,7 +15,9 @@
  */
 
 use super::FromJsonError;
-use crate::ast::{self, BoundedDisplay, EntityUID, InputInteger};
+use crate::ast::{
+    self, BinaryArithmetic, BinaryOrd, BinarySetRelation, BoundedDisplay, EntityUID, InputInteger,
+};
 use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
     CedarValueJson, FnAndArg, TypeAndId,
@@ -1037,14 +1039,18 @@ impl<T: Clone> From<ast::Expr<T>> for Expr {
                 match op {
                     ast::BinaryOp::Eq => Expr::eq(arg1, arg2),
                     ast::BinaryOp::In => Expr::_in(arg1, arg2),
-                    ast::BinaryOp::Less => Expr::less(arg1, arg2),
-                    ast::BinaryOp::LessEq => Expr::lesseq(arg1, arg2),
-                    ast::BinaryOp::Add => Expr::add(arg1, arg2),
-                    ast::BinaryOp::Sub => Expr::sub(arg1, arg2),
-                    ast::BinaryOp::Mul => Expr::mul(arg1, arg2),
+                    ast::BinaryOp::Ord(BinaryOrd::Less) => Expr::less(arg1, arg2),
+                    ast::BinaryOp::Ord(BinaryOrd::LessEq) => Expr::lesseq(arg1, arg2),
+                    ast::BinaryOp::Arithmetic(BinaryArithmetic::Add) => Expr::add(arg1, arg2),
+                    ast::BinaryOp::Arithmetic(BinaryArithmetic::Sub) => Expr::sub(arg1, arg2),
+                    ast::BinaryOp::Arithmetic(BinaryArithmetic::Mul) => Expr::mul(arg1, arg2),
                     ast::BinaryOp::Contains => Expr::contains(Arc::new(arg1), arg2),
-                    ast::BinaryOp::ContainsAll => Expr::contains_all(Arc::new(arg1), arg2),
-                    ast::BinaryOp::ContainsAny => Expr::contains_any(Arc::new(arg1), arg2),
+                    ast::BinaryOp::SetRelation(BinarySetRelation::ContainsAll) => {
+                        Expr::contains_all(Arc::new(arg1), arg2)
+                    }
+                    ast::BinaryOp::SetRelation(BinarySetRelation::ContainsAny) => {
+                        Expr::contains_any(Arc::new(arg1), arg2)
+                    }
                     ast::BinaryOp::GetTag => Expr::get_tag(Arc::new(arg1), arg2),
                     ast::BinaryOp::HasTag => Expr::has_tag(Arc::new(arg1), arg2),
                 }

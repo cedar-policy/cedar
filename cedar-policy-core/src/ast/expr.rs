@@ -340,18 +340,16 @@ impl<T> Expr<T> {
                 ..
             } => Some(Type::Bool),
             ExprKind::BinaryApp {
-                op: BinaryOp::Add | BinaryOp::Mul | BinaryOp::Sub,
+                op: BinaryOp::Arithmetic(_),
                 ..
             } => Some(Type::Long),
             ExprKind::BinaryApp {
                 op:
                     BinaryOp::Contains
-                    | BinaryOp::ContainsAll
-                    | BinaryOp::ContainsAny
-                    | BinaryOp::Eq
+                    | BinaryOp::SetRelation(_)
                     | BinaryOp::In
-                    | BinaryOp::Less
-                    | BinaryOp::LessEq,
+                    | BinaryOp::Eq
+                    | BinaryOp::Ord(_),
                 ..
             } => Some(Type::Bool),
             ExprKind::BinaryApp {
@@ -1304,7 +1302,7 @@ impl<T> ExprBuilder<T> {
     /// Create a '<' expression. Arguments must evaluate to Long type
     pub fn less(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
-            op: BinaryOp::Less,
+            op: BinaryOp::Ord(BinaryOrd::Less),
             arg1: Arc::new(e1),
             arg2: Arc::new(e2),
         })
@@ -1313,7 +1311,7 @@ impl<T> ExprBuilder<T> {
     /// Create a '<=' expression. Arguments must evaluate to Long type
     pub fn lesseq(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
-            op: BinaryOp::LessEq,
+            op: BinaryOp::Ord(BinaryOrd::LessEq),
             arg1: Arc::new(e1),
             arg2: Arc::new(e2),
         })
@@ -1322,7 +1320,7 @@ impl<T> ExprBuilder<T> {
     /// Create an 'add' expression. Arguments must evaluate to Long type
     pub fn add(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
-            op: BinaryOp::Add,
+            op: BinaryOp::Arithmetic(BinaryArithmetic::Add),
             arg1: Arc::new(e1),
             arg2: Arc::new(e2),
         })
@@ -1331,7 +1329,7 @@ impl<T> ExprBuilder<T> {
     /// Create a 'sub' expression. Arguments must evaluate to Long type
     pub fn sub(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
-            op: BinaryOp::Sub,
+            op: BinaryOp::Arithmetic(BinaryArithmetic::Sub),
             arg1: Arc::new(e1),
             arg2: Arc::new(e2),
         })
@@ -1340,7 +1338,7 @@ impl<T> ExprBuilder<T> {
     /// Create a 'mul' expression. Arguments must evaluate to Long type
     pub fn mul(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
-            op: BinaryOp::Mul,
+            op: BinaryOp::Arithmetic(BinaryArithmetic::Mul),
             arg1: Arc::new(e1),
             arg2: Arc::new(e2),
         })
@@ -1378,7 +1376,7 @@ impl<T> ExprBuilder<T> {
     /// Create a 'contains_all' expression. Arguments must evaluate to Set type
     pub fn contains_all(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
-            op: BinaryOp::ContainsAll,
+            op: BinaryOp::SetRelation(BinarySetRelation::ContainsAll),
             arg1: Arc::new(e1),
             arg2: Arc::new(e2),
         })
@@ -1387,7 +1385,7 @@ impl<T> ExprBuilder<T> {
     /// Create an 'contains_any' expression. Arguments must evaluate to Set type
     pub fn contains_any(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
-            op: BinaryOp::ContainsAny,
+            op: BinaryOp::SetRelation(BinarySetRelation::ContainsAny),
             arg1: Arc::new(e1),
             arg2: Arc::new(e2),
         })

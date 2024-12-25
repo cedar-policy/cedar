@@ -7,44 +7,15 @@ use crate::{
 };
 
 use super::{
-    err, names, stack_size_check, BinaryOp, BinaryOpOverflowError, BorrowedRestrictedExpr, Entity,
-    EntityUID, EntityUIDEntry, EvaluationError, Expr, ExprKind, IntegerOverflowError, Literal,
-    PartialValue, Request, RestrictedEvaluator, Result, Set, SlotEnv, StaticallyTyped, Type,
-    TypeError, UnaryOp, UnaryOpOverflowError, Unknown, Value, ValueKind, Var,
+    err, names, stack_size_check, BinaryArithmetic, BinaryOp, BinaryOpOverflowError, BinaryOrd,
+    BinarySetRelation, BorrowedRestrictedExpr, Entity, EntityUID, EntityUIDEntry, EvaluationError,
+    Expr, ExprKind, IntegerOverflowError, Literal, PartialValue, Request, RestrictedEvaluator,
+    Result, Set, SlotEnv, StaticallyTyped, Type, TypeError, UnaryOp, UnaryOpOverflowError, Unknown,
+    Value, ValueKind, Var,
 };
 
 use nonempty::nonempty;
 use smol_str::SmolStr;
-
-#[derive(Debug, Clone)]
-pub(crate) enum Relation {
-    Eq,
-    Less,
-    LessEq,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum BinaryArithmetic {
-    Add,
-    Sub,
-    Mul,
-}
-
-impl From<BinaryArithmetic> for BinaryOp {
-    fn from(value: BinaryArithmetic) -> Self {
-        match value {
-            BinaryArithmetic::Add => Self::Add,
-            BinaryArithmetic::Sub => Self::Sub,
-            BinaryArithmetic::Mul => Self::Mul,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum SetOp {
-    All,
-    Any,
-}
 
 impl RestrictedEvaluator<'_> {
     /// Interpret a `RestrictedExpr` into a `Value` in this evaluation environment.
@@ -290,45 +261,60 @@ impl<'e> Evaluator<'e> {
         }
     }
 
-    pub(crate) fn eval_relation(op: Relation, arg1: Value, arg2: Value) -> Result<Value> {
-        match op {
-            Relation::Eq => Ok((arg1 == arg2).into()),
-            // comparison and arithmetic operators, which only work on Longs
-            Relation::Less | Relation::LessEq => {
-                let long_op = if matches!(op, Relation::Less) {
-                    |x, y| x < y
-                } else {
-                    |x, y| x <= y
-                };
-                let ext_op = if matches!(op, Relation::Less) {
-                    |x, y| x < y
-                } else {
-                    |x, y| x <= y
-                };
-                match (arg1.value_kind(), arg2.value_kind()) {
-                            (
-                                ValueKind::Lit(Literal::Long(x)),
-                                ValueKind::Lit(Literal::Long(y)),
-                            ) => Ok(long_op(x, y).into()),
-                            (ValueKind::ExtensionValue(x), ValueKind::ExtensionValue(y))
-                                if x.supports_operator_overloading()
-                                    && y.supports_operator_overloading()
-                                    && x.typename() == y.typename() =>
-                            {
-                                Ok(ext_op(x, y).into())
-                            }
-                            // throw type errors
-                            (ValueKind::Lit(Literal::Long(_)), _) => Err(EvaluationError::type_error_single(Type::Long, &arg2)),
-                            (_, ValueKind::Lit(Literal::Long(_))) => Err(EvaluationError::type_error_single(Type::Long, &arg1)),
-                            (ValueKind::ExtensionValue(x), _) if x.supports_operator_overloading() => Err(EvaluationError::type_error_single(Type::Extension { name: x.typename() }, &arg2)),
-                            (_, ValueKind::ExtensionValue(y)) if y.supports_operator_overloading() => Err(EvaluationError::type_error_single(Type::Extension { name: y.typename() }, &arg1)),
-                            (ValueKind::ExtensionValue(x), ValueKind::ExtensionValue(y)) if x.typename() == y.typename() => Err(EvaluationError::type_error_with_advice(Extensions::types_with_operator_overloading().map(|name| Type::Extension { name} ), &arg1, "Only extension types `datetime` and `duration` support operator overloading".to_string())),
-                            _ => {
-                                let mut expected_types = Extensions::types_with_operator_overloading().map(|name| Type::Extension { name });
-                                expected_types.push(Type::Long);
-                                Err(EvaluationError::type_error_with_advice(expected_types, &arg1, "Only `Long` and extension types `datetime`, `duration` support comparison".to_string()))
-                            }
-                        }
+    pub(crate) fn eval_integer_relation(op: BinaryOrd, arg1: Value, arg2: Value) -> Result<Value> {
+        let long_op = match op {
+            BinaryOrd::Less => |x, y| x < y,
+            BinaryOrd::LessEq => |x, y| x <= y,
+        };
+        let ext_op = match op {
+            BinaryOrd::Less => |x, y| x < y,
+            BinaryOrd::LessEq => |x, y| x <= y,
+        };
+        match (arg1.value_kind(), arg2.value_kind()) {
+            (ValueKind::Lit(Literal::Long(x)), ValueKind::Lit(Literal::Long(y))) => {
+                Ok(long_op(x, y).into())
+            }
+            (ValueKind::ExtensionValue(x), ValueKind::ExtensionValue(y))
+                if x.supports_operator_overloading()
+                    && y.supports_operator_overloading()
+                    && x.typename() == y.typename() =>
+            {
+                Ok(ext_op(x, y).into())
+            }
+            // throw type errors
+            (ValueKind::Lit(Literal::Long(_)), _) => {
+                Err(EvaluationError::type_error_single(Type::Long, &arg2))
+            }
+            (_, ValueKind::Lit(Literal::Long(_))) => {
+                Err(EvaluationError::type_error_single(Type::Long, &arg1))
+            }
+            (ValueKind::ExtensionValue(x), _) if x.supports_operator_overloading() => Err(
+                EvaluationError::type_error_single(Type::Extension { name: x.typename() }, &arg2),
+            ),
+            (_, ValueKind::ExtensionValue(y)) if y.supports_operator_overloading() => Err(
+                EvaluationError::type_error_single(Type::Extension { name: y.typename() }, &arg1),
+            ),
+            (ValueKind::ExtensionValue(x), ValueKind::ExtensionValue(y))
+                if x.typename() == y.typename() =>
+            {
+                Err(EvaluationError::type_error_with_advice(
+                    Extensions::types_with_operator_overloading()
+                        .map(|name| Type::Extension { name }),
+                    &arg1,
+                    "Only extension types `datetime` and `duration` support operator overloading"
+                        .to_string(),
+                ))
+            }
+            _ => {
+                let mut expected_types = Extensions::types_with_operator_overloading()
+                    .map(|name| Type::Extension { name });
+                expected_types.push(Type::Long);
+                Err(EvaluationError::type_error_with_advice(
+                    expected_types,
+                    &arg1,
+                    "Only `Long` and extension types `datetime`, `duration` support comparison"
+                        .to_string(),
+                ))
             }
         }
     }
@@ -349,7 +335,7 @@ impl<'e> Evaluator<'e> {
         match checked_arithmetic(i1, i2) {
             Some(v) => Ok(v.into()),
             None => Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
-                op: op.into(),
+                op,
                 arg1,
                 arg2,
                 source_loc: loc.cloned(),
@@ -372,7 +358,7 @@ impl<'e> Evaluator<'e> {
         }
     }
 
-    pub(crate) fn eval_set_op(op: SetOp, arg1: Value, arg2: Value) -> Result<Value> {
+    pub(crate) fn eval_set_op(op: BinarySetRelation, arg1: Value, arg2: Value) -> Result<Value> {
         let arg1_set = arg1.get_as_set()?;
         let arg2_set = arg2.get_as_set()?;
         match (&arg1_set.fast, &arg2_set.fast) {
@@ -380,22 +366,22 @@ impl<'e> Evaluator<'e> {
                 // both sets are in fast form, ie, they only contain literals.
                 // Fast hashset-based implementation.
                 match op {
-                    SetOp::All => Ok((arg2_set.is_subset(arg1_set)).into()),
-                    SetOp::Any => Ok((!arg1_set.is_disjoint(arg2_set)).into()),
+                    BinarySetRelation::ContainsAll => Ok((arg2_set.is_subset(arg1_set)).into()),
+                    BinarySetRelation::ContainsAny => Ok((!arg1_set.is_disjoint(arg2_set)).into()),
                 }
             }
             (_, _) => {
                 // one or both sets are in slow form, ie, contain a non-literal.
                 // Fallback to slow implementation.
                 match op {
-                    SetOp::All => {
+                    BinarySetRelation::ContainsAll => {
                         let is_subset = arg2_set
                             .authoritative
                             .iter()
                             .all(|item| arg1_set.authoritative.contains(item));
                         Ok(is_subset.into())
                     }
-                    SetOp::Any => {
+                    BinarySetRelation::ContainsAny => {
                         let not_disjoint = arg1_set
                             .authoritative
                             .iter()
@@ -491,18 +477,9 @@ impl<'e> Evaluator<'e> {
             ExprKind::BinaryApp { op, arg1, arg2 } => {
                 let (arg1, arg2) = (self.interpret(arg1, slots)?, self.interpret(arg2, slots)?);
                 match op {
-                    BinaryOp::Eq => Self::eval_relation(Relation::Eq, arg1, arg2),
-                    BinaryOp::Less => Self::eval_relation(Relation::Less, arg1, arg2),
-                    BinaryOp::LessEq => Self::eval_relation(Relation::LessEq, arg1, arg2),
-                    BinaryOp::Add => {
-                        Self::eval_binary_arithmetic(BinaryArithmetic::Add, arg1, arg2, loc)
-                    }
-                    BinaryOp::Sub => {
-                        Self::eval_binary_arithmetic(BinaryArithmetic::Sub, arg1, arg2, loc)
-                    }
-                    BinaryOp::Mul => {
-                        Self::eval_binary_arithmetic(BinaryArithmetic::Mul, arg1, arg2, loc)
-                    }
+                    BinaryOp::Eq => Ok((arg1 == arg2).into()),
+                    BinaryOp::Ord(op) => Self::eval_integer_relation(*op, arg1, arg2),
+                    BinaryOp::Arithmetic(op) => Self::eval_binary_arithmetic(*op, arg1, arg2, loc),
                     // hierarchy membership operator; see note on `BinaryOp::In`
                     BinaryOp::In => {
                         let uid1 = arg1.get_as_entity().map_err(|mut e|
@@ -530,8 +507,7 @@ impl<'e> Evaluator<'e> {
                     // contains, which works on Sets
                     BinaryOp::Contains => Self::eval_contains(arg1, arg2),
                     // ContainsAll and ContainsAny, which work on Sets
-                    BinaryOp::ContainsAll => Self::eval_set_op(SetOp::All, arg1, arg2),
-                    BinaryOp::ContainsAny => Self::eval_set_op(SetOp::Any, arg1, arg2),
+                    BinaryOp::SetRelation(op) => Self::eval_set_op(*op, arg1, arg2),
                     // GetTag and HasTag, which require an Entity on the left and a String on the right
                     BinaryOp::GetTag | BinaryOp::HasTag => {
                         let uid = arg1.get_as_entity()?;

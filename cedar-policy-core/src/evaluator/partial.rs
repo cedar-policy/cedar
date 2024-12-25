@@ -5,7 +5,7 @@ use nonempty::nonempty;
 use smol_str::SmolStr;
 use std::sync::Arc;
 
-use super::concrete::{BinaryArithmetic, Evaluator, Relation, SetOp};
+use super::concrete::Evaluator;
 use super::{
     err, names, split, stack_size_check, BinaryOp, BorrowedRestrictedExpr, EntityUIDEntry,
     EvaluationError, Expr, ExprKind, Literal, PartialValue, Policy, Request, RestrictedEvaluator,
@@ -463,26 +463,12 @@ impl<'e> PartialEvaluator<'e> {
                     }
                 };
                 match op {
-                    BinaryOp::Eq => {
-                        Evaluator::eval_relation(Relation::Eq, arg1, arg2).map(Into::into)
+                    BinaryOp::Eq => Ok((arg1 == arg2).into()),
+                    BinaryOp::Ord(op) => {
+                        Evaluator::eval_integer_relation(*op, arg1, arg2).map(Into::into)
                     }
-                    BinaryOp::Less => {
-                        Evaluator::eval_relation(Relation::Less, arg1, arg2).map(Into::into)
-                    }
-                    BinaryOp::LessEq => {
-                        Evaluator::eval_relation(Relation::LessEq, arg1, arg2).map(Into::into)
-                    }
-                    BinaryOp::Add => {
-                        Evaluator::eval_binary_arithmetic(BinaryArithmetic::Add, arg1, arg2, loc)
-                            .map(Into::into)
-                    }
-                    BinaryOp::Sub => {
-                        Evaluator::eval_binary_arithmetic(BinaryArithmetic::Sub, arg1, arg2, loc)
-                            .map(Into::into)
-                    }
-                    BinaryOp::Mul => {
-                        Evaluator::eval_binary_arithmetic(BinaryArithmetic::Mul, arg1, arg2, loc)
-                            .map(Into::into)
+                    BinaryOp::Arithmetic(op) => {
+                        Evaluator::eval_binary_arithmetic(*op, arg1, arg2, loc).map(Into::into)
                     }
                     // hierarchy membership operator; see note on `BinaryOp::In`
                     BinaryOp::In => {
@@ -515,11 +501,8 @@ impl<'e> PartialEvaluator<'e> {
                     // contains, which works on Sets
                     BinaryOp::Contains => Evaluator::eval_contains(arg1, arg2).map(Into::into),
                     // ContainsAll and ContainsAny, which work on Sets
-                    BinaryOp::ContainsAll => {
-                        Evaluator::eval_set_op(SetOp::All, arg1, arg2).map(Into::into)
-                    }
-                    BinaryOp::ContainsAny => {
-                        Evaluator::eval_set_op(SetOp::Any, arg1, arg2).map(Into::into)
+                    BinaryOp::SetRelation(op) => {
+                        Evaluator::eval_set_op(*op, arg1, arg2).map(Into::into)
                     }
                     // GetTag and HasTag, which require an Entity on the left and a String on the right
                     BinaryOp::GetTag | BinaryOp::HasTag => {
@@ -676,9 +659,10 @@ mod tests {
 
     use crate::{
         ast::{
-            expression_construction_errors, BinaryOp, Context, EntityUID, EntityUIDEntry, Expr,
-            PartialValue, Pattern, PolicyID, Request, RequestSchemaAllPass, RestrictedExpr,
-            UnaryOp, Unknown, Value, ValueKind, Var,
+            expression_construction_errors, BinaryArithmetic, BinaryOp, BinaryOrd,
+            BinarySetRelation, Context, EntityUID, EntityUIDEntry, Expr, PartialValue, Pattern,
+            PolicyID, Request, RequestSchemaAllPass, RestrictedExpr, UnaryOp, Unknown, Value,
+            ValueKind, Var,
         },
         entities::Entities,
         evaluator::{
@@ -1099,7 +1083,11 @@ mod tests {
     fn and_semantics3() {
         // Errors on left hand side should propagate
         let e = Expr::and(
-            Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
+            Expr::binary_app(
+                BinaryOp::Arithmetic(BinaryArithmetic::Add),
+                Expr::val("hello"),
+                Expr::val(2),
+            ),
             Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
         );
 
@@ -1170,7 +1158,11 @@ mod tests {
     fn or_semantics3() {
         // Errors on left hand side should propagate
         let e = Expr::or(
-            Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
+            Expr::binary_app(
+                BinaryOp::Arithmetic(BinaryArithmetic::Add),
+                Expr::val("hello"),
+                Expr::val(2),
+            ),
             Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
         );
 
@@ -1286,7 +1278,11 @@ mod tests {
     #[test]
     fn parital_if_cons_error() {
         let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
-        let cons = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(true));
+        let cons = Expr::binary_app(
+            BinaryOp::Arithmetic(BinaryArithmetic::Add),
+            Expr::val(1),
+            Expr::val(true),
+        );
         let alt = Expr::val(2);
         let e = Expr::ite(guard.clone(), cons.clone(), alt);
 
@@ -1304,7 +1300,11 @@ mod tests {
     fn parital_if_alt_error() {
         let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
         let cons = Expr::val(2);
-        let alt = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(true));
+        let alt = Expr::binary_app(
+            BinaryOp::Arithmetic(BinaryArithmetic::Add),
+            Expr::val(1),
+            Expr::val(true),
+        );
         let e = Expr::ite(guard.clone(), cons, alt.clone());
 
         let es = Entities::new();
@@ -1319,7 +1319,11 @@ mod tests {
     #[test]
     fn parital_if_both_error() {
         let guard = Expr::get_attr(Expr::unknown(Unknown::new_untyped("a")), "field".into());
-        let cons = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(true));
+        let cons = Expr::binary_app(
+            BinaryOp::Arithmetic(BinaryArithmetic::Add),
+            Expr::val(1),
+            Expr::val(true),
+        );
         let alt = Expr::less(Expr::val("hello"), Expr::val("bye"));
         let e = Expr::ite(guard.clone(), cons.clone(), alt.clone());
 
@@ -1335,7 +1339,11 @@ mod tests {
     // err && res -> err
     #[test]
     fn partial_and_err_res() {
-        let lhs = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("test"));
+        let lhs = Expr::binary_app(
+            BinaryOp::Arithmetic(BinaryArithmetic::Add),
+            Expr::val(1),
+            Expr::val("test"),
+        );
         let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::and(lhs, rhs);
         let es = Entities::new();
@@ -1347,7 +1355,11 @@ mod tests {
     // err || res -> err
     #[test]
     fn partial_or_err_res() {
-        let lhs = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("test"));
+        let lhs = Expr::binary_app(
+            BinaryOp::Arithmetic(BinaryArithmetic::Add),
+            Expr::val(1),
+            Expr::val("test"),
+        );
         let rhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
         let e = Expr::or(lhs, rhs);
         let es = Entities::new();
@@ -1436,7 +1448,11 @@ mod tests {
     #[test]
     fn partial_and_res_err() {
         let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
-        let rhs = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("oops"));
+        let rhs = Expr::binary_app(
+            BinaryOp::Arithmetic(BinaryArithmetic::Add),
+            Expr::val(1),
+            Expr::val("oops"),
+        );
         let e = Expr::and(lhs, rhs.clone());
         let es = Entities::new();
         let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
@@ -1529,7 +1545,11 @@ mod tests {
     #[test]
     fn partial_or_res_err() {
         let lhs = Expr::get_attr(Expr::unknown(Unknown::new_untyped("test")), "field".into());
-        let rhs = Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("oops"));
+        let rhs = Expr::binary_app(
+            BinaryOp::Arithmetic(BinaryArithmetic::Add),
+            Expr::val(1),
+            Expr::val("oops"),
+        );
         let e = Expr::or(lhs, rhs.clone());
         let es = Entities::new();
         let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
@@ -1567,22 +1587,26 @@ mod tests {
         let eval = PartialEvaluator::new(empty_request(), &es, Extensions::none());
 
         let binops = [
-            BinaryOp::Add,
+            BinaryOp::Arithmetic(BinaryArithmetic::Add),
             BinaryOp::Contains,
-            BinaryOp::ContainsAll,
-            BinaryOp::ContainsAny,
+            BinaryOp::SetRelation(BinarySetRelation::ContainsAll),
+            BinaryOp::SetRelation(BinarySetRelation::ContainsAny),
             BinaryOp::Eq,
             BinaryOp::In,
-            BinaryOp::Less,
-            BinaryOp::LessEq,
-            BinaryOp::Sub,
+            BinaryOp::Ord(BinaryOrd::Less),
+            BinaryOp::Ord(BinaryOrd::LessEq),
+            BinaryOp::Arithmetic(BinaryArithmetic::Sub),
         ];
 
         for binop in binops {
             // ensure PE evaluates left side
             let e = Expr::binary_app(
                 binop,
-                Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(2)),
+                Expr::binary_app(
+                    BinaryOp::Arithmetic(BinaryArithmetic::Add),
+                    Expr::val(1),
+                    Expr::val(2),
+                ),
                 Expr::unknown(Unknown::new_untyped("a")),
             );
             let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
@@ -1595,7 +1619,11 @@ mod tests {
             // ensure PE propagates left side errors
             let e = Expr::binary_app(
                 binop,
-                Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
+                Expr::binary_app(
+                    BinaryOp::Arithmetic(BinaryArithmetic::Add),
+                    Expr::val("hello"),
+                    Expr::val(2),
+                ),
                 Expr::unknown(Unknown::new_untyped("a")),
             );
             assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
@@ -1603,7 +1631,11 @@ mod tests {
             let e = Expr::binary_app(
                 binop,
                 Expr::unknown(Unknown::new_untyped("a")),
-                Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(2)),
+                Expr::binary_app(
+                    BinaryOp::Arithmetic(BinaryArithmetic::Add),
+                    Expr::val(1),
+                    Expr::val(2),
+                ),
             );
             let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
             let expected = Expr::binary_app(
@@ -1616,7 +1648,11 @@ mod tests {
             let e = Expr::binary_app(
                 binop,
                 Expr::unknown(Unknown::new_untyped("a")),
-                Expr::binary_app(BinaryOp::Add, Expr::val("hello"), Expr::val(2)),
+                Expr::binary_app(
+                    BinaryOp::Arithmetic(BinaryArithmetic::Add),
+                    Expr::val("hello"),
+                    Expr::val(2),
+                ),
             );
             assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
             // Both left and right residuals
@@ -1747,7 +1783,11 @@ mod tests {
         let e = Expr::set([
             Expr::val(1),
             Expr::unknown(Unknown::new_untyped("a")),
-            Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(2)),
+            Expr::binary_app(
+                BinaryOp::Arithmetic(BinaryArithmetic::Add),
+                Expr::val(1),
+                Expr::val(2),
+            ),
         ]);
         let r = eval.partial_interpret(&e, &HashMap::new()).unwrap();
         assert_eq!(
@@ -1762,7 +1802,11 @@ mod tests {
         let e = Expr::set([
             Expr::val(1),
             Expr::unknown(Unknown::new_untyped("a")),
-            Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("a")),
+            Expr::binary_app(
+                BinaryOp::Arithmetic(BinaryArithmetic::Add),
+                Expr::val(1),
+                Expr::val("a"),
+            ),
         ]);
         assert_matches!(eval.partial_interpret(&e, &HashMap::new()), Err(_));
     }
@@ -1812,7 +1856,11 @@ mod tests {
             ("b".into(), Expr::unknown(Unknown::new_untyped("a"))),
             (
                 "c".into(),
-                Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val(2)),
+                Expr::binary_app(
+                    BinaryOp::Arithmetic(BinaryArithmetic::Add),
+                    Expr::val(1),
+                    Expr::val(2),
+                ),
             ),
         ])
         .unwrap();
@@ -1834,7 +1882,11 @@ mod tests {
             ("b".into(), Expr::unknown(Unknown::new_untyped("a"))),
             (
                 "c".into(),
-                Expr::binary_app(BinaryOp::Add, Expr::val(1), Expr::val("hello")),
+                Expr::binary_app(
+                    BinaryOp::Arithmetic(BinaryArithmetic::Add),
+                    Expr::val(1),
+                    Expr::val("hello"),
+                ),
             ),
         ])
         .unwrap();
@@ -1863,7 +1915,7 @@ mod tests {
                 (
                     "a".into(),
                     Expr::binary_app(
-                        BinaryOp::Add,
+                        BinaryOp::Arithmetic(BinaryArithmetic::Add),
                         Expr::unknown(Unknown::new_untyped("a")),
                         Expr::val(3),
                     ),
@@ -1880,7 +1932,7 @@ mod tests {
             Expr::record([(
                 "a".into(),
                 Expr::binary_app(
-                    BinaryOp::Add,
+                    BinaryOp::Arithmetic(BinaryArithmetic::Add),
                     Expr::unknown(Unknown::new_untyped("a")),
                     Expr::val(3),
                 ),

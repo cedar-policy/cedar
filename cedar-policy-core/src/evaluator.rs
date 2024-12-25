@@ -2512,7 +2512,7 @@ pub(crate) mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::add(Expr::val(Integer::MAX), Expr::val(1))),
             Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
-                op: BinaryOp::Add,
+                op: BinaryArithmetic::Add,
                 arg1: Value::from(Integer::MAX),
                 arg2: Value::from(1),
                 source_loc: None,
@@ -2542,7 +2542,7 @@ pub(crate) mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::sub(Expr::val(Integer::MIN + 2), Expr::val(3))),
             Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
-                op: BinaryOp::Sub,
+                op: BinaryArithmetic::Sub,
                 arg1: Value::from(Integer::MIN + 2),
                 arg2: Value::from(3),
                 source_loc: None,
@@ -2581,7 +2581,7 @@ pub(crate) mod test {
         assert_eq!(
             eval.interpret_inline_policy(&Expr::mul(Expr::val(Integer::MAX - 1), Expr::val(3))),
             Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
-                op: BinaryOp::Mul,
+                op: BinaryArithmetic::Mul,
                 arg1: Value::from(Integer::MAX - 1),
                 arg2: Value::from(3),
                 source_loc: None,

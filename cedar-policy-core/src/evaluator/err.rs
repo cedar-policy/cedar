@@ -329,7 +329,7 @@ impl EvaluationError {
 
 /// Error subtypes for [`EvaluationError`]
 pub mod evaluation_errors {
-    use crate::ast::{BinaryOp, EntityUID, Expr, SlotId, Type, UnaryOp, Value};
+    use crate::ast::{EntityUID, Expr, SlotId, Type, UnaryOp, Value};
     use crate::parser::Loc;
     use itertools::Itertools;
     use miette::Diagnostic;
@@ -338,7 +338,7 @@ pub mod evaluation_errors {
     use std::sync::Arc;
     use thiserror::Error;
 
-    use super::Name;
+    use super::{BinaryArithmetic, Name};
 
     /// Tried to lookup an entity UID, but it didn't exist in the provided entities
     //
@@ -585,10 +585,10 @@ pub mod evaluation_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
-    #[error("integer overflow while attempting to {} the values `{arg1}` and `{arg2}`", match .op { BinaryOp::Add => "add", BinaryOp::Sub => "subtract", BinaryOp::Mul => "multiply", _ => "perform an operation on" })]
+    #[error("integer overflow while attempting to {} the values `{arg1}` and `{arg2}`", match .op { BinaryArithmetic::Add => "add", BinaryArithmetic::Sub => "subtract", BinaryArithmetic::Mul => "multiply" })]
     pub struct BinaryOpOverflowError {
         /// overflow while evaluating this operator
-        pub(crate) op: BinaryOp,
+        pub(crate) op: BinaryArithmetic,
         /// first argument to that operator
         pub(crate) arg1: Value,
         /// second argument to that operator
