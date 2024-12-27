@@ -24,7 +24,7 @@ use cedar_policy_core::ast::{self, PartialValue};
 use cedar_policy_core::ast::{Expr, PolicySet, Request, Value};
 use cedar_policy_core::authorizer::Authorizer;
 use cedar_policy_core::entities::{Entities, TCComputation};
-use cedar_policy_core::evaluator::Evaluator;
+use cedar_policy_core::evaluator::{Evaluator, PartialEvaluator};
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_validator::{ValidationMode, Validator, ValidatorSchema};
 use core::panic;
@@ -324,7 +324,7 @@ impl CedarTestImplementation for RustEngine {
         policies: &PolicySet,
     ) -> TestResult<partial::FlatPartialResponse> {
         let a = Authorizer::new();
-        let pr = a.is_authorized_core(request.clone(), policies, entities);
+        let pr = a.is_authorized_partial(request.clone(), policies, entities);
 
         let r = partial::FlatPartialResponse {
             known_permits: pr.satisfied_permits.keys().map(|x| x.to_string()).collect(),
@@ -356,7 +356,7 @@ impl CedarTestImplementation for RustEngine {
         } else {
             Extensions::none()
         };
-        let e = Evaluator::new(request.clone(), entities, exts);
+        let e = PartialEvaluator::new(request.clone(), entities, exts);
         let result = e.partial_interpret(expr, &HashMap::default());
         match (result, expected) {
             (Ok(PartialValue::Residual(r)), Some(ExprOrValue::Expr(e))) => {

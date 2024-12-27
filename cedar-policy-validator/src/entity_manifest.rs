@@ -530,7 +530,7 @@ fn entity_manifest_from_expr(
         ExprKind::And { left, right }
         | ExprKind::Or { left, right }
         | ExprKind::BinaryApp {
-            op: BinaryOp::Less | BinaryOp::LessEq | BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul,
+            op: BinaryOp::Ord(_) | BinaryOp::Arithmetic(_),
             arg1: left,
             arg2: right,
         } => Ok(entity_manifest_from_expr(left)?
@@ -554,12 +554,7 @@ fn entity_manifest_from_expr(
             }
         }
         ExprKind::BinaryApp {
-            op:
-                BinaryOp::Eq
-                | BinaryOp::In
-                | BinaryOp::Contains
-                | BinaryOp::ContainsAll
-                | BinaryOp::ContainsAny,
+            op: BinaryOp::Eq | BinaryOp::In | BinaryOp::Contains | BinaryOp::SetRelation(_),
             arg1,
             arg2,
         } => {

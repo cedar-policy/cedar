@@ -38,7 +38,7 @@ use crate::{
     ValidationError, ValidationMode, ValidationWarning,
 };
 
-use cedar_policy_core::fuzzy_match::fuzzy_search;
+use cedar_policy_core::{ast::BinaryArithmetic, fuzzy_match::fuzzy_search};
 use cedar_policy_core::{
     ast::{
         BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
@@ -1244,7 +1244,7 @@ impl<'a> Typechecker<'a> {
                 })
             }
 
-            BinaryOp::Less | BinaryOp::LessEq => {
+            BinaryOp::Ord(_) => {
                 let expected_types = Extensions::iter_type_with_operator_overloading()
                     .cloned()
                     .map(Type::extension)
@@ -1365,10 +1365,10 @@ impl<'a> Typechecker<'a> {
                 })
             }
 
-            BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
+            BinaryOp::Arithmetic(_) => {
                 let help_builder = |actual: &Type| match (op, actual) {
                     (
-                        BinaryOp::Add,
+                        BinaryOp::Arithmetic(BinaryArithmetic::Add),
                         Type::Primitive {
                             primitive_type: Primitive::String,
                         },
@@ -1472,7 +1472,7 @@ impl<'a> Typechecker<'a> {
                 })
             }
 
-            BinaryOp::ContainsAll | BinaryOp::ContainsAny => {
+            BinaryOp::SetRelation(_) => {
                 // Both arguments to a `containsAll` or `containsAny` must be sets.
                 self.expect_type(
                     request_env,
