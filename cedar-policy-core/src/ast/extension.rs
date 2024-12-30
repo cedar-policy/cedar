@@ -221,10 +221,13 @@ impl ExtensionFunction {
     }
 
     /// Create a new `ExtensionFunction` taking one argument
+    #[allow(clippy::type_complexity)]
     pub fn unary(
         name: Name,
         style: CallStyle,
-        func: Box<dyn Fn(Value) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static>,
+        func: Box<
+            dyn Fn(&Value) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static,
+        >,
         return_type: SchemaType,
         arg_type: SchemaType,
     ) -> Self {
@@ -232,7 +235,7 @@ impl ExtensionFunction {
             name.clone(),
             style,
             Box::new(move |args: &[Value]| match &args {
-                &[arg] => func(arg.clone()),
+                &[arg] => func(arg),
                 _ => Err(evaluator::EvaluationError::wrong_num_arguments(
                     name.clone(),
                     1,
@@ -246,11 +249,15 @@ impl ExtensionFunction {
     }
 
     /// Create a new `ExtensionFunction` taking two arguments
+    #[allow(clippy::type_complexity)]
     pub fn binary(
         name: Name,
         style: CallStyle,
         func: Box<
-            dyn Fn(Value, Value) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static,
+            dyn Fn(&Value, &Value) -> evaluator::Result<ExtensionOutputValue>
+                + Sync
+                + Send
+                + 'static,
         >,
         return_type: SchemaType,
         arg_types: (SchemaType, SchemaType),
@@ -259,7 +266,7 @@ impl ExtensionFunction {
             name.clone(),
             style,
             Box::new(move |args: &[Value]| match &args {
-                &[first, second] => func(first.clone(), second.clone()),
+                &[first, second] => func(first, second),
                 _ => Err(evaluator::EvaluationError::wrong_num_arguments(
                     name.clone(),
                     2,
@@ -273,11 +280,12 @@ impl ExtensionFunction {
     }
 
     /// Create a new `ExtensionFunction` taking three arguments
+    #[allow(clippy::type_complexity)]
     pub fn ternary(
         name: Name,
         style: CallStyle,
         func: Box<
-            dyn Fn(Value, Value, Value) -> evaluator::Result<ExtensionOutputValue>
+            dyn Fn(&Value, &Value, &Value) -> evaluator::Result<ExtensionOutputValue>
                 + Sync
                 + Send
                 + 'static,
@@ -289,7 +297,7 @@ impl ExtensionFunction {
             name.clone(),
             style,
             Box::new(move |args: &[Value]| match &args {
-                &[first, second, third] => func(first.clone(), second.clone(), third.clone()),
+                &[first, second, third] => func(first, second, third),
                 _ => Err(evaluator::EvaluationError::wrong_num_arguments(
                     name.clone(),
                     3,
