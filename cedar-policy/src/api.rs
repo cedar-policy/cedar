@@ -1370,7 +1370,7 @@ fn annotations_to_pairs(annotations: &est::Annotations) -> impl Iterator<Item = 
 }
 
 impl SchemaFragment {
-    /// Get annotations of a non-empty namespace
+    /// Get annotations of a non-empty namespace.
     /// We do not allow namespace-level annotations on the empty namespace
     /// Returns `None` if `namespace` is not found in the [`SchemaFragment`]
     pub fn namespace_annotations(
