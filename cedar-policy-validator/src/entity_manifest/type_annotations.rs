@@ -69,7 +69,7 @@ impl RootAccessTrie {
                         match key {
                             EntityRoot::Literal(lit) => slice.to_typed(
                                 request_type,
-                                &Type::euid_literal(lit.clone(), schema).ok_or_else(|| {
+                                &Type::euid_literal(lit, schema).ok_or_else(|| {
                                     MismatchedMissingEntityError {
                                         entity: lit.clone(),
                                     }
@@ -77,7 +77,7 @@ impl RootAccessTrie {
                                 schema,
                             )?,
                             EntityRoot::Var(Var::Action) => {
-                                let ty = Type::euid_literal(request_type.action.clone(), schema)
+                                let ty = Type::euid_literal(&request_type.action, schema)
                                     .ok_or_else(|| MismatchedMissingEntityError {
                                         entity: request_type.action.clone(),
                                     })?;
