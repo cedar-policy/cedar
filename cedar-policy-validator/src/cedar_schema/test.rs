@@ -1178,6 +1178,8 @@ mod translator_tests {
         ValidatorSchema,
     };
 
+    use super::SPECIAL_IDS;
+
     // We allow translating schemas that violate RFC 52 to `json_schema::Fragment`.
     // The violations are reported during further translation to `ValidatorSchema`
     #[test]
@@ -1999,6 +2001,28 @@ mod translator_tests {
         .expect("should translate to JSON schema");
         assert_eq!(serde_json::to_value(schema).unwrap(), json_value);
     }
+
+    #[test]
+    fn any_id() {
+        for id in SPECIAL_IDS {
+            test_translation(
+                &format!("@{id} entity User {{}};"),
+                serde_json::json!({
+                    "": {
+                        "entityTypes": {
+                            "User": {
+                                "annotations": {
+                                    id: "",
+                                }
+                            }
+                        },
+                        "actions": {},
+                    }
+                }),
+            )
+        }
+    }
+
     #[test]
     fn annotations() {
         // namespace annotations
@@ -2634,12 +2658,45 @@ mod entity_tags {
     }
 }
 
+#[cfg(test)]
+pub(crate) const SPECIAL_IDS: [&str; 18] = [
+    "principal",
+    "action",
+    "resource",
+    "context",
+    "true",
+    "false",
+    "permit",
+    "forbid",
+    "when",
+    "unless",
+    "in",
+    "has",
+    "like",
+    "is",
+    "if",
+    "then",
+    "else",
+    "__cedar",
+];
+
 // RFC 48 test cases
 #[cfg(test)]
 mod annotations {
     use cool_asserts::assert_matches;
 
     use crate::cedar_schema::parser::parse_schema;
+
+    use super::SPECIAL_IDS;
+
+    // test if annotation keys can be any id
+    #[test]
+    fn any_id() {
+        for id in SPECIAL_IDS {
+            let schema_str = format!("@{id} entity User {{}};");
+            assert_matches!(parse_schema(&schema_str), Ok(_));
+        }
+    }
 
     #[test]
     fn no_keys() {

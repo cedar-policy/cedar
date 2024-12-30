@@ -90,14 +90,7 @@ match {
 
 }
 
-#[inline]
-AnyIdent: Node<AnyId> = {
-    <l:@L> <id:IDENTIFIER> <r:@R>
-        // `IDENTIFIER` should produce a valid `AnyId`
-        => Node::with_source_loc(AnyId::from_str(id).unwrap(), Loc::new(l..r, Arc::clone(src))),
-}
-
-// Annotations := {'@' IDENTIFIER '(' String ')'}
+// Annotations := {'@' AnyIdent '(' String ')'}
 Annotation: Node<(Node<AnyId>, Option<Node<SmolStr>>)> = {
     <l:@L> "@" <key:AnyIdent> <value: ("(" <STR> ")")?> <r:@R> => Node::with_source_loc((key, value), Loc::new(l..r, Arc::clone(src)))
 }
@@ -225,8 +218,15 @@ Comma<E>: Vec<E> = {
     },
 }
 
-// IDENT := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']*
+// IDENT := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']* - RESERVED
 Ident: Node<Id> = {
+    <id: AnyIdent> =>? Id::from_str(id.node.as_ref()).map(|i| Node::with_source_loc(i, id.loc.clone())).map_err(|err : cedar_policy_core::parser::err::ParseErrors| ParseError::User {
+        error: UserError::ReservedIdentifierUsed(Node::with_source_loc(id.node.to_smolstr(), id.loc.clone()))
+    }),
+}
+
+// AnyIdent := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']*
+AnyIdent: Node<AnyId> = {
     <l:@L> NAMESPACE <r:@R>
         => Node::with_source_loc("namespace".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> ENTITY <r:@R>
@@ -256,17 +256,9 @@ Ident: Node<Id> = {
     <l:@L> TYPE <r:@R>
         => Node::with_source_loc("type".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> IN <r:@R>
-        =>? Err(ParseError::User {
-            error: UserError::ReservedIdentifierUsed(Node::with_source_loc("in".into(), Loc::new(l..r, Arc::clone(src))))
-        }),
+        => Node::with_source_loc("in".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <i:IDENTIFIER> <r:@R>
-        =>? Id::from_str(i)
-        .map(|id : Id| Node::with_source_loc(id, Loc::new(l..r, Arc::clone(src))))
-        .map_err(|err : cedar_policy_core::parser::err::ParseErrors|
-            ParseError::User {
-                error: UserError::ReservedIdentifierUsed(Node::with_source_loc(i.to_smolstr(), Loc::new(l..r, Arc::clone(src))))
-            }
-        )
+        => Node::with_source_loc(i.parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
 }
 
 STR: Node<SmolStr> = {
