@@ -988,6 +988,7 @@ fn stack_size_check() -> Result<()> {
 
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
+#[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
 pub(crate) mod test {
     use std::str::FromStr;
@@ -5033,9 +5034,8 @@ pub(crate) mod test {
             Either::Right(expr) => {
                 println!("{expr}");
                 assert!(expr.contains_unknown());
-                let m: HashMap<_, _> = [("principal".into(), Value::from(euid))]
-                    .into_iter()
-                    .collect();
+                let m: HashMap<_, _> =
+                    std::iter::once(("principal".into(), Value::from(euid))).collect();
                 let new_expr = expr.substitute_typed(&m).unwrap();
                 assert_eq!(
                     e.partial_interpret(&new_expr, &HashMap::new())

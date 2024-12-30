@@ -1003,12 +1003,7 @@ mod tests {
             .expect("parser error")
             .node
             .expect("no data");
-        let success = policies
-            .0
-            .into_iter()
-            .filter_map(|p| p.node)
-            .collect::<Vec<_>>();
-        assert!(success.len() == 2);
+        assert_eq!(policies.0.into_iter().filter_map(|p| p.node).count(), 2);
     }
 
     #[test]
