@@ -433,7 +433,7 @@ impl PolicySet {
         match self.templates.remove(policy_id) {
             Some(t) => {
                 self.template_to_links_map.remove(policy_id);
-                Ok((*t).clone())
+                Ok(Arc::unwrap_or_clone(t))
             }
             None => panic!("Found in template_to_links_map but not in templates"),
         }
