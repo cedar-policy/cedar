@@ -124,9 +124,22 @@ pub enum CallStyle {
 
 // Note: we could use currying to make this a little nicer
 
-/// Trait object that implements the extension function call.
-pub type ExtensionFunctionObject =
-    Box<dyn Fn(&[Value]) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static>;
+macro_rules! extension_function_object {
+    ( $( $tys:ty ), * ) => {
+        Box<dyn Fn($($tys,)*) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static>
+    }
+}
+
+/// Trait object that implements the extension function call accepting any number of arguments.
+pub type ExtensionFunctionObject = extension_function_object!(&[Value]);
+/// Trait object that implements the extension function call accepting exactly 0 arguments
+pub type NullaryExtensionFunctionObject = extension_function_object!();
+/// Trait object that implements the extension function call accepting exactly 1 arguments
+pub type UnaryExtensionFunctionObject = extension_function_object!(&Value);
+/// Trait object that implements the extension function call accepting exactly 2 arguments
+pub type BinaryExtensionFunctionObject = extension_function_object!(&Value, &Value);
+/// Trait object that implements the extension function call accepting exactly 3 arguments
+pub type TernaryExtensionFunctionObject = extension_function_object!(&Value, &Value, &Value);
 
 /// Extension function. These can be called by the given `name` in Ceder
 /// expressions.
@@ -172,7 +185,7 @@ impl ExtensionFunction {
     pub fn nullary(
         name: Name,
         style: CallStyle,
-        func: Box<dyn Fn() -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static>,
+        func: NullaryExtensionFunctionObject,
         return_type: SchemaType,
     ) -> Self {
         Self::new(
@@ -200,14 +213,14 @@ impl ExtensionFunction {
     pub fn partial_eval_unknown(
         name: Name,
         style: CallStyle,
-        func: Box<dyn Fn(Value) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static>,
+        func: UnaryExtensionFunctionObject,
         arg_type: SchemaType,
     ) -> Self {
         Self::new(
             name.clone(),
             style,
             Box::new(move |args: &[Value]| match args.first() {
-                Some(arg) => func(arg.clone()),
+                Some(arg) => func(arg),
                 None => Err(evaluator::EvaluationError::wrong_num_arguments(
                     name.clone(),
                     1,
@@ -225,9 +238,7 @@ impl ExtensionFunction {
     pub fn unary(
         name: Name,
         style: CallStyle,
-        func: Box<
-            dyn Fn(&Value) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static,
-        >,
+        func: UnaryExtensionFunctionObject,
         return_type: SchemaType,
         arg_type: SchemaType,
     ) -> Self {
@@ -253,12 +264,7 @@ impl ExtensionFunction {
     pub fn binary(
         name: Name,
         style: CallStyle,
-        func: Box<
-            dyn Fn(&Value, &Value) -> evaluator::Result<ExtensionOutputValue>
-                + Sync
-                + Send
-                + 'static,
-        >,
+        func: BinaryExtensionFunctionObject,
         return_type: SchemaType,
         arg_types: (SchemaType, SchemaType),
     ) -> Self {
@@ -284,12 +290,7 @@ impl ExtensionFunction {
     pub fn ternary(
         name: Name,
         style: CallStyle,
-        func: Box<
-            dyn Fn(&Value, &Value, &Value) -> evaluator::Result<ExtensionOutputValue>
-                + Sync
-                + Send
-                + 'static,
-        >,
+        func: TernaryExtensionFunctionObject,
         return_type: SchemaType,
         arg_types: (SchemaType, SchemaType, SchemaType),
     ) -> Self {

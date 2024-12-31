@@ -71,7 +71,7 @@ mod constants {
 }
 
 // The `datetime` type, represented internally as an `i64`.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 struct DateTime {
     // The number of non-leap milliseconds from the Unix epoch
     epoch: i64,
@@ -161,13 +161,13 @@ where
 }
 
 /// Check that `v` is a datetime type and, if it is, return the wrapped value
-fn as_datetime(v: &Value) -> Result<&DateTime, evaluator::EvaluationError> {
-    as_ext(v, &DATETIME_CONSTRUCTOR_NAME)
+fn as_datetime(v: &Value) -> Result<DateTime, evaluator::EvaluationError> {
+    as_ext(v, &DATETIME_CONSTRUCTOR_NAME).copied()
 }
 
 /// Check that `v` is a duration type and, if it is, return the wrapped value
-fn as_duration(v: &Value) -> Result<&Duration, evaluator::EvaluationError> {
-    as_ext(v, &DURATION_CONSTRUCTOR_NAME)
+fn as_duration(v: &Value) -> Result<Duration, evaluator::EvaluationError> {
+    as_ext(v, &DURATION_CONSTRUCTOR_NAME).copied()
 }
 
 fn offset(datetime: &Value, duration: &Value) -> evaluator::Result<ExtensionOutputValue> {
@@ -177,7 +177,7 @@ fn offset(datetime: &Value, duration: &Value) -> evaluator::Result<ExtensionOutp
         extension_err(
             format!(
                 "overflows when adding an offset: {}+({})",
-                RestrictedExpr::from(datetime.clone()),
+                RestrictedExpr::from(datetime),
                 duration
             ),
             &OFFSET_METHOD_NAME,
@@ -198,8 +198,8 @@ fn duration_since(lhs: &Value, rhs: &Value) -> evaluator::Result<ExtensionOutput
         extension_err(
             format!(
                 "overflows when computing the duration between {} and {}",
-                RestrictedExpr::from(lhs.clone()),
-                RestrictedExpr::from(rhs.clone())
+                RestrictedExpr::from(lhs),
+                RestrictedExpr::from(rhs)
             ),
             &DURATION_SINCE_NAME,
             None,
@@ -218,7 +218,7 @@ fn to_date(value: &Value) -> evaluator::Result<ExtensionOutputValue> {
         extension_err(
             format!(
                 "overflows when computing the date of {}",
-                RestrictedExpr::from(d.clone()),
+                RestrictedExpr::from(d),
             ),
             &TO_DATE_NAME,
             None,
@@ -254,13 +254,13 @@ impl DateTime {
     const DAY_IN_MILLISECONDS: i64 = 1000 * 3600 * 24;
     const UNIX_EPOCH_STR: &'static str = "1970-01-01";
 
-    fn offset(&self, duration: &Duration) -> Option<Self> {
+    fn offset(self, duration: Duration) -> Option<Self> {
         self.epoch
             .checked_add(duration.ms)
             .map(|epoch| Self { epoch })
     }
 
-    fn duration_since(&self, other: &DateTime) -> Option<Duration> {
+    fn duration_since(self, other: DateTime) -> Option<Duration> {
         self.epoch
             .checked_sub(other.epoch)
             .map(|ms| Duration { ms })
@@ -268,7 +268,7 @@ impl DateTime {
 
     // essentially `self.epoch.div_floor(Self::DAY_IN_MILLISECONDS) * Self::DAY_IN_MILLISECONDS`
     // but `div_floor` is only available on nightly
-    fn to_date(&self) -> Option<Self> {
+    fn to_date(self) -> Option<Self> {
         if self.epoch.is_negative() {
             if self.epoch % Self::DAY_IN_MILLISECONDS == 0 {
                 Some(self.epoch)
@@ -281,7 +281,7 @@ impl DateTime {
         .map(|epoch| Self { epoch })
     }
 
-    fn to_time(&self) -> Duration {
+    fn to_time(self) -> Duration {
         Duration {
             ms: if self.epoch.is_negative() {
                 let rem = self.epoch % Self::DAY_IN_MILLISECONDS;
@@ -296,7 +296,7 @@ impl DateTime {
         }
     }
 
-    fn as_ext_func_call(&self) -> (Name, Vec<RestrictedExpr>) {
+    fn as_ext_func_call(self) -> (Name, Vec<RestrictedExpr>) {
         (
             OFFSET_METHOD_NAME.clone(),
             vec![
@@ -338,7 +338,7 @@ impl From<NaiveDateTime> for DateTime {
 }
 
 // The `duration` type
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Duration {
     // The number of milliseconds
     ms: i64,
@@ -392,27 +392,27 @@ fn duration_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
 }
 
 impl Duration {
-    fn to_milliseconds(&self) -> i64 {
+    fn to_milliseconds(self) -> i64 {
         self.ms
     }
 
-    fn to_seconds(&self) -> i64 {
+    fn to_seconds(self) -> i64 {
         self.to_milliseconds() / 1000
     }
 
-    fn to_minutes(&self) -> i64 {
+    fn to_minutes(self) -> i64 {
         self.to_seconds() / 60
     }
 
-    fn to_hours(&self) -> i64 {
+    fn to_hours(self) -> i64 {
         self.to_minutes() / 60
     }
 
-    fn to_days(&self) -> i64 {
+    fn to_days(self) -> i64 {
         self.to_hours() / 24
     }
 
-    fn as_ext_func_call(&self) -> (Name, Vec<RestrictedExpr>) {
+    fn as_ext_func_call(self) -> (Name, Vec<RestrictedExpr>) {
         (
             DURATION_CONSTRUCTOR_NAME.clone(),
             vec![Value::from(self.to_string()).into()],
@@ -422,7 +422,7 @@ impl Duration {
 
 fn duration_method(
     value: &Value,
-    internal_func: impl Fn(&Duration) -> i64,
+    internal_func: impl Fn(Duration) -> i64,
 ) -> evaluator::Result<ExtensionOutputValue> {
     let d = as_duration(value)?;
     Ok(Value::from(internal_func(d)).into())
@@ -981,43 +981,43 @@ mod tests {
     fn test_offset() {
         let unix_epoch = DateTime { epoch: 0 };
         let date_time_max = unix_epoch
-            .offset(&parse_duration(&milliseconds_to_duration(i64::MAX.into())).unwrap())
+            .offset(parse_duration(&milliseconds_to_duration(i64::MAX.into())).unwrap())
             .expect("valid datetime");
         let date_time_min = unix_epoch
-            .offset(&parse_duration(&milliseconds_to_duration(i64::MIN.into())).unwrap())
+            .offset(parse_duration(&milliseconds_to_duration(i64::MIN.into())).unwrap())
             .expect("valid datetime");
         assert!(date_time_max
-            .offset(&parse_duration("1ms").unwrap())
+            .offset(parse_duration("1ms").unwrap())
             .is_none());
         assert_eq!(
-            date_time_max.offset(&parse_duration("-1ms").unwrap()),
+            date_time_max.offset(parse_duration("-1ms").unwrap()),
             Some(
                 unix_epoch
                     .offset(
-                        &parse_duration(&milliseconds_to_duration(i64::MAX as i128 - 1)).unwrap()
+                        parse_duration(&milliseconds_to_duration(i64::MAX as i128 - 1)).unwrap()
                     )
                     .expect("valid datetime")
             )
         );
         assert!(date_time_min
-            .offset(&parse_duration("-1ms").unwrap())
+            .offset(parse_duration("-1ms").unwrap())
             .is_none());
         assert_eq!(
-            date_time_min.offset(&parse_duration("1ms").unwrap()),
+            date_time_min.offset(parse_duration("1ms").unwrap()),
             Some(
                 unix_epoch
                     .offset(
-                        &parse_duration(&milliseconds_to_duration(i64::MIN as i128 + 1)).unwrap()
+                        parse_duration(&milliseconds_to_duration(i64::MIN as i128 + 1)).unwrap()
                     )
                     .expect("valid datetime")
             )
         );
         assert_eq!(
-            unix_epoch.offset(&parse_duration("1d").unwrap()),
+            unix_epoch.offset(parse_duration("1d").unwrap()),
             Some(parse_datetime("1970-01-02").unwrap().into())
         );
         assert_eq!(
-            unix_epoch.offset(&parse_duration("-1d").unwrap()),
+            unix_epoch.offset(parse_duration("-1d").unwrap()),
             Some(parse_datetime("1969-12-31").unwrap().into())
         );
     }
@@ -1027,23 +1027,23 @@ mod tests {
         let unix_epoch = DateTime { epoch: 0 };
         let today: DateTime = parse_datetime("2024-10-24").unwrap().into();
         assert_eq!(
-            today.duration_since(&unix_epoch),
+            today.duration_since(unix_epoch),
             Some(parse_duration("20020d").unwrap())
         );
         let yesterday: DateTime = parse_datetime("2024-10-23").unwrap().into();
         assert_eq!(
-            yesterday.duration_since(&today),
+            yesterday.duration_since(today),
             Some(parse_duration("-1d").unwrap())
         );
         assert_eq!(
-            today.duration_since(&yesterday),
+            today.duration_since(yesterday),
             Some(parse_duration("1d").unwrap())
         );
 
         let date_time_min = unix_epoch
-            .offset(&parse_duration(&milliseconds_to_duration(i64::MIN.into())).unwrap())
+            .offset(parse_duration(&milliseconds_to_duration(i64::MIN.into())).unwrap())
             .expect("valid datetime");
-        assert!(today.duration_since(&date_time_min).is_none());
+        assert!(today.duration_since(date_time_min).is_none());
     }
 
     #[test]
@@ -1051,12 +1051,12 @@ mod tests {
         let unix_epoch = DateTime { epoch: 0 };
         let today: DateTime = parse_datetime("2024-10-24").unwrap().into();
         assert_eq!(
-            today.duration_since(&unix_epoch),
+            today.duration_since(unix_epoch),
             Some(parse_duration("20020d").unwrap())
         );
         let yesterday: DateTime = parse_datetime("2024-10-23").unwrap().into();
         assert_eq!(
-            yesterday.duration_since(&today),
+            yesterday.duration_since(today),
             Some(parse_duration("-1d").unwrap())
         );
         let some_day_before_unix_epoch: DateTime = parse_datetime("1900-01-01").unwrap().into();
@@ -1064,31 +1064,26 @@ mod tests {
         let max_day_offset = parse_duration("23h59m59s999ms").unwrap();
         let min_day_offset = parse_duration("-23h59m59s999ms").unwrap();
 
-        for d in [
-            today,
-            yesterday,
-            unix_epoch.clone(),
-            some_day_before_unix_epoch,
-        ] {
+        for d in [today, yesterday, unix_epoch, some_day_before_unix_epoch] {
             assert_eq!(d.to_date().expect("should not overflow"), d);
             assert_eq!(
-                d.offset(&max_day_offset)
+                d.offset(max_day_offset)
                     .unwrap()
                     .to_date()
                     .expect("should not overflow"),
                 d
             );
             assert_eq!(
-                d.offset(&min_day_offset)
+                d.offset(min_day_offset)
                     .unwrap()
                     .to_date()
                     .expect("should not overflow"),
-                d.offset(&parse_duration("-1d").unwrap()).unwrap()
+                d.offset(parse_duration("-1d").unwrap()).unwrap()
             );
         }
 
         assert!(unix_epoch
-            .offset(&Duration { ms: i64::MIN })
+            .offset(Duration { ms: i64::MIN })
             .expect("should be able to construct")
             .to_date()
             .is_none());
@@ -1099,12 +1094,12 @@ mod tests {
         let unix_epoch = DateTime { epoch: 0 };
         let today: DateTime = parse_datetime("2024-10-24").unwrap().into();
         assert_eq!(
-            today.duration_since(&unix_epoch),
+            today.duration_since(unix_epoch),
             Some(parse_duration("20020d").unwrap())
         );
         let yesterday: DateTime = parse_datetime("2024-10-23").unwrap().into();
         assert_eq!(
-            yesterday.duration_since(&today),
+            yesterday.duration_since(today),
             Some(parse_duration("-1d").unwrap())
         );
         let some_day_before_unix_epoch: DateTime = parse_datetime("1900-01-01").unwrap().into();
@@ -1113,9 +1108,9 @@ mod tests {
         let min_day_offset = parse_duration("-23h59m59s999ms").unwrap();
 
         for d in [today, yesterday, unix_epoch, some_day_before_unix_epoch] {
-            assert_eq!(d.offset(&max_day_offset).unwrap().to_time(), max_day_offset);
+            assert_eq!(d.offset(max_day_offset).unwrap().to_time(), max_day_offset);
             assert_eq!(
-                d.offset(&min_day_offset).unwrap().to_time(),
+                d.offset(min_day_offset).unwrap().to_time(),
                 parse_duration("1ms").unwrap(),
             );
         }
