@@ -720,7 +720,7 @@ impl<'e> Evaluator<'e> {
         // `rhs` is a list of all the UIDs for which we need to
         // check if `uid1` is a descendant of
         let rhs = match arg2.value {
-            ValueKind::Lit(Literal::EntityUID(uid)) => vec![(*uid).clone()],
+            ValueKind::Lit(Literal::EntityUID(uid)) => vec![Arc::unwrap_or_clone(uid)],
             // we assume that iterating the `authoritative` BTreeSet is
             // approximately the same cost as iterating the `fast` HashSet
             ValueKind::Set(Set { authoritative, .. }) => authoritative
