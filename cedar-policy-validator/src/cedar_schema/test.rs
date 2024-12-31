@@ -13,11 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#![allow(clippy::cognitive_complexity)]
-
+#![cfg(test)]
 // PANIC SAFETY: unit tests
-#[allow(clippy::panic)]
-#[cfg(test)]
+#![allow(
+    clippy::cognitive_complexity,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::unreachable
+)]
+
 mod demo_tests {
     use std::{
         collections::BTreeMap,
@@ -928,7 +933,6 @@ namespace Baz {action "Foo" appliesTo {
     }
 }
 
-#[cfg(test)]
 mod parser_tests {
     use crate::cedar_schema::parser::parse_schema;
     use cool_asserts::assert_matches;
@@ -1155,11 +1159,6 @@ mod parser_tests {
     }
 }
 
-// PANIC SAFETY: tests
-#[allow(clippy::unreachable)]
-// PANIC SAFETY: tests
-#[allow(clippy::panic)]
-#[cfg(test)]
 mod translator_tests {
     use cedar_policy_core::ast as cedar_ast;
     use cedar_policy_core::extensions::Extensions;
@@ -1453,10 +1452,6 @@ mod translator_tests {
         });
     }
 
-    // PANIC SAFETY: testing
-    #[allow(clippy::unwrap_used)]
-    // PANIC SAFETY: testing
-    #[allow(clippy::indexing_slicing)]
     #[test]
     fn type_name_resolution_cross_namespace() {
         let (schema, _) = json_schema::Fragment::from_cedarschema_str(
@@ -2275,7 +2270,6 @@ mod translator_tests {
     }
 }
 
-#[cfg(test)]
 mod common_type_references {
     use cool_asserts::assert_matches;
 
@@ -2588,7 +2582,6 @@ mod common_type_references {
 }
 
 /// Tests involving entity tags (RFC 82)
-#[cfg(test)]
 mod entity_tags {
     use crate::json_schema;
     use crate::schema::test::utils::collect_warnings;
@@ -2658,7 +2651,6 @@ mod entity_tags {
     }
 }
 
-#[cfg(test)]
 pub(crate) const SPECIAL_IDS: [&str; 18] = [
     "principal",
     "action",
@@ -2681,7 +2673,6 @@ pub(crate) const SPECIAL_IDS: [&str; 18] = [
 ];
 
 // RFC 48 test cases
-#[cfg(test)]
 mod annotations {
     use cool_asserts::assert_matches;
 
