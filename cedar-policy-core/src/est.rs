@@ -3403,9 +3403,50 @@ mod test {
                 ]
             }
         );
-        let est: Policy = serde_json::from_value(bad).unwrap();
-        let ast: Result<ast::Policy, _> = est.try_into_ast_policy(None);
-        assert_matches!(ast, Err(FromJsonError::MissingOperator));
+        assert_matches!(serde_json::from_value::<Policy>(bad), Err(e) => {
+            assert_eq!(e.to_string(), "empty map is not a valid expression");
+        });
+
+        let bad = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All"
+                },
+                "action": {
+                    "op": "All"
+                },
+                "resource": {
+                    "op": "All"
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "+": {
+                                "left": {
+                                    "Value": 3
+                                },
+                                "right": {
+                                    "Value": 4
+                                }
+                            },
+                            "-": {
+                                "left": {
+                                    "Value": 8
+                                },
+                                "right": {
+                                    "Value": 2
+                                }
+                            },
+                        }
+                    }
+                ]
+            }
+        );
+        assert_matches!(serde_json::from_value::<Policy>(bad), Err(e) => {
+            assert_eq!(e.to_string(), "JSON object representing an `Expr` should have only one key, but found two keys: `+` and `-`");
+        });
 
         let bad = json!(
             {
@@ -4448,7 +4489,7 @@ mod test {
 
 #[cfg(test)]
 mod issue_891 {
-    use crate::est::{self, FromJsonError};
+    use crate::est;
     use cool_asserts::assert_matches;
     use serde_json::json;
 
@@ -4472,8 +4513,9 @@ mod issue_891 {
     #[test]
     fn invalid_extension_func() {
         let src = est_json_with_body(json!( { "ow4": [ { "Var": "principal" } ] }));
-        let est: est::Policy = serde_json::from_value(src).expect("est JSON should deserialize");
-        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtensionFunction(n)) if n == "ow4".parse().unwrap());
+        assert_matches!(serde_json::from_value::<est::Policy>(src), Err(e) => {
+            assert!(e.to_string().starts_with("unknown variant `ow4`, expected one of `Value`, `Var`, "), "e was: {e}");
+        });
 
         let src = est_json_with_body(json!(
             {
@@ -4488,8 +4530,9 @@ mod issue_891 {
                 }
             }
         ));
-        let est: est::Policy = serde_json::from_value(src).expect("est JSON should deserialize");
-        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtensionFunction(n)) if n == "ownerOrEqual".parse().unwrap());
+        assert_matches!(serde_json::from_value::<est::Policy>(src), Err(e) => {
+            assert!(e.to_string().starts_with("unknown variant `ownerOrEqual`, expected one of `Value`, `Var`, "), "e was: {e}");
+        });
 
         let src = est_json_with_body(json!(
             {
@@ -4503,8 +4546,9 @@ mod issue_891 {
                 }
             }
         ));
-        let est: est::Policy = serde_json::from_value(src).expect("est JSON should deserialize");
-        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtensionFunction(n)) if n == "resorThanOrEqual".parse().unwrap());
+        assert_matches!(serde_json::from_value::<est::Policy>(src), Err(e) => {
+            assert!(e.to_string().starts_with("unknown variant `resorThanOrEqual`, expected one of `Value`, `Var`, "), "e was: {e}");
+        });
     }
 }
 
