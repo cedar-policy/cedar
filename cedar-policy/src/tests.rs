@@ -6658,7 +6658,7 @@ mod schema_annotations {
             annotations,
             BTreeMap::from_iter(
                 schema
-                    .action_type_annotations(None, "a1".parse().unwrap(),)
+                    .action_annotations(None, "a1".parse().unwrap(),)
                     .expect("should get annotations")
             )
         );
@@ -6666,7 +6666,7 @@ mod schema_annotations {
             annotations,
             BTreeMap::from_iter(
                 schema
-                    .action_type_annotations(None, "a2".parse().unwrap(),)
+                    .action_annotations(None, "a2".parse().unwrap(),)
                     .expect("should get annotations")
             )
         );
@@ -6674,7 +6674,7 @@ mod schema_annotations {
             annotations,
             BTreeMap::from_iter(
                 schema
-                    .action_type_annotations(
+                    .action_annotations(
                         Some("N".parse().expect("should be a valid name")),
                         "a1".parse().unwrap(),
                     )
@@ -6685,7 +6685,7 @@ mod schema_annotations {
             annotations,
             BTreeMap::from_iter(
                 schema
-                    .action_type_annotations(
+                    .action_annotations(
                         Some("N".parse().expect("should be a valid name")),
                         "a2".parse().unwrap(),
                     )

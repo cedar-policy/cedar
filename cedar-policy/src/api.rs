@@ -1421,7 +1421,7 @@ impl SchemaFragment {
     /// Get annotations of an action declaration
     /// Returns `None` if `namespace` is not found in the [`SchemaFragment`] or
     /// `id` is not found in the corresponding namespace definition
-    pub fn action_type_annotations(
+    pub fn action_annotations(
         &self,
         namespace: Option<EntityNamespace>,
         id: EntityId,
