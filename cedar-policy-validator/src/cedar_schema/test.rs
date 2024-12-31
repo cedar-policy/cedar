@@ -13,18 +13,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#![cfg(test)]
 // PANIC SAFETY: unit tests
-#[allow(clippy::panic)]
-#[cfg(test)]
+#![allow(
+    clippy::cognitive_complexity,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::unreachable
+)]
+
 mod demo_tests {
     use std::{
         collections::BTreeMap,
         iter::{empty, once},
     };
 
-    use cedar_policy_core::extensions::Extensions;
     use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
+    use cedar_policy_core::{est::Annotations, extensions::Extensions};
     use cool_asserts::assert_matches;
     use smol_str::ToSmolStr;
 
@@ -213,7 +219,7 @@ mod demo_tests {
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let unqual = schema.0.get(&None).unwrap();
         let foo = unqual.actions.get("Foo").unwrap();
-        assert_matches!(foo,
+        assert_matches!(&foo,
                 json_schema::ActionType {
                     applies_to : Some(json_schema::ApplySpec {
                         resource_types,
@@ -336,6 +342,7 @@ mod demo_tests {
             attributes: None,
             applies_to: None,
             member_of: None,
+            annotations: Annotations::new(),
         };
         let namespace =
             json_schema::NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
@@ -437,6 +444,7 @@ namespace Baz {action "Foo" appliesTo {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
+                    annotations: Annotations::new(),
                 },
             )]),
             actions: BTreeMap::from([(
@@ -449,8 +457,10 @@ namespace Baz {action "Foo" appliesTo {
                         context: json_schema::AttributesOrContext::default(),
                     }),
                     member_of: None,
+                    annotations: Annotations::new(),
                 },
             )]),
+            annotations: Annotations::new(),
         };
         let fragment = json_schema::Fragment(BTreeMap::from([(None, namespace)]));
         let src = fragment.to_cedarschema().unwrap();
@@ -528,7 +538,7 @@ namespace Baz {action "Foo" appliesTo {
             Extensions::all_available(),
         )
         .expect("Schema should parse");
-        assert!(warnings.collect::<Vec<_>>().is_empty());
+        assert_eq!(warnings.collect::<Vec<_>>(), vec![]);
         let github = fragment
             .0
             .get(&Some("GitHub".parse().unwrap()))
@@ -544,7 +554,7 @@ namespace Baz {action "Foo" appliesTo {
             &vec!["UserGroup".parse().unwrap(), "Team".parse().unwrap()]
         );
         // UserGroup
-        let usergroup = github
+        let usergroup = &github
             .entity_types
             .get(&"UserGroup".parse().unwrap())
             .expect("No `UserGroup`");
@@ -657,7 +667,7 @@ namespace Baz {action "Foo" appliesTo {
             Extensions::all_available(),
         )
         .expect("failed to parse");
-        assert!(warnings.collect::<Vec<_>>().is_empty());
+        assert_eq!(warnings.collect::<Vec<_>>(), vec![]);
         let doccloud = fragment
             .0
             .get(&Some("DocCloud".parse().unwrap()))
@@ -785,7 +795,7 @@ namespace Baz {action "Foo" appliesTo {
         "#;
         let (_, warnings) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
-        assert!(warnings.collect::<Vec<_>>().is_empty());
+        assert_eq!(warnings.collect::<Vec<_>>(), vec![]);
     }
 
     #[test]
@@ -855,7 +865,7 @@ namespace Baz {action "Foo" appliesTo {
 
         let (_, warnings) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
-        assert!(warnings.collect::<Vec<_>>().is_empty());
+        assert_eq!(warnings.collect::<Vec<_>>(), vec![]);
     }
 
     #[test]
@@ -876,9 +886,9 @@ namespace Baz {action "Foo" appliesTo {
         "#;
         let (fragment, warnings) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
-        assert!(warnings.collect::<Vec<_>>().is_empty());
+        assert_eq!(warnings.collect::<Vec<_>>(), vec![]);
         let service = fragment.0.get(&Some("Service".parse().unwrap())).unwrap();
-        let resource = service
+        let resource = &service
             .entity_types
             .get(&"Resource".parse().unwrap())
             .unwrap();
@@ -886,8 +896,8 @@ namespace Baz {action "Foo" appliesTo {
             attributes,
             additional_attributes: false,
         }))) => {
-            assert_matches!(attributes.get("tag"), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
-                assert_matches!(ty, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
+            assert_matches!(attributes.get("tag"), Some(json_schema::TypeOfAttribute { ty, required: true, .. }) => {
+                assert_matches!(&ty, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
                     assert_eq!(type_name, &"AWS::Tag".parse().unwrap());
                 });
             });
@@ -917,13 +927,12 @@ namespace Baz {action "Foo" appliesTo {
         assert_labeled_span("type t =", "expected `{`, identifier, or `Set`");
         assert_labeled_span(
             "entity User {",
-            "expected `}`, identifier, or string literal",
+            "expected `@`, `}`, identifier, or string literal",
         );
         assert_labeled_span("entity User { name:", "expected `{`, identifier, or `Set`");
     }
 }
 
-#[cfg(test)]
 mod parser_tests {
     use crate::cedar_schema::parser::parse_schema;
     use cool_asserts::assert_matches;
@@ -1150,11 +1159,6 @@ mod parser_tests {
     }
 }
 
-// PANIC SAFETY: tests
-#[allow(clippy::unreachable)]
-// PANIC SAFETY: tests
-#[allow(clippy::panic)]
-#[cfg(test)]
 mod translator_tests {
     use cedar_policy_core::ast as cedar_ast;
     use cedar_policy_core::extensions::Extensions;
@@ -1172,6 +1176,8 @@ mod translator_tests {
         types::{EntityLUB, EntityRecordKind, Primitive, Type},
         ValidatorSchema,
     };
+
+    use super::SPECIAL_IDS;
 
     // We allow translating schemas that violate RFC 52 to `json_schema::Fragment`.
     // The violations are reported during further translation to `ValidatorSchema`
@@ -1417,18 +1423,18 @@ mod translator_tests {
         let (frag, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let demo = frag.0.get(&Some("Demo".parse().unwrap())).unwrap();
-        let user = demo.entity_types.get(&"User".parse().unwrap()).unwrap();
+        let user = &demo.entity_types.get(&"User".parse().unwrap()).unwrap();
         assert_matches!(&user.shape, json_schema::AttributesOrContext(json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
         }))) => {
-            assert_matches!(attributes.get("name"), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
+            assert_matches!(attributes.get("name"), Some(json_schema::TypeOfAttribute { ty, required: true, .. }) => {
                 let expected = json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "id".parse().unwrap(),
                 });
                 assert_eq!(ty, &expected);
             });
-            assert_matches!(attributes.get("email"), Some(json_schema::TypeOfAttribute { ty, required: true }) => {
+            assert_matches!(attributes.get("email"), Some(json_schema::TypeOfAttribute { ty, required: true, .. }) => {
                 let expected = json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "email_address".parse().unwrap(),
                 });
@@ -1446,10 +1452,6 @@ mod translator_tests {
         });
     }
 
-    // PANIC SAFETY: testing
-    #[allow(clippy::unwrap_used)]
-    // PANIC SAFETY: testing
-    #[allow(clippy::indexing_slicing)]
     #[test]
     fn type_name_resolution_cross_namespace() {
         let (schema, _) = json_schema::Fragment::from_cedarschema_str(
@@ -1984,9 +1986,290 @@ mod translator_tests {
         .map(|_| ());
         assert_matches!(schema, Err(errs) if matches!(errs.iter().next().unwrap(), ToJsonSchemaError::ReservedSchemaKeyword(_)));
     }
+
+    #[track_caller]
+    fn test_translation(src: &str, json_value: serde_json::Value) {
+        let (schema, _) = cedar_schema_to_json_schema(
+            parse_schema(src).expect("should parse Cedar schema"),
+            Extensions::none(),
+        )
+        .expect("should translate to JSON schema");
+        assert_eq!(serde_json::to_value(schema).unwrap(), json_value);
+    }
+
+    #[test]
+    fn any_id() {
+        for id in SPECIAL_IDS {
+            test_translation(
+                &format!("@{id} entity User {{}};"),
+                serde_json::json!({
+                    "": {
+                        "entityTypes": {
+                            "User": {
+                                "annotations": {
+                                    id: "",
+                                }
+                            }
+                        },
+                        "actions": {},
+                    }
+                }),
+            )
+        }
+    }
+
+    #[test]
+    fn annotations() {
+        // namespace annotations
+        test_translation(
+            r#"
+            @a1
+            @a2("")
+            @a3("foo")
+            namespace N {
+              entity E;
+            }
+            "#,
+            serde_json::json!({
+                "N": {
+                    "entityTypes": {
+                        "E": {}
+                    },
+                    "actions": {},
+                    "annotations": {
+                        "a1": "",
+                        "a2": "",
+                        "a3": "foo",
+                    }
+                }
+            }),
+        );
+
+        // common type annotations
+        test_translation(
+            r#"
+            @comment("A->B")
+            type A = B;
+            @comment("B->A")
+            type B = A;
+            "#,
+            serde_json::json!({
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                       "A": {
+                        "type": "EntityOrCommon",
+                        "name": "B",
+                        "annotations": {
+                            "comment": "A->B",
+                        }
+                       },
+                       "B": {
+                        "type": "EntityOrCommon",
+                        "name": "A",
+                        "annotations": {
+                            "comment": "B->A",
+                        }
+                       }
+                    }
+                }
+            }),
+        );
+
+        // entity type annotations
+        test_translation(
+            r#"
+            @a1
+            @a2("")
+            @a3("foo")
+            namespace N {
+              @ae1("🌕")
+              @ae2("moon")
+              entity Moon;
+            }
+            @ae("🌎")
+            entity Earth;
+            "#,
+            serde_json::json!({
+                "": {
+                    "entityTypes": {
+                        "Earth": {
+                            "annotations": {
+                                "ae": "🌎",
+                            }
+                        }
+                    },
+                    "actions": {},
+                },
+                "N": {
+                    "entityTypes": {
+                        "Moon": {
+                            "annotations": {
+                                "ae1": "🌕",
+                                "ae2": "moon",
+                            }
+                        }
+                    },
+                    "actions": {},
+                    "annotations": {
+                        "a1": "",
+                        "a2": "",
+                        "a3": "foo",
+                    }
+                }
+            }),
+        );
+        test_translation(
+            r#"
+            @ae("🍎🍏")
+            entity Apple1, Apple2;
+            "#,
+            serde_json::json!({
+                "": {
+                    "entityTypes": {
+                        "Apple1": {
+                            "annotations": {
+                                "ae": "🍎🍏",
+                            }
+                        },
+                        "Apple2": {
+                            "annotations": {
+                                "ae": "🍎🍏",
+                            }
+                        }
+                    },
+                    "actions": {},
+                }
+            }),
+        );
+
+        // action annotations
+        test_translation(
+            r#"
+            @a1
+            @a2("")
+            @a3("foo")
+            namespace N {
+              @ae1("🌕")
+              @ae2("moon")
+              entity Moon;
+            }
+            @a("🌌")
+            action "🚀","🛸" appliesTo {
+                principal: [Astronaut, ET],
+                resource: Earth,
+            };
+            "#,
+            serde_json::json!({
+                "": {
+                    "entityTypes": {},
+                    "actions": {
+                        "🚀": {
+                            "annotations": {
+                                "a": "🌌",
+                            },
+                            "appliesTo": {
+                                "principalTypes": ["Astronaut", "ET"],
+                                "resourceTypes": ["Earth"],
+                            }
+                        },
+                        "🛸": {
+                            "annotations": {
+                                "a": "🌌",
+                            },
+                            "appliesTo": {
+                                "principalTypes": ["Astronaut", "ET"],
+                                "resourceTypes": ["Earth"],
+                            }
+                        }
+                    },
+                },
+                "N": {
+                    "entityTypes": {
+                        "Moon": {
+                            "annotations": {
+                                "ae1": "🌕",
+                                "ae2": "moon",
+                            }
+                        }
+                    },
+                    "actions": {},
+                    "annotations": {
+                        "a1": "",
+                        "a2": "",
+                        "a3": "foo",
+                    }
+                }
+            }),
+        );
+
+        // attribute annotations
+        test_translation(
+            r#"
+            type Stars = {
+                @a1
+                "🌕": Long,
+                @a2
+                "🌎": Long,
+                @a3
+                "🛰️": {
+                  @a4("Rocket")
+                  "🚀": Long,
+                  "🌌": Long,
+                }
+            };
+            "#,
+            serde_json::json!({
+                "": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {
+                        "Stars": {
+                            "type": "Record",
+                            "attributes": {
+                                "🌕": {
+                                    "type": "EntityOrCommon",
+                                    "name": "Long",
+                                    "annotations": {
+                                        "a1": "",
+                                    }
+                                },
+                                "🌎": {
+                                    "type": "EntityOrCommon",
+                                    "name": "Long",
+                                    "annotations": {
+                                        "a2": "",
+                                    }
+                                },
+                                "🛰️": {
+                                    "type": "Record",
+                                    "annotations": {
+                                        "a3": "",
+                                    },
+                                    "attributes": {
+                                        "🚀": {
+                                            "type": "EntityOrCommon",
+                                            "name": "Long",
+                                            "annotations": {
+                                                "a4": "Rocket",
+                                            }
+                                        },
+                                        "🌌": {
+                                            "type": "EntityOrCommon",
+                                            "name": "Long",
+                                        }
+                                    }
+                                },
+                            },
+                       },
+                    }
+                }
+            }),
+        );
+    }
 }
 
-#[cfg(test)]
 mod common_type_references {
     use cool_asserts::assert_matches;
 
@@ -2299,7 +2582,6 @@ mod common_type_references {
 }
 
 /// Tests involving entity tags (RFC 82)
-#[cfg(test)]
 mod entity_tags {
     use crate::json_schema;
     use crate::schema::test::utils::collect_warnings;
@@ -2340,7 +2622,7 @@ mod entity_tags {
             assert!(warnings.is_empty());
             let entity_type = frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap();
             assert_matches!(&entity_type.tags, Some(json_schema::Type::Type(json_schema::TypeVariant::Record(rty))) => {
-                assert_matches!(rty.attributes.get("foo"), Some(json_schema::TypeOfAttribute { ty, required }) => {
+                assert_matches!(rty.attributes.get("foo"), Some(json_schema::TypeOfAttribute { ty, required, .. }) => {
                     assert_matches!(ty, json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
                         assert_eq!(&format!("{type_name}"), "String");
                     });
@@ -2366,5 +2648,168 @@ mod entity_tags {
                 assert_eq!(&format!("{type_name}"), "E");
             });
         });
+    }
+}
+
+pub(crate) const SPECIAL_IDS: [&str; 18] = [
+    "principal",
+    "action",
+    "resource",
+    "context",
+    "true",
+    "false",
+    "permit",
+    "forbid",
+    "when",
+    "unless",
+    "in",
+    "has",
+    "like",
+    "is",
+    "if",
+    "then",
+    "else",
+    "__cedar",
+];
+
+// RFC 48 test cases
+mod annotations {
+    use cool_asserts::assert_matches;
+
+    use crate::cedar_schema::parser::parse_schema;
+
+    use super::SPECIAL_IDS;
+
+    // test if annotation keys can be any id
+    #[test]
+    fn any_id() {
+        for id in SPECIAL_IDS {
+            let schema_str = format!("@{id} entity User {{}};");
+            assert_matches!(parse_schema(&schema_str), Ok(_));
+        }
+    }
+
+    #[test]
+    fn no_keys() {
+        assert_matches!(
+            parse_schema(
+                r#"
+        @doc("This entity defines our central user type")
+entity User {
+    @manager
+    manager : User,
+    @team
+    team : String
+};
+        "#
+            ),
+            Ok(_)
+        );
+    }
+
+    #[test]
+    fn duplicate_keys() {
+        assert_matches!(
+            parse_schema(
+                r#"
+        @doc("This entity defines our central user type")
+        @doc
+entity User {
+    @manager
+    manager : User,
+    @team
+    team : String
+};
+        "#
+            ),
+            Err(errs) => {
+                assert_eq!(errs.0.as_ref().first().to_string(), "duplicate annotations: `doc`");
+            }
+        );
+    }
+
+    #[test]
+    fn rfc_examples() {
+        // basic
+        assert_matches!(
+            parse_schema(
+                r#"
+        @doc("This entity defines our central user type")
+entity User { 
+    manager : User,
+    team : String
+};
+        "#
+            ),
+            Ok(_)
+        );
+        // basic + namespace
+        assert_matches!(
+            parse_schema(
+                r#"
+        @doc("this is namespace foo")
+        namespace foo {
+@doc("This entity defines our central user type")
+entity User { 
+    manager : User,
+    team : String
+};
+    }
+        "#
+            ),
+            Ok(_)
+        );
+        // entity attribute annotation
+        assert_matches!(
+            parse_schema(
+                r#"
+@doc("This entity defines our central user type")
+entity User { 
+    manager : User,
+
+    @doc("Which team user belongs to")    
+    @docLink("https://schemaDocs.example.com/User/team")
+    team : String
+};
+"#
+            ),
+            Ok(_)
+        );
+        // full example
+        assert_matches!(
+            parse_schema(
+                r#"
+        @doc("this is the namespace")
+namespace TinyTodo {
+    @doc("a common type representing a task")
+    type Task = {
+        "id": Long,
+        "name": String,
+        "state": String,
+    };
+    @doc("a common type representing a set of tasks")
+    type Tasks = Set<Task>;
+
+    @doc1("an entity type representing a list")
+    @doc2("any entity type is a child of type `Application`")
+    entity List in [Application] = {
+        @doc("editors of a list")
+        "editors": Team,
+        "name": String,
+        "owner": User,
+        @doc("readers of a list")
+        "readers": Team,
+        "tasks": Tasks,
+    };
+
+    @doc("actions that a user can operate on a list")
+    action DeleteList, GetList, UpdateList appliesTo {
+        principal: [User],
+        resource: [List]
+    };
+}"#
+            ),
+            Ok(_)
+        );
     }
 }

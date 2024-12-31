@@ -490,7 +490,7 @@ impl ast::UnreservedId {
             "containsAny" => extract_single_argument(args.into_iter(), "containsAny", loc)
                 .map(|arg| construct_method_contains_any(e, arg, loc.clone())),
             "isEmpty" => {
-                require_zero_arguments(args.into_iter(), "isEmpty", loc)?;
+                require_zero_arguments(&args.into_iter(), "isEmpty", loc)?;
                 Ok(construct_method_is_empty(e, loc.clone()))
             }
             "getTag" => extract_single_argument(args.into_iter(), "getTag", loc)
@@ -984,7 +984,7 @@ impl Node<Option<cst::Relation>> {
                 });
                 let (target, field) = flatten_tuple_2(maybe_target, maybe_field)?;
                 Ok(ExprOrSpecial::Expr {
-                    expr: construct_exprs_extended_has(target, field, self.loc.clone()),
+                    expr: construct_exprs_extended_has(target, &field, &self.loc),
                     loc: self.loc.clone(),
                 })
             }
@@ -1941,7 +1941,7 @@ fn construct_expr_has_attr(t: ast::Expr, s: SmolStr, loc: Loc) -> ast::Expr {
 fn construct_expr_get_attr(t: ast::Expr, s: SmolStr, loc: Loc) -> ast::Expr {
     ast::ExprBuilder::new().with_source_loc(loc).get_attr(t, s)
 }
-fn construct_exprs_extended_has(t: ast::Expr, attrs: NonEmpty<SmolStr>, loc: Loc) -> ast::Expr {
+fn construct_exprs_extended_has(t: ast::Expr, attrs: &NonEmpty<SmolStr>, loc: &Loc) -> ast::Expr {
     let (first, rest) = attrs.split_first();
     let has_expr = construct_expr_has_attr(t.clone(), first.to_owned(), loc.clone());
     let get_expr = construct_expr_get_attr(t, first.to_owned(), loc.clone());
@@ -1973,7 +1973,7 @@ fn construct_exprs_extended_has(t: ast::Expr, attrs: NonEmpty<SmolStr>, loc: Loc
                     has_expr,
                     construct_expr_has_attr(get_expr.clone(), attr.to_owned(), loc.clone()),
                     std::iter::empty(),
-                    &loc,
+                    loc,
                 ),
                 construct_expr_get_attr(get_expr, attr.to_owned(), loc.clone()),
             )
@@ -2046,6 +2046,7 @@ fn construct_expr_record(kvs: Vec<(SmolStr, ast::Expr)>, loc: Loc) -> Result<ast
 #[allow(clippy::panic)]
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::indexing_slicing)]
+#[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
 mod tests {
     use super::*;

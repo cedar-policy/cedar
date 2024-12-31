@@ -32,7 +32,7 @@ impl<N: Display> Display for json_schema::Fragment<N> {
         for (ns, def) in &self.0 {
             match ns {
                 None => write!(f, "{def}")?,
-                Some(ns) => write!(f, "namespace {ns} {{\n{def}}}\n")?,
+                Some(ns) => write!(f, "{}namespace {ns} {{\n{}}}\n", def.annotations, def)?,
             }
         }
         Ok(())
@@ -42,13 +42,13 @@ impl<N: Display> Display for json_schema::Fragment<N> {
 impl<N: Display> Display for json_schema::NamespaceDefinition<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (n, ty) in &self.common_types {
-            writeln!(f, "type {n} = {ty};")?
+            writeln!(f, "{}type {n} = {};", ty.annotations, ty.ty)?
         }
         for (n, ty) in &self.entity_types {
-            writeln!(f, "entity {n}{ty};")?
+            writeln!(f, "{}entity {n}{};", ty.annotations, ty)?
         }
         for (n, a) in &self.actions {
-            writeln!(f, "action \"{}\"{a};", n.escape_debug())?
+            writeln!(f, "{}action \"{}\"{};", a.annotations, n.escape_debug(), a)?
         }
         Ok(())
     }
@@ -80,13 +80,14 @@ impl<N: Display> Display for json_schema::RecordType<N> {
         for (i, (n, ty)) in self.attributes.iter().enumerate() {
             write!(
                 f,
-                "\"{}\"{}: {}",
+                "{}\"{}\"{}: {}",
+                ty.annotations,
                 n.escape_debug(),
                 if ty.required { "" } else { "?" },
                 ty.ty
             )?;
             if i < (self.attributes.len() - 1) {
-                write!(f, ", ")?;
+                writeln!(f, ", ")?;
             }
         }
         write!(f, "}}")?;
@@ -94,21 +95,22 @@ impl<N: Display> Display for json_schema::RecordType<N> {
     }
 }
 
-/// Create a non-empty with borrowed contents from a slice
-fn non_empty_slice<T>(v: &[T]) -> Option<NonEmpty<&T>> {
-    NonEmpty::collect(v.iter())
-}
-
-fn fmt_vec<T: Display>(f: &mut std::fmt::Formatter<'_>, ets: NonEmpty<T>) -> std::fmt::Result {
-    let contents = ets.iter().map(T::to_string).join(", ");
-    write!(f, "[{contents}]")
+fn fmt_non_empty_slice<T: Display>(
+    f: &mut std::fmt::Formatter<'_>,
+    (head, tail): (&T, &[T]),
+) -> std::fmt::Result {
+    write!(f, "[{head}")?;
+    for e in tail {
+        write!(f, ", {e}")?;
+    }
+    write!(f, "]")
 }
 
 impl<N: Display> Display for json_schema::EntityType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(non_empty) = non_empty_slice(&self.member_of_types) {
+        if let Some(non_empty) = self.member_of_types.split_first() {
             write!(f, " in ")?;
-            fmt_vec(f, non_empty)?;
+            fmt_non_empty_slice(f, non_empty)?;
         }
 
         let ty = &self.shape;
@@ -127,18 +129,14 @@ impl<N: Display> Display for json_schema::EntityType<N> {
 
 impl<N: Display> Display for json_schema::ActionType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(parents) = self
-            .member_of
-            .as_ref()
-            .and_then(|refs| non_empty_slice(refs.as_slice()))
-        {
+        if let Some(parents) = self.member_of.as_ref().and_then(|refs| refs.split_first()) {
             write!(f, " in ")?;
-            fmt_vec(f, parents)?;
+            fmt_non_empty_slice(f, parents)?;
         }
         if let Some(spec) = &self.applies_to {
             match (
-                non_empty_slice(spec.principal_types.as_slice()),
-                non_empty_slice(spec.resource_types.as_slice()),
+                spec.principal_types.split_first(),
+                spec.resource_types.split_first(),
             ) {
                 // One of the lists is empty
                 // This can only be represented by the empty action
@@ -150,9 +148,9 @@ impl<N: Display> Display for json_schema::ActionType<N> {
                 (Some(ps), Some(rs)) => {
                     write!(f, " appliesTo {{")?;
                     write!(f, "\n  principal: ")?;
-                    fmt_vec(f, ps)?;
+                    fmt_non_empty_slice(f, ps)?;
                     write!(f, ",\n  resource: ")?;
-                    fmt_vec(f, rs)?;
+                    fmt_non_empty_slice(f, rs)?;
                     write!(f, ",\n  context: {}", &spec.context.0)?;
                     write!(f, "\n}}")?;
                 }
@@ -242,6 +240,17 @@ mod tests {
 
     use crate::cedar_schema::parser::parse_cedar_schema_fragment;
 
+    #[track_caller]
+    fn test_round_trip(src: &str) {
+        let (cedar_schema, _) =
+            parse_cedar_schema_fragment(src, Extensions::none()).expect("should parse");
+        let printed_cedar_schema = cedar_schema.to_cedarschema().expect("should convert");
+        let (parsed_cedar_schema, _) =
+            parse_cedar_schema_fragment(&printed_cedar_schema, Extensions::none())
+                .expect("should parse");
+        assert_eq!(cedar_schema, parsed_cedar_schema);
+    }
+
     #[test]
     fn rfc_example() {
         let src = "entity User = {
@@ -250,12 +259,41 @@ mod tests {
           entity Document = {
             owner: User,
           } tags Set<String>;";
-        let (cedar_schema, _) =
-            parse_cedar_schema_fragment(src, Extensions::none()).expect("should parse");
-        let printed_cedar_schema = cedar_schema.to_cedarschema().expect("should convert");
-        let (parsed_cedar_schema, _) =
-            parse_cedar_schema_fragment(&printed_cedar_schema, Extensions::none())
-                .expect("should parse");
-        assert_eq!(cedar_schema, parsed_cedar_schema);
+        test_round_trip(src);
+    }
+
+    #[test]
+    fn annotations() {
+        let src = r#"@doc("this is the namespace")
+namespace TinyTodo {
+    @doc("a common type representing a task")
+    type Task = {
+        @doc("task id")
+        "id": Long,
+        "name": String,
+        "state": String,
+    };
+    @doc("a common type representing a set of tasks")
+    type Tasks = Set<Task>;
+
+    @doc("an entity type representing a list")
+    @docComment("any entity type is a child of type `Application`")
+    entity List in [Application] = {
+        @doc("editors of a list")
+        "editors": Team,
+        "name": String,
+        "owner": User,
+        @doc("readers of a list")
+        "readers": Team,
+        "tasks": Tasks,
+    };
+
+    @doc("actions that a user can operate on a list")
+    action DeleteList, GetList, UpdateList appliesTo {
+        principal: [User],
+        resource: [List]
+    };
+}"#;
+        test_round_trip(src);
     }
 }

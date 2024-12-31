@@ -22,6 +22,7 @@ use std::{str::FromStr, vec};
 
 use cedar_policy_core::{
     ast::{BinaryOp, EntityUID, Expr, Name, Pattern, PatternElem, SlotId, Value, Var},
+    est::Annotations,
     extensions::Extensions,
 };
 use itertools::Itertools;
@@ -67,6 +68,7 @@ fn slot_in_typechecks() {
         member_of_types: vec![],
         shape: json_schema::AttributesOrContext::default(),
         tags: None,
+        annotations: Annotations::new(),
     };
     let schema = json_schema::NamespaceDefinition::new([("typename".parse().unwrap(), etype)], []);
     assert_typechecks_for_mode(
@@ -97,6 +99,7 @@ fn slot_equals_typechecks() {
         member_of_types: vec![],
         shape: json_schema::AttributesOrContext::default(),
         tags: None,
+        annotations: Annotations::new(),
     };
     // These don't typecheck in strict mode because the test_util expression
     // typechecker doesn't have access to a schema, so it can't link
@@ -650,7 +653,7 @@ fn has_typecheck_fails() {
         ValidationError::expected_one_of_types(
             get_loc(src, "true"),
             expr_id_placeholder(),
-            [Type::any_entity_reference(), Type::any_record()],
+            vec![Type::any_entity_reference(), Type::any_record()],
             Type::singleton_boolean(true),
             None,
         )
@@ -698,7 +701,7 @@ fn record_get_attr_typecheck_fails() {
         ValidationError::expected_one_of_types(
             get_loc(src, "2"),
             expr_id_placeholder(),
-            [Type::any_entity_reference(), Type::any_record()],
+            vec![Type::any_entity_reference(), Type::any_record()],
             Type::primitive_long(),
             None,
         )
@@ -818,7 +821,7 @@ fn in_typecheck_fails() {
             ValidationError::expected_one_of_types(
                 get_loc(src, "true"),
                 expr_id_placeholder(),
-                [
+                vec![
                     Type::set(Type::any_entity_reference()),
                     Type::any_entity_reference(),
                 ],
@@ -1112,12 +1115,10 @@ fn less_than_typechecks() {
 
 #[test]
 fn less_than_typecheck_fails() {
-    let expected_types = std::iter::once(Type::primitive_long())
-        .chain(
-            Extensions::types_with_operator_overloading()
-                .into_iter()
-                .map(Type::extension),
-        )
+    let expected_types = Extensions::types_with_operator_overloading()
+        .into_iter()
+        .map(Type::extension)
+        .chain(std::iter::once(Type::primitive_long()))
         .collect_vec();
     let src = "true < false";
     let errors =
@@ -1158,7 +1159,7 @@ fn less_than_typecheck_fails() {
             ValidationError::expected_one_of_types(
                 get_loc(src, "\"\""),
                 expr_id_placeholder(),
-                expected_types.clone(),
+                expected_types,
                 Type::primitive_string(),
                 None,
             ),

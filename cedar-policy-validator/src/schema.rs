@@ -1361,6 +1361,7 @@ impl<'a> CommonTypeResolver<'a> {
                                     json_schema::TypeOfAttribute {
                                         required: attr_ty.required,
                                         ty: Self::resolve_type(resolve_table, attr_ty.ty)?,
+                                        annotations: attr_ty.annotations,
                                     },
                                 ))
                             })
@@ -2788,8 +2789,7 @@ pub(crate) mod test {
                 }
               }
         );
-        let schema =
-            ValidatorSchema::from_json_value(src.clone(), Extensions::all_available()).unwrap();
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available()).unwrap();
         let mut attributes = assert_entity_type_exists(&schema, "Demo::User").attributes();
         let (attr_name, attr_ty) = attributes.next().unwrap();
         assert_eq!(attr_name, "id");
@@ -3511,7 +3511,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
 
         let src: serde_json::Value = json!({
@@ -3521,7 +3521,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
 
         let src: serde_json::Value = json!({
@@ -3535,7 +3535,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
 
         let src: serde_json::Value = json!({
@@ -3549,7 +3549,7 @@ pub(crate) mod test {
                 "actions": { },
             }
         });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+        let schema = ValidatorSchema::from_json_value(src, Extensions::all_available());
         assert_matches!(schema, Err(SchemaError::JsonDeserialization(_)));
 
         let src: serde_json::Value = json!({
@@ -3588,6 +3588,7 @@ pub(crate) mod test {
 mod test_579; // located in separate file test_579.rs
 
 #[cfg(test)]
+#[allow(clippy::cognitive_complexity)]
 mod test_rfc70 {
     use super::test::utils::*;
     use super::ValidatorSchema;
@@ -4578,6 +4579,7 @@ mod test_rfc70 {
 
 /// Tests involving entity tags (RFC 82)
 #[cfg(test)]
+#[allow(clippy::cognitive_complexity)]
 mod entity_tags {
     use super::{test::utils::*, *};
     use cedar_policy_core::{
@@ -4650,7 +4652,7 @@ mod entity_tags {
             },
             "actions": {}
         }});
-        assert_matches!(ValidatorSchema::from_json_value(json.clone(), Extensions::all_available()), Ok(schema) => {
+        assert_matches!(ValidatorSchema::from_json_value(json, Extensions::all_available()), Ok(schema) => {
             let user = assert_entity_type_exists(&schema, "User");
             assert_matches!(user.tag_type(), Some(Type::Set { element_type: Some(el_ty) }) => {
                 assert_matches!(&**el_ty, Type::Primitive { primitive_type: Primitive::String });
@@ -5136,8 +5138,8 @@ action CreateList in Create appliesTo {
     #[test]
     fn empty_schema_principals_and_resources() {
         let empty: ValidatorSchema = "".parse().unwrap();
-        assert!(empty.principals().collect::<Vec<_>>().is_empty());
-        assert!(empty.resources().collect::<Vec<_>>().is_empty());
+        assert!(empty.principals().next().is_none());
+        assert!(empty.resources().next().is_none());
     }
 
     #[test]
@@ -5350,8 +5352,8 @@ action CreateList in Create appliesTo {
     #[test]
     fn empty_schema_principals_and_resources() {
         let empty: ValidatorSchema = "".parse().unwrap();
-        assert!(empty.principals().collect::<Vec<_>>().is_empty());
-        assert!(empty.resources().collect::<Vec<_>>().is_empty());
+        assert!(empty.principals().next().is_none());
+        assert!(empty.resources().next().is_none());
     }
 
     #[test]

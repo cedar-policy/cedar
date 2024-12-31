@@ -433,7 +433,7 @@ impl PolicySet {
         match self.templates.remove(policy_id) {
             Some(t) => {
                 self.template_to_links_map.remove(policy_id);
-                Ok((*t).clone())
+                Ok(Arc::unwrap_or_clone(t))
             }
             None => panic!("Found in template_to_links_map but not in templates"),
         }
@@ -597,7 +597,8 @@ mod test {
     use super::*;
     use crate::{
         ast::{
-            ActionConstraint, Annotations, Effect, Expr, PrincipalConstraint, ResourceConstraint,
+            annotation::Annotations, ActionConstraint, Effect, Expr, PrincipalConstraint,
+            ResourceConstraint,
         },
         parser,
     };
@@ -629,11 +630,10 @@ mod test {
         .expect("Failed to parse");
         pset.add_template(template).expect("Add failed");
 
-        let env: HashMap<SlotId, EntityUID> = [(
+        let env: HashMap<SlotId, EntityUID> = std::iter::once((
             SlotId::principal(),
             r#"Test::"test""#.parse().expect("Failed to parse"),
-        )]
-        .into_iter()
+        ))
         .collect();
 
         let r = pset.link(PolicyID::from_string("t"), PolicyID::from_string("id"), env);
@@ -668,11 +668,10 @@ mod test {
             )
             .expect("Failed to parse"),
         );
-        let env1: HashMap<SlotId, EntityUID> = [(
+        let env1: HashMap<SlotId, EntityUID> = std::iter::once((
             SlotId::principal(),
             r#"Test::"test1""#.parse().expect("Failed to parse"),
-        )]
-        .into_iter()
+        ))
         .collect();
 
         let p1 = Template::link(Arc::clone(&template), PolicyID::from_string("link"), env1)
@@ -685,11 +684,10 @@ mod test {
             "Adding link should implicitly add the template"
         );
 
-        let env2: HashMap<SlotId, EntityUID> = [(
+        let env2: HashMap<SlotId, EntityUID> = std::iter::once((
             SlotId::principal(),
             r#"Test::"test2""#.parse().expect("Failed to parse"),
-        )]
-        .into_iter()
+        ))
         .collect();
 
         let p2 = Template::link(
@@ -716,11 +714,10 @@ mod test {
             )
             .expect("Failed to parse"),
         );
-        let env3: HashMap<SlotId, EntityUID> = [(
+        let env3: HashMap<SlotId, EntityUID> = std::iter::once((
             SlotId::resource(),
             r#"Test::"test3""#.parse().expect("Failed to parse"),
-        )]
-        .into_iter()
+        ))
         .collect();
 
         let p4 = Template::link(
@@ -780,9 +777,7 @@ mod test {
         set.link(
             PolicyID::from_string("template"),
             PolicyID::from_string("id"),
-            [(SlotId::principal(), EntityUID::with_eid("eid"))]
-                .into_iter()
-                .collect(),
+            std::iter::once((SlotId::principal(), EntityUID::with_eid("eid"))).collect(),
         )
         .expect("Linking failed!");
         assert_eq!(set.static_policies().count(), 1);

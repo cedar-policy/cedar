@@ -31,7 +31,7 @@ pub use err::EvaluationError;
 pub(crate) use err::*;
 use evaluation_errors::*;
 use itertools::Either;
-use nonempty::{nonempty, NonEmpty};
+use nonempty::nonempty;
 use smol_str::SmolStr;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -427,9 +427,11 @@ impl<'e> Evaluator<'e> {
                             (ValueKind::ExtensionValue(x), _) if x.supports_operator_overloading() => Err(EvaluationError::type_error_single(Type::Extension { name: x.typename() }, &arg2)),
                             (_, ValueKind::ExtensionValue(y)) if y.supports_operator_overloading() => Err(EvaluationError::type_error_single(Type::Extension { name: y.typename() }, &arg1)),
                             (ValueKind::ExtensionValue(x), ValueKind::ExtensionValue(y)) if x.typename() == y.typename() => Err(EvaluationError::type_error_with_advice(Extensions::types_with_operator_overloading().map(|name| Type::Extension { name} ), &arg1, "Only extension types `datetime` and `duration` support operator overloading".to_string())),
-                            // PANIC SAFETY: we're collecting a non-empty vec
-                            #[allow(clippy::unwrap_used)]
-                            _ => Err(EvaluationError::type_error_with_advice(NonEmpty::collect(Extensions::types_with_operator_overloading().map(|name| Type::Extension { name} ).into_iter().chain(std::iter::once(Type::Long))).unwrap(), &arg1, "Only `Long` and extension types `datetime`, `duration` support comparison".to_string()))
+                            _ => {
+                                let mut expected_types = Extensions::types_with_operator_overloading().map(|name| Type::Extension { name });
+                                expected_types.push(Type::Long);
+                                Err(EvaluationError::type_error_with_advice(expected_types, &arg1, "Only `Long` and extension types `datetime`, `duration` support comparison".to_string()))
+                            }
                         }
                     }
                     BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
@@ -718,7 +720,7 @@ impl<'e> Evaluator<'e> {
         // `rhs` is a list of all the UIDs for which we need to
         // check if `uid1` is a descendant of
         let rhs = match arg2.value {
-            ValueKind::Lit(Literal::EntityUID(uid)) => vec![(*uid).clone()],
+            ValueKind::Lit(Literal::EntityUID(uid)) => vec![Arc::unwrap_or_clone(uid)],
             // we assume that iterating the `authoritative` BTreeSet is
             // approximately the same cost as iterating the `fast` HashSet
             ValueKind::Set(Set { authoritative, .. }) => authoritative
@@ -986,6 +988,7 @@ fn stack_size_check() -> Result<()> {
 
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
+#[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
 pub(crate) mod test {
     use std::str::FromStr;
@@ -5031,9 +5034,8 @@ pub(crate) mod test {
             Either::Right(expr) => {
                 println!("{expr}");
                 assert!(expr.contains_unknown());
-                let m: HashMap<_, _> = [("principal".into(), Value::from(euid))]
-                    .into_iter()
-                    .collect();
+                let m: HashMap<_, _> =
+                    std::iter::once(("principal".into(), Value::from(euid))).collect();
                 let new_expr = expr.substitute_typed(&m).unwrap();
                 assert_eq!(
                     e.partial_interpret(&new_expr, &HashMap::new())

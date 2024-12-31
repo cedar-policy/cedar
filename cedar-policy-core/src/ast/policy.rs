@@ -16,13 +16,13 @@
 
 use crate::ast::*;
 use crate::parser::Loc;
+use annotation::{Annotation, Annotations};
 use educe::Educe;
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
-use smol_str::{SmolStr, ToSmolStr};
-use std::collections::BTreeMap;
+use smol_str::SmolStr;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 
@@ -1197,9 +1197,7 @@ impl From<StaticPolicy> for TemplateBody {
 
 impl std::fmt::Display for TemplateBody {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (k, v) in self.annotations.iter() {
-            writeln!(f, "@{}(\"{}\")", k, v.val.escape_debug())?
-        }
+        self.annotations.fmt(f)?;
         write!(
             f,
             "{}(\n  {},\n  {},\n  {}\n) when {{\n  {}\n}};",
@@ -1293,119 +1291,6 @@ impl From<&TemplateBody> for proto::TemplateBody {
 impl From<&Template> for proto::TemplateBody {
     fn from(v: &Template) -> Self {
         proto::TemplateBody::from(&v.body)
-    }
-}
-
-/// Struct which holds the annotations for a policy
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
-pub struct Annotations(BTreeMap<AnyId, Annotation>);
-
-impl Annotations {
-    /// Create a new empty `Annotations` (with no annotations)
-    pub fn new() -> Self {
-        Self(BTreeMap::new())
-    }
-
-    /// Get an annotation by key
-    pub fn get(&self, key: &AnyId) -> Option<&Annotation> {
-        self.0.get(key)
-    }
-
-    /// Iterate over all annotations
-    pub fn iter(&self) -> impl Iterator<Item = (&AnyId, &Annotation)> {
-        self.0.iter()
-    }
-}
-
-/// Wraps the [`BTreeMap`]` into an opaque type so we can change it later if need be
-#[derive(Debug)]
-pub struct IntoIter(std::collections::btree_map::IntoIter<AnyId, Annotation>);
-
-impl Iterator for IntoIter {
-    type Item = (AnyId, Annotation);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
-    }
-}
-
-impl IntoIterator for Annotations {
-    type Item = (AnyId, Annotation);
-
-    type IntoIter = IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        IntoIter(self.0.into_iter())
-    }
-}
-
-impl Default for Annotations {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl FromIterator<(AnyId, Annotation)> for Annotations {
-    fn from_iter<T: IntoIterator<Item = (AnyId, Annotation)>>(iter: T) -> Self {
-        Self(BTreeMap::from_iter(iter))
-    }
-}
-
-impl From<BTreeMap<AnyId, Annotation>> for Annotations {
-    fn from(value: BTreeMap<AnyId, Annotation>) -> Self {
-        Self(value)
-    }
-}
-
-/// Struct which holds the value of a particular annotation
-#[derive(Educe, Serialize, Deserialize, Clone, Debug)]
-#[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Annotation {
-    /// Annotation value
-    pub val: SmolStr,
-    /// Source location. Note this is the location of _the entire key-value
-    /// pair_ for the annotation, not just `val` above
-    #[educe(PartialEq(ignore))]
-    #[educe(Hash(ignore))]
-    #[educe(PartialOrd(ignore))]
-    pub loc: Option<Loc>,
-}
-
-impl Annotation {
-    /// Construct an Annotation with an optional value.  This function is used
-    /// to construct annotations from the CST and EST representation where a
-    /// value is not required, but an absent value is equivalent to `""`.
-    /// Here, a `None` constructs an annotation containing the value `""`.`
-    pub fn with_optional_value(val: Option<SmolStr>, loc: Option<Loc>) -> Self {
-        Self {
-            val: val.unwrap_or_else(|| "".to_smolstr()),
-            loc,
-        }
-    }
-}
-
-impl AsRef<str> for Annotation {
-    fn as_ref(&self) -> &str {
-        &self.val
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&proto::Annotation> for Annotation {
-    fn from(v: &proto::Annotation) -> Self {
-        Self {
-            val: v.val.clone().into(),
-            loc: None,
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&Annotation> for proto::Annotation {
-    fn from(v: &Annotation) -> Self {
-        Self {
-            val: v.val.to_string(),
-        }
     }
 }
 
@@ -2246,7 +2131,7 @@ impl AsRef<str> for PolicyID {
 }
 
 #[cfg(feature = "arbitrary")]
-impl<'u> arbitrary::Arbitrary<'u> for PolicyID {
+impl arbitrary::Arbitrary<'_> for PolicyID {
     fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<PolicyID> {
         let s: String = u.arbitrary()?;
         Ok(PolicyID::from_string(s))

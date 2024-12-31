@@ -397,10 +397,8 @@ mod test {
     use std::collections::{HashMap, HashSet};
 
     use cedar_policy_core::{
-        ast::{
-            Annotations, Effect, Eid, EntityUID, Expr, PolicyID, PrincipalConstraint,
-            ResourceConstraint,
-        },
+        ast::{Effect, Eid, EntityUID, Expr, PolicyID, PrincipalConstraint, ResourceConstraint},
+        est::Annotations,
         parser::{parse_policy, parse_policy_or_template},
         test_utils::{expect_err, ExpectedErrorMessageBuilder},
     };
@@ -488,6 +486,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
+                    annotations: Annotations::new(),
                 },
             )],
             [],
@@ -496,7 +495,7 @@ mod test {
         let policy = Template::new(
             PolicyID::from_string("policy0"),
             None,
-            Annotations::new(),
+            ast::Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
@@ -523,6 +522,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
+                    annotations: Annotations::new(),
                 },
             )],
             [],
@@ -575,6 +575,7 @@ mod test {
                     applies_to: None,
                     member_of: None,
                     attributes: None,
+                    annotations: Annotations::new(),
                 },
             )],
         );
@@ -584,7 +585,7 @@ mod test {
         let policy = Template::new(
             PolicyID::from_string("policy0"),
             None,
-            Annotations::new(),
+            ast::Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::is_eq(entity),
@@ -609,6 +610,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
+                    annotations: Annotations::new(),
                 },
             )],
             [],
@@ -634,6 +636,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
+                    annotations: Annotations::new(),
                 },
             )],
             [],
@@ -659,6 +662,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
+                    annotations: Annotations::new(),
                 },
             )],
             [],
@@ -704,6 +708,7 @@ mod test {
                     applies_to: None,
                     member_of: None,
                     attributes: None,
+                    annotations: Annotations::new(),
                 },
             )],
         );
@@ -736,6 +741,7 @@ mod test {
                     applies_to: None,
                     member_of: None,
                     attributes: None,
+                    annotations: Annotations::new(),
                 },
             )],
         );
@@ -810,7 +816,7 @@ mod test {
         let policy = Template::new(
             PolicyID::from_string("policy0"),
             None,
-            Annotations::new(),
+            ast::Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::is_eq(entity),
@@ -871,7 +877,7 @@ mod test {
         let policy = Template::new(
             PolicyID::from_string("policy0"),
             None,
-            Annotations::new(),
+            ast::Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq(Arc::new(EntityUID::from_components(
                 entity_type,
@@ -935,6 +941,7 @@ mod test {
                     applies_to: None,
                     member_of: None,
                     attributes: None,
+                    annotations: Annotations::new(),
                 },
             )],
         );
@@ -962,6 +969,7 @@ mod test {
                     applies_to: None,
                     member_of: None,
                     attributes: None,
+                    annotations: Annotations::new(),
                 },
             )],
         );
@@ -989,6 +997,7 @@ mod test {
                     applies_to: None,
                     member_of: None,
                     attributes: None,
+                    annotations: Annotations::new(),
                 },
             )],
         );
@@ -1015,6 +1024,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
+                    annotations: Annotations::new(),
                 },
             )],
             [],
@@ -1049,6 +1059,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: Annotations::new(),
                     },
                 ),
                 (
@@ -1057,6 +1068,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: Annotations::new(),
                     },
                 ),
             ],
@@ -1070,6 +1082,7 @@ mod test {
                     }),
                     member_of: Some(vec![]),
                     attributes: None,
+                    annotations: Annotations::new(),
                 },
             )],
         )
@@ -1136,7 +1149,7 @@ mod test {
         let policy = Template::new(
             PolicyID::from_string("policy0"),
             None,
-            Annotations::new(),
+            ast::Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::is_eq(Arc::new(principal)),
             ActionConstraint::is_eq(action),
@@ -1440,6 +1453,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: Annotations::new(),
                     },
                 ),
                 (
@@ -1448,6 +1462,7 @@ mod test {
                         member_of_types: vec![resource_parent_type.parse().unwrap()],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: Annotations::new(),
                     },
                 ),
                 (
@@ -1456,6 +1471,7 @@ mod test {
                         member_of_types: vec![resource_grandparent_type.parse().unwrap()],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: Annotations::new(),
                     },
                 ),
                 (
@@ -1464,6 +1480,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: Annotations::new(),
                     },
                 ),
             ],
@@ -1481,6 +1498,7 @@ mod test {
                             action_parent_name.into(),
                         )]),
                         attributes: None,
+                        annotations: Annotations::new(),
                     },
                 ),
                 (
@@ -1492,6 +1510,7 @@ mod test {
                             action_grandparent_name.into(),
                         )]),
                         attributes: None,
+                        annotations: Annotations::new(),
                     },
                 ),
                 (
@@ -1500,6 +1519,7 @@ mod test {
                         applies_to: None,
                         member_of: Some(vec![]),
                         attributes: None,
+                        annotations: Annotations::new(),
                     },
                 ),
             ],
@@ -1509,7 +1529,7 @@ mod test {
         let policy = Template::new(
             PolicyID::from_string("policy0"),
             None,
-            Annotations::new(),
+            ast::Annotations::new(),
             Effect::Permit,
             PrincipalConstraint::any(),
             ActionConstraint::is_in([action_grandparent_euid]),

@@ -259,7 +259,7 @@ pub enum ToASTErrorKind {
     InvalidPattern(String),
     /// Returned when the right hand side of a `is` expression is not an entity type name
     #[error("right hand side of an `is` expression must be an entity type name, but got `{rhs}`")]
-    #[diagnostic(help("{}", invalid_is_help(&.lhs, &.rhs)))]
+    #[diagnostic(help("{}", invalid_is_help(lhs, rhs)))]
     InvalidIsType {
         /// LHS of the invalid `is` expression, as a string
         lhs: String,
@@ -834,11 +834,12 @@ impl ParseErrors {
 
     /// Flatten a `Vec<ParseErrors>` into a single `ParseErrors`, returning
     /// `None` if the input vector is empty.
-    pub(crate) fn flatten(v: Vec<ParseErrors>) -> Option<Self> {
-        let (first, rest) = v.split_first()?;
-        let mut first = first.clone();
-        rest.iter()
-            .for_each(|errs| first.extend(errs.iter().cloned()));
+    pub(crate) fn flatten(errs: impl IntoIterator<Item = ParseErrors>) -> Option<Self> {
+        let mut errs = errs.into_iter();
+        let mut first = errs.next()?;
+        for inner in errs {
+            first.extend(inner);
+        }
         Some(first)
     }
 

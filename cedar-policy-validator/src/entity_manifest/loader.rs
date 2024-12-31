@@ -58,7 +58,7 @@ pub(crate) struct EntityRequestRef<'a> {
     access_trie: &'a AccessTrie,
 }
 
-impl<'a> EntityRequestRef<'a> {
+impl EntityRequestRef<'_> {
     fn to_request(&self) -> EntityRequest {
         EntityRequest {
             entity_id: self.entity_id.clone(),
@@ -251,7 +251,7 @@ pub(crate) fn load_entities(
         }
 
         let mut next_to_load = vec![];
-        for (entity_request, loaded_maybe) in to_load.drain(..).zip(new_entities) {
+        for (entity_request, loaded_maybe) in to_load.into_iter().zip(new_entities) {
             if let Some(loaded) = loaded_maybe {
                 next_to_load.extend(find_remaining_entities(
                     &loaded,
@@ -435,7 +435,7 @@ fn compute_ancestors_request(
 
     while !to_visit.is_empty() {
         let mut next_to_visit = vec![];
-        for entity_request in to_visit.drain(..) {
+        for entity_request in to_visit {
             // check the is_ancestor flag for entities
             // the is_ancestor flag on sets of entities is handled by find_remaining_entities
             if entity_request.access_trie.is_ancestor {

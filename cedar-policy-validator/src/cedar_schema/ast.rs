@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-use std::iter::once;
+use std::{collections::BTreeMap, iter::once};
 
 use cedar_policy_core::{
-    ast::{Id, InternalName},
+    ast::{Annotation, Annotations, AnyId, Id, InternalName},
     parser::{Loc, Node},
 };
 use itertools::{Either, Itertools};
@@ -29,11 +29,54 @@ use smol_str::ToSmolStr;
 
 use crate::json_schema;
 
+use super::err::UserError;
+
 pub const BUILTIN_TYPES: [&str; 3] = ["Long", "String", "Bool"];
 
 pub(super) const CEDAR_NAMESPACE: &str = "__cedar";
 
-pub type Schema = Vec<Node<Namespace>>;
+/// A struct that can be annotated, e.g., entity types.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Annotated<T> {
+    /// The struct that's optionally annotated
+    pub data: T,
+    /// Annotations
+    pub annotations: Annotations,
+}
+
+pub type Schema = Vec<Annotated<Namespace>>;
+
+pub fn deduplicate_annotations<T>(
+    data: T,
+    annotations: Vec<Node<(Node<AnyId>, Option<Node<SmolStr>>)>>,
+) -> Result<Annotated<T>, UserError> {
+    let mut unique_annotations: BTreeMap<Node<AnyId>, Option<Node<SmolStr>>> = BTreeMap::new();
+    for annotation in annotations {
+        let (key, value) = annotation.node;
+        if let Some((old_key, _)) = unique_annotations.get_key_value(&key) {
+            return Err(UserError::DuplicateAnnotations(
+                key.node,
+                Node::with_source_loc((), old_key.loc.clone()),
+                Node::with_source_loc((), key.loc),
+            ));
+        } else {
+            unique_annotations.insert(key, value);
+        }
+    }
+    Ok(Annotated {
+        data,
+        annotations: unique_annotations
+            .into_iter()
+            .map(|(key, value)| {
+                let (val, loc) = match value {
+                    Some(n) => (Some(n.node), Some(n.loc)),
+                    None => (None, None),
+                };
+                (key.node, Annotation::with_optional_value(val, loc))
+            })
+            .collect(),
+    })
+}
 
 /// A path is a non empty list of identifiers that forms a namespace + type
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -169,9 +212,9 @@ impl QualName {
 #[derive(Debug, Clone)]
 pub struct Namespace {
     /// The name of this namespace. If [`None`], then this is the unqualified namespace
-    pub name: Option<Node<Path>>,
+    pub name: Option<Path>,
     /// The [`Declaration`]s contained in this namespace
-    pub decls: Vec<Node<Declaration>>,
+    pub decls: Vec<Annotated<Node<Declaration>>>,
 }
 
 impl Namespace {
@@ -215,7 +258,7 @@ pub struct EntityDecl {
     /// Entity Types this type is allowed to be related to via the `in` relation
     pub member_of_types: Vec<Path>,
     /// Attributes this entity has
-    pub attrs: Vec<Node<AttrDecl>>,
+    pub attrs: Vec<Node<Annotated<AttrDecl>>>,
     /// Tag type for this entity (`None` means no tags on this entity)
     pub tags: Option<Node<Type>>,
 }
@@ -228,7 +271,7 @@ pub enum Type {
     /// A [`Path`] that could either refer to a Common Type or an Entity Type
     Ident(Path),
     /// A Record
-    Record(Vec<Node<AttrDecl>>),
+    Record(Vec<Node<Annotated<AttrDecl>>>),
 }
 
 /// Primitive Type Definitions
@@ -297,7 +340,7 @@ pub enum AppDecl {
     /// Constraints on the `principal` or `resource`
     PR(PRAppDecl),
     /// Constraints on the `context`
-    Context(Either<Path, Vec<Node<AttrDecl>>>),
+    Context(Either<Path, Vec<Node<Annotated<AttrDecl>>>>),
 }
 
 /// An action declaration

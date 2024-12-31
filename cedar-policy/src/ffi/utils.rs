@@ -296,6 +296,11 @@ impl Policy {
     }
 
     /// Get valid principals, actions, and resources.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error result if `self` cannot be parsed as a
+    /// [`crate::Policy`] or if `s` cannot be parsed as a [`crate::Schema`].
     pub fn get_valid_request_envs(
         self,
         s: Schema,
@@ -375,6 +380,11 @@ impl Template {
     }
 
     /// Get valid principals, actions, and resources.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error result if `self` cannot be parsed as a
+    /// [`crate::Template`] or if `s` cannot be parsed as a [`crate::Schema`].
     pub fn get_valid_request_envs(
         self,
         s: Schema,
@@ -1186,7 +1196,7 @@ mod test {
             &ExpectedErrorMessageBuilder::error("failed to parse schema from string")
                 .exactly_one_underline_with_label(
                     "permit",
-                    "expected `action`, `entity`, `namespace`, or `type`",
+                    "expected `@`, `action`, `entity`, `namespace`, or `type`",
                 )
                 .source("error parsing schema: unexpected token `permit`")
                 .build(),

@@ -15,7 +15,7 @@
  */
 
 use super::FromJsonError;
-use crate::ast::{self, EntityUID, InputInteger};
+use crate::ast::{self, BoundedDisplay, EntityUID, InputInteger};
 use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
     CedarValueJson, FnAndArg, TypeAndId,
@@ -384,7 +384,7 @@ pub enum ExprNoExt {
     Record(
         #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
         #[cfg_attr(feature = "wasm", tsify(type = "Record<string, Expr>"))]
-        HashMap<SmolStr, Expr>,
+        BTreeMap<SmolStr, Expr>,
     ),
 }
 
@@ -641,7 +641,7 @@ impl Expr {
     }
 
     /// e.g. {foo: 1+2, bar: !(context has department)}
-    pub fn record(map: HashMap<SmolStr, Expr>) -> Self {
+    pub fn record(map: BTreeMap<SmolStr, Expr>) -> Self {
         Expr::ExprNoExt(ExprNoExt::Record(map))
     }
 
@@ -673,96 +673,96 @@ impl Expr {
                 ExprNoExt::Var(_) => Ok(self),
                 ExprNoExt::Slot(_) => Ok(self),
                 ExprNoExt::Not { arg } => Ok(Expr::ExprNoExt(ExprNoExt::Not {
-                    arg: Arc::new((*arg).clone().sub_entity_literals(mapping)?),
+                    arg: Arc::new(Arc::unwrap_or_clone(arg).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::Neg { arg } => Ok(Expr::ExprNoExt(ExprNoExt::Neg {
-                    arg: Arc::new((*arg).clone().sub_entity_literals(mapping)?),
+                    arg: Arc::new(Arc::unwrap_or_clone(arg).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::Eq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Eq {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
-                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::NotEq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::NotEq {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
-                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::In { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::In {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
-                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::Less { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Less {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
-                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::LessEq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::LessEq {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
-                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::Greater { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Greater {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
-                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::GreaterEq { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::GreaterEq {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
-                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::And { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::And {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
-                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::Or { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Or {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
-                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::Add { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Add {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
-                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::Sub { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Sub {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
-                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::Mul { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Mul {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
-                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::Contains { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::Contains {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
-                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::ContainsAll { left, right } => {
                     Ok(Expr::ExprNoExt(ExprNoExt::ContainsAll {
-                        left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
-                        right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                        left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                        right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
                     }))
                 }
                 ExprNoExt::ContainsAny { left, right } => {
                     Ok(Expr::ExprNoExt(ExprNoExt::ContainsAny {
-                        left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
-                        right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                        left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                        right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
                     }))
                 }
                 ExprNoExt::IsEmpty { arg } => Ok(Expr::ExprNoExt(ExprNoExt::IsEmpty {
-                    arg: Arc::new((*arg).clone().sub_entity_literals(mapping)?),
+                    arg: Arc::new(Arc::unwrap_or_clone(arg).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::GetTag { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::GetTag {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
-                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::HasTag { left, right } => Ok(Expr::ExprNoExt(ExprNoExt::HasTag {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
-                    right: Arc::new((*right).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    right: Arc::new(Arc::unwrap_or_clone(right).sub_entity_literals(mapping)?),
                 })),
                 ExprNoExt::GetAttr { left, attr } => Ok(Expr::ExprNoExt(ExprNoExt::GetAttr {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
                     attr,
                 })),
                 ExprNoExt::HasAttr { left, attr } => Ok(Expr::ExprNoExt(ExprNoExt::HasAttr {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
                     attr,
                 })),
                 ExprNoExt::Like { left, pattern } => Ok(Expr::ExprNoExt(ExprNoExt::Like {
-                    left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
                     pattern,
                 })),
                 ExprNoExt::Is {
@@ -771,12 +771,14 @@ impl Expr {
                     in_expr,
                 } => match in_expr {
                     Some(in_expr) => Ok(Expr::ExprNoExt(ExprNoExt::Is {
-                        left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                        left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
                         entity_type,
-                        in_expr: Some(Arc::new((*in_expr).clone().sub_entity_literals(mapping)?)),
+                        in_expr: Some(Arc::new(
+                            Arc::unwrap_or_clone(in_expr).sub_entity_literals(mapping)?,
+                        )),
                     })),
                     None => Ok(Expr::ExprNoExt(ExprNoExt::Is {
-                        left: Arc::new((*left).clone().sub_entity_literals(mapping)?),
+                        left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
                         entity_type,
                         in_expr: None,
                     })),
@@ -786,9 +788,15 @@ impl Expr {
                     then_expr,
                     else_expr,
                 } => Ok(Expr::ExprNoExt(ExprNoExt::If {
-                    cond_expr: Arc::new((*cond_expr).clone().sub_entity_literals(mapping)?),
-                    then_expr: Arc::new((*then_expr).clone().sub_entity_literals(mapping)?),
-                    else_expr: Arc::new((*else_expr).clone().sub_entity_literals(mapping)?),
+                    cond_expr: Arc::new(
+                        Arc::unwrap_or_clone(cond_expr).sub_entity_literals(mapping)?,
+                    ),
+                    then_expr: Arc::new(
+                        Arc::unwrap_or_clone(then_expr).sub_entity_literals(mapping)?,
+                    ),
+                    else_expr: Arc::new(
+                        Arc::unwrap_or_clone(else_expr).sub_entity_literals(mapping)?,
+                    ),
                 })),
                 ExprNoExt::Set(v) => {
                     let mut new_v = vec![];
@@ -798,7 +806,7 @@ impl Expr {
                     Ok(Expr::ExprNoExt(ExprNoExt::Set(new_v)))
                 }
                 ExprNoExt::Record(m) => {
-                    let mut new_m = HashMap::new();
+                    let mut new_m = BTreeMap::new();
                     for (k, v) in m {
                         new_m.insert(k, v.sub_entity_literals(mapping)?);
                     }
@@ -833,90 +841,92 @@ impl Expr {
             Expr::ExprNoExt(ExprNoExt::Var(var)) => Ok(ast::Expr::var(var)),
             Expr::ExprNoExt(ExprNoExt::Slot(slot)) => Ok(ast::Expr::slot(slot)),
             Expr::ExprNoExt(ExprNoExt::Not { arg }) => {
-                Ok(ast::Expr::not((*arg).clone().try_into_ast(id)?))
+                Ok(ast::Expr::not(Arc::unwrap_or_clone(arg).try_into_ast(id)?))
             }
             Expr::ExprNoExt(ExprNoExt::Neg { arg }) => {
-                Ok(ast::Expr::neg((*arg).clone().try_into_ast(id)?))
+                Ok(ast::Expr::neg(Arc::unwrap_or_clone(arg).try_into_ast(id)?))
             }
             Expr::ExprNoExt(ExprNoExt::Eq { left, right }) => Ok(ast::Expr::is_eq(
-                (*left).clone().try_into_ast(id.clone())?,
-                (*right).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::NotEq { left, right }) => Ok(ast::Expr::noteq(
-                (*left).clone().try_into_ast(id.clone())?,
-                (*right).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::In { left, right }) => Ok(ast::Expr::is_in(
-                (*left).clone().try_into_ast(id.clone())?,
-                (*right).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Less { left, right }) => Ok(ast::Expr::less(
-                (*left).clone().try_into_ast(id.clone())?,
-                (*right).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::LessEq { left, right }) => Ok(ast::Expr::lesseq(
-                (*left).clone().try_into_ast(id.clone())?,
-                (*right).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Greater { left, right }) => Ok(ast::Expr::greater(
-                (*left).clone().try_into_ast(id.clone())?,
-                (*right).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::GreaterEq { left, right }) => Ok(ast::Expr::greatereq(
-                (*left).clone().try_into_ast(id.clone())?,
-                (*right).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::And { left, right }) => Ok(ast::Expr::and(
-                (*left).clone().try_into_ast(id.clone())?,
-                (*right).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Or { left, right }) => Ok(ast::Expr::or(
-                (*left).clone().try_into_ast(id.clone())?,
-                (*right).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Add { left, right }) => Ok(ast::Expr::add(
-                (*left).clone().try_into_ast(id.clone())?,
-                (*right).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Sub { left, right }) => Ok(ast::Expr::sub(
-                (*left).clone().try_into_ast(id.clone())?,
-                (*right).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Mul { left, right }) => Ok(ast::Expr::mul(
-                (*left).clone().try_into_ast(id.clone())?,
-                (*right).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Contains { left, right }) => Ok(ast::Expr::contains(
-                (*left).clone().try_into_ast(id.clone())?,
-                (*right).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::ContainsAll { left, right }) => Ok(ast::Expr::contains_all(
-                (*left).clone().try_into_ast(id.clone())?,
-                (*right).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::ContainsAny { left, right }) => Ok(ast::Expr::contains_any(
-                (*left).clone().try_into_ast(id.clone())?,
-                (*right).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
-            Expr::ExprNoExt(ExprNoExt::IsEmpty { arg }) => {
-                Ok(ast::Expr::is_empty((*arg).clone().try_into_ast(id)?))
-            }
+            Expr::ExprNoExt(ExprNoExt::IsEmpty { arg }) => Ok(ast::Expr::is_empty(
+                Arc::unwrap_or_clone(arg).try_into_ast(id)?,
+            )),
             Expr::ExprNoExt(ExprNoExt::GetTag { left, right }) => Ok(ast::Expr::get_tag(
-                (*left).clone().try_into_ast(id.clone())?,
-                (*right).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::HasTag { left, right }) => Ok(ast::Expr::has_tag(
-                (*left).clone().try_into_ast(id.clone())?,
-                (*right).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
-            Expr::ExprNoExt(ExprNoExt::GetAttr { left, attr }) => {
-                Ok(ast::Expr::get_attr((*left).clone().try_into_ast(id)?, attr))
-            }
-            Expr::ExprNoExt(ExprNoExt::HasAttr { left, attr }) => {
-                Ok(ast::Expr::has_attr((*left).clone().try_into_ast(id)?, attr))
-            }
+            Expr::ExprNoExt(ExprNoExt::GetAttr { left, attr }) => Ok(ast::Expr::get_attr(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                attr,
+            )),
+            Expr::ExprNoExt(ExprNoExt::HasAttr { left, attr }) => Ok(ast::Expr::has_attr(
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                attr,
+            )),
             Expr::ExprNoExt(ExprNoExt::Like { left, pattern }) => Ok(ast::Expr::like(
-                (*left).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 crate::ast::Pattern::from(pattern.as_slice()),
             )),
             Expr::ExprNoExt(ExprNoExt::Is {
@@ -926,14 +936,14 @@ impl Expr {
             }) => ast::EntityType::from_normalized_str(entity_type.as_str())
                 .map_err(FromJsonError::InvalidEntityType)
                 .and_then(|entity_type_name| {
-                    let left: ast::Expr = (*left).clone().try_into_ast(id.clone())?;
+                    let left: ast::Expr = Arc::unwrap_or_clone(left).try_into_ast(id.clone())?;
                     let is_expr = ast::Expr::is_entity_type(left.clone(), entity_type_name);
                     match in_expr {
                         // The AST doesn't have an `... is ... in ..` node, so
                         // we represent it as a conjunction of `is` and `in`.
                         Some(in_expr) => Ok(ast::Expr::and(
                             is_expr,
-                            ast::Expr::is_in(left, (*in_expr).clone().try_into_ast(id)?),
+                            ast::Expr::is_in(left, Arc::unwrap_or_clone(in_expr).try_into_ast(id)?),
                         )),
                         None => Ok(is_expr),
                     }
@@ -943,9 +953,9 @@ impl Expr {
                 then_expr,
                 else_expr,
             }) => Ok(ast::Expr::ite(
-                (*cond_expr).clone().try_into_ast(id.clone())?,
-                (*then_expr).clone().try_into_ast(id.clone())?,
-                (*else_expr).clone().try_into_ast(id)?,
+                Arc::unwrap_or_clone(cond_expr).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(then_expr).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(else_expr).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Set(elements)) => Ok(ast::Expr::set(
                 elements
@@ -1447,7 +1457,7 @@ fn interpret_primary(
                 let s = k.to_expr_or_special().and_then(|es| es.into_valid_attr())?;
                 Ok((s, v.try_into()?))
             })
-            .collect::<Result<HashMap<SmolStr, Expr>, ParseErrors>>()
+            .collect::<Result<BTreeMap<SmolStr, Expr>, ParseErrors>>()
             .map(Expr::record)
             .map(Either::Right),
     }
@@ -1511,7 +1521,7 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
                                     extract_single_argument(args, "containsAny()", &access.loc)?,
                                 )),
                                 "isEmpty" => {
-                                    require_zero_arguments(args, "isEmpty()", &access.loc)?;
+                                    require_zero_arguments(&args, "isEmpty()", &access.loc)?;
                                     Either::Right(Expr::is_empty(left))
                                 }
                                 "getTag" => Either::Right(Expr::get_tag(
@@ -1584,7 +1594,7 @@ pub fn extract_single_argument<T>(
 
 /// Return a wrong arity error if the iterator has any elements.
 pub fn require_zero_arguments<T>(
-    args: impl ExactSizeIterator<Item = T>,
+    args: &impl ExactSizeIterator<Item = T>,
     fn_name: &'static str,
     loc: &Loc,
 ) -> Result<(), ParseErrors> {
@@ -1677,12 +1687,25 @@ impl std::fmt::Display for Expr {
     }
 }
 
-fn display_cedarvaluejson(f: &mut std::fmt::Formatter<'_>, v: &CedarValueJson) -> std::fmt::Result {
+impl BoundedDisplay for Expr {
+    fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
+        match self {
+            Self::ExprNoExt(e) => BoundedDisplay::fmt(e, f, n),
+            Self::ExtFuncCall(e) => BoundedDisplay::fmt(e, f, n),
+        }
+    }
+}
+
+fn display_cedarvaluejson(
+    f: &mut impl std::fmt::Write,
+    v: &CedarValueJson,
+    n: Option<usize>,
+) -> std::fmt::Result {
     match v {
         // Add parentheses around negative numeric literals otherwise
         // round-tripping fuzzer fails for expressions like `(-1)["a"]`.
-        CedarValueJson::Long(n) if *n < 0 => write!(f, "({n})"),
-        CedarValueJson::Long(n) => write!(f, "{n}"),
+        CedarValueJson::Long(i) if *i < 0 => write!(f, "({i})"),
+        CedarValueJson::Long(i) => write!(f, "{i}"),
         CedarValueJson::Bool(b) => write!(f, "{b}"),
         CedarValueJson::String(s) => write!(f, "\"{}\"", s.escape_debug()),
         CedarValueJson::EntityEscape { __entity } => {
@@ -1705,40 +1728,71 @@ fn display_cedarvaluejson(f: &mut std::fmt::Formatter<'_>, v: &CedarValueJson) -
             });
             match style {
                 Some(ast::CallStyle::MethodStyle) => {
-                    display_cedarvaluejson(f, arg)?;
+                    display_cedarvaluejson(f, arg, n)?;
                     write!(f, ".{ext_fn}()")?;
                     Ok(())
                 }
                 Some(ast::CallStyle::FunctionStyle) | None => {
                     write!(f, "{ext_fn}(")?;
-                    display_cedarvaluejson(f, arg)?;
+                    display_cedarvaluejson(f, arg, n)?;
                     write!(f, ")")?;
                     Ok(())
                 }
             }
         }
         CedarValueJson::Set(v) => {
-            write!(f, "[")?;
-            for (i, val) in v.iter().enumerate() {
-                display_cedarvaluejson(f, val)?;
-                if i < (v.len() - 1) {
-                    write!(f, ", ")?;
+            match n {
+                Some(n) if v.len() > n => {
+                    // truncate to n elements
+                    write!(f, "[")?;
+                    for val in v.iter().take(n) {
+                        display_cedarvaluejson(f, val, Some(n))?;
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "..]")?;
+                    Ok(())
+                }
+                _ => {
+                    // no truncation
+                    write!(f, "[")?;
+                    for (i, val) in v.iter().enumerate() {
+                        display_cedarvaluejson(f, val, n)?;
+                        if i < v.len() - 1 {
+                            write!(f, ", ")?;
+                        }
+                    }
+                    write!(f, "]")?;
+                    Ok(())
                 }
             }
-            write!(f, "]")?;
-            Ok(())
         }
-        CedarValueJson::Record(m) => {
-            write!(f, "{{")?;
-            for (i, (k, v)) in m.iter().enumerate() {
-                write!(f, "\"{}\": ", k.escape_debug())?;
-                display_cedarvaluejson(f, v)?;
-                if i < (m.len() - 1) {
-                    write!(f, ", ")?;
+        CedarValueJson::Record(r) => {
+            match n {
+                Some(n) if r.len() > n => {
+                    // truncate to n key-value pairs
+                    write!(f, "{{")?;
+                    for (k, v) in r.iter().take(n) {
+                        write!(f, "\"{}\": ", k.escape_debug())?;
+                        display_cedarvaluejson(f, v, Some(n))?;
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "..}}")?;
+                    Ok(())
+                }
+                _ => {
+                    // no truncation
+                    write!(f, "{{")?;
+                    for (i, (k, v)) in r.iter().enumerate() {
+                        write!(f, "\"{}\": ", k.escape_debug())?;
+                        display_cedarvaluejson(f, v, n)?;
+                        if i < r.len() - 1 {
+                            write!(f, ", ")?;
+                        }
+                    }
+                    write!(f, "}}")?;
+                    Ok(())
                 }
             }
-            write!(f, "}}")?;
-            Ok(())
         }
         CedarValueJson::Null => {
             write!(f, "null")?;
@@ -1749,13 +1803,19 @@ fn display_cedarvaluejson(f: &mut std::fmt::Formatter<'_>, v: &CedarValueJson) -
 
 impl std::fmt::Display for ExprNoExt {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        BoundedDisplay::fmt_unbounded(self, f)
+    }
+}
+
+impl BoundedDisplay for ExprNoExt {
+    fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
         match &self {
-            ExprNoExt::Value(v) => display_cedarvaluejson(f, v),
+            ExprNoExt::Value(v) => display_cedarvaluejson(f, v, n),
             ExprNoExt::Var(v) => write!(f, "{v}"),
             ExprNoExt::Slot(id) => write!(f, "{id}"),
             ExprNoExt::Not { arg } => {
                 write!(f, "!")?;
-                maybe_with_parens(f, arg)
+                maybe_with_parens(f, arg, n)
             }
             ExprNoExt::Neg { arg } => {
                 // Always add parentheses instead of calling
@@ -1766,99 +1826,99 @@ impl std::fmt::Display for ExprNoExt {
                 write!(f, "-({arg})")
             }
             ExprNoExt::Eq { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " == ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::NotEq { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " != ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::In { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " in ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::Less { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " < ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::LessEq { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " <= ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::Greater { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " > ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::GreaterEq { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " >= ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::And { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " && ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::Or { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " || ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::Add { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " + ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::Sub { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " - ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::Mul { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " * ")?;
-                maybe_with_parens(f, right)
+                maybe_with_parens(f, right, n)
             }
             ExprNoExt::Contains { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, ".contains({right})")
             }
             ExprNoExt::ContainsAll { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, ".containsAll({right})")
             }
             ExprNoExt::ContainsAny { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, ".containsAny({right})")
             }
             ExprNoExt::IsEmpty { arg } => {
-                maybe_with_parens(f, arg)?;
+                maybe_with_parens(f, arg, n)?;
                 write!(f, ".isEmpty()")
             }
             ExprNoExt::GetTag { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, ".getTag({right})")
             }
             ExprNoExt::HasTag { left, right } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, ".hasTag({right})")
             }
             ExprNoExt::GetAttr { left, attr } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, "[\"{}\"]", attr.escape_debug())
             }
             ExprNoExt::HasAttr { left, attr } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " has \"{}\"", attr.escape_debug())
             }
             ExprNoExt::Like { left, pattern } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(
                     f,
                     " like \"{}\"",
@@ -1870,12 +1930,12 @@ impl std::fmt::Display for ExprNoExt {
                 entity_type,
                 in_expr,
             } => {
-                maybe_with_parens(f, left)?;
+                maybe_with_parens(f, left, n)?;
                 write!(f, " is {entity_type}")?;
                 match in_expr {
                     Some(in_expr) => {
                         write!(f, " in ")?;
-                        maybe_with_parens(f, in_expr)
+                        maybe_with_parens(f, in_expr, n)
                     }
                     None => Ok(()),
                 }
@@ -1886,26 +1946,78 @@ impl std::fmt::Display for ExprNoExt {
                 else_expr,
             } => {
                 write!(f, "if ")?;
-                maybe_with_parens(f, cond_expr)?;
+                maybe_with_parens(f, cond_expr, n)?;
                 write!(f, " then ")?;
-                maybe_with_parens(f, then_expr)?;
+                maybe_with_parens(f, then_expr, n)?;
                 write!(f, " else ")?;
-                maybe_with_parens(f, else_expr)
+                maybe_with_parens(f, else_expr, n)
             }
-            ExprNoExt::Set(v) => write!(f, "[{}]", v.iter().join(", ")),
-            ExprNoExt::Record(m) => write!(
-                f,
-                "{{{}}}",
-                m.iter()
-                    .map(|(k, v)| format!("\"{}\": {}", k.escape_debug(), v))
-                    .join(", ")
-            ),
+            ExprNoExt::Set(v) => {
+                match n {
+                    Some(n) if v.len() > n => {
+                        // truncate to n elements
+                        write!(f, "[")?;
+                        for element in v.iter().take(n) {
+                            BoundedDisplay::fmt(element, f, Some(n))?;
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "..]")?;
+                        Ok(())
+                    }
+                    _ => {
+                        // no truncation
+                        write!(f, "[")?;
+                        for (i, element) in v.iter().enumerate() {
+                            BoundedDisplay::fmt(element, f, n)?;
+                            if i < v.len() - 1 {
+                                write!(f, ", ")?;
+                            }
+                        }
+                        write!(f, "]")?;
+                        Ok(())
+                    }
+                }
+            }
+            ExprNoExt::Record(m) => {
+                match n {
+                    Some(n) if m.len() > n => {
+                        // truncate to n key-value pairs
+                        write!(f, "{{")?;
+                        for (k, v) in m.iter().take(n) {
+                            write!(f, "\"{}\": ", k.escape_debug())?;
+                            BoundedDisplay::fmt(v, f, Some(n))?;
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "..}}")?;
+                        Ok(())
+                    }
+                    _ => {
+                        // no truncation
+                        write!(f, "{{")?;
+                        for (i, (k, v)) in m.iter().enumerate() {
+                            write!(f, "\"{}\": ", k.escape_debug())?;
+                            BoundedDisplay::fmt(v, f, n)?;
+                            if i < m.len() - 1 {
+                                write!(f, ", ")?;
+                            }
+                        }
+                        write!(f, "}}")?;
+                        Ok(())
+                    }
+                }
+            }
         }
     }
 }
 
 impl std::fmt::Display for ExtFuncCall {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        BoundedDisplay::fmt_unbounded(self, f)
+    }
+}
+
+impl BoundedDisplay for ExtFuncCall {
+    fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
         // PANIC SAFETY: safe due to INVARIANT on `ExtFuncCall`
         #[allow(clippy::unreachable)]
         let Some((fn_name, args)) = self.call.iter().next() else {
@@ -1921,7 +2033,7 @@ impl std::fmt::Display for ExtFuncCall {
         });
         match (style, args.iter().next()) {
             (Some(ast::CallStyle::MethodStyle), Some(receiver)) => {
-                maybe_with_parens(f, receiver)?;
+                maybe_with_parens(f, receiver, n)?;
                 write!(f, ".{}({})", fn_name, args.iter().skip(1).join(", "))
             }
             (_, _) => {
@@ -1931,18 +2043,22 @@ impl std::fmt::Display for ExtFuncCall {
     }
 }
 
-/// returns the `Display` representation of the Expr, adding parens around
+/// returns the `BoundedDisplay` representation of the Expr, adding parens around
 /// the entire string if necessary.
 /// E.g., won't add parens for constants or `principal` etc, but will for things
 /// like `(2 < 5)`.
 /// When in doubt, add the parens.
-fn maybe_with_parens(f: &mut std::fmt::Formatter<'_>, expr: &Expr) -> std::fmt::Result {
+fn maybe_with_parens(
+    f: &mut impl std::fmt::Write,
+    expr: &Expr,
+    n: Option<usize>,
+) -> std::fmt::Result {
     match expr {
         Expr::ExprNoExt(ExprNoExt::Set(_)) |
         Expr::ExprNoExt(ExprNoExt::Record(_)) |
         Expr::ExprNoExt(ExprNoExt::Value(_)) |
         Expr::ExprNoExt(ExprNoExt::Var(_)) |
-        Expr::ExprNoExt(ExprNoExt::Slot(_)) => write!(f, "{expr}"),
+        Expr::ExprNoExt(ExprNoExt::Slot(_)) => BoundedDisplay::fmt(expr, f, n),
 
         // we want parens here because things like parse((!x).y)
         // would be printed into !x.y which has a different meaning
@@ -1973,7 +2089,12 @@ fn maybe_with_parens(f: &mut std::fmt::Formatter<'_>, expr: &Expr) -> std::fmt::
         Expr::ExprNoExt(ExprNoExt::Like { .. }) |
         Expr::ExprNoExt(ExprNoExt::Is { .. }) |
         Expr::ExprNoExt(ExprNoExt::If { .. }) |
-        Expr::ExtFuncCall { .. } => write!(f, "({expr})"),
+        Expr::ExtFuncCall { .. } => {
+            write!(f, "(")?;
+            BoundedDisplay::fmt(expr, f, n)?;
+            write!(f, ")")?;
+            Ok(())
+        }
     }
 }
 
@@ -1983,9 +2104,10 @@ fn maybe_with_parens(f: &mut std::fmt::Formatter<'_>, expr: &Expr) -> std::fmt::
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 mod test {
-    use crate::parser::err::ParseError;
+    use crate::parser::{err::ParseError, parse_expr};
 
     use super::*;
+    use ast::BoundedToString;
     use cool_asserts::assert_matches;
 
     #[test]
@@ -2011,5 +2133,66 @@ mod test {
                 }
             );
         });
+    }
+
+    #[test]
+    fn display_and_bounded_display() {
+        let expr = Expr::from(parse_expr(r#"[100, [3, 4, 5], -20, "foo"]"#).unwrap());
+        assert_eq!(format!("{expr}"), r#"[100, [3, 4, 5], (-20), "foo"]"#);
+        assert_eq!(
+            BoundedToString::to_string(&expr, None),
+            r#"[100, [3, 4, 5], (-20), "foo"]"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(4)),
+            r#"[100, [3, 4, 5], (-20), "foo"]"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(3)),
+            r#"[100, [3, 4, 5], (-20), ..]"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(2)),
+            r#"[100, [3, 4, ..], ..]"#
+        );
+        assert_eq!(BoundedToString::to_string(&expr, Some(1)), r#"[100, ..]"#);
+        assert_eq!(BoundedToString::to_string(&expr, Some(0)), r#"[..]"#);
+
+        let expr = Expr::from(
+            parse_expr(
+                r#"{
+            a: 12,
+            b: [3, 4, true],
+            c: -20,
+            "hello ∞ world": "∂µß≈¥"
+        }"#,
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            format!("{expr}"),
+            r#"{"a": 12, "b": [3, 4, true], "c": (-20), "hello ∞ world": "∂µß≈¥"}"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, None),
+            r#"{"a": 12, "b": [3, 4, true], "c": (-20), "hello ∞ world": "∂µß≈¥"}"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(4)),
+            r#"{"a": 12, "b": [3, 4, true], "c": (-20), "hello ∞ world": "∂µß≈¥"}"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(3)),
+            r#"{"a": 12, "b": [3, 4, true], "c": (-20), ..}"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(2)),
+            r#"{"a": 12, "b": [3, 4, ..], ..}"#
+        );
+        assert_eq!(
+            BoundedToString::to_string(&expr, Some(1)),
+            r#"{"a": 12, ..}"#
+        );
+        assert_eq!(BoundedToString::to_string(&expr, Some(0)), r#"{..}"#);
     }
 }

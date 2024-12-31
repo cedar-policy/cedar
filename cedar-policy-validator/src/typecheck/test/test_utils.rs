@@ -124,7 +124,7 @@ pub(crate) fn assert_types_eq(schema: &ValidatorSchema, expected: &Type, actual:
 
 /// Assert that every `T` in `actual` appears in `expected`, and vice versa.
 #[track_caller]
-pub(crate) fn assert_sets_equal<T: Hash + Eq>(
+pub(crate) fn assert_sets_equal<T: Hash + Eq + std::fmt::Debug>(
     expected: impl IntoIterator<Item = T>,
     actual: impl IntoIterator<Item = T>,
 ) {
@@ -167,7 +167,7 @@ impl SchemaProvider for NamespaceDefinitionWithActionAttributes<RawName> {
     }
 }
 
-impl<'a> SchemaProvider for &'a str {
+impl SchemaProvider for &str {
     fn schema(self) -> ValidatorSchema {
         ValidatorSchema::from_cedarschema_str(self, Extensions::all_available())
             .unwrap_or_else(|e| panic!("failed to construct schema: {:?}", miette::Report::new(e)))

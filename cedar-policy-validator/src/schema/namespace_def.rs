@@ -132,8 +132,13 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
 
         // Convert the common types, actions and entity types from the schema
         // file into the representation used by the validator.
-        let common_types =
-            CommonTypeDefs::from_raw_common_types(namespace_def.common_types, namespace.as_ref())?;
+        let common_types = CommonTypeDefs::from_raw_common_types(
+            namespace_def
+                .common_types
+                .into_iter()
+                .map(|(key, value)| (key, value.ty)),
+            namespace.as_ref(),
+        )?;
         let actions =
             ActionsDef::from_raw_actions(namespace_def.actions, namespace.as_ref(), extensions)?;
         let entity_types =
@@ -276,10 +281,10 @@ impl CommonTypeDefs<ConditionalName> {
     /// structures used by the schema format to those used internally by the
     /// validator.
     pub(crate) fn from_raw_common_types(
-        schema_file_type_def: BTreeMap<CommonTypeId, json_schema::Type<RawName>>,
+        schema_file_type_def: impl IntoIterator<Item = (CommonTypeId, json_schema::Type<RawName>)>,
         schema_namespace: Option<&InternalName>,
     ) -> crate::err::Result<Self> {
-        let mut defs = HashMap::with_capacity(schema_file_type_def.len());
+        let mut defs = HashMap::new();
         for (id, schema_ty) in schema_file_type_def {
             let name = RawName::new_from_unreserved(id.into()).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
             match defs.entry(name) {
@@ -390,10 +395,10 @@ impl EntityTypesDef<ConditionalName> {
     /// structures used by the schema format to those used internally by the
     /// validator.
     pub(crate) fn from_raw_entity_types(
-        schema_files_types: BTreeMap<UnreservedId, json_schema::EntityType<RawName>>,
+        schema_files_types: impl IntoIterator<Item = (UnreservedId, json_schema::EntityType<RawName>)>,
         schema_namespace: Option<&InternalName>,
     ) -> crate::err::Result<Self> {
-        let mut defs: HashMap<EntityType, _> = HashMap::with_capacity(schema_files_types.len());
+        let mut defs: HashMap<EntityType, _> = HashMap::new();
         for (id, entity_type) in schema_files_types {
             let ety = internal_name_to_entity_type(
                 RawName::new_from_unreserved(id).qualify_with(schema_namespace), // the declaration name is always (unconditionally) prefixed by the current/active namespace
@@ -580,11 +585,11 @@ impl ActionsDef<ConditionalName, ConditionalName> {
     /// Construct an [`ActionsDef<ConditionalName>`] by converting the structures used by the
     /// schema format to those used internally by the validator.
     pub(crate) fn from_raw_actions(
-        schema_file_actions: BTreeMap<SmolStr, json_schema::ActionType<RawName>>,
+        schema_file_actions: impl IntoIterator<Item = (SmolStr, json_schema::ActionType<RawName>)>,
         schema_namespace: Option<&InternalName>,
         extensions: &Extensions<'_>,
     ) -> crate::err::Result<Self> {
-        let mut actions = HashMap::with_capacity(schema_file_actions.len());
+        let mut actions = HashMap::new();
         for (action_id_str, action_type) in schema_file_actions {
             let action_uid = json_schema::ActionEntityUID::default_type(action_id_str.clone())
                 .qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
@@ -1023,7 +1028,7 @@ pub(crate) fn try_record_type_into_validator_type(
         Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
     } else {
         Ok(
-            parse_record_attributes(rty.attributes, extensions)?.map(move |attrs| {
+            parse_record_attributes(rty.attributes.into_iter(), extensions)?.map(move |attrs| {
                 Type::record_with_attributes(
                     attrs,
                     if rty.additional_attributes {

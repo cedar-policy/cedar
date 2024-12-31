@@ -59,7 +59,6 @@ pub use str_checks::confusable_string_checks;
 pub mod cedar_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
-
 pub mod types;
 
 /// Used to select how a policy will be validated.
@@ -276,6 +275,7 @@ mod test {
     use super::*;
     use cedar_policy_core::{
         ast::{self, PolicyID},
+        est::Annotations,
         parser::{self, Loc},
     };
 
@@ -293,6 +293,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: Annotations::new(),
                     },
                 ),
                 (
@@ -301,6 +302,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
+                        annotations: Annotations::new(),
                     },
                 ),
             ],
@@ -314,6 +316,7 @@ mod test {
                     }),
                     member_of: None,
                     attributes: None,
+                    annotations: Annotations::new(),
                 },
             )],
         );
@@ -323,13 +326,13 @@ mod test {
         let policy_a_src = r#"permit(principal in foo_type::"a", action == Action::"actin", resource == bar_type::"b");"#;
         let policy_a = parser::parse_policy(Some(PolicyID::from_string("pola")), policy_a_src)
             .expect("Test Policy Should Parse");
-        set.add_static(policy_a.clone())
+        set.add_static(policy_a)
             .expect("Policy already present in PolicySet");
 
         let policy_b_src = r#"permit(principal in foo_tye::"a", action == Action::"action", resource == br_type::"b");"#;
         let policy_b = parser::parse_policy(Some(PolicyID::from_string("polb")), policy_b_src)
             .expect("Test Policy Should Parse");
-        set.add_static(policy_b.clone())
+        set.add_static(policy_b)
             .expect("Policy already present in PolicySet");
 
         let result = validator.validate(&set, ValidationMode::default());
@@ -508,7 +511,7 @@ mod test {
         // `result` contains the two prior error messages plus one new one
         assert_eq!(result.validation_errors().count(), 3);
         let invalid_action_err = ValidationError::invalid_action_application(
-            loc.clone(),
+            loc,
             PolicyID::from_string("link3"),
             false,
             false,
