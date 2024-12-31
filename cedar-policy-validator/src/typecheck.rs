@@ -184,12 +184,11 @@ impl<'a> Typechecker<'a> {
         // explicit that `expect_type` will be called for every element of
         // request_env without short circuiting.
         let policy_condition = &t.condition();
-        for requeste in self
-            .unlinked_request_envs()
-            .flat_map(|env| self.link_request_env(env, t))
-        {
-            let check = typecheck_fn(&requeste, policy_condition);
-            result_checks.push((requeste, check))
+        for unlinked_e in self.unlinked_request_envs() {
+            for linked_e in self.link_request_env(&unlinked_e, t) {
+                let check = typecheck_fn(&linked_e, policy_condition);
+                result_checks.push((linked_e, check))
+            }
         }
         result_checks
     }
@@ -208,7 +207,7 @@ impl<'a> Typechecker<'a> {
             let mut policy_checks = Vec::new();
             for t in policy_templates.iter() {
                 let condition_expr = t.condition();
-                for linked_env in self.link_request_env(request.clone(), t) {
+                for linked_env in self.link_request_env(&request, t) {
                     let mut type_errors = Vec::new();
                     let empty_prior_capability = CapabilitySet::new();
                     let ty = self.expect_type(
@@ -276,11 +275,11 @@ impl<'a> Typechecker<'a> {
 
     /// Given a request environment and a template, return new environments
     /// formed by linking template slots with possible entity types.
-    fn link_request_env<'b>(
+    fn link_request_env<'b, 'c>(
         &'b self,
-        env: RequestEnv<'b>,
+        env: &'c RequestEnv<'b>,
         t: &'b Template,
-    ) -> Box<dyn Iterator<Item = RequestEnv<'b>> + 'b> {
+    ) -> Box<dyn Iterator<Item = RequestEnv<'b>> + 'c> {
         match env {
             RequestEnv::UndeclaredAction => Box::new(std::iter::once(RequestEnv::UndeclaredAction)),
             RequestEnv::DeclaredAction {
@@ -469,7 +468,7 @@ impl<'a> Typechecker<'a> {
                 // detected by a different part of the validator, so a ValidationError is
                 // not generated here. We still return `TypecheckFail` so that
                 // typechecking is not considered successful.
-                match Type::euid_literal((**euid).clone(), self.schema) {
+                match Type::euid_literal(euid.as_ref(), self.schema) {
                     // The entity type is undeclared, but that's OK for a
                     // partial schema. The attributes record will be empty if we
                     // try to access it later, so all attributes will have the

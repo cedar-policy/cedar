@@ -1511,7 +1511,7 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
                                     extract_single_argument(args, "containsAny()", &access.loc)?,
                                 )),
                                 "isEmpty" => {
-                                    require_zero_arguments(args, "isEmpty()", &access.loc)?;
+                                    require_zero_arguments(&args, "isEmpty()", &access.loc)?;
                                     Either::Right(Expr::is_empty(left))
                                 }
                                 "getTag" => Either::Right(Expr::get_tag(
@@ -1584,7 +1584,7 @@ pub fn extract_single_argument<T>(
 
 /// Return a wrong arity error if the iterator has any elements.
 pub fn require_zero_arguments<T>(
-    args: impl ExactSizeIterator<Item = T>,
+    args: &impl ExactSizeIterator<Item = T>,
     fn_name: &'static str,
     loc: &Loc,
 ) -> Result<(), ParseErrors> {

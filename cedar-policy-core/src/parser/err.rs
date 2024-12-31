@@ -834,11 +834,12 @@ impl ParseErrors {
 
     /// Flatten a `Vec<ParseErrors>` into a single `ParseErrors`, returning
     /// `None` if the input vector is empty.
-    pub(crate) fn flatten(v: Vec<ParseErrors>) -> Option<Self> {
-        let (first, rest) = v.split_first()?;
-        let mut first = first.clone();
-        rest.iter()
-            .for_each(|errs| first.extend(errs.iter().cloned()));
+    pub(crate) fn flatten(errs: impl IntoIterator<Item = ParseErrors>) -> Option<Self> {
+        let mut errs = errs.into_iter();
+        let mut first = errs.next()?;
+        for inner in errs {
+            first.extend(inner);
+        }
         Some(first)
     }
 
