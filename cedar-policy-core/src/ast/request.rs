@@ -78,6 +78,9 @@ pub enum EntityUIDEntry {
     },
     /// An EntityUID left as unknown for partial evaluation
     Unknown {
+        /// The type of the unknown EntityUID, if known.
+        ty: Option<EntityType>,
+
         /// Source location associated with the `EntityUIDEntry`, if any
         loc: Option<Loc>,
     },
@@ -92,9 +95,22 @@ impl EntityUIDEntry {
             EntityUIDEntry::Known { euid, loc } => {
                 Value::new(Arc::unwrap_or_clone(Arc::clone(euid)), loc.clone()).into()
             }
-            EntityUIDEntry::Unknown { loc } => Expr::unknown(Unknown::new_untyped(var.to_string()))
-                .with_maybe_source_loc(loc.clone())
-                .into(),
+            EntityUIDEntry::Unknown { ty: None, loc } => {
+                Expr::unknown(Unknown::new_untyped(var.to_string()))
+                    .with_maybe_source_loc(loc.clone())
+                    .into()
+            }
+            EntityUIDEntry::Unknown {
+                ty: Some(known_type),
+                loc,
+            } => Expr::unknown(Unknown::new_with_type(
+                var.to_string(),
+                super::Type::Entity {
+                    ty: known_type.clone(),
+                },
+            ))
+            .with_maybe_source_loc(loc.clone())
+            .into(),
         }
     }
 
@@ -106,11 +122,32 @@ impl EntityUIDEntry {
         }
     }
 
+    /// Create an entry with an entirely unknown EntityUID
+    pub fn unknown() -> Self {
+        Self::Unknown {
+            ty: None,
+            loc: None,
+        }
+    }
+
+    /// Create an entry with an unknown EntityUID but known EntityType
+    pub fn unknown_with_type(ty: EntityType, loc: Option<Loc>) -> Self {
+        Self::Unknown { ty: Some(ty), loc }
+    }
+
     /// Get the UID of the entry, or `None` if it is unknown (partial evaluation)
     pub fn uid(&self) -> Option<&EntityUID> {
         match self {
             Self::Known { euid, .. } => Some(euid),
             Self::Unknown { .. } => None,
+        }
+    }
+
+    /// Get the type of the entry, or `None` if it is unknown (partial evaluation with no type annotation)
+    pub fn get_type(&self) -> Option<&EntityType> {
+        match self {
+            Self::Known { euid, .. } => Some(euid.entity_type()),
+            Self::Unknown { ty, .. } => ty.as_ref(),
         }
     }
 }
@@ -133,7 +170,7 @@ impl From<&EntityUIDEntry> for proto::EntityUidEntry {
     #[allow(clippy::unimplemented)]
     fn from(v: &EntityUIDEntry) -> Self {
         match v {
-            EntityUIDEntry::Unknown { loc: _ } => {
+            EntityUIDEntry::Unknown { .. } => {
                 unimplemented!(
                     "Unknown EntityUID is not currently supported by the Protobuf interface"
                 );
@@ -250,7 +287,11 @@ impl std::fmt::Display for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let display_euid = |maybe_euid: &EntityUIDEntry| match maybe_euid {
             EntityUIDEntry::Known { euid, .. } => format!("{euid}"),
-            EntityUIDEntry::Unknown { .. } => "unknown".to_string(),
+            EntityUIDEntry::Unknown { ty: None, .. } => "unknown".to_string(),
+            EntityUIDEntry::Unknown {
+                ty: Some(known_type),
+                ..
+            } => format!("unknown of type {}", known_type),
         };
         write!(
             f,

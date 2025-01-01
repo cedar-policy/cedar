@@ -57,6 +57,16 @@ pub enum ConcretizationError {
         /// The provided value
         given_value: Value,
     },
+    /// Errors that occur when binding variables with known values
+    #[error("concretizing existing but unknown entity value of type {existing_value} of {id} with value {given_value}")]
+    EntityTypeConfictError {
+        /// String representation of PARC
+        id: SmolStr,
+        /// Existing value of PARC
+        existing_value: EntityType,
+        /// The provided value
+        given_value: Value,
+    },
     /// Errors that occur when evaluating partial values
     #[error(transparent)]
     #[diagnostic(transparent)]
