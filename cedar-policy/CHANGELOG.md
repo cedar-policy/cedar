@@ -22,6 +22,7 @@ Cedar Language Version: TBD
 - Added protobuf and JSON generation code to `cedar-policy-cli`.
 - Added a new get helper method to Context that allows easy extraction of generic values from the context by key. This method simplifies the common use case of retrieving values from Context objects.
 - Implemented [RFC 62 (extended `has` operator)](https://github.com/cedar-policy/rfcs/blob/main/text/0062-extended-has.md)  (#1327, resolving #1329)
+- Added a helper method to `PartialResponse` to accept substitutions from an iterator.
 
 ### Changed
 
