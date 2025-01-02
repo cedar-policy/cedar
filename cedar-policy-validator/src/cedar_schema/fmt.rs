@@ -106,7 +106,7 @@ fn fmt_non_empty_slice<T: Display>(
     write!(f, "]")
 }
 
-impl<N: Display> Display for json_schema::EntityType<N> {
+impl<N: Display> Display for json_schema::CommonEntityType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(non_empty) = self.member_of_types.split_first() {
             write!(f, " in ")?;
