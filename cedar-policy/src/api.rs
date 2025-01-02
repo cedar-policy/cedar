@@ -1371,7 +1371,9 @@ fn annotations_to_pairs(annotations: &est::Annotations) -> impl Iterator<Item = 
 
 impl SchemaFragment {
     /// Get annotations of a non-empty namespace.
-    /// We do not allow namespace-level annotations on the empty namespace
+    ///
+    /// We do not allow namespace-level annotations on the empty namespace.
+    ///
     /// Returns `None` if `namespace` is not found in the [`SchemaFragment`]
     pub fn namespace_annotations(
         &self,
@@ -1384,6 +1386,7 @@ impl SchemaFragment {
     }
 
     /// Get annotations of a common type declaration
+    ///
     /// Returns `None` if `namespace` is not found in the [`SchemaFragment`] or
     /// `ty` is not a valid common type ID or `ty` is not found in the
     /// corresponding namespace definition
