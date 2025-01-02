@@ -343,6 +343,7 @@ mod demo_tests {
             applies_to: None,
             member_of: None,
             annotations: Annotations::new(),
+            loc: None,
         };
         let namespace =
             json_schema::NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
@@ -445,6 +446,7 @@ namespace Baz {action "Foo" appliesTo {
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
                     annotations: Annotations::new(),
+                    loc: None,
                 },
             )]),
             actions: BTreeMap::from([(
@@ -458,6 +460,7 @@ namespace Baz {action "Foo" appliesTo {
                     }),
                     member_of: None,
                     annotations: Annotations::new(),
+                    loc: None,
                 },
             )]),
             annotations: Annotations::new(),

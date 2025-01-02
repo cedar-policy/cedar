@@ -193,16 +193,17 @@ impl TryFrom<Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName>
         let common_types = common_types
             .into_iter()
             .map(|decl| {
-                let name_loc = decl.data.name.loc.clone();
-                let id = UnreservedId::try_from(decl.data.name.node)
+                let name_loc = decl.data.node.name.loc.clone();
+                let id = UnreservedId::try_from(decl.data.node.name.node)
                     .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), name_loc.clone()))?;
                 let ctid = json_schema::CommonTypeId::new(id)
                     .map_err(|e| ToJsonSchemaError::reserved_keyword(&e.id, name_loc))?;
                 Ok((
                     ctid,
                     CommonType {
-                        ty: cedar_type_to_json_type(decl.data.def),
+                        ty: cedar_type_to_json_type(decl.data.node.def),
                         annotations: decl.annotations.into(),
+                        loc: Some(decl.data.loc),
                     },
                 ))
             })
@@ -219,13 +220,13 @@ impl TryFrom<Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName>
 
 /// Converts action type decls
 fn convert_action_decl(
-    a: Annotated<ActionDecl>,
+    a: Annotated<Node<ActionDecl>>,
 ) -> Result<impl Iterator<Item = (SmolStr, json_schema::ActionType<RawName>)>, ToJsonSchemaErrors> {
     let ActionDecl {
         names,
         parents,
         app_decls,
-    } = a.data;
+    } = a.data.node;
     // Create the internal type from the 'applies_to' clause and 'member_of'
     let applies_to = app_decls
         .map(|decls| convert_app_decls(&names.first().node, &names.first().loc, decls))
@@ -241,6 +242,7 @@ fn convert_action_decl(
         applies_to: Some(applies_to),
         member_of,
         annotations: a.annotations.into(),
+        loc: Some(a.data.loc),
     };
     // Then map that type across all of the bound names
     Ok(names.into_iter().map(move |name| (name.node, ty.clone())))
@@ -356,7 +358,7 @@ fn convert_id(node: Node<Id>) -> Result<UnreservedId, ToJsonSchemaError> {
 
 /// Convert Entity declarations
 fn convert_entity_decl(
-    e: Annotated<EntityDecl>,
+    e: Annotated<Node<EntityDecl>>,
 ) -> Result<
     impl Iterator<Item = (UnreservedId, json_schema::EntityType<RawName>)>,
     ToJsonSchemaErrors,
@@ -365,24 +367,21 @@ fn convert_entity_decl(
     let etype = json_schema::EntityType {
         member_of_types: e
             .data
+            .node
             .member_of_types
             .into_iter()
             .map(RawName::from)
             .collect(),
-        shape: convert_attr_decls(e.data.attrs),
-        tags: e.data.tags.map(cedar_type_to_json_type),
+        shape: convert_attr_decls(e.data.node.attrs),
+        tags: e.data.node.tags.map(cedar_type_to_json_type),
         annotations: e.annotations.into(),
+        loc: Some(e.data.loc),
     };
 
     // Then map over all of the bound names
-    collect_all_errors(
-        e.data
-            .names
-            .into_iter()
-            .map(move |name| -> Result<_, ToJsonSchemaErrors> {
-                Ok((convert_id(name)?, etype.clone()))
-            }),
-    )
+    collect_all_errors(e.data.node.names.into_iter().map(
+        move |name| -> Result<_, ToJsonSchemaErrors> { Ok((convert_id(name)?, etype.clone())) },
+    ))
 }
 
 /// Create a [`json_schema::AttributesOrContext`] from a series of `AttrDecl`s
@@ -642,28 +641,29 @@ fn partition_decls(
 }
 
 fn into_partition_decls(
-    decls: Vec<Annotated<Node<Declaration>>>,
+    decls: impl IntoIterator<Item = Annotated<Node<Declaration>>>,
 ) -> (
-    Vec<Annotated<EntityDecl>>,
-    Vec<Annotated<ActionDecl>>,
-    Vec<Annotated<TypeDecl>>,
+    Vec<Annotated<Node<EntityDecl>>>,
+    Vec<Annotated<Node<ActionDecl>>>,
+    Vec<Annotated<Node<TypeDecl>>>,
 ) {
     let mut entities = vec![];
     let mut actions = vec![];
     let mut types = vec![];
 
     for decl in decls.into_iter() {
+        let loc = decl.data.loc;
         match decl.data.node {
             Declaration::Entity(e) => entities.push(Annotated {
-                data: e,
+                data: Node { node: e, loc },
                 annotations: decl.annotations,
             }),
             Declaration::Action(a) => actions.push(Annotated {
-                data: a,
+                data: Node { node: a, loc },
                 annotations: decl.annotations,
             }),
             Declaration::Type(t) => types.push(Annotated {
-                data: t,
+                data: Node { node: t, loc },
                 annotations: decl.annotations,
             }),
         }
