@@ -44,6 +44,7 @@ use cedar_policy_core::{
         BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
         PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
     },
+    expr_builder::ExprBuilder as _,
     extensions::Extensions,
 };
 

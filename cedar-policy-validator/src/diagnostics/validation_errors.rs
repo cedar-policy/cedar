@@ -723,7 +723,10 @@ impl Display for AttributeAccess {
 // optional attribute without a guard, then the help message is also printed.
 #[cfg(test)]
 mod test_attr_access {
-    use cedar_policy_core::ast::{EntityUID, Expr, ExprBuilder, ExprKind, Var};
+    use cedar_policy_core::{
+        ast::{EntityUID, Expr, ExprBuilder, ExprKind, Var},
+        expr_builder::ExprBuilder as _,
+    };
 
     use super::AttributeAccess;
     use crate::types::{OpenTag, RequestEnv, Type};
