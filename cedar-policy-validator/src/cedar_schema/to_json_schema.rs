@@ -671,3 +671,93 @@ fn into_partition_decls(
 
     (entities, actions, types)
 }
+
+#[cfg(test)]
+mod preserves_source_locations {
+    use super::*;
+    use cool_asserts::assert_matches;
+
+    #[test]
+    fn entity_action_and_common_type_decls() {
+        let (schema, _) = json_schema::Fragment::from_cedarschema_str(
+            r#"
+        namespace NS {
+            type S = String;
+            entity A;
+            entity B in A;
+            entity C in A {
+                bool: Bool,
+                s: S,
+                a: Set<A>,
+                b: { inner: B },
+            };
+            type AA = A;
+            action Read, Write;
+            action List in Read appliesTo {
+                principal: [A],
+                resource: [B, C],
+                context: {
+                    s: Set<S>,
+                    ab: { a: AA, b: B },
+                }
+            };
+        }
+        "#,
+            &Extensions::all_available(),
+        )
+        .unwrap();
+        let ns = schema
+            .0
+            .get(&Some(Name::parse_unqualified_name("NS").unwrap()))
+            .expect("couldn't find namespace NS");
+
+        let entityA = ns
+            .entity_types
+            .get(&"A".parse().unwrap())
+            .expect("couldn't find entity A");
+        let entityB = ns
+            .entity_types
+            .get(&"B".parse().unwrap())
+            .expect("couldn't find entity B");
+        let entityC = ns
+            .entity_types
+            .get(&"C".parse().unwrap())
+            .expect("couldn't find entity C");
+        let ctypeS = ns
+            .common_types
+            .get(&json_schema::CommonTypeId::new("S".parse().unwrap()).unwrap())
+            .expect("couldn't find common type S");
+        let ctypeAA = ns
+            .common_types
+            .get(&json_schema::CommonTypeId::new("AA".parse().unwrap()).unwrap())
+            .expect("couldn't find common type AA");
+        let actionRead = ns.actions.get("Read").expect("couldn't find action Read");
+        let actionWrite = ns.actions.get("Write").expect("couldn't find action Write");
+        let actionList = ns.actions.get("List").expect("couldn't find action List");
+
+        assert_matches!(&entityA.loc, Some(loc) => assert_matches!(loc.snippet(),
+            Some("entity A;")
+        ));
+        assert_matches!(&entityB.loc, Some(loc) => assert_matches!(loc.snippet(),
+            Some("entity B in A;")
+        ));
+        assert_matches!(&entityC.loc, Some(loc) => assert_matches!(loc.snippet(),
+            Some("entity C in A {\n                bool: Bool,\n                s: S,\n                a: Set<A>,\n                b: { inner: B },\n            };")
+        ));
+        assert_matches!(&ctypeS.loc, Some(loc) => assert_matches!(loc.snippet(),
+            Some("type S = String;")
+        ));
+        assert_matches!(&ctypeAA.loc, Some(loc) => assert_matches!(loc.snippet(),
+            Some("type AA = A;")
+        ));
+        assert_matches!(&actionRead.loc, Some(loc) => assert_matches!(loc.snippet(),
+            Some("action Read, Write;")
+        ));
+        assert_matches!(&actionWrite.loc, Some(loc) => assert_matches!(loc.snippet(),
+            Some("action Read, Write;")
+        ));
+        assert_matches!(&actionList.loc, Some(loc) => assert_matches!(loc.snippet(),
+            Some("action List in Read appliesTo {\n                principal: [A],\n                resource: [B, C],\n                context: {\n                    s: Set<S>,\n                    ab: { a: AA, b: B },\n                }\n            };")
+        ));
+    }
+}
