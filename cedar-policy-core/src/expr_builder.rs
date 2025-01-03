@@ -31,7 +31,7 @@ use crate::{
 /// structures.
 #[allow(clippy::wrong_self_convention)]
 pub trait ExprBuilder {
-    /// The type of expression constructed by this instance of `ExprBuilder``.
+    /// The type of expression constructed by this instance of `ExprBuilder`.
     type Expr: Clone + std::fmt::Display;
 
     /// Type for extra information stored on nodes of the expression AST. This
@@ -67,7 +67,7 @@ pub trait ExprBuilder {
     /// reported as having the same source location.
     fn loc(&self) -> Option<&Loc>;
 
-    /// Extract the the data that will be stored on the constructed expression.
+    /// Extract the data that will be stored on the constructed expression.
     /// Used internally to provide utilities that construct multiple nodes which
     /// will all have the same data.
     fn data(&self) -> &Self::Data;
@@ -249,7 +249,6 @@ pub trait ExprBuilder {
         Self: Sized,
     {
         // e1 >= e2 is defined as !(e1 < e2)
-        // TODO preserve source loc
         Self::with_data(self.data().clone())
             .with_maybe_source_loc(self.loc())
             .not(self.less(e1, e2))
