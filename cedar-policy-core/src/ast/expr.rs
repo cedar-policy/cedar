@@ -1494,7 +1494,6 @@ impl<T: Clone + Default> ExprBuilder<T> {
     /// location as an existing expression. This is done when reconstructing the
     /// `Expr` with type information.
     pub fn with_same_source_loc<U>(self, expr: &Expr<U>) -> Self {
-        use expr_builder::ExprBuilder;
         self.with_maybe_source_loc(expr.source_loc.as_ref())
     }
 }
