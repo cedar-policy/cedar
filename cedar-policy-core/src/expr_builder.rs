@@ -29,6 +29,7 @@ use crate::{
 
 /// Defines a generic interface for building different expression data
 /// structures.
+#[allow(clippy::wrong_self_convention)]
 pub trait ExprBuilder {
     /// The type of expression constructed by this instance of `ExprBuilder``.
     type Expr: Clone + std::fmt::Display;

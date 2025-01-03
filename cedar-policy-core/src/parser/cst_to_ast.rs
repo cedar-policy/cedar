@@ -1111,7 +1111,7 @@ impl Node<Option<cst::Relation>> {
                     None => Ok(ExprOrSpecial::Expr {
                         expr: Build::new()
                             .with_source_loc(&self.loc)
-                            .is_entity_type(t.clone(), n),
+                            .is_entity_type(t, n),
                         loc: self.loc.clone(),
                     }),
                 }
@@ -1395,6 +1395,7 @@ impl Node<Option<cst::Member>> {
     /// `next` access applied to `head`, and the second element is the new tail of
     /// acessors. In most cases, `tail` is returned unmodified, but in the method
     /// call case we need to pull off the `Call` element containing the arguments.
+    #[allow(clippy::type_complexity)]
     fn build_expr_accessor<'a, Build: ExprBuilder>(
         &self,
         head: Build::Expr,

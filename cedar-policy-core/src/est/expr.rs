@@ -1050,6 +1050,8 @@ impl Expr {
     }
 }
 
+// PANIC SAFETY: See comment on `unwrap`
+#[allow(clippy::fallible_impl_from)]
 impl<T: Clone> From<ast::Expr<T>> for Expr {
     fn from(expr: ast::Expr<T>) -> Expr {
         match expr.into_expr_kind() {
