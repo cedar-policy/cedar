@@ -57,7 +57,7 @@ impl<N: Display> Display for json_schema::NamespaceDefinition<N> {
 impl<N: Display> Display for json_schema::Type<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            json_schema::Type::Type(ty) => match ty {
+            json_schema::Type::Type { ty, .. } => match ty {
                 json_schema::TypeVariant::Boolean => write!(f, "__cedar::Bool"),
                 json_schema::TypeVariant::Entity { name } => write!(f, "{name}"),
                 json_schema::TypeVariant::EntityOrCommon { type_name } => {
@@ -69,7 +69,7 @@ impl<N: Display> Display for json_schema::Type<N> {
                 json_schema::TypeVariant::Set { element } => write!(f, "Set < {element} >"),
                 json_schema::TypeVariant::String => write!(f, "__cedar::String"),
             },
-            json_schema::Type::CommonTypeRef { type_name } => write!(f, "{type_name}"),
+            json_schema::Type::CommonTypeRef { type_name, .. } => write!(f, "{type_name}"),
         }
     }
 }
