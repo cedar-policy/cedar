@@ -17,6 +17,7 @@
 use crate::schema::AllDefs;
 use crate::schema_errors::TypeNotDefinedError;
 use cedar_policy_core::ast::{Id, InternalName, Name, UnreservedId};
+use cedar_policy_core::parser::Loc;
 use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
@@ -81,6 +82,11 @@ impl RawName {
     /// _eventually resolve_ to an unqualified name.)
     pub fn is_unqualified(&self) -> bool {
         self.0.is_unqualified()
+    }
+
+    /// Get the source location of this `RawName`
+    pub fn loc(&self) -> Option<&Loc> {
+        self.0.loc()
     }
 
     /// Convert this [`RawName`] to an [`InternalName`] by adding the given `ns`
