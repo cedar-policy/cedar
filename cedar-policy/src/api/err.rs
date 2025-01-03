@@ -187,16 +187,18 @@ pub mod to_cedar_syntax_errors {
 
     /// Duplicate names were found in the schema
     #[derive(Debug, Error, Diagnostic)]
-    #[repr(transparent)]
-    #[error(transparent)]
-    pub struct NameCollisionsError(
-        pub(super) cedar_policy_validator::cedar_schema::fmt::NameCollisionsError,
-    );
+    #[error("{err}")]
+    pub struct NameCollisionsError {
+        #[diagnostic(transparent)]
+        pub(super) err: cedar_policy_validator::cedar_schema::fmt::NameCollisionsError,
+        // because `.names()` needs to return borrowed `&str`, we need somewhere to borrow from, hence here
+        pub(super) names_as_strings: Vec<String>,
+    }
 
     impl NameCollisionsError {
         /// Get the names that had collisions
         pub fn names(&self) -> impl Iterator<Item = &str> {
-            self.0.names()
+            self.names_as_strings.iter().map(|s| s.as_str())
         }
     }
 }
@@ -209,7 +211,14 @@ impl From<cedar_policy_validator::cedar_schema::fmt::ToCedarSchemaSyntaxError>
         match value {
             cedar_policy_validator::cedar_schema::fmt::ToCedarSchemaSyntaxError::NameCollisions(
                 name_collision_err,
-            ) => NameCollisionsError(name_collision_err).into(),
+            ) => NameCollisionsError {
+                names_as_strings: name_collision_err
+                    .names()
+                    .map(ToString::to_string)
+                    .collect(),
+                err: name_collision_err,
+            }
+            .into(),
         }
     }
 }

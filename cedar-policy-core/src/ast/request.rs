@@ -626,7 +626,7 @@ impl ContextCreationError {
 /// Error subtypes for [`ContextCreationError`]
 pub mod context_creation_errors {
     use super::Expr;
-    use crate::impl_diagnostic_from_expr_field;
+    use crate::impl_diagnostic_from_method_on_field;
     use miette::Diagnostic;
     use thiserror::Error;
 
@@ -642,9 +642,9 @@ pub mod context_creation_errors {
         pub(super) expr: Box<Expr>,
     }
 
-    // custom impl of `Diagnostic`: take source location from the `expr` field
+    // custom impl of `Diagnostic`: take source location from the `expr` field's `.source_loc()` method
     impl Diagnostic for NotARecord {
-        impl_diagnostic_from_expr_field!(expr);
+        impl_diagnostic_from_method_on_field!(expr, source_loc);
     }
 }
 
