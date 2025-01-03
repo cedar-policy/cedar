@@ -437,7 +437,7 @@ pub enum ToJsonSchemaError {
 }
 
 impl ToJsonSchemaError {
-    pub(crate) fn duplicate_context(name: impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
+    pub(crate) fn duplicate_context(name: &impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
         Self::DuplicateContext(DuplicateContext {
             name: name.to_smolstr(),
             loc1,
@@ -445,7 +445,7 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn duplicate_decls(decl: impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
+    pub(crate) fn duplicate_decls(decl: &impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
         Self::DuplicateDeclarations(DuplicateDeclarations {
             decl: decl.to_smolstr(),
             loc1,
@@ -454,7 +454,7 @@ impl ToJsonSchemaError {
     }
 
     pub(crate) fn duplicate_namespace(
-        namespace_id: impl ToSmolStr,
+        namespace_id: &impl ToSmolStr,
         loc1: Option<Loc>,
         loc2: Option<Loc>,
     ) -> Self {
@@ -465,7 +465,7 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn duplicate_principal(name: impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
+    pub(crate) fn duplicate_principal(name: &impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
         Self::DuplicatePrincipalOrResource(DuplicatePrincipalOrResource {
             name: name.to_smolstr(),
             kind: PR::Principal,
@@ -474,7 +474,7 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn duplicate_resource(name: impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
+    pub(crate) fn duplicate_resource(name: &impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
         Self::DuplicatePrincipalOrResource(DuplicatePrincipalOrResource {
             name: name.to_smolstr(),
             kind: PR::Resource,
@@ -483,7 +483,7 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn no_principal(name: impl ToSmolStr, loc: Loc) -> Self {
+    pub(crate) fn no_principal(name: &impl ToSmolStr, loc: Loc) -> Self {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Principal,
             name: name.to_smolstr(),
@@ -491,7 +491,7 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn no_resource(name: impl ToSmolStr, loc: Loc) -> Self {
+    pub(crate) fn no_resource(name: &impl ToSmolStr, loc: Loc) -> Self {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Resource,
             name: name.to_smolstr(),
@@ -499,14 +499,14 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn reserved_name(name: impl ToSmolStr, loc: Loc) -> Self {
+    pub(crate) fn reserved_name(name: &impl ToSmolStr, loc: Loc) -> Self {
         Self::ReservedName(ReservedName {
             name: name.to_smolstr(),
             loc,
         })
     }
 
-    pub(crate) fn reserved_keyword(keyword: impl ToSmolStr, loc: Loc) -> Self {
+    pub(crate) fn reserved_keyword(keyword: &impl ToSmolStr, loc: Loc) -> Self {
         Self::ReservedSchemaKeyword(ReservedSchemaKeyword {
             keyword: keyword.to_smolstr(),
             loc,

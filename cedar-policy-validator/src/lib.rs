@@ -294,6 +294,7 @@ mod test {
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
                         annotations: Annotations::new(),
+                        loc: None,
                     },
                 ),
                 (
@@ -303,6 +304,7 @@ mod test {
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
                         annotations: Annotations::new(),
+                        loc: None,
                     },
                 ),
             ],
@@ -317,6 +319,7 @@ mod test {
                     member_of: None,
                     attributes: None,
                     annotations: Annotations::new(),
+                    loc: None,
                 },
             )],
         );

@@ -305,13 +305,13 @@ fn str_contains_colons_and_dots(s: &str) -> Result<(), String> {
 
 /// Cedar function which constructs an `ipaddr` Cedar type from a
 /// Cedar string
-fn ip_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
+fn ip_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
     let arg_source_loc = arg.source_loc().cloned();
     let ipaddr = RepresentableExtensionValue::new(
         Arc::new(IPAddr::from_str(str.as_str()).map_err(extension_err)?),
         names::IP_FROM_STR_NAME.clone(),
-        vec![arg.into()],
+        vec![arg.clone().into()],
     );
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(ipaddr)),
@@ -352,38 +352,38 @@ fn as_ipaddr(v: &Value) -> Result<&IPAddr, evaluator::EvaluationError> {
 
 /// Cedar function which tests whether an `ipaddr` Cedar type is an IPv4
 /// address, returning a Cedar bool
-fn is_ipv4(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let ipaddr = as_ipaddr(&arg)?;
+fn is_ipv4(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let ipaddr = as_ipaddr(arg)?;
     Ok(ipaddr.is_ipv4().into())
 }
 
 /// Cedar function which tests whether an `ipaddr` Cedar type is an IPv6
 /// address, returning a Cedar bool
-fn is_ipv6(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let ipaddr = as_ipaddr(&arg)?;
+fn is_ipv6(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let ipaddr = as_ipaddr(arg)?;
     Ok(ipaddr.is_ipv6().into())
 }
 
 /// Cedar function which tests whether an `ipaddr` Cedar type is a
 /// loopback address, returning a Cedar bool
-fn is_loopback(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let ipaddr = as_ipaddr(&arg)?;
+fn is_loopback(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let ipaddr = as_ipaddr(arg)?;
     Ok(ipaddr.is_loopback().into())
 }
 
 /// Cedar function which tests whether an `ipaddr` Cedar type is a
 /// multicast address, returning a Cedar bool
-fn is_multicast(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let ipaddr = as_ipaddr(&arg)?;
+fn is_multicast(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let ipaddr = as_ipaddr(arg)?;
     Ok(ipaddr.is_multicast().into())
 }
 
 /// Cedar function which tests whether the first `ipaddr` Cedar type is
 /// in the IP range represented by the second `ipaddr` Cedar type, returning
 /// a Cedar bool
-fn is_in_range(child: Value, parent: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let child_ip = as_ipaddr(&child)?;
-    let parent_ip = as_ipaddr(&parent)?;
+fn is_in_range(child: &Value, parent: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let child_ip = as_ipaddr(child)?;
+    let parent_ip = as_ipaddr(parent)?;
     Ok(child_ip.is_in_range(parent_ip).into())
 }
 
@@ -444,6 +444,7 @@ pub fn extension() -> Extension {
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 #[cfg(test)]
+#[allow(clippy::cognitive_complexity)]
 mod tests {
     use super::*;
     use crate::ast::{Expr, Type, Value};

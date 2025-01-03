@@ -71,7 +71,7 @@ mod constants {
 }
 
 // The `datetime` type, represented internally as an `i64`.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 struct DateTime {
     // The number of non-leap milliseconds from the Unix epoch
     epoch: i64,
@@ -91,7 +91,7 @@ fn extension_err(
 }
 
 fn construct_from_str<Ext>(
-    arg: Value,
+    arg: &Value,
     constructor_name: Name,
     constructor: impl Fn(&str) -> Result<Ext, EvaluationError>,
 ) -> evaluator::Result<ExtensionOutputValue>
@@ -101,8 +101,11 @@ where
     let s = arg.get_as_string()?;
     let ext_value: Ext = constructor(s)?;
     let arg_source_loc = arg.source_loc().cloned();
-    let e =
-        RepresentableExtensionValue::new(Arc::new(ext_value), constructor_name, vec![arg.into()]);
+    let e = RepresentableExtensionValue::new(
+        Arc::new(ext_value),
+        constructor_name,
+        vec![arg.clone().into()],
+    );
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(e)),
         loc: arg_source_loc, // follow the same convention as the `decimal` extension
@@ -112,7 +115,7 @@ where
 
 /// Cedar function that constructs a `datetime` Cedar type from a
 /// Cedar string
-fn datetime_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
+fn datetime_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     construct_from_str(arg, DATETIME_CONSTRUCTOR_NAME.clone(), |s| {
         parse_datetime(s).map(DateTime::from).map_err(|err| {
             extension_err(
@@ -158,23 +161,23 @@ where
 }
 
 /// Check that `v` is a datetime type and, if it is, return the wrapped value
-fn as_datetime(v: &Value) -> Result<&DateTime, evaluator::EvaluationError> {
-    as_ext(v, &DATETIME_CONSTRUCTOR_NAME)
+fn as_datetime(v: &Value) -> Result<DateTime, evaluator::EvaluationError> {
+    as_ext(v, &DATETIME_CONSTRUCTOR_NAME).copied()
 }
 
 /// Check that `v` is a duration type and, if it is, return the wrapped value
-fn as_duration(v: &Value) -> Result<&Duration, evaluator::EvaluationError> {
-    as_ext(v, &DURATION_CONSTRUCTOR_NAME)
+fn as_duration(v: &Value) -> Result<Duration, evaluator::EvaluationError> {
+    as_ext(v, &DURATION_CONSTRUCTOR_NAME).copied()
 }
 
-fn offset(datetime: Value, duration: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let datetime = as_datetime(&datetime)?;
-    let duration = as_duration(&duration)?;
-    let ret = datetime.offset(duration.clone()).ok_or_else(|| {
+fn offset(datetime: &Value, duration: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let datetime = as_datetime(datetime)?;
+    let duration = as_duration(duration)?;
+    let ret = datetime.offset(duration).ok_or_else(|| {
         extension_err(
             format!(
                 "overflows when adding an offset: {}+({})",
-                RestrictedExpr::from(datetime.clone()),
+                RestrictedExpr::from(datetime),
                 duration
             ),
             &OFFSET_METHOD_NAME,
@@ -188,15 +191,15 @@ fn offset(datetime: Value, duration: Value) -> evaluator::Result<ExtensionOutput
     .into())
 }
 
-fn duration_since(lhs: Value, rhs: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let lhs = as_datetime(&lhs)?;
-    let rhs = as_datetime(&rhs)?;
-    let ret = lhs.duration_since(rhs.clone()).ok_or_else(|| {
+fn duration_since(lhs: &Value, rhs: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let lhs = as_datetime(lhs)?;
+    let rhs = as_datetime(rhs)?;
+    let ret = lhs.duration_since(rhs).ok_or_else(|| {
         extension_err(
             format!(
                 "overflows when computing the duration between {} and {}",
-                RestrictedExpr::from(lhs.clone()),
-                RestrictedExpr::from(rhs.clone())
+                RestrictedExpr::from(lhs),
+                RestrictedExpr::from(rhs)
             ),
             &DURATION_SINCE_NAME,
             None,
@@ -209,13 +212,13 @@ fn duration_since(lhs: Value, rhs: Value) -> evaluator::Result<ExtensionOutputVa
     .into())
 }
 
-fn to_date(value: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let d = as_datetime(&value)?;
+fn to_date(value: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let d = as_datetime(value)?;
     let ret = d.to_date().ok_or_else(|| {
         extension_err(
             format!(
                 "overflows when computing the date of {}",
-                RestrictedExpr::from(d.clone()),
+                RestrictedExpr::from(d),
             ),
             &TO_DATE_NAME,
             None,
@@ -228,8 +231,8 @@ fn to_date(value: Value) -> evaluator::Result<ExtensionOutputValue> {
     .into())
 }
 
-fn to_time(value: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let d = as_datetime(&value)?;
+fn to_time(value: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let d = as_datetime(value)?;
     let ret = d.to_time();
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(ret.into())),
@@ -251,13 +254,13 @@ impl DateTime {
     const DAY_IN_MILLISECONDS: i64 = 1000 * 3600 * 24;
     const UNIX_EPOCH_STR: &'static str = "1970-01-01";
 
-    fn offset(&self, duration: Duration) -> Option<Self> {
+    fn offset(self, duration: Duration) -> Option<Self> {
         self.epoch
             .checked_add(duration.ms)
             .map(|epoch| Self { epoch })
     }
 
-    fn duration_since(&self, other: DateTime) -> Option<Duration> {
+    fn duration_since(self, other: DateTime) -> Option<Duration> {
         self.epoch
             .checked_sub(other.epoch)
             .map(|ms| Duration { ms })
@@ -265,7 +268,7 @@ impl DateTime {
 
     // essentially `self.epoch.div_floor(Self::DAY_IN_MILLISECONDS) * Self::DAY_IN_MILLISECONDS`
     // but `div_floor` is only available on nightly
-    fn to_date(&self) -> Option<Self> {
+    fn to_date(self) -> Option<Self> {
         if self.epoch.is_negative() {
             if self.epoch % Self::DAY_IN_MILLISECONDS == 0 {
                 Some(self.epoch)
@@ -278,7 +281,7 @@ impl DateTime {
         .map(|epoch| Self { epoch })
     }
 
-    fn to_time(&self) -> Duration {
+    fn to_time(self) -> Duration {
         Duration {
             ms: if self.epoch.is_negative() {
                 let rem = self.epoch % Self::DAY_IN_MILLISECONDS;
@@ -293,7 +296,7 @@ impl DateTime {
         }
     }
 
-    fn as_ext_func_call(&self) -> (Name, Vec<RestrictedExpr>) {
+    fn as_ext_func_call(self) -> (Name, Vec<RestrictedExpr>) {
         (
             OFFSET_METHOD_NAME.clone(),
             vec![
@@ -335,7 +338,7 @@ impl From<NaiveDateTime> for DateTime {
 }
 
 // The `duration` type
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Duration {
     // The number of milliseconds
     ms: i64,
@@ -376,7 +379,7 @@ impl From<Duration> for RepresentableExtensionValue {
 
 /// Cedar function that constructs a `duration` Cedar type from a
 /// Cedar string
-fn duration_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
+fn duration_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     construct_from_str(arg, DURATION_CONSTRUCTOR_NAME.clone(), |s| {
         parse_duration(s).map_err(|err| {
             extension_err(
@@ -389,27 +392,27 @@ fn duration_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
 }
 
 impl Duration {
-    fn to_milliseconds(&self) -> i64 {
+    fn to_milliseconds(self) -> i64 {
         self.ms
     }
 
-    fn to_seconds(&self) -> i64 {
+    fn to_seconds(self) -> i64 {
         self.to_milliseconds() / 1000
     }
 
-    fn to_minutes(&self) -> i64 {
+    fn to_minutes(self) -> i64 {
         self.to_seconds() / 60
     }
 
-    fn to_hours(&self) -> i64 {
+    fn to_hours(self) -> i64 {
         self.to_minutes() / 60
     }
 
-    fn to_days(&self) -> i64 {
+    fn to_days(self) -> i64 {
         self.to_hours() / 24
     }
 
-    fn as_ext_func_call(&self) -> (Name, Vec<RestrictedExpr>) {
+    fn as_ext_func_call(self) -> (Name, Vec<RestrictedExpr>) {
         (
             DURATION_CONSTRUCTOR_NAME.clone(),
             vec![Value::from(self.to_string()).into()],
@@ -418,10 +421,10 @@ impl Duration {
 }
 
 fn duration_method(
-    value: Value,
-    internal_func: impl Fn(&Duration) -> i64,
+    value: &Value,
+    internal_func: impl Fn(Duration) -> i64,
 ) -> evaluator::Result<ExtensionOutputValue> {
-    let d = as_duration(&value)?;
+    let d = as_duration(value)?;
     Ok(Value::from(internal_func(d)).into())
 }
 
@@ -719,6 +722,7 @@ pub fn extension() -> Extension {
 }
 
 #[cfg(test)]
+#[allow(clippy::cognitive_complexity)]
 mod tests {
     use std::{str::FromStr, sync::Arc};
 
@@ -1023,12 +1027,12 @@ mod tests {
         let unix_epoch = DateTime { epoch: 0 };
         let today: DateTime = parse_datetime("2024-10-24").unwrap().into();
         assert_eq!(
-            today.duration_since(unix_epoch.clone()),
+            today.duration_since(unix_epoch),
             Some(parse_duration("20020d").unwrap())
         );
         let yesterday: DateTime = parse_datetime("2024-10-23").unwrap().into();
         assert_eq!(
-            yesterday.duration_since(today.clone()),
+            yesterday.duration_since(today),
             Some(parse_duration("-1d").unwrap())
         );
         assert_eq!(
@@ -1047,12 +1051,12 @@ mod tests {
         let unix_epoch = DateTime { epoch: 0 };
         let today: DateTime = parse_datetime("2024-10-24").unwrap().into();
         assert_eq!(
-            today.duration_since(unix_epoch.clone()),
+            today.duration_since(unix_epoch),
             Some(parse_duration("20020d").unwrap())
         );
         let yesterday: DateTime = parse_datetime("2024-10-23").unwrap().into();
         assert_eq!(
-            yesterday.duration_since(today.clone()),
+            yesterday.duration_since(today),
             Some(parse_duration("-1d").unwrap())
         );
         let some_day_before_unix_epoch: DateTime = parse_datetime("1900-01-01").unwrap().into();
@@ -1060,22 +1064,17 @@ mod tests {
         let max_day_offset = parse_duration("23h59m59s999ms").unwrap();
         let min_day_offset = parse_duration("-23h59m59s999ms").unwrap();
 
-        for d in [
-            today,
-            yesterday,
-            unix_epoch.clone(),
-            some_day_before_unix_epoch,
-        ] {
+        for d in [today, yesterday, unix_epoch, some_day_before_unix_epoch] {
             assert_eq!(d.to_date().expect("should not overflow"), d);
             assert_eq!(
-                d.offset(max_day_offset.clone())
+                d.offset(max_day_offset)
                     .unwrap()
                     .to_date()
                     .expect("should not overflow"),
                 d
             );
             assert_eq!(
-                d.offset(min_day_offset.clone())
+                d.offset(min_day_offset)
                     .unwrap()
                     .to_date()
                     .expect("should not overflow"),
@@ -1095,12 +1094,12 @@ mod tests {
         let unix_epoch = DateTime { epoch: 0 };
         let today: DateTime = parse_datetime("2024-10-24").unwrap().into();
         assert_eq!(
-            today.duration_since(unix_epoch.clone()),
+            today.duration_since(unix_epoch),
             Some(parse_duration("20020d").unwrap())
         );
         let yesterday: DateTime = parse_datetime("2024-10-23").unwrap().into();
         assert_eq!(
-            yesterday.duration_since(today.clone()),
+            yesterday.duration_since(today),
             Some(parse_duration("-1d").unwrap())
         );
         let some_day_before_unix_epoch: DateTime = parse_datetime("1900-01-01").unwrap().into();
@@ -1109,12 +1108,9 @@ mod tests {
         let min_day_offset = parse_duration("-23h59m59s999ms").unwrap();
 
         for d in [today, yesterday, unix_epoch, some_day_before_unix_epoch] {
+            assert_eq!(d.offset(max_day_offset).unwrap().to_time(), max_day_offset);
             assert_eq!(
-                d.offset(max_day_offset.clone()).unwrap().to_time(),
-                max_day_offset
-            );
-            assert_eq!(
-                d.offset(min_day_offset.clone()).unwrap().to_time(),
+                d.offset(min_day_offset).unwrap().to_time(),
                 parse_duration("1ms").unwrap(),
             );
         }

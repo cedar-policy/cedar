@@ -95,21 +95,22 @@ impl<N: Display> Display for json_schema::RecordType<N> {
     }
 }
 
-/// Create a non-empty with borrowed contents from a slice
-fn non_empty_slice<T>(v: &[T]) -> Option<NonEmpty<&T>> {
-    NonEmpty::collect(v.iter())
-}
-
-fn fmt_vec<T: Display>(f: &mut std::fmt::Formatter<'_>, ets: NonEmpty<T>) -> std::fmt::Result {
-    let contents = ets.iter().map(T::to_string).join(", ");
-    write!(f, "[{contents}]")
+fn fmt_non_empty_slice<T: Display>(
+    f: &mut std::fmt::Formatter<'_>,
+    (head, tail): (&T, &[T]),
+) -> std::fmt::Result {
+    write!(f, "[{head}")?;
+    for e in tail {
+        write!(f, ", {e}")?;
+    }
+    write!(f, "]")
 }
 
 impl<N: Display> Display for json_schema::CommonEntityType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(non_empty) = non_empty_slice(&self.member_of_types) {
+        if let Some(non_empty) = self.member_of_types.split_first() {
             write!(f, " in ")?;
-            fmt_vec(f, non_empty)?;
+            fmt_non_empty_slice(f, non_empty)?;
         }
 
         let ty = &self.shape;
@@ -128,18 +129,14 @@ impl<N: Display> Display for json_schema::CommonEntityType<N> {
 
 impl<N: Display> Display for json_schema::ActionType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(parents) = self
-            .member_of
-            .as_ref()
-            .and_then(|refs| non_empty_slice(refs.as_slice()))
-        {
+        if let Some(parents) = self.member_of.as_ref().and_then(|refs| refs.split_first()) {
             write!(f, " in ")?;
-            fmt_vec(f, parents)?;
+            fmt_non_empty_slice(f, parents)?;
         }
         if let Some(spec) = &self.applies_to {
             match (
-                non_empty_slice(spec.principal_types.as_slice()),
-                non_empty_slice(spec.resource_types.as_slice()),
+                spec.principal_types.split_first(),
+                spec.resource_types.split_first(),
             ) {
                 // One of the lists is empty
                 // This can only be represented by the empty action
@@ -151,9 +148,9 @@ impl<N: Display> Display for json_schema::ActionType<N> {
                 (Some(ps), Some(rs)) => {
                     write!(f, " appliesTo {{")?;
                     write!(f, "\n  principal: ")?;
-                    fmt_vec(f, ps)?;
+                    fmt_non_empty_slice(f, ps)?;
                     write!(f, ",\n  resource: ")?;
-                    fmt_vec(f, rs)?;
+                    fmt_non_empty_slice(f, rs)?;
                     write!(f, ",\n  context: {}", &spec.context.0)?;
                     write!(f, "\n}}")?;
                 }

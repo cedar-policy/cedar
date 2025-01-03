@@ -166,15 +166,7 @@ impl Entity {
         attrs: HashMap<String, RestrictedExpression>,
         parents: HashSet<EntityUid>,
     ) -> Result<Self, EntityAttrEvaluationError> {
-        // note that we take a "parents" parameter here; we will compute TC when
-        // the `Entities` object is created
-        Ok(Self(ast::Entity::new(
-            uid.into(),
-            attrs.into_iter().map(|(k, v)| (SmolStr::from(k), v.0)),
-            parents.into_iter().map(EntityUid::into).collect(),
-            [],
-            Extensions::all_available(),
-        )?))
+        Self::new_with_tags(uid, attrs, parents, [])
     }
 
     /// Create a new `Entity` with no attributes.
@@ -189,6 +181,27 @@ impl Entity {
             [],
             parents.into_iter().map(EntityUid::into).collect(),
         ))
+    }
+
+    /// Create a new `Entity` with this Uid, attributes, parents, and tags.
+    ///
+    /// Attribute and tag values are specified here as "restricted expressions".
+    /// See docs on [`RestrictedExpression`].
+    pub fn new_with_tags(
+        uid: EntityUid,
+        attrs: impl IntoIterator<Item = (String, RestrictedExpression)>,
+        parents: impl IntoIterator<Item = EntityUid>,
+        tags: impl IntoIterator<Item = (String, RestrictedExpression)>,
+    ) -> Result<Self, EntityAttrEvaluationError> {
+        // note that we take a "parents" parameter here, not "ancestors"; we
+        // will compute TC when the `Entities` object is created
+        Ok(Self(ast::Entity::new(
+            uid.into(),
+            attrs.into_iter().map(|(k, v)| (k.into(), v.0)),
+            parents.into_iter().map(EntityUid::into).collect(),
+            tags.into_iter().map(|(k, v)| (k.into(), v.0)),
+            Extensions::all_available(),
+        )?))
     }
 
     /// Create a new `Entity` with this Uid, no attributes, and no parents.
@@ -240,11 +253,21 @@ impl Entity {
     /// assert!(entity.attr("foo").is_none());
     /// ```
     pub fn attr(&self, attr: &str) -> Option<Result<EvalResult, PartialValueToValueError>> {
-        let v = match ast::Value::try_from(self.0.get(attr)?.clone()) {
-            Ok(v) => v,
-            Err(e) => return Some(Err(e)),
-        };
-        Some(Ok(EvalResult::from(v)))
+        match ast::Value::try_from(self.0.get(attr)?.clone()) {
+            Ok(v) => Some(Ok(EvalResult::from(v))),
+            Err(e) => Some(Err(e)),
+        }
+    }
+
+    /// Get the value for the given tag, or `None` if not present.
+    ///
+    /// This can also return Some(Err) if the tag is not a value (i.e., is
+    /// unknown due to partial evaluation).
+    pub fn tag(&self, tag: &str) -> Option<Result<EvalResult, PartialValueToValueError>> {
+        match ast::Value::try_from(self.0.get_tag(tag)?.clone()) {
+            Ok(v) => Some(Ok(EvalResult::from(v))),
+            Err(e) => Some(Err(e)),
+        }
     }
 
     /// Consume the entity and return the entity's owned Uid, attributes and parents.
@@ -1056,10 +1079,23 @@ impl PartialResponse {
         self.0.get(id.as_ref()).map(Policy::from_ast)
     }
 
-    /// Attempt to re-authorize this response given a mapping from unknowns to values
+    /// Attempt to re-authorize this response given a mapping from unknowns to values.
+    #[allow(clippy::needless_pass_by_value)]
+    #[deprecated = "use reauthorize_with_bindings"]
     pub fn reauthorize(
         &self,
         mapping: HashMap<SmolStr, RestrictedExpression>,
+        auth: &Authorizer,
+        es: &Entities,
+    ) -> Result<Self, ReauthorizationError> {
+        self.reauthorize_with_bindings(mapping.iter().map(|(k, v)| (k.as_str(), v)), auth, es)
+    }
+
+    /// Attempt to re-authorize this response given a mapping from unknowns to values, provided as an iterator.
+    /// Exhausts the iterator, returning any evaluation errors in the restricted expressions, regardless whether there is a matching unknown.
+    pub fn reauthorize_with_bindings<'m>(
+        &self,
+        mapping: impl IntoIterator<Item = (&'m str, &'m RestrictedExpression)>,
         auth: &Authorizer,
         es: &Entities,
     ) -> Result<Self, ReauthorizationError> {
@@ -1070,7 +1106,7 @@ impl PartialResponse {
             .map(|(name, expr)| {
                 evaluator
                     .interpret(BorrowedRestrictedExpr::new_unchecked(expr.0.as_ref()))
-                    .map(|v| (name, v))
+                    .map(|v| (name.into(), v))
             })
             .collect::<Result<HashMap<_, _>, EvaluationError>>()?;
         let r = self.0.reauthorize(&mapping, &auth.0, &es.0)?;

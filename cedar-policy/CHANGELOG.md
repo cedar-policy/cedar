@@ -17,10 +17,12 @@ Cedar Language Version: TBD
 
 - Implemented [RFC 48 (schema annotations)](https://github.com/cedar-policy/rfcs/blob/main/text/0048-schema-annotations.md)  (#1316)
 - New `.isEmpty()` operator on sets (#1358, resolving #1356)
+- New `Entity::new_with_tags()` and `Entity::tag()` functions (#1402, resolving #1374)
 - Added protobuf schemas and (de)serialization code using on `prost` crate behind the experimental `protobufs` flag.
 - Added protobuf and JSON generation code to `cedar-policy-cli`.
 - Added a new get helper method to Context that allows easy extraction of generic values from the context by key. This method simplifies the common use case of retrieving values from Context objects.
 - Implemented [RFC 62 (extended `has` operator)](https://github.com/cedar-policy/rfcs/blob/main/text/0062-extended-has.md)  (#1327, resolving #1329)
+- Added a helper method to `PartialResponse` to accept substitutions from an iterator.
 
 ### Changed
 

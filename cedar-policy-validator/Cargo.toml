@@ -14,7 +14,7 @@ repository.workspace = true
 cedar-policy-core = { version = "=4.3.0", path = "../cedar-policy-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
-serde_with = "3.0"
+serde_with = "3.12"
 miette = "7.4.0"
 thiserror = "2.0"
 itertools = "0.13"
@@ -26,6 +26,7 @@ arbitrary = { version = "1", features = ["derive"], optional = true }
 lalrpop-util = { version = "0.22.0", features = ["lexer", "unicode"] }
 lazy_static = "1.4.0"
 nonempty = "0.10.0"
+educe = "0.6.0"
 
 # wasm dependencies
 serde-wasm-bindgen = { version = "0.6", optional = true }

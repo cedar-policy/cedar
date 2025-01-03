@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use std::borrow::Borrow;
+
 use itertools::Itertools;
 use pretty::RcDoc;
 
@@ -132,11 +134,11 @@ pub fn get_comment_in_range<'src>(
 /// trailing comment, then it will introduce a newline at the end.
 pub fn add_comment<'src>(
     d: RcDoc<'src>,
-    comment: Comment<'src>,
+    comment: impl Borrow<Comment<'src>>,
     next_doc: RcDoc<'src>,
 ) -> RcDoc<'src> {
-    let leading_comment = comment.leading_comment();
-    let trailing_comment = comment.trailing_comment();
+    let leading_comment = comment.borrow().leading_comment();
+    let trailing_comment = comment.borrow().trailing_comment();
     let leading_comment_doc = get_leading_comment_doc_from_str(leading_comment);
     let trailing_comment_doc = get_trailing_comment_doc_from_str(trailing_comment, next_doc);
     leading_comment_doc.append(d).append(trailing_comment_doc)

@@ -21,8 +21,10 @@ use cedar_policy_core::{
     entities::CedarValueJson,
     est::Annotations,
     extensions::Extensions,
+    parser::Loc,
     FromNormalizedStr,
 };
+use educe::Educe;
 use nonempty::nonempty;
 use serde::{
     de::{MapAccess, Visitor},
@@ -48,7 +50,8 @@ use crate::{
 };
 
 /// Represents the definition of a common type in the schema.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, Deserialize)]
+#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[educe(PartialEq, Eq)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 pub struct CommonType<N> {
     /// The referred type
@@ -58,6 +61,14 @@ pub struct CommonType<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
     pub annotations: Annotations,
+    /// Source location
+    ///
+    /// (As of this writing, this is not populated when parsing from JSON.
+    /// It is only populated if constructing this structure from the
+    /// corresponding Cedar-syntax structure.)
+    #[serde(skip)]
+    #[educe(PartialEq(ignore))]
+    pub loc: Option<Loc>,
 }
 
 /// A [`Fragment`] is split into multiple namespace definitions, and is just a
@@ -107,6 +118,11 @@ where
         raw.into_iter()
             .map(|(key, value)| {
                 let key = if key.is_empty() {
+                    if !value.annotations.is_empty() {
+                        Err(serde::de::Error::custom(format!(
+                            "annotations are not allowed on the empty namespace"
+                        )))?
+                    }
                     None
                 } else {
                     Some(Name::from_normalized_str(&key).map_err(|err| {
@@ -348,6 +364,7 @@ impl NamespaceDefinition<RawName> {
                         CommonType {
                             ty: v.ty.conditionally_qualify_type_references(ns),
                             annotations: v.annotations,
+                            loc: v.loc,
                         },
                     )
                 })
@@ -388,6 +405,7 @@ impl NamespaceDefinition<ConditionalName> {
                         CommonType {
                             ty: v.ty.fully_qualify_type_references(all_defs)?,
                             annotations: v.annotations,
+                            loc: v.loc,
                         },
                     ))
                 })
@@ -443,7 +461,8 @@ pub struct EntityType<N> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`EntityType`], including recursively.
 /// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[educe(PartialEq, Eq)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
@@ -463,6 +482,18 @@ pub struct CommonEntityType<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Type<N>>,
+    /// Annotations
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Annotations::is_empty")]
+    pub annotations: Annotations,
+    /// Source location
+    ///
+    /// (As of this writing, this is not populated when parsing from JSON.
+    /// It is only populated if constructing this structure from the
+    /// corresponding Cedar-syntax structure.)
+    #[serde(skip)]
+    #[educe(PartialEq(ignore))]
+    pub loc: Option<Loc>,
 }
 
 impl EntityType<RawName> {
@@ -471,22 +502,19 @@ impl EntityType<RawName> {
         self,
         ns: Option<&InternalName>,
     ) -> EntityType<ConditionalName> {
-        let Self { kind, annotations } = self;
-        let kind = match kind {
-            EntityTypeKind::Common(et) => EntityTypeKind::Common(CommonEntityType {
-                member_of_types: et
-                    .member_of_types
-                    .into_iter()
-                    .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // Only entity, not common, here for now; see #1064
-                    .collect(),
-                shape: et.shape.conditionally_qualify_type_references(ns),
-                tags: et
-                    .tags
-                    .map(|ty| ty.conditionally_qualify_type_references(ns)),
-            }),
-            EntityTypeKind::Enum { choices } => EntityTypeKind::Enum { choices },
-        };
-        EntityType { kind, annotations }
+        EntityType {
+            member_of_types: self
+                .member_of_types
+                .into_iter()
+                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // Only entity, not common, here for now; see #1064
+                .collect(),
+            shape: self.shape.conditionally_qualify_type_references(ns),
+            tags: self
+                .tags
+                .map(|ty| ty.conditionally_qualify_type_references(ns)),
+            annotations: self.annotations,
+            loc: self.loc,
+        }
     }
 }
 
@@ -501,28 +529,20 @@ impl EntityType<ConditionalName> {
         self,
         all_defs: &AllDefs,
     ) -> std::result::Result<EntityType<InternalName>, TypeNotDefinedError> {
-        let Self { kind, annotations } = self;
-        match kind {
-            EntityTypeKind::Common(et) => Ok(EntityType {
-                kind: EntityTypeKind::Common(CommonEntityType {
-                    member_of_types: et
-                        .member_of_types
-                        .into_iter()
-                        .map(|cname| cname.resolve(all_defs))
-                        .collect::<std::result::Result<_, _>>()?,
-                    shape: et.shape.fully_qualify_type_references(all_defs)?,
-                    tags: et
-                        .tags
-                        .map(|ty| ty.fully_qualify_type_references(all_defs))
-                        .transpose()?,
-                }),
-                annotations: annotations,
-            }),
-            EntityTypeKind::Enum { choices } => Ok(EntityType {
-                kind: EntityTypeKind::Enum { choices },
-                annotations,
-            }),
-        }
+        Ok(EntityType {
+            member_of_types: self
+                .member_of_types
+                .into_iter()
+                .map(|cname| cname.resolve(all_defs))
+                .collect::<std::result::Result<_, _>>()?,
+            shape: self.shape.fully_qualify_type_references(all_defs)?,
+            tags: self
+                .tags
+                .map(|ty| ty.fully_qualify_type_references(all_defs))
+                .transpose()?,
+            annotations: self.annotations,
+            loc: self.loc,
+        })
     }
 }
 
@@ -607,7 +627,8 @@ impl AttributesOrContext<ConditionalName> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`ActionType`], including recursively.
 /// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[educe(PartialEq, Eq)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
@@ -632,6 +653,14 @@ pub struct ActionType<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
     pub annotations: Annotations,
+    /// Source location
+    ///
+    /// (As of this writing, this is not populated when parsing from JSON.
+    /// It is only populated if constructing this structure from the
+    /// corresponding Cedar-syntax structure.)
+    #[serde(skip)]
+    #[educe(PartialEq(ignore))]
+    pub loc: Option<Loc>,
 }
 
 impl ActionType<RawName> {
@@ -651,6 +680,7 @@ impl ActionType<RawName> {
                     .collect()
             }),
             annotations: self.annotations,
+            loc: self.loc,
         }
     }
 }
@@ -681,6 +711,7 @@ impl ActionType<ConditionalName> {
                 })
                 .transpose()?,
             annotations: self.annotations,
+            loc: self.loc,
         })
     }
 }
@@ -1824,15 +1855,16 @@ impl<'a> arbitrary::Arbitrary<'a> for TypeOfAttribute<RawName> {
         Ok(Self {
             ty: u.arbitrary::<Type<RawName>>()?,
             required: u.arbitrary()?,
-            annotations: cedar_policy_core::est::Annotations::new(),
+            annotations: u.arbitrary()?,
         })
     }
 
     fn size_hint(depth: usize) -> (usize, Option<usize>) {
-        arbitrary::size_hint::and(
+        arbitrary::size_hint::and_all(&[
             <Type<RawName> as arbitrary::Arbitrary>::size_hint(depth),
             <bool as arbitrary::Arbitrary>::size_hint(depth),
-        )
+            <cedar_policy_core::est::Annotations as arbitrary::Arbitrary>::size_hint(depth),
+        ])
     }
 }
 
@@ -2810,8 +2842,7 @@ mod test_json_roundtrip {
                 entity_types: BTreeMap::new(),
                 actions: BTreeMap::new(),
                 annotations: Annotations::new(),
-            }
-            .into(),
+            },
         )]));
         roundtrip(fragment);
     }
@@ -2825,8 +2856,7 @@ mod test_json_roundtrip {
                 entity_types: BTreeMap::new(),
                 actions: BTreeMap::new(),
                 annotations: Annotations::new(),
-            }
-            .into(),
+            },
         )]));
         roundtrip(fragment);
     }
@@ -2847,8 +2877,8 @@ mod test_json_roundtrip {
                         }))),
                         tags: None,
                         annotations: Annotations::new(),
-                    }
-                    .into(),
+                        loc: None,
+                    },
                 )]),
                 actions: BTreeMap::from([(
                     "action".into(),
@@ -2866,12 +2896,11 @@ mod test_json_roundtrip {
                         }),
                         member_of: None,
                         annotations: Annotations::new(),
-                    }
-                    .into(),
+                        loc: None,
+                    },
                 )]),
                 annotations: Annotations::new(),
-            }
-            .into(),
+            },
         )]));
         roundtrip(fragment);
     }
@@ -2895,13 +2924,12 @@ mod test_json_roundtrip {
                             ))),
                             tags: None,
                             annotations: Annotations::new(),
-                        }
-                        .into(),
+                            loc: None,
+                        },
                     )]),
                     actions: BTreeMap::new(),
                     annotations: Annotations::new(),
-                }
-                .into(),
+                },
             ),
             (
                 None,
@@ -2924,12 +2952,11 @@ mod test_json_roundtrip {
                             }),
                             member_of: None,
                             annotations: Annotations::new(),
-                        }
-                        .into(),
+                            loc: None,
+                        },
                     )]),
                     annotations: Annotations::new(),
-                }
-                .into(),
+                },
             ),
         ]));
         roundtrip(fragment);
@@ -3090,10 +3117,28 @@ mod annotations {
     use super::Fragment;
 
     #[test]
-    fn basic() {
+    fn empty_namespace() {
         let src = serde_json::json!(
         {
            "" : {
+            "entityTypes": {},
+            "actions": {},
+            "annotations": {
+                "doc": "this is a doc"
+            }
+           }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(err) => {
+            assert_eq!(&err.to_string(), "annotations are not allowed on the empty namespace");
+        });
+    }
+
+    #[test]
+    fn basic() {
+        let src = serde_json::json!(
+        {
+           "N" : {
             "entityTypes": {},
             "actions": {},
             "annotations": {
@@ -3106,7 +3151,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-           "" : {
+           "N" : {
             "entityTypes": {
                 "a": {
                     "annotations": {
@@ -3131,7 +3176,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-           "" : {
+           "N" : {
             "entityTypes": {
                 "a": {
                     "annotations": {
@@ -3163,7 +3208,7 @@ mod annotations {
         assert_matches!(schema, Ok(_));
 
         let src = serde_json::json!({
-            "": {
+            "N": {
             "entityTypes": {},
             "actions": {},
             "commonTypes": {
@@ -3191,7 +3236,7 @@ mod annotations {
         assert_matches!(schema, Ok(_));
 
         let src = serde_json::json!({
-            "": {
+            "N": {
                 "entityTypes": {
                     "User" : {
                         "shape" : {
@@ -3218,7 +3263,7 @@ mod annotations {
 
         // nested record
         let src = serde_json::json!({
-            "": {
+            "N": {
                 "entityTypes": {
                     "User" : {
                         "shape" : {
@@ -3279,7 +3324,7 @@ mod annotations {
     fn unknown_fields() {
         let src = serde_json::json!(
         {
-            "": {
+            "N": {
                 "entityTypes": {
             "UserGroup": {
                 "shape44": {
@@ -3296,7 +3341,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-            "": {
+            "N": {
                 "entityTypes": {},
                 "actions": {},
                 "commonTypes": {
@@ -3314,7 +3359,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-            "": {
+            "N": {
                 "entityTypes": {},
                 "actions": {},
                 "commonTypes": {
@@ -3329,7 +3374,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-            "": {
+            "N": {
                 "entityTypes": {},
                 "actions": {},
                 "commonTypes": {
@@ -3350,7 +3395,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-            "": {
+            "N": {
                 "entityTypes": {},
                 "actions": {},
                 "commonTypes": {
@@ -3379,7 +3424,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-            "": {
+            "N": {
                 "entityTypes": {
             "UserGroup": {
                 "shape": {
@@ -3399,7 +3444,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-            "": {
+            "N": {
                 "entityTypes": {},
                 "actions": {
                     "a": {
@@ -3417,7 +3462,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-           "" : {
+           "N" : {
             "entityTypes": {},
             "actions": {},
             "foo": "",
@@ -3448,7 +3493,7 @@ mod annotations {
 
         let src = serde_json::json!(
         {
-           "" : {
+           "N" : {
             "entityTypes": {},
             "actions": {},
             "commonTypes": {

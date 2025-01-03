@@ -13,10 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#![cfg(test)]
 // PANIC SAFETY: unit tests
-#[allow(clippy::panic)]
-#[cfg(test)]
+#![allow(
+    clippy::cognitive_complexity,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::unreachable
+)]
+
 mod demo_tests {
     use std::{
         collections::BTreeMap,
@@ -337,6 +343,7 @@ mod demo_tests {
             applies_to: None,
             member_of: None,
             annotations: Annotations::new(),
+            loc: None,
         };
         let namespace =
             json_schema::NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
@@ -439,6 +446,7 @@ namespace Baz {action "Foo" appliesTo {
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
                     annotations: Annotations::new(),
+                    loc: None,
                 },
             )]),
             actions: BTreeMap::from([(
@@ -452,6 +460,7 @@ namespace Baz {action "Foo" appliesTo {
                     }),
                     member_of: None,
                     annotations: Annotations::new(),
+                    loc: None,
                 },
             )]),
             annotations: Annotations::new(),
@@ -737,7 +746,7 @@ namespace Baz {action "Foo" appliesTo {
                 }),
             );
             assert_has_type(
-                &attributes.get("viewACL").unwrap(),
+                attributes.get("viewACL").unwrap(),
                 json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
                     type_name: "DocumentShare".parse().unwrap(),
                 }),
@@ -927,7 +936,6 @@ namespace Baz {action "Foo" appliesTo {
     }
 }
 
-#[cfg(test)]
 mod parser_tests {
     use crate::cedar_schema::parser::parse_schema;
     use cool_asserts::assert_matches;
@@ -1154,11 +1162,6 @@ mod parser_tests {
     }
 }
 
-// PANIC SAFETY: tests
-#[allow(clippy::unreachable)]
-// PANIC SAFETY: tests
-#[allow(clippy::panic)]
-#[cfg(test)]
 mod translator_tests {
     use cedar_policy_core::ast as cedar_ast;
     use cedar_policy_core::extensions::Extensions;
@@ -1176,6 +1179,8 @@ mod translator_tests {
         types::{EntityLUB, EntityRecordKind, Primitive, Type},
         ValidatorSchema,
     };
+
+    use super::SPECIAL_IDS;
 
     // We allow translating schemas that violate RFC 52 to `json_schema::Fragment`.
     // The violations are reported during further translation to `ValidatorSchema`
@@ -1450,10 +1455,6 @@ mod translator_tests {
         });
     }
 
-    // PANIC SAFETY: testing
-    #[allow(clippy::unwrap_used)]
-    // PANIC SAFETY: testing
-    #[allow(clippy::indexing_slicing)]
     #[test]
     fn type_name_resolution_cross_namespace() {
         let (schema, _) = json_schema::Fragment::from_cedarschema_str(
@@ -1998,6 +1999,28 @@ mod translator_tests {
         .expect("should translate to JSON schema");
         assert_eq!(serde_json::to_value(schema).unwrap(), json_value);
     }
+
+    #[test]
+    fn any_id() {
+        for id in SPECIAL_IDS {
+            test_translation(
+                &format!("@{id} entity User {{}};"),
+                serde_json::json!({
+                    "": {
+                        "entityTypes": {
+                            "User": {
+                                "annotations": {
+                                    id: "",
+                                }
+                            }
+                        },
+                        "actions": {},
+                    }
+                }),
+            )
+        }
+    }
+
     #[test]
     fn annotations() {
         // namespace annotations
@@ -2250,7 +2273,6 @@ mod translator_tests {
     }
 }
 
-#[cfg(test)]
 mod common_type_references {
     use cool_asserts::assert_matches;
 
@@ -2563,7 +2585,6 @@ mod common_type_references {
 }
 
 /// Tests involving entity tags (RFC 82)
-#[cfg(test)]
 mod entity_tags {
     use crate::json_schema;
     use crate::schema::test::utils::collect_warnings;
@@ -2633,12 +2654,43 @@ mod entity_tags {
     }
 }
 
+pub(crate) const SPECIAL_IDS: [&str; 18] = [
+    "principal",
+    "action",
+    "resource",
+    "context",
+    "true",
+    "false",
+    "permit",
+    "forbid",
+    "when",
+    "unless",
+    "in",
+    "has",
+    "like",
+    "is",
+    "if",
+    "then",
+    "else",
+    "__cedar",
+];
+
 // RFC 48 test cases
-#[cfg(test)]
 mod annotations {
     use cool_asserts::assert_matches;
 
     use crate::cedar_schema::parser::parse_schema;
+
+    use super::SPECIAL_IDS;
+
+    // test if annotation keys can be any id
+    #[test]
+    fn any_id() {
+        for id in SPECIAL_IDS {
+            let schema_str = format!("@{id} entity User {{}};");
+            assert_matches!(parse_schema(&schema_str), Ok(_));
+        }
+    }
 
     #[test]
     fn no_keys() {

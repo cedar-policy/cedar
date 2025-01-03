@@ -327,6 +327,7 @@ pub(crate) mod test_utils {
 
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic, clippy::indexing_slicing)]
+#[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
 /// Tests for the top-level parsing APIs
 mod tests {
