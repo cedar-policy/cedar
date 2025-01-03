@@ -1109,9 +1109,7 @@ impl Node<Option<cst::Relation>> {
                         })
                     }
                     None => Ok(ExprOrSpecial::Expr {
-                        expr: Build::new()
-                            .with_source_loc(&self.loc)
-                            .is_entity_type(t, n),
+                        expr: Build::new().with_source_loc(&self.loc).is_entity_type(t, n),
                         loc: self.loc.clone(),
                     }),
                 }

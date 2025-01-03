@@ -1104,8 +1104,7 @@ impl<T: Clone> From<ast::Expr<T>> for Expr {
             ast::ExprKind::Set(set) => {
                 Builder::new().set(Arc::unwrap_or_clone(set).into_iter().map(Into::into))
             }
-            // PANIC SAFETY: `map` is a map, so it will not have duplicates
-            // keys, so the `record` constructor cannot error.
+            // PANIC SAFETY: `map` is a map, so it will not have duplicates keys, so the `record` constructor cannot error.
             #[allow(clippy::unwrap_used)]
             ast::ExprKind::Record(map) => Builder::new()
                 .record(
