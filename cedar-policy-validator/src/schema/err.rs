@@ -265,7 +265,10 @@ impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
                 SchemaError::ActionTransitiveClosure(Box::new(e).into())
             }
             transitive_closure::TcError::HasCycle(err) => {
-                schema_errors::CycleInActionHierarchyError(err.vertex_with_loop().clone()).into()
+                schema_errors::CycleInActionHierarchyError {
+                    uid: err.vertex_with_loop().clone(),
+                }
+                .into()
             }
         }
     }
@@ -312,11 +315,14 @@ pub type Result<T> = std::result::Result<T, SchemaError>;
 
 /// Error subtypes for [`SchemaError`]
 pub mod schema_errors {
-    use std::{collections::BTreeSet, fmt::Display};
+    use std::fmt::Display;
 
+    use cedar_policy_core::ast::{
+        EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name,
+    };
+    use cedar_policy_core::parser::{join_with_conjunction, Loc};
     use cedar_policy_core::{
-        ast::{EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name},
-        parser::join_with_conjunction,
+        impl_diagnostic_from_method_on_field, impl_diagnostic_from_method_on_nonempty_field,
         transitive_closure,
     };
     use itertools::Itertools;
@@ -363,21 +369,29 @@ pub mod schema_errors {
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Diagnostic, Error)]
-    #[diagnostic(help(
-        "any entity types appearing anywhere in a schema need to be declared in `entityTypes`"
-    ))]
-    pub struct UndeclaredEntityTypesError(pub(crate) BTreeSet<EntityType>);
+    #[derive(Debug, Error)]
+    pub struct UndeclaredEntityTypesError {
+        /// Entity type(s) which were not declared
+        pub(crate) types: NonEmpty<EntityType>,
+    }
 
     impl Display for UndeclaredEntityTypesError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            if self.0.len() == 1 {
+            if self.types.len() == 1 {
                 write!(f, "undeclared entity type: ")?;
             } else {
                 write!(f, "undeclared entity types: ")?;
             }
-            join_with_conjunction(f, "and", self.0.iter(), |f, s| s.fmt(f))
+            join_with_conjunction(f, "and", self.types.iter(), |f, s| s.fmt(f))
         }
+    }
+
+    impl Diagnostic for UndeclaredEntityTypesError {
+        fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+            Some(Box::new("any entity types appearing anywhere in a schema need to be declared in `entityTypes`"))
+        }
+
+        impl_diagnostic_from_method_on_nonempty_field!(types, loc);
     }
 
     /// Type resolution error
@@ -385,10 +399,23 @@ pub mod schema_errors {
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Diagnostic, Error)]
-    #[error("failed to resolve type{}: {}", if .0.len() > 1 { "s" } else { "" }, .0.iter().map(crate::ConditionalName::raw).join(", "))]
-    #[diagnostic(help("{}", .0.first().resolution_failure_help()))] // we choose to give only the help for the first failed-to-resolve name, because otherwise the help message would be too cluttered and complicated
-    pub struct TypeNotDefinedError(pub(crate) NonEmpty<crate::ConditionalName>);
+    #[derive(Debug, Error)]
+    #[error("failed to resolve type{}: {}", if .undefined_types.len() > 1 { "s" } else { "" }, .undefined_types.iter().map(crate::ConditionalName::raw).join(", "))]
+    pub struct TypeNotDefinedError {
+        /// Names of type(s) which were not defined
+        pub(crate) undefined_types: NonEmpty<crate::ConditionalName>,
+    }
+
+    impl Diagnostic for TypeNotDefinedError {
+        fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+            // we choose to give only the help for the first failed-to-resolve name, because otherwise the help message would be too cluttered and complicated
+            Some(Box::new(
+                self.undefined_types.first().resolution_failure_help(),
+            ))
+        }
+
+        impl_diagnostic_from_method_on_nonempty_field!(undefined_types, loc);
+    }
 
     impl TypeNotDefinedError {
         /// Combine all the errors into a single [`TypeNotDefinedError`].
@@ -396,7 +423,9 @@ pub mod schema_errors {
         /// This cannot fail, because `NonEmpty` guarantees there is at least
         /// one error to join.
         pub(crate) fn join_nonempty(errs: NonEmpty<TypeNotDefinedError>) -> Self {
-            Self(errs.flat_map(|err| err.0))
+            Self {
+                undefined_types: errs.flat_map(|err| err.undefined_types),
+            }
         }
     }
 
@@ -444,18 +473,28 @@ pub mod schema_errors {
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Diagnostic, Error)]
+    #[derive(Debug, Error)]
     #[error(
         "definition of `{shadowing_def}` illegally shadows the existing definition of `{shadowed_def}`"
     )]
-    #[diagnostic(help(
-        "try renaming one of the definitions, or moving `{shadowed_def}` to a different namespace"
-    ))]
     pub struct TypeShadowingError {
         /// Definition that is being shadowed illegally
         pub(crate) shadowed_def: InternalName,
         /// Definition that is responsible for shadowing it illegally
         pub(crate) shadowing_def: InternalName,
+    }
+
+    impl Diagnostic for TypeShadowingError {
+        fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+            Some(Box::new(format!(
+                "try renaming one of the definitions, or moving `{}` to a different namespace",
+                self.shadowed_def
+            )))
+        }
+
+        // we use the location of the `shadowing_def` as the location of the error
+        // possible future improvement: provide two underlines
+        impl_diagnostic_from_method_on_field!(shadowing_def, loc);
     }
 
     /// Action shadowing error. Some shadowing relationships are not allowed for
@@ -465,13 +504,10 @@ pub mod schema_errors {
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Diagnostic, Error)]
+    #[derive(Debug, Error)]
     #[error(
         "definition of `{shadowing_def}` illegally shadows the existing definition of `{shadowed_def}`"
     )]
-    #[diagnostic(help(
-        "try renaming one of the actions, or moving `{shadowed_def}` to a different namespace"
-    ))]
     pub struct ActionShadowingError {
         /// Definition that is being shadowed illegally
         pub(crate) shadowed_def: EntityUID,
@@ -479,14 +515,33 @@ pub mod schema_errors {
         pub(crate) shadowing_def: EntityUID,
     }
 
+    impl Diagnostic for ActionShadowingError {
+        fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+            Some(Box::new(format!(
+                "try renaming one of the actions, or moving `{}` to a different namespace",
+                self.shadowed_def
+            )))
+        }
+
+        // we use the location of the `shadowing_def` as the location of the error
+        // possible future improvement: provide two underlines
+        impl_diagnostic_from_method_on_field!(shadowing_def, loc);
+    }
+
     /// Duplicate entity type error
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Diagnostic, Error)]
-    #[error("duplicate entity type `{0}`")]
-    pub struct DuplicateEntityTypeError(pub(crate) EntityType);
+    #[derive(Debug, Error)]
+    #[error("duplicate entity type `{ty}`")]
+    pub struct DuplicateEntityTypeError {
+        pub(crate) ty: EntityType,
+    }
+
+    impl Diagnostic for DuplicateEntityTypeError {
+        impl_diagnostic_from_method_on_field!(ty, loc);
+    }
 
     /// Duplicate action error
     //
@@ -502,27 +557,45 @@ pub mod schema_errors {
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Diagnostic, Error)]
-    #[error("duplicate common type type `{0}`")]
-    pub struct DuplicateCommonTypeError(pub(crate) InternalName);
+    #[derive(Debug, Error)]
+    #[error("duplicate common type `{ty}`")]
+    pub struct DuplicateCommonTypeError {
+        pub(crate) ty: InternalName,
+    }
+
+    impl Diagnostic for DuplicateCommonTypeError {
+        impl_diagnostic_from_method_on_field!(ty, loc);
+    }
 
     /// Cycle in action hierarchy error
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Diagnostic, Error)]
-    #[error("cycle in action hierarchy containing `{0}`")]
-    pub struct CycleInActionHierarchyError(pub(crate) EntityUID);
+    #[derive(Debug, Error)]
+    #[error("cycle in action hierarchy containing `{uid}`")]
+    pub struct CycleInActionHierarchyError {
+        pub(crate) uid: EntityUID,
+    }
+
+    impl Diagnostic for CycleInActionHierarchyError {
+        impl_diagnostic_from_method_on_field!(uid, loc);
+    }
 
     /// Cycle in common type hierarchy error
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Diagnostic, Error)]
-    #[error("cycle in common type references containing `{0}`")]
-    pub struct CycleInCommonTypeReferencesError(pub(crate) InternalName);
+    #[derive(Debug, Error)]
+    #[error("cycle in common type references containing `{ty}`")]
+    pub struct CycleInCommonTypeReferencesError {
+        pub(crate) ty: InternalName,
+    }
+
+    impl Diagnostic for CycleInCommonTypeReferencesError {
+        impl_diagnostic_from_method_on_field!(ty, loc);
+    }
 
     /// Action declared in `entityType` list error
     //
@@ -538,34 +611,63 @@ pub mod schema_errors {
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Diagnostic, Error)]
-    #[error("{0} is declared with a type other than `Record`")]
-    #[diagnostic(help("{}", match .0 {
-    ContextOrShape::ActionContext(_) => "action contexts must have type `Record`",
-    ContextOrShape::EntityTypeShape(_) => "entity type shapes must have type `Record`",
-}))]
-    pub struct ContextOrShapeNotRecordError(pub(crate) ContextOrShape);
+    #[derive(Debug, Error)]
+    #[error("{ctx_or_shape} is declared with a type other than `Record`")]
+    pub struct ContextOrShapeNotRecordError {
+        pub(crate) ctx_or_shape: ContextOrShape,
+    }
+
+    impl Diagnostic for ContextOrShapeNotRecordError {
+        fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+            match &self.ctx_or_shape {
+                ContextOrShape::ActionContext(_) => {
+                    Some(Box::new("action contexts must have type `Record`"))
+                }
+                ContextOrShape::EntityTypeShape(_) => {
+                    Some(Box::new("entity type shapes must have type `Record`"))
+                }
+            }
+        }
+
+        impl_diagnostic_from_method_on_field!(ctx_or_shape, loc);
+    }
 
     /// Action attributes contain empty set error
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Diagnostic, Error)]
-    #[error("action `{0}` has an attribute that is an empty set")]
-    #[diagnostic(help(
-        "actions are not currently allowed to have attributes whose value is an empty set"
-    ))]
-    pub struct ActionAttributesContainEmptySetError(pub(crate) EntityUID);
+    #[derive(Debug, Error)]
+    #[error("action `{uid}` has an attribute that is an empty set")]
+    pub struct ActionAttributesContainEmptySetError {
+        pub(crate) uid: EntityUID,
+    }
+
+    impl Diagnostic for ActionAttributesContainEmptySetError {
+        fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+            Some(Box::new(
+                "actions are not currently allowed to have attributes whose value is an empty set",
+            ))
+        }
+
+        impl_diagnostic_from_method_on_field!(uid, loc);
+    }
 
     /// Unsupported action attribute error
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Diagnostic, Error)]
-    #[error("action `{0}` has an attribute with unsupported JSON representation: {1}")]
-    pub struct UnsupportedActionAttributeError(pub(crate) EntityUID, pub(crate) SmolStr);
+    #[derive(Debug, Error)]
+    #[error("action `{uid}` has an attribute with unsupported JSON representation: {attr}")]
+    pub struct UnsupportedActionAttributeError {
+        pub(crate) uid: EntityUID,
+        pub(crate) attr: SmolStr,
+    }
+
+    impl Diagnostic for UnsupportedActionAttributeError {
+        impl_diagnostic_from_method_on_field!(uid, loc);
+    }
 
     /// Unsupported `__expr` escape error
     //
@@ -601,6 +703,15 @@ pub mod schema_errors {
     pub(crate) enum ContextOrShape {
         ActionContext(EntityUID),
         EntityTypeShape(EntityType),
+    }
+
+    impl ContextOrShape {
+        pub fn loc(&self) -> Option<&Loc> {
+            match self {
+                ContextOrShape::ActionContext(uid) => uid.loc(),
+                ContextOrShape::EntityTypeShape(ty) => ty.loc(),
+            }
+        }
     }
 
     impl std::fmt::Display for ContextOrShape {
@@ -712,6 +823,8 @@ pub mod schema_errors {
                 Box::new(format!("did you mean `{suggestion}`?")) as Box<dyn Display>
             })
         }
+
+        impl_diagnostic_from_method_on_field!(actual, loc);
     }
 
     /// Could not find a definition for a common type, at a point in the code
@@ -720,12 +833,19 @@ pub mod schema_errors {
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Error, Debug, Diagnostic)]
+    #[derive(Error, Debug)]
     #[error("internal invariant violated: failed to find a common-type definition for {name}")]
-    #[help("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the schema that caused this error")]
     pub struct CommonTypeInvariantViolationError {
         /// Fully-qualified [`InternalName`] of the common type we failed to find a definition for
         pub(crate) name: InternalName,
+    }
+
+    impl Diagnostic for CommonTypeInvariantViolationError {
+        fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+            Some(Box::new("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the schema that caused this error"))
+        }
+
+        impl_diagnostic_from_method_on_field!(name, loc);
     }
 
     /// Could not find a definition for an action, at a point in the code where
@@ -734,11 +854,18 @@ pub mod schema_errors {
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Error, Debug, Diagnostic)]
+    #[derive(Error, Debug)]
     #[error("internal invariant violated: failed to find {} for {}", if .euids.len() > 1 { "action definitions" } else { "an action definition" }, .euids.iter().join(", "))]
-    #[help("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the schema that caused this error")]
     pub struct ActionInvariantViolationError {
         /// Fully-qualified [`EntityUID`]s of the action(s) we failed to find a definition for
         pub(crate) euids: NonEmpty<EntityUID>,
+    }
+
+    impl Diagnostic for ActionInvariantViolationError {
+        fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+            Some(Box::new("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the schema that caused this error"))
+        }
+
+        impl_diagnostic_from_method_on_nonempty_field!(euids, loc);
     }
 }
