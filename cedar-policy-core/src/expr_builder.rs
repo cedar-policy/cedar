@@ -27,50 +27,41 @@ use crate::{
     parser::Loc,
 };
 
+pub trait LocatedAnnotatedExprBuilder: ExprBuilder {
+    ///
+    type Data;
+    ///
+    fn new(loc: &Loc, data: Self::Data) -> Self;
+}
+
+pub trait AnnotatedExprBuilder {
+    ///
+    type Data;
+    ///
+    fn new(data: Self::Data) -> Self;
+}
+
+/// Implements expression building for an expression type that does not require
+/// a source location or annotated data.
+pub trait LocatedExprBuilder: ExprBuilder {
+    fn new(loc: &Loc) -> Self;
+}
+
+/// Implements expression building for an expression type that does not require
+/// a source location or annotated data.
+pub trait UndecoratedExprBuilder {
+    ///
+    type ExprBuilder: ExprBuilder;
+    ///
+    fn new() -> Self::ExprBuilder;
+}
+
 /// Defines a generic interface for building different expression data
 /// structures.
 #[allow(clippy::wrong_self_convention)]
-pub trait ExprBuilder {
+pub trait ExprBuilder: Clone {
     /// The type of expression constructed by this instance of `ExprBuilder``.
     type Expr: Clone + std::fmt::Display;
-
-    /// Type for extra information stored on nodes of the expression AST. This
-    /// can be `()` if no data is stored.
-    type Data: Clone + Default;
-
-    /// Construct a new expression builder for an expression that will not carry any data.
-    fn new() -> Self
-    where
-        Self: Sized,
-    {
-        Self::with_data(Self::Data::default())
-    }
-
-    /// Build an expression storing this information
-    fn with_data(data: Self::Data) -> Self;
-
-    /// Build an expression located at `l`, if `l` is Some. An implementation
-    /// may ignore this if it cannot store source information.
-    fn with_maybe_source_loc(self, l: Option<&Loc>) -> Self;
-
-    /// Build an expression located at `l`. An implementation may ignore this if
-    /// it cannot store source information.
-    fn with_source_loc(self, l: &Loc) -> Self
-    where
-        Self: Sized,
-    {
-        self.with_maybe_source_loc(Some(l))
-    }
-
-    /// Extract the location for this builder, if set. Used internally to
-    /// provide utilities that construct multiple nodes which should all be
-    /// reported as having the same source location.
-    fn loc(&self) -> Option<&Loc>;
-
-    /// Extract the the data that will be stored on the constructed expression.
-    /// Used internally to provide utilities that construct multiple nodes which
-    /// will all have the same data.
-    fn data(&self) -> &Self::Data;
 
     /// Create an expression that's just a single `Literal`.
     ///
@@ -181,9 +172,9 @@ pub trait ExprBuilder {
     where
         Self: Sized,
     {
-        Self::with_data(self.data().clone()).and(
-            Self::with_data(self.data().clone()).is_entity_type(e1.clone(), entity_type),
-            Self::with_data(self.data().clone()).is_in(e1, e2),
+        self.clone().and(
+            self.clone().is_entity_type(e1.clone(), entity_type),
+            self.is_in(e1, e2),
         )
     }
 
@@ -227,9 +218,7 @@ pub trait ExprBuilder {
     where
         Self: Sized,
     {
-        Self::with_data(self.data().clone())
-            .with_maybe_source_loc(self.loc())
-            .not(self.is_eq(e1, e2))
+        self.clone().not(self.is_eq(e1, e2))
     }
 
     /// Create a '>' expression.
@@ -238,9 +227,7 @@ pub trait ExprBuilder {
         Self: Sized,
     {
         // e1 > e2 is defined as !(e1 <= e2)
-        Self::with_data(self.data().clone())
-            .with_maybe_source_loc(self.loc())
-            .not(self.lesseq(e1, e2))
+        self.clone().not(self.lesseq(e1, e2))
     }
 
     /// Create a '>=' expression.
@@ -249,10 +236,7 @@ pub trait ExprBuilder {
         Self: Sized,
     {
         // e1 >= e2 is defined as !(e1 < e2)
-        // TODO preserve source loc
-        Self::with_data(self.data().clone())
-            .with_maybe_source_loc(self.loc())
-            .not(self.less(e1, e2))
+        self.clone().not(self.less(e1, e2))
     }
 
     /// Create an `and` expression that may have more than two subexpressions (A && B && C)
@@ -266,11 +250,9 @@ pub trait ExprBuilder {
     where
         Self: Sized,
     {
-        others.into_iter().fold(first, |acc, next| {
-            Self::with_data(self.data().clone())
-                .with_maybe_source_loc(self.loc())
-                .and(acc, next)
-        })
+        others
+            .into_iter()
+            .fold(first, |acc, next| self.clone().and(acc, next))
     }
 
     /// Create an `or` expression that may have more than two subexpressions (A || B || C)
@@ -284,10 +266,8 @@ pub trait ExprBuilder {
     where
         Self: Sized,
     {
-        others.into_iter().fold(first, |acc, next| {
-            Self::with_data(self.data().clone())
-                .with_maybe_source_loc(self.loc())
-                .or(acc, next)
-        })
+        others
+            .into_iter()
+            .fold(first, |acc, next| self.clone().or(acc, next))
     }
 }

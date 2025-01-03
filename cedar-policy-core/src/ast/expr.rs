@@ -16,7 +16,7 @@
 
 use crate::{
     ast::*,
-    expr_builder::{self, ExprBuilder as _},
+    expr_builder::{self, ExprBuilder as _, UndecoratedExprBuilder},
     extensions::Extensions,
     parser::{err::ParseErrors, Loc},
 };
@@ -1130,36 +1130,63 @@ impl From<&Expr> for proto::Expr {
 
 /// Builder for constructing `Expr` objects annotated with some `data`
 /// (possibly taking default value) and optionally a `source_loc`.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ExprBuilder<T> {
     source_loc: Option<Loc>,
     data: T,
 }
 
-impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
-    type Expr = Expr<T>;
+mod expr_builder_impl {
+    use crate::expr_builder;
+    use crate::parser::Loc;
 
-    type Data = T;
+    use super::ExprBuilder;
 
-    fn loc(&self) -> Option<&Loc> {
-        self.source_loc.as_ref()
-    }
+    impl<T: Default + Clone> expr_builder::LocatedAnnotatedExprBuilder for ExprBuilder<T> {
+        type Data = T;
 
-    fn data(&self) -> &Self::Data {
-        &self.data
-    }
-
-    fn with_data(data: T) -> Self {
-        Self {
-            source_loc: None,
-            data,
+        fn new(loc: &Loc, data: Self::Data) -> Self {
+            Self {
+                source_loc: Some(loc.clone()),
+                data,
+            }
         }
     }
 
-    fn with_maybe_source_loc(mut self, maybe_source_loc: Option<&Loc>) -> Self {
-        self.source_loc = maybe_source_loc.cloned();
-        self
+    impl<T: Default + Clone> expr_builder::LocatedExprBuilder for ExprBuilder<T> {
+        fn new(loc: &Loc) -> Self {
+            Self {
+                source_loc: Some(loc.clone()),
+                data: T::default(),
+            }
+        }
     }
+
+    impl<T: Default + Clone> expr_builder::AnnotatedExprBuilder for ExprBuilder<T> {
+        type Data = T;
+
+        fn new(data: Self::Data) -> Self {
+            Self {
+                source_loc: None,
+                data,
+            }
+        }
+    }
+
+    impl<T: Default + Clone> expr_builder::UndecoratedExprBuilder for ExprBuilder<T> {
+        type ExprBuilder = ExprBuilder<T>;
+
+        fn new() -> Self::ExprBuilder {
+            Self {
+                source_loc: None,
+                data: T::default(),
+            }
+        }
+    }
+}
+
+impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
+    type Expr = Expr<T>;
 
     /// Create an `Expr` that's just a single `Literal`.
     ///
@@ -1487,15 +1514,29 @@ impl<T> ExprBuilder<T> {
     pub fn record_arc(self, map: Arc<BTreeMap<SmolStr, Expr<T>>>) -> Expr<T> {
         self.with_expr_kind(ExprKind::Record(map))
     }
-}
 
-impl<T: Clone + Default> ExprBuilder<T> {
+    fn loc(&self) -> Option<&Loc> {
+        self.source_loc.as_ref()
+    }
+
+    fn data(&self) -> &T {
+        &self.data
+    }
+
+    fn with_data(data: T) -> Self {
+        Self {
+            source_loc: None,
+            data,
+        }
+    }
+
     /// Utility used the validator to get an expression with the same source
     /// location as an existing expression. This is done when reconstructing the
     /// `Expr` with type information.
-    pub fn with_same_source_loc<U>(self, expr: &Expr<U>) -> Self {
-        use expr_builder::ExprBuilder;
-        self.with_maybe_source_loc(expr.source_loc.as_ref())
+    pub fn with_same_source_loc<U>(mut self, expr: &Expr<U>) -> Self {
+        let maybe_source_loc = expr.source_loc.as_ref();
+        self.source_loc = maybe_source_loc.cloned();
+        self
     }
 }
 

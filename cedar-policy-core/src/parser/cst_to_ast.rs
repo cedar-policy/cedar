@@ -43,7 +43,7 @@ use crate::ast::{
     self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
     PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
 };
-use crate::expr_builder::ExprBuilder;
+use crate::expr_builder::{ExprBuilder as _, LocatedExprBuilder};
 use crate::fuzzy_match::fuzzy_search_limited;
 use itertools::Either;
 use nonempty::nonempty;
@@ -481,13 +481,13 @@ impl Node<Option<cst::Ident>> {
 }
 
 impl ast::UnreservedId {
-    fn to_meth<Build: ExprBuilder>(
+    fn to_meth<Build: LocatedExprBuilder>(
         &self,
         e: Build::Expr,
         args: Vec<Build::Expr>,
         loc: &Loc,
     ) -> Result<Build::Expr> {
-        let builder = Build::new().with_source_loc(loc);
+        let builder = Build::new(loc);
         match self.as_ref() {
             "contains" => extract_single_argument(args.into_iter(), "contains", loc)
                 .map(|arg| builder.contains(e, arg)),
@@ -751,7 +751,7 @@ impl Node<Option<cst::Cond>> {
     /// `true` if the cond is a `when` clause, `false` if it is an `unless`
     /// clause. (The returned `expr` is already adjusted for this, the `bool` is
     /// for information only.)
-    fn to_expr<Build: ExprBuilder>(&self) -> Result<(Build::Expr, bool)> {
+    fn to_expr<Build: LocatedExprBuilder>(&self) -> Result<(Build::Expr, bool)> {
         let cond = self.try_as_inner()?;
 
         let is_when = cond.cond.to_cond_is_when()?;
@@ -782,7 +782,7 @@ impl Node<Option<cst::Cond>> {
             if is_when {
                 (e, true)
             } else {
-                (Build::new().with_source_loc(&self.loc).not(e), false)
+                (Build::new(&self.loc).not(e), false)
             }
         })
     }
@@ -840,10 +840,10 @@ where
         ToASTError::new(kind.into(), self.loc().clone())
     }
 
-    fn into_expr<Build: ExprBuilder<Expr = Expr>>(self) -> Result<Expr> {
+    fn into_expr<Build: LocatedExprBuilder<Expr = Expr>>(self) -> Result<Expr> {
         match self {
             Self::Expr { expr, .. } => Ok(expr),
-            Self::Var { var, loc } => Ok(Build::new().with_source_loc(&loc).var(var)),
+            Self::Var { var, loc } => Ok(Build::new(&loc).var(var)),
             Self::Name { name, loc } => Err(ToASTError::new(
                 ToASTErrorKind::ArbitraryVariable(name.to_string().into()),
                 loc,
@@ -851,13 +851,13 @@ where
             .into()),
             Self::StrLit { lit, loc } => {
                 match to_unescaped_string(lit) {
-                    Ok(s) => Ok(Build::new().with_source_loc(&loc).val(s)),
+                    Ok(s) => Ok(Build::new(&loc).val(s)),
                     Err(escape_errs) => Err(ParseErrors::new_from_nonempty(escape_errs.map(|e| {
                         ToASTError::new(ToASTErrorKind::Unescape(e), loc.clone()).into()
                     }))),
                 }
             }
-            Self::BoolLit { val, loc } => Ok(Build::new().with_source_loc(&loc).val(val)),
+            Self::BoolLit { val, loc } => Ok(Build::new(&loc).val(val)),
         }
     }
 
@@ -950,10 +950,10 @@ where
 
 impl Node<Option<cst::Expr>> {
     /// convert `cst::Expr` to `ast::Expr`
-    pub fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+    pub fn to_expr<Build: LocatedExprBuilder>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    pub(crate) fn to_expr_or_special<Build: ExprBuilder>(
+    pub(crate) fn to_expr_or_special<Build: LocatedExprBuilder>(
         &self,
     ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let expr = self.try_as_inner()?;
@@ -967,7 +967,7 @@ impl Node<Option<cst::Expr>> {
 
                 let (i, t, e) = flatten_tuple_3(maybe_guard, maybe_then, maybe_else)?;
                 Ok(ExprOrSpecial::Expr {
-                    expr: Build::new().with_source_loc(&self.loc).ite(i, t, e),
+                    expr: Build::new(&self.loc).ite(i, t, e),
                     loc: self.loc.clone(),
                 })
             }
@@ -976,7 +976,9 @@ impl Node<Option<cst::Expr>> {
 }
 
 impl Node<Option<cst::Or>> {
-    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
+    fn to_expr_or_special<Build: LocatedExprBuilder>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let or = self.try_as_inner()?;
 
         let maybe_first = or.initial.to_expr_or_special::<Build>();
@@ -989,7 +991,7 @@ impl Node<Option<cst::Or>> {
             Ok(first)
         } else {
             first.into_expr::<Build>().map(|first| ExprOrSpecial::Expr {
-                expr: Build::new().with_source_loc(&self.loc).or_nary(first, rest),
+                expr: Build::new(&self.loc).or_nary(first, rest),
                 loc: self.loc.clone(),
             })
         }
@@ -997,10 +999,12 @@ impl Node<Option<cst::Or>> {
 }
 
 impl Node<Option<cst::And>> {
-    pub(crate) fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+    pub(crate) fn to_expr<Build: LocatedExprBuilder>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
+    fn to_expr_or_special<Build: LocatedExprBuilder>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let and = self.try_as_inner()?;
 
         let maybe_first = and.initial.to_expr_or_special::<Build>();
@@ -1013,9 +1017,7 @@ impl Node<Option<cst::And>> {
             Ok(first)
         } else {
             first.into_expr::<Build>().map(|first| ExprOrSpecial::Expr {
-                expr: Build::new()
-                    .with_source_loc(&self.loc)
-                    .and_nary(first, rest),
+                expr: Build::new(&self.loc).and_nary(first, rest),
                 loc: self.loc.clone(),
             })
         }
@@ -1023,10 +1025,12 @@ impl Node<Option<cst::And>> {
 }
 
 impl Node<Option<cst::Relation>> {
-    fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+    fn to_expr<Build: LocatedExprBuilder>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
+    fn to_expr_or_special<Build: LocatedExprBuilder>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let rel = self.try_as_inner()?;
 
         match rel {
@@ -1072,9 +1076,7 @@ impl Node<Option<cst::Relation>> {
                 let maybe_pattern = pattern.to_expr_or_special::<Build>()?.into_pattern();
                 let (target, pattern) = flatten_tuple_2(maybe_target, maybe_pattern)?;
                 Ok(ExprOrSpecial::Expr {
-                    expr: Build::new()
-                        .with_source_loc(&self.loc)
-                        .like(target, pattern.into()),
+                    expr: Build::new(&self.loc).like(target, pattern.into()),
                     loc: self.loc.clone(),
                 })
             }
@@ -1102,14 +1104,12 @@ impl Node<Option<cst::Relation>> {
                     Some(in_entity) => {
                         let in_expr = in_entity.to_expr::<Build>()?;
                         Ok(ExprOrSpecial::Expr {
-                            expr: Build::new()
-                                .with_source_loc(&self.loc)
-                                .is_in_entity_type(t, n, in_expr),
+                            expr: Build::new(&self.loc).is_in_entity_type(t, n, in_expr),
                             loc: self.loc.clone(),
                         })
                     }
                     None => Ok(ExprOrSpecial::Expr {
-                        expr: Build::new().with_source_loc(&self.loc).is_entity_type(t, n),
+                        expr: Build::new(&self.loc).is_entity_type(t, n),
                         loc: self.loc.clone(),
                     }),
                 }
@@ -1119,7 +1119,7 @@ impl Node<Option<cst::Relation>> {
 }
 
 impl Node<Option<cst::Add>> {
-    fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+    fn to_expr<Build: LocatedExprBuilder>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
 
@@ -1132,7 +1132,7 @@ impl Node<Option<cst::Add>> {
     // added to directly tackle the CST to AST conversion for the has operator,
     // This design choice should be noninvasive to existing CST to AST logic,
     // despite producing deadcode.
-    pub(crate) fn to_has_rhs<Build: ExprBuilder>(
+    pub(crate) fn to_has_rhs<Build: LocatedExprBuilder>(
         &self,
     ) -> Result<Either<SmolStr, NonEmpty<UnreservedId>>> {
         let inner @ cst::Add { initial, extended } = self.try_as_inner()?;
@@ -1226,7 +1226,7 @@ impl Node<Option<cst::Add>> {
         }
     }
 
-    pub(crate) fn to_expr_or_special<Build: ExprBuilder>(
+    pub(crate) fn to_expr_or_special<Build: LocatedExprBuilder>(
         &self,
     ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let add = self.try_as_inner()?;
@@ -1252,10 +1252,12 @@ impl Node<Option<cst::Add>> {
 }
 
 impl Node<Option<cst::Mult>> {
-    fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+    fn to_expr<Build: LocatedExprBuilder>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
+    fn to_expr_or_special<Build: LocatedExprBuilder>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let mult = self.try_as_inner()?;
 
         let maybe_first = mult.initial.to_expr_or_special::<Build>();
@@ -1284,10 +1286,12 @@ impl Node<Option<cst::Mult>> {
 }
 
 impl Node<Option<cst::Unary>> {
-    fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+    fn to_expr<Build: LocatedExprBuilder>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
+    fn to_expr_or_special<Build: LocatedExprBuilder>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let unary = self.try_as_inner()?;
 
         match unary.op {
@@ -1297,7 +1301,7 @@ impl Node<Option<cst::Unary>> {
                     inner
                         .and_then(|e| e.into_expr::<Build>())
                         .map(|expr| ExprOrSpecial::Expr {
-                            expr: Build::new().with_source_loc(&self.loc).not(expr),
+                            expr: Build::new(&self.loc).not(expr),
                             loc: self.loc.clone(),
                         })
                 })
@@ -1311,16 +1315,10 @@ impl Node<Option<cst::Unary>> {
                 // decreases by one.
                 let (last, rc) = if let Some(cst::Literal::Num(n)) = unary.item.to_lit() {
                     match n.cmp(&(i64::MAX as u64 + 1)) {
-                        Ordering::Equal => (
-                            Ok(Build::new().with_source_loc(&unary.item.loc).val(i64::MIN)),
-                            c - 1,
-                        ),
-                        Ordering::Less => (
-                            Ok(Build::new()
-                                .with_source_loc(&unary.item.loc)
-                                .val(-(*n as i64))),
-                            c - 1,
-                        ),
+                        Ordering::Equal => (Ok(Build::new(&unary.item.loc).val(i64::MIN)), c - 1),
+                        Ordering::Less => {
+                            (Ok(Build::new(&unary.item.loc).val(-(*n as i64))), c - 1)
+                        }
                         Ordering::Greater => (
                             Err(self
                                 .to_ast_err(ToASTErrorKind::IntegerLiteralTooLarge(*n))
@@ -1341,9 +1339,7 @@ impl Node<Option<cst::Unary>> {
                 };
                 // Fold the expression into a series of negation operations.
                 (0..rc)
-                    .fold(last, |r, _| {
-                        r.map(|e| Build::new().with_source_loc(&self.loc).neg(e))
-                    })
+                    .fold(last, |r, _| r.map(|e| Build::new(&self.loc).neg(e)))
                     .map(|expr| ExprOrSpecial::Expr {
                         expr,
                         loc: self.loc.clone(),
@@ -1394,7 +1390,7 @@ impl Node<Option<cst::Member>> {
     /// acessors. In most cases, `tail` is returned unmodified, but in the method
     /// call case we need to pull off the `Call` element containing the arguments.
     #[allow(clippy::type_complexity)]
-    fn build_expr_accessor<'a, Build: ExprBuilder>(
+    fn build_expr_accessor<'a, Build: LocatedExprBuilder>(
         &self,
         head: Build::Expr,
         next: &mut AstAccessor<Build::Expr>,
@@ -1417,26 +1413,20 @@ impl Node<Option<cst::Member>> {
             // field of arbitrary expr like `(principal.foo).bar`
             (Field(id), rest) => {
                 let id = mem::replace(id, ast::UnreservedId::empty());
-                Ok((
-                    Build::new()
-                        .with_source_loc(&self.loc)
-                        .get_attr(head, id.to_smolstr()),
-                    rest,
-                ))
+                Ok((Build::new(&self.loc).get_attr(head, id.to_smolstr()), rest))
             }
 
             // index into arbitrary expr like `(principal.foo)["bar"]`
             (Index(i), rest) => {
                 let i = mem::take(i);
-                Ok((
-                    Build::new().with_source_loc(&self.loc).get_attr(head, i),
-                    rest,
-                ))
+                Ok((Build::new(&self.loc).get_attr(head, i), rest))
             }
         }
     }
 
-    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
+    fn to_expr_or_special<Build: LocatedExprBuilder>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let mem = self.try_as_inner()?;
 
         let maybe_prim = mem.item.to_expr_or_special::<Build>();
@@ -1484,11 +1474,7 @@ impl Node<Option<cst::Member>> {
                     // move the id out of the slice as well, to avoid cloning the internal string
                     let id = mem::replace(id, ast::UnreservedId::empty());
                     (
-                        id.to_meth::<Build>(
-                            Build::new().with_source_loc(&var_loc).var(var),
-                            args,
-                            &self.loc,
-                        )?,
+                        id.to_meth::<Build>(Build::new(&var_loc).var(var), args, &self.loc)?,
                         rest,
                     )
                 }
@@ -1497,10 +1483,8 @@ impl Node<Option<cst::Member>> {
                 (Var { var, loc: var_loc }, [Field(i), rest @ ..]) => {
                     let id = mem::replace(i, ast::UnreservedId::empty());
                     (
-                        Build::new().with_source_loc(&self.loc).get_attr(
-                            Build::new().with_source_loc(&var_loc).var(var),
-                            id.to_smolstr(),
-                        ),
+                        Build::new(&self.loc)
+                            .get_attr(Build::new(&var_loc).var(var), id.to_smolstr()),
                         rest,
                     )
                 }
@@ -1527,9 +1511,7 @@ impl Node<Option<cst::Member>> {
                 (Var { var, loc: var_loc }, [Index(i), rest @ ..]) => {
                     let i = mem::take(i);
                     (
-                        Build::new()
-                            .with_source_loc(&self.loc)
-                            .get_attr(Build::new().with_source_loc(&var_loc).var(var), i),
+                        Build::new(&var_loc).get_attr(Build::new(&self.loc).var(var), i),
                         rest,
                     )
                 }
@@ -1551,7 +1533,7 @@ impl Node<Option<cst::Member>> {
 }
 
 impl Node<Option<cst::MemAccess>> {
-    fn to_access<Build: ExprBuilder>(&self) -> Result<AstAccessor<Build::Expr>> {
+    fn to_access<Build: LocatedExprBuilder>(&self) -> Result<AstAccessor<Build::Expr>> {
         let acc = self.try_as_inner()?;
 
         match acc {
@@ -1572,10 +1554,12 @@ impl Node<Option<cst::MemAccess>> {
 }
 
 impl Node<Option<cst::Primary>> {
-    pub(crate) fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+    pub(crate) fn to_expr<Build: LocatedExprBuilder>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
+    fn to_expr_or_special<Build: LocatedExprBuilder>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let prim = self.try_as_inner()?;
 
         match prim {
@@ -1617,18 +1601,15 @@ impl Node<Option<cst::Primary>> {
             cst::Primary::EList(es) => {
                 let maybe_list = ParseErrors::transpose(es.iter().map(|e| e.to_expr::<Build>()));
                 maybe_list.map(|list| ExprOrSpecial::Expr {
-                    expr: Build::new().with_source_loc(&self.loc).set(list),
+                    expr: Build::new(&self.loc).set(list),
                     loc: self.loc.clone(),
                 })
             }
             cst::Primary::RInits(is) => {
                 let rec = ParseErrors::transpose(is.iter().map(|i| i.to_init::<Build>()))?;
-                let expr = Build::new()
-                    .with_source_loc(&self.loc)
-                    .record(rec)
-                    .map_err(|e| {
-                        Into::<ParseErrors>::into(ToASTError::new(e.into(), self.loc.clone()))
-                    })?;
+                let expr = Build::new(&self.loc).record(rec).map_err(|e| {
+                    Into::<ParseErrors>::into(ToASTError::new(e.into(), self.loc.clone()))
+                })?;
                 Ok(ExprOrSpecial::Expr {
                     expr,
                     loc: self.loc.clone(),
@@ -1638,7 +1619,7 @@ impl Node<Option<cst::Primary>> {
     }
 
     /// convert `cst::Primary` representing a string literal to a `SmolStr`.
-    pub fn to_string_literal<Build: ExprBuilder>(&self) -> Result<SmolStr> {
+    pub fn to_string_literal<Build: LocatedExprBuilder>(&self) -> Result<SmolStr> {
         let prim = self.try_as_inner()?;
 
         match prim {
@@ -1651,9 +1632,9 @@ impl Node<Option<cst::Primary>> {
 }
 
 impl Node<Option<cst::Slot>> {
-    fn into_expr<Build: ExprBuilder>(self) -> Result<Build::Expr> {
+    fn into_expr<Build: LocatedExprBuilder>(self) -> Result<Build::Expr> {
         match self.try_as_inner()?.try_into() {
-            Ok(slot_id) => Ok(Build::new().with_source_loc(&self.loc).slot(slot_id)),
+            Ok(slot_id) => Ok(Build::new(&self.loc).slot(slot_id)),
             Err(e) => Err(self.to_ast_err(e).into()),
         }
     }
@@ -1682,10 +1663,10 @@ impl From<ast::SlotId> for cst::Slot {
 
 impl Node<Option<cst::Name>> {
     /// Build type constraints
-    fn to_type_constraint<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+    fn to_type_constraint<Build: LocatedExprBuilder>(&self) -> Result<Build::Expr> {
         match self.as_inner() {
             Some(_) => Err(self.to_ast_err(ToASTErrorKind::TypeConstraints).into()),
-            None => Ok(Build::new().with_source_loc(&self.loc).val(true)),
+            None => Ok(Build::new(&self.loc).val(true)),
         }
     }
 
@@ -1756,7 +1737,7 @@ impl ast::Name {
         }
     }
 
-    fn into_func<Build: ExprBuilder>(
+    fn into_func<Build: LocatedExprBuilder>(
         self,
         args: Vec<Build::Expr>,
         loc: Loc,
@@ -1778,9 +1759,7 @@ impl ast::Name {
             }
         }
         if EXTENSION_STYLES.functions.contains(&self) {
-            Ok(Build::new()
-                .with_source_loc(&loc)
-                .call_extension_fn(self, args))
+            Ok(Build::new(&loc).call_extension_fn(self, args))
         } else {
             fn suggest_function(name: &ast::Name, funs: &HashSet<&ast::Name>) -> Option<String> {
                 const SUGGEST_FUNCTION_MAX_DISTANCE: usize = 3;
@@ -1826,14 +1805,15 @@ impl Node<Option<cst::Ref>> {
                 .into()),
         }
     }
-    fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
-        self.to_ref()
-            .map(|euid| Build::new().with_source_loc(&self.loc).val(euid))
+    fn to_expr<Build: LocatedExprBuilder>(&self) -> Result<Build::Expr> {
+        self.to_ref().map(|euid| Build::new(&self.loc).val(euid))
     }
 }
 
 impl Node<Option<cst::Literal>> {
-    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
+    fn to_expr_or_special<Build: LocatedExprBuilder>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let lit = self.try_as_inner()?;
 
         match lit {
@@ -1847,7 +1827,7 @@ impl Node<Option<cst::Literal>> {
             }),
             cst::Literal::Num(n) => match Integer::try_from(*n) {
                 Ok(i) => Ok(ExprOrSpecial::Expr {
-                    expr: Build::new().with_source_loc(&self.loc).val(i),
+                    expr: Build::new(&self.loc).val(i),
                     loc: self.loc.clone(),
                 }),
                 Err(_) => Err(self
@@ -1866,7 +1846,7 @@ impl Node<Option<cst::Literal>> {
 }
 
 impl Node<Option<cst::RecInit>> {
-    fn to_init<Build: ExprBuilder>(&self) -> Result<(SmolStr, Build::Expr)> {
+    fn to_init<Build: LocatedExprBuilder>(&self) -> Result<(SmolStr, Build::Expr)> {
         let lit = self.try_as_inner()?;
 
         let maybe_attr = lit.0.to_expr_or_special::<Build>()?.into_valid_attr();
@@ -1905,14 +1885,10 @@ fn construct_template_policy(
     if let Some(first_expr) = conds_iter.next() {
         // a left fold of conditions
         // e.g., [c1, c2, c3,] --> ((c1 && c2) && c3)
-        construct_template(
-            ast::ExprBuilder::new()
-                .with_source_loc(loc)
-                .and_nary(first_expr, conds_iter),
-        )
+        construct_template(ast::ExprBuilder::new(loc).and_nary(first_expr, conds_iter))
     } else {
         // use `true` to mark the absence of non-scope constraints
-        construct_template(ast::ExprBuilder::new().with_source_loc(loc).val(true))
+        construct_template(ast::ExprBuilder::new(loc).val(true))
     }
 }
 fn construct_string_from_var(v: ast::Var) -> SmolStr {
@@ -1931,13 +1907,13 @@ fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::InternalNam
     }
 }
 
-fn construct_expr_rel<Build: ExprBuilder>(
+fn construct_expr_rel<Build: LocatedExprBuilder>(
     f: Build::Expr,
     rel: cst::RelOp,
     s: Build::Expr,
     loc: Loc,
 ) -> Result<Build::Expr> {
-    let builder = Build::new().with_source_loc(&loc);
+    let builder = Build::new(&loc);
     match rel {
         cst::RelOp::Less => Ok(builder.less(f, s)),
         cst::RelOp::LessEq => Ok(builder.lesseq(f, s)),
@@ -1952,14 +1928,14 @@ fn construct_expr_rel<Build: ExprBuilder>(
     }
 }
 /// used for a chain of addition and/or subtraction
-fn construct_chained_add<Build: ExprBuilder>(
+fn construct_chained_add<Build: LocatedExprBuilder>(
     f: Build::Expr,
     chained: impl IntoIterator<Item = (cst::AddOp, Build::Expr)>,
     loc: &Loc,
 ) -> Build::Expr {
     let mut expr = f;
     for (op, next_expr) in chained {
-        let builder = Build::new().with_source_loc(loc);
+        let builder = Build::new(loc);
         expr = match op {
             cst::AddOp::Plus => builder.add(expr, next_expr),
             cst::AddOp::Minus => builder.sub(expr, next_expr),
@@ -1968,30 +1944,26 @@ fn construct_chained_add<Build: ExprBuilder>(
     expr
 }
 /// used for a chain of multiplication only (no division or mod)
-fn construct_chained_mul<Build: ExprBuilder>(
+fn construct_chained_mul<Build: LocatedExprBuilder>(
     f: Build::Expr,
     chained: impl IntoIterator<Item = Build::Expr>,
     loc: &Loc,
 ) -> Build::Expr {
     let mut expr = f;
     for next_expr in chained {
-        expr = Build::new().with_source_loc(loc).mul(expr, next_expr);
+        expr = Build::new(loc).mul(expr, next_expr);
     }
     expr
 }
 
-fn construct_exprs_extended_has<Build: ExprBuilder>(
+fn construct_exprs_extended_has<Build: LocatedExprBuilder>(
     t: Build::Expr,
     attrs: &NonEmpty<SmolStr>,
     loc: &Loc,
 ) -> Build::Expr {
     let (first, rest) = attrs.split_first();
-    let has_expr = Build::new()
-        .with_source_loc(loc)
-        .has_attr(t.clone(), first.to_owned());
-    let get_expr = Build::new()
-        .with_source_loc(loc)
-        .get_attr(t, first.to_owned());
+    let has_expr = Build::new(loc).has_attr(t.clone(), first.to_owned());
+    let get_expr = Build::new(loc).get_attr(t, first.to_owned());
     // Foldl on the attribute list
     // It produces the following for `principal has contactInfo.address.zip`
     //     Expr.and
@@ -2016,15 +1988,11 @@ fn construct_exprs_extended_has<Build: ExprBuilder>(
     rest.iter()
         .fold((has_expr, get_expr), |(has_expr, get_expr), attr| {
             (
-                Build::new().with_source_loc(loc).and(
+                Build::new(loc).and(
                     has_expr,
-                    Build::new()
-                        .with_source_loc(loc)
-                        .has_attr(get_expr.clone(), attr.to_owned()),
+                    Build::new(loc).has_attr(get_expr.clone(), attr.to_owned()),
                 ),
-                Build::new()
-                    .with_source_loc(loc)
-                    .get_attr(get_expr, attr.to_owned()),
+                Build::new(loc).get_attr(get_expr, attr.to_owned()),
             )
         })
         .0
