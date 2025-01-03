@@ -21,8 +21,10 @@ use cedar_policy_core::{
     entities::CedarValueJson,
     est::Annotations,
     extensions::Extensions,
+    parser::Loc,
     FromNormalizedStr,
 };
+use educe::Educe;
 use nonempty::nonempty;
 use serde::{
     de::{MapAccess, Visitor},
@@ -48,7 +50,8 @@ use crate::{
 };
 
 /// Represents the definition of a common type in the schema.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, Deserialize)]
+#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[educe(PartialEq, Eq)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 pub struct CommonType<N> {
     /// The referred type
@@ -58,6 +61,14 @@ pub struct CommonType<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
     pub annotations: Annotations,
+    /// Source location
+    ///
+    /// (As of this writing, this is not populated when parsing from JSON.
+    /// It is only populated if constructing this structure from the
+    /// corresponding Cedar-syntax structure.)
+    #[serde(skip)]
+    #[educe(PartialEq(ignore))]
+    pub loc: Option<Loc>,
 }
 
 /// A [`Fragment`] is split into multiple namespace definitions, and is just a
@@ -353,6 +364,7 @@ impl NamespaceDefinition<RawName> {
                         CommonType {
                             ty: v.ty.conditionally_qualify_type_references(ns),
                             annotations: v.annotations,
+                            loc: v.loc,
                         },
                     )
                 })
@@ -393,6 +405,7 @@ impl NamespaceDefinition<ConditionalName> {
                         CommonType {
                             ty: v.ty.fully_qualify_type_references(all_defs)?,
                             annotations: v.annotations,
+                            loc: v.loc,
                         },
                     ))
                 })
@@ -420,7 +433,8 @@ impl NamespaceDefinition<ConditionalName> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`EntityType`], including recursively.
 /// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[educe(PartialEq, Eq)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
@@ -444,6 +458,14 @@ pub struct EntityType<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
     pub annotations: Annotations,
+    /// Source location
+    ///
+    /// (As of this writing, this is not populated when parsing from JSON.
+    /// It is only populated if constructing this structure from the
+    /// corresponding Cedar-syntax structure.)
+    #[serde(skip)]
+    #[educe(PartialEq(ignore))]
+    pub loc: Option<Loc>,
 }
 
 impl EntityType<RawName> {
@@ -463,6 +485,7 @@ impl EntityType<RawName> {
                 .tags
                 .map(|ty| ty.conditionally_qualify_type_references(ns)),
             annotations: self.annotations,
+            loc: self.loc,
         }
     }
 }
@@ -490,6 +513,7 @@ impl EntityType<ConditionalName> {
                 .map(|ty| ty.fully_qualify_type_references(all_defs))
                 .transpose()?,
             annotations: self.annotations,
+            loc: self.loc,
         })
     }
 }
@@ -575,7 +599,8 @@ impl AttributesOrContext<ConditionalName> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`ActionType`], including recursively.
 /// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[educe(PartialEq, Eq)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
@@ -600,6 +625,14 @@ pub struct ActionType<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
     pub annotations: Annotations,
+    /// Source location
+    ///
+    /// (As of this writing, this is not populated when parsing from JSON.
+    /// It is only populated if constructing this structure from the
+    /// corresponding Cedar-syntax structure.)
+    #[serde(skip)]
+    #[educe(PartialEq(ignore))]
+    pub loc: Option<Loc>,
 }
 
 impl ActionType<RawName> {
@@ -619,6 +652,7 @@ impl ActionType<RawName> {
                     .collect()
             }),
             annotations: self.annotations,
+            loc: self.loc,
         }
     }
 }
@@ -649,6 +683,7 @@ impl ActionType<ConditionalName> {
                 })
                 .transpose()?,
             annotations: self.annotations,
+            loc: self.loc,
         })
     }
 }
@@ -2814,6 +2849,7 @@ mod test_json_roundtrip {
                         }))),
                         tags: None,
                         annotations: Annotations::new(),
+                        loc: None,
                     },
                 )]),
                 actions: BTreeMap::from([(
@@ -2832,6 +2868,7 @@ mod test_json_roundtrip {
                         }),
                         member_of: None,
                         annotations: Annotations::new(),
+                        loc: None,
                     },
                 )]),
                 annotations: Annotations::new(),
@@ -2859,6 +2896,7 @@ mod test_json_roundtrip {
                             ))),
                             tags: None,
                             annotations: Annotations::new(),
+                            loc: None,
                         },
                     )]),
                     actions: BTreeMap::new(),
@@ -2886,6 +2924,7 @@ mod test_json_roundtrip {
                             }),
                             member_of: None,
                             annotations: Annotations::new(),
+                            loc: None,
                         },
                     )]),
                     annotations: Annotations::new(),

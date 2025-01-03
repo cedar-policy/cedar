@@ -386,6 +386,7 @@ dependencies = [
  "arbitrary",
  "cedar-policy-core",
  "cool_asserts",
+ "educe",
  "itertools 0.13.0",
  "lalrpop",
  "lalrpop-util",
