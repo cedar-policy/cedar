@@ -3641,9 +3641,9 @@ impl<S> RequestBuilder<S> {
     ///
     /// This information is taken into account when evaluating 'is', '==' and '!=' expressions.
     #[must_use]
-    pub fn unknown_principal_with_type(self, principal_type: ast::EntityType) -> Self {
+    pub fn unknown_principal_with_type(self, principal_type: EntityTypeName) -> Self {
         Self {
-            principal: ast::EntityUIDEntry::unknown_with_type(principal_type, None),
+            principal: ast::EntityUIDEntry::unknown_with_type(principal_type.0, None),
             ..self
         }
     }
@@ -3664,9 +3664,9 @@ impl<S> RequestBuilder<S> {
     ///
     /// This information is taken into account when evaluating 'is', '==' and '!=' expressions.
     #[must_use]
-    pub fn unknown_action_with_type(self, action_type: ast::EntityType) -> Self {
+    pub fn unknown_action_with_type(self, action_type: EntityTypeName) -> Self {
         Self {
-            action: ast::EntityUIDEntry::unknown_with_type(action_type, None),
+            action: ast::EntityUIDEntry::unknown_with_type(action_type.0, None),
             ..self
         }
     }
@@ -3687,9 +3687,9 @@ impl<S> RequestBuilder<S> {
     ///
     /// This information is taken into account when evaluating 'is', '==' and '!=' expressions.
     #[must_use]
-    pub fn unknown_resource_with_type(self, resource_type: ast::EntityType) -> Self {
+    pub fn unknown_resource_with_type(self, resource_type: EntityTypeName) -> Self {
         Self {
-            resource: ast::EntityUIDEntry::unknown_with_type(resource_type, None),
+            resource: ast::EntityUIDEntry::unknown_with_type(resource_type.0, None),
             ..self
         }
     }
