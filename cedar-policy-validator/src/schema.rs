@@ -24,6 +24,7 @@ use cedar_policy_core::{
     ast::{Entity, EntityType, EntityUID, InternalName, Name, UnreservedId},
     entities::{err::EntitiesError, Entities, TCComputation},
     extensions::Extensions,
+    parser::Loc,
     transitive_closure::compute_tc,
 };
 use entity_type::{StandardValidatorEntityType, ValidatorEntityTypeKind};
@@ -423,6 +424,7 @@ impl ValidatorSchema {
                 fragments.push(single_alias_in_empty_namespace(
                     tyname.basename().clone(),
                     tyname.as_ref().qualify_with(Some(&InternalName::__cedar())),
+                    None, // there is no source loc associated with the builtin definitions of primitive and extension types
                 ));
                 all_defs.mark_as_defined_as_common_type(tyname.into());
             }
@@ -1004,7 +1006,10 @@ fn cedar_fragment(
         let ext_type = ext_type.basename().clone();
         common_types.insert(
             ext_type.clone(),
-            json_schema::Type::Type(json_schema::TypeVariant::Extension { name: ext_type }),
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Extension { name: ext_type },
+                loc: None,
+            },
         );
     }
 
@@ -1027,14 +1032,18 @@ fn cedar_fragment(
 fn single_alias_in_empty_namespace(
     id: UnreservedId,
     def: InternalName,
+    loc: Option<Loc>,
 ) -> ValidatorSchemaFragment<ConditionalName, ConditionalName> {
     ValidatorSchemaFragment(vec![ValidatorNamespaceDef::from_common_type_def(
         None,
         (
             id,
-            json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
-                type_name: ConditionalName::unconditional(def, ReferenceType::CommonOrEntity),
-            }),
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::EntityOrCommon {
+                    type_name: ConditionalName::unconditional(def, ReferenceType::CommonOrEntity),
+                },
+                loc,
+            },
         ),
     )])
 }
@@ -1047,15 +1056,24 @@ fn primitive_types<N>() -> impl Iterator<Item = (UnreservedId, json_schema::Type
     [
         (
             UnreservedId::from_str("Bool").unwrap(),
-            json_schema::Type::Type(json_schema::TypeVariant::Boolean),
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Boolean,
+                loc: None,
+            },
         ),
         (
             UnreservedId::from_str("Long").unwrap(),
-            json_schema::Type::Type(json_schema::TypeVariant::Long),
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Long,
+                loc: None,
+            },
         ),
         (
             UnreservedId::from_str("String").unwrap(),
-            json_schema::Type::Type(json_schema::TypeVariant::String),
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::String,
+                loc: None,
+            },
         ),
     ]
     .into_iter()
@@ -1343,36 +1361,47 @@ impl<'a> CommonTypeResolver<'a> {
         }
     }
 
-    // Substitute common type references in `ty` according to `resolve_table`
+    // Substitute common type references in `ty` according to `resolve_table`.
+    // Resolved types will still have the source loc of `ty`, unless `ty` is
+    // exactly a common type reference, in which case they will have the source
+    // loc of the definition of that reference.
     fn resolve_type(
         resolve_table: &HashMap<&InternalName, json_schema::Type<InternalName>>,
         ty: json_schema::Type<InternalName>,
     ) -> Result<json_schema::Type<InternalName>> {
         match ty {
-            json_schema::Type::CommonTypeRef { type_name } => resolve_table
+            json_schema::Type::CommonTypeRef { type_name, .. } => resolve_table
                 .get(&type_name)
                 .ok_or_else(|| CommonTypeInvariantViolationError { name: type_name }.into())
                 .cloned(),
-            json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
-                match resolve_table.get(&type_name) {
-                    Some(def) => Ok(def.clone()),
-                    None => Ok(json_schema::Type::Type(json_schema::TypeVariant::Entity {
-                        name: type_name,
-                    })),
-                }
-            }
-            json_schema::Type::Type(json_schema::TypeVariant::Set { element }) => {
-                Ok(json_schema::Type::Type(json_schema::TypeVariant::Set {
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::EntityOrCommon { type_name },
+                loc,
+            } => match resolve_table.get(&type_name) {
+                Some(def) => Ok(def.clone()),
+                None => Ok(json_schema::Type::Type {
+                    ty: json_schema::TypeVariant::Entity { name: type_name },
+                    loc,
+                }),
+            },
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Set { element },
+                loc,
+            } => Ok(json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Set {
                     element: Box::new(Self::resolve_type(resolve_table, *element)?),
-                }))
-            }
-            json_schema::Type::Type(json_schema::TypeVariant::Record(
-                json_schema::RecordType {
-                    attributes,
-                    additional_attributes,
                 },
-            )) => Ok(json_schema::Type::Type(json_schema::TypeVariant::Record(
-                json_schema::RecordType {
+                loc,
+            }),
+            json_schema::Type::Type {
+                ty:
+                    json_schema::TypeVariant::Record(json_schema::RecordType {
+                        attributes,
+                        additional_attributes,
+                    }),
+                loc,
+            } => Ok(json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Record(json_schema::RecordType {
                     attributes: BTreeMap::from_iter(
                         attributes
                             .into_iter()
@@ -1389,8 +1418,9 @@ impl<'a> CommonTypeResolver<'a> {
                             .collect::<Result<Vec<(_, _)>>>()?,
                     ),
                     additional_attributes,
-                },
-            ))),
+                }),
+                loc,
+            }),
             _ => Ok(ty),
         }
     }
@@ -2021,9 +2051,12 @@ pub(crate) mod test {
         let schema_ty: json_schema::Type<RawName> = serde_json::from_value(src).unwrap();
         assert_eq!(
             schema_ty,
-            json_schema::Type::Type(json_schema::TypeVariant::Entity {
-                name: "Foo".parse().unwrap()
-            })
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Entity {
+                    name: "Foo".parse().unwrap()
+                },
+                loc: None
+            },
         );
         let schema_ty = schema_ty.conditionally_qualify_type_references(Some(
             &InternalName::parse_unqualified_name("NS").unwrap(),
@@ -2047,9 +2080,12 @@ pub(crate) mod test {
         let schema_ty: json_schema::Type<RawName> = serde_json::from_value(src).unwrap();
         assert_eq!(
             schema_ty,
-            json_schema::Type::Type(json_schema::TypeVariant::Entity {
-                name: "NS::Foo".parse().unwrap()
-            })
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Entity {
+                    name: "NS::Foo".parse().unwrap()
+                },
+                loc: None
+            },
         );
         let schema_ty = schema_ty.conditionally_qualify_type_references(Some(
             &InternalName::parse_unqualified_name("NS").unwrap(),
@@ -2082,10 +2118,13 @@ pub(crate) mod test {
         let schema_ty: json_schema::Type<RawName> = serde_json::from_value(src).unwrap();
         assert_eq!(
             schema_ty,
-            json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
-                attributes: BTreeMap::new(),
-                additional_attributes: false,
-            })),
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Record(json_schema::RecordType {
+                    attributes: BTreeMap::new(),
+                    additional_attributes: false,
+                }),
+                loc: None
+            },
         );
         let schema_ty = schema_ty.conditionally_qualify_type_references(None);
         let all_defs = AllDefs::from_entity_defs([InternalName::from_str("Foo").unwrap()]);

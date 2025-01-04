@@ -968,25 +968,34 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
     extensions: &Extensions<'_>,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Type>> {
     match schema_ty {
-        json_schema::Type::Type(json_schema::TypeVariant::String) => {
-            Ok(Type::primitive_string().into())
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Long) => {
-            Ok(Type::primitive_long().into())
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Boolean) => {
-            Ok(Type::primitive_boolean().into())
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Set { element }) => {
-            Ok(try_jsonschema_type_into_validator_type(*element, extensions)?.map(Type::set))
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Record(rty)) => {
-            try_record_type_into_validator_type(rty, extensions)
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Entity { name }) => {
-            Ok(Type::named_entity_reference(internal_name_to_entity_type(name)?).into())
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Extension { name }) => {
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::String,
+            ..
+        } => Ok(Type::primitive_string().into()),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Long,
+            ..
+        } => Ok(Type::primitive_long().into()),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Boolean,
+            ..
+        } => Ok(Type::primitive_boolean().into()),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Set { element },
+            ..
+        } => Ok(try_jsonschema_type_into_validator_type(*element, extensions)?.map(Type::set)),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Record(rty),
+            ..
+        } => try_record_type_into_validator_type(rty, extensions),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Entity { name },
+            ..
+        } => Ok(Type::named_entity_reference(internal_name_to_entity_type(name)?).into()),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Extension { name },
+            ..
+        } => {
             let extension_type_name = Name::unqualified_name(name);
             if extensions.ext_types().contains(&extension_type_name) {
                 Ok(Type::extension(extension_type_name).into())
@@ -1006,7 +1015,7 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
                 ))
             }
         }
-        json_schema::Type::CommonTypeRef { type_name } => {
+        json_schema::Type::CommonTypeRef { type_name, .. } => {
             Ok(WithUnresolvedCommonTypeRefs::new(move |common_type_defs| {
                 common_type_defs
                     .get(&type_name)
@@ -1022,7 +1031,10 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
                     .ok_or_else(|| CommonTypeInvariantViolationError { name: type_name }.into())
             }))
         }
-        json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::EntityOrCommon { type_name },
+            ..
+        } => {
             Ok(WithUnresolvedCommonTypeRefs::new(move |common_type_defs| {
                 // First check if it's a common type, because in the edge case where
                 // the name is both a valid common type name and a valid entity type

@@ -98,22 +98,21 @@ fn is_valid_ext_type(ty: &Id, extensions: &Extensions<'_>) -> bool {
 
 /// Convert a `Type` into the JSON representation of the type.
 pub fn cedar_type_to_json_type(ty: Node<Type>) -> json_schema::Type<RawName> {
-    match ty.node {
-        Type::Set(t) => json_schema::Type::Type(json_schema::TypeVariant::Set {
+    let variant = match ty.node {
+        Type::Set(t) => json_schema::TypeVariant::Set {
             element: Box::new(cedar_type_to_json_type(*t)),
-        }),
-        Type::Ident(p) => json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
+        },
+        Type::Ident(p) => json_schema::TypeVariant::EntityOrCommon {
             type_name: RawName::from(p),
+        },
+        Type::Record(fields) => json_schema::TypeVariant::Record(json_schema::RecordType {
+            attributes: fields.into_iter().map(convert_attr_decl).collect(),
+            additional_attributes: false,
         }),
-        Type::Record(fields) => {
-            json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
-                attributes: fields
-                    .into_iter()
-                    .map(|field| convert_attr_decl(field.node))
-                    .collect(),
-                additional_attributes: false,
-            }))
-        }
+    };
+    json_schema::Type::Type {
+        ty: variant,
+        loc: Some(ty.loc),
     }
 }
 
@@ -388,48 +387,46 @@ fn convert_entity_decl(
 
 /// Create a [`json_schema::AttributesOrContext`] from a series of `AttrDecl`s
 fn convert_attr_decls(
-    attrs: impl IntoIterator<Item = Node<Annotated<AttrDecl>>>,
+    attrs: Node<impl IntoIterator<Item = Node<Annotated<AttrDecl>>>>,
 ) -> json_schema::AttributesOrContext<RawName> {
-    json_schema::RecordType {
-        attributes: attrs
-            .into_iter()
-            .map(|attr| convert_attr_decl(attr.node))
-            .collect(),
-        additional_attributes: false,
-    }
-    .into()
+    json_schema::AttributesOrContext(json_schema::Type::Type {
+        ty: json_schema::TypeVariant::Record(json_schema::RecordType {
+            attributes: attrs.node.into_iter().map(convert_attr_decl).collect(),
+            additional_attributes: false,
+        }),
+        loc: Some(attrs.loc),
+    })
 }
 
 /// Create a context decl
 fn convert_context_decl(
-    decl: Either<Path, Vec<Node<Annotated<AttrDecl>>>>,
+    decl: Either<Path, Node<Vec<Node<Annotated<AttrDecl>>>>>,
 ) -> json_schema::AttributesOrContext<RawName> {
     json_schema::AttributesOrContext(match decl {
         Either::Left(p) => json_schema::Type::CommonTypeRef {
+            loc: Some(p.loc().clone()),
             type_name: p.into(),
         },
-        Either::Right(attrs) => {
-            json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
-                attributes: attrs
-                    .into_iter()
-                    .map(|attr| convert_attr_decl(attr.node))
-                    .collect(),
+        Either::Right(attrs) => json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Record(json_schema::RecordType {
+                attributes: attrs.node.into_iter().map(convert_attr_decl).collect(),
                 additional_attributes: false,
-            }))
-        }
+            }),
+            loc: Some(attrs.loc),
+        },
     })
 }
 
 /// Convert an attribute type from an `AttrDecl`
 fn convert_attr_decl(
-    attr: Annotated<AttrDecl>,
+    attr: Node<Annotated<AttrDecl>>,
 ) -> (SmolStr, json_schema::TypeOfAttribute<RawName>) {
     (
-        attr.data.name.node,
+        attr.node.data.name.node,
         json_schema::TypeOfAttribute {
-            ty: cedar_type_to_json_type(attr.data.ty),
-            required: attr.data.required,
-            annotations: attr.annotations.into(),
+            ty: cedar_type_to_json_type(attr.node.data.ty),
+            required: attr.node.data.required,
+            annotations: attr.node.annotations.into(),
         },
     )
 }
@@ -678,6 +675,7 @@ fn into_partition_decls(
 mod preserves_source_locations {
     use super::*;
     use cool_asserts::assert_matches;
+    use json_schema::{EntityType, EntityTypeKind};
 
     #[test]
     fn entity_action_and_common_type_decls() {
@@ -761,5 +759,111 @@ mod preserves_source_locations {
         assert_matches!(&actionList.loc, Some(loc) => assert_matches!(loc.snippet(),
             Some("action List in Read appliesTo {\n                principal: [A],\n                resource: [B, C],\n                context: {\n                    s: Set<S>,\n                    ab: { a: AA, b: B },\n                }\n            };")
         ));
+    }
+
+    #[test]
+    fn types() {
+        let (schema, _) = json_schema::Fragment::from_cedarschema_str(
+            r#"
+        namespace NS {
+            type S = String;
+            entity A;
+            entity B in A;
+            entity C in A {
+                bool: Bool,
+                s: S,
+                a: Set<A>,
+                b: { inner: B },
+            };
+            type AA = A;
+            action Read, Write;
+            action List in Read appliesTo {
+                principal: [A],
+                resource: [B, C],
+                context: {
+                    s: Set<S>,
+                    ab: { a: AA, b: B },
+                }
+            };
+        }
+        "#,
+            &Extensions::all_available(),
+        )
+        .unwrap();
+        let ns = schema
+            .0
+            .get(&Some(Name::parse_unqualified_name("NS").unwrap()))
+            .expect("couldn't find namespace NS");
+
+        assert_matches!(ns
+            .entity_types
+            .get(&"C".parse().unwrap())
+            .expect("couldn't find entity C"), EntityType { kind: EntityTypeKind::Standard(entityC), ..} => { 
+        assert_matches!(entityC.member_of_types.first().unwrap().loc(), Some(loc) => {
+            assert_matches!(loc.snippet(), Some("A"));
+        });
+        assert_matches!(entityC.shape.0.loc(), Some(loc) => {
+            assert_matches!(loc.snippet(), Some("{\n                bool: Bool,\n                s: S,\n                a: Set<A>,\n                b: { inner: B },\n            }"));
+        });
+        assert_matches!(&entityC.shape.0, json_schema::Type::Type { ty: json_schema::TypeVariant::Record(rty), .. } => {
+            let b = rty.attributes.get("bool").expect("couldn't find attribute `bool` on entity C");
+            assert_matches!(b.ty.loc(), Some(loc) => {
+                assert_matches!(loc.snippet(), Some("Bool"));
+            });
+            let s = rty.attributes.get("s").expect("couldn't find attribute `s` on entity C");
+            assert_matches!(s.ty.loc(), Some(loc) => {
+                assert_matches!(loc.snippet(), Some("S"));
+            });
+            let a = rty.attributes.get("a").expect("couldn't find attribute `a` on entity C");
+            assert_matches!(a.ty.loc(), Some(loc) => {
+                assert_matches!(loc.snippet(), Some("Set<A>"));
+            });
+            assert_matches!(&a.ty, json_schema::Type::Type { ty: json_schema::TypeVariant::Set { element }, .. } => {
+                assert_matches!(element.loc(), Some(loc) => {
+                    assert_matches!(loc.snippet(), Some("A"));
+                });
+            });
+            let b = rty.attributes.get("b").expect("couldn't find attribute `b` on entity C");
+            assert_matches!(b.ty.loc(), Some(loc) => {
+                assert_matches!(loc.snippet(), Some("{ inner: B }"));
+            });
+            assert_matches!(&b.ty, json_schema::Type::Type { ty: json_schema::TypeVariant::Record(b_rty), .. } => {
+                let inner = b_rty.attributes.get("inner").expect("couldn't find inner attribute");
+                assert_matches!(inner.ty.loc(), Some(loc) => {
+                    assert_matches!(loc.snippet(), Some("B"));
+                });
+            });
+        });});
+
+        let ctypeAA = ns
+            .common_types
+            .get(&json_schema::CommonTypeId::new("AA".parse().unwrap()).unwrap())
+            .expect("couldn't find common type AA");
+        assert_matches!(ctypeAA.ty.loc(), Some(loc) => {
+            assert_matches!(loc.snippet(), Some("A"));
+        });
+
+        let actionList = ns.actions.get("List").expect("couldn't find action List");
+        assert_matches!(&actionList.applies_to, Some(appliesto) => {
+            assert_matches!(appliesto.principal_types.first().expect("principal types were empty").loc(), Some(loc) => {
+                assert_matches!(loc.snippet(), Some("A"));
+            });
+            assert_matches!(appliesto.resource_types.first().expect("resource types were empty").loc(), Some(loc) => {
+                assert_matches!(loc.snippet(), Some("B"));
+            });
+            assert_matches!(appliesto.context.loc(), Some(loc) => {
+                assert_matches!(loc.snippet(), Some("{\n                    s: Set<S>,\n                    ab: { a: AA, b: B },\n                }"));
+            });
+            assert_matches!(&appliesto.context.0, json_schema::Type::Type { ty: json_schema::TypeVariant::Record(rty), .. } => {
+                let s = rty.attributes.get("s").expect("couldn't find attribute `s` on context");
+                assert_matches!(s.ty.loc(), Some(loc) => {
+                    assert_matches!(loc.snippet(), Some("Set<S>"));
+                });
+                let ab = rty.attributes.get("ab").expect("couldn't find attribute `ab` on context");
+                assert_matches!(ab.ty.loc(), Some(loc) => {
+                    assert_matches!(loc.snippet(), Some("{ a: AA, b: B }"));
+                });
+            });
+        });
     }
 }
