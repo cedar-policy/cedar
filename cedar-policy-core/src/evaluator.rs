@@ -379,7 +379,8 @@ impl<'e> Evaluator<'e> {
             ExprKind::BinaryApp { op, arg1, arg2 } => {
                 // NOTE: There are more precise partial eval opportunities here, esp w/ typed unknowns
                 // Current limitations:
-                //   Operators are not partially evaluated.
+                //   Operators are not partially evaluated, except in a few 'simple' cases when comparing a concrete value with an unknown of known type
+                //   implemented in short_circuit_typed_residual
                 let (arg1, arg2) = match (
                     self.partial_interpret(arg1, slots)?,
                     self.partial_interpret(arg2, slots)?,
