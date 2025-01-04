@@ -23,7 +23,7 @@ Cedar Language Version: TBD
 - Added a new get helper method to Context that allows easy extraction of generic values from the context by key. This method simplifies the common use case of retrieving values from Context objects.
 - Implemented [RFC 62 (extended `has` operator)](https://github.com/cedar-policy/rfcs/blob/main/text/0062-extended-has.md)  (#1327, resolving #1329)
 - Added a helper method to `PartialResponse` to accept substitutions from an iterator.
-- Added `unknown_*_with_type` methods to the RequestBuilder in partial-eval, allowing an unknown pricipal or resource to be constrained to a certain entity type.
+- Added `unknown_*_with_type` methods to the RequestBuilder in partial-eval, allowing an unknown principal or resource to be constrained to a certain entity type.
 
 ### Changed
 
