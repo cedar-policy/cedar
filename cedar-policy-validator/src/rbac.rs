@@ -482,13 +482,12 @@ mod test {
         let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 foo_type.parse().unwrap(),
-                json_schema::CommonEntityType {
+                json_schema::StandardEntityType {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
-                    annotations: Annotations::new(),
-                    loc: None,
-                },
+                }
+                .into(),
             )],
             [],
         );
@@ -519,13 +518,12 @@ mod test {
         let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 "foo_type".parse().unwrap(),
-                json_schema::CommonEntityType {
+                json_schema::StandardEntityType {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
-                    annotations: Annotations::new(),
-                    loc: None,
-                },
+                }
+                .into(),
             )],
             [],
         );
@@ -609,13 +607,12 @@ mod test {
         let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 p_name.parse().unwrap(),
-                json_schema::CommonEntityType {
+                json_schema::StandardEntityType {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
-                    annotations: Annotations::new(),
-                    loc: None,
-                },
+                }
+                .into(),
             )],
             [],
         );
@@ -636,13 +633,12 @@ mod test {
         let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 p_name.parse().unwrap(),
-                json_schema::CommonEntityType {
+                json_schema::StandardEntityType {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
-                    annotations: Annotations::new(),
-                    loc: None,
-                },
+                }
+                .into(),
             )],
             [],
         );
@@ -663,13 +659,12 @@ mod test {
         let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 p_name.parse().unwrap(),
-                json_schema::CommonEntityType {
+                json_schema::StandardEntityType {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
-                    annotations: Annotations::new(),
-                    loc: None,
-                },
+                }
+                .into(),
             )],
             [],
         );
@@ -1031,13 +1026,12 @@ mod test {
         let schema_file = json_schema::NamespaceDefinition::new(
             [(
                 foo_type.parse().unwrap(),
-                json_schema::CommonEntityType {
+                json_schema::StandardEntityType {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
-                    annotations: Annotations::new(),
-                    loc: None,
-                },
+                }
+                .into(),
             )],
             [],
         );
@@ -1067,23 +1061,21 @@ mod test {
             [
                 (
                     principal_type.parse().unwrap(),
-                    json_schema::CommonEntityType {
+                    json_schema::StandardEntityType {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
-                        annotations: Annotations::new(),
-                        loc: None,
-                    },
+                    }
+                    .into(),
                 ),
                 (
                     resource_type.parse().unwrap(),
-                    json_schema::CommonEntityType {
+                    json_schema::StandardEntityType {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
-                        annotations: Annotations::new(),
-                        loc: None,
-                    },
+                    }
+                    .into(),
                 ),
             ],
             [(
@@ -1464,43 +1456,39 @@ mod test {
             [
                 (
                     principal_type.parse().unwrap(),
-                    json_schema::CommonEntityType {
+                    json_schema::StandardEntityType {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
-                        annotations: Annotations::new(),
-                        loc: None,
-                    },
+                    }
+                    .into(),
                 ),
                 (
                     resource_type.parse().unwrap(),
-                    json_schema::CommonEntityType {
+                    json_schema::StandardEntityType {
                         member_of_types: vec![resource_parent_type.parse().unwrap()],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
-                        annotations: Annotations::new(),
-                        loc: None,
-                    },
+                    }
+                    .into(),
                 ),
                 (
                     resource_parent_type.parse().unwrap(),
-                    json_schema::CommonEntityType {
+                    json_schema::StandardEntityType {
                         member_of_types: vec![resource_grandparent_type.parse().unwrap()],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
-                        annotations: Annotations::new(),
-                        loc: None,
-                    },
+                    }
+                    .into(),
                 ),
                 (
                     resource_grandparent_type.parse().unwrap(),
-                    json_schema::CommonEntityType {
+                    json_schema::StandardEntityType {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
-                        annotations: Annotations::new(),
-                        loc: None,
-                    },
+                    }
+                    .into(),
                 ),
             ],
             [

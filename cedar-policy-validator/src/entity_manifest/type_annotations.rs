@@ -145,7 +145,11 @@ impl AccessTrie {
                                     .ok_or(MismatchedNotStrictSchemaError {})?,
                             )
                             .ok_or(MismatchedNotStrictSchemaError {})?;
-                        &entity_ty.attributes
+                        &Attributes::with_required_attributes(
+                            entity_ty
+                                .attributes()
+                                .map(|(attr, ty)| (attr.clone(), ty.attr_type.clone())),
+                        )
                     }
                     EntityRecordKind::ActionEntity { name: _, attrs } => attrs,
                 };

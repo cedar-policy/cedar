@@ -142,8 +142,7 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
     fn required_attrs<'s>(&'s self) -> Box<dyn Iterator<Item = SmolStr> + 's> {
         Box::new(
             self.validator_type
-                .attributes
-                .iter()
+                .attributes()
                 .filter(|(_, ty)| ty.is_required)
                 .map(|(attr, _)| attr.clone()),
         )
@@ -154,7 +153,7 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
     }
 
     fn open_attributes(&self) -> bool {
-        self.validator_type.open_attributes.is_open()
+        self.validator_type.open_attributes().is_open()
     }
 }
 

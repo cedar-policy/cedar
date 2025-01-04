@@ -958,7 +958,13 @@ impl EntityLUB {
         let mut lub_element_attributes = self.lub_elements.iter().map(|name| {
             schema
                 .get_entity_type(name)
-                .map(|entity_type| entity_type.attributes.clone())
+                .map(|entity_type| {
+                    Attributes::with_attributes(
+                        entity_type
+                            .attributes()
+                            .map(|(attr, ty)| (attr.clone(), ty.clone())),
+                    )
+                })
                 .unwrap_or_else(|| Attributes::with_attributes(None))
         });
 
@@ -1304,7 +1310,7 @@ impl EntityRecordKind {
             EntityRecordKind::Entity(lub) => lub.iter().any(|e_name| {
                 schema
                     .get_entity_type(e_name)
-                    .map(|e_type| e_type.open_attributes)
+                    .map(|e_type| e_type.open_attributes())
                     // The entity type was not found in the schema, so we know
                     // nothing about it and must assume that it may have
                     // additional attributes.

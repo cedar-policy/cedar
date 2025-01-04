@@ -360,20 +360,22 @@ fn convert_id(node: Node<Id>) -> Result<UnreservedId, ToJsonSchemaError> {
 fn convert_entity_decl(
     e: Annotated<Node<EntityDecl>>,
 ) -> Result<
-    impl Iterator<Item = (UnreservedId, json_schema::CommonEntityType<RawName>)>,
+    impl Iterator<Item = (UnreservedId, json_schema::EntityType<RawName>)>,
     ToJsonSchemaErrors,
 > {
     // First build up the defined entity type
-    let etype = json_schema::CommonEntityType {
-        member_of_types: e
-            .data
-            .node
-            .member_of_types
-            .into_iter()
-            .map(RawName::from)
-            .collect(),
-        shape: convert_attr_decls(e.data.node.attrs),
-        tags: e.data.node.tags.map(cedar_type_to_json_type),
+    let etype = json_schema::EntityType {
+        kind: json_schema::EntityTypeKind::Standard(json_schema::StandardEntityType {
+            member_of_types: e
+                .data
+                .node
+                .member_of_types
+                .into_iter()
+                .map(RawName::from)
+                .collect(),
+            shape: convert_attr_decls(e.data.node.attrs),
+            tags: e.data.node.tags.map(cedar_type_to_json_type),
+        }),
         annotations: e.annotations.into(),
         loc: Some(e.data.loc),
     };

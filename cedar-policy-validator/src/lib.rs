@@ -289,23 +289,21 @@ mod test {
             [
                 (
                     foo_type.parse().unwrap(),
-                    json_schema::CommonEntityType {
+                    json_schema::StandardEntityType {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
-                        annotations: Annotations::new(),
-                        loc: None,
-                    },
+                    }
+                    .into(),
                 ),
                 (
                     bar_type.parse().unwrap(),
-                    json_schema::CommonEntityType {
+                    json_schema::StandardEntityType {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
-                        annotations: Annotations::new(),
-                        loc: None,
-                    },
+                    }
+                    .into(),
                 ),
             ],
             [(

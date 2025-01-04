@@ -34,50 +34,87 @@ use cedar_policy_core::ast;
 /// the struct are the same as the schema entity type structure, but the
 /// `member_of` relation is reversed to instead be `descendants`.
 #[derive(Clone, Debug, Serialize)]
-pub enum ValidatorEntityType {
-    Common {
-        /// The name of the entity type.
-        name: EntityType,
+pub struct ValidatorEntityType {
+    /// The name of the entity type.
+    pub(crate) name: EntityType,
 
-        /// The set of entity types that can be members of this entity type. When
-        /// this structure is initially constructed, the field will contain direct
-        /// children, but it will be updated to contain the closure of all
-        /// descendants before it is used in any validation.
-        descendants: HashSet<EntityType>,
+    /// The set of entity types that can be members of this entity type. When
+    /// this structure is initially constructed, the field will contain direct
+    /// children, but it will be updated to contain the closure of all
+    /// descendants before it is used in any validation.
+    pub(crate) descendants: HashSet<EntityType>,
+    pub(crate) kind: ValidatorEntityTypeKind,
+}
 
-        /// The attributes associated with this entity.
-        attributes: Attributes,
+#[derive(Clone, Debug, Serialize)]
+pub struct StandardValidatorEntityType {
+    /// The attributes associated with this entity.
+    pub(crate) attributes: Attributes,
 
-        /// Indicates that this entity type may have additional attributes
-        /// other than the declared attributes that may be accessed under partial
-        /// schema validation. We do not know if they are present, and do not know
-        /// their type when they are present. Attempting to access an undeclared
-        /// attribute under standard validation is an error regardless of this flag.
-        open_attributes: OpenTag,
+    /// Indicates that this entity type may have additional attributes
+    /// other than the declared attributes that may be accessed under partial
+    /// schema validation. We do not know if they are present, and do not know
+    /// their type when they are present. Attempting to access an undeclared
+    /// attribute under standard validation is an error regardless of this flag.
+    pub(crate) open_attributes: OpenTag,
 
-        /// Tag type for this entity type. `None` indicates that entities of this
-        /// type are not allowed to have tags.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        tags: Option<Type>,
-    },
+    /// Tag type for this entity type. `None` indicates that entities of this
+    /// type are not allowed to have tags.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tags: Option<Type>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub enum ValidatorEntityTypeKind {
+    Standard(StandardValidatorEntityType),
     Enum(Vec<SmolStr>),
 }
 
 impl ValidatorEntityType {
-    /// Get the type of the attribute with the given name, if it exists
-    pub fn attr(&self, attr: &str) -> Option<&AttributeType> {
-        self.attributes.get_attr(attr)
-    }
-
-    /// An iterator over the attributes of this entity
-    pub fn attributes(&self) -> impl Iterator<Item = (&SmolStr, &AttributeType)> {
-        self.attributes.iter()
-    }
-
     /// Return `true` if this entity type has an [`EntityType`] declared as a
     /// possible descendant in the schema.
     pub fn has_descendant_entity_type(&self, ety: &EntityType) -> bool {
         self.descendants.contains(ety)
+    }
+
+    /// An iterator over the attributes of this entity
+    pub fn attributes(&self) -> Box<dyn Iterator<Item = (&SmolStr, &AttributeType)> + '_> {
+        match &self.kind {
+            ValidatorEntityTypeKind::Enum(_) => Box::new(std::iter::empty()),
+            ValidatorEntityTypeKind::Standard(ty) => Box::new(ty.attributes()),
+        }
+    }
+
+    /// Get the type of the attribute with the given name, if it exists
+    pub fn attr(&self, attr: &str) -> Option<&AttributeType> {
+        match &self.kind {
+            ValidatorEntityTypeKind::Enum(_) => None,
+            ValidatorEntityTypeKind::Standard(ty) => ty.attributes.get_attr(attr),
+        }
+    }
+
+    /// ...
+    pub fn open_attributes(&self) -> OpenTag {
+        match &self.kind {
+            ValidatorEntityTypeKind::Enum(_) => OpenTag::ClosedAttributes,
+            ValidatorEntityTypeKind::Standard(ty) => ty.open_attributes,
+        }
+    }
+
+    /// Get the type of tags on this entity. `None` indicates that entities of
+    /// this type are not allowed to have tags.
+    pub fn tag_type(&self) -> Option<&Type> {
+        match &self.kind {
+            ValidatorEntityTypeKind::Enum(_) => None,
+            ValidatorEntityTypeKind::Standard(ty) => ty.tag_type(),
+        }
+    }
+}
+
+impl StandardValidatorEntityType {
+    /// An iterator over the attributes of this entity
+    pub fn attributes(&self) -> impl Iterator<Item = (&SmolStr, &AttributeType)> {
+        self.attributes.iter()
     }
 
     /// Get the type of tags on this entity. `None` indicates that entities of
@@ -108,7 +145,7 @@ impl TCNode<EntityType> for ValidatorEntityType {
 #[cfg(feature = "protobufs")]
 impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
     fn from(v: &ValidatorEntityType) -> Self {
-        let tags = v.tags.as_ref().map(|tags| proto::Tag {
+        let tags = v.tag_type().map(|tags| proto::Tag {
             optional_type: Some(proto::Type::from(tags)),
         });
         Self {
@@ -118,8 +155,13 @@ impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
                 .iter()
                 .map(ast::proto::EntityType::from)
                 .collect(),
-            attributes: Some(proto::Attributes::from(&v.attributes)),
-            open_attributes: proto::OpenTag::from(&v.open_attributes).into(),
+            attributes: Some(proto::Attributes::from(
+                &Attributes::with_required_attributes(
+                    v.attributes()
+                        .map(|(attr, ty)| (attr.clone(), ty.attr_type.clone())),
+                ),
+            )),
+            open_attributes: proto::OpenTag::from(&v.open_attributes()).into(),
             tags,
         }
     }
@@ -141,15 +183,17 @@ impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
                     .expect("`as_ref()` for field that should exist"),
             ),
             descendants: v.descendants.iter().map(ast::EntityType::from).collect(),
-            attributes: Attributes::from(
-                v.attributes
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-            open_attributes: OpenTag::from(
-                &proto::OpenTag::try_from(v.open_attributes).expect("decode should succeed"),
-            ),
-            tags,
+            kind: ValidatorEntityTypeKind::Standard(StandardValidatorEntityType {
+                attributes: Attributes::from(
+                    v.attributes
+                        .as_ref()
+                        .expect("`as_ref()` for field that should exist"),
+                ),
+                open_attributes: OpenTag::from(
+                    &proto::OpenTag::try_from(v.open_attributes).expect("decode should succeed"),
+                ),
+                tags,
+            }),
         }
     }
 }
