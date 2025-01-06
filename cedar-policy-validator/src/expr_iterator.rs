@@ -18,6 +18,7 @@ use cedar_policy_core::ast::{
     EntityType, EntityUID, Expr, ExprKind, Literal, Name, Pattern, Template,
 };
 use cedar_policy_core::parser::Loc;
+use itertools::chain;
 
 /// Returns an iterator over all literal entity uids in the expression.
 pub(super) fn expr_entity_uids(expr: &Expr) -> impl Iterator<Item = &EntityUID> {
@@ -40,39 +41,37 @@ pub(super) fn expr_entity_type_names(expr: &Expr) -> impl Iterator<Item = &Entit
 /// over any entities in the policy scope condition in addition to any entities
 /// in the body.
 pub(super) fn policy_entity_uids(template: &Template) -> impl Iterator<Item = &EntityUID> {
-    template
-        .principal_constraint()
-        .as_inner()
-        .get_euid()
-        .into_iter()
-        .map(|euid| euid.as_ref())
-        .chain(template.action_constraint().iter_euids())
-        .chain(
-            template
-                .resource_constraint()
-                .as_inner()
-                .get_euid()
-                .into_iter()
-                .map(|euid| euid.as_ref()),
-        )
-        .chain(expr_entity_uids(template.non_scope_constraints()))
+    chain!(
+        template
+            .principal_constraint()
+            .as_inner()
+            .get_euid()
+            .map(AsRef::as_ref),
+        template.action_constraint().iter_euids(),
+        template
+            .resource_constraint()
+            .as_inner()
+            .get_euid()
+            .map(AsRef::as_ref),
+        expr_entity_uids(template.non_scope_constraints()),
+    )
 }
 
 /// Returns an iterator over all entity type names in the policy. This iterates
 /// over the policy scope condition in addition to the body.
 pub(super) fn policy_entity_type_names(template: &Template) -> impl Iterator<Item = &EntityType> {
-    template
-        .principal_constraint()
-        .as_inner()
-        .iter_entity_type_names()
-        .chain(template.action_constraint().iter_entity_type_names())
-        .chain(
-            template
-                .resource_constraint()
-                .as_inner()
-                .iter_entity_type_names(),
-        )
-        .chain(expr_entity_type_names(template.non_scope_constraints()))
+    chain!(
+        template
+            .principal_constraint()
+            .as_inner()
+            .iter_entity_type_names(),
+        template.action_constraint().iter_entity_type_names(),
+        template
+            .resource_constraint()
+            .as_inner()
+            .iter_entity_type_names(),
+        expr_entity_type_names(template.non_scope_constraints()),
+    )
 }
 
 /// The 3 different "classes" of text in an expression.

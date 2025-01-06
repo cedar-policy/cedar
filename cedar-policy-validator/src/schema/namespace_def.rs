@@ -29,7 +29,7 @@ use cedar_policy_core::{
     extensions::Extensions,
     fuzzy_match::fuzzy_search,
 };
-use itertools::Itertools;
+use itertools::{chain, Itertools};
 use nonempty::{nonempty, NonEmpty};
 use smol_str::{SmolStr, ToSmolStr};
 
@@ -211,13 +211,11 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
             (res1, res2, res3) => {
                 // PANIC SAFETY: at least one of the results is `Err`, so the input to `NonEmpty::collect()` cannot be an empty iterator
                 #[allow(clippy::expect_used)]
-                let errs = NonEmpty::collect(
-                    res1.err()
-                        .into_iter()
-                        .map(SchemaError::from)
-                        .chain(res2.err().map(SchemaError::from))
-                        .chain(res3.err().map(SchemaError::from)),
-                )
+                let errs = NonEmpty::collect(chain!(
+                    res1.err().map(SchemaError::from),
+                    res2.err().map(SchemaError::from),
+                    res3.err().map(SchemaError::from),
+                ))
                 .expect("there must be an error");
                 Err(SchemaError::join_nonempty(errs))
             }

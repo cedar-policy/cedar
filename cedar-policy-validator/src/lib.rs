@@ -35,6 +35,7 @@ pub mod proto {
 }
 
 use cedar_policy_core::ast::{Policy, PolicySet, Template};
+use itertools::chain;
 use serde::Serialize;
 use std::collections::HashSet;
 #[cfg(feature = "level-validate")]
@@ -200,15 +201,15 @@ impl Validator {
             // actions, so we can never claim that one doesn't exist.
             None
         } else {
-            Some(
-                self.validate_entity_types(p)
-                    .chain(self.validate_action_ids(p))
-                    // We could usefully update this pass to apply to partial
-                    // schema if it only failed when there is a known action
-                    // applied to known principal/resource entity types that are
-                    // not in its `appliesTo`.
-                    .chain(self.validate_template_action_application(p)),
-            )
+            Some(chain!(
+                self.validate_entity_types(p),
+                self.validate_action_ids(p),
+                // We could usefully update this pass to apply to partial
+                // schema if it only failed when there is a known action
+                // applied to known principal/resource entity types that are
+                // not in its `appliesTo`.
+                self.validate_template_action_application(p),
+            ))
         }
         .into_iter()
         .flatten();

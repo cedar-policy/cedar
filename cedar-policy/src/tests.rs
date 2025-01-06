@@ -6292,6 +6292,7 @@ mod version_tests {
 mod reserved_keywords_in_policies {
     use super::*;
     use cool_asserts::assert_matches;
+    use itertools::chain;
 
     const RESERVED_IDENTS: [&str; 9] = [
         "true", "false", "if", "then", "else", "in", "like", "has", "is",
@@ -6349,25 +6350,18 @@ mod reserved_keywords_in_policies {
     #[test]
     fn test_reserved_annotations() {
         // Currently, any identifier can be used as an annotation key
-        RESERVED_IDENTS
-            .iter()
-            .chain(RESERVED_NAMESPACE.iter())
-            .chain(OTHER_SPECIAL_IDENTS.iter())
+        chain!(RESERVED_IDENTS, RESERVED_NAMESPACE, OTHER_SPECIAL_IDENTS)
             .for_each(|id| assert_valid_annotation(id));
     }
 
     #[test]
     fn test_reserved_keys() {
         // Any ident can be used as a record key if it's wrapped in quotes
-        RESERVED_IDENTS
-            .iter()
-            .chain(RESERVED_NAMESPACE.iter())
-            .chain(OTHER_SPECIAL_IDENTS.iter())
-            .for_each(|id| {
-                assert_valid_expression(&format!("{{ \"{id}\": 1 }}"));
-                assert_valid_expression(&format!("principal has \"{id}\""));
-                assert_valid_expression(&format!("principal[\"{id}\"] == \"foo\""));
-            });
+        chain!(RESERVED_IDENTS, RESERVED_NAMESPACE, OTHER_SPECIAL_IDENTS).for_each(|id| {
+            assert_valid_expression(&format!("{{ \"{id}\": 1 }}"));
+            assert_valid_expression(&format!("principal has \"{id}\""));
+            assert_valid_expression(&format!("principal[\"{id}\"] == \"foo\""));
+        });
 
         // No restrictions on OTHER_SPECIAL_IDENTS
         for id in &OTHER_SPECIAL_IDENTS {

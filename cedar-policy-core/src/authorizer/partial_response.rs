@@ -17,6 +17,7 @@
 use std::collections::HashMap;
 
 use either::Either;
+use itertools::chain;
 use smol_str::SmolStr;
 use std::sync::Arc;
 
@@ -157,11 +158,11 @@ impl PartialResponse {
     pub fn may_be_determining(&self) -> impl Iterator<Item = Policy> + '_ {
         if self.satisfied_forbids.is_empty() {
             // We have no definitely true forbids, so the over approx is everything that is true or potentially true
-            Either::Left(
-                self.definitely_satisfied_permits()
-                    .chain(self.residual_permits())
-                    .chain(self.residual_forbids()),
-            )
+            Either::Left(chain!(
+                self.definitely_satisfied_permits(),
+                self.residual_permits(),
+                self.residual_forbids(),
+            ))
         } else {
             // We have definitely true forbids, so we know only things that can determine is
             // true forbids and potentially true forbids
@@ -253,10 +254,7 @@ impl PartialResponse {
             .residual_permits
             .iter()
             .map(|(id, (r, a))| (id, (r, a)));
-        trues
-            .chain(falses)
-            .chain(nontrivial)
-            .map(|(id, (r, a))| (Effect::Permit, id, r, a))
+        chain!(trues, falses, nontrivial).map(|(id, (r, a))| (Effect::Permit, id, r, a))
     }
 
     /// Returns all residuals expressions that come from [`Effect::Forbid`] policies
@@ -273,10 +271,7 @@ impl PartialResponse {
             .residual_forbids
             .iter()
             .map(|(id, (r, a))| (id, (r, a)));
-        trues
-            .chain(falses)
-            .chain(nontrivial)
-            .map(|(id, (r, a))| (Effect::Forbid, id, r, a))
+        chain!(trues, falses, nontrivial).map(|(id, (r, a))| (Effect::Forbid, id, r, a))
     }
 
     /// Return the residual for a given [`PolicyID`], if it exists in the response
