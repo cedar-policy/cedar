@@ -243,6 +243,11 @@ impl ConditionalName {
         self.possibilities.iter()
     }
 
+    /// Get the source location of this [`ConditionalName`]
+    pub fn loc(&self) -> Option<&Loc> {
+        self.raw.loc()
+    }
+
     /// Resolve the [`ConditionalName`] into a fully-qualified [`InternalName`],
     /// given that `all_defs` includes all fully-qualified [`InternalName`]s
     /// defined in all schema fragments.
@@ -282,7 +287,9 @@ impl ConditionalName {
                 return Ok(possibility.clone());
             }
         }
-        Err(TypeNotDefinedError(nonempty![self]))
+        Err(TypeNotDefinedError {
+            undefined_types: nonempty![self],
+        })
     }
 
     /// Provide a help message for the case where this [`ConditionalName`] failed to resolve
