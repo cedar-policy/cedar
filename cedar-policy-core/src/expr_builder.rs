@@ -24,7 +24,7 @@ use crate::{
         BinaryOp, EntityType, ExpressionConstructionError, Literal, Name, Pattern, SlotId, UnaryOp,
         Unknown, Var,
     },
-    parser::Loc,
+    parser::{cst, Loc},
 };
 
 /// Defines a generic interface for building different expression data
@@ -278,5 +278,34 @@ pub trait ExprBuilder: Clone {
         others
             .into_iter()
             .fold(first, |acc, next| self.clone().or(acc, next))
+    }
+
+    /// Create expression containing addition and subtraction that may have more
+    /// than two subexpressions (A + B - C) or may have only one subexpression,
+    /// in which case no operations are performed at all.
+    fn add_nary(
+        self,
+        first: Self::Expr,
+        other: impl IntoIterator<Item = (cst::AddOp, Self::Expr)>,
+    ) -> Self::Expr
+    where
+        Self: Sized,
+    {
+        other.into_iter().fold(first, |acc, (op, next)| match op {
+            cst::AddOp::Plus => self.clone().add(acc, next),
+            cst::AddOp::Minus => self.clone().sub(acc, next),
+        })
+    }
+
+    /// Create expression containing addition and subtraction that may have more
+    /// than two subexpressions (A + B - C) or may have only one subexpression,
+    /// in which case no operations are performed at all.
+    fn mul_nary(self, first: Self::Expr, other: impl IntoIterator<Item = Self::Expr>) -> Self::Expr
+    where
+        Self: Sized,
+    {
+        other
+            .into_iter()
+            .fold(first, |acc, next| self.clone().mul(acc, next))
     }
 }

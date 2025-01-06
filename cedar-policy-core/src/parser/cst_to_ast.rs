@@ -1242,7 +1242,9 @@ impl Node<Option<cst::Add>> {
             // in this case, `first` must be an expr, we should check for errors there as well
             let first = first.into_expr::<Build>()?;
             Ok(ExprOrSpecial::Expr {
-                expr: construct_chained_add::<Build>(first, rest, &self.loc),
+                expr: Build::new()
+                    .with_source_loc(&self.loc)
+                    .add_nary(first, rest),
                 loc: self.loc.clone(),
             })
         } else {
@@ -1274,7 +1276,9 @@ impl Node<Option<cst::Mult>> {
             // in this case, `first` must be an expr, we should check for errors there as well
             let first = first.into_expr::<Build>()?;
             Ok(ExprOrSpecial::Expr {
-                expr: construct_chained_mul::<Build>(first, rest, &self.loc),
+                expr: Build::new()
+                    .with_source_loc(&self.loc)
+                    .mul_nary(first, rest),
                 loc: self.loc.clone(),
             })
         } else {
@@ -1950,34 +1954,6 @@ fn construct_expr_rel<Build: ExprBuilder>(
             Err(ToASTError::new(ToASTErrorKind::InvalidSingleEq, loc).into())
         }
     }
-}
-/// used for a chain of addition and/or subtraction
-fn construct_chained_add<Build: ExprBuilder>(
-    f: Build::Expr,
-    chained: impl IntoIterator<Item = (cst::AddOp, Build::Expr)>,
-    loc: &Loc,
-) -> Build::Expr {
-    let mut expr = f;
-    for (op, next_expr) in chained {
-        let builder = Build::new().with_source_loc(loc);
-        expr = match op {
-            cst::AddOp::Plus => builder.add(expr, next_expr),
-            cst::AddOp::Minus => builder.sub(expr, next_expr),
-        };
-    }
-    expr
-}
-/// used for a chain of multiplication only (no division or mod)
-fn construct_chained_mul<Build: ExprBuilder>(
-    f: Build::Expr,
-    chained: impl IntoIterator<Item = Build::Expr>,
-    loc: &Loc,
-) -> Build::Expr {
-    let mut expr = f;
-    for next_expr in chained {
-        expr = Build::new().with_source_loc(loc).mul(expr, next_expr);
-    }
-    expr
 }
 
 fn construct_exprs_extended_has<Build: ExprBuilder>(
