@@ -1046,7 +1046,7 @@ impl From<EntityUID> for ActionEntityUID<Name> {
 /// this [`Type`], including recursively.
 /// See notes on [`Fragment`].
 #[derive(Educe, Debug, Clone, Serialize)]
-#[educe(PartialEq, Eq, PartialOrd, Ord)]
+#[educe(PartialEq(bound(N: PartialEq)), Eq, PartialOrd, Ord(bound(N: Ord)))]
 // This enum is `untagged` with these variants as a workaround to a serde
 // limitation. It is not possible to have the known variants on one enum, and
 // then, have catch-all variant for any unrecognized tag in the same enum that
@@ -1666,7 +1666,7 @@ impl RecordType<ConditionalName> {
 /// this [`TypeVariant`], including recursively.
 /// See notes on [`Fragment`].
 #[derive(Educe, Debug, Clone, Serialize, Deserialize)]
-#[educe(PartialEq(bound(N: PartialEq)), Eq, PartialOrd, Ord)]
+#[educe(PartialEq(bound(N: PartialEq)), Eq, PartialOrd, Ord(bound(N: Ord)))]
 #[serde(tag = "type")]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -3658,5 +3658,26 @@ mod annotations {
            }
         });
         test_unknown_fields(src, "`bar`", ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES);
+    }
+}
+
+#[cfg(test)]
+mod ord {
+    use super::{InternalName, RawName, Type, TypeVariant};
+    use std::collections::BTreeSet;
+
+    /// Tests that `Type<RawName>` and `Type<InternalName>` are `Ord`
+    #[test]
+    fn type_ord() {
+        let mut set: BTreeSet<Type<RawName>> = BTreeSet::default();
+        set.insert(Type::Type {
+            ty: TypeVariant::String,
+            loc: None,
+        });
+        let mut set: BTreeSet<Type<InternalName>> = BTreeSet::default();
+        set.insert(Type::Type {
+            ty: TypeVariant::String,
+            loc: None,
+        });
     }
 }
