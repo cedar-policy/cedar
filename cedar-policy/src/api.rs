@@ -3660,17 +3660,6 @@ impl<S> RequestBuilder<S> {
         }
     }
 
-    /// Set the action to be unknown, but known to belong to a certain entity type.
-    ///
-    /// This information is taken into account when evaluating 'is', '==' and '!=' expressions.
-    #[must_use]
-    pub fn unknown_action_with_type(self, action_type: EntityTypeName) -> Self {
-        Self {
-            action: ast::EntityUIDEntry::unknown_with_type(action_type.0, None),
-            ..self
-        }
-    }
-
     /// Set the resource.
     ///
     /// Note that you can create the `EntityUid` using `.parse()` on any
