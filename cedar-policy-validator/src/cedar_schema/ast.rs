@@ -258,7 +258,7 @@ pub struct EntityDecl {
     /// Entity Types this type is allowed to be related to via the `in` relation
     pub member_of_types: Vec<Path>,
     /// Attributes this entity has
-    pub attrs: Vec<Node<Annotated<AttrDecl>>>,
+    pub attrs: Node<Vec<Node<Annotated<AttrDecl>>>>,
     /// Tag type for this entity (`None` means no tags on this entity)
     pub tags: Option<Node<Type>>,
 }
@@ -340,7 +340,7 @@ pub enum AppDecl {
     /// Constraints on the `principal` or `resource`
     PR(PRAppDecl),
     /// Constraints on the `context`
-    Context(Either<Path, Vec<Node<Annotated<AttrDecl>>>>),
+    Context(Either<Path, Node<Vec<Node<Annotated<AttrDecl>>>>>),
 }
 
 /// An action declaration

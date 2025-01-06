@@ -125,10 +125,15 @@ Decl: Node<Declaration> = {
     <t:TypeDecl> => t,
 }
 
-// Entity := 'entity' Idents ['in' EntOrTypes] [['='] RecType] ';'
+// Entity := 'entity' Idents ['in' EntOrTypes] [['='] RecType] ';' <r:@R>
 Entity: Node<Declaration> = {
-    <l:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> <ds:("="? "{" <AttrDecls?> "}")?> <ts:(TAGS <Type>)?> ";" <r:@R>
-        => Node::with_source_loc(Declaration::Entity(EntityDecl { names: ets, member_of_types: ps.unwrap_or_default(), attrs: ds.map(|ds| ds.unwrap_or_default()).unwrap_or_default(), tags: ts }), Loc::new(l..r, Arc::clone(src))),
+    <l1:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> <l2:@L> <ds:("="? "{" <AttrDecls?> "}")?> <r2:@R> <ts:(TAGS <Type>)?> ";" <r1:@R>
+        => Node::with_source_loc(Declaration::Entity(EntityDecl {
+            names: ets,
+            member_of_types: ps.unwrap_or_default(),
+            attrs: Node::with_source_loc(ds.map(|ds| ds.unwrap_or_default()).unwrap_or_default(), Loc::new(l2..r2, Arc::clone(src))),
+            tags: ts,
+            }), Loc::new(l1..r1, Arc::clone(src))),
 }
 
 // Action := 'action' Names ['in' QualNameOrNames]
@@ -175,18 +180,18 @@ AppDecls: Node<NonEmpty<Node<AppDecl>>> = {
                 ds,
                 Loc::new(l..r, Arc::clone(src)))
         },
-    <l:@L> CONTEXT ":" "{" <attrs:AttrDecls?> "}" ","? <r:@R>
+    <l1:@L> CONTEXT ":" <l2:@L> "{" <attrs:AttrDecls?> "}" <r2:@R> ","? <r1:@R>
         =>
             Node::with_source_loc(
-                nonempty![Node::with_source_loc(AppDecl::Context(Either::Right(attrs.unwrap_or_default())), Loc::new(l..r, Arc::clone(src)))],
-                Loc::new(l..r, Arc::clone(src))),
-    <l:@L> CONTEXT ":" "{" <attrs:AttrDecls?> "}" "," <r:@R> <mut ds: AppDecls>
+                nonempty![Node::with_source_loc(AppDecl::Context(Either::Right(Node::with_source_loc(attrs.unwrap_or_default(), Loc::new(l2..r2, Arc::clone(src))))), Loc::new(l1..r1, Arc::clone(src)))],
+                Loc::new(l1..r1, Arc::clone(src))),
+    <l1:@L> CONTEXT ":" <l2:@L> "{" <attrs:AttrDecls?> "}" <r2:@R> "," <r1:@R> <mut ds: AppDecls>
         => {
             let (mut ds, _) = ds.into_inner();
-            ds.insert(0, Node::with_source_loc(AppDecl::Context(Either::Right(attrs.unwrap_or_default())), Loc::new(l..r, Arc::clone(src))));
+            ds.insert(0, Node::with_source_loc(AppDecl::Context(Either::Right(Node::with_source_loc(attrs.unwrap_or_default(), Loc::new(l2..r2, Arc::clone(src))))), Loc::new(l1..r1, Arc::clone(src))));
             Node::with_source_loc(
                 ds,
-                Loc::new(l..r, Arc::clone(src)))
+                Loc::new(l1..r1, Arc::clone(src)))
         },
 }
 

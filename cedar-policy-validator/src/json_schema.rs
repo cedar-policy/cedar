@@ -90,7 +90,8 @@ pub struct CommonType<N> {
 ///     processed, by converting [`RawName`]s into [`ConditionalName`]s
 /// - `N` = [`InternalName`]: a [`Fragment`] in which all names have been
 ///     resolved into fully-qualified [`InternalName`]s
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Educe, Debug, Clone, Deserialize)]
+#[educe(PartialEq, Eq)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -204,7 +205,8 @@ impl<N: Display> Fragment<N> {
 
 /// An [`UnreservedId`] that cannot be reserved JSON schema keywords
 /// like `Set`, `Long`, and etc.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
+#[derive(Educe, Debug, Clone, Serialize)]
+#[educe(PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct CommonTypeId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] UnreservedId);
@@ -310,7 +312,8 @@ pub struct ReservedCommonTypeBasenameError {
 /// _that are being declared here_, which is always an `UnreservedId` and unambiguously
 /// refers to the [`InternalName`] with the implicit current/active namespace prepended.)
 /// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[educe(PartialEq, Eq)]
 #[serde_as]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(bound(serialize = "N: Serialize"))]
@@ -335,6 +338,9 @@ pub struct NamespaceDefinition<N> {
 }
 
 impl<N> NamespaceDefinition<N> {
+    /// Create a new [`NamespaceDefinition`] with specified entity types and
+    /// actions, and no common types or annotations
+    #[cfg(test)]
     pub fn new(
         entity_types: impl IntoIterator<Item = (UnreservedId, EntityType<N>)>,
         actions: impl IntoIterator<Item = (SmolStr, ActionType<N>)>,
@@ -524,7 +530,8 @@ impl EntityType<ConditionalName> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`AttributesOrContext`], including recursively.
 /// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[educe(PartialEq, Eq)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -545,6 +552,11 @@ impl<N> AttributesOrContext<N> {
     pub fn is_empty_record(&self) -> bool {
         self.0.is_empty_record()
     }
+
+    /// Get the source location of this `AttributesOrContext`
+    pub fn loc(&self) -> Option<&Loc> {
+        self.0.loc()
+    }
 }
 
 impl<N> Default for AttributesOrContext<N> {
@@ -561,7 +573,10 @@ impl<N: Display> Display for AttributesOrContext<N> {
 
 impl<N> From<RecordType<N>> for AttributesOrContext<N> {
     fn from(rty: RecordType<N>) -> AttributesOrContext<N> {
-        Self(Type::Type(TypeVariant::Record(rty)))
+        Self(Type::Type {
+            ty: TypeVariant::Record(rty),
+            loc: None,
+        })
     }
 }
 
@@ -697,7 +712,8 @@ impl ActionType<ConditionalName> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`ApplySpec`], including recursively.
 /// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[educe(PartialEq, Eq)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
@@ -764,7 +780,8 @@ impl ApplySpec<ConditionalName> {
 }
 
 /// Represents the [`cedar_policy_core::ast::EntityUID`] of an action
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[educe(PartialEq, Eq, Hash)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
@@ -965,7 +982,8 @@ impl From<EntityUID> for ActionEntityUID<Name> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`Type`], including recursively.
 /// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Educe, Debug, Clone, Serialize)]
+#[educe(PartialEq(bound(N: PartialEq)), Eq, PartialOrd, Ord(bound(N: Ord)))]
 // This enum is `untagged` with these variants as a workaround to a serde
 // limitation. It is not possible to have the known variants on one enum, and
 // then, have catch-all variant for any unrecognized tag in the same enum that
@@ -977,7 +995,20 @@ pub enum Type<N> {
     /// One of the standard types exposed to users.
     ///
     /// This branch also includes the "entity-or-common-type-reference" possibility.
-    Type(TypeVariant<N>),
+    Type {
+        /// The type
+        #[serde(flatten)]
+        ty: TypeVariant<N>,
+        /// Source location
+        ///
+        /// (As of this writing, this is not populated when parsing from JSON.
+        /// It is only populated if constructing this structure from the
+        /// corresponding Cedar-syntax structure.)
+        #[serde(skip)]
+        #[educe(PartialEq(ignore))]
+        #[educe(PartialOrd(ignore))]
+        loc: Option<Loc>,
+    },
     /// Reference to a common type
     ///
     /// This is only used for references that _must_ resolve to common types.
@@ -990,6 +1021,15 @@ pub enum Type<N> {
         /// may not yet be fully qualified
         #[serde(rename = "type")]
         type_name: N,
+        /// Source location
+        ///
+        /// (As of this writing, this is not populated when parsing from JSON.
+        /// It is only populated if constructing this structure from the
+        /// corresponding Cedar-syntax structure.)
+        #[serde(skip)]
+        #[educe(PartialEq(ignore))]
+        #[educe(PartialOrd(ignore))]
+        loc: Option<Loc>,
     },
 }
 
@@ -998,17 +1038,24 @@ impl<N> Type<N> {
     /// resolve to a common type
     pub(crate) fn common_type_references(&self) -> Box<dyn Iterator<Item = &N> + '_> {
         match self {
-            Type::Type(TypeVariant::Record(RecordType { attributes, .. })) => attributes
+            Type::Type {
+                ty: TypeVariant::Record(RecordType { attributes, .. }),
+                ..
+            } => attributes
                 .iter()
                 .map(|(_, ty)| ty.ty.common_type_references())
                 .fold(Box::new(std::iter::empty()), |it, tys| {
                     Box::new(it.chain(tys))
                 }),
-            Type::Type(TypeVariant::Set { element }) => element.common_type_references(),
-            Type::Type(TypeVariant::EntityOrCommon { type_name }) => {
-                Box::new(std::iter::once(type_name))
-            }
-            Type::CommonTypeRef { type_name } => Box::new(std::iter::once(type_name)),
+            Type::Type {
+                ty: TypeVariant::Set { element },
+                ..
+            } => element.common_type_references(),
+            Type::Type {
+                ty: TypeVariant::EntityOrCommon { type_name },
+                ..
+            } => Box::new(std::iter::once(type_name)),
+            Type::CommonTypeRef { type_name, .. } => Box::new(std::iter::once(type_name)),
             _ => Box::new(std::iter::empty()),
         }
     }
@@ -1020,16 +1067,25 @@ impl<N> Type<N> {
     /// [`crate::types::Type`].
     pub fn is_extension(&self) -> Option<bool> {
         match self {
-            Self::Type(TypeVariant::Extension { .. }) => Some(true),
-            Self::Type(TypeVariant::Set { element }) => element.is_extension(),
-            Self::Type(TypeVariant::Record(RecordType { attributes, .. })) => attributes
+            Self::Type {
+                ty: TypeVariant::Extension { .. },
+                ..
+            } => Some(true),
+            Self::Type {
+                ty: TypeVariant::Set { element },
+                ..
+            } => element.is_extension(),
+            Self::Type {
+                ty: TypeVariant::Record(RecordType { attributes, .. }),
+                ..
+            } => attributes
                 .values()
                 .try_fold(false, |a, e| match e.ty.is_extension() {
                     Some(true) => Some(true),
                     Some(false) => Some(a),
                     None => None,
                 }),
-            Self::Type(_) => Some(false),
+            Self::Type { .. } => Some(false),
             Self::CommonTypeRef { .. } => None,
         }
     }
@@ -1038,8 +1094,19 @@ impl<N> Type<N> {
     /// implementation to avoid printing unnecessary entity/action data.
     pub fn is_empty_record(&self) -> bool {
         match self {
-            Self::Type(TypeVariant::Record(rty)) => rty.is_empty_record(),
+            Self::Type {
+                ty: TypeVariant::Record(rty),
+                ..
+            } => rty.is_empty_record(),
             _ => false,
+        }
+    }
+
+    /// Get the source location of this [`Type`]
+    pub fn loc(&self) -> Option<&Loc> {
+        match self {
+            Self::Type { loc, .. } => loc.as_ref(),
+            Self::CommonTypeRef { loc, .. } => loc.as_ref(),
         }
     }
 }
@@ -1051,18 +1118,26 @@ impl Type<RawName> {
         ns: Option<&InternalName>,
     ) -> Type<ConditionalName> {
         match self {
-            Self::Type(tv) => Type::Type(tv.conditionally_qualify_type_references(ns)),
-            Self::CommonTypeRef { type_name } => Type::CommonTypeRef {
+            Self::Type { ty, loc } => Type::Type {
+                ty: ty.conditionally_qualify_type_references(ns),
+                loc,
+            },
+            Self::CommonTypeRef { type_name, loc } => Type::CommonTypeRef {
                 type_name: type_name.conditionally_qualify_with(ns, ReferenceType::Common),
+                loc,
             },
         }
     }
 
     fn into_n<N: From<RawName>>(self) -> Type<N> {
         match self {
-            Self::Type(tv) => Type::Type(tv.into_n()),
-            Self::CommonTypeRef { type_name } => Type::CommonTypeRef {
+            Self::Type { ty, loc } => Type::Type {
+                ty: ty.into_n(),
+                loc,
+            },
+            Self::CommonTypeRef { type_name, loc } => Type::CommonTypeRef {
                 type_name: type_name.into(),
+                loc,
             },
         }
     }
@@ -1079,9 +1154,13 @@ impl Type<ConditionalName> {
         all_defs: &AllDefs,
     ) -> std::result::Result<Type<InternalName>, TypeNotDefinedError> {
         match self {
-            Self::Type(tv) => Ok(Type::Type(tv.fully_qualify_type_references(all_defs)?)),
-            Self::CommonTypeRef { type_name } => Ok(Type::CommonTypeRef {
+            Self::Type { ty, loc } => Ok(Type::Type {
+                ty: ty.fully_qualify_type_references(all_defs)?,
+                loc,
+            }),
+            Self::CommonTypeRef { type_name, loc } => Ok(Type::CommonTypeRef {
                 type_name: type_name.resolve(all_defs)?,
+                loc,
             }),
         }
     }
@@ -1270,15 +1349,24 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                 match s.as_str() {
                     "String" => {
                         error_if_any_fields()?;
-                        Ok(Type::Type(TypeVariant::String))
+                        Ok(Type::Type {
+                            ty: TypeVariant::String,
+                            loc: None,
+                        })
                     }
                     "Long" => {
                         error_if_any_fields()?;
-                        Ok(Type::Type(TypeVariant::Long))
+                        Ok(Type::Type {
+                            ty: TypeVariant::Long,
+                            loc: None,
+                        })
                     }
                     "Boolean" => {
                         error_if_any_fields()?;
-                        Ok(Type::Type(TypeVariant::Boolean))
+                        Ok(Type::Type {
+                            ty: TypeVariant::Boolean,
+                            loc: None,
+                        })
                     }
                     "Set" => {
                         error_if_fields(
@@ -1287,9 +1375,12 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                         )?;
 
                         match element {
-                            Some(element) => Ok(Type::Type(TypeVariant::Set {
-                                element: Box::new(element),
-                            })),
+                            Some(element) => Ok(Type::Type {
+                                ty: TypeVariant::Set {
+                                    element: Box::new(element),
+                                },
+                                loc: None,
+                            }),
                             None => Err(serde::de::Error::missing_field(Element.as_str())),
                         }
                     }
@@ -1305,33 +1396,36 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                         if let Some(attributes) = attributes {
                             let additional_attributes =
                                 additional_attributes.unwrap_or_else(partial_schema_default);
-                            Ok(Type::Type(TypeVariant::Record(RecordType {
-                                attributes: attributes
-                                    .0
-                                    .into_iter()
-                                    .map(
-                                        |(
-                                            k,
-                                            TypeOfAttribute {
-                                                ty,
-                                                required,
-                                                annotations,
-                                            },
-                                        )| {
-                                            (
+                            Ok(Type::Type {
+                                ty: TypeVariant::Record(RecordType {
+                                    attributes: attributes
+                                        .0
+                                        .into_iter()
+                                        .map(
+                                            |(
                                                 k,
                                                 TypeOfAttribute {
-                                                    ty: ty.into_n(),
-
+                                                    ty,
                                                     required,
                                                     annotations,
                                                 },
-                                            )
-                                        },
-                                    )
-                                    .collect(),
-                                additional_attributes,
-                            })))
+                                            )| {
+                                                (
+                                                    k,
+                                                    TypeOfAttribute {
+                                                        ty: ty.into_n(),
+
+                                                        required,
+                                                        annotations,
+                                                    },
+                                                )
+                                            },
+                                        )
+                                        .collect(),
+                                    additional_attributes,
+                                }),
+                                loc: None,
+                            })
                         } else {
                             Err(serde::de::Error::missing_field(Attributes.as_str()))
                         }
@@ -1342,15 +1436,18 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                             &[type_field_name!(Name)],
                         )?;
                         match name {
-                            Some(name) => Ok(Type::Type(TypeVariant::Entity {
-                                name: RawName::from_normalized_str(&name)
-                                    .map_err(|err| {
-                                        serde::de::Error::custom(format!(
-                                            "invalid entity type `{name}`: {err}"
-                                        ))
-                                    })?
-                                    .into(),
-                            })),
+                            Some(name) => Ok(Type::Type {
+                                ty: TypeVariant::Entity {
+                                    name: RawName::from_normalized_str(&name)
+                                        .map_err(|err| {
+                                            serde::de::Error::custom(format!(
+                                                "invalid entity type `{name}`: {err}"
+                                            ))
+                                        })?
+                                        .into(),
+                                },
+                                loc: None,
+                            }),
                             None => Err(serde::de::Error::missing_field(Name.as_str())),
                         }
                     }
@@ -1360,15 +1457,18 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                             &[type_field_name!(Name)],
                         )?;
                         match name {
-                            Some(name) => Ok(Type::Type(TypeVariant::EntityOrCommon {
-                                type_name: RawName::from_normalized_str(&name)
-                                    .map_err(|err| {
-                                        serde::de::Error::custom(format!(
-                                            "invalid entity or common type `{name}`: {err}"
-                                        ))
-                                    })?
-                                    .into(),
-                            })),
+                            Some(name) => Ok(Type::Type {
+                                ty: TypeVariant::EntityOrCommon {
+                                    type_name: RawName::from_normalized_str(&name)
+                                        .map_err(|err| {
+                                            serde::de::Error::custom(format!(
+                                                "invalid entity or common type `{name}`: {err}"
+                                            ))
+                                        })?
+                                        .into(),
+                                },
+                                loc: None,
+                            }),
                             None => Err(serde::de::Error::missing_field(Name.as_str())),
                         }
                     }
@@ -1379,13 +1479,18 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                         )?;
 
                         match name {
-                            Some(name) => Ok(Type::Type(TypeVariant::Extension {
-                                name: UnreservedId::from_normalized_str(&name).map_err(|err| {
-                                    serde::de::Error::custom(format!(
-                                        "invalid extension type `{name}`: {err}"
-                                    ))
-                                })?,
-                            })),
+                            Some(name) => Ok(Type::Type {
+                                ty: TypeVariant::Extension {
+                                    name: UnreservedId::from_normalized_str(&name).map_err(
+                                        |err| {
+                                            serde::de::Error::custom(format!(
+                                                "invalid extension type `{name}`: {err}"
+                                            ))
+                                        },
+                                    )?,
+                                },
+                                loc: None,
+                            }),
                             None => Err(serde::de::Error::missing_field(Name.as_str())),
                         }
                     }
@@ -1399,6 +1504,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                                     ))
                                 },
                             )?),
+                            loc: None,
                         })
                     }
                 }
@@ -1409,8 +1515,8 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
 }
 
 impl<N> From<TypeVariant<N>> for Type<N> {
-    fn from(variant: TypeVariant<N>) -> Self {
-        Self::Type(variant)
+    fn from(ty: TypeVariant<N>) -> Self {
+        Self::Type { ty, loc: None }
     }
 }
 
@@ -1419,7 +1525,8 @@ impl<N> From<TypeVariant<N>> for Type<N> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`RecordType`], including recursively.
 /// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[educe(PartialEq, Eq, PartialOrd, Ord)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -1495,7 +1602,8 @@ impl RecordType<ConditionalName> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`TypeVariant`], including recursively.
 /// See notes on [`Fragment`].
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[educe(PartialEq(bound(N: PartialEq)), Eq, PartialOrd, Ord(bound(N: Ord)))]
 #[serde(tag = "type")]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -1699,46 +1807,49 @@ impl<'a> arbitrary::Arbitrary<'a> for Type<RawName> {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Type<RawName>> {
         use std::collections::BTreeSet;
 
-        Ok(Type::Type(match u.int_in_range::<u8>(1..=8)? {
-            1 => TypeVariant::String,
-            2 => TypeVariant::Long,
-            3 => TypeVariant::Boolean,
-            4 => TypeVariant::Set {
-                element: Box::new(u.arbitrary()?),
+        Ok(Type::Type {
+            ty: match u.int_in_range::<u8>(1..=8)? {
+                1 => TypeVariant::String,
+                2 => TypeVariant::Long,
+                3 => TypeVariant::Boolean,
+                4 => TypeVariant::Set {
+                    element: Box::new(u.arbitrary()?),
+                },
+                5 => {
+                    let attributes = {
+                        let attr_names: BTreeSet<String> = u.arbitrary()?;
+                        attr_names
+                            .into_iter()
+                            .map(|attr_name| {
+                                Ok((
+                                    attr_name.into(),
+                                    u.arbitrary::<TypeOfAttribute<RawName>>()?.into(),
+                                ))
+                            })
+                            .collect::<arbitrary::Result<_>>()?
+                    };
+                    TypeVariant::Record(RecordType {
+                        attributes,
+                        additional_attributes: u.arbitrary()?,
+                    })
+                }
+                6 => TypeVariant::Entity {
+                    name: u.arbitrary()?,
+                },
+                7 => TypeVariant::Extension {
+                    // PANIC SAFETY: `ipaddr` is a valid `UnreservedId`
+                    #[allow(clippy::unwrap_used)]
+                    name: "ipaddr".parse().unwrap(),
+                },
+                8 => TypeVariant::Extension {
+                    // PANIC SAFETY: `decimal` is a valid `UnreservedId`
+                    #[allow(clippy::unwrap_used)]
+                    name: "decimal".parse().unwrap(),
+                },
+                n => panic!("bad index: {n}"),
             },
-            5 => {
-                let attributes = {
-                    let attr_names: BTreeSet<String> = u.arbitrary()?;
-                    attr_names
-                        .into_iter()
-                        .map(|attr_name| {
-                            Ok((
-                                attr_name.into(),
-                                u.arbitrary::<TypeOfAttribute<RawName>>()?.into(),
-                            ))
-                        })
-                        .collect::<arbitrary::Result<_>>()?
-                };
-                TypeVariant::Record(RecordType {
-                    attributes,
-                    additional_attributes: u.arbitrary()?,
-                })
-            }
-            6 => TypeVariant::Entity {
-                name: u.arbitrary()?,
-            },
-            7 => TypeVariant::Extension {
-                // PANIC SAFETY: `ipaddr` is a valid `UnreservedId`
-                #[allow(clippy::unwrap_used)]
-                name: "ipaddr".parse().unwrap(),
-            },
-            8 => TypeVariant::Extension {
-                // PANIC SAFETY: `decimal` is a valid `UnreservedId`
-                #[allow(clippy::unwrap_used)]
-                name: "decimal".parse().unwrap(),
-            },
-            n => panic!("bad index: {n}"),
-        }))
+            loc: None,
+        })
     }
     fn size_hint(_depth: usize) -> (usize, Option<usize>) {
         (1, None) // Unfortunately, we probably can't be more precise than this
@@ -1763,7 +1874,8 @@ impl<'a> arbitrary::Arbitrary<'a> for Type<RawName> {
 /// (`<https://github.com/serde-rs/serde/issues/1600>`). This should be ok because
 /// unknown fields for [`TypeOfAttribute`] should be passed to [`Type`] where
 /// they will be denied (`<https://github.com/serde-rs/serde/issues/1600>`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, PartialOrd, Ord)]
+#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[educe(PartialEq, Eq, PartialOrd, Ord)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 pub struct TypeOfAttribute<N> {
     /// Underlying type of the attribute
@@ -1879,10 +1991,13 @@ mod test {
         assert_eq!(et.member_of_types, vec!["UserGroup".parse().unwrap()]);
         assert_eq!(
             et.shape,
-            AttributesOrContext(Type::Type(TypeVariant::Record(RecordType {
-                attributes: BTreeMap::new(),
-                additional_attributes: false
-            }))),
+            AttributesOrContext(Type::Type {
+                ty: TypeVariant::Record(RecordType {
+                    attributes: BTreeMap::new(),
+                    additional_attributes: false
+                }),
+                loc: None
+            }),
         );
     }
 
@@ -1895,10 +2010,13 @@ mod test {
         assert_eq!(et.member_of_types.len(), 0);
         assert_eq!(
             et.shape,
-            AttributesOrContext(Type::Type(TypeVariant::Record(RecordType {
-                attributes: BTreeMap::new(),
-                additional_attributes: false
-            }))),
+            AttributesOrContext(Type::Type {
+                ty: TypeVariant::Record(RecordType {
+                    attributes: BTreeMap::new(),
+                    additional_attributes: false
+                }),
+                loc: None
+            }),
         );
     }
 
@@ -2696,12 +2814,12 @@ mod entity_tags {
         let json = example_json_schema();
         assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
             let user = &frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
-            assert_matches!(&user.tags, Some(Type::Type(TypeVariant::Set { element })) => {
-                assert_matches!(&**element, Type::Type(TypeVariant::String)); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
+            assert_matches!(&user.tags, Some(Type::Type { ty: TypeVariant::Set { element }, loc: None }) => {
+                assert_matches!(&**element, Type::Type { ty: TypeVariant::String, loc: None }); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
             });
             let doc = &frag.0.get(&None).unwrap().entity_types.get(&"Document".parse().unwrap()).unwrap();
-            assert_matches!(&doc.tags, Some(Type::Type(TypeVariant::Set { element })) => {
-                assert_matches!(&**element, Type::Type(TypeVariant::String)); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
+            assert_matches!(&doc.tags, Some(Type::Type { ty: TypeVariant::Set { element }, loc: None }) => {
+                assert_matches!(&**element, Type::Type { ty: TypeVariant::String, loc: None }); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
             });
         })
     }
@@ -2730,7 +2848,7 @@ mod entity_tags {
         }});
         assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
             let user = &frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
-            assert_matches!(&user.tags, Some(Type::CommonTypeRef { type_name }) => {
+            assert_matches!(&user.tags, Some(Type::CommonTypeRef { type_name, loc: None }) => {
                 assert_eq!(&format!("{type_name}"), "T");
             });
         })
@@ -2757,7 +2875,7 @@ mod entity_tags {
         }});
         assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
             let user = &frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
-            assert_matches!(&user.tags, Some(Type::Type(TypeVariant::Entity{ name })) => {
+            assert_matches!(&user.tags, Some(Type::Type { ty: TypeVariant::Entity { name }, loc: None }) => {
                 assert_eq!(&format!("{name}"), "User");
             });
         })
@@ -2807,15 +2925,7 @@ mod test_json_roundtrip {
 
     #[test]
     fn empty_namespace() {
-        let fragment = Fragment(BTreeMap::from([(
-            None,
-            NamespaceDefinition {
-                common_types: BTreeMap::new(),
-                entity_types: BTreeMap::new(),
-                actions: BTreeMap::new(),
-                annotations: Annotations::new(),
-            },
-        )]));
+        let fragment = Fragment(BTreeMap::from([(None, NamespaceDefinition::new([], []))]));
         roundtrip(fragment);
     }
 
@@ -2823,12 +2933,7 @@ mod test_json_roundtrip {
     fn nonempty_namespace() {
         let fragment = Fragment(BTreeMap::from([(
             Some("a".parse().unwrap()),
-            NamespaceDefinition {
-                common_types: BTreeMap::new(),
-                entity_types: BTreeMap::new(),
-                actions: BTreeMap::new(),
-                annotations: Annotations::new(),
-            },
+            NamespaceDefinition::new([], []),
         )]));
         roundtrip(fragment);
     }
@@ -2837,42 +2942,44 @@ mod test_json_roundtrip {
     fn nonempty_entity_types() {
         let fragment = Fragment(BTreeMap::from([(
             None,
-            NamespaceDefinition {
-                common_types: BTreeMap::new(),
-                entity_types: BTreeMap::from([(
+            NamespaceDefinition::new(
+                [(
                     "a".parse().unwrap(),
                     EntityType {
                         member_of_types: vec!["a".parse().unwrap()],
-                        shape: AttributesOrContext(Type::Type(TypeVariant::Record(RecordType {
-                            attributes: BTreeMap::new(),
-                            additional_attributes: false,
-                        }))),
+                        shape: AttributesOrContext(Type::Type {
+                            ty: TypeVariant::Record(RecordType {
+                                attributes: BTreeMap::new(),
+                                additional_attributes: false,
+                            }),
+                            loc: None,
+                        }),
                         tags: None,
                         annotations: Annotations::new(),
                         loc: None,
                     },
-                )]),
-                actions: BTreeMap::from([(
+                )],
+                [(
                     "action".into(),
                     ActionType {
                         attributes: None,
                         applies_to: Some(ApplySpec {
                             resource_types: vec!["a".parse().unwrap()],
                             principal_types: vec!["a".parse().unwrap()],
-                            context: AttributesOrContext(Type::Type(TypeVariant::Record(
-                                RecordType {
+                            context: AttributesOrContext(Type::Type {
+                                ty: TypeVariant::Record(RecordType {
                                     attributes: BTreeMap::new(),
                                     additional_attributes: false,
-                                },
-                            ))),
+                                }),
+                                loc: None,
+                            }),
                         }),
                         member_of: None,
                         annotations: Annotations::new(),
                         loc: None,
                     },
-                )]),
-                annotations: Annotations::new(),
-            },
+                )],
+            ),
         )]));
         roundtrip(fragment);
     }
@@ -2882,53 +2989,51 @@ mod test_json_roundtrip {
         let fragment = Fragment(BTreeMap::from([
             (
                 Some("foo".parse().unwrap()),
-                NamespaceDefinition {
-                    common_types: BTreeMap::new(),
-                    entity_types: BTreeMap::from([(
+                NamespaceDefinition::new(
+                    [(
                         "a".parse().unwrap(),
                         EntityType {
                             member_of_types: vec!["a".parse().unwrap()],
-                            shape: AttributesOrContext(Type::Type(TypeVariant::Record(
-                                RecordType {
+                            shape: AttributesOrContext(Type::Type {
+                                ty: TypeVariant::Record(RecordType {
                                     attributes: BTreeMap::new(),
                                     additional_attributes: false,
-                                },
-                            ))),
+                                }),
+                                loc: None,
+                            }),
                             tags: None,
                             annotations: Annotations::new(),
                             loc: None,
                         },
-                    )]),
-                    actions: BTreeMap::new(),
-                    annotations: Annotations::new(),
-                },
+                    )],
+                    [],
+                ),
             ),
             (
                 None,
-                NamespaceDefinition {
-                    common_types: BTreeMap::new(),
-                    entity_types: BTreeMap::new(),
-                    actions: BTreeMap::from([(
+                NamespaceDefinition::new(
+                    [],
+                    [(
                         "action".into(),
                         ActionType {
                             attributes: None,
                             applies_to: Some(ApplySpec {
                                 resource_types: vec!["foo::a".parse().unwrap()],
                                 principal_types: vec!["foo::a".parse().unwrap()],
-                                context: AttributesOrContext(Type::Type(TypeVariant::Record(
-                                    RecordType {
+                                context: AttributesOrContext(Type::Type {
+                                    ty: TypeVariant::Record(RecordType {
                                         attributes: BTreeMap::new(),
                                         additional_attributes: false,
-                                    },
-                                ))),
+                                    }),
+                                    loc: None,
+                                }),
                             }),
                             member_of: None,
                             annotations: Annotations::new(),
                             loc: None,
                         },
-                    )]),
-                    annotations: Annotations::new(),
-                },
+                    )],
+                ),
             ),
         ]));
         roundtrip(fragment);
@@ -3485,5 +3590,26 @@ mod annotations {
            }
         });
         test_unknown_fields(src, "`bar`", ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES);
+    }
+}
+
+#[cfg(test)]
+mod ord {
+    use super::{InternalName, RawName, Type, TypeVariant};
+    use std::collections::BTreeSet;
+
+    /// Tests that `Type<RawName>` and `Type<InternalName>` are `Ord`
+    #[test]
+    fn type_ord() {
+        let mut set: BTreeSet<Type<RawName>> = BTreeSet::default();
+        set.insert(Type::Type {
+            ty: TypeVariant::String,
+            loc: None,
+        });
+        let mut set: BTreeSet<Type<InternalName>> = BTreeSet::default();
+        set.insert(Type::Type {
+            ty: TypeVariant::String,
+            loc: None,
+        });
     }
 }
