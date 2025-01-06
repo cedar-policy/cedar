@@ -406,7 +406,7 @@ pub struct ExtFuncCall {
 }
 
 /// Construct an [`Expr`].
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Builder;
 
 impl ExprBuilder for Builder {

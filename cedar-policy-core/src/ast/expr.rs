@@ -1130,7 +1130,7 @@ impl From<&Expr> for proto::Expr {
 
 /// Builder for constructing `Expr` objects annotated with some `data`
 /// (possibly taking default value) and optionally a `source_loc`.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ExprBuilder<T> {
     source_loc: Option<Loc>,
     data: T,

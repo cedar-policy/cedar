@@ -30,13 +30,13 @@ use crate::{
 /// Defines a generic interface for building different expression data
 /// structures.
 #[allow(clippy::wrong_self_convention)]
-pub trait ExprBuilder {
+pub trait ExprBuilder: Clone {
     /// The type of expression constructed by this instance of `ExprBuilder`.
     type Expr: Clone + std::fmt::Display;
 
     /// Type for extra information stored on nodes of the expression AST. This
     /// can be `()` if no data is stored.
-    type Data: Clone + Default;
+    type Data: Default;
 
     /// Construct a new expression builder for an expression that will not carry any data.
     fn new() -> Self
@@ -181,9 +181,9 @@ pub trait ExprBuilder {
     where
         Self: Sized,
     {
-        Self::with_data(self.data().clone()).and(
-            Self::with_data(self.data().clone()).is_entity_type(e1.clone(), entity_type),
-            Self::with_data(self.data().clone()).is_in(e1, e2),
+        self.clone().and(
+            self.clone().is_entity_type(e1.clone(), entity_type),
+            self.clone().is_in(e1, e2),
         )
     }
 
@@ -227,9 +227,7 @@ pub trait ExprBuilder {
     where
         Self: Sized,
     {
-        Self::with_data(self.data().clone())
-            .with_maybe_source_loc(self.loc())
-            .not(self.is_eq(e1, e2))
+        self.clone().not(self.is_eq(e1, e2))
     }
 
     /// Create a '>' expression.
@@ -238,9 +236,7 @@ pub trait ExprBuilder {
         Self: Sized,
     {
         // e1 > e2 is defined as !(e1 <= e2)
-        Self::with_data(self.data().clone())
-            .with_maybe_source_loc(self.loc())
-            .not(self.lesseq(e1, e2))
+        self.clone().not(self.lesseq(e1, e2))
     }
 
     /// Create a '>=' expression.
@@ -249,9 +245,7 @@ pub trait ExprBuilder {
         Self: Sized,
     {
         // e1 >= e2 is defined as !(e1 < e2)
-        Self::with_data(self.data().clone())
-            .with_maybe_source_loc(self.loc())
-            .not(self.less(e1, e2))
+        self.clone().not(self.less(e1, e2))
     }
 
     /// Create an `and` expression that may have more than two subexpressions (A && B && C)
@@ -265,11 +259,9 @@ pub trait ExprBuilder {
     where
         Self: Sized,
     {
-        others.into_iter().fold(first, |acc, next| {
-            Self::with_data(self.data().clone())
-                .with_maybe_source_loc(self.loc())
-                .and(acc, next)
-        })
+        others
+            .into_iter()
+            .fold(first, |acc, next| self.clone().and(acc, next))
     }
 
     /// Create an `or` expression that may have more than two subexpressions (A || B || C)
@@ -283,10 +275,8 @@ pub trait ExprBuilder {
     where
         Self: Sized,
     {
-        others.into_iter().fold(first, |acc, next| {
-            Self::with_data(self.data().clone())
-                .with_maybe_source_loc(self.loc())
-                .or(acc, next)
-        })
+        others
+            .into_iter()
+            .fold(first, |acc, next| self.clone().or(acc, next))
     }
 }
