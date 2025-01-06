@@ -18,7 +18,10 @@ use cool_asserts::assert_matches;
 use serde_json::json;
 use std::collections::HashSet;
 
-use cedar_policy_core::ast::{EntityUID, Expr, ExprBuilder, PolicyID};
+use cedar_policy_core::{
+    ast::{EntityUID, Expr, ExprBuilder, PolicyID},
+    expr_builder::ExprBuilder as _,
+};
 
 use super::test_utils::{empty_schema_file, expr_id_placeholder};
 use crate::{json_schema, typecheck::Typechecker, types::Type, ValidationMode};

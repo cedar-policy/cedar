@@ -6345,6 +6345,7 @@ mod reserved_keywords_in_policies {
     }
 
     #[track_caller]
+    #[allow(unused)]
     fn assert_invalid_expression_with_help(src: &str, error: &str, underline: &str, help: &str) {
         let expected_err = ExpectedErrorMessageBuilder::error(error)
             .exactly_one_underline(underline)
@@ -6388,11 +6389,15 @@ mod reserved_keywords_in_policies {
             // slightly different errors depending on `id`; related to #407
             match id {
                 "true" | "false" => {
-                    assert_invalid_expression_with_help(
+                    assert_invalid_expression(
                         &format!("{{ {id}: 1 }}"),
-                        &format!("invalid attribute name: {id}"),
+                        &RESERVED_IDENT_MSG(id),
                         id,
-                        "attribute names can either be identifiers or string literals",
+                    );
+                    assert_invalid_expression(
+                        &format!("principal has {id}"),
+                        &RESERVED_IDENT_MSG(id),
+                        id,
                     );
                     assert_invalid_expression(
                         &format!("principal has {id}"),

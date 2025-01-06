@@ -30,6 +30,7 @@ pub mod entities;
 mod error_macros;
 pub mod est;
 pub mod evaluator;
+pub mod expr_builder;
 pub mod extensions;
 pub mod fuzzy_match;
 pub mod jsonvalue;
