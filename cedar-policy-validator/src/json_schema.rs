@@ -440,7 +440,7 @@ pub enum EntityTypeKind<N> {
     Standard(StandardEntityType<N>),
     /// ...
     Enum {
-        #[serde(rename = "Enum")]
+        #[serde(rename = "enum")]
         /// ...
         choices: Vec<SmolStr>,
     },

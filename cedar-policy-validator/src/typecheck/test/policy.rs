@@ -1312,3 +1312,89 @@ mod templates {
         );
     }
 }
+
+mod enumerated_entity_types {
+    use cedar_policy_core::{ast::PolicyID, parser::parse_policy_or_template};
+
+    use crate::{
+        json_schema, typecheck::test::test_utils::get_loc, types::EntityLUB,
+        validation_errors::AttributeAccess, RawName, ValidationError,
+    };
+
+    use super::{
+        assert_exactly_one_diagnostic, assert_policy_typecheck_fails, assert_policy_typechecks,
+    };
+
+    #[track_caller]
+    fn schema() -> json_schema::NamespaceDefinition<RawName> {
+        serde_json::from_value(serde_json::json!(
+            {
+                    "entityTypes": {
+                         "Foo": {
+                            "enum": [ "foo" ],
+                        },
+                        "Bar": {
+                            "memberOfTypes": ["Foo"],
+                        }
+                    },
+                    "actions": {
+                        "a": {
+                            "appliesTo": {
+                                "principalTypes": ["Foo"],
+                                "resourceTypes": ["Bar"],
+                            }
+                        }
+                    }
+            }
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn basic() {
+        let schema = schema();
+        let template = parse_policy_or_template(None, r#"permit(principal, action == Action::"a", resource) when { principal == Foo::"foo" };"#).unwrap();
+        assert_policy_typechecks(schema, template);
+    }
+
+    #[test]
+    fn no_attrs_allowed() {
+        let schema = schema();
+        let src = r#"permit(principal, action == Action::"a", resource) when { principal.foo == "foo" };"#;
+        let template = parse_policy_or_template(None, src).unwrap();
+        let errs = assert_policy_typecheck_fails(schema, template);
+        let err = assert_exactly_one_diagnostic(errs);
+        assert_eq!(
+            err,
+            ValidationError::unsafe_attribute_access(
+                get_loc(src, "principal.foo"),
+                PolicyID::from_string("policy0"),
+                AttributeAccess::EntityLUB(
+                    EntityLUB::single_entity("Foo".parse().unwrap()),
+                    vec!["foo".into()],
+                ),
+                None,
+                false,
+            )
+        );
+    }
+
+    #[test]
+    fn no_ancestors() {
+        let schema = schema();
+        let src =
+            r#"permit(principal, action == Action::"a", resource) when { principal in resource };"#;
+        let template = parse_policy_or_template(None, src).unwrap();
+        let errs = assert_policy_typecheck_fails(schema, template);
+        let err = assert_exactly_one_diagnostic(errs);
+        assert_eq!(
+            err,
+            ValidationError::hierarchy_not_respected(
+                get_loc(src, "principal in resource"),
+                PolicyID::from_string("policy0"),
+                Some("Foo".parse().unwrap()),
+                Some("Bar".parse().unwrap()),
+            )
+        );
+    }
+}
