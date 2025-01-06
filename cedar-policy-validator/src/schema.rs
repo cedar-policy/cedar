@@ -458,7 +458,10 @@ impl ValidatorSchema {
                 match common_types.entry(name) {
                     Entry::Vacant(v) => v.insert(ty),
                     Entry::Occupied(o) => {
-                        return Err(DuplicateCommonTypeError(o.key().clone()).into());
+                        return Err(DuplicateCommonTypeError {
+                            ty: o.key().clone(),
+                        }
+                        .into());
                     }
                 };
             }
@@ -467,7 +470,10 @@ impl ValidatorSchema {
                 match entity_type_fragments.entry(name) {
                     Entry::Vacant(v) => v.insert(entity_type),
                     Entry::Occupied(o) => {
-                        return Err(DuplicateEntityTypeError(o.key().clone()).into())
+                        return Err(DuplicateEntityTypeError {
+                            ty: o.key().clone(),
+                        }
+                        .into())
                     }
                 };
             }
@@ -531,9 +537,9 @@ impl ValidatorSchema {
                                 unresolved.resolve_common_type_refs(&common_types)?,
                             )
                             .ok_or_else(|| {
-                                ContextOrShapeNotRecordError(ContextOrShape::EntityTypeShape(
-                                    name.clone(),
-                                ))
+                                ContextOrShapeNotRecordError {
+                                    ctx_or_shape: ContextOrShape::EntityTypeShape(name.clone()),
+                                }
                             })?
                         };
                         let tags = tags
@@ -579,8 +585,8 @@ impl ValidatorSchema {
                     Self::record_attributes_or_none(
                         unresolved.resolve_common_type_refs(&common_types)?,
                     )
-                    .ok_or_else(|| {
-                        ContextOrShapeNotRecordError(ContextOrShape::ActionContext(name.clone()))
+                    .ok_or_else(|| ContextOrShapeNotRecordError {
+                        ctx_or_shape: ContextOrShape::ActionContext(name.clone()),
                     })?
                 };
                 Ok((
@@ -691,8 +697,8 @@ impl ValidatorSchema {
                 }
             }
         }
-        if !undeclared_e.is_empty() {
-            return Err(UndeclaredEntityTypesError(undeclared_e).into());
+        if let Some(types) = NonEmpty::collect(undeclared_e) {
+            return Err(UndeclaredEntityTypesError { types }.into());
         }
         if let Some(euids) = NonEmpty::collect(undeclared_a) {
             // This should not happen, because undeclared actions should be caught
@@ -1429,7 +1435,7 @@ impl<'a> CommonTypeResolver<'a> {
     // [`InternalName`] of a common type to its [`Type`] definition
     fn resolve(&self, extensions: &Extensions<'_>) -> Result<HashMap<&'a InternalName, Type>> {
         let sorted_names = self.topo_sort().map_err(|n| {
-            SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError(n))
+            SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError { ty: n })
         })?;
 
         let mut resolve_table: HashMap<&InternalName, json_schema::Type<InternalName>> =
@@ -1678,6 +1684,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve types: Grop, Usr, Phoot"#)
                     .help("`Grop` has not been declared as an entity type")
+                    .exactly_one_underline("Grop")
                     .build());
         });
     }
@@ -1702,6 +1709,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: Bar::Group"#)
                     .help("`Bar::Group` has not been declared as an entity type")
+                    .exactly_one_underline("Bar::Group")
                     .build());
         });
     }
@@ -1728,6 +1736,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve types: Bar::User, Bar::Photo"#)
                     .help("`Bar::User` has not been declared as an entity type")
+                    .exactly_one_underline("Bar::User")
                     .build());
         });
     }
@@ -1789,7 +1798,7 @@ pub(crate) mod test {
         let schema: Result<ValidatorSchema> = schema_file.try_into();
         assert_matches!(
             schema,
-            Err(SchemaError::CycleInActionHierarchy(CycleInActionHierarchyError(euid))) => {
+            Err(SchemaError::CycleInActionHierarchy(CycleInActionHierarchyError { uid: euid })) => {
                 assert_eq!(euid, r#"Action::"view_photo""#.parse().unwrap());
             }
         )
@@ -1928,6 +1937,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: C::D::Foo"#)
                     .help("`C::D::Foo` has not been declared as an entity type")
+                    .exactly_one_underline("C::D::Foo")
                     .build());
         });
     }
@@ -2544,8 +2554,8 @@ pub(crate) mod test {
         );
 
         // should error because schema fragments have duplicate types
-        assert_matches!(schema, Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError(s))) => {
-            assert_eq!(s, "A::MyLong".parse().unwrap());
+        assert_matches!(schema, Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError { ty })) => {
+            assert_eq!(ty, "A::MyLong".parse().unwrap());
         });
     }
 
@@ -2929,6 +2939,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: Demo::id"#)
                     .help("`Demo::id` has not been declared as a common type")
+                    .exactly_one_underline("Demo::id")
                     .build());
         });
     }
@@ -2956,6 +2967,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: undeclared"#)
                     .help("`undeclared` has not been declared as an entity type")
+                    .exactly_one_underline("undeclared")
                     .build());
         });
     }
@@ -2988,6 +3000,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: undeclared"#)
                     .help("`undeclared` has not been declared as an entity type")
+                    .exactly_one_underline("undeclared")
                     .build());
         });
     }
@@ -3018,6 +3031,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: undeclared"#)
                     .help("`undeclared` has not been declared as an entity type")
+                    .exactly_one_underline("undeclared")
                     .build());
         });
     }
@@ -3666,6 +3680,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("failed to resolve type: __cedar")
                     .help("`__cedar` has not been declared as a common type")
+                    .exactly_one_underline("__cedar")
                     .build(),
             );
         });
@@ -4813,6 +4828,7 @@ mod entity_tags {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("failed to resolve type: Undef")
                     .help("`Undef` has not been declared as a common or entity type")
+                    .exactly_one_underline("Undef")
                     .build(),
             );
         });

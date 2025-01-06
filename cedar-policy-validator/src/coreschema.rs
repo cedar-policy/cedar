@@ -303,17 +303,22 @@ pub enum RequestValidationError {
 /// Errors related to validation
 pub mod request_validation_errors {
     use cedar_policy_core::ast;
+    use cedar_policy_core::impl_diagnostic_from_method_on_field;
     use itertools::Itertools;
     use miette::Diagnostic;
     use std::sync::Arc;
     use thiserror::Error;
 
     /// Request action is not declared in the schema
-    #[derive(Debug, Error, Diagnostic)]
+    #[derive(Debug, Error)]
     #[error("request's action `{action}` is not declared in the schema")]
     pub struct UndeclaredActionError {
         /// Action which was not declared in the schema
         pub(super) action: Arc<ast::EntityUID>,
+    }
+
+    impl Diagnostic for UndeclaredActionError {
+        impl_diagnostic_from_method_on_field!(action, loc);
     }
 
     impl UndeclaredActionError {
@@ -324,11 +329,15 @@ pub mod request_validation_errors {
     }
 
     /// Request principal is of a type not declared in the schema
-    #[derive(Debug, Error, Diagnostic)]
+    #[derive(Debug, Error)]
     #[error("principal type `{principal_ty}` is not declared in the schema")]
     pub struct UndeclaredPrincipalTypeError {
         /// Principal type which was not declared in the schema
         pub(super) principal_ty: ast::EntityType,
+    }
+
+    impl Diagnostic for UndeclaredPrincipalTypeError {
+        impl_diagnostic_from_method_on_field!(principal_ty, loc);
     }
 
     impl UndeclaredPrincipalTypeError {
@@ -339,11 +348,15 @@ pub mod request_validation_errors {
     }
 
     /// Request resource is of a type not declared in the schema
-    #[derive(Debug, Error, Diagnostic)]
+    #[derive(Debug, Error)]
     #[error("resource type `{resource_ty}` is not declared in the schema")]
     pub struct UndeclaredResourceTypeError {
         /// Resource type which was not declared in the schema
         pub(super) resource_ty: ast::EntityType,
+    }
+
+    impl Diagnostic for UndeclaredResourceTypeError {
+        impl_diagnostic_from_method_on_field!(resource_ty, loc);
     }
 
     impl UndeclaredResourceTypeError {
@@ -355,9 +368,8 @@ pub mod request_validation_errors {
 
     /// Request principal is of a type that is declared in the schema, but is
     /// not valid for the request action
-    #[derive(Debug, Error, Diagnostic)]
+    #[derive(Debug, Error)]
     #[error("principal type `{principal_ty}` is not valid for `{action}`")]
-    #[diagnostic(help("{}", invalid_principal_type_help(valid_principal_tys, .action.as_ref())))]
     pub struct InvalidPrincipalTypeError {
         /// Principal type which is not valid
         pub(super) principal_ty: ast::EntityType,
@@ -365,6 +377,19 @@ pub mod request_validation_errors {
         pub(super) action: Arc<ast::EntityUID>,
         /// Principal types which actually are valid for that `action`
         pub(super) valid_principal_tys: Vec<ast::EntityType>,
+    }
+
+    impl Diagnostic for InvalidPrincipalTypeError {
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            Some(Box::new(invalid_principal_type_help(
+                &self.valid_principal_tys,
+                &self.action,
+            )))
+        }
+
+        // possible future improvement: provide two labels, one for the source
+        // loc on `principal_ty` and the other for the source loc on `action`
+        impl_diagnostic_from_method_on_field!(principal_ty, loc);
     }
 
     fn invalid_principal_type_help(
@@ -404,9 +429,8 @@ pub mod request_validation_errors {
 
     /// Request resource is of a type that is declared in the schema, but is
     /// not valid for the request action
-    #[derive(Debug, Error, Diagnostic)]
+    #[derive(Debug, Error)]
     #[error("resource type `{resource_ty}` is not valid for `{action}`")]
-    #[diagnostic(help("{}", invalid_resource_type_help(valid_resource_tys, .action.as_ref())))]
     pub struct InvalidResourceTypeError {
         /// Resource type which is not valid
         pub(super) resource_ty: ast::EntityType,
@@ -414,6 +438,19 @@ pub mod request_validation_errors {
         pub(super) action: Arc<ast::EntityUID>,
         /// Resource types which actually are valid for that `action`
         pub(super) valid_resource_tys: Vec<ast::EntityType>,
+    }
+
+    impl Diagnostic for InvalidResourceTypeError {
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            Some(Box::new(invalid_resource_type_help(
+                &self.valid_resource_tys,
+                &self.action,
+            )))
+        }
+
+        // possible future improvement: provide two labels, one for the source
+        // loc on `resource_ty` and the other for the source loc on `action`
+        impl_diagnostic_from_method_on_field!(resource_ty, loc);
     }
 
     fn invalid_resource_type_help(

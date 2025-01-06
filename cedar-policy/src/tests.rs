@@ -5670,6 +5670,7 @@ mod request_validation_tests {
             &ExpectedErrorMessageBuilder::error(
                 "principal type `Undeclared` is not declared in the schema",
             )
+            .exactly_one_underline("Undeclared")
             .build(),
         );
     }
@@ -5691,6 +5692,7 @@ mod request_validation_tests {
             &ExpectedErrorMessageBuilder::error(
                 "resource type `Undeclared` is not declared in the schema",
             )
+            .exactly_one_underline("Undeclared")
             .build(),
         );
     }
@@ -5713,6 +5715,7 @@ mod request_validation_tests {
                 r#"principal type `Resource` is not valid for `Action::"action"`"#,
             )
             .help(r#"valid principal types for `Action::"action"`: `Principal`"#)
+            .exactly_one_underline("Resource")
             .build(),
         );
 
@@ -5731,6 +5734,7 @@ mod request_validation_tests {
                 r#"principal type `Resource` is not valid for `Action::"manipulate"`"#,
             )
             .help(r#"valid principal types for `Action::"manipulate"`: `Cat`, `Duck`, `Principal`"#)
+            .exactly_one_underline("Resource")
             .build(),
         );
 
@@ -5749,6 +5753,7 @@ mod request_validation_tests {
                 r#"principal type `Resource` is not valid for `Action::"group"`"#,
             )
             .help(r#"no principal types are valid for `Action::"group"`"#)
+            .exactly_one_underline("Resource")
             .build(),
         );
     }
@@ -5771,6 +5776,7 @@ mod request_validation_tests {
                 r#"resource type `Principal` is not valid for `Action::"action"`"#,
             )
             .help(r#"valid resource types for `Action::"action"`: `Resource`"#)
+            .exactly_one_underline("Principal")
             .build(),
         );
 
@@ -5789,6 +5795,7 @@ mod request_validation_tests {
                 r#"resource type `Principal` is not valid for `Action::"manipulate"`"#,
             )
             .help(r#"valid resource types for `Action::"manipulate"`: `Folder`, `Resource`, `Widget`"#)
+            .exactly_one_underline("Principal")
             .build(),
         );
     }
@@ -6338,6 +6345,7 @@ mod reserved_keywords_in_policies {
     }
 
     #[track_caller]
+    #[allow(unused)]
     fn assert_invalid_expression_with_help(src: &str, error: &str, underline: &str, help: &str) {
         let expected_err = ExpectedErrorMessageBuilder::error(error)
             .exactly_one_underline(underline)
@@ -6381,11 +6389,15 @@ mod reserved_keywords_in_policies {
             // slightly different errors depending on `id`; related to #407
             match id {
                 "true" | "false" => {
-                    assert_invalid_expression_with_help(
+                    assert_invalid_expression(
                         &format!("{{ {id}: 1 }}"),
-                        &format!("invalid attribute name: {id}"),
+                        &RESERVED_IDENT_MSG(id),
                         id,
-                        "attribute names can either be identifiers or string literals",
+                    );
+                    assert_invalid_expression(
+                        &format!("principal has {id}"),
+                        &RESERVED_IDENT_MSG(id),
+                        id,
                     );
                     assert_invalid_expression(
                         &format!("principal has {id}"),

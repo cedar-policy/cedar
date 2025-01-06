@@ -22,10 +22,10 @@ use std::{collections::HashSet, fmt::Display};
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::NonEmpty;
-use smol_str::{SmolStr, ToSmolStr};
 use thiserror::Error;
 
 use crate::{json_schema, RawName};
+use cedar_policy_core::{ast::InternalName, impl_diagnostic_from_method_on_nonempty_field};
 
 impl<N: Display> Display for json_schema::Fragment<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -180,17 +180,23 @@ pub enum ToCedarSchemaSyntaxError {
 }
 
 /// Duplicate names were found in the schema
-#[derive(Debug, Error, Diagnostic)]
+//
+// This is NOT a publicly exported error type.
+#[derive(Debug, Error)]
 #[error("There are name collisions: [{}]", .names.iter().join(", "))]
 pub struct NameCollisionsError {
     /// Names that had collisions
-    names: NonEmpty<SmolStr>,
+    names: NonEmpty<InternalName>,
+}
+
+impl Diagnostic for NameCollisionsError {
+    impl_diagnostic_from_method_on_nonempty_field!(names, loc);
 }
 
 impl NameCollisionsError {
     /// Get the names that had collisions
-    pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.names.iter().map(smol_str::SmolStr::as_str)
+    pub fn names(&self) -> impl Iterator<Item = &InternalName> {
+        self.names.iter()
     }
 }
 
@@ -212,24 +218,21 @@ impl NameCollisionsError {
 pub fn json_schema_to_cedar_schema_str<N: Display>(
     json_schema: &json_schema::Fragment<N>,
 ) -> Result<String, ToCedarSchemaSyntaxError> {
-    let mut name_collisions: Vec<SmolStr> = Vec::new();
+    let mut name_collisions: Vec<InternalName> = Vec::new();
     for (name, ns) in json_schema.0.iter().filter(|(name, _)| !name.is_none()) {
-        let entity_types: HashSet<SmolStr> = ns
+        let entity_types: HashSet<InternalName> = ns
             .entity_types
             .keys()
             .map(|ty_name| {
-                RawName::new_from_unreserved(ty_name.clone())
-                    .qualify_with_name(name.as_ref())
-                    .to_smolstr()
+                RawName::new_from_unreserved(ty_name.clone()).qualify_with_name(name.as_ref())
             })
             .collect();
-        let common_types: HashSet<SmolStr> = ns
+        let common_types: HashSet<InternalName> = ns
             .common_types
             .keys()
             .map(|ty_name| {
                 RawName::new_from_unreserved(ty_name.clone().into())
                     .qualify_with_name(name.as_ref())
-                    .to_smolstr()
             })
             .collect();
         name_collisions.extend(entity_types.intersection(&common_types).cloned());
