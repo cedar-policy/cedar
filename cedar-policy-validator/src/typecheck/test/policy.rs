@@ -1357,6 +1357,14 @@ mod enumerated_entity_types {
         assert_policy_typechecks(schema, template);
     }
 
+    //TODO: should type checker reject it as well?
+    #[test]
+    fn basic_invalid() {
+        let schema = schema();
+        let template = parse_policy_or_template(None, r#"permit(principal, action == Action::"a", resource) when { principal == Foo::"fo" };"#).unwrap();
+        assert_policy_typechecks(schema, template);
+    }
+
     #[test]
     fn no_attrs_allowed() {
         let schema = schema();

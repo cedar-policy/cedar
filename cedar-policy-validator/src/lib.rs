@@ -202,6 +202,7 @@ impl Validator {
         } else {
             Some(
                 self.validate_entity_types(p)
+                    .chain(self.validate_enum_entity(p))
                     .chain(self.validate_action_ids(p))
                     // We could usefully update this pass to apply to partial
                     // schema if it only failed when there is a known action

@@ -434,6 +434,10 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     EntityDerefLevelViolation(#[from] validation_errors::EntityDerefLevelViolation),
+    /// Returned when ...
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidEnumEntity(#[from] validation_errors::InvalidEnumEntity),
 }
 
 impl ValidationError {
@@ -457,6 +461,7 @@ impl ValidationError {
             Self::HierarchyNotRespected(e) => e.policy_id(),
             Self::InternalInvariantViolation(e) => e.policy_id(),
             Self::EntityDerefLevelViolation(e) => e.policy_id(),
+            Self::InvalidEnumEntity(e) => e.policy_id(),
         }
     }
 }
@@ -512,6 +517,9 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             }
             cedar_policy_validator::ValidationError::InternalInvariantViolation(e) => {
                 Self::InternalInvariantViolation(e.into())
+            }
+            cedar_policy_validator::ValidationError::InvalidEnumEntity(e) => {
+                Self::InvalidEnumEntity(e.into())
             }
             #[cfg(feature = "level-validate")]
             cedar_policy_validator::ValidationError::EntityDerefLevelViolation(e) => {

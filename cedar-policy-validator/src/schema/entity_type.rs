@@ -64,9 +64,14 @@ pub struct StandardValidatorEntityType {
     pub(crate) tags: Option<Type>,
 }
 
+/// The kind of validator entity types
+/// It can either be a standard (non-enum) entity type, or
+/// an enumerated entity type
 #[derive(Clone, Debug, Serialize)]
 pub enum ValidatorEntityTypeKind {
+    /// Standard, aka non-enum
     Standard(StandardValidatorEntityType),
+    /// Enumerated
     Enum(Vec<SmolStr>),
 }
 

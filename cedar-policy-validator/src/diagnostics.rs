@@ -18,12 +18,13 @@
 //! returned by the validator.
 
 use miette::Diagnostic;
+use smol_str::SmolStr;
 use thiserror::Error;
 use validation_errors::UnrecognizedActionIdHelp;
 
 use std::collections::BTreeSet;
 
-use cedar_policy_core::ast::{EntityType, Expr, PolicyID};
+use cedar_policy_core::ast::{EntityType, EntityUID, Expr, PolicyID};
 use cedar_policy_core::parser::Loc;
 
 use crate::types::{EntityLUB, Type};
@@ -166,6 +167,11 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InternalInvariantViolation(#[from] validation_errors::InternalInvariantViolation),
+    /// Returned when an entity literal is of an enumerated entity type but has
+    /// undeclared UID
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidEnumEntity(#[from] validation_errors::InvalidEnumEntity),
     #[cfg(feature = "level-validate")]
     /// If a entity dereference level was provided, the policies cannot deref
     /// more than `level` hops away from PARX
@@ -395,6 +401,21 @@ impl ValidationError {
         validation_errors::InternalInvariantViolation {
             source_loc,
             policy_id,
+        }
+        .into()
+    }
+
+    pub(crate) fn invalid_enum_entity(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        entity: EntityUID,
+        choices: impl IntoIterator<Item = SmolStr>,
+    ) -> Self {
+        validation_errors::InvalidEnumEntity {
+            source_loc,
+            policy_id,
+            entity,
+            choices: choices.into_iter().collect(),
         }
         .into()
     }

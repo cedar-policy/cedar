@@ -18,8 +18,8 @@
 
 use cedar_policy_core::{
     ast::{
-        self, ActionConstraint, EntityReference, EntityUID, Policy, PolicyID, PrincipalConstraint,
-        PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
+        self, ActionConstraint, EntityReference, EntityUID, ExprKind, Literal, Policy, PolicyID,
+        PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
     },
     fuzzy_match::fuzzy_search,
     parser::Loc,
@@ -36,6 +36,55 @@ use crate::{
 use super::{schema::*, Validator};
 
 impl Validator {
+    /// Validate if a [`Template`] contains entities of enumerated entity types
+    /// but with invalid UIDs
+    pub(crate) fn validate_enum_entity<'a>(
+        &'a self,
+        template: &'a Template,
+    ) -> impl Iterator<Item = ValidationError> + 'a {
+        let non_action_entities = template
+            .principal_constraint()
+            .as_inner()
+            .get_euid()
+            .into_iter()
+            .map(|e| e.as_ref())
+            .chain(
+                template
+                    .resource_constraint()
+                    .as_inner()
+                    .get_euid()
+                    .into_iter()
+                    .map(|e| e.as_ref()),
+            )
+            .chain(
+                template
+                    .non_scope_constraints()
+                    .subexpressions()
+                    .filter_map(|e| match e.expr_kind() {
+                        ExprKind::Lit(Literal::EntityUID(euid)) if !euid.is_action() => {
+                            Some(euid.as_ref())
+                        }
+                        _ => None,
+                    }),
+            );
+        non_action_entities.filter_map(|e: &EntityUID| {
+            if let Some(ValidatorEntityType {
+                kind: ValidatorEntityTypeKind::Enum(choices),
+                ..
+            }) = self.schema.get_entity_type(e.entity_type())
+            {
+                if !choices.contains(e.eid().as_ref()) {
+                    return Some(ValidationError::invalid_enum_entity(
+                        e.loc().cloned(),
+                        template.id().clone(),
+                        e.clone(),
+                        choices.into_iter().cloned(),
+                    ));
+                }
+            }
+            None
+        })
+    }
     /// Generate `UnrecognizedEntityType` error for every entity type in the
     /// expression that could not also be found in the schema.
     pub(crate) fn validate_entity_types<'a>(

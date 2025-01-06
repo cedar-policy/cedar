@@ -717,6 +717,29 @@ impl Display for AttributeAccess {
     }
 }
 
+/// Returned when an entity literal is of an enumerated entity type but has
+/// undeclared UID
+#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
+#[error("for policy `{policy_id}`, entity `{entity}`'s UID is illegal")]
+pub struct InvalidEnumEntity {
+    /// Source location
+    pub source_loc: Option<Loc>,
+    /// Policy ID where the error occurred
+    pub policy_id: PolicyID,
+    /// UID of the problematic entity
+    pub entity: EntityUID,
+    /// UID choices of the enumerated entity type
+    pub choices: Vec<SmolStr>,
+}
+
+impl Diagnostic for InvalidEnumEntity {
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(format!("allowed UID values: {:?}", self.choices)))
+    }
+}
+
 // These tests all assume that the typechecker found an error while checking the
 // outermost `GetAttr` in the expressions. If the attribute didn't exist at all,
 // only the primary message would included in the final error. If it was an

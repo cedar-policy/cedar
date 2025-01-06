@@ -27,7 +27,7 @@ use cedar_policy_core::{
     parser::Loc,
     transitive_closure::compute_tc,
 };
-use entity_type::{StandardValidatorEntityType, ValidatorEntityTypeKind};
+use entity_type::StandardValidatorEntityType;
 use itertools::Itertools;
 use namespace_def::EntityTypeFragment;
 use nonempty::NonEmpty;
@@ -54,7 +54,7 @@ mod action;
 pub use action::ValidatorActionId;
 pub(crate) use action::ValidatorApplySpec;
 mod entity_type;
-pub use entity_type::ValidatorEntityType;
+pub use entity_type::{ValidatorEntityType, ValidatorEntityTypeKind};
 mod namespace_def;
 pub(crate) use namespace_def::try_jsonschema_type_into_validator_type;
 pub use namespace_def::ValidatorNamespaceDef;

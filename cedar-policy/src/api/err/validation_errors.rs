@@ -73,3 +73,4 @@ wrap_core_error!(EntityDerefLevelViolation);
 wrap_core_error!(EmptySetForbidden);
 wrap_core_error!(NonLitExtConstructor);
 wrap_core_error!(InternalInvariantViolation);
+wrap_core_error!(InvalidEnumEntity);
