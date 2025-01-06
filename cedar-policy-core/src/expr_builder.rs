@@ -297,8 +297,8 @@ pub trait ExprBuilder: Clone {
         })
     }
 
-    /// Create expression containing addition and subtraction that may have more
-    /// than two subexpressions (A + B - C) or may have only one subexpression,
+    /// Create expression containing multiplication that may have more than two
+    /// subexpressions (A * B * C) or may have only one subexpression,
     /// in which case no operations are performed at all.
     fn mul_nary(self, first: Self::Expr, other: impl IntoIterator<Item = Self::Expr>) -> Self::Expr
     where
