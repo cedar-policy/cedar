@@ -3595,15 +3595,21 @@ mod annotations {
 
 #[cfg(test)]
 mod ord {
-    use super::{Type, TypeVariant, RawName, InternalName};
+    use super::{InternalName, RawName, Type, TypeVariant};
     use std::collections::BTreeSet;
 
     /// Tests that `Type<RawName>` and `Type<InternalName>` are `Ord`
     #[test]
     fn type_ord() {
         let mut set: BTreeSet<Type<RawName>> = BTreeSet::default();
-        set.insert(Type::Type { ty: TypeVariant::String, loc: None });
+        set.insert(Type::Type {
+            ty: TypeVariant::String,
+            loc: None,
+        });
         let mut set: BTreeSet<Type<InternalName>> = BTreeSet::default();
-        set.insert(Type::Type { ty: TypeVariant::String, loc: None });
+        set.insert(Type::Type {
+            ty: TypeVariant::String,
+            loc: None,
+        });
     }
 }
