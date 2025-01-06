@@ -382,7 +382,9 @@ pub mod schema_errors {
             } else {
                 write!(f, "undeclared entity types: ")?;
             }
-            join_with_conjunction(f, "and", self.types.iter(), |f, s| s.fmt(f))
+            join_with_conjunction(f, "and", self.types.iter().sorted_unstable(), |f, s| {
+                s.fmt(f)
+            })
         }
     }
 
