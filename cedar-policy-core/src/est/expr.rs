@@ -149,7 +149,28 @@ impl From<crate::ast::PatternElem> for PatternElem {
 
 impl From<crate::ast::Pattern> for Vec<PatternElem> {
     fn from(value: crate::ast::Pattern) -> Self {
-        value.iter().map(|elem| (*elem).into()).collect()
+        let mut pattern_vec = Vec::new();
+        let mut literal = String::new();
+        for pattern_elem in value.iter() {
+            match pattern_elem {
+                ast::PatternElem::Char(c) => {
+                    literal.push(*c);
+                }
+                ast::PatternElem::Wildcard => {
+                    if !literal.is_empty() {
+                        pattern_vec.push(PatternElem::Literal(literal.to_smolstr()));
+                        literal.clear();
+                    }
+                    pattern_vec.push(PatternElem::Wildcard);
+                }
+            }
+        }
+        if !literal.is_empty() {
+            pattern_vec.push(PatternElem::Literal(literal.to_smolstr()));
+            literal.clear();
+        }
+
+        pattern_vec
     }
 }
 
