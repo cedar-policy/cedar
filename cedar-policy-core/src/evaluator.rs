@@ -399,7 +399,10 @@ impl<'e> Evaluator<'e> {
                         return Ok(PartialValue::Residual(Expr::binary_app(*op, e1, v2.into())));
                     }
                     (PartialValue::Residual(e1), PartialValue::Residual(e2)) => {
-                        return Ok(PartialValue::Residual(Expr::binary_app(*op, e1, e2)))
+                        if let Some(val) = self.short_circuit_two_typed_residuals(&e1, &e2, *op) {
+                            return Ok(val);
+                        }
+                        return Ok(PartialValue::Residual(Expr::binary_app(*op, e1, e2)));
                     }
                 };
                 match op {
@@ -947,6 +950,36 @@ impl<'e> Evaluator<'e> {
             _ => None,
         }
     }
+
+    fn short_circuit_two_typed_residuals(
+        &self,
+        e1: &Expr,
+        e2: &Expr,
+        op: BinaryOp,
+    ) -> Option<PartialValue> {
+        match (op, e1.expr_kind(), e2.expr_kind()) {
+            // We detect comparing two typed unknown entities, and return false if they don't have the same type.
+            (
+                BinaryOp::Eq,
+                ExprKind::Unknown(Unknown {
+                    type_annotation: Some(Type::Entity { ty: t1 }),
+                    ..
+                }),
+                ExprKind::Unknown(Unknown {
+                    type_annotation: Some(Type::Entity { ty: t2 }),
+                    ..
+                }),
+            ) => {
+                if t1 != t2 {
+                    Some(false.into())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
     // by default, Coverlay does not track coverage for lines after a line
     // containing #[cfg(test)].
     // we use the following sentinel to "turn back on" coverage tracking for
@@ -6341,6 +6374,10 @@ pub(crate) mod test {
             EntityType::from_str("different_test_type").expect("must parse"),
             None,
         );
+        q.resource = EntityUIDEntry::unknown_with_type(
+            EntityType::from_str("other_different_test_type").expect("must parse"),
+            None,
+        );
         let eval = Evaluator::new(q, &entities, Extensions::none());
 
         let e = Expr::is_entity_type(Expr::var(Var::Principal), EntityUID::test_entity_type());
@@ -6360,5 +6397,13 @@ pub(crate) mod test {
         );
         let r = eval.partial_eval_expr(&e).unwrap();
         assert_eq!(r, Either::Left(Value::from(true)));
+
+        // Two differently typed unknowns should not be equal
+        let e = Expr::is_eq(
+            Expr::var(Var::Principal),
+            Expr::var(Var::Resource),
+        );
+        let r = eval.partial_eval_expr(&e).unwrap();
+        assert_eq!(r, Either::Left(Value::from(false)));
     }
 }
