@@ -21,6 +21,7 @@ use miette::{miette, Result, WrapErr};
 use cedar_policy_core::ast::PolicySet;
 use cedar_policy_core::parser::parse_policyset;
 use cedar_policy_core::parser::text_to_cst::parse_policies;
+use itertools::Itertools;
 use smol_str::ToSmolStr;
 
 use super::lexer::get_token_stream;
@@ -106,8 +107,8 @@ pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
         .ok_or_else(|| miette!("fail to get input policy CST"))?
         .0
         .iter()
-        .map(|p| Ok(remove_empty_lines(&tree_to_pretty(p, &mut context)?)))
-        .collect::<Result<Vec<String>>>()?
+        .map(|p| tree_to_pretty(p, &mut context).map(|p| remove_empty_lines(&p)))
+        .try_collect::<_, Vec<_>, _>()?
         .join("\n\n");
 
     // add a trailing newline

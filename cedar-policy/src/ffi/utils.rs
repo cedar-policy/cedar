@@ -16,6 +16,7 @@
 
 //! Utility functions and types for JSON interface
 use crate::{PolicyId, SchemaWarning, SlotId};
+use itertools::Itertools;
 use miette::miette;
 use miette::WrapErr;
 use serde::{Deserialize, Serialize};
@@ -510,7 +511,7 @@ impl TemplateLink {
             .values
             .into_iter()
             .map(|(slot, euid)| euid.parse(None).map(|euid| (slot, euid)))
-            .collect::<Result<HashMap<_, _>, _>>()
+            .try_collect()
             .wrap_err("failed to parse link values")?;
         policies
             .link(self.template_id, self.new_id, values)

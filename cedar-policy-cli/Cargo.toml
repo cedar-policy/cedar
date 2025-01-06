@@ -21,6 +21,7 @@ serde_json = "1.0"
 miette = { version = "7.4.0", features = ["fancy"] }
 thiserror = "2.0"
 semver = "1.0.24"
+itertools = "0.14"
 prost = {version = "0.13", optional = true}
 
 [build-dependencies]

@@ -32,7 +32,7 @@ use nonempty::NonEmpty;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::ToSmolStr;
-use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{hash_map::Entry, BTreeSet, HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -129,7 +129,7 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
                         extensions,
                     )
                 })
-                .collect::<Result<Vec<_>>>()?,
+                .try_collect()?,
         ))
     }
 
@@ -537,7 +537,7 @@ impl ValidatorSchema {
                     },
                 ))
             })
-            .collect::<Result<HashMap<_, _>>>()?;
+            .try_collect()?;
 
         let mut action_children = HashMap::new();
         for (euid, action) in action_fragments.iter() {
@@ -577,7 +577,7 @@ impl ValidatorSchema {
                     },
                 ))
             })
-            .collect::<Result<HashMap<_, _>>>()?;
+            .try_collect()?;
 
         // We constructed entity types and actions with child maps, but we need
         // transitively closed descendants.
@@ -1381,21 +1381,21 @@ impl<'a> CommonTypeResolver<'a> {
                 loc,
             } => Ok(json_schema::Type::Type {
                 ty: json_schema::TypeVariant::Record(json_schema::RecordType {
-                    attributes: BTreeMap::from_iter(
-                        attributes
-                            .into_iter()
-                            .map(|(attr, attr_ty)| {
-                                Ok((
+                    attributes: attributes
+                        .into_iter()
+                        .map(|(attr, attr_ty)| {
+                            Self::resolve_type(resolve_table, attr_ty.ty).map(|ty| {
+                                (
                                     attr,
                                     json_schema::TypeOfAttribute {
                                         required: attr_ty.required,
-                                        ty: Self::resolve_type(resolve_table, attr_ty.ty)?,
+                                        ty,
                                         annotations: attr_ty.annotations,
                                     },
-                                ))
+                                )
                             })
-                            .collect::<Result<Vec<(_, _)>>>()?,
-                    ),
+                        })
+                        .try_collect()?,
                     additional_attributes,
                 }),
                 loc,

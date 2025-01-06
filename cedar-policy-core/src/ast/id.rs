@@ -215,7 +215,7 @@ impl<'a> arbitrary::Arbitrary<'a> for Id {
         cs.extend(
             (0..remaining_length)
                 .map(|_| u.choose(&tail_letters))
-                .collect::<Result<Vec<&char>, _>>()?,
+                .try_collect()?,
         );
         let mut s: String = cs.into_iter().collect();
         // Should the parsing fails, the string should be reserved word.
@@ -360,7 +360,7 @@ impl<'a> arbitrary::Arbitrary<'a> for AnyId {
         cs.extend(
             (0..remaining_length)
                 .map(|_| u.choose(&tail_letters))
-                .collect::<Result<Vec<&char>, _>>()?,
+                .try_collect()?,
         );
         let s: String = cs.into_iter().collect();
         debug_assert!(

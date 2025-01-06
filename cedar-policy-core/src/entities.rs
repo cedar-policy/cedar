@@ -22,6 +22,7 @@ use crate::transitive_closure::{compute_tc, enforce_tc_and_dag};
 use std::collections::{hash_map, HashMap};
 use std::sync::Arc;
 
+use itertools::Itertools;
 use serde::Serialize;
 use serde_with::serde_as;
 
@@ -254,7 +255,7 @@ impl Entities {
             .values()
             .map(Arc::as_ref)
             .map(EntityJson::from_entity)
-            .collect::<std::result::Result<_, JsonSerializationError>>()
+            .try_collect()
             .map_err(Into::into)
     }
 

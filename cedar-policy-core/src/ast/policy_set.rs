@@ -66,11 +66,11 @@ impl TryFrom<LiteralPolicySet> for PolicySet {
             .into_iter()
             .map(|(id, template)| (id, Arc::new(template)))
             .collect();
-        let links = pset
+        let links: HashMap<_, _> = pset
             .links
             .into_iter()
             .map(|(id, literal)| literal.reify(&templates).map(|linked| (id, linked)))
-            .collect::<Result<HashMap<PolicyID, Policy>, ReificationError>>()?;
+            .try_collect()?;
 
         let mut template_to_links_map = HashMap::new();
         for template in &templates {

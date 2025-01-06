@@ -23,7 +23,7 @@ use cedar_policy_core::{
     extensions::Extensions,
     parser::{Loc, Node},
 };
-use itertools::Either;
+use itertools::{Either, Itertools};
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::hash_map::Entry;
@@ -206,7 +206,7 @@ impl TryFrom<Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName>
                     },
                 ))
             })
-            .collect::<Result<_, ToJsonSchemaError>>()?;
+            .try_collect::<_, _, ToJsonSchemaError>()?;
 
         Ok(json_schema::NamespaceDefinition {
             common_types,

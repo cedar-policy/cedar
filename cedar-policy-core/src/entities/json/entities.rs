@@ -27,6 +27,7 @@ use crate::entities::{
 };
 use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
@@ -205,7 +206,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
         let mut entities: Vec<Entity> = ejsons
             .into_iter()
             .map(|ejson| self.parse_ejson(ejson).map_err(EntitiesError::from))
-            .collect::<Result<_, _>>()?;
+            .try_collect()?;
         if let Some(schema) = &self.schema {
             entities.extend(
                 schema
@@ -262,7 +263,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
         let entities: Vec<Entity> = ejsons
             .into_iter()
             .map(|ejson| self.parse_ejson(ejson))
-            .collect::<Result<_, _>>()?;
+            .try_collect()?;
         Entities::from_entities(entities, self.schema, self.tc_computation, self.extensions)
     }
 
@@ -346,7 +347,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                     Ok((k, rexpr))
                 }
             })
-            .collect::<Result<_, JsonDeserializationError>>()?;
+            .try_collect()?;
         let tags: HashMap<SmolStr, RestrictedExpr> = ejson
             .tags
             .into_iter()
@@ -383,7 +384,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                     Ok((k, rexpr))
                 }
             })
-            .collect::<Result<_, JsonDeserializationError>>()?;
+            .try_collect()?;
         let is_parent_allowed = |parent_euid: &EntityUID| {
             // full validation isn't done in this function (see doc comments on
             // this function), but we do need to do the following check which
@@ -415,7 +416,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                     Ok(parent_euid)
                 })
             })
-            .collect::<Result<_, JsonDeserializationError>>()?;
+            .try_collect()?;
         Ok(Entity::new(uid, attrs, parents, tags, self.extensions)?)
     }
 }
@@ -443,18 +444,12 @@ impl EntityJson {
         Ok(Self {
             // for now, we encode `uid` and `parents` using an implied `__entity` escape
             uid: EntityUidJson::ImplicitEntityEscape(TypeAndId::from(entity.uid())),
-            attrs: entity
-                .attrs()
-                .map(serialize_kpvalue)
-                .collect::<Result<_, JsonSerializationError>>()?,
+            attrs: entity.attrs().map(serialize_kpvalue).try_collect()?,
             parents: entity
                 .ancestors()
                 .map(|euid| EntityUidJson::ImplicitEntityEscape(TypeAndId::from(euid.clone())))
                 .collect(),
-            tags: entity
-                .tags()
-                .map(serialize_kpvalue)
-                .collect::<Result<_, JsonSerializationError>>()?,
+            tags: entity.tags().map(serialize_kpvalue).try_collect()?,
         })
     }
 }

@@ -386,11 +386,11 @@ impl Entity {
         let evaluated_attrs = attrs
             .into_iter()
             .map(|kv| evaluate_kvs(kv, true))
-            .collect::<Result<_, EntityAttrEvaluationError>>()?;
+            .try_collect()?;
         let evaluated_tags = tags
             .into_iter()
             .map(|kv| evaluate_kvs(kv, false))
-            .collect::<Result<_, EntityAttrEvaluationError>>()?;
+            .try_collect()?;
         Ok(Entity {
             uid,
             attrs: evaluated_attrs,

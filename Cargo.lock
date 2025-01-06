@@ -321,6 +321,7 @@ dependencies = [
  "cedar-policy-validator",
  "clap",
  "glob",
+ "itertools 0.14.0",
  "miette",
  "predicates",
  "prost",

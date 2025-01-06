@@ -394,7 +394,7 @@ impl TryFrom<crate::PartialResponse> for ResidualResponse {
             residuals: partial_response
                 .all_residuals()
                 .map(|e| e.to_json().map(|json| (e.id().clone(), json.into())))
-                .collect::<Result<_, _>>()?,
+                .try_collect()?,
         })
     }
 }

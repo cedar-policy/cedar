@@ -352,12 +352,12 @@ impl TryFrom<Expr> for ValueKind {
             ExprKind::Set(members) => members
                 .iter()
                 .map(|e| Value::try_from(e.clone()))
-                .collect::<Result<Set, _>>()
+                .try_collect()
                 .map(Self::Set),
             ExprKind::Record(map) => map
                 .iter()
                 .map(|(k, v)| Value::try_from(v.clone()).map(|v| (k.clone(), v)))
-                .collect::<Result<BTreeMap<SmolStr, Value>, _>>()
+                .try_collect()
                 .map(|m| Self::Record(Arc::new(m))),
         }
     }

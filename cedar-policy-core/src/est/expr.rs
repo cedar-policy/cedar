@@ -961,7 +961,7 @@ impl Expr {
                 elements
                     .into_iter()
                     .map(|el| el.try_into_ast(id.clone()))
-                    .collect::<Result<Vec<_>, FromJsonError>>()?,
+                    .try_collect::<_, Vec<_>, _>()?,
             )),
             Expr::ExprNoExt(ExprNoExt::Record(map)) => {
                 // PANIC SAFETY: can't have duplicate keys here because the input was already a HashMap
@@ -969,7 +969,7 @@ impl Expr {
                 Ok(ast::Expr::record(
                     map.into_iter()
                         .map(|(k, v)| Ok((k, v.try_into_ast(id.clone())?)))
-                        .collect::<Result<HashMap<SmolStr, _>, FromJsonError>>()?,
+                        .try_collect::<_, HashMap<_, _>, FromJsonError>()?,
                 )
                 .expect("can't have duplicate keys here because the input was already a HashMap"))
             }
@@ -997,7 +997,7 @@ impl Expr {
                             fn_name,
                             args.into_iter()
                                 .map(|arg| arg.try_into_ast(id.clone()))
-                                .collect::<Result<_, _>>()?,
+                                .try_collect()?,
                         ))
                     }
                     _ => Err(FromJsonError::MultipleOperators {
@@ -1416,7 +1416,7 @@ fn interpret_primary(
                                     .map_err(Into::into)
                                     .and_then(|id| id.to_string().parse().map_err(Into::into))
                             })
-                            .collect::<Result<Vec<ast::Id>, ParseErrors>>()?,
+                            .try_collect::<_, Vec<_>, ParseErrors>()?,
                         Some(node.loc.clone()),
                     )
                     .try_into()?,
@@ -1447,7 +1447,7 @@ fn interpret_primary(
         cst::Primary::EList(nodes) => nodes
             .iter()
             .map(|node| node.try_into())
-            .collect::<Result<Vec<Expr>, _>>()
+            .try_collect()
             .map(Expr::set)
             .map(Either::Right),
         cst::Primary::RInits(nodes) => nodes
@@ -1457,7 +1457,7 @@ fn interpret_primary(
                 let s = k.to_expr_or_special().and_then(|es| es.into_valid_attr())?;
                 Ok((s, v.try_into()?))
             })
-            .collect::<Result<BTreeMap<SmolStr, Expr>, ParseErrors>>()
+            .try_collect()
             .map(Expr::record)
             .map(Either::Right),
     }
@@ -1496,16 +1496,11 @@ impl TryFrom<&Node<Option<cst::Member>>> for Expr {
                     item = match item {
                         Either::Left(name) => Either::Right(Expr::ext_call(
                             name.to_string().into(),
-                            args.iter()
-                                .map(|node| node.try_into())
-                                .collect::<Result<Vec<_>, _>>()?,
+                            args.iter().map(|node| node.try_into()).try_collect()?,
                         )),
                         Either::Right(Expr::ExprNoExt(ExprNoExt::GetAttr { left, attr })) => {
-                            let args = args.iter().map(|node| node.try_into()).collect::<Result<
-                                Vec<Expr>,
-                                ParseErrors,
-                            >>(
-                            )?;
+                            let args: Vec<_> =
+                                args.iter().map(|node| node.try_into()).try_collect()?;
                             let args = args.into_iter();
                             match attr.as_str() {
                                 "contains" => Either::Right(Expr::contains(

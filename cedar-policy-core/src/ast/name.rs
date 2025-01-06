@@ -248,7 +248,7 @@ impl<'a> arbitrary::Arbitrary<'a> for InternalName {
             path: Arc::new(
                 (0..path_size)
                     .map(|_| u.arbitrary())
-                    .collect::<Result<Vec<Id>, _>>()?,
+                    .try_collect::<_, Vec<_>, _>()?,
             ),
             loc: None,
         })
@@ -608,9 +608,7 @@ impl<'a> arbitrary::Arbitrary<'a> for Name {
         // units
         let path_size = u.int_in_range(0..=8)?;
         let basename: UnreservedId = u.arbitrary()?;
-        let path: Vec<UnreservedId> = (0..path_size)
-            .map(|_| u.arbitrary())
-            .collect::<Result<Vec<_>, _>>()?;
+        let path: Vec<UnreservedId> = (0..path_size).map(|_| u.arbitrary()).try_collect()?;
         let name = InternalName::new(basename.into(), path.into_iter().map(|id| id.into()), None);
         // PANIC SAFETY: `name` is made of `UnreservedId`s and thus should be a valid `Name`
         #[allow(clippy::unwrap_used)]

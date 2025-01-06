@@ -30,7 +30,7 @@ pub use err::evaluation_errors;
 pub use err::EvaluationError;
 pub(crate) use err::*;
 use evaluation_errors::*;
-use itertools::Either;
+use itertools::{Either, Itertools};
 use nonempty::nonempty;
 use smol_str::SmolStr;
 
@@ -135,10 +135,10 @@ impl<'e> RestrictedEvaluator<'e> {
         match expr.as_ref().expr_kind() {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
             ExprKind::Set(items) => {
-                let vals = items
+                let vals: Vec<_> = items
                     .iter()
                     .map(|item| self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(item))) // assuming the invariant holds for `e`, it will hold here
-                    .collect::<Result<Vec<_>>>()?;
+                    .try_collect()?;
                 match split(vals) {
                     Either::Left(values) => Ok(Value::set(values, expr.source_loc().cloned()).into()),
                     Either::Right(residuals) => Ok(Expr::set(residuals).into()),
@@ -146,10 +146,10 @@ impl<'e> RestrictedEvaluator<'e> {
             }
             ExprKind::Unknown(u) => Ok(PartialValue::unknown(u.clone())),
             ExprKind::Record(map) => {
-                let map = map
+                let map : Vec<_> = map
                     .iter()
-                    .map(|(k, v)| Ok((k.clone(), self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(v))?))) // assuming the invariant holds for `e`, it will hold here
-                    .collect::<Result<Vec<_>>>()?;
+                    .map(|(k, v)| self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(v)).map(|v| (k.clone(), v)))
+                    .try_collect()?;
                 let (names, attrs) : (Vec<_>, Vec<_>) = map.into_iter().unzip();
                 match split(attrs) {
                     Either::Left(values) => Ok(Value::record(names.into_iter().zip(values), expr.source_loc().cloned()).into()),
@@ -165,10 +165,10 @@ impl<'e> RestrictedEvaluator<'e> {
                 }
             }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                let args = args
+                let args : Vec<_> = args
                     .iter()
                     .map(|arg| self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(arg))) // assuming the invariant holds for `e`, it will hold here
-                    .collect::<Result<Vec<_>>>()?;
+                    .try_collect()?;
                 match split(args) {
                     Either::Left(values) => {
                         let values : Vec<_> = values.collect();
@@ -617,10 +617,10 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                let args = args
+                let args: Vec<_> = args
                     .iter()
                     .map(|arg| self.partial_interpret(arg, slots))
-                    .collect::<Result<Vec<_>>>()?;
+                    .try_collect()?;
                 match split(args) {
                     Either::Left(vals) => {
                         let vals: Vec<_> = vals.collect();
@@ -678,20 +678,20 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::Set(items) => {
-                let vals = items
+                let vals: Vec<_> = items
                     .iter()
                     .map(|item| self.partial_interpret(item, slots))
-                    .collect::<Result<Vec<_>>>()?;
+                    .try_collect()?;
                 match split(vals) {
                     Either::Left(vals) => Ok(Value::set(vals, loc.cloned()).into()),
                     Either::Right(r) => Ok(Expr::set(r).into()),
                 }
             }
             ExprKind::Record(map) => {
-                let map = map
+                let map: Vec<_> = map
                     .iter()
-                    .map(|(k, v)| Ok((k.clone(), self.partial_interpret(v, slots)?)))
-                    .collect::<Result<Vec<_>>>()?;
+                    .map(|(k, v)| self.partial_interpret(v, slots).map(|v| (k.clone(), v)))
+                    .try_collect()?;
                 let (names, evalled): (Vec<SmolStr>, Vec<PartialValue>) = map.into_iter().unzip();
                 match split(evalled) {
                     Either::Left(vals) => {
@@ -725,8 +725,8 @@ impl<'e> Evaluator<'e> {
             // approximately the same cost as iterating the `fast` HashSet
             ValueKind::Set(Set { authoritative, .. }) => authoritative
                 .iter()
-                .map(|val| Ok(val.get_as_entity()?.clone()))
-                .collect::<Result<Vec<EntityUID>>>()?,
+                .map(|val| val.get_as_entity().cloned())
+                .try_collect()?,
             _ => {
                 return Err(EvaluationError::type_error(
                     nonempty![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],

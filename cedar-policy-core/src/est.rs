@@ -33,6 +33,7 @@ use crate::entities::json::{err::JsonDeserializationError, EntityUidJson};
 use crate::parser::cst;
 use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::collections::{BTreeMap, HashMap};
@@ -98,7 +99,7 @@ impl Policy {
                 .conditions
                 .into_iter()
                 .map(|clause| clause.link(vals))
-                .collect::<Result<Vec<_>, _>>()?,
+                .try_collect()?,
             annotations: self.annotations,
         })
     }
@@ -117,7 +118,7 @@ impl Policy {
                 .conditions
                 .into_iter()
                 .map(|clause| clause.sub_entity_literals(mapping))
-                .collect::<Result<Vec<_>, _>>()?,
+                .try_collect()?,
             annotations: self.annotations,
         })
     }
@@ -259,7 +260,7 @@ impl Policy {
         let conditions = match conditions_iter.next() {
             None => ast::Expr::val(true),
             Some(first) => ast::ExprBuilder::with_data(())
-                .and_nary(first?, conditions_iter.collect::<Result<Vec<_>, _>>()?),
+                .and_nary(first?, conditions_iter.try_collect::<_, Vec<_>, _>()?),
         };
         Ok(ast::Template::new(
             id,

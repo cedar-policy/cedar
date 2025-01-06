@@ -32,6 +32,7 @@ use crate::{
     entities::Name,
 };
 use either::Either;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use serde_with::{DeserializeAs, SerializeAs};
@@ -242,12 +243,12 @@ impl CedarValueJson {
             Self::Set(vals) => Ok(RestrictedExpr::set(
                 vals.into_iter()
                     .map(|v| v.into_expr(ctx.clone()))
-                    .collect::<Result<Vec<_>, _>>()?,
+                    .try_collect::<_, Vec<_>, _>()?,
             )),
             Self::Record(map) => Ok(RestrictedExpr::record(
                 map.into_iter()
-                    .map(|(k, v)| Ok((k, v.into_expr(ctx.clone())?)))
-                    .collect::<Result<Vec<_>, JsonDeserializationError>>()?,
+                    .map(|(k, v)| v.into_expr(ctx.clone()).map(|v| (k, v)))
+                    .try_collect::<_, Vec<_>, _>()?,
             )
             .map_err(|e| match e {
                 ExpressionConstructionError::DuplicateKey(
@@ -293,7 +294,7 @@ impl CedarValueJson {
                     .iter()
                     .map(BorrowedRestrictedExpr::new_unchecked) // assuming the invariant holds for `expr`, it must also hold here
                     .map(CedarValueJson::from_expr)
-                    .collect::<Result<_, JsonSerializationError>>()?,
+                    .try_collect()?,
             )),
             ExprKind::Record(map) => {
                 // if `map` contains a key which collides with one of our JSON
@@ -303,15 +304,13 @@ impl CedarValueJson {
                 Ok(Self::Record(
                     map.iter()
                         .map(|(k, v)| {
-                            Ok((
-                                k.clone(),
-                                CedarValueJson::from_expr(
-                                    // assuming the invariant holds for `expr`, it must also hold here
-                                    BorrowedRestrictedExpr::new_unchecked(v),
-                                )?,
-                            ))
+                            CedarValueJson::from_expr(
+                                // assuming the invariant holds for `expr`, it must also hold here
+                                BorrowedRestrictedExpr::new_unchecked(v),
+                            )
+                            .map(|v| (k.clone(), v))
                         })
-                        .collect::<Result<_, JsonSerializationError>>()?,
+                        .try_collect()?,
                 ))
             }
             kind => Err(JsonSerializationError::unexpected_restricted_expr_kind(
@@ -341,10 +340,7 @@ impl CedarValueJson {
         match value {
             ValueKind::Lit(lit) => Ok(Self::from_lit(lit)),
             ValueKind::Set(set) => Ok(Self::Set(
-                set.iter()
-                    .cloned()
-                    .map(Self::from_value)
-                    .collect::<Result<_, _>>()?,
+                set.iter().cloned().map(Self::from_value).try_collect()?,
             )),
             ValueKind::Record(record) => {
                 // if `map` contains a key which collides with one of our JSON
@@ -354,8 +350,8 @@ impl CedarValueJson {
                 Ok(Self::Record(
                     record
                         .iter()
-                        .map(|(k, v)| Ok((k.clone(), Self::from_value(v.clone())?)))
-                        .collect::<Result<JsonRecord, JsonSerializationError>>()?,
+                        .map(|(k, v)| Self::from_value(v.clone()).map(|v| (k.clone(), v)))
+                        .try_collect()?,
                 ))
             }
             ValueKind::ExtensionValue(ev) => {
@@ -426,7 +422,7 @@ impl CedarValueJson {
             CedarValueJson::Set(v) => Ok(CedarValueJson::Set(
                 v.into_iter()
                     .map(|e| e.sub_entity_literals(mapping))
-                    .collect::<Result<Vec<_>, _>>()?,
+                    .try_collect()?,
             )),
             CedarValueJson::Record(r) => {
                 let mut new_m = BTreeMap::new();
@@ -540,7 +536,7 @@ impl<'e> ValueParser<'e> {
                         .map(|element| {
                             self.val_into_restricted_expr(element, Some(element_ty), ctx.clone())
                         })
-                        .collect::<Result<Vec<RestrictedExpr>, JsonDeserializationError>>()?,
+                        .try_collect::<_, Vec<_>, _>()?,
                 )),
                 val => {
                     let actual_val = {
@@ -574,21 +570,30 @@ impl<'e> ValueParser<'e> {
                 serde_json::Value::Object(mut actual_attrs) => {
                     let ctx2 = ctx.clone(); // for borrow-check, so the original `ctx` can be moved into the closure below
                     let mut_actual_attrs = &mut actual_attrs; // for borrow-check, so only a mut ref gets moved into the closure, and we retain ownership of `actual_attrs`
-                    let rexpr_pairs = expected_attrs
+                    let rexpr_pairs: Vec<_> = expected_attrs
                         .iter()
                         .filter_map(move |(k, expected_attr_ty)| {
                             match mut_actual_attrs.remove(k.as_str()) {
                                 Some(actual_attr) => {
-                                    match self.val_into_restricted_expr(actual_attr, Some(expected_attr_ty.schema_type()), ctx.clone()) {
+                                    match self.val_into_restricted_expr(
+                                        actual_attr,
+                                        Some(expected_attr_ty.schema_type()),
+                                        ctx.clone(),
+                                    ) {
                                         Ok(actual_attr) => Some(Ok((k.clone(), actual_attr))),
                                         Err(e) => Some(Err(e)),
                                     }
                                 }
-                                None if expected_attr_ty.is_required() => Some(Err(JsonDeserializationError::missing_required_record_attr(ctx(), k.clone()))),
+                                None if expected_attr_ty.is_required() => Some(Err(
+                                    JsonDeserializationError::missing_required_record_attr(
+                                        ctx(),
+                                        k.clone(),
+                                    ),
+                                )),
                                 None => None,
                             }
                         })
-                        .collect::<Result<Vec<(SmolStr, RestrictedExpr)>, JsonDeserializationError>>()?;
+                        .try_collect()?;
 
                     if !open_attrs {
                         // we've now checked that all expected attrs exist, and removed them from `actual_attrs`.

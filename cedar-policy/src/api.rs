@@ -1108,7 +1108,7 @@ impl PartialResponse {
                     .interpret(BorrowedRestrictedExpr::new_unchecked(expr.0.as_ref()))
                     .map(|v| (name.into(), v))
             })
-            .collect::<Result<HashMap<_, _>, EvaluationError>>()?;
+            .try_collect()?;
         let r = self.0.reauthorize(&mapping, &auth.0, &es.0)?;
         Ok(Self(r))
     }
@@ -2098,7 +2098,7 @@ impl PolicySet {
             .templates
             .into_iter()
             .map(|(id, template)| template.lossless.est().map(|est| (id.into(), est)))
-            .collect::<Result<HashMap<_, _>, _>>()?;
+            .try_collect()?;
         let est = est::PolicySet {
             templates,
             static_policies,

@@ -36,18 +36,13 @@ impl EntityManifest {
         &self,
         schema: &ValidatorSchema,
     ) -> Result<EntityManifest, MismatchedEntityManifestError> {
-        Ok(
-            EntityManifest {
-                per_action:
-                    self.per_action
-                        .iter()
-                        .map(|(key, val)| Ok((key.clone(), val.to_typed(key, schema)?)))
-                        .collect::<Result<
-                            HashMap<RequestType, RootAccessTrie>,
-                            MismatchedEntityManifestError,
-                        >>()?,
-            },
-        )
+        Ok(EntityManifest {
+            per_action: self
+                .per_action
+                .iter()
+                .map(|(key, val)| Ok((key.clone(), val.to_typed(key, schema)?)))
+                .try_collect()?,
+        })
     }
 }
 
@@ -105,8 +100,7 @@ impl RootAccessTrie {
                         },
                     ))
                 })
-                .collect::<Result<HashMap<EntityRoot, AccessTrie>, MismatchedEntityManifestError>>(
-                )?,
+                .try_collect()?,
         })
     }
 }

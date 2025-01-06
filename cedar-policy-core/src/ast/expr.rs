@@ -20,6 +20,7 @@ use crate::{
     parser::{err::ParseErrors, Loc},
 };
 use educe::Educe;
+use itertools::Itertools;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
@@ -673,7 +674,7 @@ impl Expr {
                 let args = args
                     .iter()
                     .map(|e| e.substitute_general::<T>(definitions))
-                    .collect::<Result<Vec<Expr>, _>>()?;
+                    .try_collect()?;
 
                 Ok(Expr::call_extension_fn(fn_name.clone(), args))
             }
@@ -690,17 +691,17 @@ impl Expr {
                 pattern.clone(),
             )),
             ExprKind::Set(members) => {
-                let members = members
+                let members: Vec<_> = members
                     .iter()
                     .map(|e| e.substitute_general::<T>(definitions))
-                    .collect::<Result<Vec<_>, _>>()?;
+                    .try_collect()?;
                 Ok(Expr::set(members))
             }
             ExprKind::Record(map) => {
-                let map = map
+                let map: BTreeMap<_, _> = map
                     .iter()
                     .map(|(name, e)| Ok((name.clone(), e.substitute_general::<T>(definitions)?)))
-                    .collect::<Result<BTreeMap<_, _>, _>>()?;
+                    .try_collect()?;
                 // PANIC SAFETY: cannot have a duplicate key because the input was already a BTreeMap
                 #[allow(clippy::expect_used)]
                 Ok(Expr::record(map)

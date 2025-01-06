@@ -21,6 +21,7 @@ use crate::entities::json::{
     err::JsonDeserializationError, err::JsonDeserializationErrorContext, EntityUidJson,
 };
 use crate::parser::err::parse_errors;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap};
@@ -859,7 +860,7 @@ impl TryFrom<ActionConstraint> for ast::ActionConstraint {
                             e.into_euid(|| JsonDeserializationErrorContext::EntityUid)
                                 .map(Arc::new)
                         })
-                        .collect::<Result<Vec<_>, _>>()?,
+                        .try_collect()?,
                 ))
             }
         }?;

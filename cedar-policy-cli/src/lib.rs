@@ -20,6 +20,7 @@
 #![allow(clippy::needless_return)]
 
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
+use itertools::Itertools;
 use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
@@ -661,7 +662,7 @@ impl TryFrom<HashMap<String, String>> for Arguments {
             data: value
                 .into_iter()
                 .map(|(k, v)| parse_slot_id(k).map(|slot_id| (slot_id, v)))
-                .collect::<Result<HashMap<SlotId, String>, String>>()?,
+                .try_collect()?,
         })
     }
 }
@@ -1111,7 +1112,7 @@ pub fn language_version() -> CedarExitCode {
 fn create_slot_env(data: &HashMap<SlotId, String>) -> Result<HashMap<SlotId, EntityUid>> {
     data.iter()
         .map(|(key, value)| Ok(EntityUid::from_str(value).map(|euid| (key.clone(), euid))?))
-        .collect::<Result<HashMap<SlotId, EntityUid>>>()
+        .try_collect()
 }
 
 fn link_inner(args: &LinkArgs) -> Result<()> {
@@ -1162,7 +1163,7 @@ impl TryFrom<LiteralTemplateLinked> for TemplateLinked {
                 .args
                 .into_iter()
                 .map(|(k, v)| parse_slot_id(k).map(|slot_id| (slot_id, v)))
-                .collect::<Result<HashMap<SlotId, String>, Self::Error>>()?,
+                .try_collect()?,
         })
     }
 }

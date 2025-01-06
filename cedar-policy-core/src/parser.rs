@@ -38,6 +38,7 @@ pub mod unescape;
 /// Utility functions
 pub mod util;
 
+use itertools::Itertools;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 
@@ -93,10 +94,15 @@ pub fn parse_policyset_to_ests_and_pset(
         .with_generated_policyids()
         .expect("missing policy set node")
         .map(|(id, policy)| {
-            let p = policy.node.as_ref().expect("missing policy node").clone();
-            Ok((id, p.try_into()?))
+            policy
+                .node
+                .as_ref()
+                .expect("missing policy node")
+                .clone()
+                .try_into()
+                .map(|p| (id, p))
         })
-        .collect::<Result<HashMap<ast::PolicyID, est::Policy>, err::ParseErrors>>()?;
+        .try_collect()?;
     Ok((ests, pset))
 }
 

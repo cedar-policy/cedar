@@ -25,6 +25,7 @@ use cedar_policy_core::{
     FromNormalizedStr,
 };
 use educe::Educe;
+use itertools::Itertools;
 use nonempty::nonempty;
 use serde::{
     de::{MapAccess, Visitor},
@@ -132,8 +133,7 @@ where
                 };
                 Ok((key, value))
             })
-            .collect::<std::result::Result<Vec<(Option<Name>, NamespaceDefinition<N>)>, D::Error>>(
-            )?,
+            .try_collect()?,
     ))
 }
 
@@ -406,26 +406,28 @@ impl NamespaceDefinition<ConditionalName> {
                 .common_types
                 .into_iter()
                 .map(|(k, v)| {
-                    Ok((
-                        k,
-                        CommonType {
-                            ty: v.ty.fully_qualify_type_references(all_defs)?,
-                            annotations: v.annotations,
-                            loc: v.loc,
-                        },
-                    ))
+                    v.ty.fully_qualify_type_references(all_defs).map(|ty| {
+                        (
+                            k,
+                            CommonType {
+                                ty,
+                                annotations: v.annotations,
+                                loc: v.loc,
+                            },
+                        )
+                    })
                 })
-                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
+                .try_collect()?,
             entity_types: self
                 .entity_types
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
+                .map(|(k, v)| v.fully_qualify_type_references(all_defs).map(|v| (k, v)))
+                .try_collect()?,
             actions: self
                 .actions
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<Result<_>>()?,
+                .map(|(k, v)| v.fully_qualify_type_references(all_defs).map(|v| (k, v)))
+                .try_collect()?,
             annotations: self.annotations,
         })
     }
@@ -512,7 +514,7 @@ impl EntityType<ConditionalName> {
                 .member_of_types
                 .into_iter()
                 .map(|cname| cname.resolve(all_defs))
-                .collect::<std::result::Result<_, _>>()?,
+                .try_collect()?,
             shape: self.shape.fully_qualify_type_references(all_defs)?,
             tags: self
                 .tags
@@ -694,7 +696,7 @@ impl ActionType<ConditionalName> {
                 .map(|v| {
                     v.into_iter()
                         .map(|aeuid| aeuid.fully_qualify_type_references(all_defs))
-                        .collect::<std::result::Result<_, ActionNotDefinedError>>()
+                        .try_collect()
                 })
                 .transpose()?,
             annotations: self.annotations,
@@ -768,12 +770,12 @@ impl ApplySpec<ConditionalName> {
                 .resource_types
                 .into_iter()
                 .map(|cname| cname.resolve(all_defs))
-                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
+                .try_collect()?,
             principal_types: self
                 .principal_types
                 .into_iter()
                 .map(|cname| cname.resolve(all_defs))
-                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
+                .try_collect()?,
             context: self.context.fully_qualify_type_references(all_defs)?,
         })
     }
@@ -1589,7 +1591,7 @@ impl RecordType<ConditionalName> {
                 .attributes
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
+                .try_collect()?,
             additional_attributes: self.additional_attributes,
         })
     }
@@ -1788,7 +1790,7 @@ impl TypeVariant<ConditionalName> {
                             ))
                         },
                     )
-                    .collect::<std::result::Result<BTreeMap<_, _>, TypeNotDefinedError>>()?,
+                    .try_collect()?,
                 additional_attributes,
             })),
         }

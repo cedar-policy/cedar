@@ -865,16 +865,17 @@ impl TryFrom<Type> for CoreSchemaType {
                     attrs
                         .into_iter()
                         .map(|(k, v)| {
-                            let schema_type = v.attr_type.try_into()?;
-                            Ok((
-                                k,
-                                match v.is_required {
-                                    true => CoreAttributeType::required(schema_type),
-                                    false => CoreAttributeType::optional(schema_type),
-                                },
-                            ))
+                            v.attr_type.try_into().map(|schema_type| {
+                                (
+                                    k,
+                                    match v.is_required {
+                                        true => CoreAttributeType::required(schema_type),
+                                        false => CoreAttributeType::optional(schema_type),
+                                    },
+                                )
+                            })
                         })
-                        .collect::<Result<_, String>>()?
+                        .try_collect()?
                 },
                 open_attrs: open_attributes.is_open(),
             }),
@@ -1144,7 +1145,7 @@ impl Attributes {
         }
         Self::attributes_lub_iter(schema, attrs0, attrs1, ValidationMode::Strict)
             .map(|r| r.map(|(k, v)| (k.clone(), v)))
-            .collect::<Result<Vec<_>, _>>()
+            .try_collect::<_, Vec<_>, _>()
             .map(Attributes::with_attributes)
     }
 

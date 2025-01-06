@@ -358,7 +358,7 @@ impl CommonTypeDefs<ConditionalName> {
                 .defs
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<Result<_, TypeNotDefinedError>>()?,
+                .try_collect()?,
         })
     }
 }
@@ -431,7 +431,7 @@ impl EntityTypesDef<ConditionalName> {
                 .defs
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<Result<_, TypeNotDefinedError>>()?,
+                .try_collect()?,
         })
     }
 }
@@ -512,7 +512,7 @@ impl EntityTypeFragment<ConditionalName> {
             .parents
             .into_iter()
             .map(|parent| parent.resolve(all_defs))
-            .collect::<Result<_, TypeNotDefinedError>>()?;
+            .try_collect()?;
         // Fully qualify typenames appearing in `tags`
         let fully_qual_tags = self
             .tags
@@ -623,8 +623,8 @@ impl ActionsDef<ConditionalName, ConditionalName> {
             actions: self
                 .actions
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<Result<_, SchemaError>>()?,
+                .map(|(k, v)| v.fully_qualify_type_references(all_defs).map(|v| (k, v)))
+                .try_collect()?,
         })
     }
 }
@@ -729,12 +729,8 @@ impl ActionFragment<ConditionalName, ConditionalName> {
             parents: self
                 .parents
                 .into_iter()
-                .map(|parent| {
-                    parent
-                        .fully_qualify_type_references(all_defs)
-                        .map_err(Into::into)
-                })
-                .collect::<Result<_, SchemaError>>()?,
+                .map(|parent| parent.fully_qualify_type_references(all_defs))
+                .try_collect()?,
             attribute_types: self.attribute_types,
             attributes: self.attributes,
         })
