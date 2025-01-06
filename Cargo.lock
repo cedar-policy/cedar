@@ -340,7 +340,7 @@ dependencies = [
  "arbitrary",
  "chrono",
  "cool_asserts",
- "educe 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "educe",
  "either",
  "itertools 0.14.0",
  "lalrpop",
@@ -386,7 +386,7 @@ dependencies = [
  "arbitrary",
  "cedar-policy-core",
  "cool_asserts",
- "educe 0.6.0 (git+https://github.com/cdisselkoen/educe)",
+ "educe",
  "itertools 0.14.0",
  "lalrpop",
  "lalrpop-util",
@@ -776,17 +776,6 @@ name = "educe"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d7bc049e1bd8cdeb31b68bbd586a9464ecf9f3944af3958a7a9d0f8b9799417"
-dependencies = [
- "enum-ordinalize",
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "educe"
-version = "0.6.0"
-source = "git+https://github.com/cdisselkoen/educe#0ef8eea3bdcb5869b4df675e2bdad5ec71483b0b"
 dependencies = [
  "enum-ordinalize",
  "proc-macro2",
