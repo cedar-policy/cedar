@@ -183,7 +183,7 @@ pub trait ExprBuilder: Clone {
     {
         self.clone().and(
             self.clone().is_entity_type(e1.clone(), entity_type),
-            self.clone().is_in(e1, e2),
+            self.is_in(e1, e2),
         )
     }
 
