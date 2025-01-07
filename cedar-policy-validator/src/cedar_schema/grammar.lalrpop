@@ -137,7 +137,7 @@ Entity: Node<Declaration> = {
             attrs: Node::with_source_loc(ds.map(|ds| ds.unwrap_or_default()).unwrap_or_default(), Loc::new(l2..r2, Arc::clone(src))),
             tags: ts,
             })), Loc::new(l1..r1, Arc::clone(src))),
-    <l:@L> ENTITY <ets: Idents> ENUM "[" <choices: STRs> "]" <r:@R> => Node::with_source_loc(Declaration::Entity(EntityDecl::Enum(EnumEntityDecl {
+    <l:@L> ENTITY <ets: Idents> ENUM "[" <choices: STRs> "]" ";" <r:@R> => Node::with_source_loc(Declaration::Entity(EntityDecl::Enum(EnumEntityDecl {
         names: ets,
         choices,
     })), Loc::new(l..r, Arc::clone(src))),

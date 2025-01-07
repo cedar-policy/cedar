@@ -920,7 +920,10 @@ namespace Baz {action "Foo" appliesTo {
 }
 
 mod parser_tests {
-    use crate::cedar_schema::parser::parse_schema;
+    use crate::cedar_schema::{
+        ast::{Annotated, Declaration, EntityDecl, EnumEntityDecl, Namespace},
+        parser::parse_schema,
+    };
     use cool_asserts::assert_matches;
 
     #[test]
@@ -1142,6 +1145,65 @@ mod parser_tests {
 "#,
         );
         assert_matches!(res, Ok(_));
+    }
+
+    #[test]
+    fn enumerated_entity_types() {
+        let res = parse_schema(
+            r#"
+        entity Application enum [ "TinyTodo" ];
+        entity User in [ Application ];
+        "#,
+        );
+        assert_matches!(res, Ok(ns) => {
+            assert_matches!(&ns, [Annotated {data: Namespace { decls, ..}, ..}, ..] => {
+                assert_matches!(decls, [Annotated { data, .. }] => {
+                    assert_matches!(&data.node, Declaration::Entity(EntityDecl::Enum(EnumEntityDecl { choices, ..})) => {
+                        assert_eq!(choices.clone().map(|n| n.node), nonempty::NonEmpty::singleton("TinyTodo".into()));
+                    });
+                });
+            });
+        });
+        let res = parse_schema(
+            r#"
+        entity Application enum [ "TinyTodo", "GitHub", "DocumentCloud" ];
+        entity User in [ Application ];
+        "#,
+        );
+        assert_matches!(res, Ok(ns) => {
+            assert_matches!(&ns, [Annotated {data: Namespace { decls, ..}, ..}, ..] => {
+                assert_matches!(decls, [Annotated { data, .. }] => {
+                    assert_matches!(&data.node, Declaration::Entity(EntityDecl::Enum(EnumEntityDecl { choices, ..})) => {
+                        assert_eq!(choices.clone().map(|n| n.node), nonempty::nonempty!["TinyTodo".into(), "GitHub".into(), "DocumentCloud".into()]);
+                    });
+                });
+            });
+        });
+        let res = parse_schema(
+            r#"
+        entity enum enum [ "enum" ];
+        "#,
+        );
+        assert_matches!(res, Ok(ns) => {
+            assert_matches!(&ns, [Annotated {data: Namespace { decls, ..}, ..}] => {
+                assert_matches!(decls, [Annotated { data, .. }] => {
+                    assert_matches!(&data.node, Declaration::Entity(EntityDecl::Enum(EnumEntityDecl { choices, ..})) => {
+                        assert_eq!(choices.clone().map(|n| n.node), nonempty::NonEmpty::singleton("enum".into()));
+                    });
+                });
+            });
+        });
+
+        let res = parse_schema(
+            r#"
+        entity Application enum [ ];
+        entity User in [ Application ];
+        "#,
+        );
+        // Maybe we want a better error message here
+        assert_matches!(res, Err(errs) => {
+            assert_eq!(errs.to_string(), "unexpected token `]`");
+        });
     }
 }
 
@@ -2261,6 +2323,31 @@ mod translator_tests {
                 }
             }),
         );
+    }
+
+    #[test]
+    fn enumerated_entity_types() {
+        let src = r#"
+        entity Fruits enum ["🍍", "🥭", "🥝"];
+        "#;
+
+        let (schema, _) =
+            json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
+        let ns = schema.0.get(&None).unwrap();
+        assert_matches!(ns.entity_types.get(&"Fruits".parse().unwrap()).unwrap(), EntityType { kind: EntityTypeKind::Enum { choices }, ..} => {
+            assert_eq!(choices.as_slice(), ["🍍", "🥭", "🥝"]);
+        });
+
+        let src = r#"
+        entity enum enum ["enum"];
+        "#;
+
+        let (schema, _) =
+            json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
+        let ns = schema.0.get(&None).unwrap();
+        assert_matches!(ns.entity_types.get(&"enum".parse().unwrap()).unwrap(), EntityType { kind: EntityTypeKind::Enum { choices }, ..} => {
+            assert_eq!(choices.as_slice(), ["enum"]);
+        });
     }
 }
 
