@@ -38,7 +38,7 @@ prost = { version = "0.13", optional = true }
 
 [features]
 # by default, enable all Cedar extensions
-default = ["ipaddr", "decimal", "datetime"]
+default = ["ipaddr", "decimal"]
 # when enabling a feature, make sure that the Core feature is also enabled
 ipaddr = ["cedar-policy-core/ipaddr"]
 decimal = ["cedar-policy-core/decimal"]

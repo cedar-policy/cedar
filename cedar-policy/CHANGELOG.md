@@ -15,6 +15,7 @@ Cedar Language Version: TBD
 
 ### Added
 
+- Implemented [RFC 80 (`datetime` extension)](https://github.com/strongdm/cedar-rfcs/blob/datetime-rfc/text/0080-datetime-extension.md) as an experimental feature under flag `datetime` (#1276, #1415)
 - Implemented [RFC 48 (schema annotations)](https://github.com/cedar-policy/rfcs/blob/main/text/0048-schema-annotations.md)  (#1316)
 - New `.isEmpty()` operator on sets (#1358, resolving #1356)
 - New `Entity::new_with_tags()` and `Entity::tag()` functions (#1402, resolving #1374)
