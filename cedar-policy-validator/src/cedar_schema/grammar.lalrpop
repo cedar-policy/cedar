@@ -297,7 +297,7 @@ PathInline: Path = {
 NonEmptyComma<E>: NonEmpty<E> = {
     <e:E> => NonEmpty::singleton(e),
     <mut es:(<E> ",")+> <e:E> => {
-        let mut all = NonEmpty::new(e);
+        let mut all = NonEmpty::singleton(e);
         all.append(&mut es);
         all
     },
