@@ -362,27 +362,33 @@ fn convert_entity_decl(
     impl Iterator<Item = (UnreservedId, json_schema::EntityType<RawName>)>,
     ToJsonSchemaErrors,
 > {
-    // First build up the defined entity type
+    let names: Vec<Node<Id>> = e.data.node.clone().names().collect();
     let etype = json_schema::EntityType {
-        kind: json_schema::EntityTypeKind::Standard(json_schema::StandardEntityType {
-            member_of_types: e
-                .data
-                .node
-                .member_of_types
-                .into_iter()
-                .map(RawName::from)
-                .collect(),
-            shape: convert_attr_decls(e.data.node.attrs),
-            tags: e.data.node.tags.map(cedar_type_to_json_type),
-        }),
+        kind: match e.data.node {
+            EntityDecl::Enum(d) => json_schema::EntityTypeKind::Enum {
+                choices: d.choices.into_iter().map(|n| n.node).collect(),
+            },
+            EntityDecl::Standard(d) => {
+                // First build up the defined entity type
+                json_schema::EntityTypeKind::Standard(json_schema::StandardEntityType {
+                    member_of_types: d.member_of_types.into_iter().map(RawName::from).collect(),
+                    shape: convert_attr_decls(d.attrs),
+                    tags: d.tags.map(cedar_type_to_json_type),
+                })
+            }
+        },
         annotations: e.annotations.into(),
-        loc: Some(e.data.loc),
+        loc: Some(e.data.loc.clone()),
     };
 
     // Then map over all of the bound names
-    collect_all_errors(e.data.node.names.into_iter().map(
-        move |name| -> Result<_, ToJsonSchemaErrors> { Ok((convert_id(name)?, etype.clone())) },
-    ))
+    collect_all_errors(
+        names
+            .into_iter()
+            .map(move |name| -> Result<_, ToJsonSchemaErrors> {
+                Ok((convert_id(name)?, etype.clone()))
+            }),
+    )
 }
 
 /// Create a [`json_schema::AttributesOrContext`] from a series of `AttrDecl`s
@@ -482,7 +488,7 @@ impl NamespaceRecord {
         let entities = collect_decls(
             entities
                 .into_iter()
-                .flat_map(|decl| decl.names.clone())
+                .flat_map(|decl| decl.names())
                 .map(extract_name),
         )?;
         // Ensure no duplicate actions

@@ -24,6 +24,8 @@ use smol_str::ToSmolStr;
 use crate::cedar_schema::ast::{
     Path,
     EntityDecl,
+    StandardEntityDecl,
+    EnumEntityDecl,
     Declaration,
     Namespace,
     Schema as ASchema,
@@ -76,6 +78,7 @@ match {
     "Long" => LONG,
     "String" => STRING,
     "Bool" => BOOL,
+    "enum" => ENUM,
 
     // data input
     r"[_a-zA-Z][_a-zA-Z0-9]*" => IDENTIFIER,
@@ -128,12 +131,16 @@ Decl: Node<Declaration> = {
 // Entity := 'entity' Idents ['in' EntOrTypes] [['='] RecType] ';' <r:@R>
 Entity: Node<Declaration> = {
     <l1:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> <l2:@L> <ds:("="? "{" <AttrDecls?> "}")?> <r2:@R> <ts:(TAGS <Type>)?> ";" <r1:@R>
-        => Node::with_source_loc(Declaration::Entity(EntityDecl {
+        => Node::with_source_loc(Declaration::Entity(EntityDecl::Standard(StandardEntityDecl {
             names: ets,
             member_of_types: ps.unwrap_or_default(),
             attrs: Node::with_source_loc(ds.map(|ds| ds.unwrap_or_default()).unwrap_or_default(), Loc::new(l2..r2, Arc::clone(src))),
             tags: ts,
-            }), Loc::new(l1..r1, Arc::clone(src))),
+            })), Loc::new(l1..r1, Arc::clone(src))),
+    <l:@L> ENTITY <ets: Idents> ENUM "[" <choices: STRs> "]" <r:@R> => Node::with_source_loc(Declaration::Entity(EntityDecl::Enum(EnumEntityDecl {
+        names: ets,
+        choices,
+    })), Loc::new(l..r, Arc::clone(src))),
 }
 
 // Action := 'action' Names ['in' QualNameOrNames]
@@ -262,6 +269,8 @@ AnyIdent: Node<AnyId> = {
         => Node::with_source_loc("type".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> IN <r:@R>
         => Node::with_source_loc("in".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> ENUM <r:@R>
+        => Node::with_source_loc("enum".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <i:IDENTIFIER> <r:@R>
         => Node::with_source_loc(i.parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
 }
@@ -301,6 +310,12 @@ Idents: Vec<Node<Id>> = {
         is.push(i);
         is
     },
+}
+
+// STRs := STR {',' STR}
+STRs: NonEmpty<Node<SmolStr>> = {
+    <i:STR> => NonEmpty::singleton(i),
+    <is:(<STR> ",")+> <i:STR> => NonEmpty::collect(is.into_iter().chain(std::iter::once(i))).unwrap(),
 }
 
 // Names := Name {',' Name}

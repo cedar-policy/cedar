@@ -249,9 +249,24 @@ impl Decl for TypeDecl {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum EntityDecl {
+    Standard(StandardEntityDecl),
+    Enum(EnumEntityDecl),
+}
+
+impl EntityDecl {
+    pub fn names(&self) -> impl Iterator<Item = Node<Id>> + '_ {
+        match self {
+            Self::Enum(d) => d.names.iter().cloned(),
+            Self::Standard(d) => d.names.iter().cloned(),
+        }
+    }
+}
+
 /// Declaration of an entity type
 #[derive(Debug, Clone)]
-pub struct EntityDecl {
+pub struct StandardEntityDecl {
     /// Entity Type Names bound by this declaration.
     /// More than one name can be bound if they have the same definition, for convenience
     pub names: Vec<Node<Id>>,
@@ -261,6 +276,13 @@ pub struct EntityDecl {
     pub attrs: Node<Vec<Node<Annotated<AttrDecl>>>>,
     /// Tag type for this entity (`None` means no tags on this entity)
     pub tags: Option<Node<Type>>,
+}
+
+/// Declaration of an entity type
+#[derive(Debug, Clone)]
+pub struct EnumEntityDecl {
+    pub names: Vec<Node<Id>>,
+    pub choices: NonEmpty<Node<SmolStr>>,
 }
 
 /// Type definitions
