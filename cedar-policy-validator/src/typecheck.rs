@@ -1216,9 +1216,9 @@ impl<'a> Typechecker<'a> {
                         let type_of_eq = self.type_of_equality(
                             request_env,
                             arg1,
-                            lhs_ty.data(),
+                            lhs_ty.data().as_ref(),
                             arg2,
-                            rhs_ty.data(),
+                            rhs_ty.data().as_ref(),
                         );
 
                         if self.mode.is_strict() {
@@ -1228,8 +1228,8 @@ impl<'a> Typechecker<'a> {
                             self.enforce_strict_equality(
                                 bin_expr,
                                 annotated_eq,
-                                lhs_ty.data(),
-                                rhs_ty.data(),
+                                lhs_ty.data().as_ref(),
+                                rhs_ty.data().as_ref(),
                                 type_errors,
                                 LubContext::Equality,
                             )
@@ -1451,13 +1451,13 @@ impl<'a> Typechecker<'a> {
                                 self.enforce_strict_equality(
                                     bin_expr,
                                     annotated_expr,
-                                    &match expr_ty_arg1.data() {
+                                    match expr_ty_arg1.data() {
                                         Some(Type::Set {
                                             element_type: Some(ty),
-                                        }) => Some(*ty.clone()),
+                                        }) => Some(ty.as_ref()),
                                         _ => None,
                                     },
-                                    expr_ty_arg2.data(),
+                                    expr_ty_arg2.data().as_ref(),
                                     type_errors,
                                     LubContext::Contains,
                                 )
@@ -1513,8 +1513,8 @@ impl<'a> Typechecker<'a> {
                             self.enforce_strict_equality(
                                 bin_expr,
                                 annotated_expr,
-                                expr_ty_arg1.data(),
-                                expr_ty_arg2.data(),
+                                expr_ty_arg1.data().as_ref(),
+                                expr_ty_arg2.data().as_ref(),
                                 type_errors,
                                 LubContext::ContainsAnyAll,
                             )
@@ -1746,8 +1746,8 @@ impl<'a> Typechecker<'a> {
         &self,
         unannotated_expr: &'b Expr,
         annotated_expr: Expr<Option<Type>>,
-        lhs_ty: &Option<Type>,
-        rhs_ty: &Option<Type>,
+        lhs_ty: Option<&Type>,
+        rhs_ty: Option<&Type>,
         type_errors: &mut Vec<ValidationError>,
         context: LubContext,
     ) -> TypecheckAnswer<'b> {
@@ -1789,9 +1789,9 @@ impl<'a> Typechecker<'a> {
         &self,
         request_env: &RequestEnv<'_>,
         lhs_expr: &'b Expr,
-        lhs_ty: &Option<Type>,
+        lhs_ty: Option<&Type>,
         rhs_expr: &'b Expr,
-        rhs_ty: &Option<Type>,
+        rhs_ty: Option<&Type>,
     ) -> Type {
         // If we know the types are disjoint, then we can return give the
         // expression type False. See `are_types_disjoint` definition for
