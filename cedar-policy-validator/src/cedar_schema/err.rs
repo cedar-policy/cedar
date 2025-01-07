@@ -89,6 +89,7 @@ lazy_static! {
             ("SET", "`Set`"),
             ("IDENTIFIER", "identifier"),
             ("TAGS", "`tags`"),
+            ("ENUM", "`enum`"),
         ]),
         impossible_tokens: HashSet::new(),
         special_identifier_tokens: HashSet::from([
@@ -106,6 +107,7 @@ lazy_static! {
             "LONG",
             "STRING",
             "BOOL",
+            "ENUM",
         ]),
         identifier_sentinel: "IDENTIFIER",
         first_set_identifier_tokens: HashSet::from(["SET"]),
