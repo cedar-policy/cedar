@@ -416,16 +416,17 @@ impl PartialRequestArgs {
             builder = builder.principal(principal);
         }
 
-        if let Some(action) = qjson
+        let action = qjson
             .action
             .map(|s| {
                 s.parse::<EntityUid>()
                     .wrap_err_with(|| format!("failed to parse action {s} as entity Uid"))
             })
-            .transpose()?
-        {
-            builder = builder.action(action.clone());
-        };
+            .transpose()?;
+
+        if let Some(action_ref) = &action {
+            builder = builder.action(action_ref.clone());
+        }
 
         if let Some(resource) = qjson
             .resource
@@ -441,7 +442,8 @@ impl PartialRequestArgs {
         if let Some(context) = qjson
             .context
             .map(|json| {
-                Context::from_json_value(json.clone(), None)
+                let action_ref = action.as_ref();
+                Context::from_json_value(json.clone(), schema.and_then(|s| action_ref.map(|a| (s, a))))
                     .wrap_err_with(|| format!("fail to convert context json {json} to Context"))
             })
             .transpose()?
