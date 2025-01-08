@@ -442,8 +442,11 @@ impl PartialRequestArgs {
         if let Some(context) = qjson
             .context
             .map(|json| {
-                Context::from_json_value(json.clone(), schema.and_then(|s| Some((s, action.as_ref()?))))
-                    .wrap_err_with(|| format!("fail to convert context json {json} to Context"))
+                Context::from_json_value(
+                    json.clone(),
+                    schema.and_then(|s| Some((s, action.as_ref()?))),
+                )
+                .wrap_err_with(|| format!("fail to convert context json {json} to Context"))
             })
             .transpose()?
         {
@@ -452,7 +455,9 @@ impl PartialRequestArgs {
 
         if let Some(schema) = schema {
             let builder_schema = builder.schema(schema);
-            builder_schema.build().wrap_err_with(|| format!("failed to build request with validation"))
+            builder_schema
+                .build()
+                .wrap_err_with(|| format!("failed to build request with validation"))
         } else {
             Ok(builder.build())
         }
