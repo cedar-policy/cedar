@@ -97,7 +97,7 @@ pub fn extension_schema() -> ExtensionSchema {
             get_argument_check(f.name()),
         )
     });
-    ExtensionSchema::new(decimal_ext.name().clone(), fun_tys)
+    ExtensionSchema::new(decimal_ext.name().clone(), fun_tys, std::iter::empty())
 }
 
 /// Extra validation step for the `decimal` function.

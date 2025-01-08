@@ -41,5 +41,6 @@ pub fn extension() -> Extension {
             Box::new(create_new_unknown),
             SchemaType::String,
         )],
+        std::iter::empty(),
     )
 }

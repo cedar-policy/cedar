@@ -28,11 +28,10 @@ pub mod partial_evaluation;
 
 use std::collections::HashMap;
 
-use crate::ast::{Extension, ExtensionFunction, Name, TYPES_WITH_OPERATOR_OVERLOADING};
+use crate::ast::{Extension, ExtensionFunction, Name};
 use crate::entities::SchemaType;
 use crate::parser::Loc;
 use miette::Diagnostic;
-use nonempty::NonEmpty;
 use thiserror::Error;
 
 use self::extension_function_lookup_errors::FuncDoesNotExistError;
@@ -98,21 +97,15 @@ impl Extensions<'static> {
     pub fn none() -> &'static Extensions<'static> {
         &EXTENSIONS_NONE
     }
-
-    /// Obtain the non-empty vector of types supporting operator overloading
-    pub fn types_with_operator_overloading() -> NonEmpty<Name> {
-        // PANIC SAFETY: There are more than one element in `TYPES_WITH_OPERATOR_OVERLOADING`
-        #[allow(clippy::unwrap_used)]
-        NonEmpty::collect(TYPES_WITH_OPERATOR_OVERLOADING.iter().cloned()).unwrap()
-    }
-
-    /// Iterate over extension types that support operator overloading
-    pub fn iter_type_with_operator_overloading() -> impl Iterator<Item = &'static Name> {
-        TYPES_WITH_OPERATOR_OVERLOADING.iter()
-    }
 }
 
 impl<'a> Extensions<'a> {
+    /// Obtain the non-empty vector of types supporting operator overloading
+    pub fn types_with_operator_overloading(&self) -> impl Iterator<Item = &Name> + '_ {
+        self.extensions
+            .iter()
+            .flat_map(|ext| ext.types_with_operator_overloading())
+    }
     /// Get a new `Extensions` with these specific extensions enabled.
     pub fn specific_extensions(
         extensions: &'a [Extension],

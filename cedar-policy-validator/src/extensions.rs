@@ -16,7 +16,7 @@
 
 //! This module contains type information for all of the standard Cedar extensions.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use cedar_policy_core::{
     ast::{Name, RestrictedExpr, Value},
@@ -57,7 +57,7 @@ lazy_static::lazy_static! {
     static ref ALL_AVAILABLE_EXTENSION_SCHEMAS : ExtensionSchemas<'static> = ExtensionSchemas::build_all_available();
 }
 
-/// Aggregate structure containing function signatures for multiple [`ExtensionSchema`].
+/// Aggregate structure containing information such as function signatures for multiple [`ExtensionSchema`].
 /// Ensures that no function name is defined mode than once.
 /// Intentionally does not derive `Clone` to avoid clones of the `HashMap`. For the
 /// moment, it's easy to pass this around by reference. We could make this
@@ -69,6 +69,8 @@ pub struct ExtensionSchemas<'a> {
     /// extension function lookup that at most one extension functions exists
     /// for a name.
     function_types: HashMap<&'a Name, &'a ExtensionFunctionType>,
+    /// Extension types that support operator overloading
+    types_with_operator_overloading: BTreeSet<&'a Name>,
 }
 
 impl<'a> ExtensionSchemas<'a> {
@@ -98,13 +100,32 @@ impl<'a> ExtensionSchemas<'a> {
         )
         .map_err(|name| FuncMultiplyDefinedError { name: name.clone() })?;
 
-        Ok(Self { function_types })
+        // We already ensure that names of extension types do not collide, at the language level
+        let types_with_operator_overloading = extension_schemas
+            .iter()
+            .flat_map(|f| f.types_with_operator_overloading())
+            .collect();
+
+        Ok(Self {
+            function_types,
+            types_with_operator_overloading,
+        })
     }
 
     /// Get the [`ExtensionFunctionType`] for a function with this [`Name`].
     /// Return `None` if no such function exists.
     pub fn func_type(&self, name: &Name) -> Option<&ExtensionFunctionType> {
         self.function_types.get(name).copied()
+    }
+
+    /// Query if `ext_ty_name` supports operator overloading
+    pub fn has_type_with_operator_overloading(&self, ext_ty_name: &Name) -> bool {
+        self.types_with_operator_overloading.contains(ext_ty_name)
+    }
+
+    /// Get all extension types that support operator overloading
+    pub fn types_with_operator_overloading(&self) -> impl Iterator<Item = &Name> + '_ {
+        self.types_with_operator_overloading.iter().cloned()
     }
 }
 

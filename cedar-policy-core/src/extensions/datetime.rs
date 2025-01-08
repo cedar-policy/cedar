@@ -718,6 +718,10 @@ pub fn extension() -> Extension {
                 duration_type,
             ),
         ],
+        [
+            DATETIME_CONSTRUCTOR_NAME.clone(),
+            DURATION_CONSTRUCTOR_NAME.clone(),
+        ],
     )
 }
 

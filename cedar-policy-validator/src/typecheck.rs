@@ -45,7 +45,6 @@ use cedar_policy_core::{
         PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
     },
     expr_builder::ExprBuilder as _,
-    extensions::Extensions,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1189,6 +1188,33 @@ impl<'a> Typechecker<'a> {
         }
     }
 
+    // Return if `ty` is a valid comparison operator type
+    // Currently, only primitive long and certain extension types are valid
+    fn is_valid_comparison_op_type(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Primitive {
+                primitive_type: Primitive::Long,
+            } => true,
+            Type::ExtensionType { name } => {
+                self.extensions.has_type_with_operator_overloading(name)
+            }
+            _ => false,
+        }
+    }
+
+    // Get all valid types satisfying `is_valid_comparison_op_type`
+    // Only used for error message construction
+    fn expected_comparison_op_types(&self) -> Vec<Type> {
+        let expected_types = self
+            .extensions
+            .types_with_operator_overloading()
+            .cloned()
+            .map(Type::extension)
+            .chain(std::iter::once(Type::primitive_long()))
+            .collect_vec();
+        expected_types
+    }
+
     /// A utility called by the main typecheck method to handle binary operator
     /// application.
     /// INVARIANT: `bin_expr` must be a `BinaryApp`
@@ -1245,11 +1271,6 @@ impl<'a> Typechecker<'a> {
             }
 
             BinaryOp::Less | BinaryOp::LessEq => {
-                let expected_types = Extensions::iter_type_with_operator_overloading()
-                    .cloned()
-                    .map(Type::extension)
-                    .chain(std::iter::once(Type::primitive_long()))
-                    .collect_vec();
                 let ans_arg1 = self.typecheck(request_env, prior_capability, arg1, type_errors);
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
                     let ans_arg2 = self.typecheck(request_env, prior_capability, arg2, type_errors);
@@ -1262,13 +1283,13 @@ impl<'a> Typechecker<'a> {
                         match (t1, t2) {
                             (Some(Type::Never), Some(Type::Never)) => TypecheckAnswer::fail(expr),
                             (Some(Type::Never), Some(other)) => {
-                                if expected_types.contains(other) {
+                                if self.is_valid_comparison_op_type(other) {
                                     TypecheckAnswer::success(expr)
                                 } else {
                                     type_errors.push(ValidationError::expected_one_of_types(
                                         expr_ty_arg2.source_loc().cloned(),
                                         self.policy_id.clone(),
-                                        expected_types,
+                                        self.expected_comparison_op_types(),
                                         other.clone(),
                                         None,
                                     ));
@@ -1276,20 +1297,22 @@ impl<'a> Typechecker<'a> {
                                 }
                             }
                             (Some(other), Some(Type::Never)) => {
-                                if expected_types.contains(other) {
+                                if self.is_valid_comparison_op_type(other) {
                                     TypecheckAnswer::success(expr)
                                 } else {
                                     type_errors.push(ValidationError::expected_one_of_types(
                                         expr_ty_arg1.source_loc().cloned(),
                                         self.policy_id.clone(),
-                                        expected_types,
+                                        self.expected_comparison_op_types(),
                                         other.clone(),
                                         None,
                                     ));
                                     TypecheckAnswer::fail(expr)
                                 }
                             }
-                            (Some(t1), Some(t2)) if t1 == t2 && expected_types.contains(t1) => {
+                            (Some(t1), Some(t2))
+                                if t1 == t2 && self.is_valid_comparison_op_type(t1) =>
+                            {
                                 TypecheckAnswer::success(expr)
                             }
                             (
@@ -1322,7 +1345,7 @@ impl<'a> Typechecker<'a> {
                                 ));
                                 TypecheckAnswer::fail(expr)
                             }
-                            (Some(lhs), Some(rhs)) if lhs.support_operator_overloading() => {
+                            (Some(lhs), Some(rhs)) if self.is_valid_comparison_op_type(lhs) => {
                                 type_errors.push(ValidationError::expected_one_of_types(
                                     expr_ty_arg2.source_loc().cloned(),
                                     self.policy_id.clone(),
@@ -1332,7 +1355,7 @@ impl<'a> Typechecker<'a> {
                                 ));
                                 TypecheckAnswer::fail(expr)
                             }
-                            (Some(lhs), Some(rhs)) if rhs.support_operator_overloading() => {
+                            (Some(lhs), Some(rhs)) if self.is_valid_comparison_op_type(rhs) => {
                                 type_errors.push(ValidationError::expected_one_of_types(
                                     expr_ty_arg1.source_loc().cloned(),
                                     self.policy_id.clone(),
@@ -1343,6 +1366,7 @@ impl<'a> Typechecker<'a> {
                                 TypecheckAnswer::fail(expr)
                             }
                             (Some(lhs), Some(rhs)) => {
+                                let expected_types = self.expected_comparison_op_types();
                                 type_errors.push(ValidationError::expected_one_of_types(
                                     expr_ty_arg1.source_loc().cloned(),
                                     self.policy_id.clone(),

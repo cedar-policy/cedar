@@ -438,6 +438,7 @@ pub fn extension() -> Extension {
                 (ipaddr_type.clone(), ipaddr_type),
             ),
         ],
+        std::iter::empty(),
     )
 }
 
@@ -609,12 +610,12 @@ mod tests {
         assert_matches!(
             eval.interpret_inline_policy(&Expr::less(ip("127.0.0.1"), ip("10.0.0.10"))),
             Err(EvaluationError::TypeError(evaluation_errors::TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}]);
+                assert_eq!(expected, nonempty![Type::Long]);
                 assert_eq!(actual, Type::Extension {
                     name: Name::parse_unqualified_name("ipaddr")
                         .expect("should be a valid identifier")
                 });
-                assert_eq!(advice, Some("Only extension types `datetime` and `duration` support operator overloading".into()));
+                assert_eq!(advice, Some("Only types long support comparison".into()));
             }
         );
         // test that isIpv4 on a String is an error
