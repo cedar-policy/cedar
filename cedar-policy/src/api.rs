@@ -1398,11 +1398,25 @@ pub struct SchemaFragment {
     lossless: cedar_policy_validator::json_schema::Fragment<cedar_policy_validator::RawName>,
 }
 
+fn get_annotation_by_key(
+    annotations: &est::Annotations,
+    annotation_key: impl AsRef<str>,
+) -> Option<&str> {
+    annotations
+        .0
+        .get(&annotation_key.as_ref().parse().ok()?)
+        .map(|value| annotation_value_to_str_ref(value.as_ref()))
+}
+
+fn annotation_value_to_str_ref(value: Option<&ast::Annotation>) -> &str {
+    value.map_or("", |a| a.as_ref())
+}
+
 fn annotations_to_pairs(annotations: &est::Annotations) -> impl Iterator<Item = (&str, &str)> {
     annotations
         .0
         .iter()
-        .map(|(key, value)| (key.as_ref(), value.as_ref().map_or("", |a| a.as_ref())))
+        .map(|(key, value)| (key.as_ref(), annotation_value_to_str_ref(value.as_ref())))
 }
 
 impl SchemaFragment {
@@ -1419,6 +1433,23 @@ impl SchemaFragment {
             .0
             .get(&Some(namespace.0))
             .map(|ns_def| annotations_to_pairs(&ns_def.annotations))
+    }
+
+    /// Get annotation value of a non-empty namespace by annotation key
+    /// `annotation_key`
+    ///
+    /// We do not allow namespace-level annotations on the empty namespace.
+    ///
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`]
+    /// or `annotation_key` is not a valid annotation key
+    /// or it does not exist
+    pub fn namespace_annotation(
+        &self,
+        namespace: EntityNamespace,
+        annotation_key: impl AsRef<str>,
+    ) -> Option<&str> {
+        let ns = self.lossless.0.get(&Some(namespace.0))?;
+        get_annotation_by_key(&ns.annotations, annotation_key)
     }
 
     /// Get annotations of a common type declaration
@@ -1440,6 +1471,26 @@ impl SchemaFragment {
             .map(|ty| annotations_to_pairs(&ty.annotations))
     }
 
+    /// Get annotation value of a common type declaration by annotation key
+    /// `annotation_key`
+    ///
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`]
+    /// or `ty` is not a valid common type ID
+    /// or `ty` is not found in the corresponding namespace definition
+    /// or `annotation_key` is not a valid annotation key
+    /// or it does not exist
+    pub fn common_type_annotation(
+        &self,
+        namespace: Option<EntityNamespace>,
+        ty: &str,
+        annotation_key: impl AsRef<str>,
+    ) -> Option<&str> {
+        let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
+        let ty = json_schema::CommonTypeId::new(ast::UnreservedId::from_normalized_str(ty).ok()?)
+            .ok()?;
+        get_annotation_by_key(&ns_def.common_types.get(&ty)?.annotations, annotation_key)
+    }
+
     /// Get annotations of an entity type declaration
     ///
     /// Returns `None` if `namespace` is not found in the [`SchemaFragment`] or
@@ -1458,6 +1509,25 @@ impl SchemaFragment {
             .map(|ty| annotations_to_pairs(&ty.annotations))
     }
 
+    /// Get annotation value of an entity type declaration by annotation key
+    /// `annotation_key`
+    ///
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`]
+    /// or `ty` is not a valid entity type name
+    /// or `ty` is not found in the corresponding namespace definition
+    /// or `annotation_key` is not a valid annotation key
+    /// or it does not exist
+    pub fn entity_type_annotation(
+        &self,
+        namespace: Option<EntityNamespace>,
+        ty: &str,
+        annotation_key: impl AsRef<str>,
+    ) -> Option<&str> {
+        let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
+        let ty = ast::UnreservedId::from_normalized_str(ty).ok()?;
+        get_annotation_by_key(&ns_def.entity_types.get(&ty)?.annotations, annotation_key)
+    }
+
     /// Get annotations of an action declaration
     ///
     /// Returns `None` if `namespace` is not found in the [`SchemaFragment`] or
@@ -1472,6 +1542,26 @@ impl SchemaFragment {
             .actions
             .get(id.as_ref())
             .map(|a| annotations_to_pairs(&a.annotations))
+    }
+
+    /// Get annotation value of an action declaration by annotation key
+    /// `annotation_key`
+    ///
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`]
+    /// or `id` is not found in the corresponding namespace definition
+    /// or `annotation_key` is not a valid annotation key
+    /// or it does not exist
+    pub fn action_annotation(
+        &self,
+        namespace: Option<EntityNamespace>,
+        id: EntityId,
+        annotation_key: impl AsRef<str>,
+    ) -> Option<&str> {
+        let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
+        get_annotation_by_key(
+            &ns_def.actions.get(id.as_ref())?.annotations,
+            annotation_key,
+        )
     }
 
     /// Extract namespaces defined in this [`SchemaFragment`].

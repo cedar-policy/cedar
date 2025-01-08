@@ -6528,6 +6528,10 @@ mod reserved_keywords_in_policies {
 mod schema_annotations {
     use std::collections::BTreeMap;
 
+    use cool_asserts::assert_matches;
+
+    use crate::EntityNamespace;
+
     use super::SchemaFragment;
 
     #[track_caller]
@@ -6566,12 +6570,33 @@ mod schema_annotations {
     #[test]
     fn namespace_annotations() {
         let schema = example_schema();
+        let namespace: EntityNamespace = "N".parse().expect("should be a valid name");
         let annotations = BTreeMap::from_iter(
             schema
-                .namespace_annotations("N".parse().expect("should be a valid name"))
+                .namespace_annotations(namespace.clone())
                 .expect("should get annotations"),
         );
         assert_eq!(annotations, BTreeMap::from_iter([("m", "m"), ("n", "")]));
+        assert_matches!(
+            schema
+                .namespace_annotations("NM".parse().unwrap())
+                .map(|_| ()),
+            None
+        );
+
+        assert_matches!(
+            schema.namespace_annotation(namespace.clone(), "m"),
+            Some("m")
+        );
+        assert_matches!(
+            schema.namespace_annotation(namespace.clone(), "n"),
+            Some("")
+        );
+        assert_matches!(schema.namespace_annotation(namespace.clone(), "x"), None);
+        assert_matches!(
+            schema.namespace_annotation("NM".parse().unwrap(), "n"),
+            None
+        );
     }
 
     #[test]
@@ -6616,6 +6641,51 @@ mod schema_annotations {
                     .expect("should get annotations")
             )
         );
+
+        assert_matches!(schema.entity_type_annotation(None, "A1", "b",), Some(""));
+        assert_matches!(schema.entity_type_annotation(None, "A2", "a",), Some("a"));
+        assert_matches!(schema.entity_type_annotation(None, "A3", "a",), None);
+        assert_matches!(schema.entity_type_annotation(None, "A2", "x",), None);
+        assert_matches!(
+            schema.entity_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "A1",
+                "b",
+            ),
+            Some("")
+        );
+        assert_matches!(
+            schema.entity_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "A2",
+                "a",
+            ),
+            Some("a")
+        );
+        assert_matches!(
+            schema.entity_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "A3",
+                "a",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.entity_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "A2",
+                "x",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.entity_type_annotation(
+                Some("NM".parse().expect("should be a valid name")),
+                "A1",
+                "b",
+            ),
+            None
+        );
     }
 
     #[test]
@@ -6640,6 +6710,51 @@ mod schema_annotations {
                     )
                     .expect("should get annotations")
             )
+        );
+        assert_matches!(schema.common_type_annotation(None, "T", "c",), Some("c"));
+        assert_matches!(schema.common_type_annotation(None, "T", "d",), Some(""));
+        assert_matches!(schema.common_type_annotation(None, "T1", "c",), None);
+        assert_matches!(schema.common_type_annotation(None, "T", "x",), None);
+
+        assert_matches!(
+            schema.common_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "T",
+                "c",
+            ),
+            Some("c")
+        );
+        assert_matches!(
+            schema.common_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "T",
+                "d",
+            ),
+            Some("")
+        );
+        assert_matches!(
+            schema.common_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "T1",
+                "c",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.common_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "T",
+                "x",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.common_type_annotation(
+                Some("NM".parse().expect("should be a valid name")),
+                "T",
+                "c",
+            ),
+            None
         );
     }
 
@@ -6684,6 +6799,64 @@ mod schema_annotations {
                     )
                     .expect("should get annotations")
             )
+        );
+
+        assert_matches!(
+            schema.action_annotation(None, "a1".parse().unwrap(), "e",),
+            Some("e")
+        );
+        assert_matches!(
+            schema.action_annotation(None, "a2".parse().unwrap(), "f",),
+            Some("")
+        );
+        assert_matches!(
+            schema.action_annotation(None, "a3".parse().unwrap(), "e",),
+            None
+        );
+        assert_matches!(
+            schema.action_annotation(None, "a2".parse().unwrap(), "x",),
+            None
+        );
+
+        assert_matches!(
+            schema.action_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "a1".parse().unwrap(),
+                "e",
+            ),
+            Some("e")
+        );
+        assert_matches!(
+            schema.action_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "a2".parse().unwrap(),
+                "f",
+            ),
+            Some("")
+        );
+        assert_matches!(
+            schema.action_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "a3".parse().unwrap(),
+                "e",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.action_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "a2".parse().unwrap(),
+                "x",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.action_annotation(
+                Some("NM".parse().expect("should be a valid name")),
+                "a1".parse().unwrap(),
+                "e",
+            ),
+            None
         );
     }
 }
