@@ -254,7 +254,7 @@ impl Decl for TypeDecl {
 pub struct EntityDecl {
     /// Entity Type Names bound by this declaration.
     /// More than one name can be bound if they have the same definition, for convenience
-    pub names: Vec<Node<Id>>,
+    pub names: NonEmpty<Node<Id>>,
     /// Entity Types this type is allowed to be related to via the `in` relation
     pub member_of_types: Vec<Path>,
     /// Attributes this entity has
