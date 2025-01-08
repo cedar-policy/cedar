@@ -447,7 +447,7 @@ pub enum EntityTypeKind<N> {
 }
 
 /// Represents the definition of a common type in the schema.
-#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[derive(Educe, Debug, Clone, Serialize)]
 #[educe(PartialEq, Eq)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 pub struct EntityType<N> {
@@ -466,6 +466,50 @@ pub struct EntityType<N> {
     #[serde(skip)]
     #[educe(PartialEq(ignore))]
     pub loc: Option<Loc>,
+}
+
+impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N> {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
+        #[serde(deny_unknown_fields)]
+        #[serde(rename_all = "camelCase")]
+        struct Everything<N> {
+            #[serde(default)]
+            member_of_types: Option<Vec<N>>,
+            #[serde(default)]
+            shape: Option<AttributesOrContext<N>>,
+            #[serde(default)]
+            tags: Option<Type<N>>,
+            #[serde(default)]
+            #[serde(rename = "enum")]
+            choices: Option<Vec<SmolStr>>,
+            #[serde(default)]
+            annotations: Option<Annotations>,
+        }
+
+        let value: Everything<N> = Everything::deserialize(deserializer)?;
+        if let Some(choices) = value.choices {
+            Ok(EntityType {
+                kind: EntityTypeKind::Enum { choices },
+                annotations: value.annotations.unwrap_or_default(),
+                loc: None,
+            })
+        } else {
+            Ok(EntityType {
+                kind: EntityTypeKind::Standard(StandardEntityType {
+                    member_of_types: value.member_of_types.unwrap_or_default(),
+                    shape: value.shape.unwrap_or_default(),
+                    tags: value.tags,
+                }),
+                annotations: value.annotations.unwrap_or_default(),
+                loc: None,
+            })
+        }
+    }
 }
 
 /// Represents the full definition of an entity type in the schema.
@@ -3458,7 +3502,8 @@ mod annotations {
         });
     }
 
-    const ENTITY_TYPE_EXPECTED_ATTRIBUTES: &str = "`memberOfTypes`, `shape`, `tags`, `annotations`";
+    const ENTITY_TYPE_EXPECTED_ATTRIBUTES: &str =
+        "`memberOfTypes`, `shape`, `tags`, `enum`, `annotations`";
     const NAMESPACE_EXPECTED_ATTRIBUTES: &str =
         "`commonTypes`, `entityTypes`, `actions`, `annotations`";
     const ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES: &str =
@@ -3629,7 +3674,7 @@ mod annotations {
                     "annotations": {
                         "foo": ""
                     },
-                    "bar": 1
+                    "bar": 1,
                 }
             }
            }

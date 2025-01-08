@@ -106,6 +106,13 @@ impl EntityTypeDescription {
 }
 
 impl entities::EntityTypeDescription for EntityTypeDescription {
+    fn choices(&self) -> Option<Vec<SmolStr>> {
+        match &self.validator_type.kind {
+            ValidatorEntityTypeKind::Enum(choices) => Some(choices.clone()),
+            _ => None,
+        }
+    }
+
     fn entity_type(&self) -> ast::EntityType {
         self.core_type.clone()
     }

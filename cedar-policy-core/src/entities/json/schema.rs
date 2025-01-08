@@ -136,6 +136,10 @@ pub trait EntityTypeDescription {
     /// May entities with this type have attributes other than those specified
     /// in the schema
     fn open_attributes(&self) -> bool;
+
+    /// Return valid EID choices if the entity type is enumerated otherwise
+    /// return `None`
+    fn choices(&self) -> Option<Vec<SmolStr>>;
 }
 
 /// Simple type that implements `EntityTypeDescription` by expecting no
@@ -163,6 +167,9 @@ impl EntityTypeDescription for NullEntityTypeDescription {
     }
     fn open_attributes(&self) -> bool {
         false
+    }
+    fn choices(&self) -> Option<Vec<SmolStr>> {
+        None
     }
 }
 impl NullEntityTypeDescription {

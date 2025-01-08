@@ -2149,6 +2149,9 @@ mod schema_based_parsing_tests {
     /// Mock schema impl for the `Employee` type used in most of these tests
     struct MockEmployeeDescription;
     impl EntityTypeDescription for MockEmployeeDescription {
+        fn choices(&self) -> Option<Vec<SmolStr>> {
+            None
+        }
         fn entity_type(&self) -> EntityType {
             EntityType::from(Name::parse_unqualified_name("Employee").expect("valid"))
         }
@@ -3398,6 +3401,9 @@ mod schema_based_parsing_tests {
 
         struct MockEmployeeDescription;
         impl EntityTypeDescription for MockEmployeeDescription {
+            fn choices(&self) -> Option<Vec<SmolStr>> {
+                None
+            }
             fn entity_type(&self) -> EntityType {
                 "XYZCorp::Employee".parse().expect("valid")
             }
