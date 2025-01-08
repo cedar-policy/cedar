@@ -442,8 +442,7 @@ impl PartialRequestArgs {
         if let Some(context) = qjson
             .context
             .map(|json| {
-                let action_ref = action.as_ref();
-                Context::from_json_value(json.clone(), schema.and_then(|s| action_ref.map(|a| (s, a))))
+                Context::from_json_value(json.clone(), schema.and_then(|s| Some((s, action.as_ref()?))))
                     .wrap_err_with(|| format!("fail to convert context json {json} to Context"))
             })
             .transpose()?
