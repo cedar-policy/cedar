@@ -633,7 +633,7 @@ mod tests {
                     name: Name::parse_unqualified_name("decimal")
                         .expect("should be a valid identifier")
                 });
-                assert_eq!(advice, Some("Only types long support comparison".into()));
+                assert_eq!(advice, Some("Only type long support comparison".into()));
             }
         );
         assert_matches!(
