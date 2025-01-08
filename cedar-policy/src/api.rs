@@ -1405,6 +1405,7 @@ impl SchemaFragment {
     }
 
     /// Get annotations of an entity type declaration
+    ///
     /// Returns `None` if `namespace` is not found in the [`SchemaFragment`] or
     /// `ty` is not a valid entity type name or `ty` is not found in the
     /// corresponding namespace definition
@@ -1422,6 +1423,7 @@ impl SchemaFragment {
     }
 
     /// Get annotations of an action declaration
+    ///
     /// Returns `None` if `namespace` is not found in the [`SchemaFragment`] or
     /// `id` is not found in the corresponding namespace definition
     pub fn action_annotations(
