@@ -187,7 +187,7 @@ pub fn parse_policy_or_template_to_est(text: &str) -> Result<est::Policy, err::P
 /// or its constructors
 pub(crate) fn parse_expr(ptext: &str) -> Result<ast::Expr, err::ParseErrors> {
     let cst = text_to_cst::parse_expr(ptext)?;
-    cst.to_expr()
+    cst.to_expr::<ast::ExprBuilder<()>>()
 }
 
 /// parse a RestrictedExpr
@@ -225,7 +225,7 @@ pub(crate) fn parse_internal_name(name: &str) -> Result<ast::InternalName, err::
 /// or its constructors
 pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, err::LiteralParseError> {
     let cst = text_to_cst::parse_primary(val)?;
-    match cst.to_expr() {
+    match cst.to_expr::<ast::ExprBuilder<()>>() {
         Ok(ast) => match ast.expr_kind() {
             ast::ExprKind::Lit(v) => Ok(v.clone()),
             _ => Err(err::LiteralParseError::InvalidLiteral(ast)),
@@ -247,7 +247,7 @@ pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, err::LiteralParse
 pub fn parse_internal_string(val: &str) -> Result<SmolStr, err::ParseErrors> {
     // we need to add quotes for this to be a valid string literal
     let cst = text_to_cst::parse_primary(&format!(r#""{val}""#))?;
-    cst.to_string_literal()
+    cst.to_string_literal::<ast::ExprBuilder<()>>()
 }
 
 /// parse an identifier
@@ -327,6 +327,7 @@ pub(crate) mod test_utils {
 
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic, clippy::indexing_slicing)]
+#[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
 /// Tests for the top-level parsing APIs
 mod tests {

@@ -24,6 +24,7 @@ use cedar_policy_core::{
     ast::{Entity, EntityType, EntityUID, InternalName, Name, UnreservedId},
     entities::{err::EntitiesError, Entities, TCComputation},
     extensions::Extensions,
+    parser::Loc,
     transitive_closure::compute_tc,
 };
 use itertools::Itertools;
@@ -421,6 +422,7 @@ impl ValidatorSchema {
                 fragments.push(single_alias_in_empty_namespace(
                     tyname.basename().clone(),
                     tyname.as_ref().qualify_with(Some(&InternalName::__cedar())),
+                    None, // there is no source loc associated with the builtin definitions of primitive and extension types
                 ));
                 all_defs.mark_as_defined_as_common_type(tyname.into());
             }
@@ -454,7 +456,10 @@ impl ValidatorSchema {
                 match common_types.entry(name) {
                     Entry::Vacant(v) => v.insert(ty),
                     Entry::Occupied(o) => {
-                        return Err(DuplicateCommonTypeError(o.key().clone()).into());
+                        return Err(DuplicateCommonTypeError {
+                            ty: o.key().clone(),
+                        }
+                        .into());
                     }
                 };
             }
@@ -463,7 +468,10 @@ impl ValidatorSchema {
                 match entity_type_fragments.entry(name) {
                     Entry::Vacant(v) => v.insert(entity_type),
                     Entry::Occupied(o) => {
-                        return Err(DuplicateEntityTypeError(o.key().clone()).into())
+                        return Err(DuplicateEntityTypeError {
+                            ty: o.key().clone(),
+                        }
+                        .into())
                     }
                 };
             }
@@ -514,8 +522,8 @@ impl ValidatorSchema {
                     Self::record_attributes_or_none(
                         unresolved.resolve_common_type_refs(&common_types)?,
                     )
-                    .ok_or_else(|| {
-                        ContextOrShapeNotRecordError(ContextOrShape::EntityTypeShape(name.clone()))
+                    .ok_or_else(|| ContextOrShapeNotRecordError {
+                        ctx_or_shape: ContextOrShape::EntityTypeShape(name.clone()),
                     })?
                 };
                 let tags = entity_type
@@ -556,8 +564,8 @@ impl ValidatorSchema {
                     Self::record_attributes_or_none(
                         unresolved.resolve_common_type_refs(&common_types)?,
                     )
-                    .ok_or_else(|| {
-                        ContextOrShapeNotRecordError(ContextOrShape::ActionContext(name.clone()))
+                    .ok_or_else(|| ContextOrShapeNotRecordError {
+                        ctx_or_shape: ContextOrShape::ActionContext(name.clone()),
                     })?
                 };
                 Ok((
@@ -668,8 +676,8 @@ impl ValidatorSchema {
                 }
             }
         }
-        if !undeclared_e.is_empty() {
-            return Err(UndeclaredEntityTypesError(undeclared_e).into());
+        if let Some(types) = NonEmpty::collect(undeclared_e) {
+            return Err(UndeclaredEntityTypesError { types }.into());
         }
         if let Some(euids) = NonEmpty::collect(undeclared_a) {
             // This should not happen, because undeclared actions should be caught
@@ -983,7 +991,10 @@ fn cedar_fragment(
         let ext_type = ext_type.basename().clone();
         common_types.insert(
             ext_type.clone(),
-            json_schema::Type::Type(json_schema::TypeVariant::Extension { name: ext_type }),
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Extension { name: ext_type },
+                loc: None,
+            },
         );
     }
 
@@ -1006,14 +1017,18 @@ fn cedar_fragment(
 fn single_alias_in_empty_namespace(
     id: UnreservedId,
     def: InternalName,
+    loc: Option<Loc>,
 ) -> ValidatorSchemaFragment<ConditionalName, ConditionalName> {
     ValidatorSchemaFragment(vec![ValidatorNamespaceDef::from_common_type_def(
         None,
         (
             id,
-            json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon {
-                type_name: ConditionalName::unconditional(def, ReferenceType::CommonOrEntity),
-            }),
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::EntityOrCommon {
+                    type_name: ConditionalName::unconditional(def, ReferenceType::CommonOrEntity),
+                },
+                loc,
+            },
         ),
     )])
 }
@@ -1026,15 +1041,24 @@ fn primitive_types<N>() -> impl Iterator<Item = (UnreservedId, json_schema::Type
     [
         (
             UnreservedId::from_str("Bool").unwrap(),
-            json_schema::Type::Type(json_schema::TypeVariant::Boolean),
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Boolean,
+                loc: None,
+            },
         ),
         (
             UnreservedId::from_str("Long").unwrap(),
-            json_schema::Type::Type(json_schema::TypeVariant::Long),
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Long,
+                loc: None,
+            },
         ),
         (
             UnreservedId::from_str("String").unwrap(),
-            json_schema::Type::Type(json_schema::TypeVariant::String),
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::String,
+                loc: None,
+            },
         ),
     ]
     .into_iter()
@@ -1322,36 +1346,47 @@ impl<'a> CommonTypeResolver<'a> {
         }
     }
 
-    // Substitute common type references in `ty` according to `resolve_table`
+    // Substitute common type references in `ty` according to `resolve_table`.
+    // Resolved types will still have the source loc of `ty`, unless `ty` is
+    // exactly a common type reference, in which case they will have the source
+    // loc of the definition of that reference.
     fn resolve_type(
         resolve_table: &HashMap<&InternalName, json_schema::Type<InternalName>>,
         ty: json_schema::Type<InternalName>,
     ) -> Result<json_schema::Type<InternalName>> {
         match ty {
-            json_schema::Type::CommonTypeRef { type_name } => resolve_table
+            json_schema::Type::CommonTypeRef { type_name, .. } => resolve_table
                 .get(&type_name)
                 .ok_or_else(|| CommonTypeInvariantViolationError { name: type_name }.into())
                 .cloned(),
-            json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
-                match resolve_table.get(&type_name) {
-                    Some(def) => Ok(def.clone()),
-                    None => Ok(json_schema::Type::Type(json_schema::TypeVariant::Entity {
-                        name: type_name,
-                    })),
-                }
-            }
-            json_schema::Type::Type(json_schema::TypeVariant::Set { element }) => {
-                Ok(json_schema::Type::Type(json_schema::TypeVariant::Set {
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::EntityOrCommon { type_name },
+                loc,
+            } => match resolve_table.get(&type_name) {
+                Some(def) => Ok(def.clone()),
+                None => Ok(json_schema::Type::Type {
+                    ty: json_schema::TypeVariant::Entity { name: type_name },
+                    loc,
+                }),
+            },
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Set { element },
+                loc,
+            } => Ok(json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Set {
                     element: Box::new(Self::resolve_type(resolve_table, *element)?),
-                }))
-            }
-            json_schema::Type::Type(json_schema::TypeVariant::Record(
-                json_schema::RecordType {
-                    attributes,
-                    additional_attributes,
                 },
-            )) => Ok(json_schema::Type::Type(json_schema::TypeVariant::Record(
-                json_schema::RecordType {
+                loc,
+            }),
+            json_schema::Type::Type {
+                ty:
+                    json_schema::TypeVariant::Record(json_schema::RecordType {
+                        attributes,
+                        additional_attributes,
+                    }),
+                loc,
+            } => Ok(json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Record(json_schema::RecordType {
                     attributes: BTreeMap::from_iter(
                         attributes
                             .into_iter()
@@ -1368,8 +1403,9 @@ impl<'a> CommonTypeResolver<'a> {
                             .collect::<Result<Vec<(_, _)>>>()?,
                     ),
                     additional_attributes,
-                },
-            ))),
+                }),
+                loc,
+            }),
             _ => Ok(ty),
         }
     }
@@ -1378,7 +1414,7 @@ impl<'a> CommonTypeResolver<'a> {
     // [`InternalName`] of a common type to its [`Type`] definition
     fn resolve(&self, extensions: &Extensions<'_>) -> Result<HashMap<&'a InternalName, Type>> {
         let sorted_names = self.topo_sort().map_err(|n| {
-            SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError(n))
+            SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError { ty: n })
         })?;
 
         let mut resolve_table: HashMap<&InternalName, json_schema::Type<InternalName>> =
@@ -1627,6 +1663,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve types: Grop, Usr, Phoot"#)
                     .help("`Grop` has not been declared as an entity type")
+                    .exactly_one_underline("Grop")
                     .build());
         });
     }
@@ -1651,6 +1688,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: Bar::Group"#)
                     .help("`Bar::Group` has not been declared as an entity type")
+                    .exactly_one_underline("Bar::Group")
                     .build());
         });
     }
@@ -1677,6 +1715,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve types: Bar::User, Bar::Photo"#)
                     .help("`Bar::User` has not been declared as an entity type")
+                    .exactly_one_underline("Bar::User")
                     .build());
         });
     }
@@ -1738,7 +1777,7 @@ pub(crate) mod test {
         let schema: Result<ValidatorSchema> = schema_file.try_into();
         assert_matches!(
             schema,
-            Err(SchemaError::CycleInActionHierarchy(CycleInActionHierarchyError(euid))) => {
+            Err(SchemaError::CycleInActionHierarchy(CycleInActionHierarchyError { uid: euid })) => {
                 assert_eq!(euid, r#"Action::"view_photo""#.parse().unwrap());
             }
         )
@@ -1877,6 +1916,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: C::D::Foo"#)
                     .help("`C::D::Foo` has not been declared as an entity type")
+                    .exactly_one_underline("C::D::Foo")
                     .build());
         });
     }
@@ -2000,9 +2040,12 @@ pub(crate) mod test {
         let schema_ty: json_schema::Type<RawName> = serde_json::from_value(src).unwrap();
         assert_eq!(
             schema_ty,
-            json_schema::Type::Type(json_schema::TypeVariant::Entity {
-                name: "Foo".parse().unwrap()
-            })
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Entity {
+                    name: "Foo".parse().unwrap()
+                },
+                loc: None
+            },
         );
         let schema_ty = schema_ty.conditionally_qualify_type_references(Some(
             &InternalName::parse_unqualified_name("NS").unwrap(),
@@ -2026,9 +2069,12 @@ pub(crate) mod test {
         let schema_ty: json_schema::Type<RawName> = serde_json::from_value(src).unwrap();
         assert_eq!(
             schema_ty,
-            json_schema::Type::Type(json_schema::TypeVariant::Entity {
-                name: "NS::Foo".parse().unwrap()
-            })
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Entity {
+                    name: "NS::Foo".parse().unwrap()
+                },
+                loc: None
+            },
         );
         let schema_ty = schema_ty.conditionally_qualify_type_references(Some(
             &InternalName::parse_unqualified_name("NS").unwrap(),
@@ -2061,10 +2107,13 @@ pub(crate) mod test {
         let schema_ty: json_schema::Type<RawName> = serde_json::from_value(src).unwrap();
         assert_eq!(
             schema_ty,
-            json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
-                attributes: BTreeMap::new(),
-                additional_attributes: false,
-            })),
+            json_schema::Type::Type {
+                ty: json_schema::TypeVariant::Record(json_schema::RecordType {
+                    attributes: BTreeMap::new(),
+                    additional_attributes: false,
+                }),
+                loc: None
+            },
         );
         let schema_ty = schema_ty.conditionally_qualify_type_references(None);
         let all_defs = AllDefs::from_entity_defs([InternalName::from_str("Foo").unwrap()]);
@@ -2448,8 +2497,8 @@ pub(crate) mod test {
         );
 
         // should error because schema fragments have duplicate types
-        assert_matches!(schema, Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError(s))) => {
-            assert_eq!(s, "A::MyLong".parse().unwrap());
+        assert_matches!(schema, Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError { ty })) => {
+            assert_eq!(ty, "A::MyLong".parse().unwrap());
         });
     }
 
@@ -2833,6 +2882,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: Demo::id"#)
                     .help("`Demo::id` has not been declared as a common type")
+                    .exactly_one_underline("Demo::id")
                     .build());
         });
     }
@@ -2860,6 +2910,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: undeclared"#)
                     .help("`undeclared` has not been declared as an entity type")
+                    .exactly_one_underline("undeclared")
                     .build());
         });
     }
@@ -2892,6 +2943,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: undeclared"#)
                     .help("`undeclared` has not been declared as an entity type")
+                    .exactly_one_underline("undeclared")
                     .build());
         });
     }
@@ -2922,6 +2974,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error(r#"failed to resolve type: undeclared"#)
                     .help("`undeclared` has not been declared as an entity type")
+                    .exactly_one_underline("undeclared")
                     .build());
         });
     }
@@ -3570,6 +3623,7 @@ pub(crate) mod test {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("failed to resolve type: __cedar")
                     .help("`__cedar` has not been declared as a common type")
+                    .exactly_one_underline("__cedar")
                     .build(),
             );
         });
@@ -3588,6 +3642,7 @@ pub(crate) mod test {
 mod test_579; // located in separate file test_579.rs
 
 #[cfg(test)]
+#[allow(clippy::cognitive_complexity)]
 mod test_rfc70 {
     use super::test::utils::*;
     use super::ValidatorSchema;
@@ -4578,6 +4633,7 @@ mod test_rfc70 {
 
 /// Tests involving entity tags (RFC 82)
 #[cfg(test)]
+#[allow(clippy::cognitive_complexity)]
 mod entity_tags {
     use super::{test::utils::*, *};
     use cedar_policy_core::{
@@ -4715,6 +4771,7 @@ mod entity_tags {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("failed to resolve type: Undef")
                     .help("`Undef` has not been declared as a common or entity type")
+                    .exactly_one_underline("Undef")
                     .build(),
             );
         });

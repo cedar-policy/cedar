@@ -947,7 +947,7 @@ fn translate_policy_inner(args: &TranslatePolicyArgs) -> Result<String> {
     let translate = match args.direction {
         PolicyTranslationDirection::CedarToJson => translate_policy_to_json,
     };
-    read_from_file_or_stdin(args.input_file.clone(), "policy").and_then(translate)
+    read_from_file_or_stdin(args.input_file.as_ref(), "policy").and_then(translate)
 }
 
 pub fn translate_policy(args: &TranslatePolicyArgs) -> CedarExitCode {
@@ -984,7 +984,7 @@ fn translate_schema_inner(args: &TranslateSchemaArgs) -> Result<String> {
         SchemaTranslationDirection::JsonToCedar => translate_schema_to_cedar,
         SchemaTranslationDirection::CedarToJson => translate_schema_to_json,
     };
-    read_from_file_or_stdin(args.input_file.clone(), "schema").and_then(translate)
+    read_from_file_or_stdin(args.input_file.as_ref(), "schema").and_then(translate)
 }
 
 pub fn translate_schema(args: &TranslateSchemaArgs) -> CedarExitCode {
@@ -1377,7 +1377,7 @@ fn load_entities(entities_filename: impl AsRef<Path>, schema: Option<&Schema>) -
 /// This will rename template-linked policies to the id of their template, which may
 /// cause id conflicts, so only call this function before instancing
 /// templates into the policy set.
-fn rename_from_id_annotation(ps: PolicySet) -> Result<PolicySet> {
+fn rename_from_id_annotation(ps: &PolicySet) -> Result<PolicySet> {
     let mut new_ps = PolicySet::new();
     let t_iter = ps.templates().map(|t| match t.annotation("id") {
         None => Ok(t.clone()),
@@ -1443,7 +1443,7 @@ fn read_cedar_policy_set(
             Report::new(err).with_source_code(NamedSource::new(name, ps_str))
         })
         .wrap_err_with(|| format!("failed to parse {context}"))?;
-    rename_from_id_annotation(ps)
+    rename_from_id_annotation(&ps)
 }
 
 /// Read a policy set, static policy or policy template, in Cedar JSON (EST) syntax, from the file given

@@ -186,7 +186,7 @@ mod test {
         assert!(
             matches!(text_to_cst::parse_expr(r#""aa" like "\t\r\n\\\0\x42\*""#)
             .expect("failed parsing")
-            .to_expr()
+            .to_expr::<ast::ExprBuilder<()>>()
             .expect("failed conversion").expr_kind(),
             ast::ExprKind::Like {
                 expr: _,
@@ -200,7 +200,7 @@ mod test {
         // invalid ASCII escapes
         let errs = text_to_cst::parse_expr(r#""abc" like "abc\xFF\xFEdef""#)
             .expect("failed parsing")
-            .to_expr()
+            .to_expr::<ast::ExprBuilder<()>>()
             .unwrap_err();
         assert_eq!(errs.len(), 2);
         assert_matches!(&errs[0], ParseError::ToAST(e) => assert_matches!(e.kind(), ToASTErrorKind::Unescape(_)));
@@ -210,7 +210,7 @@ mod test {
         assert!(
             matches!(text_to_cst::parse_expr(r#""aaa" like "👀👀\*🤞🤞\*🤝""#)
             .expect("failed parsing")
-            .to_expr()
+            .to_expr::<ast::ExprBuilder<()>>()
             .expect("failed conversion").expr_kind(),
             ast::ExprKind::Like { expr: _, pattern} if pattern.to_string() == *r"👀👀\*🤞🤞\*🤝")
         );
@@ -218,7 +218,7 @@ mod test {
         // invalid escapes
         let errs = text_to_cst::parse_expr(r#""aaa" like "abc\d\bdef""#)
             .expect("failed parsing")
-            .to_expr()
+            .to_expr::<ast::ExprBuilder<()>>()
             .unwrap_err();
         assert_eq!(errs.len(), 2);
         assert_matches!(&errs[0], ParseError::ToAST(e) => assert_matches!(e.kind(), ToASTErrorKind::Unescape(_)));

@@ -184,7 +184,7 @@ fn extension_err(msg: impl Into<String>, advice: Option<String>) -> evaluator::E
 
 /// Cedar function that constructs a `decimal` Cedar type from a
 /// Cedar string
-fn decimal_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
+fn decimal_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
     let decimal =
         Decimal::from_str(str.as_str()).map_err(|e| extension_err(e.to_string(), None))?;
@@ -192,7 +192,7 @@ fn decimal_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
     let e = RepresentableExtensionValue::new(
         Arc::new(decimal),
         constants::DECIMAL_FROM_STR_NAME.clone(),
-        vec![arg.into()],
+        vec![arg.clone().into()],
     );
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(e)),
@@ -234,33 +234,33 @@ fn as_decimal(v: &Value) -> Result<&Decimal, evaluator::EvaluationError> {
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
 /// less than the second `decimal` Cedar type, returning a Cedar bool
-fn decimal_lt(left: Value, right: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let left = as_decimal(&left)?;
-    let right = as_decimal(&right)?;
+fn decimal_lt(left: &Value, right: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let left = as_decimal(left)?;
+    let right = as_decimal(right)?;
     Ok(Value::from(left < right).into())
 }
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
 /// less than or equal to the second `decimal` Cedar type, returning a Cedar bool
-fn decimal_le(left: Value, right: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let left = as_decimal(&left)?;
-    let right = as_decimal(&right)?;
+fn decimal_le(left: &Value, right: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let left = as_decimal(left)?;
+    let right = as_decimal(right)?;
     Ok(Value::from(left <= right).into())
 }
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
 /// greater than the second `decimal` Cedar type, returning a Cedar bool
-fn decimal_gt(left: Value, right: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let left = as_decimal(&left)?;
-    let right = as_decimal(&right)?;
+fn decimal_gt(left: &Value, right: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let left = as_decimal(left)?;
+    let right = as_decimal(right)?;
     Ok(Value::from(left > right).into())
 }
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
 /// greater than or equal to the second `decimal` Cedar type, returning a Cedar bool
-fn decimal_ge(left: Value, right: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let left = as_decimal(&left)?;
-    let right = as_decimal(&right)?;
+fn decimal_ge(left: &Value, right: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let left = as_decimal(left)?;
+    let right = as_decimal(right)?;
     Ok(Value::from(left >= right).into())
 }
 

@@ -119,10 +119,10 @@ impl Type {
 
     /// Construct a type for a literal EUID. This type will be a named entity
     /// type for the type of the [`EntityUID`].
-    pub(crate) fn euid_literal(entity: EntityUID, schema: &ValidatorSchema) -> Option<Type> {
+    pub(crate) fn euid_literal(entity: &EntityUID, schema: &ValidatorSchema) -> Option<Type> {
         if entity.entity_type().is_action() {
             schema
-                .get_action_id(&entity)
+                .get_action_id(entity)
                 .map(Type::entity_reference_from_action_id)
         } else {
             schema
@@ -2534,7 +2534,7 @@ mod test {
     #[test]
     fn test_action_entity_lub() {
         let action_view_ty =
-            Type::euid_literal(r#"Action::"view""#.parse().unwrap(), &action_schema()).unwrap();
+            Type::euid_literal(&r#"Action::"view""#.parse().unwrap(), &action_schema()).unwrap();
 
         assert_least_upper_bound(
             action_schema(),
@@ -2551,7 +2551,7 @@ mod test {
             action_schema(),
             ValidationMode::Strict,
             action_view_ty.clone(),
-            Type::euid_literal(r#"Action::"edit""#.parse().unwrap(), &action_schema()).unwrap(),
+            Type::euid_literal(&r#"Action::"edit""#.parse().unwrap(), &action_schema()).unwrap(),
             Ok(action_view_ty.clone()),
         );
 
@@ -2561,14 +2561,16 @@ mod test {
             action_schema(),
             ValidationMode::Permissive,
             action_view_ty.clone(),
-            Type::euid_literal(r#"ns::Action::"move""#.parse().unwrap(), &action_schema()).unwrap(),
+            Type::euid_literal(&r#"ns::Action::"move""#.parse().unwrap(), &action_schema())
+                .unwrap(),
             Ok(Type::any_entity_reference()),
         );
         assert_least_upper_bound(
             action_schema(),
             ValidationMode::Strict,
             action_view_ty.clone(),
-            Type::euid_literal(r#"ns::Action::"move""#.parse().unwrap(), &action_schema()).unwrap(),
+            Type::euid_literal(&r#"ns::Action::"move""#.parse().unwrap(), &action_schema())
+                .unwrap(),
             Err(LubHelp::EntityType),
         );
 

@@ -260,12 +260,12 @@ mod test {
     use serde_json::json;
 
     #[track_caller]
-    fn assert_check_parse_is_ok(parse_result: CheckParseAnswer) {
+    fn assert_check_parse_is_ok(parse_result: &CheckParseAnswer) {
         assert_matches!(parse_result, CheckParseAnswer::Success);
     }
 
     #[track_caller]
-    fn assert_check_parse_is_err(parse_result: CheckParseAnswer) -> Vec<DetailedError> {
+    fn assert_check_parse_is_err(parse_result: &CheckParseAnswer) -> &[DetailedError] {
         assert_matches!(
             parse_result,
             CheckParseAnswer::Failure { errors } => errors
@@ -278,7 +278,7 @@ mod test {
                 "staticPolicies": "permit(principal, action, resource);"
         });
         let answer = serde_json::from_value(check_parse_policy_set_json(call).unwrap()).unwrap();
-        assert_check_parse_is_ok(answer);
+        assert_check_parse_is_ok(&answer);
     }
 
     #[test]
@@ -287,7 +287,7 @@ mod test {
             "staticPolicies": "forbid(principal, action, resource); permit(principal == User::\"alice\", action == Action::\"view\", resource in Albums::\"alice_albums\");"
         });
         let answer = serde_json::from_value(check_parse_policy_set_json(call).unwrap()).unwrap();
-        assert_check_parse_is_ok(answer);
+        assert_check_parse_is_ok(&answer);
     }
 
     #[test]
@@ -296,9 +296,9 @@ mod test {
             "staticPolicies": "forbid(principal, action, resource);permit(2pac, action, resource)"
         });
         let answer = serde_json::from_value(check_parse_policy_set_json(call).unwrap()).unwrap();
-        let errs = assert_check_parse_is_err(answer);
+        let errs = assert_check_parse_is_err(&answer);
         assert_exactly_one_error(
-            &errs,
+            errs,
             "failed to parse policies from string: unexpected token `2`",
             None,
         );
@@ -312,14 +312,14 @@ mod test {
             }
         });
         let answer = serde_json::from_value(check_parse_policy_set_json(call).unwrap()).unwrap();
-        assert_check_parse_is_ok(answer);
+        assert_check_parse_is_ok(&answer);
     }
 
     #[test]
     fn check_parse_schema_succeeds_empty_schema() {
         let call = json!({});
         let answer = serde_json::from_value(check_parse_schema_json(call).unwrap()).unwrap();
-        assert_check_parse_is_ok(answer);
+        assert_check_parse_is_ok(&answer);
     }
 
     #[test]
@@ -331,7 +331,7 @@ mod test {
           }
         });
         let answer = serde_json::from_value(check_parse_schema_json(call).unwrap()).unwrap();
-        assert_check_parse_is_ok(answer);
+        assert_check_parse_is_ok(&answer);
     }
 
     #[test]
@@ -342,9 +342,9 @@ mod test {
           }
         });
         let answer = serde_json::from_value(check_parse_schema_json(call).unwrap()).unwrap();
-        let errs = assert_check_parse_is_err(answer);
+        let errs = assert_check_parse_is_err(&answer);
         assert_exactly_one_error(
-            &errs,
+            errs,
             "failed to parse schema from JSON: missing field `actions`",
             None,
         );
@@ -389,7 +389,7 @@ mod test {
             }
         });
         let answer = serde_json::from_value(check_parse_entities_json(call).unwrap()).unwrap();
-        assert_check_parse_is_ok(answer);
+        assert_check_parse_is_ok(&answer);
     }
 
     #[test]
@@ -410,7 +410,7 @@ mod test {
             ]
         });
         let answer = serde_json::from_value(check_parse_entities_json(call).unwrap()).unwrap();
-        assert_check_parse_is_ok(answer);
+        assert_check_parse_is_ok(&answer);
     }
 
     #[test]
@@ -445,9 +445,9 @@ mod test {
             }
         });
         let answer = serde_json::from_value(check_parse_entities_json(call).unwrap()).unwrap();
-        let errs = assert_check_parse_is_err(answer);
+        let errs = assert_check_parse_is_err(&answer);
         assert_exactly_one_error(
-            &errs,
+            errs,
             "error during entity deserialization: in uid field of <unknown entity>, expected a literal entity reference, but got `\"TheNamespace::User::\\\"alice\\\"\"`",
             Some("literal entity references can be made with `{ \"type\": \"SomeType\", \"id\": \"SomeId\" }`")
         );
@@ -491,7 +491,7 @@ mod test {
 
         });
         let answer = serde_json::from_value(check_parse_context_json(call).unwrap()).unwrap();
-        assert_check_parse_is_ok(answer);
+        assert_check_parse_is_ok(&answer);
     }
 
     #[test]
@@ -531,7 +531,7 @@ mod test {
             }
         });
         let answer = serde_json::from_value(check_parse_context_json(call).unwrap()).unwrap();
-        let errs = assert_check_parse_is_err(answer);
-        assert_exactly_one_error(&errs, "while parsing context, expected the record to have an attribute `referrer`, but it does not", None);
+        let errs = assert_check_parse_is_err(&answer);
+        assert_exactly_one_error(errs, "while parsing context, expected the record to have an attribute `referrer`, but it does not", None);
     }
 }

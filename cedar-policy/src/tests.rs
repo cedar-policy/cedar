@@ -17,6 +17,7 @@
 #![cfg(test)]
 // PANIC SAFETY unit tests
 #![allow(clippy::panic)]
+#![allow(clippy::cognitive_complexity, clippy::too_many_lines)]
 
 use super::*;
 
@@ -4858,7 +4859,7 @@ mod policy_set_est_tests {
     #[test]
     fn test_partition_fold_err() {
         let even_or_odd = |s: &str| {
-            i64::from_str_radix(s, 10).map(|i| {
+            s.parse::<i64>().map(|i| {
                 if i % 2 == 0 {
                     Either::Left(i)
                 } else {
@@ -5074,10 +5075,11 @@ mod policy_set_est_tests {
                 r#"User::"John""#.parse().unwrap()
             )]))
         );
-        if let Err(_) = policyset
+        if policyset
             .get_linked_policies(PolicyId::new("template"))
             .unwrap()
             .exactly_one()
+            .is_err()
         {
             panic!("Should have exactly one");
         };
@@ -5668,6 +5670,7 @@ mod request_validation_tests {
             &ExpectedErrorMessageBuilder::error(
                 "principal type `Undeclared` is not declared in the schema",
             )
+            .exactly_one_underline("Undeclared")
             .build(),
         );
     }
@@ -5689,6 +5692,7 @@ mod request_validation_tests {
             &ExpectedErrorMessageBuilder::error(
                 "resource type `Undeclared` is not declared in the schema",
             )
+            .exactly_one_underline("Undeclared")
             .build(),
         );
     }
@@ -5711,6 +5715,7 @@ mod request_validation_tests {
                 r#"principal type `Resource` is not valid for `Action::"action"`"#,
             )
             .help(r#"valid principal types for `Action::"action"`: `Principal`"#)
+            .exactly_one_underline("Resource")
             .build(),
         );
 
@@ -5729,6 +5734,7 @@ mod request_validation_tests {
                 r#"principal type `Resource` is not valid for `Action::"manipulate"`"#,
             )
             .help(r#"valid principal types for `Action::"manipulate"`: `Cat`, `Duck`, `Principal`"#)
+            .exactly_one_underline("Resource")
             .build(),
         );
 
@@ -5747,6 +5753,7 @@ mod request_validation_tests {
                 r#"principal type `Resource` is not valid for `Action::"group"`"#,
             )
             .help(r#"no principal types are valid for `Action::"group"`"#)
+            .exactly_one_underline("Resource")
             .build(),
         );
     }
@@ -5769,6 +5776,7 @@ mod request_validation_tests {
                 r#"resource type `Principal` is not valid for `Action::"action"`"#,
             )
             .help(r#"valid resource types for `Action::"action"`: `Resource`"#)
+            .exactly_one_underline("Principal")
             .build(),
         );
 
@@ -5787,6 +5795,7 @@ mod request_validation_tests {
                 r#"resource type `Principal` is not valid for `Action::"manipulate"`"#,
             )
             .help(r#"valid resource types for `Action::"manipulate"`: `Folder`, `Resource`, `Widget`"#)
+            .exactly_one_underline("Principal")
             .build(),
         );
     }
@@ -6323,30 +6332,26 @@ mod reserved_keywords_in_policies {
     }
 
     #[track_caller]
-    fn assert_valid_expression(src: String) {
-        assert_matches!(Expression::from_str(&src), Ok(_));
+    fn assert_valid_expression(src: &str) {
+        assert_matches!(Expression::from_str(src), Ok(_));
     }
 
     #[track_caller]
-    fn assert_invalid_expression(src: String, error: String, underline: String) {
-        let expected_err = ExpectedErrorMessageBuilder::error(&error)
-            .exactly_one_underline(&underline)
+    fn assert_invalid_expression(src: &str, error: &str, underline: &str) {
+        let expected_err = ExpectedErrorMessageBuilder::error(error)
+            .exactly_one_underline(underline)
             .build();
-        assert_matches!(Expression::from_str(&src), Err(err) => expect_err(&*src, &Report::new(err), &expected_err));
+        assert_matches!(Expression::from_str(src), Err(err) => expect_err(src, &Report::new(err), &expected_err));
     }
 
     #[track_caller]
-    fn assert_invalid_expression_with_help(
-        src: String,
-        error: String,
-        underline: String,
-        help: String,
-    ) {
-        let expected_err = ExpectedErrorMessageBuilder::error(&error)
-            .exactly_one_underline(&underline)
-            .help(&help)
+    #[allow(unused)]
+    fn assert_invalid_expression_with_help(src: &str, error: &str, underline: &str, help: &str) {
+        let expected_err = ExpectedErrorMessageBuilder::error(error)
+            .exactly_one_underline(underline)
+            .help(help)
             .build();
-        assert_matches!(Expression::from_str(&src), Err(err) => expect_err(&*src, &Report::new(err), &expected_err));
+        assert_matches!(Expression::from_str(src), Err(err) => expect_err(src, &Report::new(err), &expected_err));
     }
 
     #[test]
@@ -6367,16 +6372,16 @@ mod reserved_keywords_in_policies {
             .chain(RESERVED_NAMESPACE.iter())
             .chain(OTHER_SPECIAL_IDENTS.iter())
             .for_each(|id| {
-                assert_valid_expression(format!("{{ \"{id}\": 1 }}"));
-                assert_valid_expression(format!("principal has \"{id}\""));
-                assert_valid_expression(format!("principal[\"{id}\"] == \"foo\""));
+                assert_valid_expression(&format!("{{ \"{id}\": 1 }}"));
+                assert_valid_expression(&format!("principal has \"{id}\""));
+                assert_valid_expression(&format!("principal[\"{id}\"] == \"foo\""));
             });
 
         // No restrictions on OTHER_SPECIAL_IDENTS
         for id in &OTHER_SPECIAL_IDENTS {
-            assert_valid_expression(format!("{{ {id}: 1 }}"));
-            assert_valid_expression(format!("principal has {id}"));
-            assert_valid_expression(format!("principal.{id} == \"foo\""));
+            assert_valid_expression(&format!("{{ {id}: 1 }}"));
+            assert_valid_expression(&format!("principal has {id}"));
+            assert_valid_expression(&format!("principal.{id} == \"foo\""));
         }
 
         // RESERVED_IDENTS cannot be used as keys without quotes
@@ -6384,67 +6389,67 @@ mod reserved_keywords_in_policies {
             // slightly different errors depending on `id`; related to #407
             match id {
                 "true" | "false" => {
-                    assert_invalid_expression_with_help(
-                        format!("{{ {id}: 1 }}"),
-                        format!("invalid attribute name: {id}"),
-                        id.into(),
-                        "attribute names can either be identifiers or string literals".into(),
+                    assert_invalid_expression(
+                        &format!("{{ {id}: 1 }}"),
+                        &RESERVED_IDENT_MSG(id),
+                        id,
                     );
                     assert_invalid_expression(
-                        format!("principal has {id}"),
-                        RESERVED_IDENT_MSG(id),
-                        id.to_string(),
+                        &format!("principal has {id}"),
+                        &RESERVED_IDENT_MSG(id),
+                        id,
+                    );
+                    assert_invalid_expression(
+                        &format!("principal has {id}"),
+                        &RESERVED_IDENT_MSG(id),
+                        id,
                     );
                 }
                 "if" => {
                     assert_invalid_expression(
-                        format!("{{ {id}: 1 }}"),
-                        RESERVED_IDENT_MSG(id),
-                        format!("{id}: 1"),
+                        &format!("{{ {id}: 1 }}"),
+                        &RESERVED_IDENT_MSG(id),
+                        &format!("{id}: 1"),
                     );
                     assert_invalid_expression(
-                        format!("principal has {id}"),
-                        RESERVED_IDENT_MSG(id),
-                        id.to_string(),
+                        &format!("principal has {id}"),
+                        &RESERVED_IDENT_MSG(id),
+                        id,
                     );
                 }
                 _ => {
                     assert_invalid_expression(
-                        format!("{{ {id}: 1 }}"),
-                        RESERVED_IDENT_MSG(id),
-                        id.into(),
+                        &format!("{{ {id}: 1 }}"),
+                        &RESERVED_IDENT_MSG(id),
+                        id,
                     );
                     assert_invalid_expression(
-                        format!("principal has {id}"),
-                        RESERVED_IDENT_MSG(id),
-                        id.into(),
+                        &format!("principal has {id}"),
+                        &RESERVED_IDENT_MSG(id),
+                        id,
                     );
                 }
             }
             // this case leads to a consistent error for all keywords
             assert_invalid_expression(
-                format!("principal.{id} == \"foo\""),
-                RESERVED_IDENT_MSG(id),
-                id.into(),
+                &format!("principal.{id} == \"foo\""),
+                &RESERVED_IDENT_MSG(id),
+                id,
             );
         }
 
         // RESERVED_NAMESPACE cannot be used as keys without quotes
         for id in RESERVED_NAMESPACE {
+            assert_invalid_expression(&format!("{{ {id}: 1 }}"), &RESERVED_NAMESPACE_MSG(id), id);
             assert_invalid_expression(
-                format!("{{ {id}: 1 }}"),
-                RESERVED_NAMESPACE_MSG(id),
-                id.into(),
+                &format!("principal has {id}"),
+                &RESERVED_NAMESPACE_MSG(id),
+                id,
             );
             assert_invalid_expression(
-                format!("principal has {id}"),
-                RESERVED_NAMESPACE_MSG(id),
-                id.into(),
-            );
-            assert_invalid_expression(
-                format!("principal.{id} == \"foo\""),
-                RESERVED_NAMESPACE_MSG(id),
-                id.into(),
+                &format!("principal.{id} == \"foo\""),
+                &RESERVED_NAMESPACE_MSG(id),
+                id,
             );
         }
     }
@@ -6453,35 +6458,31 @@ mod reserved_keywords_in_policies {
     fn test_reserved_namespace_elements() {
         // No restrictions on OTHER_SPECIAL_IDENTS
         for id in &OTHER_SPECIAL_IDENTS {
-            assert_valid_expression(format!("foo::{id}::\"bar\""));
-            assert_valid_expression(format!("principal is {id}::foo"));
+            assert_valid_expression(&format!("foo::{id}::\"bar\""));
+            assert_valid_expression(&format!("principal is {id}::foo"));
         }
 
         // RESERVED_IDENTS cannot be used in namespaces
         for id in RESERVED_IDENTS {
+            assert_invalid_expression(&format!("foo::{id}::\"bar\""), &RESERVED_IDENT_MSG(id), id);
             assert_invalid_expression(
-                format!("foo::{id}::\"bar\""),
-                RESERVED_IDENT_MSG(id),
-                id.into(),
-            );
-            assert_invalid_expression(
-                format!("principal is {id}::foo"),
-                RESERVED_IDENT_MSG(id),
-                id.into(),
+                &format!("principal is {id}::foo"),
+                &RESERVED_IDENT_MSG(id),
+                id,
             );
         }
 
         // RESERVED_NAMESPACE cannot be used in namespaces
         for id in RESERVED_NAMESPACE {
             assert_invalid_expression(
-                format!("foo::{id}::\"bar\""),
-                RESERVED_NAMESPACE_MSG(&format!("foo::{id}")),
-                format!("foo::{id}"),
+                &format!("foo::{id}::\"bar\""),
+                &RESERVED_NAMESPACE_MSG(&format!("foo::{id}")),
+                &format!("foo::{id}"),
             );
             assert_invalid_expression(
-                format!("principal is {id}::foo"),
-                RESERVED_NAMESPACE_MSG(&format!("{id}::foo")),
-                format!("{id}::foo"),
+                &format!("principal is {id}::foo"),
+                &RESERVED_NAMESPACE_MSG(&format!("{id}::foo")),
+                &format!("{id}::foo"),
             );
         }
     }
@@ -6493,40 +6494,32 @@ mod reserved_keywords_in_policies {
 
         for id in RESERVED_IDENTS {
             assert_invalid_expression(
-                format!("extension::function::{id}(\"foo\")"),
-                RESERVED_IDENT_MSG(id),
-                id.into(),
+                &format!("extension::function::{id}(\"foo\")"),
+                &RESERVED_IDENT_MSG(id),
+                id,
             );
-            assert_invalid_expression(
-                format!("context.{id}(1)"),
-                RESERVED_IDENT_MSG(id),
-                id.into(),
-            );
+            assert_invalid_expression(&format!("context.{id}(1)"), &RESERVED_IDENT_MSG(id), id);
         }
 
         for id in RESERVED_NAMESPACE {
             assert_invalid_expression(
-                format!("extension::function::{id}(\"foo\")"),
-                RESERVED_NAMESPACE_MSG(&format!("extension::function::{id}")),
-                format!("extension::function::{id}"),
+                &format!("extension::function::{id}(\"foo\")"),
+                &RESERVED_NAMESPACE_MSG(&format!("extension::function::{id}")),
+                &format!("extension::function::{id}"),
             );
-            assert_invalid_expression(
-                format!("context.{id}(1)"),
-                RESERVED_NAMESPACE_MSG(id),
-                id.into(),
-            );
+            assert_invalid_expression(&format!("context.{id}(1)"), &RESERVED_NAMESPACE_MSG(id), id);
         }
 
         for id in OTHER_SPECIAL_IDENTS {
             assert_invalid_expression(
-                format!("extension::function::{id}(\"foo\")"),
-                format!("`extension::function::{id}` is not a valid function"),
-                format!("extension::function::{id}(\"foo\")"),
+                &format!("extension::function::{id}(\"foo\")"),
+                &format!("`extension::function::{id}` is not a valid function"),
+                &format!("extension::function::{id}(\"foo\")"),
             );
             assert_invalid_expression(
-                format!("context.{id}(1)"),
-                format!("`{id}` is not a valid method"),
-                format!("context.{id}(1)"),
+                &format!("context.{id}(1)"),
+                &format!("`{id}` is not a valid method"),
+                &format!("context.{id}(1)"),
             );
         }
     }

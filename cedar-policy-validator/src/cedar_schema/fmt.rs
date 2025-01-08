@@ -22,10 +22,10 @@ use std::{collections::HashSet, fmt::Display};
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::NonEmpty;
-use smol_str::{SmolStr, ToSmolStr};
 use thiserror::Error;
 
 use crate::{json_schema, RawName};
+use cedar_policy_core::{ast::InternalName, impl_diagnostic_from_method_on_nonempty_field};
 
 impl<N: Display> Display for json_schema::Fragment<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -57,7 +57,7 @@ impl<N: Display> Display for json_schema::NamespaceDefinition<N> {
 impl<N: Display> Display for json_schema::Type<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            json_schema::Type::Type(ty) => match ty {
+            json_schema::Type::Type { ty, .. } => match ty {
                 json_schema::TypeVariant::Boolean => write!(f, "__cedar::Bool"),
                 json_schema::TypeVariant::Entity { name } => write!(f, "{name}"),
                 json_schema::TypeVariant::EntityOrCommon { type_name } => {
@@ -69,7 +69,7 @@ impl<N: Display> Display for json_schema::Type<N> {
                 json_schema::TypeVariant::Set { element } => write!(f, "Set < {element} >"),
                 json_schema::TypeVariant::String => write!(f, "__cedar::String"),
             },
-            json_schema::Type::CommonTypeRef { type_name } => write!(f, "{type_name}"),
+            json_schema::Type::CommonTypeRef { type_name, .. } => write!(f, "{type_name}"),
         }
     }
 }
@@ -95,21 +95,22 @@ impl<N: Display> Display for json_schema::RecordType<N> {
     }
 }
 
-/// Create a non-empty with borrowed contents from a slice
-fn non_empty_slice<T>(v: &[T]) -> Option<NonEmpty<&T>> {
-    NonEmpty::collect(v.iter())
-}
-
-fn fmt_vec<T: Display>(f: &mut std::fmt::Formatter<'_>, ets: NonEmpty<T>) -> std::fmt::Result {
-    let contents = ets.iter().map(T::to_string).join(", ");
-    write!(f, "[{contents}]")
+fn fmt_non_empty_slice<T: Display>(
+    f: &mut std::fmt::Formatter<'_>,
+    (head, tail): (&T, &[T]),
+) -> std::fmt::Result {
+    write!(f, "[{head}")?;
+    for e in tail {
+        write!(f, ", {e}")?;
+    }
+    write!(f, "]")
 }
 
 impl<N: Display> Display for json_schema::EntityType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(non_empty) = non_empty_slice(&self.member_of_types) {
+        if let Some(non_empty) = self.member_of_types.split_first() {
             write!(f, " in ")?;
-            fmt_vec(f, non_empty)?;
+            fmt_non_empty_slice(f, non_empty)?;
         }
 
         let ty = &self.shape;
@@ -128,18 +129,14 @@ impl<N: Display> Display for json_schema::EntityType<N> {
 
 impl<N: Display> Display for json_schema::ActionType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(parents) = self
-            .member_of
-            .as_ref()
-            .and_then(|refs| non_empty_slice(refs.as_slice()))
-        {
+        if let Some(parents) = self.member_of.as_ref().and_then(|refs| refs.split_first()) {
             write!(f, " in ")?;
-            fmt_vec(f, parents)?;
+            fmt_non_empty_slice(f, parents)?;
         }
         if let Some(spec) = &self.applies_to {
             match (
-                non_empty_slice(spec.principal_types.as_slice()),
-                non_empty_slice(spec.resource_types.as_slice()),
+                spec.principal_types.split_first(),
+                spec.resource_types.split_first(),
             ) {
                 // One of the lists is empty
                 // This can only be represented by the empty action
@@ -151,9 +148,9 @@ impl<N: Display> Display for json_schema::ActionType<N> {
                 (Some(ps), Some(rs)) => {
                     write!(f, " appliesTo {{")?;
                     write!(f, "\n  principal: ")?;
-                    fmt_vec(f, ps)?;
+                    fmt_non_empty_slice(f, ps)?;
                     write!(f, ",\n  resource: ")?;
-                    fmt_vec(f, rs)?;
+                    fmt_non_empty_slice(f, rs)?;
                     write!(f, ",\n  context: {}", &spec.context.0)?;
                     write!(f, "\n}}")?;
                 }
@@ -174,17 +171,23 @@ pub enum ToCedarSchemaSyntaxError {
 }
 
 /// Duplicate names were found in the schema
-#[derive(Debug, Error, Diagnostic)]
+//
+// This is NOT a publicly exported error type.
+#[derive(Debug, Error)]
 #[error("There are name collisions: [{}]", .names.iter().join(", "))]
 pub struct NameCollisionsError {
     /// Names that had collisions
-    names: NonEmpty<SmolStr>,
+    names: NonEmpty<InternalName>,
+}
+
+impl Diagnostic for NameCollisionsError {
+    impl_diagnostic_from_method_on_nonempty_field!(names, loc);
 }
 
 impl NameCollisionsError {
     /// Get the names that had collisions
-    pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.names.iter().map(smol_str::SmolStr::as_str)
+    pub fn names(&self) -> impl Iterator<Item = &InternalName> {
+        self.names.iter()
     }
 }
 
@@ -206,24 +209,21 @@ impl NameCollisionsError {
 pub fn json_schema_to_cedar_schema_str<N: Display>(
     json_schema: &json_schema::Fragment<N>,
 ) -> Result<String, ToCedarSchemaSyntaxError> {
-    let mut name_collisions: Vec<SmolStr> = Vec::new();
+    let mut name_collisions: Vec<InternalName> = Vec::new();
     for (name, ns) in json_schema.0.iter().filter(|(name, _)| !name.is_none()) {
-        let entity_types: HashSet<SmolStr> = ns
+        let entity_types: HashSet<InternalName> = ns
             .entity_types
             .keys()
             .map(|ty_name| {
-                RawName::new_from_unreserved(ty_name.clone())
-                    .qualify_with_name(name.as_ref())
-                    .to_smolstr()
+                RawName::new_from_unreserved(ty_name.clone()).qualify_with_name(name.as_ref())
             })
             .collect();
-        let common_types: HashSet<SmolStr> = ns
+        let common_types: HashSet<InternalName> = ns
             .common_types
             .keys()
             .map(|ty_name| {
                 RawName::new_from_unreserved(ty_name.clone().into())
                     .qualify_with_name(name.as_ref())
-                    .to_smolstr()
             })
             .collect();
         name_collisions.extend(entity_types.intersection(&common_types).cloned());

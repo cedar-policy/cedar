@@ -415,7 +415,7 @@ impl Doc for Node<Option<Unary>> {
                                         } else {
                                             RcDoc::text("-")
                                         },
-                                        comment.get(i as usize)?.clone(),
+                                        comment.get(i as usize)?,
                                         RcDoc::nil(),
                                     ))
                                 })
