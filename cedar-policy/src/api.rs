@@ -3707,7 +3707,7 @@ impl RequestBuilder<&Schema> {
             self.context,
             Some(&self.schema.0),
             Extensions::all_available(),
-        )?)) // This looks like the request we should be building
+        )?))
     }
 }
 
