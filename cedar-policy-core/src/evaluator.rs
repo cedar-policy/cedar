@@ -6399,10 +6399,7 @@ pub(crate) mod test {
         assert_eq!(r, Either::Left(Value::from(true)));
 
         // Two differently typed unknowns should not be equal
-        let e = Expr::is_eq(
-            Expr::var(Var::Principal),
-            Expr::var(Var::Resource),
-        );
+        let e = Expr::is_eq(Expr::var(Var::Principal), Expr::var(Var::Resource));
         let r = eval.partial_eval_expr(&e).unwrap();
         assert_eq!(r, Either::Left(Value::from(false)));
     }
