@@ -1332,6 +1332,7 @@ pub fn partial_authorize(args: &PartiallyAuthorizeArgs) -> CedarExitCode {
         &args.request,
         &args.policies,
         &args.entities_file,
+        &args.schema,
         args.timing,
     );
     match ans {
