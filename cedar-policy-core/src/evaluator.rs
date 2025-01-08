@@ -922,6 +922,9 @@ impl<'e> Evaluator<'e> {
         }
     }
 
+    /// Evaluate a binary operation between a value and a residual expression. If despite the unknown contained in the residual, concrete result
+    /// can be obtained (using the type annotation on the residual), it is returned.
+    /// Since it is not aware which of the inputs is on the left side, and which on the right, it needs to return None for all non-commutative operations.
     fn short_circuit_typed_residual(
         &self,
         v1: &Value,
