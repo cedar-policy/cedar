@@ -3690,9 +3690,9 @@ pub struct UnsetSchema;
 impl Default for RequestBuilder<UnsetSchema> {
     fn default() -> Self {
         Self {
-            principal: ast::EntityUIDEntry::Unknown { loc: None },
-            action: ast::EntityUIDEntry::Unknown { loc: None },
-            resource: ast::EntityUIDEntry::Unknown { loc: None },
+            principal: ast::EntityUIDEntry::unknown(),
+            action: ast::EntityUIDEntry::unknown(),
+            resource: ast::EntityUIDEntry::unknown(),
             context: None,
             schema: UnsetSchema,
         }
@@ -3709,6 +3709,17 @@ impl<S> RequestBuilder<S> {
     pub fn principal(self, principal: EntityUid) -> Self {
         Self {
             principal: ast::EntityUIDEntry::known(principal.into(), None),
+            ..self
+        }
+    }
+
+    /// Set the principal to be unknown, but known to belong to a certain entity type.
+    ///
+    /// This information is taken into account when evaluating 'is', '==' and '!=' expressions.
+    #[must_use]
+    pub fn unknown_principal_with_type(self, principal_type: EntityTypeName) -> Self {
+        Self {
+            principal: ast::EntityUIDEntry::unknown_with_type(principal_type.0, None),
             ..self
         }
     }
@@ -3733,6 +3744,17 @@ impl<S> RequestBuilder<S> {
     pub fn resource(self, resource: EntityUid) -> Self {
         Self {
             resource: ast::EntityUIDEntry::known(resource.into(), None),
+            ..self
+        }
+    }
+
+    /// Set the resource to be unknown, but known to belong to a certain entity type.
+    ///
+    /// This information is taken into account when evaluating 'is', '==' and '!=' expressions.
+    #[must_use]
+    pub fn unknown_resource_with_type(self, resource_type: EntityTypeName) -> Self {
+        Self {
+            resource: ast::EntityUIDEntry::unknown_with_type(resource_type.0, None),
             ..self
         }
     }
