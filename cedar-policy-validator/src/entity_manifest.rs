@@ -68,7 +68,7 @@ pub struct EntityManifest {
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
-#[doc = include_str!("../../cedar-policy/experimental_warning.md")]
+#[doc = include_str!("../experimental_warning.md")]
 pub type Fields = HashMap<SmolStr, Box<AccessTrie>>;
 
 /// The root of a data path or [`RootAccessTrie`].
