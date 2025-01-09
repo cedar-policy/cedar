@@ -70,6 +70,10 @@ pub enum EntitySchemaConformanceError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ExtensionFunctionLookup(ExtensionFunctionLookup),
+    /// Returned when an entity is of an enumerated entity type but has invalid EID
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidEnumEntity(#[from] InvalidEnumEntity),
 }
 
 impl EntitySchemaConformanceError {
@@ -130,6 +134,16 @@ impl EntitySchemaConformanceError {
             uid,
             attr: attr.into(),
             err,
+        })
+    }
+
+    pub(crate) fn invalid_enum_entity(
+        uid: EntityUID,
+        choices: impl IntoIterator<Item = SmolStr>,
+    ) -> Self {
+        Self::InvalidEnumEntity(InvalidEnumEntity {
+            uid,
+            choices: choices.into_iter().collect(),
         })
     }
 }
@@ -276,4 +290,18 @@ impl Diagnostic for UnexpectedEntityTypeError {
             ))),
         }
     }
+}
+
+/// Returned when an entity is of an enumerated entity type but has invalid EID
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
+#[derive(Debug, Error, Diagnostic)]
+#[error("entity `{uid}` has invalid UID: `{}`", uid.eid().escaped())]
+pub struct InvalidEnumEntity {
+    /// Entity where the error occurred
+    uid: EntityUID,
+    /// Name of the attribute where the error occurred
+    choices: Vec<SmolStr>,
 }
