@@ -45,7 +45,7 @@ use crate::ast::{
 };
 use crate::expr_builder::ExprBuilder;
 use crate::fuzzy_match::fuzzy_search_limited;
-use itertools::Either;
+use itertools::{Either, Itertools};
 use nonempty::nonempty;
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
@@ -556,20 +556,12 @@ fn extract_single_argument<T>(
     fn_name: &'static str,
     loc: &Loc,
 ) -> Result<T> {
-    let mut iter = args.fuse().peekable();
-    let first = iter.next();
-    let second = iter.peek();
-    match (first, second) {
-        (None, _) => Err(ParseErrors::singleton(ToASTError::new(
-            ToASTErrorKind::wrong_arity(fn_name, 1, 0),
+    args.exactly_one().map_err(|args| {
+        ParseErrors::singleton(ToASTError::new(
+            ToASTErrorKind::wrong_arity(fn_name, 1, args.len()),
             loc.clone(),
-        ))),
-        (Some(_), Some(_)) => Err(ParseErrors::singleton(ToASTError::new(
-            ToASTErrorKind::wrong_arity(fn_name, 1, iter.len() + 1),
-            loc.clone(),
-        ))),
-        (Some(first), None) => Ok(first),
-    }
+        ))
+    })
 }
 
 /// Return a wrong arity error if the iterator has any elements.

@@ -13,7 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-use crate::{ValidatorEntityType, ValidatorEntityTypeKind, ValidatorSchema};
+use crate::{ValidatorActionId, ValidatorEntityType, ValidatorEntityTypeKind, ValidatorSchema};
+use cedar_policy_core::ast::{EntityType, EntityUID};
 use cedar_policy_core::extensions::{ExtensionFunctionLookupError, Extensions};
 use cedar_policy_core::{ast, entities};
 use miette::Diagnostic;
@@ -175,35 +176,50 @@ impl ast::RequestSchema for ValidatorSchema {
         use ast::EntityUIDEntry;
         // first check that principal and resource are of types that exist in
         // the schema, we can do this check even if action is unknown.
-        if let EntityUIDEntry::Known {
-            euid: principal, ..
-        } = request.principal()
-        {
-            if let Some(et) = self.get_entity_type(principal.entity_type()) {
-                if let ValidatorEntityType {
-                    kind: ValidatorEntityTypeKind::Enum(choices),
-                    ..
-                } = et
-                {
-                    if choices.contains(principal.eid().as_ref()) {
-                        return Err(request_validation_errors::InvalidEnumEntityError {
-                            euid: principal.clone(),
-                            choices: choices.clone(),
+        if let Some(principal_type) = request.principal().get_type() {
+            if let Some(et) = self.get_entity_type(principal_type) {
+                if let Some(euid) = request.principal().uid() {
+                    if let ValidatorEntityType {
+                        kind: ValidatorEntityTypeKind::Enum(choices),
+                        ..
+                    } = et
+                    {
+                        if !choices.contains(euid.eid().as_ref()) {
+                            return Err(request_validation_errors::InvalidEnumEntityError {
+                                euid: euid.clone().into(),
+                                choices: choices.clone(),
+                            }
+                            .into());
                         }
-                        .into());
                     }
                 }
             } else {
                 return Err(request_validation_errors::UndeclaredPrincipalTypeError {
-                    principal_ty: principal.entity_type().clone(),
+                    principal_ty: principal_type.clone(),
                 }
                 .into());
             }
         }
-        if let EntityUIDEntry::Known { euid: resource, .. } = request.resource() {
-            if self.get_entity_type(resource.entity_type()).is_none() {
+        if let Some(resource_type) = request.resource().get_type() {
+            if let Some(et) = self.get_entity_type(resource_type) {
+                if let Some(euid) = request.resource().uid() {
+                    if let ValidatorEntityType {
+                        kind: ValidatorEntityTypeKind::Enum(choices),
+                        ..
+                    } = et
+                    {
+                        if !choices.contains(euid.eid().as_ref()) {
+                            return Err(request_validation_errors::InvalidEnumEntityError {
+                                euid: euid.clone().into(),
+                                choices: choices.clone(),
+                            }
+                            .into());
+                        }
+                    }
+                }
+            } else {
                 return Err(request_validation_errors::UndeclaredResourceTypeError {
-                    resource_ty: resource.entity_type().clone(),
+                    resource_ty: resource_type.clone(),
                 }
                 .into());
             }
@@ -217,34 +233,11 @@ impl ast::RequestSchema for ValidatorSchema {
                         action: Arc::clone(action),
                     }
                 })?;
-                if let EntityUIDEntry::Known {
-                    euid: principal, ..
-                } = request.principal()
-                {
-                    if !validator_action_id.is_applicable_principal_type(principal.entity_type()) {
-                        return Err(request_validation_errors::InvalidPrincipalTypeError {
-                            principal_ty: principal.entity_type().clone(),
-                            action: Arc::clone(action),
-                            valid_principal_tys: validator_action_id
-                                .applies_to_principals()
-                                .cloned()
-                                .collect(),
-                        }
-                        .into());
-                    }
+                if let Some(principal_type) = request.principal().get_type() {
+                    validator_action_id.check_principal_type(principal_type, action)?;
                 }
-                if let EntityUIDEntry::Known { euid: resource, .. } = request.resource() {
-                    if !validator_action_id.is_applicable_resource_type(resource.entity_type()) {
-                        return Err(request_validation_errors::InvalidResourceTypeError {
-                            resource_ty: resource.entity_type().clone(),
-                            action: Arc::clone(action),
-                            valid_resource_tys: validator_action_id
-                                .applies_to_resources()
-                                .cloned()
-                                .collect(),
-                        }
-                        .into());
-                    }
+                if let Some(principal_type) = request.resource().get_type() {
+                    validator_action_id.check_resource_type(principal_type, action)?;
                 }
                 if let Some(context) = request.context() {
                     let expected_context_ty = validator_action_id.context_type();
@@ -270,6 +263,40 @@ impl ast::RequestSchema for ValidatorSchema {
             }
         }
         Ok(())
+    }
+}
+
+impl ValidatorActionId {
+    fn check_principal_type(
+        &self,
+        principal_type: &EntityType,
+        action: &Arc<EntityUID>,
+    ) -> Result<(), request_validation_errors::InvalidPrincipalTypeError> {
+        if !self.is_applicable_principal_type(principal_type) {
+            Err(request_validation_errors::InvalidPrincipalTypeError {
+                principal_ty: principal_type.clone(),
+                action: Arc::clone(action),
+                valid_principal_tys: self.applies_to_principals().cloned().collect(),
+            })
+        } else {
+            Ok(())
+        }
+    }
+
+    fn check_resource_type(
+        &self,
+        resource_type: &EntityType,
+        action: &Arc<EntityUID>,
+    ) -> Result<(), request_validation_errors::InvalidResourceTypeError> {
+        if !self.is_applicable_resource_type(resource_type) {
+            Err(request_validation_errors::InvalidResourceTypeError {
+                resource_ty: resource_type.clone(),
+                action: Arc::clone(action),
+                valid_resource_tys: self.applies_to_resources().cloned().collect(),
+            })
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -708,7 +735,7 @@ mod test {
     fn success_principal_unknown() {
         assert_matches!(
             ast::Request::new_with_unknowns(
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
                 ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                     None,
@@ -734,7 +761,7 @@ mod test {
                     ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                     None,
                 ),
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
                 ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                     None,
@@ -760,7 +787,7 @@ mod test {
                     ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                     None,
                 ),
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
                 Some(ast::Context::empty()),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -799,9 +826,9 @@ mod test {
     fn success_everything_unspecified() {
         assert_matches!(
             ast::Request::new_with_unknowns(
-                ast::EntityUIDEntry::Unknown { loc: None },
-                ast::EntityUIDEntry::Unknown { loc: None },
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
+                ast::EntityUIDEntry::unknown(),
+                ast::EntityUIDEntry::unknown(),
                 None,
                 Some(&schema()),
                 Extensions::all_available(),
@@ -821,7 +848,7 @@ mod test {
                     ast::EntityUID::with_eid_and_type("Album", "abc123").unwrap(),
                     None,
                 ),
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
                 ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("User", "alice").unwrap(),
                     None,

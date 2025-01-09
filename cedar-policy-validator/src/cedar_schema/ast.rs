@@ -269,7 +269,7 @@ impl EntityDecl {
 pub struct StandardEntityDecl {
     /// Entity Type Names bound by this declaration.
     /// More than one name can be bound if they have the same definition, for convenience
-    pub names: Vec<Node<Id>>,
+    pub names: NonEmpty<Node<Id>>,
     /// Entity Types this type is allowed to be related to via the `in` relation
     pub member_of_types: Vec<Path>,
     /// Attributes this entity has
@@ -281,7 +281,7 @@ pub struct StandardEntityDecl {
 /// Declaration of an entity type
 #[derive(Debug, Clone)]
 pub struct EnumEntityDecl {
-    pub names: Vec<Node<Id>>,
+    pub names: NonEmpty<Node<Id>>,
     pub choices: NonEmpty<Node<SmolStr>>,
 }
 

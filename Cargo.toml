@@ -43,7 +43,9 @@ rust-2018-idioms = "deny"
 # means we'll see it in local runs.
 [workspace.lints.clippy]
 nursery = { level = "warn", priority = -1 }
+# Enabling some pedantic lints incrementally
 needless_pass_by_value = "warn"
+ref_option = "warn"
 
 # These lints may be worth enforcing, but cause a lot of noise at the moment.
 use_self = "allow"

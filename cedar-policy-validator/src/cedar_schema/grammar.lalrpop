@@ -128,7 +128,7 @@ Decl: Node<Declaration> = {
     <t:TypeDecl> => t,
 }
 
-// Entity := 'entity' Idents ['in' EntOrTypes] [['='] RecType] ';' <r:@R>
+// Entity := 'entity' Idents ['in' EntTypes] [['='] RecType] ';' <r:@R>
 Entity: Node<Declaration> = {
     <l1:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> <l2:@L> <ds:("="? "{" <AttrDecls?> "}")?> <r2:@R> <ts:(TAGS <Type>)?> ";" <r1:@R>
         => Node::with_source_loc(Declaration::Entity(EntityDecl::Standard(StandardEntityDecl {
@@ -154,7 +154,7 @@ TypeDecl: Node<Declaration> = {
         => Node::with_source_loc(Declaration::Type(TypeDecl { name : i, def : t}), Loc::new(l..r, Arc::clone(src))),
 }
 
-// AppDecls := ('principal' | 'resource') ':' EntOrTyps [',' | ',' AppDecls]
+// AppDecls := ('principal' | 'resource') ':' EntTypes [',' | ',' AppDecls]
 //          | 'context' ':' (Path | RecType) [',' | ',' AppDecls]
 AppDecls: Node<NonEmpty<Node<AppDecl>>> = {
     <l:@L> <pr: PrincipalOrResource> ":" <ets:EntTypes> ","? <r:@R>
@@ -303,65 +303,38 @@ PathInline: Path = {
         => Path::new(i.node, is.into_iter().map(|n| n.node), Loc::new(l..r, Arc::clone(src))),
 }
 
-// Idents := IDENT {',' IDENT}
-Idents: Vec<Node<Id>> = {
-    <i:Ident> => vec![i],
-    <mut is:(<Ident> ",")+> <i:Ident> => {
-        is.push(i);
-        is
-    },
-}
-
-// STRs := STR {',' STR}
-STRs: NonEmpty<Node<SmolStr>> = {
-    <i:STR> => NonEmpty::singleton(i),
-    <is:(<STR> ",")+> <i:STR> => NonEmpty::collect(is.into_iter().chain(std::iter::once(i))).unwrap(),
-}
-
-// Names := Name {',' Name}
-Names: NonEmpty<Node<SmolStr>> = {
-    <n:Name> => NonEmpty::new(n),
-    <mut ns:(<Name> ",")+> <n:Name> => {
-        let mut all = NonEmpty::new(n);
-        all.append(&mut ns);
+NonEmptyComma<E>: NonEmpty<E> = {
+    <e:E> => NonEmpty::singleton(e),
+    <es:(<E> ",")+> <e:E> => {
+        let mut all = NonEmpty::from_vec(es).unwrap();
+        all.push(e);
         all
     },
 }
 
+// Idents := IDENT {',' IDENT}
+Idents: NonEmpty<Node<Id>> = NonEmptyComma<Ident>;
+
+// Names := Name {',' Name}
+Names: NonEmpty<Node<SmolStr>> = NonEmptyComma<Name>;
 
 // Qualnames := Qualname {',' Qualname }
+QualNames : NonEmpty<Node<QualName>> = NonEmptyComma<QualName>;
 
-QualNames : NonEmpty<Node<QualName>> = {
-    <n:QualName> => NonEmpty::singleton(n),
-    <ns:(<QualName> ",")+> <n:QualName> => {
-        NonEmpty {
-            head : n,
-            tail : ns
-        }
-    },
-}
-
+// STRs := STR {',' STR}
+STRs: NonEmpty<Node<SmolStr>> = NonEmptyComma<STR>;
 
 PrincipalOrResource: Node<PR> = {
     <l:@L> PRINCIPAL <r:@R> => Node::with_source_loc(PR::Principal, Loc::new(l..r, Arc::clone(src))),
     <l:@L> RESOURCE <r:@R> => Node::with_source_loc(PR::Resource, Loc::new(l..r, Arc::clone(src))),
 }
 
-
-// EntType   := Path
-// EntTypes  := Path {',' Path}
-// EntOrTyps := EntType | '[' [EntTypes] ']'
+// EntTypes := Path | '[' [Path {',' Path}] ']'
 EntTypes: Vec<Path> = {
     <et: Path>
         => vec![et],
     "[" <ets: Comma<Path>> "]"
         => ets,
-}
-
-
-NameOrNames: Vec<Node<SmolStr>> = {
-    <n : Name> => vec![n],
-    "[" <ns:Comma<Name>> "]" => ns,
 }
 
 QualNameOrQualNames: NonEmpty<Node<QualName>> = {
