@@ -337,23 +337,11 @@ impl PartialResponse {
     ) -> Result<Request, ConcretizationError> {
         let mut context = self.request.context.clone();
 
-        let principal = if let Some((key, val)) = mapping.get_key_value("principal") {
-            self.request.principal().concretize(key, val)?
-        } else {
-            self.request.principal().clone()
-        };
+        let principal = self.request.principal().concretize("principal", mapping)?;
 
-        let action = if let Some((key, val)) = mapping.get_key_value("action") {
-            self.request.action().concretize(key, val)?
-        } else {
-            self.request.action().clone()
-        };
+        let action = self.request.action.concretize("action", mapping)?;
 
-        let resource = if let Some((key, val)) = mapping.get_key_value("resource") {
-            self.request.resource().concretize(key, val)?
-        } else {
-            self.request.resource().clone()
-        };
+        let resource = self.request.resource.concretize("resource", mapping)?;
 
         if let Some((key, val)) = mapping.get_key_value("context") {
             if let Ok(attrs) = val.get_as_record() {
@@ -406,38 +394,48 @@ impl PartialResponse {
 }
 
 impl EntityUIDEntry {
-    fn concretize(&self, key: &SmolStr, val: &Value) -> Result<Self, ConcretizationError> {
-        if let Ok(uid) = val.get_as_entity() {
-            match self {
-                EntityUIDEntry::Known { euid, .. } => Err(ConcretizationError::VarConfictError {
-                    id: key.to_owned(),
-                    existing_value: euid.as_ref().clone().into(),
-                    given_value: val.clone(),
-                }),
-                EntityUIDEntry::Unknown { ty: None, .. } => {
-                    Ok(EntityUIDEntry::known(uid.clone(), None))
-                }
-                EntityUIDEntry::Unknown {
-                    ty: Some(type_of_unknown),
-                    ..
-                } => {
-                    if type_of_unknown == uid.entity_type() {
-                        Ok(EntityUIDEntry::known(uid.clone(), None))
-                    } else {
-                        Err(ConcretizationError::EntityTypeConfictError {
-                            id: key.to_owned(),
-                            existing_value: type_of_unknown.clone(),
-                            given_value: val.to_owned(),
+    fn concretize(
+        &self,
+        key: &str,
+        mapping: &HashMap<SmolStr, Value>,
+    ) -> Result<Self, ConcretizationError> {
+        if let Some(val) = mapping.get(key) {
+            if let Ok(uid) = val.get_as_entity() {
+                match self {
+                    EntityUIDEntry::Known { euid, .. } => {
+                        Err(ConcretizationError::VarConfictError {
+                            id: key.into(),
+                            existing_value: euid.as_ref().clone().into(),
+                            given_value: val.clone(),
                         })
                     }
+                    EntityUIDEntry::Unknown { ty: None, .. } => {
+                        Ok(EntityUIDEntry::known(uid.clone(), None))
+                    }
+                    EntityUIDEntry::Unknown {
+                        ty: Some(type_of_unknown),
+                        ..
+                    } => {
+                        if type_of_unknown == uid.entity_type() {
+                            Ok(EntityUIDEntry::known(uid.clone(), None))
+                        } else {
+                            Err(ConcretizationError::EntityTypeConfictError {
+                                id: key.into(),
+                                existing_value: type_of_unknown.clone(),
+                                given_value: val.to_owned(),
+                            })
+                        }
+                    }
                 }
+            } else {
+                Err(ConcretizationError::ValueError {
+                    id: key.into(),
+                    expected_type: "entity",
+                    given_value: val.to_owned(),
+                })
             }
         } else {
-            Err(ConcretizationError::ValueError {
-                id: key.to_owned(),
-                expected_type: "entity",
-                given_value: val.to_owned(),
-            })
+            Ok(self.clone())
         }
     }
 }
