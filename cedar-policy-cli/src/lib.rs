@@ -454,7 +454,8 @@ impl PartialRequestArgs {
         }
 
         if let Some(schema) = schema {
-            builder.schema(schema)
+            builder
+                .schema(schema)
                 .build()
                 .wrap_err_with(|| format!("failed to build request with validation"))
         } else {
