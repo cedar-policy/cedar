@@ -362,7 +362,7 @@ fn convert_entity_decl(
     impl Iterator<Item = (UnreservedId, json_schema::EntityType<RawName>)>,
     ToJsonSchemaErrors,
 > {
-    let names: Vec<Node<Id>> = e.data.node.clone().names().collect();
+    let names: Vec<Node<Id>> = e.data.node.names().collect();
     let etype = json_schema::EntityType {
         kind: match e.data.node {
             EntityDecl::Enum(d) => json_schema::EntityTypeKind::Enum {

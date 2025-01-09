@@ -25,6 +25,7 @@ use cedar_policy_core::{
     FromNormalizedStr,
 };
 use educe::Educe;
+use itertools::Itertools;
 use nonempty::nonempty;
 use serde::{
     de::{MapAccess, Visitor},
@@ -473,39 +474,90 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N
     where
         D: serde::Deserializer<'de>,
     {
+        // A "real" option that does not accept `null` during deserialization
+        // TODO: we should be able to use `serde_as` or `serde_with` instead
+        enum RealOption<T> {
+            Some(T),
+            None,
+        }
+        impl<'de, T: Deserialize<'de>> Deserialize<'de> for RealOption<T> {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                T::deserialize(deserializer).map(Self::Some)
+            }
+        }
+        impl<T> Default for RealOption<T> {
+            fn default() -> Self {
+                Self::None
+            }
+        }
+
+        impl<T> From<RealOption<T>> for Option<T> {
+            fn from(value: RealOption<T>) -> Self {
+                match value {
+                    RealOption::Some(v) => Self::Some(v),
+                    RealOption::None => None,
+                }
+            }
+        }
+
+        // A struct that contains all possible fields of entity type
+        // I tried to apply the same idea to `EntityTypeKind` but serde allows
+        // unknown fields
         #[derive(Deserialize)]
         #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
         #[serde(deny_unknown_fields)]
         #[serde(rename_all = "camelCase")]
         struct Everything<N> {
             #[serde(default)]
-            member_of_types: Option<Vec<N>>,
+            member_of_types: RealOption<Vec<N>>,
             #[serde(default)]
-            shape: Option<AttributesOrContext<N>>,
+            shape: RealOption<AttributesOrContext<N>>,
             #[serde(default)]
-            tags: Option<Type<N>>,
+            tags: RealOption<Type<N>>,
             #[serde(default)]
             #[serde(rename = "enum")]
-            choices: Option<Vec<SmolStr>>,
+            choices: RealOption<Vec<SmolStr>>,
             #[serde(default)]
-            annotations: Option<Annotations>,
+            annotations: Annotations,
         }
 
         let value: Everything<N> = Everything::deserialize(deserializer)?;
-        if let Some(choices) = value.choices {
+        // We favor the "enum" key here. That is, when we observe this key, we
+        // assume the entity type is an enumerated one and hence reports fields
+        // of standard entity types as invalid.
+        if let Some(choices) = value.choices.into() {
+            let mut unexpected_fields: Vec<&str> = vec![];
+            if Option::<Vec<N>>::from(value.member_of_types).is_some() {
+                unexpected_fields.push("memberOfTypes");
+            }
+            if Option::<AttributesOrContext<N>>::from(value.shape).is_some() {
+                unexpected_fields.push("shape");
+            }
+            if Option::<Type<N>>::from(value.tags).is_some() {
+                unexpected_fields.push("tags");
+            }
+            if !unexpected_fields.is_empty() {
+                return Err(serde::de::Error::custom(format!(
+                    "unexpected field: {}",
+                    unexpected_fields.into_iter().join(", ")
+                )));
+            }
             Ok(EntityType {
                 kind: EntityTypeKind::Enum { choices },
-                annotations: value.annotations.unwrap_or_default(),
+                annotations: value.annotations,
                 loc: None,
             })
         } else {
             Ok(EntityType {
                 kind: EntityTypeKind::Standard(StandardEntityType {
-                    member_of_types: value.member_of_types.unwrap_or_default(),
-                    shape: value.shape.unwrap_or_default(),
-                    tags: value.tags,
+                    member_of_types: Option::from(value.member_of_types).unwrap_or_default(),
+                    shape: Option::from(value.shape).unwrap_or_default(),
+                    tags: Option::from(value.tags),
                 }),
-                annotations: value.annotations.unwrap_or_default(),
+                annotations: value.annotations,
                 loc: None,
             })
         }
@@ -3723,6 +3775,73 @@ mod ord {
         set.insert(Type::Type {
             ty: TypeVariant::String,
             loc: None,
+        });
+    }
+}
+
+#[cfg(test)]
+mod enumerated_entity_types {
+    use cool_asserts::assert_matches;
+
+    use crate::{
+        json_schema::{EntityType, EntityTypeKind, Fragment},
+        RawName,
+    };
+
+    #[test]
+    fn basic() {
+        let src = serde_json::json!({
+            "": {
+                "entityTypes": {
+                    "Foo": {
+                        "enum": ["foo", "bar"],
+                        "annotations": {
+                            "a": "b",
+                        }
+                    },
+                },
+                "actions": {},
+            }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Ok(frag) => {
+            assert_matches!(&frag.0[&None].entity_types[&"Foo".parse().unwrap()], EntityType {
+                kind: EntityTypeKind::Enum {choices},
+                ..
+            } => {
+                assert_eq!(choices.as_slice(), ["foo", "bar"]);
+            });
+        });
+
+        let src = serde_json::json!({
+            "": {
+                "entityTypes": {
+                    "Foo": {
+                        "enum": null,
+                    },
+                },
+                "actions": {},
+            }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(errs) => {
+            assert_eq!(errs.to_string(), "invalid type: null, expected a sequence");
+        });
+
+        let src = serde_json::json!({
+            "": {
+                "entityTypes": {
+                    "Foo": {
+                        "enum": ["foo"],
+                        "memberOfTypes": ["bar"],
+                    },
+                },
+                "actions": {},
+            }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(errs) => {
+            assert_eq!(errs.to_string(), "unexpected field: memberOfTypes");
         });
     }
 }
