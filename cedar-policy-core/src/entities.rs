@@ -2060,6 +2060,7 @@ mod schema_based_parsing_tests {
     use crate::extensions::Extensions;
     use crate::test_utils::*;
     use cool_asserts::assert_matches;
+    use nonempty::NonEmpty;
     use serde_json::json;
     use smol_str::SmolStr;
     use std::collections::HashSet;
@@ -2149,7 +2150,7 @@ mod schema_based_parsing_tests {
     /// Mock schema impl for the `Employee` type used in most of these tests
     struct MockEmployeeDescription;
     impl EntityTypeDescription for MockEmployeeDescription {
-        fn choices(&self) -> Option<Vec<SmolStr>> {
+        fn enum_enity_eids(&self) -> Option<NonEmpty<SmolStr>> {
             None
         }
         fn entity_type(&self) -> EntityType {
@@ -3401,7 +3402,7 @@ mod schema_based_parsing_tests {
 
         struct MockEmployeeDescription;
         impl EntityTypeDescription for MockEmployeeDescription {
-            fn choices(&self) -> Option<Vec<SmolStr>> {
+            fn enum_enity_eids(&self) -> Option<NonEmpty<SmolStr>> {
                 None
             }
             fn entity_type(&self) -> EntityType {

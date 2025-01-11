@@ -2335,7 +2335,7 @@ mod translator_tests {
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         assert_matches!(ns.entity_types.get(&"Fruits".parse().unwrap()).unwrap(), EntityType { kind: EntityTypeKind::Enum { choices }, ..} => {
-            assert_eq!(choices.as_slice(), ["🍍", "🥭", "🥝"]);
+            assert_eq!(Vec::from(choices.clone()), ["🍍", "🥭", "🥝"]);
         });
 
         let src = r#"
@@ -2346,7 +2346,7 @@ mod translator_tests {
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let ns = schema.0.get(&None).unwrap();
         assert_matches!(ns.entity_types.get(&"enum".parse().unwrap()).unwrap(), EntityType { kind: EntityTypeKind::Enum { choices }, ..} => {
-            assert_eq!(choices.as_slice(), ["enum"]);
+            assert_eq!(Vec::from(choices.clone()), ["enum"]);
         });
     }
 }

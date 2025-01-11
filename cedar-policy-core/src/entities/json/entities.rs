@@ -299,7 +299,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
         };
         match &entity_schema_info {
             EntitySchemaInfo::NonAction(desc) => {
-                if let Some(choices) = desc.choices() {
+                if let Some(choices) = desc.enum_enity_eids() {
                     if !choices.contains(uid.eid().as_ref()) {
                         return Err(JsonDeserializationError::EntitySchemaConformance(
                             EntitySchemaConformanceError::invalid_enum_entity(uid.clone(), choices),

@@ -474,7 +474,7 @@ pub enum EntityTypeFragment<N> {
         /// fragment).
         tags: Option<json_schema::Type<N>>,
     },
-    Enum(Vec<SmolStr>),
+    Enum(NonEmpty<SmolStr>),
 }
 
 impl<N> EntityTypeFragment<N> {

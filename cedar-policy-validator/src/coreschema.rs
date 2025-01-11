@@ -18,6 +18,7 @@ use cedar_policy_core::ast::{EntityType, EntityUID};
 use cedar_policy_core::extensions::{ExtensionFunctionLookupError, Extensions};
 use cedar_policy_core::{ast, entities};
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use request_validation_errors::InvalidEnumEntityError;
 use smol_str::SmolStr;
 use std::collections::hash_map::Values;
@@ -107,7 +108,7 @@ impl EntityTypeDescription {
 }
 
 impl entities::EntityTypeDescription for EntityTypeDescription {
-    fn choices(&self) -> Option<Vec<SmolStr>> {
+    fn enum_enity_eids(&self) -> Option<NonEmpty<SmolStr>> {
         match &self.validator_type.kind {
             ValidatorEntityTypeKind::Enum(choices) => Some(choices.clone()),
             _ => None,
@@ -360,6 +361,7 @@ pub mod request_validation_errors {
     use cedar_policy_core::impl_diagnostic_from_method_on_field;
     use itertools::Itertools;
     use miette::Diagnostic;
+    use nonempty::NonEmpty;
     use smol_str::SmolStr;
     use std::sync::Arc;
     use thiserror::Error;
@@ -574,7 +576,7 @@ pub mod request_validation_errors {
         /// problematic EUID
         pub(super) euid: Arc<ast::EntityUID>,
         /// valid entity EIDs
-        pub(super) choices: Vec<SmolStr>,
+        pub(super) choices: NonEmpty<SmolStr>,
     }
 
     impl Diagnostic for InvalidEnumEntityError {

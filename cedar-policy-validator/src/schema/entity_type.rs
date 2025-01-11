@@ -16,6 +16,7 @@
 
 //! This module contains the definition of `ValidatorEntityType`
 
+use nonempty::NonEmpty;
 use serde::Serialize;
 use smol_str::SmolStr;
 use std::collections::HashSet;
@@ -72,7 +73,7 @@ pub enum ValidatorEntityTypeKind {
     /// Standard, aka non-enum
     Standard(StandardValidatorEntityType),
     /// Enumerated
-    Enum(Vec<SmolStr>),
+    Enum(NonEmpty<SmolStr>),
 }
 
 impl ValidatorEntityType {

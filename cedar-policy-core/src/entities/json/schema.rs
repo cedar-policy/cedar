@@ -17,6 +17,7 @@
 use super::SchemaType;
 use crate::ast::{Entity, EntityType, EntityUID};
 use crate::entities::{Name, UnreservedId};
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -139,7 +140,7 @@ pub trait EntityTypeDescription {
 
     /// Return valid EID choices if the entity type is enumerated otherwise
     /// return `None`
-    fn choices(&self) -> Option<Vec<SmolStr>>;
+    fn enum_enity_eids(&self) -> Option<NonEmpty<SmolStr>>;
 }
 
 /// Simple type that implements `EntityTypeDescription` by expecting no
@@ -168,7 +169,7 @@ impl EntityTypeDescription for NullEntityTypeDescription {
     fn open_attributes(&self) -> bool {
         false
     }
-    fn choices(&self) -> Option<Vec<SmolStr>> {
+    fn enum_enity_eids(&self) -> Option<NonEmpty<SmolStr>> {
         None
     }
 }

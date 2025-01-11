@@ -26,7 +26,7 @@ use cedar_policy_core::{
 };
 use educe::Educe;
 use itertools::Itertools;
-use nonempty::nonempty;
+use nonempty::{nonempty, NonEmpty};
 use serde::{
     de::{MapAccess, Visitor},
     ser::SerializeMap,
@@ -433,8 +433,7 @@ impl NamespaceDefinition<ConditionalName> {
 }
 
 /// ...
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 pub enum EntityTypeKind<N> {
     /// ...
@@ -443,7 +442,7 @@ pub enum EntityTypeKind<N> {
     Enum {
         #[serde(rename = "enum")]
         /// ...
-        choices: Vec<SmolStr>,
+        choices: NonEmpty<SmolStr>,
     },
 }
 
@@ -519,7 +518,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N
             tags: RealOption<Type<N>>,
             #[serde(default)]
             #[serde(rename = "enum")]
-            choices: RealOption<Vec<SmolStr>>,
+            choices: RealOption<NonEmpty<SmolStr>>,
             #[serde(default)]
             annotations: Annotations,
         }
@@ -3809,8 +3808,27 @@ mod enumerated_entity_types {
                 kind: EntityTypeKind::Enum {choices},
                 ..
             } => {
-                assert_eq!(choices.as_slice(), ["foo", "bar"]);
+                assert_eq!(Vec::from(choices.clone()), ["foo", "bar"]);
             });
+        });
+
+        let src = serde_json::json!({
+            "": {
+                "entityTypes": {
+                    "Foo": {
+                        "enum": [],
+                        "annotations": {
+                            "a": "b",
+                        }
+                    },
+                },
+                "actions": {},
+            }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(errs) => {
+            // TODO: write our own error messages if it's deemed to be too ugly.
+            assert_eq!(errs.to_string(), "the vector provided was empty, NonEmpty needs at least one element");
         });
 
         let src = serde_json::json!({

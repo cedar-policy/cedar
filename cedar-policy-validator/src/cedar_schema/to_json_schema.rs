@@ -366,7 +366,7 @@ fn convert_entity_decl(
     let etype = json_schema::EntityType {
         kind: match e.data.node {
             EntityDecl::Enum(d) => json_schema::EntityTypeKind::Enum {
-                choices: d.choices.into_iter().map(|n| n.node).collect(),
+                choices: d.choices.map(|n| n.node),
             },
             EntityDecl::Standard(d) => {
                 // First build up the defined entity type
