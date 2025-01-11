@@ -432,24 +432,36 @@ impl NamespaceDefinition<ConditionalName> {
     }
 }
 
-/// ...
+/// The kind of entity type. There are currently two kinds: The standard entity
+/// type specified by [`StandardEntityType`] and the enumerated entity type
+/// proposed by RFC 53
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 pub enum EntityTypeKind<N> {
-    /// ...
+    /// The standard entity type specified by [`StandardEntityType`]
     Standard(StandardEntityType<N>),
-    /// ...
+    /// The enumerated entity type: An entity type that can only have a
+    /// nonempty set of possible EIDs
     Enum {
         #[serde(rename = "enum")]
-        /// ...
+        /// The nonempty set of possible EIDs
         choices: NonEmpty<SmolStr>,
     },
 }
 
-/// Represents the definition of a common type in the schema.
+/// Represents the full definition of an entity type in the schema.
+/// Entity types describe the relationships in the entity store, including what
+/// entities can be members of groups of what types, and what attributes
+/// can/should be included on entities of each type.
+///
+/// The parameter `N` is the type of entity type names and common type names in
+/// this [`EntityType`], including recursively.
+/// See notes on [`Fragment`].
 #[derive(Educe, Debug, Clone, Serialize)]
 #[educe(PartialEq, Eq)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct EntityType<N> {
     /// The referred type
     #[serde(flatten)]
@@ -563,32 +575,19 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N
     }
 }
 
-/// Represents the full definition of an entity type in the schema.
-/// Entity types describe the relationships in the entity store, including what
-/// entities can be members of groups of what types, and what attributes
-/// can/should be included on entities of each type.
-///
-/// The parameter `N` is the type of entity type names and common type names in
-/// this [`EntityType`], including recursively.
-/// See notes on [`Fragment`].
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
-#[serde(deny_unknown_fields)]
+/// The "standard" entity type. That is, an entity type defined by parent
+/// entity types, shape, and tags.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct StandardEntityType<N> {
     /// Entities of this [`EntityType`] are allowed to be members of entities of
     /// these types.
-    #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub member_of_types: Vec<N>,
     /// Description of the attributes for entities of this [`EntityType`].
-    #[serde(default)]
     #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
     pub shape: AttributesOrContext<N>,
     /// Tag type for entities of this [`EntityType`]; `None` means entities of this [`EntityType`] do not have tags.
-    #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Type<N>>,
 }
@@ -2145,7 +2144,7 @@ mod test {
             "memberOfTypes" : ["UserGroup"]
         }
         "#;
-        let et = serde_json::from_str::<StandardEntityType<RawName>>(user).expect("Parse Error");
+        assert_matches!(serde_json::from_str::<EntityType<RawName>>(user), Ok(EntityType { kind: EntityTypeKind::Standard(et), .. }) => {
         assert_eq!(et.member_of_types, vec!["UserGroup".parse().unwrap()]);
         assert_eq!(
             et.shape,
@@ -2156,7 +2155,7 @@ mod test {
                 }),
                 loc: None
             }),
-        );
+        );});
     }
 
     #[test]
@@ -2164,7 +2163,7 @@ mod test {
         let src = r#"
               { }
         "#;
-        let et = serde_json::from_str::<StandardEntityType<RawName>>(src).expect("Parse Error");
+        assert_matches!(serde_json::from_str::<EntityType<RawName>>(src), Ok(EntityType { kind: EntityTypeKind::Standard(et), .. }) => {
         assert_eq!(et.member_of_types.len(), 0);
         assert_eq!(
             et.shape,
@@ -2175,7 +2174,7 @@ mod test {
                 }),
                 loc: None
             }),
-        );
+        );});
     }
 
     #[test]
@@ -2559,8 +2558,7 @@ mod strengthened_types {
     use cool_asserts::assert_matches;
 
     use super::{
-        ActionEntityUID, ApplySpec, Fragment, NamespaceDefinition, RawName, StandardEntityType,
-        Type,
+        ActionEntityUID, ApplySpec, EntityType, Fragment, NamespaceDefinition, RawName, Type,
     };
 
     /// Assert that `result` is an `Err`, and the error message matches `msg`
@@ -2703,28 +2701,28 @@ mod strengthened_types {
         {
            "memberOfTypes": [""]
         });
-        let schema: Result<StandardEntityType<RawName>, _> = serde_json::from_value(src);
+        let schema: Result<EntityType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name ``: unexpected end of input");
 
         let src = serde_json::json!(
         {
            "memberOfTypes": ["*"]
         });
-        let schema: Result<StandardEntityType<RawName>, _> = serde_json::from_value(src);
+        let schema: Result<EntityType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name `*`: unexpected token `*`");
 
         let src = serde_json::json!(
         {
            "memberOfTypes": ["A::"]
         });
-        let schema: Result<StandardEntityType<RawName>, _> = serde_json::from_value(src);
+        let schema: Result<EntityType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name `A::`: unexpected end of input");
 
         let src = serde_json::json!(
         {
            "memberOfTypes": ["::A"]
         });
-        let schema: Result<StandardEntityType<RawName>, _> = serde_json::from_value(src);
+        let schema: Result<EntityType<RawName>, _> = serde_json::from_value(src);
         assert_error_matches(schema, "invalid name `::A`: unexpected token `::`");
     }
 
