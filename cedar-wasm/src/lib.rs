@@ -26,8 +26,6 @@ pub use cedar_policy::ffi::{
 pub use utils::*;
 
 #[wasm_bindgen(js_name = "getCedarVersion")]
-#[deprecated = "use `get_sdk_version` and consequently `getCedarSDKVersion` in JS"]
-#[allow(deprecated)]
 pub fn get_sdk_version_deprecated() -> String {
     get_sdk_version()
 }
