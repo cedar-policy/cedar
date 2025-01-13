@@ -2668,11 +2668,7 @@ impl RequestEnv {
 // This function is called by [`Template::get_valid_request_envs`] and
 // [`Policy::get_valid_request_envs`]
 fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item = RequestEnv> {
-    let tc = Typechecker::new(
-        &s.0,
-        cedar_policy_validator::ValidationMode::default(),
-        ast.id().clone(),
-    );
+    let tc = Typechecker::new(&s.0, cedar_policy_validator::ValidationMode::default());
     tc.typecheck_by_request_env(ast)
         .into_iter()
         .filter_map(|(env, pc)| {

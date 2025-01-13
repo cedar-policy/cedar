@@ -255,7 +255,7 @@ impl Validator {
         impl Iterator<Item = ValidationError> + 'a,
         impl Iterator<Item = ValidationWarning> + 'a,
     ) {
-        let typecheck = Typechecker::new(&self.schema, mode, t.id().clone());
+        let typecheck = Typechecker::new(&self.schema, mode);
         let mut errors = HashSet::new();
         let mut warnings = HashSet::new();
         typecheck.typecheck_policy(t, &mut errors, &mut warnings);

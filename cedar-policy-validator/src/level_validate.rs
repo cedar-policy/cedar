@@ -41,12 +41,8 @@ impl Validator {
 
         // Only perform level validation if validation passed.
         if peekable_errors.peek().is_none() {
-            let levels_errors = self.check_entity_deref_level(
-                p,
-                mode,
-                &EntityDerefLevel::from(max_deref_level),
-                p.id(),
-            );
+            let levels_errors =
+                self.check_entity_deref_level(p, mode, &EntityDerefLevel::from(max_deref_level));
             (peekable_errors.chain(levels_errors), warnings)
         } else {
             (peekable_errors.chain(vec![]), warnings)
@@ -60,16 +56,14 @@ impl Validator {
         t: &'a Template,
         mode: ValidationMode,
         max_allowed_level: &EntityDerefLevel,
-        policy_id: &PolicyID,
     ) -> Vec<ValidationError> {
-        let typechecker = Typechecker::new(&self.schema, mode, t.id().clone());
+        let typechecker = Typechecker::new(&self.schema, mode);
         let type_annotated_asts = typechecker.typecheck_by_request_env(t);
         let mut errs = vec![];
         for (_, policy_check) in type_annotated_asts {
             match policy_check {
                 PolicyCheck::Success(e) | PolicyCheck::Irrelevant(_, e) => {
-                    let res =
-                        Self::check_entity_deref_level_helper(&e, max_allowed_level, policy_id);
+                    let res = Self::check_entity_deref_level_helper(&e, max_allowed_level, t.id());
                     if let Some(e) = res.1 {
                         errs.push(ValidationError::EntityDerefLevelViolation(e))
                     }
@@ -302,12 +296,10 @@ mod levels_validation_tests {
         let p = parser::parse_policy(None, src).unwrap();
         set.add_static(p).unwrap();
 
-        let template_name = PolicyID::from_string("policy0");
         let result = validator.check_entity_deref_level(
-            set.get_template(&template_name).unwrap(),
+            set.get_template(&PolicyID::from_string("policy0")).unwrap(),
             ValidationMode::default(),
             &EntityDerefLevel { level: 0 },
-            &template_name,
         );
         assert!(result.is_empty());
     }
@@ -322,12 +314,10 @@ mod levels_validation_tests {
         let p = parser::parse_policy(None, src).unwrap();
         set.add_static(p).unwrap();
 
-        let template_name = PolicyID::from_string("policy0");
         let result = validator.check_entity_deref_level(
-            set.get_template(&template_name).unwrap(),
+            set.get_template(&PolicyID::from_string("policy0")).unwrap(),
             ValidationMode::default(),
             &EntityDerefLevel { level: 0 },
-            &template_name,
         );
         assert!(result.len() == 1);
     }
