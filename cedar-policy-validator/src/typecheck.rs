@@ -149,7 +149,11 @@ impl<'a> Typechecker<'a> {
         t: &'b Template,
     ) -> Vec<(RequestEnv<'b>, PolicyCheck)> {
         let map = self.typecheck_multi_by_request_env([t]);
-        map.into_values().next().unwrap_or_default().0 // there should always be one entry, but returning empty-vec rather than panicking if that internal invariant is violated seems safe
+        map.into_values()
+            .filter(|(v, _)| !v.is_empty())
+            .next()
+            .unwrap_or_default() // if all the entries have empty vecs, return an empty vec
+            .0
     }
 
     /// Same as `typecheck_by_request_env()`, but typechecks multiple policies
@@ -205,6 +209,11 @@ impl<'a> Typechecker<'a> {
         // compute `.condition()` just once for each policy, and cache it here
         let ts: Vec<(&'b Template, Expr)> = ts.into_iter().map(|t| (t, t.condition())).collect();
 
+        // initialize the entry for each `PolicyID` by inserting the appropriate loc
+        for (t, _) in &ts {
+            ret.insert(t.id().clone(), (Vec::new(), t.loc().cloned()));
+        }
+
         // Validate each (principal, resource) pair with the substituted policy
         // for the corresponding action.
         //
@@ -212,12 +221,15 @@ impl<'a> Typechecker<'a> {
         // `unlinked_request_envs()` just once for all policies
         for unlinked_e in self.unlinked_request_envs() {
             for (t, cond) in &ts {
-                let mut v = Vec::new();
-                for linked_e in self.link_request_env(&unlinked_e, t) {
-                    let check = typecheck_fn(&linked_e, cond);
-                    v.push((linked_e, check))
-                }
-                ret.insert(t.id().clone(), (v, t.loc().cloned()));
+                // PANIC SAFETY: already inserted this key above
+                #[allow(clippy::expect_used)]
+                ret.get_mut(t.id())
+                    .expect("already inserted this key above")
+                    .0
+                    .extend(self.link_request_env(&unlinked_e, t).map(|linked_e| {
+                        let check = typecheck_fn(&linked_e, cond);
+                        (linked_e, check)
+                    }));
             }
         }
         ret
