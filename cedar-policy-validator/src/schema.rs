@@ -795,7 +795,7 @@ impl ValidatorSchema {
     /// on `get_entity_types_in`.
     pub(crate) fn get_entity_types_in_set<'a>(
         &'a self,
-        euids: impl IntoIterator<Item = &'a EntityUID> + 'a,
+        euids: impl IntoIterator<Item = &'a EntityUID>,
     ) -> impl Iterator<Item = &'a EntityType> {
         euids.into_iter().flat_map(|e| self.get_entity_types_in(e))
     }

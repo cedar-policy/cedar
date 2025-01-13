@@ -28,7 +28,7 @@ use cedar_policy_core::parser::Loc;
 
 use crate::{
     json_schema,
-    typecheck::{TypecheckAnswer, Typechecker},
+    typecheck::{TypecheckAnswer, SingleEnvTypechecker, Typechecker},
     types::{CapabilitySet, OpenTag, RequestEnv, Type},
     validation_errors::UnexpectedTypeHelp,
     NamespaceDefinitionWithActionAttributes, RawName, ValidationError, ValidationMode,
@@ -82,9 +82,13 @@ impl Type {
 impl Typechecker<'_> {
     /// Typecheck an expression outside the context of a policy. This is
     /// currently only used for testing.
+    ///
+    /// `policy_id`: Policy ID to associate with this `Expr`, for the purposes
+    /// of reporting the policy ID in validation errors
     pub(crate) fn typecheck_expr<'a>(
         &self,
         e: &'a Expr,
+        policy_id: &'a PolicyID,
         unique_type_errors: &mut HashSet<ValidationError>,
     ) -> TypecheckAnswer<'a> {
         // Using bogus entity type names here for testing. They'll be treated as
@@ -102,8 +106,15 @@ impl Typechecker<'_> {
             principal_slot: None,
             resource_slot: None,
         };
+        let typechecker = SingleEnvTypechecker {
+            schema: self.schema,
+            extensions: self.extensions,
+            mode: self.mode,
+            policy_id,
+            request_env: &request_env,
+        };
         let mut type_errors = Vec::new();
-        let ans = self.typecheck(&request_env, &CapabilitySet::new(), e, &mut type_errors);
+        let ans = typechecker.typecheck(&CapabilitySet::new(), e, &mut type_errors);
         unique_type_errors.extend(type_errors);
         ans
     }
@@ -191,7 +202,7 @@ pub(crate) fn assert_policy_typechecks_for_mode(
 ) {
     let policy = policy.into();
     let schema = schema.schema();
-    let mut typechecker = Typechecker::new(&schema, mode, expr_id_placeholder());
+    let mut typechecker = Typechecker::new(&schema, mode);
     let mut type_errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
@@ -261,7 +272,7 @@ pub(crate) fn assert_policy_typecheck_fails_for_mode(
 ) -> HashSet<ValidationError> {
     let policy = policy.into();
     let schema = schema.schema();
-    let typechecker = Typechecker::new(&schema, mode, policy.id().clone());
+    let typechecker = Typechecker::new(&schema, mode);
     let mut type_errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
@@ -279,7 +290,7 @@ pub(crate) fn assert_policy_typecheck_warns_for_mode(
 ) -> HashSet<ValidationWarning> {
     let policy = policy.into();
     let schema = schema.schema();
-    let typechecker = Typechecker::new(&schema, mode, policy.id().clone());
+    let typechecker = Typechecker::new(&schema, mode);
     let mut type_errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(&policy, &mut type_errors, &mut warnings);
@@ -309,9 +320,10 @@ pub(crate) fn assert_typechecks_for_mode(
     mode: ValidationMode,
 ) {
     let schema = schema.schema();
-    let typechecker = Typechecker::new(&schema, mode, expr_id_placeholder());
+    let typechecker = Typechecker::new(&schema, mode);
     let mut type_errors = HashSet::new();
-    let actual = typechecker.typecheck_expr(&expr, &mut type_errors);
+    let pid = expr_id_placeholder();
+    let actual = typechecker.typecheck_expr(&expr, &pid, &mut type_errors);
     assert_matches!(actual, TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
         assert_types_eq(typechecker.schema, &expected, &expr_type.into_data().expect("Typechecked expression must have type"));
     });
@@ -352,9 +364,10 @@ pub(crate) fn assert_typecheck_fails_for_mode(
     mode: ValidationMode,
 ) -> HashSet<ValidationError> {
     let schema = schema.schema();
-    let typechecker = Typechecker::new(&schema, mode, expr_id_placeholder());
+    let typechecker = Typechecker::new(&schema, mode);
     let mut type_errors = HashSet::new();
-    let actual = typechecker.typecheck_expr(&expr, &mut type_errors);
+    let pid = expr_id_placeholder();
+    let actual = typechecker.typecheck_expr(&expr, &pid, &mut type_errors);
     assert_matches!(actual, TypecheckAnswer::TypecheckFail { expr_recovery_type } => {
         match (expected_ty.as_ref(), expr_recovery_type.data()) {
             (None, None) => (),
