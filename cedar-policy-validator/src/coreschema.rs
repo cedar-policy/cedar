@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 use crate::{ValidatorActionId, ValidatorEntityType, ValidatorEntityTypeKind, ValidatorSchema};
-use cedar_policy_core::ast::{EntityType, EntityUID};
+use cedar_policy_core::ast::{Eid, EntityType, EntityUID};
 use cedar_policy_core::extensions::{ExtensionFunctionLookupError, Extensions};
 use cedar_policy_core::{ast, entities};
 use miette::Diagnostic;
@@ -108,9 +108,9 @@ impl EntityTypeDescription {
 }
 
 impl entities::EntityTypeDescription for EntityTypeDescription {
-    fn enum_enity_eids(&self) -> Option<NonEmpty<SmolStr>> {
+    fn enum_enity_eids(&self) -> Option<NonEmpty<Eid>> {
         match &self.validator_type.kind {
-            ValidatorEntityTypeKind::Enum(choices) => Some(choices.clone()),
+            ValidatorEntityTypeKind::Enum(choices) => Some(choices.clone().map(|s| Eid::new(s))),
             _ => None,
         }
     }

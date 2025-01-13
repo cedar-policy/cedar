@@ -256,10 +256,10 @@ pub enum EntityDecl {
 }
 
 impl EntityDecl {
-    pub fn names(&self) -> impl Iterator<Item = Node<Id>> + '_ {
+    pub fn names(&self) -> impl Iterator<Item = &Node<Id>> + '_ {
         match self {
-            Self::Enum(d) => d.names.iter().cloned(),
-            Self::Standard(d) => d.names.iter().cloned(),
+            Self::Enum(d) => d.names.iter(),
+            Self::Standard(d) => d.names.iter(),
         }
     }
 }
