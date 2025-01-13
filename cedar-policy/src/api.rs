@@ -71,7 +71,7 @@ pub(crate) mod version {
         static ref SDK_VERSION: Version = env!("CARGO_PKG_VERSION").parse().unwrap();
         // Cedar language version
         // The patch version field may be unnecessary
-        static ref LANG_VERSION: Version = Version::new(4, 0, 0);
+        static ref LANG_VERSION: Version = Version::new(4, 2, 0);
     }
     /// Get the Cedar SDK Semantic Versioning version
     #[allow(clippy::module_name_repetitions)]
