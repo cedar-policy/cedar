@@ -110,7 +110,14 @@ impl<N: Display> Display for json_schema::EntityType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
             json_schema::EntityTypeKind::Standard(ty) => ty.fmt(f),
-            _ => todo!(),
+            json_schema::EntityTypeKind::Enum { choices } => write!(
+                f,
+                "[{}]",
+                choices
+                    .iter()
+                    .map(|e| format!("\"{}\"", e.escape_debug()))
+                    .join(", ")
+            ),
         }
     }
 }
