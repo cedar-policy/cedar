@@ -456,7 +456,7 @@ impl<'e> Evaluator<'e> {
                                     expected_types.clone(),
                                     &arg1,
                                     format!(
-                                        "Only type {} support comparison",
+                                        "Only types {} support comparison",
                                         expected_types.into_iter().join(", ")
                                     ),
                                 ))
