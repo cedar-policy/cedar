@@ -922,7 +922,7 @@ impl<'e> Evaluator<'e> {
         }
     }
 
-    /// Evaluate a binary operation between a value (left) and a residual expression (right). If despite the unknown contained in the residual, concrete result
+    /// Evaluate a binary operation between a residual expression (left) and a value (right). If despite the unknown contained in the residual, concrete result
     /// can be obtained (using the type annotation on the residual), it is returned.
     fn short_circuit_residual_and_value(
         &self,
