@@ -136,6 +136,10 @@ impl<'a> Typechecker<'a> {
     /// typechecks it under every schema-defined request environment. The result contains
     /// these environments and the individual typechecking response for each, in no
     /// particular order.
+    ///
+    /// Callers using this as the toplevel entry point, rather than
+    /// `typecheck_policy()`, will not get `impossible_policy` validation
+    /// warnings.
     pub fn typecheck_by_request_env<'b>(
         &'b self,
         t: &'b Template,
@@ -153,6 +157,10 @@ impl<'a> Typechecker<'a> {
     /// efficiently than calling `typecheck_by_request_env()` multiple times.
     ///
     /// The `Loc` of each policy is also returned, for error reporting purposes.
+    ///
+    /// Callers using this as the toplevel entry point, rather than
+    /// `typecheck_policy()`, will not get `impossible_policy` validation
+    /// warnings.
     pub fn typecheck_multi_by_request_env<'b>(
         &'b self,
         ts: impl IntoIterator<Item = &'b Template>,
