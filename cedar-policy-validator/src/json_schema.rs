@@ -437,6 +437,8 @@ impl NamespaceDefinition<ConditionalName> {
 /// proposed by RFC 53
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum EntityTypeKind<N> {
     /// The standard entity type specified by [`StandardEntityType`]
     Standard(StandardEntityType<N>),
@@ -460,8 +462,6 @@ pub enum EntityTypeKind<N> {
 #[derive(Educe, Debug, Clone, Serialize)]
 #[educe(PartialEq, Eq)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct EntityType<N> {
     /// The referred type
     #[serde(flatten)]
@@ -579,6 +579,8 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N
 /// entity types, shape, and tags.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct StandardEntityType<N> {
     /// Entities of this [`EntityType`] are allowed to be members of entities of
     /// these types.
