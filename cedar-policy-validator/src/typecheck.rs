@@ -369,7 +369,7 @@ impl<'a> Typechecker<'a> {
 /// env.
 struct SingleEnvTypechecker<'a> {
     schema: &'a ValidatorSchema,
-    extensions: &'static ExtensionSchemas<'static>,
+    extensions: &'a ExtensionSchemas<'a>,
     mode: ValidationMode,
     /// ID of the policy we're typechecking; used for associating any validation
     /// errors with the correct policy ID

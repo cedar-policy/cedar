@@ -28,7 +28,7 @@ use cedar_policy_core::parser::Loc;
 
 use crate::{
     json_schema,
-    typecheck::{TypecheckAnswer, SingleEnvTypechecker, Typechecker},
+    typecheck::{SingleEnvTypechecker, TypecheckAnswer, Typechecker},
     types::{CapabilitySet, OpenTag, RequestEnv, Type},
     validation_errors::UnexpectedTypeHelp,
     NamespaceDefinitionWithActionAttributes, RawName, ValidationError, ValidationMode,
