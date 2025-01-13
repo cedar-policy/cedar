@@ -14,11 +14,24 @@
  * limitations under the License.
  */
 
+use wasm_bindgen::prelude::*;
 mod utils;
 
+use cedar_policy::ffi;
 pub use cedar_policy::ffi::{
     check_parse_context, check_parse_entities, check_parse_policy_set, check_parse_schema, format,
-    get_lang_version, get_sdk_version, is_authorized, policy_to_json, policy_to_text,
-    schema_to_json, schema_to_text, validate,
+    get_lang_version, is_authorized, policy_to_json, policy_to_text, schema_to_json,
+    schema_to_text, validate,
 };
 pub use utils::*;
+
+#[wasm_bindgen(js_name = "getCedarVersion")]
+#[deprecated = "use `get_sdk_version` and consequently `getCedarSDKVersion` in JS"]
+pub fn get_sdk_version_deprecated() -> String {
+    get_sdk_version()
+}
+
+#[wasm_bindgen(js_name = "getCedarSDKVersion")]
+pub fn get_sdk_version() -> String {
+    ffi::get_sdk_version()
+}
