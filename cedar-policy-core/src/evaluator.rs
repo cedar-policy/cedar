@@ -20,9 +20,9 @@ use crate::ast::*;
 use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
+use std::collections::BTreeMap;
 #[cfg(test)]
 use std::collections::HashMap;
-use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 mod err;
@@ -183,6 +183,16 @@ impl<'e> RestrictedEvaluator<'e> {
             expr => unreachable!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
         }
     }
+}
+
+pub(crate) fn valid_comparison_op_types(extensions: &Extensions<'_>) -> nonempty::NonEmpty<Type> {
+    let mut expected_types = nonempty::NonEmpty::singleton(Type::Long);
+    expected_types.extend(
+        extensions
+            .types_with_operator_overloading()
+            .map(|n| Type::Extension { name: n.clone() }),
+    );
+    expected_types
 }
 
 impl<'e> Evaluator<'e> {
@@ -455,19 +465,13 @@ impl<'e> Evaluator<'e> {
                                 ))
                             }
                             _ => {
-                                let mut expected_types = nonempty::NonEmpty::singleton(Type::Long);
-                                expected_types.extend(
-                                    self.extensions
-                                        .types_with_operator_overloading()
-                                        .map(|n| Type::Extension { name: n.clone() })
-                                        .collect::<BTreeSet<_>>(),
-                                );
+                                let expected_types = valid_comparison_op_types(&self.extensions);
                                 Err(EvaluationError::type_error_with_advice(
                                     expected_types.clone(),
                                     &arg1,
                                     format!(
                                         "Only types {} support comparison",
-                                        expected_types.into_iter().join(", ")
+                                        expected_types.into_iter().sorted().join(", ")
                                     ),
                                 ))
                             }
@@ -2958,16 +2962,6 @@ pub(crate) mod test {
             )),
             Ok(Value::from(false))
         );
-    }
-
-    fn valid_comparison_op_types(extensions: &Extensions<'static>) -> nonempty::NonEmpty<Type> {
-        let mut expected_types = nonempty::NonEmpty::singleton(Type::Long);
-        expected_types.extend(
-            extensions
-                .types_with_operator_overloading()
-                .map(|n| Type::Extension { name: n.clone() }),
-        );
-        expected_types
     }
 
     #[test]
