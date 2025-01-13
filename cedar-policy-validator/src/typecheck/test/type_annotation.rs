@@ -31,13 +31,9 @@ fn assert_expr_has_annotated_ast(e: &Expr, annotated: &Expr<Option<Type>>) {
     let schema = empty_schema_file()
         .try_into()
         .expect("Failed to construct schema.");
-    let typechecker = Typechecker::new(
-        &schema,
-        ValidationMode::default(),
-        PolicyID::from_string("0"),
-    );
+    let typechecker = Typechecker::new(&schema, ValidationMode::default());
     let mut errs = HashSet::new();
-    assert_matches!(typechecker.typecheck_expr(e, &mut errs), crate::typecheck::TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
+    assert_matches!(typechecker.typecheck_expr(e, &PolicyID::from_string("0"), &mut errs), crate::typecheck::TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
         assert_eq!(&expr_type, annotated);
     });
 }
@@ -146,10 +142,10 @@ fn expr_typechecks_with_correct_annotation() {
     .unwrap()
     .try_into()
     .expect("Failed to construct schema.");
-    let tc = Typechecker::new(&schema, ValidationMode::default(), expr_id_placeholder());
+    let tc = Typechecker::new(&schema, ValidationMode::default());
     let mut errs = HashSet::new();
     let euid = EntityUID::with_eid_and_type("Foo", "bar").unwrap();
-    match tc.typecheck_expr(&Expr::val(euid.clone()), &mut errs) {
+    match tc.typecheck_expr(&Expr::val(euid.clone()), &expr_id_placeholder(), &mut errs) {
         crate::typecheck::TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
             assert_eq!(
                 &expr_type,

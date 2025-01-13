@@ -615,7 +615,7 @@ mod tests {
                     name: Name::parse_unqualified_name("ipaddr")
                         .expect("should be a valid identifier")
                 });
-                assert_eq!(advice, Some("Only type long support comparison".into()));
+                assert_eq!(advice, Some("Only types long support comparison".into()));
             }
         );
         // test that isIpv4 on a String is an error

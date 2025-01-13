@@ -35,7 +35,7 @@ pub(crate) fn assert_partial_typecheck(
     policy: StaticPolicy,
 ) {
     let schema = schema.try_into().expect("Failed to construct schema.");
-    let typechecker = Typechecker::new(&schema, ValidationMode::Partial, policy.id().clone());
+    let typechecker = Typechecker::new(&schema, ValidationMode::Partial);
     let mut errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
@@ -54,7 +54,7 @@ pub(crate) fn assert_partial_typecheck_fails(
     expected_errors: impl IntoIterator<Item = ValidationError>,
 ) {
     let schema = schema.try_into().expect("Failed to construct schema.");
-    let typechecker = Typechecker::new(&schema, ValidationMode::Partial, policy.id().clone());
+    let typechecker = Typechecker::new(&schema, ValidationMode::Partial);
     let mut errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
@@ -73,7 +73,7 @@ pub(crate) fn assert_partial_typecheck_warns(
     expected_warnings: impl IntoIterator<Item = ValidationWarning>,
 ) {
     let schema = schema.try_into().expect("Failed to construct schema.");
-    let typechecker = Typechecker::new(&schema, ValidationMode::Partial, policy.id().clone());
+    let typechecker = Typechecker::new(&schema, ValidationMode::Partial);
     let mut errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
