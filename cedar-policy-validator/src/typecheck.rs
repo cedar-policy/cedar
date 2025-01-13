@@ -24,7 +24,11 @@ mod typecheck_answer;
 use itertools::Itertools;
 pub(crate) use typecheck_answer::TypecheckAnswer;
 
-use std::{borrow::Cow, collections::HashSet, iter::zip};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    iter::zip,
+};
 
 use crate::{
     extension_schema::ExtensionFunctionType,
@@ -46,6 +50,7 @@ use cedar_policy_core::{
     },
     expr_builder::ExprBuilder as _,
     extensions::Extensions,
+    parser::Loc,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -143,10 +148,23 @@ impl<'a> Typechecker<'a> {
         &'b self,
         t: &'b Template,
     ) -> Vec<(RequestEnv<'b>, PolicyCheck)> {
-        self.apply_typecheck_fn_by_request_env(t, |request, expr| {
+        let map = self.typecheck_multi_by_request_env([t]);
+        map.into_values().next().unwrap_or_default().0 // there should always be one entry, but returning empty-vec rather than panicking if that internal invariant is violated seems safe
+    }
+
+    /// Same as `typecheck_by_request_env()`, but typechecks multiple policies
+    /// at once and returns all the results indexed by policy ID, more
+    /// efficiently than calling `typecheck_by_request_env()` multiple times.
+    ///
+    /// The `Loc` of each policy is also returned, for error reporting purposes.
+    pub fn typecheck_multi_by_request_env<'b>(
+        &'b self,
+        ts: impl IntoIterator<Item = &'b Template>,
+    ) -> HashMap<PolicyID, (Vec<(RequestEnv<'b>, PolicyCheck)>, Option<Loc>)> {
+        self.apply_typecheck_fn_by_request_env(ts, |request, expr| {
             let mut type_errors = Vec::new();
             let empty_prior_capability = CapabilitySet::new();
-            let ty = self.expect_type(
+            let ans = self.expect_type(
                 request,
                 &empty_prior_capability,
                 expr,
@@ -155,8 +173,8 @@ impl<'a> Typechecker<'a> {
                 |_| None,
             );
 
-            let is_false = ty.contains_type(&Type::singleton_boolean(false));
-            match (is_false, ty.typechecked(), ty.into_typed_expr()) {
+            let is_false = ans.contains_type(&Type::singleton_boolean(false));
+            match (is_false, ans.typechecked(), ans.into_typed_expr()) {
                 (false, true, None) => PolicyCheck::Fail(type_errors),
                 (false, true, Some(e)) => PolicyCheck::Success(e),
                 (false, false, _) => PolicyCheck::Fail(type_errors),
@@ -168,75 +186,41 @@ impl<'a> Typechecker<'a> {
         })
     }
 
-    /// Utility abstracting the common logic for strict and regular typechecking
-    /// by request environment.
+    /// Apply `typecheck_fn` to each policy in every schema-defined request
+    /// environment, and collect all the results.
+    ///
+    /// Results are returned indexed by the policy ID of the policy they belong to.
+    /// Results for a single policy are returned in no particular order.
+    /// The `Loc` of each policy is also returned, for error reporting purposes.
     fn apply_typecheck_fn_by_request_env<'b, F, C>(
         &'b self,
-        t: &'b Template,
+        ts: impl IntoIterator<Item = &'b Template>,
         typecheck_fn: F,
-    ) -> Vec<(RequestEnv<'b>, C)>
+    ) -> HashMap<PolicyID, (Vec<(RequestEnv<'b>, C)>, Option<Loc>)>
     where
         F: Fn(&RequestEnv<'b>, &Expr) -> C,
     {
-        let mut result_checks = Vec::new();
+        let mut ret = HashMap::new();
+
+        // compute `.condition()` just once for each policy, and cache it here
+        let ts: Vec<(&'b Template, Expr)> = ts.into_iter().map(|t| (t, t.condition())).collect();
 
         // Validate each (principal, resource) pair with the substituted policy
-        // for the corresponding action. Implemented as for loop to make it
-        // explicit that `expect_type` will be called for every element of
-        // request_env without short circuiting.
-        let policy_condition = &t.condition();
+        // for the corresponding action.
+        //
+        // this ordering of loop nesting is chosen in order to call
+        // `unlinked_request_envs()` just once for all policies
         for unlinked_e in self.unlinked_request_envs() {
-            for linked_e in self.link_request_env(&unlinked_e, t) {
-                let check = typecheck_fn(&linked_e, policy_condition);
-                result_checks.push((linked_e, check))
-            }
-        }
-        result_checks
-    }
-
-    /// Additional entry point for typechecking requests. This method takes a slice
-    /// over policies and typechecks each under every schema-defined request environment.
-    ///
-    /// The result contains these environments in no particular order, but each list of
-    /// policy checks will always match the original order.
-    pub fn multi_typecheck_by_request_env(
-        &self,
-        policy_templates: &[&Template],
-    ) -> Vec<(RequestEnv<'_>, Vec<PolicyCheck>)> {
-        let mut env_checks = Vec::new();
-        for request in self.unlinked_request_envs() {
-            let mut policy_checks = Vec::new();
-            for t in policy_templates.iter() {
-                let condition_expr = t.condition();
-                for linked_env in self.link_request_env(&request, t) {
-                    let mut type_errors = Vec::new();
-                    let empty_prior_capability = CapabilitySet::new();
-                    let ty = self.expect_type(
-                        &linked_env,
-                        &empty_prior_capability,
-                        &condition_expr,
-                        Type::primitive_boolean(),
-                        &mut type_errors,
-                        |_| None,
-                    );
-
-                    let is_false = ty.contains_type(&Type::singleton_boolean(false));
-                    match (is_false, ty.typechecked(), ty.into_typed_expr()) {
-                        (false, true, None) => policy_checks.push(PolicyCheck::Fail(type_errors)),
-                        (false, true, Some(e)) => policy_checks.push(PolicyCheck::Success(e)),
-                        (false, false, _) => policy_checks.push(PolicyCheck::Fail(type_errors)),
-                        (true, _, Some(e)) => {
-                            policy_checks.push(PolicyCheck::Irrelevant(type_errors, e))
-                        }
-                        // PANIC SAFETY: `is_false` implies `e` has a type implies `Some(e)`.
-                        #[allow(clippy::unreachable)]
-                        (true, _, None) => unreachable!(),
-                    }
+            for (t, cond) in &ts {
+                let mut v = Vec::new();
+                for linked_e in self.link_request_env(&unlinked_e, t) {
+                    let check = typecheck_fn(&linked_e, cond);
+                    v.push((linked_e, check))
                 }
+                ret.insert(t.id().clone(), (v, t.loc().cloned()));
             }
-            env_checks.push((request, policy_checks));
         }
-        env_checks
+        ret
     }
 
     fn unlinked_request_envs(&self) -> impl Iterator<Item = RequestEnv<'_>> + '_ {
