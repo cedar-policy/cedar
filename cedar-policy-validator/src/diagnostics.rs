@@ -17,6 +17,7 @@
 //! This module contains the diagnostics (i.e., errors and warnings) that are
 //! returned by the validator.
 
+use cedar_policy_core::entities::conformance::err::InvalidEnumEntityError;
 use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -24,7 +25,7 @@ use validation_errors::UnrecognizedActionIdHelp;
 
 use std::collections::BTreeSet;
 
-use cedar_policy_core::ast::{EntityType, EntityUID, Expr, PolicyID};
+use cedar_policy_core::ast::{Eid, EntityType, EntityUID, Expr, PolicyID};
 use cedar_policy_core::parser::Loc;
 
 use crate::types::{EntityLUB, Type};
@@ -414,8 +415,10 @@ impl ValidationError {
         validation_errors::InvalidEnumEntity {
             source_loc,
             policy_id,
-            entity,
-            choices: choices.into_iter().collect(),
+            err: InvalidEnumEntityError {
+                uid: entity,
+                choices: choices.into_iter().map(|s| Eid::new(s)).collect(),
+            },
         }
         .into()
     }

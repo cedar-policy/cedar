@@ -15,8 +15,10 @@
  */
 //! This module cotnains errors around entities not conforming to schemas
 use super::TypeMismatchError;
-use crate::ast::{EntityType, EntityUID};
+use crate::ast::{Eid, EntityType, EntityUID};
 use crate::extensions::ExtensionFunctionLookupError;
+use crate::impl_diagnostic_from_method_on_field;
+use itertools::Itertools;
 use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -139,12 +141,15 @@ impl EntitySchemaConformanceError {
 
     pub(crate) fn invalid_enum_entity(
         uid: EntityUID,
-        choices: impl IntoIterator<Item = SmolStr>,
+        choices: impl IntoIterator<Item = Eid>,
     ) -> Self {
-        Self::InvalidEnumEntity(InvalidEnumEntity {
-            uid,
-            choices: choices.into_iter().collect(),
-        })
+        Self::InvalidEnumEntity(
+            InvalidEnumEntityError {
+                uid,
+                choices: choices.into_iter().collect(),
+            }
+            .into(),
+        )
     }
 }
 
@@ -298,10 +303,38 @@ impl Diagnostic for UnexpectedEntityTypeError {
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
-#[error("entity `{uid}` has invalid UID: `{}`", uid.eid().escaped())]
+#[error(transparent)]
+#[diagnostic(transparent)]
 pub struct InvalidEnumEntity {
+    err: InvalidEnumEntityError,
+}
+
+impl From<InvalidEnumEntityError> for InvalidEnumEntity {
+    fn from(value: InvalidEnumEntityError) -> Self {
+        Self { err: value }
+    }
+}
+
+/// Returned when an entity is of an enumerated entity type but has invalid EID
+#[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
+#[error("entity `{uid}` is of an enumerated entity type, but `\"{}\"` is not declared as a valid eid", uid.eid().escaped())]
+pub struct InvalidEnumEntityError {
     /// Entity where the error occurred
-    uid: EntityUID,
+    pub uid: EntityUID,
     /// Name of the attribute where the error occurred
-    choices: Vec<SmolStr>,
+    pub choices: Vec<Eid>,
+}
+
+impl Diagnostic for InvalidEnumEntityError {
+    impl_diagnostic_from_method_on_field!(uid, loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(format!(
+            "valid entity eids: {}",
+            self.choices
+                .iter()
+                .map(|e| format!("\"{}\"", e.escaped()))
+                .join(", ")
+        )))
+    }
 }

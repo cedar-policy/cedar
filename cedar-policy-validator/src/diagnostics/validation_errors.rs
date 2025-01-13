@@ -16,6 +16,7 @@
 
 //! Defines errors returned by the validator.
 
+use cedar_policy_core::entities::conformance::err::InvalidEnumEntityError;
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -720,23 +721,21 @@ impl Display for AttributeAccess {
 /// Returned when an entity literal is of an enumerated entity type but has
 /// undeclared UID
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error("for policy `{policy_id}`, entity `{entity}`'s UID is illegal")]
+#[error("for policy `{policy_id}`: {err}")]
 pub struct InvalidEnumEntity {
     /// Source location
     pub source_loc: Option<Loc>,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
-    /// UID of the problematic entity
-    pub entity: EntityUID,
-    /// UID choices of the enumerated entity type
-    pub choices: Vec<SmolStr>,
+    /// The error
+    pub err: InvalidEnumEntityError,
 }
 
 impl Diagnostic for InvalidEnumEntity {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        Some(Box::new(format!("allowed UID values: {:?}", self.choices)))
+        self.err.help()
     }
 }
 

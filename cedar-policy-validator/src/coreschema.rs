@@ -15,11 +15,11 @@
  */
 use crate::{ValidatorActionId, ValidatorEntityType, ValidatorEntityTypeKind, ValidatorSchema};
 use cedar_policy_core::ast::{Eid, EntityType, EntityUID};
+use cedar_policy_core::entities::conformance::err::InvalidEnumEntityError;
 use cedar_policy_core::extensions::{ExtensionFunctionLookupError, Extensions};
 use cedar_policy_core::{ast, entities};
 use miette::Diagnostic;
 use nonempty::NonEmpty;
-use request_validation_errors::InvalidEnumEntityError;
 use smol_str::SmolStr;
 use std::collections::hash_map::Values;
 use std::collections::HashSet;
@@ -186,9 +186,9 @@ impl ast::RequestSchema for ValidatorSchema {
                     } = et
                     {
                         if !choices.contains(euid.eid().as_ref()) {
-                            return Err(request_validation_errors::InvalidEnumEntityError {
-                                euid: euid.clone().into(),
-                                choices: choices.clone(),
+                            return Err(InvalidEnumEntityError {
+                                uid: euid.clone(),
+                                choices: choices.into_iter().map(|s| Eid::new(s.clone())).collect(),
                             }
                             .into());
                         }
@@ -210,9 +210,9 @@ impl ast::RequestSchema for ValidatorSchema {
                     } = et
                     {
                         if !choices.contains(euid.eid().as_ref()) {
-                            return Err(request_validation_errors::InvalidEnumEntityError {
-                                euid: euid.clone().into(),
-                                choices: choices.clone(),
+                            return Err(InvalidEnumEntityError {
+                                uid: euid.clone(),
+                                choices: choices.into_iter().map(|s| Eid::new(s.clone())).collect(),
                             }
                             .into());
                         }
@@ -361,8 +361,6 @@ pub mod request_validation_errors {
     use cedar_policy_core::impl_diagnostic_from_method_on_field;
     use itertools::Itertools;
     use miette::Diagnostic;
-    use nonempty::NonEmpty;
-    use smol_str::SmolStr;
     use std::sync::Arc;
     use thiserror::Error;
 
@@ -566,24 +564,6 @@ pub mod request_validation_errors {
         /// The action which it is not valid for
         pub fn action(&self) -> &ast::EntityUID {
             &self.action
-        }
-    }
-
-    /// Request principal or resource is an invalid enumerated entity
-    #[derive(Debug, Error)]
-    #[error("entity `{euid}` is not declared as an enumerated entity but has invalid eid: `{}`", euid.eid().escaped())]
-    pub struct InvalidEnumEntityError {
-        /// problematic EUID
-        pub(super) euid: Arc<ast::EntityUID>,
-        /// valid entity EIDs
-        pub(super) choices: NonEmpty<SmolStr>,
-    }
-
-    impl Diagnostic for InvalidEnumEntityError {
-        impl_diagnostic_from_method_on_field!(euid, loc);
-
-        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            Some(Box::new(format!("valid entity eids: {:?}", self.choices)))
         }
     }
 }

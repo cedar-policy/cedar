@@ -19,7 +19,7 @@ use super::{
     CedarValueJson, EntityTypeDescription, EntityUidJson, NoEntitiesSchema, Schema, TypeAndId,
     ValueParser,
 };
-use crate::ast::{BorrowedRestrictedExpr, Eid, Entity, EntityUID, PartialValue, RestrictedExpr};
+use crate::ast::{BorrowedRestrictedExpr, Entity, EntityUID, PartialValue, RestrictedExpr};
 use crate::entities::conformance::EntitySchemaConformanceChecker;
 use crate::entities::{
     conformance::err::{EntitySchemaConformanceError, UnexpectedEntityTypeError},
@@ -302,12 +302,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 if let Some(choices) = desc.enum_enity_eids() {
                     if !choices.contains(&uid.eid()) {
                         return Err(JsonDeserializationError::EntitySchemaConformance(
-                            EntitySchemaConformanceError::invalid_enum_entity(
-                                uid.clone(),
-                                choices
-                                    .iter()
-                                    .map(|e| <Eid as AsRef<SmolStr>>::as_ref(e).clone()),
-                            ),
+                            EntitySchemaConformanceError::invalid_enum_entity(uid.clone(), choices),
                         ));
                     }
                 }

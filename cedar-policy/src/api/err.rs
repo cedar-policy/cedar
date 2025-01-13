@@ -1250,7 +1250,7 @@ pub mod request_validation_errors {
     #[error(transparent)]
     #[diagnostic(transparent)]
     pub struct InvalidEnumEntityError(
-        #[from] cedar_policy_validator::request_validation_errors::InvalidEnumEntityError,
+        #[from] cedar_policy_core::entities::conformance::err::InvalidEnumEntityError,
     );
 }
 
