@@ -380,20 +380,20 @@ impl<'e> Evaluator<'e> {
                 // NOTE: There are more precise partial eval opportunities here, esp w/ typed unknowns
                 // Current limitations:
                 //   Operators are not partially evaluated, except in a few 'simple' cases when comparing a concrete value with an unknown of known type
-                //   implemented in short_circuit_typed_residual
+                //   implemented in short_circuit_*
                 let (arg1, arg2) = match (
                     self.partial_interpret(arg1, slots)?,
                     self.partial_interpret(arg2, slots)?,
                 ) {
                     (PartialValue::Value(v1), PartialValue::Value(v2)) => (v1, v2),
                     (PartialValue::Value(v1), PartialValue::Residual(e2)) => {
-                        if let Some(val) = self.short_circuit_typed_residual(&v1, &e2, *op) {
+                        if let Some(val) = self.short_circuit_value_and_residual(&v1, &e2, *op) {
                             return Ok(val);
                         }
                         return Ok(PartialValue::Residual(Expr::binary_app(*op, v1.into(), e2)));
                     }
                     (PartialValue::Residual(e1), PartialValue::Value(v2)) => {
-                        if let Some(val) = self.short_circuit_typed_residual(&v2, &e1, *op) {
+                        if let Some(val) = self.short_circuit_residual_and_value(&e1, &v2, *op) {
                             return Ok(val);
                         }
                         return Ok(PartialValue::Residual(Expr::binary_app(*op, e1, v2.into())));
@@ -922,10 +922,26 @@ impl<'e> Evaluator<'e> {
         }
     }
 
-    /// Evaluate a binary operation between a value and a residual expression. If despite the unknown contained in the residual, concrete result
+    /// Evaluate a binary operation between a residual expression (left) and a value (right). If despite the unknown contained in the residual, concrete result
     /// can be obtained (using the type annotation on the residual), it is returned.
-    /// Since it is not aware which of the inputs is on the left side, and which on the right, it needs to return None for all non-commutative operations.
-    fn short_circuit_typed_residual(
+    fn short_circuit_residual_and_value(
+        &self,
+        e1: &Expr,
+        v2: &Value,
+        op: BinaryOp,
+    ) -> Option<PartialValue> {
+        match op {
+            // Since these operators are commutative, we can use just one order, and have one implementation of the actual logic
+            BinaryOp::Add | BinaryOp::Eq | BinaryOp::Mul | BinaryOp::ContainsAny => {
+                self.short_circuit_value_and_residual(v2, e1, op)
+            }
+            _ => None,
+        }
+    }
+
+    /// Evaluate a binary operation between a value (left) and a residual expression (right). If despite the unknown contained in the residual, concrete result
+    /// can be obtained (using the type annotation on the residual), it is returned.
+    fn short_circuit_value_and_residual(
         &self,
         v1: &Value,
         e2: &Expr,
