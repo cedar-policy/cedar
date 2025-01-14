@@ -3073,32 +3073,35 @@ pub(crate) mod test {
                     .build());
         });
 
-        let src: serde_json::Value = json!({
-            "": {
-                "commonTypes": {
-                    "ty": {
-                        "type": "Record",
-                        "attributes": {
-                            "a": {
-                                "type": "Extension",
-                                "name": "partial_evaluation",
+        #[cfg(feature = "datetime")]
+        {
+            let src: serde_json::Value = json!({
+                "": {
+                    "commonTypes": {
+                        "ty": {
+                            "type": "Record",
+                            "attributes": {
+                                "a": {
+                                    "type": "Extension",
+                                    "name": "partial_evaluation",
+                                }
                             }
                         }
-                    }
-                },
-                "entityTypes": { },
-                "actions": { },
-            }
-        });
-        let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
-        assert_matches!(schema, Err(e) => {
-            expect_err(
-                &src,
-                &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("unknown extension type `partial_evaluation`")
-                    .help("did you mean `duration`?")
-                    .build());
-        });
+                    },
+                    "entityTypes": { },
+                    "actions": { },
+                }
+            });
+            let schema = ValidatorSchema::from_json_value(src.clone(), Extensions::all_available());
+            assert_matches!(schema, Err(e) => {
+                expect_err(
+                    &src,
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("unknown extension type `partial_evaluation`")
+                        .help("did you mean `duration`?")
+                        .build());
+            });
+        }
     }
 
     #[track_caller]

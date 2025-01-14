@@ -41,6 +41,7 @@ default = ["ipaddr", "decimal"]
 # Cedar extensions
 ipaddr = ["cedar-policy-core/ipaddr", "cedar-policy-validator/ipaddr"]
 decimal = ["cedar-policy-core/decimal", "cedar-policy-validator/decimal"]
+datetime = ["cedar-policy-core/datetime", "cedar-policy-validator/datetime"]
 
 # Features for memory or runtime profiling
 heap-profiling = ["dep:dhat"]
@@ -48,7 +49,7 @@ corpus-timing = []
 
 # Experimental features.
 # Enable all experimental features with `cargo build --features "experimental"`
-experimental = ["partial-eval", "permissive-validate", "partial-validate", "level-validate", "entity-manifest", "protobufs"]
+experimental = ["partial-eval", "permissive-validate", "partial-validate", "level-validate", "entity-manifest", "protobufs", "datetime"]
 entity-manifest = ["cedar-policy-validator/entity-manifest"]
 partial-eval = ["cedar-policy-core/partial-eval", "cedar-policy-validator/partial-eval"]
 permissive-validate = []

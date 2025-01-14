@@ -96,7 +96,7 @@ pub fn extension_schema() -> ExtensionSchema {
             get_argument_check(f.name()),
         )
     });
-    ExtensionSchema::new(ipaddr_ext.name().clone(), fun_tys)
+    ExtensionSchema::new(ipaddr_ext.name().clone(), fun_tys, std::iter::empty())
 }
 
 /// Extra validation step for the `ip` function.

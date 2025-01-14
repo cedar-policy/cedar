@@ -97,7 +97,8 @@ pub fn extension_schema() -> ExtensionSchema {
     let datetime_ty = Type::extension(datetime_ext.name().clone());
     //PANIC SAFETY: `duration` is a valid name
     #[allow(clippy::unwrap_used)]
-    let duration_ty = Type::extension("duration".parse().unwrap());
+    let duration_ty_name: Name = "duration".parse().unwrap();
+    let duration_ty = Type::extension(duration_ty_name.clone());
 
     let fun_tys = datetime_ext.funcs().map(|f| {
         let return_type = get_return_type(f.name(), &datetime_ty, &duration_ty);
@@ -112,7 +113,11 @@ pub fn extension_schema() -> ExtensionSchema {
             get_argument_check(f.name()),
         )
     });
-    ExtensionSchema::new(datetime_ext.name().clone(), fun_tys)
+    ExtensionSchema::new(
+        datetime_ext.name().clone(),
+        fun_tys,
+        [datetime_ext.name().clone(), duration_ty_name],
+    )
 }
 
 /// Extra validation step for the `datetime` function.

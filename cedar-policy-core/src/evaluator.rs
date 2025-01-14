@@ -30,7 +30,7 @@ pub use err::evaluation_errors;
 pub use err::EvaluationError;
 pub(crate) use err::*;
 use evaluation_errors::*;
-use itertools::Either;
+use itertools::{Either, Itertools};
 use nonempty::nonempty;
 use smol_str::SmolStr;
 
@@ -183,6 +183,16 @@ impl<'e> RestrictedEvaluator<'e> {
             expr => unreachable!("internal invariant violation: BorrowedRestrictedExpr somehow contained this expr case: {expr:?}"),
         }
     }
+}
+
+pub(crate) fn valid_comparison_op_types(extensions: &Extensions<'_>) -> nonempty::NonEmpty<Type> {
+    let mut expected_types = nonempty::NonEmpty::singleton(Type::Long);
+    expected_types.extend(
+        extensions
+            .types_with_operator_overloading()
+            .map(|n| Type::Extension { name: n.clone() }),
+    );
+    expected_types
 }
 
 impl<'e> Evaluator<'e> {
@@ -432,15 +442,38 @@ impl<'e> Evaluator<'e> {
                                 Ok(ext_op(x, y).into())
                             }
                             // throw type errors
-                            (ValueKind::Lit(Literal::Long(_)), _) => Err(EvaluationError::type_error_single(Type::Long, &arg2)),
-                            (_, ValueKind::Lit(Literal::Long(_))) => Err(EvaluationError::type_error_single(Type::Long, &arg1)),
-                            (ValueKind::ExtensionValue(x), _) if x.supports_operator_overloading() => Err(EvaluationError::type_error_single(Type::Extension { name: x.typename() }, &arg2)),
-                            (_, ValueKind::ExtensionValue(y)) if y.supports_operator_overloading() => Err(EvaluationError::type_error_single(Type::Extension { name: y.typename() }, &arg1)),
-                            (ValueKind::ExtensionValue(x), ValueKind::ExtensionValue(y)) if x.typename() == y.typename() => Err(EvaluationError::type_error_with_advice(Extensions::types_with_operator_overloading().map(|name| Type::Extension { name} ), &arg1, "Only extension types `datetime` and `duration` support operator overloading".to_string())),
+                            (ValueKind::Lit(Literal::Long(_)), _) => {
+                                Err(EvaluationError::type_error_single(Type::Long, &arg2))
+                            }
+                            (_, ValueKind::Lit(Literal::Long(_))) => {
+                                Err(EvaluationError::type_error_single(Type::Long, &arg1))
+                            }
+                            (ValueKind::ExtensionValue(x), _)
+                                if x.supports_operator_overloading() =>
+                            {
+                                Err(EvaluationError::type_error_single(
+                                    Type::Extension { name: x.typename() },
+                                    &arg2,
+                                ))
+                            }
+                            (_, ValueKind::ExtensionValue(y))
+                                if y.supports_operator_overloading() =>
+                            {
+                                Err(EvaluationError::type_error_single(
+                                    Type::Extension { name: y.typename() },
+                                    &arg1,
+                                ))
+                            }
                             _ => {
-                                let mut expected_types = Extensions::types_with_operator_overloading().map(|name| Type::Extension { name });
-                                expected_types.push(Type::Long);
-                                Err(EvaluationError::type_error_with_advice(expected_types, &arg1, "Only `Long` and extension types `datetime`, `duration` support comparison".to_string()))
+                                let expected_types = valid_comparison_op_types(&self.extensions);
+                                Err(EvaluationError::type_error_with_advice(
+                                    expected_types.clone(),
+                                    &arg1,
+                                    format!(
+                                        "Only types {} support comparison",
+                                        expected_types.into_iter().sorted().join(", ")
+                                    ),
+                                ))
                             }
                         }
                     }
@@ -2951,7 +2984,18 @@ pub(crate) mod test {
     fn interpret_compares() {
         let request = basic_request();
         let entities = basic_entities();
-        let eval = Evaluator::new(request, &entities, Extensions::all_available());
+        let extensions = Extensions::all_available();
+        let eval = Evaluator::new(request, &entities, extensions);
+        let expected_types = valid_comparison_op_types(extensions);
+        let assert_type_error = |expr, actual_type| {
+            assert_matches!(
+                eval.interpret_inline_policy(&expr),
+                Err(EvaluationError::TypeError(TypeError { expected, actual, .. })) => {
+                    assert_eq!(expected, expected_types.clone());
+                    assert_eq!(actual, actual_type);
+                }
+            );
+        };
         // 3 < 303
         assert_eq!(
             eval.interpret_inline_policy(&Expr::less(Expr::val(3), Expr::val(303))),
@@ -3013,214 +3057,91 @@ pub(crate) mod test {
             Ok(Value::from(true))
         );
         // false < true
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(true))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::Bool);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
-        );
+        assert_type_error(Expr::less(Expr::val(false), Expr::val(true)), Type::Bool);
+
         // false < false
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::less(Expr::val(false), Expr::val(false))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::Bool);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
-        );
+        assert_type_error(Expr::less(Expr::val(false), Expr::val(false)), Type::Bool);
+
         // true <= false
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::lesseq(Expr::val(true), Expr::val(false))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::Bool);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
-        );
+        assert_type_error(Expr::lesseq(Expr::val(true), Expr::val(false)), Type::Bool);
+
         // false <= false
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::lesseq(Expr::val(false), Expr::val(false))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected,nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::Bool);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
-        );
+        assert_type_error(Expr::lesseq(Expr::val(false), Expr::val(false)), Type::Bool);
+
         // false > true
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::greater(Expr::val(false), Expr::val(true))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::Bool);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
-        );
+        assert_type_error(Expr::greater(Expr::val(false), Expr::val(true)), Type::Bool);
+
         // true > true
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::greater(Expr::val(true), Expr::val(true))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::Bool);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
-        );
+        assert_type_error(Expr::greater(Expr::val(true), Expr::val(true)), Type::Bool);
+
         // true >= false
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::greatereq(Expr::val(true), Expr::val(false))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::Bool);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
+        assert_type_error(
+            Expr::greatereq(Expr::val(true), Expr::val(false)),
+            Type::Bool,
         );
+
         // true >= true
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::greatereq(Expr::val(true), Expr::val(true))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::Bool);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
+        assert_type_error(
+            Expr::greatereq(Expr::val(true), Expr::val(true)),
+            Type::Bool,
         );
+
         // bc < zzz
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::less(Expr::val("bc"), Expr::val("zzz"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::String);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
-        );
+        assert_type_error(Expr::less(Expr::val("bc"), Expr::val("zzz")), Type::String);
         // banana < zzz
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::less(Expr::val("banana"), Expr::val("zzz"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::String);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
+        assert_type_error(
+            Expr::less(Expr::val("banana"), Expr::val("zzz")),
+            Type::String,
         );
         // "" < zzz
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::less(Expr::val(""), Expr::val("zzz"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::String);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
-        );
+        assert_type_error(Expr::less(Expr::val(""), Expr::val("zzz")), Type::String);
         // a < 1
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::less(Expr::val("a"), Expr::val("1"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::String);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
-        );
+        assert_type_error(Expr::less(Expr::val("a"), Expr::val("1")), Type::String);
         // a < A
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::less(Expr::val("a"), Expr::val("A"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::String);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
-        );
+        assert_type_error(Expr::less(Expr::val("a"), Expr::val("A")), Type::String);
         // A < A
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::less(Expr::val("A"), Expr::val("A"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::String);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
-        );
+        assert_type_error(Expr::less(Expr::val("A"), Expr::val("A")), Type::String);
         // zebra < zebras
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::less(Expr::val("zebra"), Expr::val("zebras"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::String);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
+        assert_type_error(
+            Expr::less(Expr::val("zebra"), Expr::val("zebras")),
+            Type::String,
         );
         // zebra <= zebras
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebra"), Expr::val("zebras"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::String);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
+        assert_type_error(
+            Expr::lesseq(Expr::val("zebra"), Expr::val("zebras")),
+            Type::String,
         );
         // zebras <= zebras
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebras"), Expr::val("zebras"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::String);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
+        assert_type_error(
+            Expr::lesseq(Expr::val("zebras"), Expr::val("zebras")),
+            Type::String,
         );
         // zebras <= Zebras
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::lesseq(Expr::val("zebras"), Expr::val("Zebras"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::String);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
+        assert_type_error(
+            Expr::lesseq(Expr::val("zebras"), Expr::val("Zebras")),
+            Type::String,
         );
         // 123 > 78
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::greater(Expr::val("123"), Expr::val("78"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::String);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
+        assert_type_error(
+            Expr::greater(Expr::val("123"), Expr::val("78")),
+            Type::String,
         );
         // <space>zebras >= zebras
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::greatereq(
-                Expr::val(" zebras"),
-                Expr::val("zebras")
-            )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::String);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
+        assert_type_error(
+            Expr::greatereq(Expr::val(" zebras"), Expr::val("zebras")),
+            Type::String,
         );
         // "" >= ""
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::greatereq(Expr::val(""), Expr::val(""))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::String);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
-        );
+        assert_type_error(Expr::greatereq(Expr::val(""), Expr::val("")), Type::String);
         // "" >= _hi
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::greatereq(Expr::val(""), Expr::val("_hi"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::String);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
+        assert_type_error(
+            Expr::greatereq(Expr::val(""), Expr::val("_hi")),
+            Type::String,
         );
         // 🦀 >= _hi
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::greatereq(Expr::val("🦀"), Expr::val("_hi"))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::String);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
+        assert_type_error(
+            Expr::greatereq(Expr::val("🦀"), Expr::val("_hi")),
+            Type::String,
         );
         // 2 < "4"
         assert_matches!(
@@ -3259,18 +3180,22 @@ pub(crate) mod test {
             }
         );
         // [1, 2] < [47, 0]
-        assert_matches!(
-            eval.interpret_inline_policy(&Expr::less(
+        assert_type_error(
+            Expr::less(
                 Expr::set(vec![Expr::val(1), Expr::val(2)]),
-                Expr::set(vec![Expr::val(47), Expr::val(0)])
-            )),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: "datetime".parse().unwrap()}, Type::Extension { name: "duration".parse().unwrap()}, Type::Long]);
-                assert_eq!(actual, Type::Set);
-                assert_eq!(advice, Some("Only `Long` and extension types `datetime`, `duration` support comparison".into()));
-            }
+                Expr::set(vec![Expr::val(47), Expr::val(0)]),
+            ),
+            Type::Set,
         );
+    }
 
+    #[cfg(feature = "datetime")]
+    #[test]
+    fn interpret_datetime_extension_compares() {
+        let request = basic_request();
+        let entities = basic_entities();
+        let extensions = Extensions::all_available();
+        let eval = Evaluator::new(request, &entities, extensions);
         let datetime_constructor: Name = "datetime".parse().unwrap();
         let duration_constructor: Name = "duration".parse().unwrap();
         assert_matches!(eval.interpret_inline_policy(
@@ -3494,10 +3419,9 @@ pub(crate) mod test {
                 Expr::call_extension_fn(
                     "decimal".parse().unwrap(),
                     vec![Value::from("3.0").into()]))),
-            Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: datetime_constructor }, Type::Extension { name: duration_constructor }]);
+            Err(EvaluationError::TypeError(TypeError { expected, actual, .. })) => {
+                assert_eq!(expected, valid_comparison_op_types(extensions));
                 assert_eq!(actual, Type::Extension { name: "decimal".parse().unwrap() });
-                assert_eq!(advice, Some("Only extension types `datetime` and `duration` support operator overloading".into()));
         });
     }
 
