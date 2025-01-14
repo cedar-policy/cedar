@@ -225,7 +225,7 @@ impl EntityUID {
 
 impl std::fmt::Display for EntityUID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}::\"{}\"", self.entity_type(), self.eid.escaped())
+        write!(f, "{}::{}", self.entity_type(), self.eid)
     }
 }
 
@@ -315,6 +315,12 @@ impl AsRef<SmolStr> for Eid {
 impl AsRef<str> for Eid {
     fn as_ref(&self) -> &str {
         &self.0
+    }
+}
+
+impl std::fmt::Display for Eid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "\"{}\"", self.escaped())
     }
 }
 
