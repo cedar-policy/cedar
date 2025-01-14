@@ -609,9 +609,25 @@ pub fn context_schema_for_action(
 #[cfg(test)]
 mod test {
     use super::*;
+    use ast::Context;
     use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use cool_asserts::assert_matches;
     use serde_json::json;
+
+    #[track_caller]
+    fn schema_with_enums() -> ValidatorSchema {
+        let src = r#"
+            entity Fruit enum ["🍉", "🍓", "🍒"];
+            entity People;
+            action "eat" appliesTo {
+                principal: [People],
+                resource: [Fruit],
+            };
+        "#;
+        ValidatorSchema::from_cedarschema_str(src, Extensions::none())
+            .expect("should be a valid schema")
+            .0
+    }
 
     fn schema() -> ValidatorSchema {
         let src = json!(
@@ -1081,6 +1097,48 @@ mod test {
                     "",
                     &miette::Report::new(e),
                     &ExpectedErrorMessageBuilder::error(r#"context `{admin_approval: true, "also extra": "spam", extra1: false, extra2: [-100], extra3: User::"alice", .. }` is not valid for `Action::"edit_photo"`"#).build(),
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn enumerated_entity_type() {
+        assert_matches!(
+            ast::Request::new(
+                (
+                    ast::EntityUID::with_eid_and_type("People", "😋").unwrap(),
+                    None
+                ),
+                (
+                    ast::EntityUID::with_eid_and_type("Action", "eat").unwrap(),
+                    None
+                ),
+                (
+                    ast::EntityUID::with_eid_and_type("Fruit", "🍉").unwrap(),
+                    None
+                ),
+                Context::empty(),
+                Some(&schema_with_enums()),
+                Extensions::none(),
+            ),
+            Ok(_)
+        );
+        assert_matches!(
+            ast::Request::new(
+                (ast::EntityUID::with_eid_and_type("People", "🤔").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "eat").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Fruit", "🥝").unwrap(), None),
+                Context::empty(),
+                Some(&schema_with_enums()),
+                Extensions::none(),
+            ),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"entity `Fruit::"🥝"` is of an enumerated entity type, but `"🥝"` is not declared as a valid eid"#).help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                    .build(),
                 );
             }
         );
