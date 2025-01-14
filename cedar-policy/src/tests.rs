@@ -6292,7 +6292,7 @@ mod version_tests {
 
     #[test]
     fn test_lang_version() {
-        assert_eq!(get_lang_version().to_string(), "4.0.0");
+        assert_eq!(get_lang_version().to_string(), "4.2.0");
     }
 }
 
@@ -6522,5 +6522,341 @@ mod reserved_keywords_in_policies {
                 &format!("context.{id}(1)"),
             );
         }
+    }
+}
+
+mod schema_annotations {
+    use std::collections::BTreeMap;
+
+    use cool_asserts::assert_matches;
+
+    use crate::EntityNamespace;
+
+    use super::SchemaFragment;
+
+    #[track_caller]
+    fn example_schema() -> SchemaFragment {
+        SchemaFragment::from_cedarschema_str(
+            r#"
+        @a("a")
+        @b
+        entity A1,A2 {};
+        @c("c")
+        @d
+        type T = Long;
+        @e("e")
+        @f
+        action a1, a2 appliesTo { principal: [A1], resource: [A2] };
+
+        @m("m")
+        @n
+        namespace N {
+          @a("a")
+          @b
+          entity A1,A2 {};
+          @c("c")
+          @d
+          type T = Long;
+          @e("e")
+          @f
+          action a1, a2 appliesTo { principal: [N::A1], resource: [A2] };
+        }
+        "#,
+        )
+        .expect("should be a valid schema fragment")
+        .0
+    }
+
+    #[test]
+    fn namespace_annotations() {
+        let schema = example_schema();
+        let namespace: EntityNamespace = "N".parse().expect("should be a valid name");
+        let annotations = BTreeMap::from_iter(
+            schema
+                .namespace_annotations(namespace.clone())
+                .expect("should get annotations"),
+        );
+        assert_eq!(annotations, BTreeMap::from_iter([("m", "m"), ("n", "")]));
+        assert_matches!(
+            schema
+                .namespace_annotations("NM".parse().unwrap())
+                .map(|_| ()),
+            None
+        );
+
+        assert_matches!(
+            schema.namespace_annotation(namespace.clone(), "m"),
+            Some("m")
+        );
+        assert_matches!(
+            schema.namespace_annotation(namespace.clone(), "n"),
+            Some("")
+        );
+        assert_matches!(schema.namespace_annotation(namespace.clone(), "x"), None);
+        assert_matches!(
+            schema.namespace_annotation("NM".parse().unwrap(), "n"),
+            None
+        );
+    }
+
+    #[test]
+    fn entity_type_annotations() {
+        let schema = example_schema();
+        let annotations = BTreeMap::from_iter([("a", "a"), ("b", "")]);
+        assert_eq!(
+            annotations,
+            BTreeMap::from_iter(
+                schema
+                    .entity_type_annotations(None, "A1")
+                    .expect("should get annotations")
+            )
+        );
+        assert_eq!(
+            annotations,
+            BTreeMap::from_iter(
+                schema
+                    .entity_type_annotations(None, "A2")
+                    .expect("should get annotations")
+            )
+        );
+        assert_eq!(
+            annotations,
+            BTreeMap::from_iter(
+                schema
+                    .entity_type_annotations(
+                        Some("N".parse().expect("should be a valid name")),
+                        "A1"
+                    )
+                    .expect("should get annotations")
+            )
+        );
+        assert_eq!(
+            annotations,
+            BTreeMap::from_iter(
+                schema
+                    .entity_type_annotations(
+                        Some("N".parse().expect("should be a valid name")),
+                        "A2"
+                    )
+                    .expect("should get annotations")
+            )
+        );
+
+        assert_matches!(schema.entity_type_annotation(None, "A1", "b",), Some(""));
+        assert_matches!(schema.entity_type_annotation(None, "A2", "a",), Some("a"));
+        assert_matches!(schema.entity_type_annotation(None, "A3", "a",), None);
+        assert_matches!(schema.entity_type_annotation(None, "A2", "x",), None);
+        assert_matches!(
+            schema.entity_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "A1",
+                "b",
+            ),
+            Some("")
+        );
+        assert_matches!(
+            schema.entity_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "A2",
+                "a",
+            ),
+            Some("a")
+        );
+        assert_matches!(
+            schema.entity_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "A3",
+                "a",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.entity_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "A2",
+                "x",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.entity_type_annotation(
+                Some("NM".parse().expect("should be a valid name")),
+                "A1",
+                "b",
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn common_type_annotations() {
+        let schema = example_schema();
+        let annotations = BTreeMap::from_iter([("c", "c"), ("d", "")]);
+        assert_eq!(
+            annotations,
+            BTreeMap::from_iter(
+                schema
+                    .common_type_annotations(None, "T")
+                    .expect("should get annotations")
+            )
+        );
+        assert_eq!(
+            annotations,
+            BTreeMap::from_iter(
+                schema
+                    .common_type_annotations(
+                        Some("N".parse().expect("should be a valid name")),
+                        "T"
+                    )
+                    .expect("should get annotations")
+            )
+        );
+        assert_matches!(schema.common_type_annotation(None, "T", "c",), Some("c"));
+        assert_matches!(schema.common_type_annotation(None, "T", "d",), Some(""));
+        assert_matches!(schema.common_type_annotation(None, "T1", "c",), None);
+        assert_matches!(schema.common_type_annotation(None, "T", "x",), None);
+
+        assert_matches!(
+            schema.common_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "T",
+                "c",
+            ),
+            Some("c")
+        );
+        assert_matches!(
+            schema.common_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "T",
+                "d",
+            ),
+            Some("")
+        );
+        assert_matches!(
+            schema.common_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "T1",
+                "c",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.common_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "T",
+                "x",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.common_type_annotation(
+                Some("NM".parse().expect("should be a valid name")),
+                "T",
+                "c",
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn action_type_annotations() {
+        let schema = example_schema();
+        let annotations = BTreeMap::from_iter([("e", "e"), ("f", "")]);
+        assert_eq!(
+            annotations,
+            BTreeMap::from_iter(
+                schema
+                    .action_annotations(None, "a1".parse().unwrap(),)
+                    .expect("should get annotations")
+            )
+        );
+        assert_eq!(
+            annotations,
+            BTreeMap::from_iter(
+                schema
+                    .action_annotations(None, "a2".parse().unwrap(),)
+                    .expect("should get annotations")
+            )
+        );
+        assert_eq!(
+            annotations,
+            BTreeMap::from_iter(
+                schema
+                    .action_annotations(
+                        Some("N".parse().expect("should be a valid name")),
+                        "a1".parse().unwrap(),
+                    )
+                    .expect("should get annotations")
+            )
+        );
+        assert_eq!(
+            annotations,
+            BTreeMap::from_iter(
+                schema
+                    .action_annotations(
+                        Some("N".parse().expect("should be a valid name")),
+                        "a2".parse().unwrap(),
+                    )
+                    .expect("should get annotations")
+            )
+        );
+
+        assert_matches!(
+            schema.action_annotation(None, "a1".parse().unwrap(), "e",),
+            Some("e")
+        );
+        assert_matches!(
+            schema.action_annotation(None, "a2".parse().unwrap(), "f",),
+            Some("")
+        );
+        assert_matches!(
+            schema.action_annotation(None, "a3".parse().unwrap(), "e",),
+            None
+        );
+        assert_matches!(
+            schema.action_annotation(None, "a2".parse().unwrap(), "x",),
+            None
+        );
+
+        assert_matches!(
+            schema.action_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "a1".parse().unwrap(),
+                "e",
+            ),
+            Some("e")
+        );
+        assert_matches!(
+            schema.action_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "a2".parse().unwrap(),
+                "f",
+            ),
+            Some("")
+        );
+        assert_matches!(
+            schema.action_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "a3".parse().unwrap(),
+                "e",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.action_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "a2".parse().unwrap(),
+                "x",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.action_annotation(
+                Some("NM".parse().expect("should be a valid name")),
+                "a1".parse().unwrap(),
+                "e",
+            ),
+            None
+        );
     }
 }

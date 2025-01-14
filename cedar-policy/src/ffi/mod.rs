@@ -26,4 +26,6 @@ mod format;
 pub use format::*;
 mod convert;
 pub use convert::*;
+mod version;
+pub use version::*;
 mod tests;

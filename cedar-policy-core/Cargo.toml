@@ -46,7 +46,7 @@ prost = { version = "0.13", optional = true }
 
 [features]
 # by default, enable all Cedar extensions
-default = ["ipaddr", "decimal", "datetime"]
+default = ["ipaddr", "decimal"]
 ipaddr = []
 decimal = ["dep:regex"]
 datetime = ["dep:chrono", "dep:regex"]

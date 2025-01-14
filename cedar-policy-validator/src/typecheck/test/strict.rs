@@ -29,11 +29,11 @@ use cedar_policy_core::{
 };
 
 use crate::{
+    extensions::ExtensionSchemas,
     json_schema,
-    typecheck::Typechecker,
+    typecheck::SingleEnvTypechecker,
     types::{AttributeType, CapabilitySet, OpenTag, RequestEnv, Type},
-    validation_errors::LubContext,
-    validation_errors::LubHelp,
+    validation_errors::{LubContext, LubHelp},
     RawName, ValidationError, ValidationMode,
 };
 
@@ -44,21 +44,23 @@ use super::test_utils::{
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_typechecks_strict(
     schema: json_schema::Fragment<RawName>,
-    env: &RequestEnv<'_>,
+    request_env: &RequestEnv<'_>,
     e: Expr,
     expected_type: Type,
 ) {
     let schema = schema.try_into().expect("Failed to construct schema.");
-    let typechecker = Typechecker::new(&schema, ValidationMode::Strict, expr_id_placeholder());
+    let typechecker = SingleEnvTypechecker {
+        schema: &schema,
+        extensions: ExtensionSchemas::all_available(),
+        mode: ValidationMode::Strict,
+        policy_id: &expr_id_placeholder(),
+        request_env,
+    };
     let mut errs = Vec::new();
-    let answer = typechecker.expect_type(
-        env,
-        &CapabilitySet::new(),
-        &e,
-        expected_type,
-        &mut errs,
-        |_| None,
-    );
+    let answer =
+        typechecker.expect_type(&CapabilitySet::new(), &e, expected_type, &mut errs, |_| {
+            None
+        });
 
     assert_eq!(errs, vec![], "Expression should not contain any errors.");
     assert_matches!(
@@ -70,22 +72,24 @@ fn assert_typechecks_strict(
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_strict_type_error(
     schema: json_schema::Fragment<RawName>,
-    env: &RequestEnv<'_>,
+    request_env: &RequestEnv<'_>,
     e: Expr,
     expected_type: Type,
     expected_error: ValidationError,
 ) {
     let schema = schema.try_into().expect("Failed to construct schema.");
-    let typechecker = Typechecker::new(&schema, ValidationMode::Strict, expr_id_placeholder());
+    let typechecker = SingleEnvTypechecker {
+        schema: &schema,
+        extensions: ExtensionSchemas::all_available(),
+        mode: ValidationMode::Strict,
+        policy_id: &expr_id_placeholder(),
+        request_env,
+    };
     let mut errs = Vec::new();
-    let answer = typechecker.expect_type(
-        env,
-        &CapabilitySet::new(),
-        &e,
-        expected_type,
-        &mut errs,
-        |_| None,
-    );
+    let answer =
+        typechecker.expect_type(&CapabilitySet::new(), &e, expected_type, &mut errs, |_| {
+            None
+        });
 
     assert_eq!(errs.into_iter().collect::<Vec<_>>(), vec![expected_error]);
     assert_matches!(
@@ -168,10 +172,15 @@ where
 fn strict_typecheck_catches_regular_type_error() {
     with_simple_schema_and_request(|s, q| {
         let schema = s.try_into().expect("Failed to construct schema.");
-        let typechecker = Typechecker::new(&schema, ValidationMode::Strict, expr_id_placeholder());
+        let typechecker = SingleEnvTypechecker {
+            schema: &schema,
+            extensions: ExtensionSchemas::all_available(),
+            mode: ValidationMode::Strict,
+            policy_id: &expr_id_placeholder(),
+            request_env: &q,
+        };
         let mut errs = Vec::new();
         typechecker.expect_type(
-            &q,
             &CapabilitySet::new(),
             &Expr::from_str("1 + false").unwrap(),
             Type::primitive_long(),
