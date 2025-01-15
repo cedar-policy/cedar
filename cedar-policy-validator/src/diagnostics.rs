@@ -19,13 +19,12 @@
 
 use cedar_policy_core::entities::conformance::err::InvalidEnumEntityError;
 use miette::Diagnostic;
-use smol_str::SmolStr;
 use thiserror::Error;
 use validation_errors::UnrecognizedActionIdHelp;
 
 use std::collections::BTreeSet;
 
-use cedar_policy_core::ast::{Eid, EntityType, EntityUID, Expr, PolicyID};
+use cedar_policy_core::ast::{EntityType, Expr, PolicyID};
 use cedar_policy_core::parser::Loc;
 
 use crate::types::{EntityLUB, Type};
@@ -409,16 +408,12 @@ impl ValidationError {
     pub(crate) fn invalid_enum_entity(
         source_loc: Option<Loc>,
         policy_id: PolicyID,
-        entity: EntityUID,
-        choices: impl IntoIterator<Item = SmolStr>,
+        err: InvalidEnumEntityError,
     ) -> Self {
         validation_errors::InvalidEnumEntity {
             source_loc,
             policy_id,
-            err: InvalidEnumEntityError {
-                uid: entity,
-                choices: choices.into_iter().map(|s| Eid::new(s)).collect(),
-            },
+            err,
         }
         .into()
     }

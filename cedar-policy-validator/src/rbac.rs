@@ -18,9 +18,10 @@
 
 use cedar_policy_core::{
     ast::{
-        self, ActionConstraint, EntityReference, EntityUID, Policy, PolicyID, PrincipalConstraint,
-        PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
+        self, ActionConstraint, Eid, EntityReference, EntityUID, Policy, PolicyID,
+        PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, SlotEnv, Template,
     },
+    entities::conformance::is_valid_enumerated_entity,
     fuzzy_match::fuzzy_search,
     parser::Loc,
 };
@@ -50,14 +51,16 @@ impl Validator {
                     ..
                 }) = self.schema.get_entity_type(e.entity_type())
                 {
-                    if !choices.contains(e.eid().as_ref()) {
-                        return Some(ValidationError::invalid_enum_entity(
-                            e.loc().cloned(),
-                            template.id().clone(),
-                            e.clone(),
-                            choices.into_iter().cloned(),
-                        ));
-                    }
+                    match is_valid_enumerated_entity(choices.clone().map(Eid::new), e) {
+                        Ok(_) => {}
+                        Err(err) => {
+                            return Some(ValidationError::invalid_enum_entity(
+                                e.loc().cloned(),
+                                template.id().clone(),
+                                err,
+                            ));
+                        }
+                    };
                 }
                 None
             })

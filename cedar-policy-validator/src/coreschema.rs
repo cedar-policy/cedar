@@ -16,7 +16,9 @@
 use crate::{ValidatorActionId, ValidatorEntityType, ValidatorEntityTypeKind, ValidatorSchema};
 use cedar_policy_core::ast::{Eid, EntityType, EntityUID};
 use cedar_policy_core::entities::conformance::err::InvalidEnumEntityError;
-use cedar_policy_core::entities::conformance::validate_euids_in_partial_value;
+use cedar_policy_core::entities::conformance::{
+    is_valid_enumerated_entity, validate_euids_in_partial_value,
+};
 use cedar_policy_core::extensions::{ExtensionFunctionLookupError, Extensions};
 use cedar_policy_core::{ast, entities};
 use miette::Diagnostic;
@@ -186,13 +188,8 @@ impl ast::RequestSchema for ValidatorSchema {
                         ..
                     } = et
                     {
-                        if !choices.contains(euid.eid().as_ref()) {
-                            return Err(InvalidEnumEntityError {
-                                uid: euid.clone(),
-                                choices: choices.into_iter().map(|s| Eid::new(s.clone())).collect(),
-                            }
-                            .into());
-                        }
+                        is_valid_enumerated_entity(choices.clone().map(Eid::new), euid)
+                            .map_err(Self::Error::from)?;
                     }
                 }
             } else {
@@ -210,13 +207,8 @@ impl ast::RequestSchema for ValidatorSchema {
                         ..
                     } = et
                     {
-                        if !choices.contains(euid.eid().as_ref()) {
-                            return Err(InvalidEnumEntityError {
-                                uid: euid.clone(),
-                                choices: choices.into_iter().map(|s| Eid::new(s.clone())).collect(),
-                            }
-                            .into());
-                        }
+                        is_valid_enumerated_entity(choices.clone().map(Eid::new), euid)
+                            .map_err(Self::Error::from)?;
                     }
                 }
             } else {

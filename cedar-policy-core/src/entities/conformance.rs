@@ -17,7 +17,7 @@
 use std::collections::BTreeMap;
 
 use super::{json::err::TypeMismatchError, EntityTypeDescription, Schema, SchemaType};
-use super::{EntityUID, Literal};
+use super::{Eid, EntityUID, Literal};
 use crate::ast::{
     BorrowedRestrictedExpr, Entity, PartialValue, PartialValueToRestrictedExprError, RestrictedExpr,
 };
@@ -154,6 +154,21 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
     }
 }
 
+/// Return an [`InvalidEnumEntityError`] if `uid`'s eid is not among valid `choices`
+pub fn is_valid_enumerated_entity(
+    choices: impl IntoIterator<Item = Eid>,
+    uid: &EntityUID,
+) -> Result<(), InvalidEnumEntityError> {
+    let choices: Vec<_> = choices.into_iter().collect();
+    if choices.contains(uid.eid()) {
+        Ok(())
+    } else {
+        Err(InvalidEnumEntityError {
+            uid: uid.clone(),
+            choices,
+        })
+    }
+}
 /// Validate if `euid` is valid, provided that it's of an enumerated type
 pub(crate) fn validate_euid(
     schema: &impl Schema,
@@ -161,12 +176,7 @@ pub(crate) fn validate_euid(
 ) -> Result<(), InvalidEnumEntityError> {
     if let Some(desc) = schema.entity_type(euid.entity_type()) {
         if let Some(choices) = desc.enum_enity_eids() {
-            if !choices.contains(euid.eid()) {
-                return Err(InvalidEnumEntityError {
-                    uid: euid.clone(),
-                    choices: choices.into(),
-                });
-            }
+            is_valid_enumerated_entity(choices, euid)?;
         }
     }
     Ok(())
