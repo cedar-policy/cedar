@@ -297,18 +297,6 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 }
             }
         };
-        match &entity_schema_info {
-            EntitySchemaInfo::NonAction(desc) => {
-                if let Some(choices) = desc.enum_enity_eids() {
-                    if !choices.contains(&uid.eid()) {
-                        return Err(JsonDeserializationError::EntitySchemaConformance(
-                            EntitySchemaConformanceError::invalid_enum_entity(uid.clone(), choices),
-                        ));
-                    }
-                }
-            }
-            _ => {}
-        };
         let vparser = ValueParser::new(self.extensions);
         let attrs: HashMap<SmolStr, RestrictedExpr> = ejson
             .attrs

@@ -17,6 +17,7 @@
 use std::collections::BTreeMap;
 
 use super::{json::err::TypeMismatchError, EntityTypeDescription, Schema, SchemaType};
+use super::{EntityUID, Literal};
 use crate::ast::{
     BorrowedRestrictedExpr, Entity, PartialValue, PartialValueToRestrictedExprError, RestrictedExpr,
 };
@@ -27,7 +28,7 @@ use smol_str::SmolStr;
 use thiserror::Error;
 pub mod err;
 
-use err::{EntitySchemaConformanceError, UnexpectedEntityTypeError};
+use err::{EntitySchemaConformanceError, InvalidEnumEntityError, UnexpectedEntityTypeError};
 
 /// Struct used to check whether entities conform to a schema
 #[derive(Debug, Clone)]
@@ -61,6 +62,8 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                 ));
             }
         } else {
+            validate_euid(self.schema, uid)
+                .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
             let schema_etype = self.schema.entity_type(etype).ok_or_else(|| {
                 let suggested_types = self
                     .schema
@@ -120,10 +123,14 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                         }
                     }
                 }
+                validate_euids_in_partial_value(self.schema, val)
+                    .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
             }
             // For each ancestor that actually appears in `entity`, ensure the
             // ancestor type is allowed by the schema
             for ancestor_euid in entity.ancestors() {
+                validate_euid(self.schema, ancestor_euid)
+                    .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
                 let ancestor_type = ancestor_euid.entity_type();
                 if schema_etype.allowed_parent_types().contains(ancestor_type) {
                     // note that `allowed_parent_types()` was transitively
@@ -137,9 +144,52 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                     ));
                 }
             }
+
+            for (_, val) in entity.tags() {
+                validate_euids_in_partial_value(self.schema, val)
+                    .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
+            }
         }
         Ok(())
     }
+}
+
+/// Validate if `euid` is valid, provided that it's of an enumerated type
+pub(crate) fn validate_euid(
+    schema: &impl Schema,
+    euid: &EntityUID,
+) -> Result<(), InvalidEnumEntityError> {
+    if let Some(desc) = schema.entity_type(euid.entity_type()) {
+        if let Some(choices) = desc.enum_enity_eids() {
+            if !choices.contains(euid.eid()) {
+                return Err(InvalidEnumEntityError {
+                    uid: euid.clone(),
+                    choices: choices.into(),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Validate if enumerated entities in `val` are valid
+pub fn validate_euids_in_partial_value(
+    schema: &impl Schema,
+    val: &PartialValue,
+) -> Result<(), InvalidEnumEntityError> {
+    match val {
+        PartialValue::Value(val) => {
+            for e in RestrictedExpr::from(val.clone()).subexpressions() {
+                match e.expr_kind() {
+                    ExprKind::Lit(Literal::EntityUID(euid)) => validate_euid(schema, &euid)?,
+                    _ => {}
+                }
+            }
+        }
+        _ => {}
+    };
+
+    Ok(())
 }
 
 /// Check whether the given `PartialValue` typechecks with the given `SchemaType`.

@@ -16,6 +16,7 @@
 use crate::{ValidatorActionId, ValidatorEntityType, ValidatorEntityTypeKind, ValidatorSchema};
 use cedar_policy_core::ast::{Eid, EntityType, EntityUID};
 use cedar_policy_core::entities::conformance::err::InvalidEnumEntityError;
+use cedar_policy_core::entities::conformance::validate_euids_in_partial_value;
 use cedar_policy_core::extensions::{ExtensionFunctionLookupError, Extensions};
 use cedar_policy_core::{ast, entities};
 use miette::Diagnostic;
@@ -241,6 +242,11 @@ impl ast::RequestSchema for ValidatorSchema {
                     validator_action_id.check_resource_type(principal_type, action)?;
                 }
                 if let Some(context) = request.context() {
+                    validate_euids_in_partial_value(
+                        &CoreSchema::new(&self),
+                        &context.clone().into(),
+                    )
+                    .map_err(|err| RequestValidationError::InvalidEnumEntity(err))?;
                     let expected_context_ty = validator_action_id.context_type();
                     if !expected_context_ty
                         .typecheck_partial_value(&context.clone().into(), extensions)

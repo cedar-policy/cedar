@@ -138,19 +138,6 @@ impl EntitySchemaConformanceError {
             err,
         })
     }
-
-    pub(crate) fn invalid_enum_entity(
-        uid: EntityUID,
-        choices: impl IntoIterator<Item = Eid>,
-    ) -> Self {
-        Self::InvalidEnumEntity(
-            InvalidEnumEntityError {
-                uid,
-                choices: choices.into_iter().collect(),
-            }
-            .into(),
-        )
-    }
 }
 
 /// Error looking up an extension function. This error can occur when
