@@ -3629,7 +3629,7 @@ mod schema_based_parsing_tests {
             expect_err(
                 &entitiesjson,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
                     .source(r#"entity `Star::"🪐"` is of an enumerated entity type, but `"🪐"` is not declared as a valid eid"#)
                     .help(r#"valid entity eids: "🌎", "🌕""#)
                     .build()
