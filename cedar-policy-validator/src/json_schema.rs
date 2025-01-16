@@ -577,20 +577,24 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N
 
 /// The "standard" entity type. That is, an entity type defined by parent
 /// entity types, shape, and tags.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Deserialize)]
+#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct StandardEntityType<N> {
-    /// Entities of this [`EntityType`] are allowed to be members of entities of
+    /// Entities of this [`StandardEntityType`] are allowed to be members of entities of
     /// these types.
     #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub member_of_types: Vec<N>,
-    /// Description of the attributes for entities of this [`EntityType`].
+    /// Description of the attributes for entities of this [`StandardEntityType`].
     #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
+    #[serde(default)]
     pub shape: AttributesOrContext<N>,
-    /// Tag type for entities of this [`EntityType`]; `None` means entities of this [`EntityType`] do not have tags.
+    /// Tag type for entities of this [`StandardEntityType`]; `None` means entities of this [`StandardEntityType`] do not have tags.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub tags: Option<Type<N>>,
 }
 
