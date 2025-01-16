@@ -25,6 +25,7 @@ Cedar Language Version: TBD
 - Implemented [RFC 62 (extended `has` operator)](https://github.com/cedar-policy/rfcs/blob/main/text/0062-extended-has.md)  (#1327, resolving #1329)
 - Added a helper method to `PartialResponse` to accept substitutions from an iterator.
 - Added `unknown_*_with_type` methods to the RequestBuilder in partial-eval, allowing an unknown principal or resource to be constrained to a certain entity type.
+- Implemented [RFC 53 (enumerated entity types)](https://github.com/cedar-policy/rfcs/blob/main/text/0053-enum-entities.md)  (#1377)
 
 ### Changed
 
