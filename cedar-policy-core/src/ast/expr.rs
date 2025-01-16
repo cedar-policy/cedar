@@ -1461,10 +1461,9 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
 }
 
 impl<T> ExprBuilder<T> {
-    /// Internally used by the following methods to construct an `Expr`
-    /// containing the `data` and `source_loc` in this `ExprBuilder` with some
-    /// inner `ExprKind`.
-    fn with_expr_kind(self, expr_kind: ExprKind<T>) -> Expr<T> {
+    /// Construct an `Expr` containing the `data` and `source_loc` in this
+    /// `ExprBuilder` and the given `ExprKind`.
+    pub fn with_expr_kind(self, expr_kind: ExprKind<T>) -> Expr<T> {
         Expr::new(expr_kind, self.source_loc, self.data)
     }
 
