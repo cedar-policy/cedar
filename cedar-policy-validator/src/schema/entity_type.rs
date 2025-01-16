@@ -19,7 +19,7 @@
 use nonempty::NonEmpty;
 use serde::Serialize;
 use smol_str::SmolStr;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use cedar_policy_core::{ast::EntityType, transitive_closure::TCNode};
 
@@ -84,10 +84,15 @@ impl ValidatorEntityType {
     }
 
     /// An iterator over the attributes of this entity
-    pub fn attributes(&self) -> Box<dyn Iterator<Item = (&SmolStr, &AttributeType)> + '_> {
+    pub fn attributes(&self) -> Attributes {
         match &self.kind {
-            ValidatorEntityTypeKind::Enum(_) => Box::new(std::iter::empty()),
-            ValidatorEntityTypeKind::Standard(ty) => Box::new(ty.attributes()),
+            ValidatorEntityTypeKind::Enum(_) => Attributes {
+                attrs: BTreeMap::new(),
+            },
+            ValidatorEntityTypeKind::Standard(ty) => Attributes::with_attributes(
+                ty.attributes()
+                    .map(|(key, value)| (key.clone(), value.clone())),
+            ),
         }
     }
 
@@ -164,6 +169,7 @@ impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
             attributes: Some(proto::Attributes::from(
                 &Attributes::with_required_attributes(
                     v.attributes()
+                        .into_iter()
                         .map(|(attr, ty)| (attr.clone(), ty.attr_type.clone())),
                 ),
             )),

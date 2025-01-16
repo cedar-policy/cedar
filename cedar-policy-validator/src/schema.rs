@@ -2374,16 +2374,7 @@ pub(crate) mod test {
         .unwrap();
         let schema: ValidatorSchema = fragment.try_into().unwrap();
         assert_eq!(
-            Attributes::with_required_attributes(
-                schema
-                    .entity_types
-                    .iter()
-                    .next()
-                    .unwrap()
-                    .1
-                    .attributes()
-                    .map(|(attr, ty)| (attr.clone(), ty.attr_type.clone()))
-            ),
+            schema.entity_types.iter().next().unwrap().1.attributes(),
             Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
         );
     }
@@ -2409,16 +2400,7 @@ pub(crate) mod test {
         .unwrap();
         let schema: ValidatorSchema = fragment.try_into().unwrap();
         assert_eq!(
-            Attributes::with_required_attributes(
-                schema
-                    .entity_types
-                    .iter()
-                    .next()
-                    .unwrap()
-                    .1
-                    .attributes()
-                    .map(|(attr, ty)| (attr.clone(), ty.attr_type.clone()))
-            ),
+            schema.entity_types.iter().next().unwrap().1.attributes(),
             Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
         );
     }
@@ -2450,16 +2432,7 @@ pub(crate) mod test {
         .unwrap();
         let schema: ValidatorSchema = fragment.try_into().unwrap();
         assert_eq!(
-            Attributes::with_required_attributes(
-                schema
-                    .entity_types
-                    .iter()
-                    .next()
-                    .unwrap()
-                    .1
-                    .attributes()
-                    .map(|(attr, ty)| (attr.clone(), ty.attr_type.clone()))
-            ),
+            schema.entity_types.iter().next().unwrap().1.attributes(),
             Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
         );
     }
@@ -2505,16 +2478,7 @@ pub(crate) mod test {
         .unwrap();
 
         assert_eq!(
-            Attributes::with_required_attributes(
-                schema
-                    .entity_types
-                    .iter()
-                    .next()
-                    .unwrap()
-                    .1
-                    .attributes()
-                    .map(|(attr, ty)| (attr.clone(), ty.attr_type.clone()))
-            ),
+            schema.entity_types.iter().next().unwrap().1.attributes(),
             Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
         );
     }
@@ -2896,7 +2860,9 @@ pub(crate) mod test {
               }
         );
         let schema = ValidatorSchema::from_json_value(src, Extensions::all_available()).unwrap();
-        let mut attributes = assert_entity_type_exists(&schema, "Demo::User").attributes();
+        let mut attributes = assert_entity_type_exists(&schema, "Demo::User")
+            .attributes()
+            .into_iter();
         let (attr_name, attr_ty) = attributes.next().unwrap();
         assert_eq!(attr_name, "id");
         assert_eq!(&attr_ty.attr_type, &Type::primitive_string());

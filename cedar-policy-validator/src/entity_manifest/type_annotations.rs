@@ -148,6 +148,7 @@ impl AccessTrie {
                         &Attributes::with_required_attributes(
                             entity_ty
                                 .attributes()
+                                .into_iter()
                                 .map(|(attr, ty)| (attr.clone(), ty.attr_type.clone())),
                         )
                     }

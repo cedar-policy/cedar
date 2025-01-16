@@ -156,6 +156,7 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
         Box::new(
             self.validator_type
                 .attributes()
+                .into_iter()
                 .filter(|(_, ty)| ty.is_required)
                 .map(|(attr, _)| attr.clone()),
         )
