@@ -149,7 +149,7 @@ impl AccessTrie {
                             entity_ty
                                 .attributes()
                                 .into_iter()
-                                .map(|(attr, ty)| (attr.clone(), ty.attr_type.clone())),
+                                .map(|(attr, ty)| (attr, ty.attr_type)),
                         )
                     }
                     EntityRecordKind::ActionEntity { name: _, attrs } => attrs,

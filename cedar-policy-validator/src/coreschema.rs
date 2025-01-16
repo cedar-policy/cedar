@@ -158,7 +158,7 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
                 .attributes()
                 .into_iter()
                 .filter(|(_, ty)| ty.is_required)
-                .map(|(attr, _)| attr.clone()),
+                .map(|(attr, _)| attr),
         )
     }
 

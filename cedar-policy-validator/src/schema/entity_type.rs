@@ -170,7 +170,7 @@ impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
                 &Attributes::with_required_attributes(
                     v.attributes()
                         .into_iter()
-                        .map(|(attr, ty)| (attr.clone(), ty.attr_type.clone())),
+                        .map(|(attr, ty)| (attr, ty.attr_type)),
                 ),
             )),
             open_attributes: proto::OpenTag::from(&v.open_attributes()).into(),
