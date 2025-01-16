@@ -346,6 +346,8 @@ fn merge_entities(entity_1: Entity, entity_2: Entity) -> Entity {
                         assert_eq!(e1, e2, "attempting to merge different residuals!");
                         attrs1.insert(k, PartialValue::Residual(e1));
                     }
+                    // PANIC SAFETY: We're merging sliced copies of the same entity, so the attribute must be the same
+                    #[allow(clippy::panic)]
                     (PartialValue::Value(_), PartialValue::Residual(_))
                     | (PartialValue::Residual(_), PartialValue::Value(_)) => {
                         panic!("attempting to merge a value with a residual")
@@ -395,6 +397,8 @@ fn merge_values(v1: Value, v2: Value) -> Value {
             );
             Value::new(vk1, v1.loc)
         }
+        // PANIC SAFETY: We're merging sliced copies of the same entity, so the attribute must be the same
+        #[allow(clippy::panic)]
         _ => {
             panic!("attempting to merge values of different kinds!")
         }
