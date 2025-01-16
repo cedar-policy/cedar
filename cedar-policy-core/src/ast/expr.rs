@@ -222,6 +222,12 @@ impl<T> Expr<T> {
         self.data
     }
 
+    /// Consume the `Expr`, returning the `ExprKind`, `source_loc`, and stored
+    /// data.
+    pub fn into_parts(self) -> (ExprKind<T>, Option<Loc>, T) {
+        (self.expr_kind, self.source_loc, self.data)
+    }
+
     /// Access the `Loc` stored on the `Expr`.
     pub fn source_loc(&self) -> Option<&Loc> {
         self.source_loc.as_ref()
