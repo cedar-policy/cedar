@@ -575,3 +575,222 @@ mod test {
         );
     }
 }
+
+#[cfg(test)]
+mod enumerated_entity_types {
+    use cedar_policy_core::{
+        ast::{Eid, EntityUID, ExprBuilder, PolicyID},
+        expr_builder::ExprBuilder as _,
+        extensions::Extensions,
+        parser::parse_policy_or_template,
+    };
+    use cool_asserts::assert_matches;
+    use itertools::Itertools;
+
+    use crate::{
+        typecheck::test::test_utils::get_loc,
+        types::{EntityLUB, Type},
+        validation_errors::AttributeAccess,
+        ValidationError, Validator, ValidatorSchema,
+    };
+
+    #[track_caller]
+    fn schema() -> ValidatorSchema {
+        ValidatorSchema::from_json_value(
+            serde_json::json!(
+                {
+                    "":  {  "entityTypes": {
+                             "Foo": {
+                                "enum": [ "foo" ],
+                            },
+                            "Bar": {
+                                "memberOfTypes": ["Foo"],
+                            }
+                        },
+                        "actions": {
+                            "a": {
+                                "appliesTo": {
+                                    "principalTypes": ["Foo"],
+                                    "resourceTypes": ["Bar"],
+                                }
+                            }
+                        }
+                }
+            }
+            ),
+            Extensions::none(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn basic() {
+        let schema = schema();
+        let template = parse_policy_or_template(None, r#"permit(principal, action == Action::"a", resource) when { principal == Foo::"foo" };"#).unwrap();
+        let validator = Validator::new(schema);
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert!(errors.collect_vec().is_empty());
+    }
+
+    #[test]
+    fn basic_invalid() {
+        let schema = schema();
+        let template = parse_policy_or_template(None, r#"permit(principal, action == Action::"a", resource) when { principal == Foo::"fo" };"#).unwrap();
+        let validator = Validator::new(schema.clone());
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
+            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "fo").unwrap());
+        });
+
+        let template = parse_policy_or_template(
+            None,
+            r#"permit(principal == Foo::"🏈", action == Action::"a", resource);"#,
+        )
+        .unwrap();
+        let validator = Validator::new(schema.clone());
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
+            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "🏈").unwrap());
+        });
+
+        let template = parse_policy_or_template(
+            None,
+            r#"permit(principal in Foo::"🏈", action == Action::"a", resource);"#,
+        )
+        .unwrap();
+        let validator = Validator::new(schema.clone());
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
+            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "🏈").unwrap());
+        });
+
+        let template = parse_policy_or_template(
+            None,
+            r#"permit(principal, action == Action::"a", resource)
+            when { {"🏈": Foo::"🏈"} has "🏈" };
+        "#,
+        )
+        .unwrap();
+        let validator = Validator::new(schema.clone());
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
+            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "🏈").unwrap());
+        });
+
+        let template = parse_policy_or_template(
+            None,
+            r#"permit(principal, action == Action::"a", resource)
+            when { [Foo::"🏈"].isEmpty() };
+        "#,
+        )
+        .unwrap();
+        let validator = Validator::new(schema.clone());
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
+            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "🏈").unwrap());
+        });
+
+        let template = parse_policy_or_template(
+            None,
+            r#"permit(principal, action == Action::"a", resource)
+            when { [{"🏈": Foo::"🏈"}].isEmpty() };
+        "#,
+        )
+        .unwrap();
+        let validator = Validator::new(schema.clone());
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
+            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "🏈").unwrap());
+        });
+    }
+
+    #[test]
+    fn no_attrs_allowed() {
+        let schema = schema();
+        let src = r#"permit(principal, action == Action::"a", resource) when { principal.foo == "foo" };"#;
+        let template = parse_policy_or_template(None, src).unwrap();
+        let validator = Validator::new(schema);
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_eq!(
+            errors.collect_vec(),
+            [ValidationError::unsafe_attribute_access(
+                get_loc(src, "principal.foo"),
+                PolicyID::from_string("policy0"),
+                AttributeAccess::EntityLUB(
+                    EntityLUB::single_entity("Foo".parse().unwrap()),
+                    vec!["foo".into()],
+                ),
+                None,
+                false,
+            )]
+        );
+    }
+
+    #[test]
+    fn no_ancestors() {
+        let schema = schema();
+        let src =
+            r#"permit(principal, action == Action::"a", resource) when { principal in resource };"#;
+        let template = parse_policy_or_template(None, src).unwrap();
+        let validator = Validator::new(schema);
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_eq!(
+            errors.collect_vec(),
+            [ValidationError::hierarchy_not_respected(
+                get_loc(src, "principal in resource"),
+                PolicyID::from_string("policy0"),
+                Some("Foo".parse().unwrap()),
+                Some("Bar".parse().unwrap()),
+            )]
+        );
+    }
+
+    #[test]
+    fn no_tags_allowed() {
+        let schema = schema();
+        let src = r#"permit(principal, action == Action::"a", resource) when { principal.getTag("foo") == "foo" };"#;
+        let template = parse_policy_or_template(None, src).unwrap();
+        let validator = Validator::new(schema);
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_eq!(
+            errors.collect_vec(),
+            [ValidationError::unsafe_tag_access(
+                get_loc(src, r#"principal.getTag("foo")"#),
+                PolicyID::from_string("policy0"),
+                Some(EntityLUB::single_entity("Foo".parse().unwrap()),),
+                {
+                    let builder = ExprBuilder::new();
+                    let mut expr = builder.val("foo");
+                    expr.set_data(Some(Type::primitive_string()));
+                    expr
+                },
+            )]
+        );
+    }
+}
