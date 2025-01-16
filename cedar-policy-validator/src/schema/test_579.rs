@@ -101,10 +101,10 @@ fn assert_parse_error_cedar(s: &str, e: &ExpectedErrorMessage<'_>) {
 }
 
 #[track_caller]
-fn assert_parse_error_json(v: serde_json::Value, e: &ExpectedErrorMessage<'_>) {
-    println!("{}", serde_json::to_string_pretty(&v).unwrap());
+fn assert_parse_error_json(v: &serde_json::Value, e: &ExpectedErrorMessage<'_>) {
+    println!("{}", serde_json::to_string_pretty(v).unwrap());
     assert_matches!(ValidatorSchema::from_json_value(v.clone(), Extensions::all_available()), Err(err) => {
-        expect_err(&v, &miette::Report::new(err), e);
+        expect_err(v, &miette::Report::new(err), e);
     });
 }
 
@@ -1153,7 +1153,7 @@ fn A1c() {
             .exactly_one_underline("MyType")
             .build();
     assert_parse_error_cedar(&c_cedar(A1_cedar()), &expected_cedar);
-    assert_parse_error_json(A1X1_json(c_json()), &expected_json);
+    assert_parse_error_json(&A1X1_json(c_json()), &expected_json);
 }
 #[test]
 fn A2a1() {
@@ -1176,7 +1176,7 @@ fn A2b1() {
         .exactly_one_underline("NS1::MyType")
         .build();
     assert_parse_error_cedar(&b1_cedar(A2_cedar()), &expected_cedar);
-    assert_parse_error_json(A2X1_json(b1_json()), &expected_json);
+    assert_parse_error_json(&A2X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn A2b2() {
@@ -1189,7 +1189,7 @@ fn A2b2() {
         .exactly_one_underline("NS1::MyType")
         .build();
     assert_parse_error_cedar(&b2_cedar(A2_cedar()), &expected_cedar);
-    assert_parse_error_json(A2X2_json(b2_json()), &expected_json);
+    assert_parse_error_json(&A2X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn A2c() {
@@ -1202,7 +1202,7 @@ fn A2c() {
         .exactly_one_underline("NS1::MyType")
         .build();
     assert_parse_error_cedar(&c_cedar(A2_cedar()), &expected_cedar);
-    assert_parse_error_json(A2X1_json(c_json()), &expected_json);
+    assert_parse_error_json(&A2X1_json(c_json()), &expected_json);
 }
 #[test]
 fn A3a1() {
@@ -1215,7 +1215,7 @@ fn A3a1() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&a1_cedar(A3_cedar()), &expected_cedar);
-    assert_parse_error_json(A3X1_json(a1_json()), &expected_json);
+    assert_parse_error_json(&A3X1_json(a1_json()), &expected_json);
 }
 #[test]
 fn A3a2() {
@@ -1228,7 +1228,7 @@ fn A3a2() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&a2_cedar(A3_cedar()), &expected_cedar);
-    assert_parse_error_json(A3X2_json(a2_json()), &expected_json);
+    assert_parse_error_json(&A3X2_json(a2_json()), &expected_json);
 }
 #[test]
 fn A3b1() {
@@ -1241,7 +1241,7 @@ fn A3b1() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&b1_cedar(A3_cedar()), &expected_cedar);
-    assert_parse_error_json(A3X1_json(b1_json()), &expected_json);
+    assert_parse_error_json(&A3X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn A3b2() {
@@ -1254,7 +1254,7 @@ fn A3b2() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&b2_cedar(A3_cedar()), &expected_cedar);
-    assert_parse_error_json(A3X2_json(b2_json()), &expected_json);
+    assert_parse_error_json(&A3X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn A3c() {
@@ -1267,7 +1267,7 @@ fn A3c() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&c_cedar(A3_cedar()), &expected_cedar);
-    assert_parse_error_json(A3X1_json(c_json()), &expected_json);
+    assert_parse_error_json(&A3X1_json(c_json()), &expected_json);
 }
 #[test]
 fn A3d1() {
@@ -1312,7 +1312,7 @@ fn B1c() {
             .exactly_one_underline("MyType")
             .build();
     assert_parse_error_cedar(&c_cedar(B1_cedar()), &expected_cedar);
-    assert_parse_error_json(B1X1_json(c_json()), &expected_json);
+    assert_parse_error_json(&B1X1_json(c_json()), &expected_json);
 }
 #[test]
 fn B2a1() {
@@ -1335,7 +1335,7 @@ fn B2b1() {
         .exactly_one_underline("NS1::MyType")
         .build();
     assert_parse_error_cedar(&b1_cedar(B2_cedar()), &expected_cedar);
-    assert_parse_error_json(B2X1_json(b1_json()), &expected_json);
+    assert_parse_error_json(&B2X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn B2b2() {
@@ -1348,7 +1348,7 @@ fn B2b2() {
         .exactly_one_underline("NS1::MyType")
         .build();
     assert_parse_error_cedar(&b2_cedar(B2_cedar()), &expected_cedar);
-    assert_parse_error_json(B2X2_json(b2_json()), &expected_json);
+    assert_parse_error_json(&B2X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn B2c() {
@@ -1361,7 +1361,7 @@ fn B2c() {
         .exactly_one_underline("NS1::MyType")
         .build();
     assert_parse_error_cedar(&c_cedar(B2_cedar()), &expected_cedar);
-    assert_parse_error_json(B2X1_json(c_json()), &expected_json);
+    assert_parse_error_json(&B2X1_json(c_json()), &expected_json);
 }
 #[test]
 fn B3a1() {
@@ -1374,7 +1374,7 @@ fn B3a1() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&a1_cedar(B3_cedar()), &expected_cedar);
-    assert_parse_error_json(B3X1_json(a1_json()), &expected_json);
+    assert_parse_error_json(&B3X1_json(a1_json()), &expected_json);
 }
 #[test]
 fn B3a2() {
@@ -1387,7 +1387,7 @@ fn B3a2() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&a2_cedar(B3_cedar()), &expected_cedar);
-    assert_parse_error_json(B3X2_json(a2_json()), &expected_json);
+    assert_parse_error_json(&B3X2_json(a2_json()), &expected_json);
 }
 #[test]
 fn B3b1() {
@@ -1400,7 +1400,7 @@ fn B3b1() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&b1_cedar(B3_cedar()), &expected_cedar);
-    assert_parse_error_json(B3X1_json(b1_json()), &expected_json);
+    assert_parse_error_json(&B3X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn B3b2() {
@@ -1413,7 +1413,7 @@ fn B3b2() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&b2_cedar(B3_cedar()), &expected_cedar);
-    assert_parse_error_json(B3X2_json(b2_json()), &expected_json);
+    assert_parse_error_json(&B3X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn B3c() {
@@ -1426,7 +1426,7 @@ fn B3c() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&c_cedar(B3_cedar()), &expected_cedar);
-    assert_parse_error_json(B3X1_json(c_json()), &expected_json);
+    assert_parse_error_json(&B3X1_json(c_json()), &expected_json);
 }
 #[test]
 fn B3d1() {
@@ -1471,7 +1471,7 @@ fn C1c() {
             .exactly_one_underline("MyType")
             .build();
     assert_parse_error_cedar(&c_cedar(C1_cedar()), &expected_cedar);
-    assert_parse_error_json(C1X1_json(c_json()), &expected_json);
+    assert_parse_error_json(&C1X1_json(c_json()), &expected_json);
 }
 #[test]
 fn C2a1() {
@@ -1494,7 +1494,7 @@ fn C2b1() {
         .exactly_one_underline("NS1::MyType")
         .build();
     assert_parse_error_cedar(&b1_cedar(C2_cedar()), &expected_cedar);
-    assert_parse_error_json(C2X1_json(b1_json()), &expected_json);
+    assert_parse_error_json(&C2X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn C2b2() {
@@ -1507,7 +1507,7 @@ fn C2b2() {
         .exactly_one_underline("NS1::MyType")
         .build();
     assert_parse_error_cedar(&b2_cedar(C2_cedar()), &expected_cedar);
-    assert_parse_error_json(C2X2_json(b2_json()), &expected_json);
+    assert_parse_error_json(&C2X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn C2c() {
@@ -1520,7 +1520,7 @@ fn C2c() {
         .exactly_one_underline("NS1::MyType")
         .build();
     assert_parse_error_cedar(&c_cedar(C2_cedar()), &expected_cedar);
-    assert_parse_error_json(C2X1_json(c_json()), &expected_json);
+    assert_parse_error_json(&C2X1_json(c_json()), &expected_json);
 }
 #[test]
 fn C3a1() {
@@ -1533,7 +1533,7 @@ fn C3a1() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&a1_cedar(C3_cedar()), &expected_cedar);
-    assert_parse_error_json(C3X1_json(a1_json()), &expected_json);
+    assert_parse_error_json(&C3X1_json(a1_json()), &expected_json);
 }
 #[test]
 fn C3a2() {
@@ -1546,7 +1546,7 @@ fn C3a2() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&a2_cedar(C3_cedar()), &expected_cedar);
-    assert_parse_error_json(C3X2_json(a2_json()), &expected_json);
+    assert_parse_error_json(&C3X2_json(a2_json()), &expected_json);
 }
 #[test]
 fn C3b1() {
@@ -1559,7 +1559,7 @@ fn C3b1() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&b1_cedar(C3_cedar()), &expected_cedar);
-    assert_parse_error_json(C3X1_json(b1_json()), &expected_json);
+    assert_parse_error_json(&C3X1_json(b1_json()), &expected_json);
 }
 #[test]
 fn C3b2() {
@@ -1572,7 +1572,7 @@ fn C3b2() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&b2_cedar(C3_cedar()), &expected_cedar);
-    assert_parse_error_json(C3X2_json(b2_json()), &expected_json);
+    assert_parse_error_json(&C3X2_json(b2_json()), &expected_json);
 }
 #[test]
 fn C3c() {
@@ -1585,7 +1585,7 @@ fn C3c() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&c_cedar(C3_cedar()), &expected_cedar);
-    assert_parse_error_json(C3X1_json(c_json()), &expected_json);
+    assert_parse_error_json(&C3X1_json(c_json()), &expected_json);
 }
 #[test]
 fn C3d1() {
@@ -1614,7 +1614,7 @@ fn D1a2() {
             .exactly_one_underline("MyType")
             .build();
     assert_parse_error_cedar(&a2_cedar(D1_cedar()), &expected);
-    assert_parse_error_json(D1_json(a2_json()), &expected);
+    assert_parse_error_json(&D1_json(a2_json()), &expected);
 }
 #[test]
 fn D1b1() {
@@ -1633,7 +1633,7 @@ fn D1b2() {
             .exactly_one_underline("MyType")
             .build();
     assert_parse_error_cedar(&b2_cedar(D1_cedar()), &expected);
-    assert_parse_error_json(D1_json(b2_json()), &expected);
+    assert_parse_error_json(&D1_json(b2_json()), &expected);
 }
 #[test]
 fn D1c() {
@@ -1643,7 +1643,7 @@ fn D1c() {
             .exactly_one_underline("MyType")
             .build();
     assert_parse_error_cedar(&c_cedar(D1_cedar()), &expected);
-    assert_parse_error_json(D1_json(c_json()), &expected);
+    assert_parse_error_json(&D1_json(c_json()), &expected);
 }
 #[test]
 fn D2a1() {
@@ -1661,7 +1661,7 @@ fn D2a2() {
         .exactly_one_underline("NS1::MyType")
         .build();
     assert_parse_error_cedar(&a2_cedar(D2_cedar()), &expected);
-    assert_parse_error_json(D2_json(a2_json()), &expected);
+    assert_parse_error_json(&D2_json(a2_json()), &expected);
 }
 #[test]
 fn D2b1() {
@@ -1670,7 +1670,7 @@ fn D2b1() {
         .exactly_one_underline("NS1::MyType")
         .build();
     assert_parse_error_cedar(&b1_cedar(D2_cedar()), &expected);
-    assert_parse_error_json(D2_json(b1_json()), &expected);
+    assert_parse_error_json(&D2_json(b1_json()), &expected);
 }
 #[test]
 fn D2b2() {
@@ -1679,7 +1679,7 @@ fn D2b2() {
         .exactly_one_underline("NS1::MyType")
         .build();
     assert_parse_error_cedar(&b2_cedar(D2_cedar()), &expected);
-    assert_parse_error_json(D2_json(b2_json()), &expected);
+    assert_parse_error_json(&D2_json(b2_json()), &expected);
 }
 #[test]
 fn D2c() {
@@ -1688,7 +1688,7 @@ fn D2c() {
         .exactly_one_underline("NS1::MyType")
         .build();
     assert_parse_error_cedar(&c_cedar(D2_cedar()), &expected);
-    assert_parse_error_json(D2_json(c_json()), &expected);
+    assert_parse_error_json(&D2_json(c_json()), &expected);
 }
 #[test]
 fn D3a1() {
@@ -1697,7 +1697,7 @@ fn D3a1() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&a1_cedar(D3_cedar()), &expected);
-    assert_parse_error_json(D3_json(a1_json()), &expected);
+    assert_parse_error_json(&D3_json(a1_json()), &expected);
 }
 #[test]
 fn D3a2() {
@@ -1706,7 +1706,7 @@ fn D3a2() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&a2_cedar(D3_cedar()), &expected);
-    assert_parse_error_json(D3_json(a2_json()), &expected);
+    assert_parse_error_json(&D3_json(a2_json()), &expected);
 }
 #[test]
 fn D3b1() {
@@ -1715,7 +1715,7 @@ fn D3b1() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&b1_cedar(D3_cedar()), &expected);
-    assert_parse_error_json(D3_json(b1_json()), &expected);
+    assert_parse_error_json(&D3_json(b1_json()), &expected);
 }
 #[test]
 fn D3b2() {
@@ -1724,7 +1724,7 @@ fn D3b2() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&b2_cedar(D3_cedar()), &expected);
-    assert_parse_error_json(D3_json(b2_json()), &expected);
+    assert_parse_error_json(&D3_json(b2_json()), &expected);
 }
 #[test]
 fn D3c() {
@@ -1733,7 +1733,7 @@ fn D3c() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&c_cedar(D3_cedar()), &expected);
-    assert_parse_error_json(D3_json(c_json()), &expected);
+    assert_parse_error_json(&D3_json(c_json()), &expected);
 }
 #[test]
 fn D3d1() {
@@ -1751,7 +1751,7 @@ fn D3d2() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&d2_cedar(D3_cedar()), &expected);
-    assert_parse_error_json(D3_json(d2_json()), &expected);
+    assert_parse_error_json(&D3_json(d2_json()), &expected);
 }
 #[test]
 fn E1a1() {
@@ -1770,7 +1770,7 @@ fn E1a2() {
             .exactly_one_underline("MyType")
             .build();
     assert_parse_error_cedar(&a2_cedar(E1_cedar()), &expected);
-    assert_parse_error_json(E1_json(a2_json()), &expected);
+    assert_parse_error_json(&E1_json(a2_json()), &expected);
 }
 #[test]
 fn E1b1() {
@@ -1789,7 +1789,7 @@ fn E1b2() {
             .exactly_one_underline("MyType")
             .build();
     assert_parse_error_cedar(&b2_cedar(E1_cedar()), &expected);
-    assert_parse_error_json(E1_json(b2_json()), &expected);
+    assert_parse_error_json(&E1_json(b2_json()), &expected);
 }
 #[test]
 fn E1c() {
@@ -1799,7 +1799,7 @@ fn E1c() {
             .exactly_one_underline("MyType")
             .build();
     assert_parse_error_cedar(&c_cedar(E1_cedar()), &expected);
-    assert_parse_error_json(E1_json(c_json()), &expected);
+    assert_parse_error_json(&E1_json(c_json()), &expected);
 }
 #[test]
 fn E2a1() {
@@ -1817,7 +1817,7 @@ fn E2a2() {
         .exactly_one_underline("NS1::MyType")
         .build();
     assert_parse_error_cedar(&a2_cedar(E2_cedar()), &expected);
-    assert_parse_error_json(E2_json(a2_json()), &expected);
+    assert_parse_error_json(&E2_json(a2_json()), &expected);
 }
 #[test]
 fn E2b1() {
@@ -1826,7 +1826,7 @@ fn E2b1() {
         .exactly_one_underline("NS1::MyType")
         .build();
     assert_parse_error_cedar(&b1_cedar(E2_cedar()), &expected);
-    assert_parse_error_json(E2_json(b1_json()), &expected);
+    assert_parse_error_json(&E2_json(b1_json()), &expected);
 }
 #[test]
 fn E2b2() {
@@ -1835,7 +1835,7 @@ fn E2b2() {
         .exactly_one_underline("NS1::MyType")
         .build();
     assert_parse_error_cedar(&b2_cedar(E2_cedar()), &expected);
-    assert_parse_error_json(E2_json(b2_json()), &expected);
+    assert_parse_error_json(&E2_json(b2_json()), &expected);
 }
 #[test]
 fn E2c() {
@@ -1844,7 +1844,7 @@ fn E2c() {
         .exactly_one_underline("NS1::MyType")
         .build();
     assert_parse_error_cedar(&c_cedar(E2_cedar()), &expected);
-    assert_parse_error_json(E2_json(c_json()), &expected);
+    assert_parse_error_json(&E2_json(c_json()), &expected);
 }
 #[test]
 fn E3a1() {
@@ -1853,7 +1853,7 @@ fn E3a1() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&a1_cedar(E3_cedar()), &expected);
-    assert_parse_error_json(E3_json(a1_json()), &expected);
+    assert_parse_error_json(&E3_json(a1_json()), &expected);
 }
 #[test]
 fn E3a2() {
@@ -1862,7 +1862,7 @@ fn E3a2() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&a2_cedar(E3_cedar()), &expected);
-    assert_parse_error_json(E3_json(a2_json()), &expected);
+    assert_parse_error_json(&E3_json(a2_json()), &expected);
 }
 #[test]
 fn E3b1() {
@@ -1871,7 +1871,7 @@ fn E3b1() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&b1_cedar(E3_cedar()), &expected);
-    assert_parse_error_json(E3_json(b1_json()), &expected);
+    assert_parse_error_json(&E3_json(b1_json()), &expected);
 }
 #[test]
 fn E3b2() {
@@ -1880,7 +1880,7 @@ fn E3b2() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&b2_cedar(E3_cedar()), &expected);
-    assert_parse_error_json(E3_json(b2_json()), &expected);
+    assert_parse_error_json(&E3_json(b2_json()), &expected);
 }
 #[test]
 fn E3c() {
@@ -1889,7 +1889,7 @@ fn E3c() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&c_cedar(E3_cedar()), &expected);
-    assert_parse_error_json(E3_json(c_json()), &expected);
+    assert_parse_error_json(&E3_json(c_json()), &expected);
 }
 #[test]
 fn E3d1() {
@@ -1907,7 +1907,7 @@ fn E3d2() {
         .exactly_one_underline("NS2::MyType")
         .build();
     assert_parse_error_cedar(&d2_cedar(E3_cedar()), &expected);
-    assert_parse_error_json(E3_json(d2_json()), &expected);
+    assert_parse_error_json(&E3_json(d2_json()), &expected);
 }
 #[test]
 fn F1a() {
@@ -1925,7 +1925,7 @@ fn F1c() {
         .help("any actions appearing as parents need to be declared as actions")
         .build();
     assert_parse_error_cedar(F1c_cedar(), &expected);
-    assert_parse_error_json(F1c_json(), &expected);
+    assert_parse_error_json(&F1c_json(), &expected);
 }
 #[test]
 fn F2a() {
@@ -1939,7 +1939,7 @@ fn F2b() {
             .help("any actions appearing as parents need to be declared as actions")
             .build();
     assert_parse_error_cedar(F2b_cedar(), &expected);
-    assert_parse_error_json(F2b_json(), &expected);
+    assert_parse_error_json(&F2b_json(), &expected);
 }
 #[test]
 fn F2c() {
@@ -1948,7 +1948,7 @@ fn F2c() {
             .help("any actions appearing as parents need to be declared as actions")
             .build();
     assert_parse_error_cedar(F2c_cedar(), &expected);
-    assert_parse_error_json(F2c_json(), &expected);
+    assert_parse_error_json(&F2c_json(), &expected);
 }
 #[test]
 fn F3a() {
@@ -1957,7 +1957,7 @@ fn F3a() {
             .help("any actions appearing as parents need to be declared as actions")
             .build();
     assert_parse_error_cedar(F3a_cedar(), &expected);
-    assert_parse_error_json(F3a_json(), &expected);
+    assert_parse_error_json(&F3a_json(), &expected);
 }
 #[test]
 fn F3b() {
@@ -1966,7 +1966,7 @@ fn F3b() {
             .help("any actions appearing as parents need to be declared as actions")
             .build();
     assert_parse_error_cedar(F3b_cedar(), &expected);
-    assert_parse_error_json(F3b_json(), &expected);
+    assert_parse_error_json(&F3b_json(), &expected);
 }
 #[test]
 fn F3c() {
@@ -1975,7 +1975,7 @@ fn F3c() {
             .help("any actions appearing as parents need to be declared as actions")
             .build();
     assert_parse_error_cedar(F3c_cedar(), &expected);
-    assert_parse_error_json(F3c_json(), &expected);
+    assert_parse_error_json(&F3c_json(), &expected);
 }
 #[test]
 fn F3d() {

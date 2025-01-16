@@ -465,7 +465,7 @@ impl<'e> Evaluator<'e> {
                                 ))
                             }
                             _ => {
-                                let expected_types = valid_comparison_op_types(&self.extensions);
+                                let expected_types = valid_comparison_op_types(self.extensions);
                                 Err(EvaluationError::type_error_with_advice(
                                     expected_types.clone(),
                                     &arg1,
@@ -1185,12 +1185,16 @@ pub(crate) mod test {
 
         let mut entity_with_attrs = Entity::with_uid(EntityUID::with_eid("entity_with_attrs"));
         entity_with_attrs
-            .set_attr("spoon".into(), RestrictedExpr::val(787), Extensions::none())
+            .set_attr(
+                "spoon".into(),
+                RestrictedExpr::val(787).as_borrowed(),
+                Extensions::none(),
+            )
             .unwrap();
         entity_with_attrs
             .set_attr(
                 "fork".into(),
-                RestrictedExpr::val("spoon"),
+                RestrictedExpr::val("spoon").as_borrowed(),
                 Extensions::none(),
             )
             .unwrap();
@@ -1201,7 +1205,8 @@ pub(crate) mod test {
                     RestrictedExpr::val("fun"),
                     RestrictedExpr::val("good"),
                     RestrictedExpr::val("useful"),
-                ]),
+                ])
+                .as_borrowed(),
                 Extensions::none(),
             )
             .unwrap();
@@ -1213,7 +1218,8 @@ pub(crate) mod test {
                     ("town".into(), RestrictedExpr::val("barmstadt")),
                     ("country".into(), RestrictedExpr::val("amazonia")),
                 ])
-                .unwrap(),
+                .unwrap()
+                .as_borrowed(),
                 Extensions::none(),
             )
             .unwrap();
@@ -1222,7 +1228,7 @@ pub(crate) mod test {
         entity_with_tags
             .set_tag(
                 "spoon".into(),
-                RestrictedExpr::val(-121),
+                RestrictedExpr::val(-121).as_borrowed(),
                 Extensions::none(),
             )
             .unwrap();
@@ -1232,7 +1238,7 @@ pub(crate) mod test {
         entity_with_tags_and_attrs
             .set_tag(
                 "spoon".into(),
-                RestrictedExpr::val(-121),
+                RestrictedExpr::val(-121).as_borrowed(),
                 Extensions::none(),
             )
             .unwrap();
@@ -4906,9 +4912,9 @@ pub(crate) mod test {
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_restricted_expression_error(e: Expr) {
+    fn assert_restricted_expression_error(e: &Expr) {
         assert_matches!(
-            BorrowedRestrictedExpr::new(&e),
+            BorrowedRestrictedExpr::new(e),
             Err(RestrictedExpressionError::InvalidRestrictedExpression { .. })
         );
     }
@@ -4937,19 +4943,23 @@ pub(crate) mod test {
             ),
             Ok(Value::from(EntityUID::with_eid("alice")).into())
         );
-        assert_restricted_expression_error(Expr::var(Var::Principal));
-        assert_restricted_expression_error(Expr::var(Var::Action));
-        assert_restricted_expression_error(Expr::var(Var::Resource));
-        assert_restricted_expression_error(Expr::var(Var::Context));
-        assert_restricted_expression_error(Expr::ite(Expr::val(true), Expr::val(7), Expr::val(12)));
-        assert_restricted_expression_error(Expr::and(Expr::val("bogus"), Expr::val(true)));
-        assert_restricted_expression_error(Expr::or(Expr::val("bogus"), Expr::val(true)));
-        assert_restricted_expression_error(Expr::not(Expr::val(true)));
-        assert_restricted_expression_error(Expr::is_in(
+        assert_restricted_expression_error(&Expr::var(Var::Principal));
+        assert_restricted_expression_error(&Expr::var(Var::Action));
+        assert_restricted_expression_error(&Expr::var(Var::Resource));
+        assert_restricted_expression_error(&Expr::var(Var::Context));
+        assert_restricted_expression_error(&Expr::ite(
+            Expr::val(true),
+            Expr::val(7),
+            Expr::val(12),
+        ));
+        assert_restricted_expression_error(&Expr::and(Expr::val("bogus"), Expr::val(true)));
+        assert_restricted_expression_error(&Expr::or(Expr::val("bogus"), Expr::val(true)));
+        assert_restricted_expression_error(&Expr::not(Expr::val(true)));
+        assert_restricted_expression_error(&Expr::is_in(
             Expr::val(EntityUID::with_eid("alice")),
             Expr::val(EntityUID::with_eid("some_group")),
         ));
-        assert_restricted_expression_error(Expr::is_eq(
+        assert_restricted_expression_error(&Expr::is_eq(
             Expr::val(EntityUID::with_eid("alice")),
             Expr::val(EntityUID::with_eid("some_group")),
         ));
@@ -4967,15 +4977,15 @@ pub(crate) mod test {
                 ..
             }))
         );
-        assert_restricted_expression_error(Expr::get_attr(
+        assert_restricted_expression_error(&Expr::get_attr(
             Expr::val(EntityUID::with_eid("alice")),
             "pancakes".into(),
         ));
-        assert_restricted_expression_error(Expr::has_attr(
+        assert_restricted_expression_error(&Expr::has_attr(
             Expr::val(EntityUID::with_eid("alice")),
             "pancakes".into(),
         ));
-        assert_restricted_expression_error(Expr::like(
+        assert_restricted_expression_error(&Expr::like(
             Expr::val("abcdefg12"),
             Pattern::from(vec![
                 PatternElem::Char('a'),
@@ -5012,16 +5022,16 @@ pub(crate) mod test {
         );
 
         // complex expressions -- for instance, violation not at top level
-        assert_restricted_expression_error(Expr::set([
+        assert_restricted_expression_error(&Expr::set([
             Expr::val("hi"),
             Expr::and(Expr::val("bogus"), Expr::val(false)),
         ]));
-        assert_restricted_expression_error(Expr::call_extension_fn(
+        assert_restricted_expression_error(&Expr::call_extension_fn(
             "ip".parse().expect("should be a valid Name"),
             vec![Expr::var(Var::Principal)],
         ));
 
-        assert_restricted_expression_error(Expr::is_entity_type(
+        assert_restricted_expression_error(&Expr::is_entity_type(
             Expr::val(EntityUID::with_eid("alice")),
             "User".parse().unwrap(),
         ));
@@ -5068,7 +5078,7 @@ pub(crate) mod test {
         }
     }
 
-    fn partial_context_test(context_expr: Expr, e: Expr) -> Either<Value, Expr> {
+    fn partial_context_test(context_expr: Expr, e: &Expr) -> Either<Value, Expr> {
         let euid: EntityUID = r#"Test::"test""#.parse().unwrap();
         let rexpr = RestrictedExpr::new(context_expr)
             .expect("Context Expression was not a restricted expression");
@@ -5084,7 +5094,7 @@ pub(crate) mod test {
         .unwrap();
         let es = Entities::new();
         let eval = Evaluator::new(q, &es, Extensions::none());
-        eval.partial_eval_expr(&e).unwrap()
+        eval.partial_eval_expr(e).unwrap()
     }
 
     #[test]
@@ -5103,7 +5113,7 @@ pub(crate) mod test {
             Expr::val(2),
         );
 
-        let r = partial_context_test(c_expr, expr);
+        let r = partial_context_test(c_expr, &expr);
 
         assert_eq!(r, Either::Right(expected));
     }
@@ -5122,7 +5132,7 @@ pub(crate) mod test {
             Expr::get_attr(Expr::var(Var::Context), "cell".into()),
             Expr::val(2),
         );
-        let r = partial_context_test(c_expr.clone(), expr);
+        let r = partial_context_test(c_expr.clone(), &expr);
         let expected = Expr::binary_app(
             BinaryOp::Eq,
             Expr::unknown(Unknown::new_untyped("cell")),
@@ -5136,7 +5146,7 @@ pub(crate) mod test {
             Expr::get_attr(Expr::var(Var::Context), "loc".into()),
             Expr::val(2),
         );
-        let r = partial_context_test(c_expr, expr);
+        let r = partial_context_test(c_expr, &expr);
         assert_eq!(r, Either::Left(false.into()));
     }
 
@@ -5158,7 +5168,7 @@ pub(crate) mod test {
             ),
             Expr::val(2),
         );
-        let r = partial_context_test(c_expr, expr);
+        let r = partial_context_test(c_expr, &expr);
         let expected = Expr::binary_app(
             BinaryOp::Eq,
             Expr::unknown(Unknown::new_untyped("row")),
@@ -5188,7 +5198,7 @@ pub(crate) mod test {
             ),
             Expr::val(2),
         );
-        let r = partial_context_test(c_expr.clone(), expr);
+        let r = partial_context_test(c_expr.clone(), &expr);
         let expected = Expr::binary_app(
             BinaryOp::Eq,
             Expr::unknown(Unknown::new_untyped("row")),
@@ -5204,7 +5214,7 @@ pub(crate) mod test {
             ),
             Expr::val(2),
         );
-        let r = partial_context_test(c_expr, expr);
+        let r = partial_context_test(c_expr, &expr);
         let expected = Expr::binary_app(
             BinaryOp::Eq,
             Expr::unknown(Unknown::new_untyped("col")),

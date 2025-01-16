@@ -741,7 +741,7 @@ pub struct EvaluateArgs {
     pub expression: String,
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Copy, Clone)]
 pub enum CedarExitCode {
     // The command completed successfully with a result other than a
     // authorization deny or validation failure.
@@ -1421,9 +1421,9 @@ fn rename_from_id_annotation(ps: &PolicySet) -> Result<PolicySet> {
 }
 
 // Read from a file (when `filename` is a `Some`) or stdin (when `filename` is `None`) to a `String`
-fn read_from_file_or_stdin(filename: Option<impl AsRef<Path>>, context: &str) -> Result<String> {
+fn read_from_file_or_stdin(filename: Option<&impl AsRef<Path>>, context: &str) -> Result<String> {
     let mut src_str = String::new();
-    match filename.as_ref() {
+    match filename {
         Some(path) => {
             src_str = std::fs::read_to_string(path)
                 .into_diagnostic()
@@ -1442,7 +1442,7 @@ fn read_from_file_or_stdin(filename: Option<impl AsRef<Path>>, context: &str) ->
 
 // Convenient wrapper around `read_from_file_or_stdin` to just read from a file
 fn read_from_file(filename: impl AsRef<Path>, context: &str) -> Result<String> {
-    read_from_file_or_stdin(Some(filename), context)
+    read_from_file_or_stdin(Some(&filename), context)
 }
 
 /// Read a policy set, in Cedar syntax, from the file given in `filename`,
@@ -1451,7 +1451,7 @@ fn read_cedar_policy_set(
     filename: Option<impl AsRef<Path> + std::marker::Copy>,
 ) -> Result<PolicySet> {
     let context = "policy set";
-    let ps_str = read_from_file_or_stdin(filename, context)?;
+    let ps_str = read_from_file_or_stdin(filename.as_ref(), context)?;
     let ps = PolicySet::from_str(&ps_str)
         .map_err(|err| {
             let name = filename.map_or_else(
@@ -1470,7 +1470,7 @@ fn read_json_policy_set(
     filename: Option<impl AsRef<Path> + std::marker::Copy>,
 ) -> Result<PolicySet> {
     let context = "JSON policy";
-    let json_source = read_from_file_or_stdin(filename, context)?;
+    let json_source = read_from_file_or_stdin(filename.as_ref(), context)?;
     let json = serde_json::from_str::<serde_json::Value>(&json_source).into_diagnostic()?;
     let policy_type = get_json_policy_type(&json)?;
 

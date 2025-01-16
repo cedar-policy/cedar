@@ -4432,18 +4432,18 @@ mod issue_604 {
     #[track_caller]
     fn make_policy_with_get_attr(attr: &str) -> String {
         format!(
-            r#"
+            r"
         permit(principal, action, resource) when {{ principal == resource.{attr} }};
-        "#
+        "
         )
     }
 
     #[track_caller]
     fn make_policy_with_has_attr(attr: &str) -> String {
         format!(
-            r#"
+            r"
         permit(principal, action, resource) when {{ resource has {attr} }};
-        "#
+        "
         )
     }
 
@@ -4593,7 +4593,7 @@ mod issue_596 {
 
     fn test_single_int_with_dashes(x: i64, num_dashes: usize) {
         let dashes = vec!['-'; num_dashes].into_iter().collect::<String>();
-        let src = format!(r#"permit(principal, action, resource) when {{ {dashes}{x} }};"#);
+        let src = format!(r"permit(principal, action, resource) when {{ {dashes}{x} }};");
         let p: Policy = src.parse().unwrap();
         let json = p.to_json().unwrap();
         let round_trip = Policy::from_json(None, json).unwrap();
@@ -6571,11 +6571,10 @@ mod schema_annotations {
     fn namespace_annotations() {
         let schema = example_schema();
         let namespace: EntityNamespace = "N".parse().expect("should be a valid name");
-        let annotations = BTreeMap::from_iter(
-            schema
-                .namespace_annotations(namespace.clone())
-                .expect("should get annotations"),
-        );
+        let annotations = schema
+            .namespace_annotations(namespace.clone())
+            .expect("should get annotations")
+            .collect::<BTreeMap<_, _>>();
         assert_eq!(annotations, BTreeMap::from_iter([("m", "m"), ("n", "")]));
         assert_matches!(
             schema
@@ -6592,7 +6591,7 @@ mod schema_annotations {
             schema.namespace_annotation(namespace.clone(), "n"),
             Some("")
         );
-        assert_matches!(schema.namespace_annotation(namespace.clone(), "x"), None);
+        assert_matches!(schema.namespace_annotation(namespace, "x"), None);
         assert_matches!(
             schema.namespace_annotation("NM".parse().unwrap(), "n"),
             None
@@ -6605,41 +6604,31 @@ mod schema_annotations {
         let annotations = BTreeMap::from_iter([("a", "a"), ("b", "")]);
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .entity_type_annotations(None, "A1")
-                    .expect("should get annotations")
-            )
+            schema
+                .entity_type_annotations(None, "A1")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .entity_type_annotations(None, "A2")
-                    .expect("should get annotations")
-            )
+            schema
+                .entity_type_annotations(None, "A2")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .entity_type_annotations(
-                        Some("N".parse().expect("should be a valid name")),
-                        "A1"
-                    )
-                    .expect("should get annotations")
-            )
+            schema
+                .entity_type_annotations(Some("N".parse().expect("should be a valid name")), "A1")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .entity_type_annotations(
-                        Some("N".parse().expect("should be a valid name")),
-                        "A2"
-                    )
-                    .expect("should get annotations")
-            )
+            schema
+                .entity_type_annotations(Some("N".parse().expect("should be a valid name")), "A2")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
 
         assert_matches!(schema.entity_type_annotation(None, "A1", "b",), Some(""));
@@ -6694,22 +6683,17 @@ mod schema_annotations {
         let annotations = BTreeMap::from_iter([("c", "c"), ("d", "")]);
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .common_type_annotations(None, "T")
-                    .expect("should get annotations")
-            )
+            schema
+                .common_type_annotations(None, "T")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .common_type_annotations(
-                        Some("N".parse().expect("should be a valid name")),
-                        "T"
-                    )
-                    .expect("should get annotations")
-            )
+            schema
+                .common_type_annotations(Some("N".parse().expect("should be a valid name")), "T")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
         assert_matches!(schema.common_type_annotation(None, "T", "c",), Some("c"));
         assert_matches!(schema.common_type_annotation(None, "T", "d",), Some(""));
@@ -6764,64 +6748,60 @@ mod schema_annotations {
         let annotations = BTreeMap::from_iter([("e", "e"), ("f", "")]);
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .action_annotations(None, "a1".parse().unwrap(),)
-                    .expect("should get annotations")
-            )
+            schema
+                .action_annotations(None, &"a1".parse().unwrap(),)
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .action_annotations(None, "a2".parse().unwrap(),)
-                    .expect("should get annotations")
-            )
+            schema
+                .action_annotations(None, &"a2".parse().unwrap(),)
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .action_annotations(
-                        Some("N".parse().expect("should be a valid name")),
-                        "a1".parse().unwrap(),
-                    )
-                    .expect("should get annotations")
-            )
+            schema
+                .action_annotations(
+                    Some("N".parse().expect("should be a valid name")),
+                    &"a1".parse().unwrap(),
+                )
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .action_annotations(
-                        Some("N".parse().expect("should be a valid name")),
-                        "a2".parse().unwrap(),
-                    )
-                    .expect("should get annotations")
-            )
+            schema
+                .action_annotations(
+                    Some("N".parse().expect("should be a valid name")),
+                    &"a2".parse().unwrap(),
+                )
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
 
         assert_matches!(
-            schema.action_annotation(None, "a1".parse().unwrap(), "e",),
+            schema.action_annotation(None, &"a1".parse().unwrap(), "e",),
             Some("e")
         );
         assert_matches!(
-            schema.action_annotation(None, "a2".parse().unwrap(), "f",),
+            schema.action_annotation(None, &"a2".parse().unwrap(), "f",),
             Some("")
         );
         assert_matches!(
-            schema.action_annotation(None, "a3".parse().unwrap(), "e",),
+            schema.action_annotation(None, &"a3".parse().unwrap(), "e",),
             None
         );
         assert_matches!(
-            schema.action_annotation(None, "a2".parse().unwrap(), "x",),
+            schema.action_annotation(None, &"a2".parse().unwrap(), "x",),
             None
         );
 
         assert_matches!(
             schema.action_annotation(
                 Some("N".parse().expect("should be a valid name")),
-                "a1".parse().unwrap(),
+                &"a1".parse().unwrap(),
                 "e",
             ),
             Some("e")
@@ -6829,7 +6809,7 @@ mod schema_annotations {
         assert_matches!(
             schema.action_annotation(
                 Some("N".parse().expect("should be a valid name")),
-                "a2".parse().unwrap(),
+                &"a2".parse().unwrap(),
                 "f",
             ),
             Some("")
@@ -6837,7 +6817,7 @@ mod schema_annotations {
         assert_matches!(
             schema.action_annotation(
                 Some("N".parse().expect("should be a valid name")),
-                "a3".parse().unwrap(),
+                &"a3".parse().unwrap(),
                 "e",
             ),
             None
@@ -6845,7 +6825,7 @@ mod schema_annotations {
         assert_matches!(
             schema.action_annotation(
                 Some("N".parse().expect("should be a valid name")),
-                "a2".parse().unwrap(),
+                &"a2".parse().unwrap(),
                 "x",
             ),
             None
@@ -6853,7 +6833,7 @@ mod schema_annotations {
         assert_matches!(
             schema.action_annotation(
                 Some("NM".parse().expect("should be a valid name")),
-                "a1".parse().unwrap(),
+                &"a1".parse().unwrap(),
                 "e",
             ),
             None

@@ -76,24 +76,24 @@ fn namespaced_entity_type_schema() -> json_schema::Fragment<RawName> {
 fn namespaced_entity_eq() {
     assert_typechecks(
         namespaced_entity_type_schema(),
-        Expr::from_str(r#"N::S::Foo::"alice" == N::S::Foo::"alice""#).expect("Expr should parse."),
-        Type::True,
+        &Expr::from_str(r#"N::S::Foo::"alice" == N::S::Foo::"alice""#).expect("Expr should parse."),
+        &Type::True,
     );
     assert_typechecks(
         namespaced_entity_type_schema(),
-        Expr::from_str(r#"N::S::Foo::"alice" == N::S::Foo::"bob""#).expect("Expr should parse."),
-        Type::False,
+        &Expr::from_str(r#"N::S::Foo::"alice" == N::S::Foo::"bob""#).expect("Expr should parse."),
+        &Type::False,
     );
     assert_typechecks(
         namespaced_entity_type_schema(),
-        Expr::from_str(r#"N::S::Foo::"alice" == N::S::Bar::"bob""#).expect("Expr should parse."),
-        Type::False,
+        &Expr::from_str(r#"N::S::Foo::"alice" == N::S::Bar::"bob""#).expect("Expr should parse."),
+        &Type::False,
     );
     assert_typechecks(
         namespaced_entity_type_schema(),
-        Expr::from_str(r#"N::S::Action::"baz" == N::S::Action::"baz""#)
+        &Expr::from_str(r#"N::S::Action::"baz" == N::S::Action::"baz""#)
             .expect("Expr should parse."),
-        Type::True,
+        &Type::True,
     );
 }
 
@@ -101,13 +101,13 @@ fn namespaced_entity_eq() {
 fn namespaced_entity_in() {
     assert_typechecks(
         namespaced_entity_type_schema(),
-        Expr::from_str(r#"N::S::Foo::"alice" in N::S::Foo::"bob""#).expect("Expr should parse."),
-        Type::primitive_boolean(),
+        &Expr::from_str(r#"N::S::Foo::"alice" in N::S::Foo::"bob""#).expect("Expr should parse."),
+        &Type::primitive_boolean(),
     );
     assert_typechecks(
         namespaced_entity_type_schema(),
-        Expr::from_str(r#"N::S::Foo::"alice" in N::S::Bar::"bob""#).expect("Expr should parse."),
-        Type::False,
+        &Expr::from_str(r#"N::S::Foo::"alice" in N::S::Bar::"bob""#).expect("Expr should parse."),
+        &Type::False,
     );
 }
 
@@ -115,13 +115,13 @@ fn namespaced_entity_in() {
 fn namespaced_entity_has() {
     assert_typechecks(
         namespaced_entity_type_schema(),
-        Expr::from_str(r#"N::S::Foo::"alice" has foo"#).expect("Expr should parse."),
-        Type::False,
+        &Expr::from_str(r#"N::S::Foo::"alice" has foo"#).expect("Expr should parse."),
+        &Type::False,
     );
     assert_typechecks(
         namespaced_entity_type_schema(),
-        Expr::from_str(r#"N::S::Foo::"alice" has name"#).expect("Expr should parse."),
-        Type::primitive_boolean(),
+        &Expr::from_str(r#"N::S::Foo::"alice" has name"#).expect("Expr should parse."),
+        &Type::primitive_boolean(),
     );
 }
 
@@ -129,8 +129,8 @@ fn namespaced_entity_has() {
 fn namespaced_entity_get_attr() {
     assert_typechecks(
         namespaced_entity_type_schema(),
-        Expr::from_str(r#"N::S::Foo::"alice".name"#).expect("Expr should parse."),
-        Type::primitive_string(),
+        &Expr::from_str(r#"N::S::Foo::"alice".name"#).expect("Expr should parse."),
+        &Type::primitive_string(),
     );
 }
 
@@ -139,8 +139,8 @@ fn namespaced_entity_can_type_error() {
     let src = r#"N::S::Foo::"alice" > 1"#;
     let errors = assert_typecheck_fails(
         namespaced_entity_type_schema(),
-        Expr::from_str(src).expect("Expr should parse."),
-        Some(Type::primitive_boolean()),
+        &Expr::from_str(src).expect("Expr should parse."),
+        Some(&Type::primitive_boolean()),
     );
     let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
@@ -159,37 +159,37 @@ fn namespaced_entity_can_type_error() {
 fn namespaced_entity_wrong_namespace() {
     let errors = assert_typecheck_fails(
         namespaced_entity_type_schema(),
-        Expr::from_str(r#"N::S::T::Foo::"alice""#).expect("Expr should parse."),
+        &Expr::from_str(r#"N::S::T::Foo::"alice""#).expect("Expr should parse."),
         None,
     );
     assert_sets_equal(errors, []);
     let errors = assert_typecheck_fails(
         namespaced_entity_type_schema(),
-        Expr::from_str(r#"N::Foo::"alice""#).expect("Expr should parse."),
+        &Expr::from_str(r#"N::Foo::"alice""#).expect("Expr should parse."),
         None,
     );
     assert_sets_equal(errors, []);
     let errors = assert_typecheck_fails(
         namespaced_entity_type_schema(),
-        Expr::from_str(r#"Foo::"alice""#).expect("Expr should parse."),
+        &Expr::from_str(r#"Foo::"alice""#).expect("Expr should parse."),
         None,
     );
     assert_sets_equal(errors, []);
     let errors = assert_typecheck_fails(
         namespaced_entity_type_schema(),
-        Expr::from_str(r#"N::Action::"baz""#).expect("Expr should parse."),
+        &Expr::from_str(r#"N::Action::"baz""#).expect("Expr should parse."),
         None,
     );
     assert_sets_equal(errors, []);
     let errors = assert_typecheck_fails(
         namespaced_entity_type_schema(),
-        Expr::from_str(r#"Action::N::S::"baz""#).expect("Expr should parse."),
+        &Expr::from_str(r#"Action::N::S::"baz""#).expect("Expr should parse."),
         None,
     );
     assert_sets_equal(errors, []);
     let errors = assert_typecheck_fails(
         namespaced_entity_type_schema(),
-        Expr::from_str(r#"Action::"baz""#).expect("Expr should parse."),
+        &Expr::from_str(r#"Action::"baz""#).expect("Expr should parse."),
         None,
     );
     assert_sets_equal(errors, []);
@@ -221,25 +221,25 @@ fn namespaced_entity_type_in_attribute() {
     // comparison.
     assert_typechecks(
         schema.clone(),
-        Expr::from_str(r#"N::S::Foo::"foo".bar == N::S::Bar::"bar""#).expect("Expr should parse."),
-        Type::primitive_boolean(),
+        &Expr::from_str(r#"N::S::Foo::"foo".bar == N::S::Bar::"bar""#).expect("Expr should parse."),
+        &Type::primitive_boolean(),
     );
     assert_typechecks(
         schema.clone(),
-        Expr::from_str(r#"N::S::Foo::"foo".bar == N::S::Foo::"foo""#).expect("Expr should parse."),
-        Type::singleton_boolean(false),
+        &Expr::from_str(r#"N::S::Foo::"foo".bar == N::S::Foo::"foo""#).expect("Expr should parse."),
+        &Type::singleton_boolean(false),
     );
     // Implicit namespace is applied to the attribute type and correctly used in
     // comparison.
     assert_typechecks(
         schema.clone(),
-        Expr::from_str(r#"N::S::Foo::"foo".baz == N::S::Bar::"bar""#).expect("Expr should parse."),
-        Type::primitive_boolean(),
+        &Expr::from_str(r#"N::S::Foo::"foo".baz == N::S::Bar::"bar""#).expect("Expr should parse."),
+        &Type::primitive_boolean(),
     );
     assert_typechecks(
         schema,
-        Expr::from_str(r#"N::S::Foo::"foo".baz == N::S::Foo::"foo""#).expect("Expr should parse."),
-        Type::singleton_boolean(false),
+        &Expr::from_str(r#"N::S::Foo::"foo".baz == N::S::Foo::"foo""#).expect("Expr should parse."),
+        &Type::singleton_boolean(false),
     );
 }
 
@@ -325,18 +325,18 @@ fn multiple_namespaces_literals() {
 
     assert_typechecks(
         schema.clone(),
-        Expr::from_str("A::Foo::\"foo\"").unwrap(),
-        Type::named_entity_reference_from_str("A::Foo"),
+        &Expr::from_str("A::Foo::\"foo\"").unwrap(),
+        &Type::named_entity_reference_from_str("A::Foo"),
     );
     assert_typechecks(
         schema.clone(),
-        Expr::from_str("B::Foo::\"foo\"").unwrap(),
-        Type::named_entity_reference_from_str("B::Foo"),
+        &Expr::from_str("B::Foo::\"foo\"").unwrap(),
+        &Type::named_entity_reference_from_str("B::Foo"),
     );
     assert_typechecks(
         schema,
-        Expr::from_str("C::Foo::\"foo\"").unwrap(),
-        Type::named_entity_reference_from_str("C::Foo"),
+        &Expr::from_str("C::Foo::\"foo\"").unwrap(),
+        &Type::named_entity_reference_from_str("C::Foo"),
     );
 }
 
@@ -368,11 +368,11 @@ fn multiple_namespaces_attributes() {
 
     assert_typechecks(
         schema.clone(),
-        Expr::from_str("A::Foo::\"foo\".x").unwrap(),
-        Type::named_entity_reference_from_str("B::Foo"),
+        &Expr::from_str("A::Foo::\"foo\".x").unwrap(),
+        &Type::named_entity_reference_from_str("B::Foo"),
     );
     let src = "B::Foo::\"foo\".x";
-    let errors = assert_typecheck_fails(schema, Expr::from_str(src).unwrap(), None);
+    let errors = assert_typecheck_fails(schema, &Expr::from_str(src).unwrap(), None);
     let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         type_error,
