@@ -741,7 +741,7 @@ pub struct EvaluateArgs {
     pub expression: String,
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Copy, Clone)]
 pub enum CedarExitCode {
     // The command completed successfully with a result other than a
     // authorization deny or validation failure.
