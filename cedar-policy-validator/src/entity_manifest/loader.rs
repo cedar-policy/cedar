@@ -18,7 +18,7 @@
 //! Loads entities based on the entity manifest.
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{btree_map, hash_map, BTreeMap, HashMap, HashSet},
     sync::Arc,
 };
 
@@ -258,7 +258,20 @@ pub(crate) fn load_entities(
                     entity_request.access_trie,
                     &mut Default::default(),
                 )?);
-                entities.insert(entity_request.entity_id, loaded);
+                match entities.entry(entity_request.entity_id) {
+                    hash_map::Entry::Occupied(o) => {
+                        // If the entity is already present in the slice, then
+                        // we need to be careful not to clobber its existing
+                        // attributes.  This can happen when an entity is
+                        // referenced by both an entity literal and a variable.
+                        let (k, v) = o.remove_entry();
+                        let merged = merge_entities(v, loaded);
+                        entities.insert(k, merged);
+                    }
+                    hash_map::Entry::Vacant(v) => {
+                        v.insert(loaded);
+                    }
+                }
             }
         }
 
@@ -296,6 +309,95 @@ pub(crate) fn load_entities(
     ) {
         Ok(entities) => Ok(entities),
         Err(e) => Err(e.into()),
+    }
+}
+
+/// Merge the contents of two entities in the slice. If one entity is referenced
+/// by multiple entity roots in the slice, then we need to be sure that we don't
+/// clobber the attribute for the first when inserting the second into the
+/// slice.
+fn merge_entities(entity_1: Entity, entity_2: Entity) -> Entity {
+    let (uid1, mut attrs1, ancestors1, tags1) = entity_1.into_inner();
+    let (uid2, attrs2, ancestors2, tags2) = entity_2.into_inner();
+
+    assert_eq!(
+        uid1, uid2,
+        "attempting to merge entities with different uids!"
+    );
+    assert_eq!(
+        ancestors1, ancestors2,
+        "attempting to merge entities with different ancestors!"
+    );
+    assert!(
+        tags1.is_empty() && tags2.is_empty(),
+        "attempting to merge entities with tags!"
+    );
+
+    for (k, v2) in attrs2 {
+        match attrs1.entry(k) {
+            hash_map::Entry::Occupied(occupied) => {
+                let (k, v1) = occupied.remove_entry();
+                match (v1, v2) {
+                    (PartialValue::Value(v1), PartialValue::Value(v2)) => {
+                        let merged_v = merge_values(v1, v2);
+                        attrs1.insert(k, PartialValue::Value(merged_v));
+                    }
+                    (PartialValue::Residual(e1), PartialValue::Residual(e2)) => {
+                        assert_eq!(e1, e2, "attempting to merge different residuals!");
+                        attrs1.insert(k, PartialValue::Residual(e1));
+                    }
+                    (PartialValue::Value(_), PartialValue::Residual(_))
+                    | (PartialValue::Residual(_), PartialValue::Value(_)) => {
+                        panic!("attempting to merge a value with a residual")
+                    }
+                };
+            }
+            hash_map::Entry::Vacant(vacant) => {
+                vacant.insert(v2);
+            }
+        }
+    }
+
+    Entity::new_with_attr_partial_value(uid1, attrs1, ancestors1)
+}
+
+/// Merge two value for corresponding attributes in the slice.
+fn merge_values(v1: Value, v2: Value) -> Value {
+    match (v1.value, v2.value) {
+        (ValueKind::Record(r1), ValueKind::Record(r2)) => {
+            let mut r1 = Arc::unwrap_or_clone(r1);
+            for (k, v2) in Arc::unwrap_or_clone(r2) {
+                match r1.entry(k) {
+                    btree_map::Entry::Occupied(occupied) => {
+                        let (k, v1) = occupied.remove_entry();
+                        let merged_v = merge_values(v1, v2);
+                        r1.insert(k, merged_v);
+                    }
+                    btree_map::Entry::Vacant(vacant) => {
+                        vacant.insert(v2);
+                    }
+                }
+            }
+            Value::new(ValueKind::Record(Arc::new(r1)), v1.loc)
+        }
+        (ValueKind::Lit(l1), ValueKind::Lit(l2)) => {
+            assert_eq!(l1, l2, "attempting to merge different literals!");
+            Value::new(l1, v1.loc)
+        }
+        (vk1 @ ValueKind::ExtensionValue(_), vk2 @ ValueKind::ExtensionValue(_))
+        | (vk1 @ ValueKind::Set(_), vk2 @ ValueKind::Set(_)) => {
+            // It might seem that we should recur into the sets and extensions
+            // values, but `AccessTrie::slice_val` doesn't, so the merge
+            // function can stop here too.
+            assert_eq!(
+                vk1, vk2,
+                "attempting to merge different sets or extensions!"
+            );
+            Value::new(vk1, v1.loc)
+        }
+        _ => {
+            panic!("attempting to merge values of different kinds!")
+        }
     }
 }
 

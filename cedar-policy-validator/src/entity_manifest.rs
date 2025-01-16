@@ -671,7 +671,15 @@ fn entity_manifest_from_expr(
 
 #[cfg(test)]
 mod entity_slice_tests {
-    use cedar_policy_core::{ast::PolicyID, extensions::Extensions, parser::parse_policy};
+    use cedar_policy_core::{
+        ast::{Context, Entity, PolicyID, Request, RequestSchemaAllPass, RestrictedExpr},
+        entities::{Entities, NoEntitiesSchema, TCComputation},
+        extensions::Extensions,
+        parser::parse_policy,
+    };
+    use similar_asserts::assert_eq;
+    use smol_str::ToSmolStr;
+    use std::collections::HashSet;
 
     use super::*;
 
@@ -1627,5 +1635,125 @@ when {
         );
         let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
+    }
+
+    #[test]
+    fn test_slice_with_entity_alias() {
+        let schema = schema();
+        let entities = Entities::from_entities(
+            [Entity::new(
+                r#"User::"alice""#.parse().unwrap(),
+                [("name".to_smolstr(), RestrictedExpr::val("alice"))],
+                HashSet::new(),
+                [],
+                Extensions::all_available(),
+            )
+            .unwrap()],
+            None::<NoEntitiesSchema>.as_ref(),
+            TCComputation::AssumeAlreadyComputed,
+            Extensions::all_available(),
+        )
+        .unwrap();
+
+        let request = Request::new(
+            (r#"User::"alice""#.parse().unwrap(), None),
+            (r#"Action::"Read""#.parse().unwrap(), None),
+            (r#"Document::"doc""#.parse().unwrap(), None),
+            Context::empty(),
+            None::<RequestSchemaAllPass>.as_ref(),
+            Extensions::all_available(),
+        )
+        .unwrap();
+
+        // Only lit is accessed
+        let mut pset = PolicySet::new();
+        pset.add(parse_policy( None, r#"permit(principal in User::"alice", action, resource) when { User::"alice".name == "alice" };"#).unwrap().into()).unwrap();
+        let slice = compute_entity_manifest(&schema, &pset)
+            .unwrap()
+            .slice_entities(&entities, &request)
+            .unwrap();
+        assert_eq!(slice, entities);
+
+        // Only var is accessed
+        let mut pset = PolicySet::new();
+        pset.add(parse_policy( None, r#"permit(principal in User::"alice", action, resource) when { principal.name == "alice" };"#).unwrap().into()).unwrap();
+        let slice = compute_entity_manifest(&schema, &pset)
+            .unwrap()
+            .slice_entities(&entities, &request)
+            .unwrap();
+        assert_eq!(slice, entities);
+
+        // Both are accessed
+        let mut pset = PolicySet::new();
+        pset.add(parse_policy( None, r#"permit(principal in User::"alice", action, resource) when { User::"alice".name == principal.name};"#).unwrap().into()).unwrap();
+        let slice = compute_entity_manifest(&schema, &pset)
+            .unwrap()
+            .slice_entities(&entities, &request)
+            .unwrap();
+        assert_eq!(slice, entities);
+    }
+
+    #[test]
+    fn test_slice_with_entity_alias_with_nested_record() {
+        let schema = ValidatorSchema::from_cedarschema_str(
+            "
+entity User = {
+  foo: {
+    bar: String,
+    baz: String,
+  },
+};
+
+entity Document;
+
+action Read appliesTo {
+  principal: [User],
+  resource: [Document]
+};",
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0;
+
+        let entities = Entities::from_entities(
+            [Entity::new(
+                r#"User::"alice""#.parse().unwrap(),
+                [(
+                    "foo".to_smolstr(),
+                    RestrictedExpr::record([
+                        ("bar".to_smolstr(), RestrictedExpr::val("1")),
+                        ("baz".to_smolstr(), RestrictedExpr::val("2")),
+                    ])
+                    .unwrap(),
+                )],
+                HashSet::new(),
+                [],
+                Extensions::all_available(),
+            )
+            .unwrap()],
+            None::<NoEntitiesSchema>.as_ref(),
+            TCComputation::AssumeAlreadyComputed,
+            Extensions::all_available(),
+        )
+        .unwrap();
+
+        let request = Request::new(
+            (r#"User::"alice""#.parse().unwrap(), None),
+            (r#"Action::"Read""#.parse().unwrap(), None),
+            (r#"Document::"doc""#.parse().unwrap(), None),
+            Context::empty(),
+            None::<RequestSchemaAllPass>.as_ref(),
+            Extensions::all_available(),
+        )
+        .unwrap();
+
+        // principal and resource access different attrs
+        let mut pset = PolicySet::new();
+        pset.add(parse_policy( None, r#"permit(principal in User::"alice", action, resource) when { User::"alice".foo.bar == principal.foo.baz};"#).unwrap().into()).unwrap();
+        let slice = compute_entity_manifest(&schema, &pset)
+            .unwrap()
+            .slice_entities(&entities, &request)
+            .unwrap();
+        assert_eq!(slice, entities);
     }
 }
