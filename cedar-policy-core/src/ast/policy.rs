@@ -736,7 +736,7 @@ mod hashing_tests {
 
     use super::*;
 
-    fn compute_hash(ir: LiteralPolicy) -> u64 {
+    fn compute_hash(ir: &LiteralPolicy) -> u64 {
         let mut s = DefaultHasher::new();
         ir.hash(&mut s);
         s.finish()
@@ -757,7 +757,7 @@ mod hashing_tests {
         let a = build_template_linked_policy();
         let b = build_template_linked_policy();
         assert_eq!(a, b);
-        assert_eq!(compute_hash(a), compute_hash(b));
+        assert_eq!(compute_hash(&a), compute_hash(&b));
     }
 }
 // by default, Coverlay does not track coverage for lines after a line

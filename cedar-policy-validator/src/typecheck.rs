@@ -193,13 +193,12 @@ impl<'a> Typechecker<'a> {
         // for the corresponding action.
         self.unlinked_envs
             .iter()
-            .map(|unlinked_e| {
+            .flat_map(|unlinked_e| {
                 self.link_request_env(unlinked_e, t).map(|linked_e| {
                     let check = typecheck_fn(&linked_e, t.id(), &cond);
                     (linked_e, check)
                 })
             })
-            .flatten()
             .collect()
     }
 
@@ -2220,10 +2219,10 @@ impl<'a> SingleEnvTypechecker<'a> {
     // based on the precise EUIDs when they're not actions, so we only look at
     // entity types. The type will be `False` is none of the entities on the rhs
     // have a type which may be an ancestor of the rhs entity type.
-    fn type_of_non_action_in_entities<'b, 'c>(
+    fn type_of_non_action_in_entities<'b>(
         &self,
         lhs: &EntityUID,
-        rhs: &'c [EntityUID],
+        rhs: &[EntityUID],
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
@@ -2249,7 +2248,7 @@ impl<'a> SingleEnvTypechecker<'a> {
 
     /// Check if the entity is in the list of descendants. Return the singleton
     /// type false if it is not, and boolean otherwise.
-    fn entity_in_descendants<'b, 'c, K: 'c>(
+    fn entity_in_descendants<'b, 'c, K>(
         lhs_entity: &K,
         rhs_descendants: impl IntoIterator<Item = &'c K>,
         in_expr: &Expr,
@@ -2257,7 +2256,7 @@ impl<'a> SingleEnvTypechecker<'a> {
         rhs_expr: Expr<Option<Type>>,
     ) -> TypecheckAnswer<'b>
     where
-        K: PartialEq + 'a,
+        K: PartialEq + 'c,
     {
         let is_var_in_descendants = rhs_descendants.into_iter().any(|e| e == lhs_entity);
         TypecheckAnswer::success(

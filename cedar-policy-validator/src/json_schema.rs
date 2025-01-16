@@ -120,9 +120,9 @@ where
             .map(|(key, value)| {
                 let key = if key.is_empty() {
                     if !value.annotations.is_empty() {
-                        Err(serde::de::Error::custom(format!(
-                            "annotations are not allowed on the empty namespace"
-                        )))?
+                        Err(serde::de::Error::custom(
+                            "annotations are not allowed on the empty namespace".to_string(),
+                        ))?
                     }
                     None
                 } else {
@@ -1294,7 +1294,13 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Visitor<'de> for TypeVisitor<N> {
             }
         }
 
-        Self::build_schema_type::<M>(type_name, element, attributes, additional_attributes, name)
+        Self::build_schema_type::<M>(
+            type_name.as_ref(),
+            element,
+            attributes,
+            additional_attributes,
+            name,
+        )
     }
 }
 
@@ -1304,7 +1310,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
     /// which is not used for a particular type to be `Some` when building that
     /// type.
     fn build_schema_type<M>(
-        type_name: Option<SmolStr>,
+        type_name: Option<&SmolStr>,
         element: Option<Type<N>>,
         attributes: Option<AttributesTypeMap>,
         additional_attributes: Option<bool>,
@@ -1327,7 +1333,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
         .map(|(field, _)| field)
         .collect::<HashSet<_>>();
 
-        match type_name.as_ref() {
+        match type_name {
             Some(s) => {
                 // We've concluded that type exists
                 remaining_fields.remove(&TypeField);
@@ -2917,16 +2923,16 @@ mod test_json_roundtrip {
     use super::*;
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn roundtrip(schema: Fragment<RawName>) {
+    fn roundtrip(schema: &Fragment<RawName>) {
         let json = serde_json::to_value(schema.clone()).unwrap();
         let new_schema: Fragment<RawName> = serde_json::from_value(json).unwrap();
-        assert_eq!(schema, new_schema);
+        assert_eq!(schema, &new_schema);
     }
 
     #[test]
     fn empty_namespace() {
         let fragment = Fragment(BTreeMap::from([(None, NamespaceDefinition::new([], []))]));
-        roundtrip(fragment);
+        roundtrip(&fragment);
     }
 
     #[test]
@@ -2935,7 +2941,7 @@ mod test_json_roundtrip {
             Some("a".parse().unwrap()),
             NamespaceDefinition::new([], []),
         )]));
-        roundtrip(fragment);
+        roundtrip(&fragment);
     }
 
     #[test]
@@ -2981,7 +2987,7 @@ mod test_json_roundtrip {
                 )],
             ),
         )]));
-        roundtrip(fragment);
+        roundtrip(&fragment);
     }
 
     #[test]
@@ -3036,7 +3042,7 @@ mod test_json_roundtrip {
                 ),
             ),
         ]));
-        roundtrip(fragment);
+        roundtrip(&fragment);
     }
 }
 
@@ -3600,6 +3606,7 @@ mod ord {
 
     /// Tests that `Type<RawName>` and `Type<InternalName>` are `Ord`
     #[test]
+    #[allow(clippy::collection_is_never_read)]
     fn type_ord() {
         let mut set: BTreeSet<Type<RawName>> = BTreeSet::default();
         set.insert(Type::Type {

@@ -1535,7 +1535,7 @@ impl SchemaFragment {
     pub fn action_annotations(
         &self,
         namespace: Option<EntityNamespace>,
-        id: EntityId,
+        id: &EntityId,
     ) -> Option<impl Iterator<Item = (&str, &str)>> {
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
         ns_def
@@ -1554,7 +1554,7 @@ impl SchemaFragment {
     pub fn action_annotation(
         &self,
         namespace: Option<EntityNamespace>,
-        id: EntityId,
+        id: &EntityId,
         annotation_key: impl AsRef<str>,
     ) -> Option<&str> {
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;

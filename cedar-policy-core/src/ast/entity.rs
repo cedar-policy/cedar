@@ -521,10 +521,10 @@ impl Entity {
     pub fn set_attr(
         &mut self,
         attr: SmolStr,
-        val: RestrictedExpr,
+        val: BorrowedRestrictedExpr<'_>,
         extensions: &Extensions<'_>,
     ) -> Result<(), EvaluationError> {
-        let val = RestrictedEvaluator::new(extensions).partial_interpret(val.as_borrowed())?;
+        let val = RestrictedEvaluator::new(extensions).partial_interpret(val)?;
         self.attrs.insert(attr, val.into());
         Ok(())
     }
@@ -535,10 +535,10 @@ impl Entity {
     pub fn set_tag(
         &mut self,
         tag: SmolStr,
-        val: RestrictedExpr,
+        val: BorrowedRestrictedExpr<'_>,
         extensions: &Extensions<'_>,
     ) -> Result<(), EvaluationError> {
-        let val = RestrictedEvaluator::new(extensions).partial_interpret(val.as_borrowed())?;
+        let val = RestrictedEvaluator::new(extensions).partial_interpret(val)?;
         self.tags.insert(tag, val.into());
         Ok(())
     }

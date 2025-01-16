@@ -35,7 +35,7 @@ use cedar_policy_cli::{
 use predicates::prelude::*;
 use rstest::rstest;
 
-fn run_check_parse_test(policies_file: impl Into<String>, expected_exit_code: CedarExitCode) {
+fn run_check_parse_test(policies_file: impl Into<String>, expected_exit_code: &CedarExitCode) {
     let cmd = CheckParseArgs {
         policies: PoliciesArgs {
             policies_file: Some(policies_file.into()),
@@ -44,7 +44,7 @@ fn run_check_parse_test(policies_file: impl Into<String>, expected_exit_code: Ce
         },
     };
     let output = check_parse(&cmd);
-    assert_eq!(output, expected_exit_code, "{:#?}", cmd);
+    assert_eq!(&output, expected_exit_code, "{:#?}", cmd);
 }
 
 fn run_authorize_test(
@@ -53,7 +53,7 @@ fn run_authorize_test(
     principal: impl Into<String>,
     action: impl Into<String>,
     resource: impl Into<String>,
-    exit_code: CedarExitCode,
+    exit_code: &CedarExitCode,
 ) {
     run_authorize_test_with_linked_policies(
         policies_file,
@@ -73,7 +73,7 @@ fn run_authorize_test_with_linked_policies(
     principal: impl Into<String>,
     action: impl Into<String>,
     resource: impl Into<String>,
-    exit_code: CedarExitCode,
+    exit_code: &CedarExitCode,
 ) {
     let cmd = AuthorizeArgs {
         request: RequestArgs {
@@ -98,7 +98,7 @@ fn run_authorize_test_with_linked_policies(
         timing: false,
     };
     let output = authorize(&cmd);
-    assert_eq!(exit_code, output, "{:#?}", cmd,);
+    assert_eq!(exit_code, &output, "{:#?}", cmd,);
 }
 
 fn run_link_test(
@@ -107,7 +107,7 @@ fn run_link_test(
     template_id: impl Into<String>,
     linked_id: impl Into<String>,
     env: impl IntoIterator<Item = (SlotId, String)>,
-    expected: CedarExitCode,
+    expected: &CedarExitCode,
 ) {
     let cmd = LinkArgs {
         policies: PoliciesArgs {
@@ -122,7 +122,7 @@ fn run_link_test(
         },
     };
     let output = link(&cmd);
-    assert_eq!(output, expected);
+    assert_eq!(&output, expected);
 }
 
 fn run_authorize_test_context(
@@ -132,7 +132,7 @@ fn run_authorize_test_context(
     action: impl Into<String>,
     resource: impl Into<String>,
     context_file: impl Into<String>,
-    exit_code: CedarExitCode,
+    exit_code: &CedarExitCode,
 ) {
     let cmd = AuthorizeArgs {
         request: RequestArgs {
@@ -157,14 +157,14 @@ fn run_authorize_test_context(
         timing: false,
     };
     let output = authorize(&cmd);
-    assert_eq!(exit_code, output, "{:#?}", cmd,);
+    assert_eq!(exit_code, &output, "{:#?}", cmd,);
 }
 
 fn run_authorize_test_json(
     policies_file: impl Into<String>,
     entities_file: impl Into<String>,
     request_json_file: impl Into<String>,
-    exit_code: CedarExitCode,
+    exit_code: &CedarExitCode,
 ) {
     let cmd = AuthorizeArgs {
         request: RequestArgs {
@@ -189,14 +189,14 @@ fn run_authorize_test_json(
         timing: false,
     };
     let output = authorize(&cmd);
-    assert_eq!(exit_code, output, "{:#?}", cmd,);
+    assert_eq!(exit_code, &output, "{:#?}", cmd,);
 }
 
 #[test]
 fn test_authorize_samples() {
     run_check_parse_test(
         "sample-data/sandbox_a/policies_1.cedar",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test(
         "sample-data/sandbox_a/policies_1.cedar",
@@ -204,11 +204,11 @@ fn test_authorize_samples() {
         "User::\"alice\"",
         "Action::\"view\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_check_parse_test(
         "sample-data/sandbox_a/policies_2.cedar",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test(
         "sample-data/sandbox_a/policies_2.cedar",
@@ -216,7 +216,7 @@ fn test_authorize_samples() {
         "User::\"alice\"",
         "Action::\"view\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test(
         "sample-data/sandbox_a/policies_2.cedar",
@@ -224,7 +224,7 @@ fn test_authorize_samples() {
         "User::\"alice\"",
         "Action::\"edit\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test(
         "sample-data/sandbox_a/policies_2.cedar",
@@ -232,7 +232,7 @@ fn test_authorize_samples() {
         "User::\"alice\"",
         "Action::\"delete\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test(
         "sample-data/sandbox_a/policies_2.cedar",
@@ -240,7 +240,7 @@ fn test_authorize_samples() {
         "User::\"alice\"",
         "Action::\"comment\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::AuthorizeDeny,
+        &CedarExitCode::AuthorizeDeny,
     );
     run_authorize_test(
         "sample-data/sandbox_a/policies_2.cedar",
@@ -248,7 +248,7 @@ fn test_authorize_samples() {
         "User::\"bob\"",
         "Action::\"view\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test(
         "sample-data/sandbox_a/policies_2.cedar",
@@ -256,7 +256,7 @@ fn test_authorize_samples() {
         "User::\"bob\"",
         "Action::\"edit\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::AuthorizeDeny,
+        &CedarExitCode::AuthorizeDeny,
     );
     run_authorize_test(
         "sample-data/sandbox_a/policies_2.cedar",
@@ -264,7 +264,7 @@ fn test_authorize_samples() {
         "User::\"bob\"",
         "Action::\"delete\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::AuthorizeDeny,
+        &CedarExitCode::AuthorizeDeny,
     );
     run_authorize_test(
         "sample-data/sandbox_a/policies_2.cedar",
@@ -272,11 +272,11 @@ fn test_authorize_samples() {
         "User::\"bob\"",
         "Action::\"comment\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::AuthorizeDeny,
+        &CedarExitCode::AuthorizeDeny,
     );
     run_check_parse_test(
         "sample-data/sandbox_a/policies_3.cedar",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test(
         "sample-data/sandbox_a/policies_3.cedar",
@@ -284,7 +284,7 @@ fn test_authorize_samples() {
         "User::\"alice\"",
         "Action::\"view\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test(
         "sample-data/sandbox_a/policies_3.cedar",
@@ -292,7 +292,7 @@ fn test_authorize_samples() {
         "User::\"bob\"",
         "Action::\"view\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test(
         "sample-data/sandbox_a/policies_3.cedar",
@@ -300,7 +300,7 @@ fn test_authorize_samples() {
         "User::\"tim\"",
         "Action::\"view\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test(
         "sample-data/sandbox_a/policies_3.cedar",
@@ -308,7 +308,7 @@ fn test_authorize_samples() {
         "User::\"alice\"",
         "Action::\"listPhotos\"",
         "Album::\"jane_vacation\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test(
         "sample-data/sandbox_a/policies_3.cedar",
@@ -316,7 +316,7 @@ fn test_authorize_samples() {
         "User::\"bob\"",
         "Action::\"listPhotos\"",
         "Album::\"jane_vacation\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test(
         "sample-data/sandbox_a/policies_3.cedar",
@@ -324,12 +324,12 @@ fn test_authorize_samples() {
         "User::\"tim\"",
         "Action::\"listPhotos\"",
         "Album::\"jane_vacation\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
 
     run_check_parse_test(
         "sample-data/sandbox_b/policies_4.cedar",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test(
         "sample-data/sandbox_b/policies_4.cedar",
@@ -337,7 +337,7 @@ fn test_authorize_samples() {
         "User::\"alice\"",
         "Action::\"view\"",
         "Photo::\"prototype_v0.jpg\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test(
         "sample-data/sandbox_b/policies_4.cedar",
@@ -345,7 +345,7 @@ fn test_authorize_samples() {
         "User::\"stacey\"",
         "Action::\"view\"",
         "Photo::\"prototype_v0.jpg\"",
-        CedarExitCode::AuthorizeDeny,
+        &CedarExitCode::AuthorizeDeny,
     );
     run_authorize_test(
         "sample-data/sandbox_b/policies_4.cedar",
@@ -353,7 +353,7 @@ fn test_authorize_samples() {
         "User::\"ahmad\"",
         "Action::\"view\"",
         "Photo::\"prototype_v0.jpg\"",
-        CedarExitCode::AuthorizeDeny,
+        &CedarExitCode::AuthorizeDeny,
     );
     run_authorize_test(
         "sample-data/sandbox_b/policies_5.cedar",
@@ -361,11 +361,11 @@ fn test_authorize_samples() {
         "User::\"stacey\"",
         "Action::\"view\"",
         "Photo::\"alice_w2.jpg\"",
-        CedarExitCode::AuthorizeDeny,
+        &CedarExitCode::AuthorizeDeny,
     );
     run_check_parse_test(
         "sample-data/sandbox_b/policies_5.cedar",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test(
         "sample-data/sandbox_b/policies_5.cedar",
@@ -373,7 +373,7 @@ fn test_authorize_samples() {
         "User::\"alice\"",
         "Action::\"view\"",
         "Photo::\"alice_w2.jpg\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test(
         "sample-data/sandbox_b/policies_5.cedar",
@@ -381,7 +381,7 @@ fn test_authorize_samples() {
         "User::\"stacey\"",
         "Action::\"view\"",
         "Photo::\"vacation.jpg\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test_context(
         "sample-data/sandbox_b/policies_6.cedar",
@@ -390,7 +390,7 @@ fn test_authorize_samples() {
         "Action::\"view\"",
         "Photo::\"vacation.jpg\"",
         "sample-data/sandbox_b/doesnotexist.json",
-        CedarExitCode::Failure,
+        &CedarExitCode::Failure,
     );
     run_authorize_test_context(
         "sample-data/sandbox_b/policies_6.cedar",
@@ -399,62 +399,62 @@ fn test_authorize_samples() {
         "Action::\"view\"",
         "Photo::\"vacation.jpg\"",
         "sample-data/sandbox_b/context.json",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
 
     run_authorize_test_json(
         "sample-data/tiny_sandboxes/sample1/policy.cedar",
         "sample-data/tiny_sandboxes/sample1/entity.json",
         "sample-data/tiny_sandboxes/sample1/request.json",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test_json(
         "sample-data/tiny_sandboxes/sample2/policy.cedar",
         "sample-data/tiny_sandboxes/sample2/entity.json",
         "sample-data/tiny_sandboxes/sample2/request.json",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test_json(
         "sample-data/tiny_sandboxes/sample3/policy.cedar",
         "sample-data/tiny_sandboxes/sample3/entity.json",
         "sample-data/tiny_sandboxes/sample3/request.json",
-        CedarExitCode::AuthorizeDeny,
+        &CedarExitCode::AuthorizeDeny,
     );
     run_authorize_test_json(
         "sample-data/tiny_sandboxes/sample4/policy.cedar",
         "sample-data/tiny_sandboxes/sample4/entity.json",
         "sample-data/tiny_sandboxes/sample4/request.json",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test_json(
         "sample-data/tiny_sandboxes/sample5/policy.cedar",
         "sample-data/tiny_sandboxes/sample5/entity.json",
         "sample-data/tiny_sandboxes/sample5/request.json",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test_json(
         "sample-data/tiny_sandboxes/sample6/policy.cedar",
         "sample-data/tiny_sandboxes/sample6/entity.json",
         "sample-data/tiny_sandboxes/sample6/request.json",
-        CedarExitCode::AuthorizeDeny,
+        &CedarExitCode::AuthorizeDeny,
     );
     run_authorize_test_json(
         "sample-data/tiny_sandboxes/sample7/policy.cedar",
         "sample-data/tiny_sandboxes/sample7/entity.json",
         "sample-data/tiny_sandboxes/sample7/request.json",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test_json(
         "sample-data/tiny_sandboxes/sample8/policy.cedar",
         "sample-data/tiny_sandboxes/sample8/entity.json",
         "sample-data/tiny_sandboxes/sample8/request.json",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
     run_authorize_test_json(
         "sample-data/tiny_sandboxes/sample9/policy.cedar",
         "sample-data/tiny_sandboxes/sample9/entity.json",
         "sample-data/tiny_sandboxes/sample9/request.json",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
 }
 
@@ -729,7 +729,7 @@ fn test_link_samples() {
         "User::\"alice\"",
         "Action::\"view\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::Failure,
+        &CedarExitCode::Failure,
     );
 
     run_authorize_test(
@@ -738,7 +738,7 @@ fn test_link_samples() {
         "User::\"alice\"",
         "Action::\"view\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::Failure,
+        &CedarExitCode::Failure,
     );
 
     run_authorize_test(
@@ -747,7 +747,7 @@ fn test_link_samples() {
         "invalid",
         "Action::\"view\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::Failure,
+        &CedarExitCode::Failure,
     );
 
     run_authorize_test(
@@ -756,7 +756,7 @@ fn test_link_samples() {
         "User::\"alice\"",
         "invalid",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::Failure,
+        &CedarExitCode::Failure,
     );
 
     run_authorize_test(
@@ -765,7 +765,7 @@ fn test_link_samples() {
         "User::\"alice\"",
         "Action::\"view\"",
         "invalid",
-        CedarExitCode::Failure,
+        &CedarExitCode::Failure,
     );
 
     run_authorize_test(
@@ -774,7 +774,7 @@ fn test_link_samples() {
         "User::\"alice\"",
         "Action::\"view\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::AuthorizeDeny,
+        &CedarExitCode::AuthorizeDeny,
     );
 
     run_authorize_test(
@@ -783,7 +783,7 @@ fn test_link_samples() {
         "User::\"bob\"",
         "Action::\"view\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::AuthorizeDeny,
+        &CedarExitCode::AuthorizeDeny,
     );
 
     let linked_file = tempfile::NamedTempFile::new().expect("Failed to create linked file");
@@ -795,7 +795,7 @@ fn test_link_samples() {
         "AccessVacation",
         "AliceAccess",
         [(SlotId::principal(), "User::\"alice\"".to_string())],
-        CedarExitCode::Failure,
+        &CedarExitCode::Failure,
     );
 
     run_link_test(
@@ -804,7 +804,7 @@ fn test_link_samples() {
         "AccessVacation",
         "AliceAccess",
         [(SlotId::principal(), "invalid".to_string())],
-        CedarExitCode::Failure,
+        &CedarExitCode::Failure,
     );
 
     run_link_test(
@@ -813,7 +813,7 @@ fn test_link_samples() {
         "AccessVacation",
         "AliceAccess",
         [(SlotId::principal(), "User::\"alice\"".to_string())],
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
 
     run_authorize_test_with_linked_policies(
@@ -823,7 +823,7 @@ fn test_link_samples() {
         "User::\"alice\"",
         "Action::\"view\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
 
     run_authorize_test_with_linked_policies(
@@ -833,7 +833,7 @@ fn test_link_samples() {
         "User::\"bob\"",
         "Action::\"view\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::AuthorizeDeny,
+        &CedarExitCode::AuthorizeDeny,
     );
 
     run_link_test(
@@ -842,7 +842,7 @@ fn test_link_samples() {
         "AccessVacation",
         "BobAccess",
         [(SlotId::principal(), "User::\"bob\"".to_string())],
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
 
     run_authorize_test_with_linked_policies(
@@ -852,7 +852,7 @@ fn test_link_samples() {
         "User::\"alice\"",
         "Action::\"view\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
 
     run_authorize_test_with_linked_policies(
@@ -862,7 +862,7 @@ fn test_link_samples() {
         "User::\"bob\"",
         "Action::\"view\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
 
     run_authorize_test_with_linked_policies(
@@ -872,7 +872,7 @@ fn test_link_samples() {
         "User::\"alice\"",
         "Action::\"view\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::AuthorizeDeny,
+        &CedarExitCode::AuthorizeDeny,
     );
 
     run_authorize_test_with_linked_policies(
@@ -882,7 +882,7 @@ fn test_link_samples() {
         "User::\"bob\"",
         "Action::\"view\"",
         "Photo::\"VacationPhoto94.jpg\"",
-        CedarExitCode::Success,
+        &CedarExitCode::Success,
     );
 }
 

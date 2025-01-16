@@ -387,7 +387,7 @@ impl Type {
                 entity_lub.lub_elements.iter().any(|entity| {
                     schema
                         .get_entity_type(entity)
-                        .map_or(false, |entity_type| entity_type.attr(attr).is_some())
+                        .is_some_and(|entity_type| entity_type.attr(attr).is_some())
                 })
             }
             // UBs of ActionEntities are AnyEntity. So if we have an ActionEntity here its attrs are known.
@@ -2870,7 +2870,7 @@ mod test {
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_type_display_roundtrip(ty: Type) {
+    fn assert_type_display_roundtrip(ty: &Type) {
         // test that a common type declaration using this type roundtrips properly
         let type_str = format!("type T = {ty}; entity E {{ foo: T }};");
         println!("{type_str}");
@@ -2883,24 +2883,24 @@ mod test {
                 .attr("foo")
                 .unwrap()
                 .attr_type,
-            &ty,
+            ty,
         );
     }
 
     #[test]
     fn type_display_roundtrip() {
-        assert_type_display_roundtrip(Type::primitive_boolean());
-        assert_type_display_roundtrip(Type::primitive_long());
-        assert_type_display_roundtrip(Type::primitive_string());
-        assert_type_display_roundtrip(Type::set(Type::primitive_boolean()));
-        assert_type_display_roundtrip(Type::set(Type::primitive_string()));
-        assert_type_display_roundtrip(Type::set(Type::primitive_long()));
-        assert_type_display_roundtrip(Type::closed_record_with_attributes(None));
-        assert_type_display_roundtrip(Type::closed_record_with_attributes([(
+        assert_type_display_roundtrip(&Type::primitive_boolean());
+        assert_type_display_roundtrip(&Type::primitive_long());
+        assert_type_display_roundtrip(&Type::primitive_string());
+        assert_type_display_roundtrip(&Type::set(Type::primitive_boolean()));
+        assert_type_display_roundtrip(&Type::set(Type::primitive_string()));
+        assert_type_display_roundtrip(&Type::set(Type::primitive_long()));
+        assert_type_display_roundtrip(&Type::closed_record_with_attributes(None));
+        assert_type_display_roundtrip(&Type::closed_record_with_attributes([(
             "a".into(),
             AttributeType::required_attribute(Type::primitive_boolean()),
         )]));
-        assert_type_display_roundtrip(Type::closed_record_with_attributes([
+        assert_type_display_roundtrip(&Type::closed_record_with_attributes([
             (
                 "a".into(),
                 AttributeType::required_attribute(Type::primitive_boolean()),
@@ -2913,7 +2913,7 @@ mod test {
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_displays_as(ty: Type, repr: &str) {
+    fn assert_displays_as(ty: &Type, repr: &str) {
         assert_eq!(
             ty.to_string(),
             repr,
@@ -2929,24 +2929,27 @@ mod test {
         // checks that they are defined already, so we'd need to provide a
         // complete schema. TODO: the final stage of schema parsing already does
         // this. Can we remove duplicated checks from Cedar schema parsing?
-        assert_displays_as(Type::named_entity_reference_from_str("Foo"), "Foo");
+        assert_displays_as(&Type::named_entity_reference_from_str("Foo"), "Foo");
         assert_displays_as(
-            Type::named_entity_reference_from_str("Foo::Bar"),
+            &Type::named_entity_reference_from_str("Foo::Bar"),
             "Foo::Bar",
         );
         assert_displays_as(
-            Type::named_entity_reference_from_str("Foo::Bar::Baz"),
+            &Type::named_entity_reference_from_str("Foo::Bar::Baz"),
             "Foo::Bar::Baz",
         );
 
         // These type aren't representable in a schema.
-        assert_displays_as(Type::Never, "__cedar::internal::Never");
-        assert_displays_as(Type::True, "__cedar::internal::True");
-        assert_displays_as(Type::False, "__cedar::internal::False");
-        assert_displays_as(Type::any_set(), "Set<__cedar::internal::Any>");
-        assert_displays_as(Type::any_entity_reference(), "__cedar::internal::AnyEntity");
+        assert_displays_as(&Type::Never, "__cedar::internal::Never");
+        assert_displays_as(&Type::True, "__cedar::internal::True");
+        assert_displays_as(&Type::False, "__cedar::internal::False");
+        assert_displays_as(&Type::any_set(), "Set<__cedar::internal::Any>");
         assert_displays_as(
-            Type::least_upper_bound(
+            &Type::any_entity_reference(),
+            "__cedar::internal::AnyEntity",
+        );
+        assert_displays_as(
+            &Type::least_upper_bound(
                 &ValidatorSchema::empty(),
                 &Type::named_entity_reference_from_str("Foo"),
                 &Type::named_entity_reference_from_str("Bar"),
@@ -2961,6 +2964,6 @@ mod test {
     #[cfg(feature = "ipaddr")]
     fn test_extension_type_display() {
         let ipaddr = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
-        assert_type_display_roundtrip(Type::extension(ipaddr));
+        assert_type_display_roundtrip(&Type::extension(ipaddr));
     }
 }

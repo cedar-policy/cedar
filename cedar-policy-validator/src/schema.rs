@@ -1511,7 +1511,7 @@ pub(crate) mod test {
         }
 
         #[track_caller]
-        pub fn assert_invalid_json_schema(json: serde_json::Value) {
+        pub fn assert_invalid_json_schema(json: &serde_json::Value) {
             match ValidatorSchema::from_json_value(json.clone(), Extensions::all_available()) {
                 Ok(_) => panic!("{json} should be an invalid schema"),
                 Err(SchemaError::JsonDeserialization(_)) => {}
@@ -4278,7 +4278,7 @@ mod test_rfc70 {
                 "actions": {}
             }
         });
-        assert_invalid_json_schema(src_json);
+        assert_invalid_json_schema(&src_json);
         let src_json = json!({
             "": {
                 "commonTypes": {
