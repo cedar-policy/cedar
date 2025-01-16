@@ -335,79 +335,13 @@ impl PartialResponse {
         &self,
         mapping: &HashMap<SmolStr, Value>,
     ) -> Result<Request, ConcretizationError> {
-        let mut principal = self.request.principal.clone();
-        let mut action = self.request.action.clone();
-        let mut resource = self.request.resource.clone();
         let mut context = self.request.context.clone();
 
-        if let Some((key, val)) = mapping.get_key_value("principal") {
-            if let Ok(uid) = val.get_as_entity() {
-                match self.request.principal() {
-                    EntityUIDEntry::Known { euid, .. } => {
-                        return Err(ConcretizationError::VarConfictError {
-                            id: key.to_owned(),
-                            existing_value: euid.as_ref().clone().into(),
-                            given_value: val.clone(),
-                        });
-                    }
-                    EntityUIDEntry::Unknown { .. } => {
-                        principal = EntityUIDEntry::known(uid.clone(), None);
-                    }
-                }
-            } else {
-                return Err(ConcretizationError::ValueError {
-                    id: key.to_owned(),
-                    expected_type: "entity",
-                    given_value: val.to_owned(),
-                });
-            }
-        }
+        let principal = self.request.principal().concretize("principal", mapping)?;
 
-        if let Some((key, val)) = mapping.get_key_value("action") {
-            if let Ok(uid) = val.get_as_entity() {
-                match self.request.action() {
-                    EntityUIDEntry::Known { euid, .. } => {
-                        return Err(ConcretizationError::VarConfictError {
-                            id: key.to_owned(),
-                            existing_value: euid.as_ref().clone().into(),
-                            given_value: val.clone(),
-                        });
-                    }
-                    EntityUIDEntry::Unknown { .. } => {
-                        action = EntityUIDEntry::known(uid.clone(), None);
-                    }
-                }
-            } else {
-                return Err(ConcretizationError::ValueError {
-                    id: key.to_owned(),
-                    expected_type: "entity",
-                    given_value: val.to_owned(),
-                });
-            }
-        }
+        let action = self.request.action.concretize("action", mapping)?;
 
-        if let Some((key, val)) = mapping.get_key_value("resource") {
-            if let Ok(uid) = val.get_as_entity() {
-                match self.request.resource() {
-                    EntityUIDEntry::Known { euid, .. } => {
-                        return Err(ConcretizationError::VarConfictError {
-                            id: key.to_owned(),
-                            existing_value: euid.as_ref().clone().into(),
-                            given_value: val.clone(),
-                        });
-                    }
-                    EntityUIDEntry::Unknown { .. } => {
-                        resource = EntityUIDEntry::known(uid.clone(), None);
-                    }
-                }
-            } else {
-                return Err(ConcretizationError::ValueError {
-                    id: key.to_owned(),
-                    expected_type: "entity",
-                    given_value: val.to_owned(),
-                });
-            }
-        }
+        let resource = self.request.resource.concretize("resource", mapping)?;
 
         if let Some((key, val)) = mapping.get_key_value("context") {
             if let Ok(attrs) = val.get_as_record() {
@@ -456,6 +390,53 @@ impl PartialResponse {
             .chain(self.errors)
             .collect::<Vec<_>>()
             .into_iter()
+    }
+}
+
+impl EntityUIDEntry {
+    fn concretize(
+        &self,
+        key: &str,
+        mapping: &HashMap<SmolStr, Value>,
+    ) -> Result<Self, ConcretizationError> {
+        if let Some(val) = mapping.get(key) {
+            if let Ok(uid) = val.get_as_entity() {
+                match self {
+                    EntityUIDEntry::Known { euid, .. } => {
+                        Err(ConcretizationError::VarConfictError {
+                            id: key.into(),
+                            existing_value: euid.as_ref().clone().into(),
+                            given_value: val.clone(),
+                        })
+                    }
+                    EntityUIDEntry::Unknown { ty: None, .. } => {
+                        Ok(EntityUIDEntry::known(uid.clone(), None))
+                    }
+                    EntityUIDEntry::Unknown {
+                        ty: Some(type_of_unknown),
+                        ..
+                    } => {
+                        if type_of_unknown == uid.entity_type() {
+                            Ok(EntityUIDEntry::known(uid.clone(), None))
+                        } else {
+                            Err(ConcretizationError::EntityTypeConfictError {
+                                id: key.into(),
+                                existing_value: type_of_unknown.clone(),
+                                given_value: val.to_owned(),
+                            })
+                        }
+                    }
+                }
+            } else {
+                Err(ConcretizationError::ValueError {
+                    id: key.into(),
+                    expected_type: "entity",
+                    given_value: val.to_owned(),
+                })
+            }
+        } else {
+            Ok(self.clone())
+        }
     }
 }
 
@@ -624,9 +605,9 @@ mod test {
             h,
             errs,
             Arc::new(Request::new_unchecked(
-                EntityUIDEntry::Unknown { loc: None },
-                EntityUIDEntry::Unknown { loc: None },
-                EntityUIDEntry::Unknown { loc: None },
+                EntityUIDEntry::unknown(),
+                EntityUIDEntry::unknown(),
+                EntityUIDEntry::unknown(),
                 Some(Context::empty()),
             )),
         );
@@ -807,8 +788,8 @@ mod test {
 
         let partial_request = Request {
             principal: EntityUIDEntry::known(r#"NS::"a""#.parse().unwrap(), None),
-            action: EntityUIDEntry::Unknown { loc: None },
-            resource: EntityUIDEntry::Unknown { loc: None },
+            action: EntityUIDEntry::unknown(),
+            resource: EntityUIDEntry::unknown(),
             context: Some(context_unknown),
         };
 

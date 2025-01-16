@@ -13,7 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-use crate::{ValidatorEntityType, ValidatorSchema};
+use crate::{ValidatorActionId, ValidatorEntityType, ValidatorSchema};
+use cedar_policy_core::ast::{EntityType, EntityUID};
 use cedar_policy_core::extensions::{ExtensionFunctionLookupError, Extensions};
 use cedar_policy_core::{ast, entities};
 use miette::Diagnostic;
@@ -168,21 +169,18 @@ impl ast::RequestSchema for ValidatorSchema {
         use ast::EntityUIDEntry;
         // first check that principal and resource are of types that exist in
         // the schema, we can do this check even if action is unknown.
-        if let EntityUIDEntry::Known {
-            euid: principal, ..
-        } = request.principal()
-        {
-            if self.get_entity_type(principal.entity_type()).is_none() {
+        if let Some(principal_type) = request.principal().get_type() {
+            if self.get_entity_type(principal_type).is_none() {
                 return Err(request_validation_errors::UndeclaredPrincipalTypeError {
-                    principal_ty: principal.entity_type().clone(),
+                    principal_ty: principal_type.clone(),
                 }
                 .into());
             }
         }
-        if let EntityUIDEntry::Known { euid: resource, .. } = request.resource() {
-            if self.get_entity_type(resource.entity_type()).is_none() {
+        if let Some(resource_type) = request.resource().get_type() {
+            if self.get_entity_type(resource_type).is_none() {
                 return Err(request_validation_errors::UndeclaredResourceTypeError {
-                    resource_ty: resource.entity_type().clone(),
+                    resource_ty: resource_type.clone(),
                 }
                 .into());
             }
@@ -196,34 +194,11 @@ impl ast::RequestSchema for ValidatorSchema {
                         action: Arc::clone(action),
                     }
                 })?;
-                if let EntityUIDEntry::Known {
-                    euid: principal, ..
-                } = request.principal()
-                {
-                    if !validator_action_id.is_applicable_principal_type(principal.entity_type()) {
-                        return Err(request_validation_errors::InvalidPrincipalTypeError {
-                            principal_ty: principal.entity_type().clone(),
-                            action: Arc::clone(action),
-                            valid_principal_tys: validator_action_id
-                                .applies_to_principals()
-                                .cloned()
-                                .collect(),
-                        }
-                        .into());
-                    }
+                if let Some(principal_type) = request.principal().get_type() {
+                    validator_action_id.check_principal_type(principal_type, action)?;
                 }
-                if let EntityUIDEntry::Known { euid: resource, .. } = request.resource() {
-                    if !validator_action_id.is_applicable_resource_type(resource.entity_type()) {
-                        return Err(request_validation_errors::InvalidResourceTypeError {
-                            resource_ty: resource.entity_type().clone(),
-                            action: Arc::clone(action),
-                            valid_resource_tys: validator_action_id
-                                .applies_to_resources()
-                                .cloned()
-                                .collect(),
-                        }
-                        .into());
-                    }
+                if let Some(principal_type) = request.resource().get_type() {
+                    validator_action_id.check_resource_type(principal_type, action)?;
                 }
                 if let Some(context) = request.context() {
                     let expected_context_ty = validator_action_id.context_type();
@@ -249,6 +224,40 @@ impl ast::RequestSchema for ValidatorSchema {
             }
         }
         Ok(())
+    }
+}
+
+impl ValidatorActionId {
+    fn check_principal_type(
+        &self,
+        principal_type: &EntityType,
+        action: &Arc<EntityUID>,
+    ) -> Result<(), request_validation_errors::InvalidPrincipalTypeError> {
+        if !self.is_applicable_principal_type(principal_type) {
+            Err(request_validation_errors::InvalidPrincipalTypeError {
+                principal_ty: principal_type.clone(),
+                action: Arc::clone(action),
+                valid_principal_tys: self.applies_to_principals().cloned().collect(),
+            })
+        } else {
+            Ok(())
+        }
+    }
+
+    fn check_resource_type(
+        &self,
+        resource_type: &EntityType,
+        action: &Arc<EntityUID>,
+    ) -> Result<(), request_validation_errors::InvalidResourceTypeError> {
+        if !self.is_applicable_resource_type(resource_type) {
+            Err(request_validation_errors::InvalidResourceTypeError {
+                resource_ty: resource_type.clone(),
+                action: Arc::clone(action),
+                valid_resource_tys: self.applies_to_resources().cloned().collect(),
+            })
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -304,17 +313,22 @@ pub enum RequestValidationError {
 /// Errors related to validation
 pub mod request_validation_errors {
     use cedar_policy_core::ast;
+    use cedar_policy_core::impl_diagnostic_from_method_on_field;
     use itertools::Itertools;
     use miette::Diagnostic;
     use std::sync::Arc;
     use thiserror::Error;
 
     /// Request action is not declared in the schema
-    #[derive(Debug, Error, Diagnostic)]
+    #[derive(Debug, Error)]
     #[error("request's action `{action}` is not declared in the schema")]
     pub struct UndeclaredActionError {
         /// Action which was not declared in the schema
         pub(super) action: Arc<ast::EntityUID>,
+    }
+
+    impl Diagnostic for UndeclaredActionError {
+        impl_diagnostic_from_method_on_field!(action, loc);
     }
 
     impl UndeclaredActionError {
@@ -325,11 +339,15 @@ pub mod request_validation_errors {
     }
 
     /// Request principal is of a type not declared in the schema
-    #[derive(Debug, Error, Diagnostic)]
+    #[derive(Debug, Error)]
     #[error("principal type `{principal_ty}` is not declared in the schema")]
     pub struct UndeclaredPrincipalTypeError {
         /// Principal type which was not declared in the schema
         pub(super) principal_ty: ast::EntityType,
+    }
+
+    impl Diagnostic for UndeclaredPrincipalTypeError {
+        impl_diagnostic_from_method_on_field!(principal_ty, loc);
     }
 
     impl UndeclaredPrincipalTypeError {
@@ -340,11 +358,15 @@ pub mod request_validation_errors {
     }
 
     /// Request resource is of a type not declared in the schema
-    #[derive(Debug, Error, Diagnostic)]
+    #[derive(Debug, Error)]
     #[error("resource type `{resource_ty}` is not declared in the schema")]
     pub struct UndeclaredResourceTypeError {
         /// Resource type which was not declared in the schema
         pub(super) resource_ty: ast::EntityType,
+    }
+
+    impl Diagnostic for UndeclaredResourceTypeError {
+        impl_diagnostic_from_method_on_field!(resource_ty, loc);
     }
 
     impl UndeclaredResourceTypeError {
@@ -356,9 +378,8 @@ pub mod request_validation_errors {
 
     /// Request principal is of a type that is declared in the schema, but is
     /// not valid for the request action
-    #[derive(Debug, Error, Diagnostic)]
+    #[derive(Debug, Error)]
     #[error("principal type `{principal_ty}` is not valid for `{action}`")]
-    #[diagnostic(help("{}", invalid_principal_type_help(valid_principal_tys, .action.as_ref())))]
     pub struct InvalidPrincipalTypeError {
         /// Principal type which is not valid
         pub(super) principal_ty: ast::EntityType,
@@ -366,6 +387,19 @@ pub mod request_validation_errors {
         pub(super) action: Arc<ast::EntityUID>,
         /// Principal types which actually are valid for that `action`
         pub(super) valid_principal_tys: Vec<ast::EntityType>,
+    }
+
+    impl Diagnostic for InvalidPrincipalTypeError {
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            Some(Box::new(invalid_principal_type_help(
+                &self.valid_principal_tys,
+                &self.action,
+            )))
+        }
+
+        // possible future improvement: provide two labels, one for the source
+        // loc on `principal_ty` and the other for the source loc on `action`
+        impl_diagnostic_from_method_on_field!(principal_ty, loc);
     }
 
     fn invalid_principal_type_help(
@@ -405,9 +439,8 @@ pub mod request_validation_errors {
 
     /// Request resource is of a type that is declared in the schema, but is
     /// not valid for the request action
-    #[derive(Debug, Error, Diagnostic)]
+    #[derive(Debug, Error)]
     #[error("resource type `{resource_ty}` is not valid for `{action}`")]
-    #[diagnostic(help("{}", invalid_resource_type_help(valid_resource_tys, .action.as_ref())))]
     pub struct InvalidResourceTypeError {
         /// Resource type which is not valid
         pub(super) resource_ty: ast::EntityType,
@@ -415,6 +448,19 @@ pub mod request_validation_errors {
         pub(super) action: Arc<ast::EntityUID>,
         /// Resource types which actually are valid for that `action`
         pub(super) valid_resource_tys: Vec<ast::EntityType>,
+    }
+
+    impl Diagnostic for InvalidResourceTypeError {
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            Some(Box::new(invalid_resource_type_help(
+                &self.valid_resource_tys,
+                &self.action,
+            )))
+        }
+
+        // possible future improvement: provide two labels, one for the source
+        // loc on `resource_ty` and the other for the source loc on `action`
+        impl_diagnostic_from_method_on_field!(resource_ty, loc);
     }
 
     fn invalid_resource_type_help(
@@ -626,7 +672,7 @@ mod test {
     fn success_principal_unknown() {
         assert_matches!(
             ast::Request::new_with_unknowns(
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
                 ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                     None,
@@ -652,7 +698,7 @@ mod test {
                     ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                     None,
                 ),
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
                 ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                     None,
@@ -678,7 +724,7 @@ mod test {
                     ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                     None,
                 ),
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
                 Some(ast::Context::empty()),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -717,9 +763,9 @@ mod test {
     fn success_everything_unspecified() {
         assert_matches!(
             ast::Request::new_with_unknowns(
-                ast::EntityUIDEntry::Unknown { loc: None },
-                ast::EntityUIDEntry::Unknown { loc: None },
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
+                ast::EntityUIDEntry::unknown(),
+                ast::EntityUIDEntry::unknown(),
                 None,
                 Some(&schema()),
                 Extensions::all_available(),
@@ -739,7 +785,7 @@ mod test {
                     ast::EntityUID::with_eid_and_type("Album", "abc123").unwrap(),
                     None,
                 ),
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
                 ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("User", "alice").unwrap(),
                     None,

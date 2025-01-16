@@ -293,9 +293,9 @@ impl CommonTypeDefs<ConditionalName> {
                         .insert(schema_ty.conditionally_qualify_type_references(schema_namespace));
                 }
                 Entry::Occupied(oentry) => {
-                    return Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError(
-                        oentry.key().clone(),
-                    )));
+                    return Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError {
+                        ty: oentry.key().clone(),
+                    }));
                 }
             }
         }
@@ -318,9 +318,9 @@ impl CommonTypeDefs<ConditionalName> {
                     ventry.insert(schema_ty);
                 }
                 Entry::Occupied(oentry) => {
-                    return Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError(
-                        oentry.key().clone(),
-                    )));
+                    return Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError {
+                        ty: oentry.key().clone(),
+                    }));
                 }
             }
         }
@@ -411,7 +411,10 @@ impl EntityTypesDef<ConditionalName> {
                     ));
                 }
                 Entry::Occupied(entry) => {
-                    return Err(DuplicateEntityTypeError(entry.key().clone()).into());
+                    return Err(DuplicateEntityTypeError {
+                        ty: entry.key().clone(),
+                    }
+                    .into());
                 }
             }
         }
@@ -535,19 +538,23 @@ impl EntityTypeFragment<ConditionalName> {
                 parents,
                 tags,
             }),
-            (Ok(_), Ok(_), Some(undeclared_parents)) => {
-                Err(TypeNotDefinedError(undeclared_parents))
-            }
+            (Ok(_), Ok(_), Some(undeclared_parents)) => Err(TypeNotDefinedError {
+                undefined_types: undeclared_parents,
+            }),
             (Err(e), Ok(_), None) | (Ok(_), Err(e), None) => Err(e),
             (Err(e1), Err(e2), None) => Err(TypeNotDefinedError::join_nonempty(nonempty![e1, e2])),
             (Err(e), Ok(_), Some(mut undeclared)) | (Ok(_), Err(e), Some(mut undeclared)) => {
-                undeclared.extend(e.0);
-                Err(TypeNotDefinedError(undeclared))
+                undeclared.extend(e.undefined_types);
+                Err(TypeNotDefinedError {
+                    undefined_types: undeclared,
+                })
             }
             (Err(e1), Err(e2), Some(mut undeclared)) => {
-                undeclared.extend(e1.0);
-                undeclared.extend(e2.0);
-                Err(TypeNotDefinedError(undeclared))
+                undeclared.extend(e1.undefined_types);
+                undeclared.extend(e2.undefined_types);
+                Err(TypeNotDefinedError {
+                    undefined_types: undeclared,
+                })
             }
         }
     }
@@ -816,7 +823,10 @@ impl ActionFragment<ConditionalName, ConditionalName> {
             }
             CedarValueJson::Set(v) => match v.first() {
                 //sets with elements of different types will be rejected elsewhere
-                None => Err(ActionAttributesContainEmptySetError(action_id.clone()).into()),
+                None => Err(ActionAttributesContainEmptySetError {
+                    uid: action_id.clone(),
+                }
+                .into()),
                 Some(element) => {
                     let element_type = Self::jsonval_to_type_helper(element, action_id);
                     match element_type {
@@ -827,24 +837,26 @@ impl ActionFragment<ConditionalName, ConditionalName> {
                     }
                 }
             },
-            CedarValueJson::EntityEscape { __entity: _ } => Err(UnsupportedActionAttributeError(
-                action_id.clone(),
-                "entity escape (`__entity`)".into(),
-            )
-            .into()),
-            CedarValueJson::ExprEscape { __expr: _ } => Err(UnsupportedActionAttributeError(
-                action_id.clone(),
-                "expression escape (`__expr`)".into(),
-            )
-            .into()),
-            CedarValueJson::ExtnEscape { __extn: _ } => Err(UnsupportedActionAttributeError(
-                action_id.clone(),
-                "extension function escape (`__extn`)".into(),
-            )
-            .into()),
-            CedarValueJson::Null => {
-                Err(UnsupportedActionAttributeError(action_id.clone(), "null".into()).into())
+            CedarValueJson::EntityEscape { __entity: _ } => Err(UnsupportedActionAttributeError {
+                uid: action_id.clone(),
+                attr: "entity escape (`__entity`)".into(),
             }
+            .into()),
+            CedarValueJson::ExprEscape { __expr: _ } => Err(UnsupportedActionAttributeError {
+                uid: action_id.clone(),
+                attr: "expression escape (`__expr`)".into(),
+            }
+            .into()),
+            CedarValueJson::ExtnEscape { __extn: _ } => Err(UnsupportedActionAttributeError {
+                uid: action_id.clone(),
+                attr: "extension function escape (`__extn`)".into(),
+            }
+            .into()),
+            CedarValueJson::Null => Err(UnsupportedActionAttributeError {
+                uid: action_id.clone(),
+                attr: "null".into(),
+            }
+            .into()),
         }
     }
 }
@@ -941,25 +953,34 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
     extensions: &Extensions<'_>,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Type>> {
     match schema_ty {
-        json_schema::Type::Type(json_schema::TypeVariant::String) => {
-            Ok(Type::primitive_string().into())
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Long) => {
-            Ok(Type::primitive_long().into())
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Boolean) => {
-            Ok(Type::primitive_boolean().into())
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Set { element }) => {
-            Ok(try_jsonschema_type_into_validator_type(*element, extensions)?.map(Type::set))
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Record(rty)) => {
-            try_record_type_into_validator_type(rty, extensions)
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Entity { name }) => {
-            Ok(Type::named_entity_reference(internal_name_to_entity_type(name)?).into())
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Extension { name }) => {
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::String,
+            ..
+        } => Ok(Type::primitive_string().into()),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Long,
+            ..
+        } => Ok(Type::primitive_long().into()),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Boolean,
+            ..
+        } => Ok(Type::primitive_boolean().into()),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Set { element },
+            ..
+        } => Ok(try_jsonschema_type_into_validator_type(*element, extensions)?.map(Type::set)),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Record(rty),
+            ..
+        } => try_record_type_into_validator_type(rty, extensions),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Entity { name },
+            ..
+        } => Ok(Type::named_entity_reference(internal_name_to_entity_type(name)?).into()),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Extension { name },
+            ..
+        } => {
             let extension_type_name = Name::unqualified_name(name);
             if extensions.ext_types().contains(&extension_type_name) {
                 Ok(Type::extension(extension_type_name).into())
@@ -979,7 +1000,7 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
                 ))
             }
         }
-        json_schema::Type::CommonTypeRef { type_name } => {
+        json_schema::Type::CommonTypeRef { type_name, .. } => {
             Ok(WithUnresolvedCommonTypeRefs::new(move |common_type_defs| {
                 common_type_defs
                     .get(&type_name)
@@ -995,7 +1016,10 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
                     .ok_or_else(|| CommonTypeInvariantViolationError { name: type_name }.into())
             }))
         }
-        json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::EntityOrCommon { type_name },
+            ..
+        } => {
             Ok(WithUnresolvedCommonTypeRefs::new(move |common_type_defs| {
                 // First check if it's a common type, because in the edge case where
                 // the name is both a valid common type name and a valid entity type

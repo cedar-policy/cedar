@@ -371,7 +371,7 @@ impl RequestArgs {
 
 #[cfg(feature = "partial-eval")]
 impl PartialRequestArgs {
-    fn get_request(&self) -> Result<Request> {
+    fn get_request(&self, schema: Option<&Schema>) -> Result<Request> {
         let mut builder = RequestBuilder::default();
         let qjson: PartialRequestJSON = match self.request_json_file.as_ref() {
             Some(jsonfile) => {
@@ -416,15 +416,16 @@ impl PartialRequestArgs {
             builder = builder.principal(principal);
         }
 
-        if let Some(action) = qjson
+        let action = qjson
             .action
             .map(|s| {
-                s.parse()
+                s.parse::<EntityUid>()
                     .wrap_err_with(|| format!("failed to parse action {s} as entity Uid"))
             })
-            .transpose()?
-        {
-            builder = builder.action(action);
+            .transpose()?;
+
+        if let Some(action_ref) = &action {
+            builder = builder.action(action_ref.clone());
         }
 
         if let Some(resource) = qjson
@@ -441,15 +442,25 @@ impl PartialRequestArgs {
         if let Some(context) = qjson
             .context
             .map(|json| {
-                Context::from_json_value(json.clone(), None)
-                    .wrap_err_with(|| format!("fail to convert context json {json} to Context"))
+                Context::from_json_value(
+                    json.clone(),
+                    schema.and_then(|s| Some((s, action.as_ref()?))),
+                )
+                .wrap_err_with(|| format!("fail to convert context json {json} to Context"))
             })
             .transpose()?
         {
             builder = builder.context(context);
         }
 
-        Ok(builder.build())
+        if let Some(schema) = schema {
+            builder
+                .schema(schema)
+                .build()
+                .wrap_err_with(|| format!("failed to build request with validation"))
+        } else {
+            Ok(builder.build())
+        }
     }
 }
 
@@ -573,6 +584,12 @@ pub struct PartiallyAuthorizeArgs {
     /// Policies args (incorporated by reference)
     #[command(flatten)]
     pub policies: PoliciesArgs,
+    /// Schema args (incorporated by reference)
+    ///
+    /// Used to populate the store with action entities and for schema-based
+    /// parsing of entity hierarchy, if present
+    #[command(flatten)]
+    pub schema: OptionalSchemaArgs,
     /// File containing JSON representation of the Cedar entity hierarchy
     #[arg(long = "entities", value_name = "FILE")]
     pub entities_file: String,
@@ -1320,6 +1337,7 @@ pub fn partial_authorize(args: &PartiallyAuthorizeArgs) -> CedarExitCode {
         &args.request,
         &args.policies,
         &args.entities_file,
+        &args.schema,
         args.timing,
     );
     match ans {
@@ -1563,6 +1581,7 @@ fn execute_partial_request(
     request: &PartialRequestArgs,
     policies: &PoliciesArgs,
     entities_filename: impl AsRef<Path>,
+    schema: &OptionalSchemaArgs,
     compute_duration: bool,
 ) -> Result<PartialResponse, Vec<Report>> {
     let mut errs = vec![];
@@ -1573,14 +1592,21 @@ fn execute_partial_request(
             PolicySet::new()
         }
     };
-    let entities = match load_entities(entities_filename, None) {
+    let schema = match schema.get_schema() {
+        Ok(opt) => opt,
+        Err(e) => {
+            errs.push(e);
+            None
+        }
+    };
+    let entities = match load_entities(entities_filename, schema.as_ref()) {
         Ok(entities) => entities,
         Err(e) => {
             errs.push(e);
             Entities::empty()
         }
     };
-    match request.get_request() {
+    match request.get_request(schema.as_ref()) {
         Ok(request) if errs.is_empty() => {
             let authorizer = Authorizer::new();
             let auth_start = Instant::now();

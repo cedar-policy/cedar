@@ -35,7 +35,7 @@ pub(crate) fn assert_partial_typecheck(
     policy: StaticPolicy,
 ) {
     let schema = schema.try_into().expect("Failed to construct schema.");
-    let typechecker = Typechecker::new(&schema, ValidationMode::Partial, policy.id().clone());
+    let typechecker = Typechecker::new(&schema, ValidationMode::Partial);
     let mut errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
@@ -54,7 +54,7 @@ pub(crate) fn assert_partial_typecheck_fails(
     expected_errors: impl IntoIterator<Item = ValidationError>,
 ) {
     let schema = schema.try_into().expect("Failed to construct schema.");
-    let typechecker = Typechecker::new(&schema, ValidationMode::Partial, policy.id().clone());
+    let typechecker = Typechecker::new(&schema, ValidationMode::Partial);
     let mut errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
@@ -73,7 +73,7 @@ pub(crate) fn assert_partial_typecheck_warns(
     expected_warnings: impl IntoIterator<Item = ValidationWarning>,
 ) {
     let schema = schema.try_into().expect("Failed to construct schema.");
-    let typechecker = Typechecker::new(&schema, ValidationMode::Partial, policy.id().clone());
+    let typechecker = Typechecker::new(&schema, ValidationMode::Partial);
     let mut errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
@@ -398,15 +398,16 @@ mod fails_empty_schema {
         // We expect to see a type error for the incorrect literal argument to
         // various operators. No error should be generated for missing
         // attributes or the type of the attributes.
-
+        let extensions = Extensions::all_available();
         let src = r#"permit(principal, action, resource) when { principal.foo > "a" };"#;
         assert_typecheck_fails_empty_schema(
             parse_policy(None, src).unwrap(),
             [ValidationError::expected_one_of_types(
                 get_loc(src, r#""a""#),
                 PolicyID::from_string("policy0"),
-                Extensions::types_with_operator_overloading()
-                    .into_iter()
+                extensions
+                    .types_with_operator_overloading()
+                    .cloned()
                     .map(Type::extension)
                     .chain(std::iter::once(Type::primitive_long()))
                     .collect(),
@@ -645,6 +646,7 @@ mod fail_partial_schema {
 
     #[test]
     fn error_on_declared_attr() {
+        let extensions = Extensions::all_available();
         // `name` is declared as a `String` in the partial schema, so we can
         // error even though `principal.unknown` is not declared.
         let src = r#"permit(principal == User::"alice", action, resource) when { principal.name > principal.unknown };"#;
@@ -653,8 +655,9 @@ mod fail_partial_schema {
             [ValidationError::expected_one_of_types(
                 get_loc(src, "principal.name"),
                 PolicyID::from_string("policy0"),
-                Extensions::types_with_operator_overloading()
-                    .into_iter()
+                extensions
+                    .types_with_operator_overloading()
+                    .cloned()
                     .map(Type::extension)
                     .chain(std::iter::once(Type::primitive_long()))
                     .collect(),

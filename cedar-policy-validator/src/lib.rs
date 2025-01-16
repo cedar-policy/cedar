@@ -255,7 +255,7 @@ impl Validator {
         impl Iterator<Item = ValidationError> + 'a,
         impl Iterator<Item = ValidationWarning> + 'a,
     ) {
-        let typecheck = Typechecker::new(&self.schema, mode, t.id().clone());
+        let typecheck = Typechecker::new(&self.schema, mode);
         let mut errors = HashSet::new();
         let mut warnings = HashSet::new();
         typecheck.typecheck_policy(t, &mut errors, &mut warnings);
@@ -294,6 +294,7 @@ mod test {
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
                         annotations: Annotations::new(),
+                        loc: None,
                     },
                 ),
                 (
@@ -303,6 +304,7 @@ mod test {
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
                         annotations: Annotations::new(),
+                        loc: None,
                     },
                 ),
             ],
@@ -317,6 +319,7 @@ mod test {
                     member_of: None,
                     attributes: None,
                     annotations: Annotations::new(),
+                    loc: None,
                 },
             )],
         );

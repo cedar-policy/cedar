@@ -15,6 +15,7 @@ Cedar Language Version: TBD
 
 ### Added
 
+- Implemented [RFC 80 (`datetime` extension)](https://github.com/strongdm/cedar-rfcs/blob/datetime-rfc/text/0080-datetime-extension.md) as an experimental feature under flag `datetime` (#1276, #1415)
 - Implemented [RFC 48 (schema annotations)](https://github.com/cedar-policy/rfcs/blob/main/text/0048-schema-annotations.md)  (#1316)
 - New `.isEmpty()` operator on sets (#1358, resolving #1356)
 - New `Entity::new_with_tags()` and `Entity::tag()` functions (#1402, resolving #1374)
@@ -22,6 +23,8 @@ Cedar Language Version: TBD
 - Added protobuf and JSON generation code to `cedar-policy-cli`.
 - Added a new get helper method to Context that allows easy extraction of generic values from the context by key. This method simplifies the common use case of retrieving values from Context objects.
 - Implemented [RFC 62 (extended `has` operator)](https://github.com/cedar-policy/rfcs/blob/main/text/0062-extended-has.md)  (#1327, resolving #1329)
+- Added a helper method to `PartialResponse` to accept substitutions from an iterator.
+- Added `unknown_*_with_type` methods to the RequestBuilder in partial-eval, allowing an unknown principal or resource to be constrained to a certain entity type.
 
 ### Changed
 

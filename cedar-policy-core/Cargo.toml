@@ -19,7 +19,7 @@ serde_json = "1.0"
 lalrpop-util = { version = "0.22.0", features = ["lexer"] }
 lazy_static = "1.4"
 either = "1.8"
-itertools = "0.13"
+itertools = "0.14"
 ref-cast = "1.0"
 rustc_lexer = "0.1"
 thiserror = "2.0"
@@ -46,7 +46,7 @@ prost = { version = "0.13", optional = true }
 
 [features]
 # by default, enable all Cedar extensions
-default = ["ipaddr", "decimal", "datetime"]
+default = ["ipaddr", "decimal"]
 ipaddr = []
 decimal = ["dep:regex"]
 datetime = ["dep:chrono", "dep:regex"]

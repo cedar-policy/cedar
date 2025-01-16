@@ -14,34 +14,14 @@
  * limitations under the License.
  */
 
-pub use names::TYPES_WITH_OPERATOR_OVERLOADING;
-
 use crate::ast::*;
 use crate::entities::SchemaType;
 use crate::evaluator;
 use std::any::Any;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::Debug;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::Arc;
-
-// PANIC SAFETY: `Name`s in here are valid `Name`s
-#[allow(clippy::expect_used)]
-mod names {
-    use std::collections::BTreeSet;
-
-    use super::Name;
-
-    lazy_static::lazy_static! {
-        /// Extension type names that support operator overloading
-        // INVARIANT: this set must not be empty.
-        pub static ref TYPES_WITH_OPERATOR_OVERLOADING : BTreeSet<Name> =
-            BTreeSet::from_iter(
-                [Name::parse_unqualified_name("datetime").expect("valid identifier"),
-                 Name::parse_unqualified_name("duration").expect("valid identifier")]
-            );
-    }
-}
 
 /// Cedar extension.
 ///
@@ -54,14 +34,21 @@ pub struct Extension {
     name: Name,
     /// Extension functions. These are legal to call in Cedar expressions.
     functions: HashMap<Name, ExtensionFunction>,
+    /// Types with operator overloading
+    types_with_operator_overloading: BTreeSet<Name>,
 }
 
 impl Extension {
     /// Create a new `Extension` with the given name and extension functions
-    pub fn new(name: Name, functions: impl IntoIterator<Item = ExtensionFunction>) -> Self {
+    pub fn new(
+        name: Name,
+        functions: impl IntoIterator<Item = ExtensionFunction>,
+        types_with_operator_overloading: impl IntoIterator<Item = Name>,
+    ) -> Self {
         Self {
             name,
             functions: functions.into_iter().map(|f| (f.name.clone(), f)).collect(),
+            types_with_operator_overloading: types_with_operator_overloading.into_iter().collect(),
         }
     }
 
@@ -85,6 +72,11 @@ impl Extension {
     /// in this extension
     pub fn ext_types(&self) -> impl Iterator<Item = &Name> + '_ {
         self.funcs().flat_map(|func| func.ext_types())
+    }
+
+    /// Iterate over extension types with operator overloading
+    pub fn types_with_operator_overloading(&self) -> impl Iterator<Item = &Name> + '_ {
+        self.types_with_operator_overloading.iter()
     }
 }
 

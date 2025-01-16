@@ -67,7 +67,7 @@ pub fn extension_schema() -> ExtensionSchema {
             None,
         )
     });
-    ExtensionSchema::new(pe_ext.name().clone(), fun_tys)
+    ExtensionSchema::new(pe_ext.name().clone(), fun_tys, std::iter::empty())
 }
 
 #[cfg(test)]

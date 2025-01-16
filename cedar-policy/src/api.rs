@@ -30,6 +30,7 @@ use cedar_policy_validator::entity_manifest;
 pub use cedar_policy_validator::entity_manifest::{
     AccessTrie, EntityManifest, EntityRoot, Fields, RootAccessTrie,
 };
+use cedar_policy_validator::json_schema;
 use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;
 
@@ -71,7 +72,7 @@ pub(crate) mod version {
         static ref SDK_VERSION: Version = env!("CARGO_PKG_VERSION").parse().unwrap();
         // Cedar language version
         // The patch version field may be unnecessary
-        static ref LANG_VERSION: Version = Version::new(4, 0, 0);
+        static ref LANG_VERSION: Version = Version::new(4, 2, 0);
     }
     /// Get the Cedar SDK Semantic Versioning version
     #[allow(clippy::module_name_repetitions)]
@@ -1079,10 +1080,23 @@ impl PartialResponse {
         self.0.get(id.as_ref()).map(Policy::from_ast)
     }
 
-    /// Attempt to re-authorize this response given a mapping from unknowns to values
+    /// Attempt to re-authorize this response given a mapping from unknowns to values.
+    #[allow(clippy::needless_pass_by_value)]
+    #[deprecated = "use reauthorize_with_bindings"]
     pub fn reauthorize(
         &self,
         mapping: HashMap<SmolStr, RestrictedExpression>,
+        auth: &Authorizer,
+        es: &Entities,
+    ) -> Result<Self, ReauthorizationError> {
+        self.reauthorize_with_bindings(mapping.iter().map(|(k, v)| (k.as_str(), v)), auth, es)
+    }
+
+    /// Attempt to re-authorize this response given a mapping from unknowns to values, provided as an iterator.
+    /// Exhausts the iterator, returning any evaluation errors in the restricted expressions, regardless whether there is a matching unknown.
+    pub fn reauthorize_with_bindings<'m>(
+        &self,
+        mapping: impl IntoIterator<Item = (&'m str, &'m RestrictedExpression)>,
         auth: &Authorizer,
         es: &Entities,
     ) -> Result<Self, ReauthorizationError> {
@@ -1093,7 +1107,7 @@ impl PartialResponse {
             .map(|(name, expr)| {
                 evaluator
                     .interpret(BorrowedRestrictedExpr::new_unchecked(expr.0.as_ref()))
-                    .map(|v| (name, v))
+                    .map(|v| (name.into(), v))
             })
             .collect::<Result<HashMap<_, _>, EvaluationError>>()?;
         let r = self.0.reauthorize(&mapping, &auth.0, &es.0)?;
@@ -1384,7 +1398,172 @@ pub struct SchemaFragment {
     lossless: cedar_policy_validator::json_schema::Fragment<cedar_policy_validator::RawName>,
 }
 
+fn get_annotation_by_key(
+    annotations: &est::Annotations,
+    annotation_key: impl AsRef<str>,
+) -> Option<&str> {
+    annotations
+        .0
+        .get(&annotation_key.as_ref().parse().ok()?)
+        .map(|value| annotation_value_to_str_ref(value.as_ref()))
+}
+
+fn annotation_value_to_str_ref(value: Option<&ast::Annotation>) -> &str {
+    value.map_or("", |a| a.as_ref())
+}
+
+fn annotations_to_pairs(annotations: &est::Annotations) -> impl Iterator<Item = (&str, &str)> {
+    annotations
+        .0
+        .iter()
+        .map(|(key, value)| (key.as_ref(), annotation_value_to_str_ref(value.as_ref())))
+}
+
 impl SchemaFragment {
+    /// Get annotations of a non-empty namespace.
+    ///
+    /// We do not allow namespace-level annotations on the empty namespace.
+    ///
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`]
+    pub fn namespace_annotations(
+        &self,
+        namespace: EntityNamespace,
+    ) -> Option<impl Iterator<Item = (&str, &str)>> {
+        self.lossless
+            .0
+            .get(&Some(namespace.0))
+            .map(|ns_def| annotations_to_pairs(&ns_def.annotations))
+    }
+
+    /// Get annotation value of a non-empty namespace by annotation key
+    /// `annotation_key`
+    ///
+    /// We do not allow namespace-level annotations on the empty namespace.
+    ///
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`]
+    /// or `annotation_key` is not a valid annotation key
+    /// or it does not exist
+    pub fn namespace_annotation(
+        &self,
+        namespace: EntityNamespace,
+        annotation_key: impl AsRef<str>,
+    ) -> Option<&str> {
+        let ns = self.lossless.0.get(&Some(namespace.0))?;
+        get_annotation_by_key(&ns.annotations, annotation_key)
+    }
+
+    /// Get annotations of a common type declaration
+    ///
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`] or
+    /// `ty` is not a valid common type ID or `ty` is not found in the
+    /// corresponding namespace definition
+    pub fn common_type_annotations(
+        &self,
+        namespace: Option<EntityNamespace>,
+        ty: &str,
+    ) -> Option<impl Iterator<Item = (&str, &str)>> {
+        let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
+        let ty = json_schema::CommonTypeId::new(ast::UnreservedId::from_normalized_str(ty).ok()?)
+            .ok()?;
+        ns_def
+            .common_types
+            .get(&ty)
+            .map(|ty| annotations_to_pairs(&ty.annotations))
+    }
+
+    /// Get annotation value of a common type declaration by annotation key
+    /// `annotation_key`
+    ///
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`]
+    /// or `ty` is not a valid common type ID
+    /// or `ty` is not found in the corresponding namespace definition
+    /// or `annotation_key` is not a valid annotation key
+    /// or it does not exist
+    pub fn common_type_annotation(
+        &self,
+        namespace: Option<EntityNamespace>,
+        ty: &str,
+        annotation_key: impl AsRef<str>,
+    ) -> Option<&str> {
+        let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
+        let ty = json_schema::CommonTypeId::new(ast::UnreservedId::from_normalized_str(ty).ok()?)
+            .ok()?;
+        get_annotation_by_key(&ns_def.common_types.get(&ty)?.annotations, annotation_key)
+    }
+
+    /// Get annotations of an entity type declaration
+    ///
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`] or
+    /// `ty` is not a valid entity type name or `ty` is not found in the
+    /// corresponding namespace definition
+    pub fn entity_type_annotations(
+        &self,
+        namespace: Option<EntityNamespace>,
+        ty: &str,
+    ) -> Option<impl Iterator<Item = (&str, &str)>> {
+        let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
+        let ty = ast::UnreservedId::from_normalized_str(ty).ok()?;
+        ns_def
+            .entity_types
+            .get(&ty)
+            .map(|ty| annotations_to_pairs(&ty.annotations))
+    }
+
+    /// Get annotation value of an entity type declaration by annotation key
+    /// `annotation_key`
+    ///
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`]
+    /// or `ty` is not a valid entity type name
+    /// or `ty` is not found in the corresponding namespace definition
+    /// or `annotation_key` is not a valid annotation key
+    /// or it does not exist
+    pub fn entity_type_annotation(
+        &self,
+        namespace: Option<EntityNamespace>,
+        ty: &str,
+        annotation_key: impl AsRef<str>,
+    ) -> Option<&str> {
+        let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
+        let ty = ast::UnreservedId::from_normalized_str(ty).ok()?;
+        get_annotation_by_key(&ns_def.entity_types.get(&ty)?.annotations, annotation_key)
+    }
+
+    /// Get annotations of an action declaration
+    ///
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`] or
+    /// `id` is not found in the corresponding namespace definition
+    pub fn action_annotations(
+        &self,
+        namespace: Option<EntityNamespace>,
+        id: EntityId,
+    ) -> Option<impl Iterator<Item = (&str, &str)>> {
+        let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
+        ns_def
+            .actions
+            .get(id.as_ref())
+            .map(|a| annotations_to_pairs(&a.annotations))
+    }
+
+    /// Get annotation value of an action declaration by annotation key
+    /// `annotation_key`
+    ///
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`]
+    /// or `id` is not found in the corresponding namespace definition
+    /// or `annotation_key` is not a valid annotation key
+    /// or it does not exist
+    pub fn action_annotation(
+        &self,
+        namespace: Option<EntityNamespace>,
+        id: EntityId,
+        annotation_key: impl AsRef<str>,
+    ) -> Option<&str> {
+        let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
+        get_annotation_by_key(
+            &ns_def.actions.get(id.as_ref())?.annotations,
+            annotation_key,
+        )
+    }
+
     /// Extract namespaces defined in this [`SchemaFragment`].
     ///
     /// `None` indicates the empty namespace.
@@ -2489,11 +2668,7 @@ impl RequestEnv {
 // This function is called by [`Template::get_valid_request_envs`] and
 // [`Policy::get_valid_request_envs`]
 fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item = RequestEnv> {
-    let tc = Typechecker::new(
-        &s.0,
-        cedar_policy_validator::ValidationMode::default(),
-        ast.id().clone(),
-    );
+    let tc = Typechecker::new(&s.0, cedar_policy_validator::ValidationMode::default());
     tc.typecheck_by_request_env(ast)
         .into_iter()
         .filter_map(|(env, pc)| {
@@ -3601,9 +3776,9 @@ pub struct UnsetSchema;
 impl Default for RequestBuilder<UnsetSchema> {
     fn default() -> Self {
         Self {
-            principal: ast::EntityUIDEntry::Unknown { loc: None },
-            action: ast::EntityUIDEntry::Unknown { loc: None },
-            resource: ast::EntityUIDEntry::Unknown { loc: None },
+            principal: ast::EntityUIDEntry::unknown(),
+            action: ast::EntityUIDEntry::unknown(),
+            resource: ast::EntityUIDEntry::unknown(),
             context: None,
             schema: UnsetSchema,
         }
@@ -3620,6 +3795,17 @@ impl<S> RequestBuilder<S> {
     pub fn principal(self, principal: EntityUid) -> Self {
         Self {
             principal: ast::EntityUIDEntry::known(principal.into(), None),
+            ..self
+        }
+    }
+
+    /// Set the principal to be unknown, but known to belong to a certain entity type.
+    ///
+    /// This information is taken into account when evaluating 'is', '==' and '!=' expressions.
+    #[must_use]
+    pub fn unknown_principal_with_type(self, principal_type: EntityTypeName) -> Self {
+        Self {
+            principal: ast::EntityUIDEntry::unknown_with_type(principal_type.0, None),
             ..self
         }
     }
@@ -3644,6 +3830,17 @@ impl<S> RequestBuilder<S> {
     pub fn resource(self, resource: EntityUid) -> Self {
         Self {
             resource: ast::EntityUIDEntry::known(resource.into(), None),
+            ..self
+        }
+    }
+
+    /// Set the resource to be unknown, but known to belong to a certain entity type.
+    ///
+    /// This information is taken into account when evaluating 'is', '==' and '!=' expressions.
+    #[must_use]
+    pub fn unknown_resource_with_type(self, resource_type: EntityTypeName) -> Self {
+        Self {
+            resource: ast::EntityUIDEntry::unknown_with_type(resource_type.0, None),
             ..self
         }
     }

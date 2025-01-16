@@ -68,7 +68,7 @@ pub struct EntityManifest {
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
-#[doc = include_str!("../../cedar-policy/experimental_warning.md")]
+#[doc = include_str!("../experimental_warning.md")]
 pub type Fields = HashMap<SmolStr, Box<AccessTrie>>;
 
 /// The root of a data path or [`RootAccessTrie`].
@@ -450,7 +450,7 @@ pub fn compute_entity_manifest(
     // now, for each policy we add the data it requires to the manifest
     for policy in policies.policies() {
         // typecheck the policy and get all the request environments
-        let typechecker = Typechecker::new(schema, ValidationMode::Strict, policy.id().clone());
+        let typechecker = Typechecker::new(schema, ValidationMode::Strict);
         let request_envs = typechecker.typecheck_by_request_env(policy.template());
         for (request_env, policy_check) in request_envs {
             let new_primary_slice = match policy_check {
