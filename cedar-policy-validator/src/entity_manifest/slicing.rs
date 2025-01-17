@@ -243,13 +243,14 @@ impl AccessTrie {
 
 #[cfg(test)]
 mod entity_slice_tests {
+    use similar_asserts::assert_eq;
     use std::collections::BTreeSet;
 
     use cedar_policy_core::{
         ast::{Context, PolicyID, PolicySet},
         entities::{EntityJsonParser, TCComputation},
         extensions::Extensions,
-        parser::parse_policy,
+        parser::{self, parse_policy},
     };
 
     use crate::{entity_manifest::compute_entity_manifest, CoreSchema, ValidatorSchema};
@@ -335,6 +336,7 @@ action Read appliesTo {
         .0
     }
 
+    #[track_caller]
     fn expect_entity_slice_to(
         original: serde_json::Value,
         expected: serde_json::Value,
@@ -923,5 +925,137 @@ action BeSad appliesTo {
 
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
         assert_eq!(entity_manifest, entity_manifest);
+    }
+
+    #[test]
+    fn test_slice_with_entity_alias() {
+        let schema = schema();
+        let entities_json = serde_json::json!([{
+            "uid" : { "type" : "User", "id" : "oliver"},
+            "parents": [],
+            "attrs": { "name": "oliver" }
+        }]);
+
+        // Only lit is accessed
+        let pset = parser::parse_policyset(
+            r#"permit(principal in User::"oliver", action, resource) when { User::"oliver".name == "oliver" };"#,
+        ).unwrap();
+        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        expect_entity_slice_to(
+            entities_json.clone(),
+            entities_json.clone(),
+            &schema,
+            &manifest,
+        );
+
+        // Only var is accessed
+        let pset = parser::parse_policyset(
+            r#"permit(principal in User::"oliver", action, resource) when { principal.name == "oliver" };"#,
+        ).unwrap();
+        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        expect_entity_slice_to(
+            entities_json.clone(),
+            entities_json.clone(),
+            &schema,
+            &manifest,
+        );
+
+        // Both are accessed
+        let pset = parser::parse_policyset(
+            r#"permit(principal in User::"oliver", action, resource) when { principal.name == User::"oliver".name };"#,
+        ).unwrap();
+        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        expect_entity_slice_to(
+            entities_json.clone(),
+            entities_json.clone(),
+            &schema,
+            &manifest,
+        );
+    }
+
+    #[test]
+    fn test_slice_with_entity_alias_with_two_attrs() {
+        let schema = ValidatorSchema::from_cedarschema_str(
+            "
+entity User = {
+  foo: String,
+  bar: String,
+};
+
+entity Document;
+
+action Read appliesTo {
+  principal: [User],
+  resource: [Document]
+};",
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0;
+
+        let entities_json = serde_json::json!([{
+            "uid" : { "type" : "User", "id" : "oliver"},
+            "parents": [],
+            "attrs": {
+                "foo": "1",
+                "bar": "1",
+            }
+        }]);
+
+        // principal and literal alias, but access different attrs. Slice needs to take both
+        let pset = parser::parse_policyset(
+            r#"permit(principal in User::"oliver", action, resource) when { principal.foo == User::"oliver".bar };"#,
+        ).unwrap();
+        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        expect_entity_slice_to(
+            entities_json.clone(),
+            entities_json.clone(),
+            &schema,
+            &manifest,
+        );
+    }
+
+    #[test]
+    fn test_slice_with_entity_alias_with_nested_record() {
+        let schema = ValidatorSchema::from_cedarschema_str(
+            "
+entity User = {
+  foo: {
+    bar: String,
+    baz: String,
+  },
+};
+
+entity Document;
+
+action Read appliesTo {
+  principal: [User],
+  resource: [Document]
+};",
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0;
+
+        let entities_json = serde_json::json!([{
+            "uid" : { "type" : "User", "id" : "oliver"},
+            "parents": [],
+            "attrs": { "foo": {
+                "bar": "1",
+                "baz": "1",
+            }}
+        }]);
+
+        // principal and literal alias, but access different attrs of a nested record. Slice needs to take both
+        let pset = parser::parse_policyset(
+            r#"permit(principal in User::"oliver", action, resource) when { principal.foo.bar == User::"oliver".foo.baz };"#,
+        ).unwrap();
+        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        expect_entity_slice_to(
+            entities_json.clone(),
+            entities_json.clone(),
+            &schema,
+            &manifest,
+        );
     }
 }

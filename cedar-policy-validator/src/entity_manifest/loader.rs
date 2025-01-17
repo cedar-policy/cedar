@@ -312,13 +312,19 @@ pub(crate) fn load_entities(
     }
 }
 
-/// Merge the contents of two entities in the slice. If one entity is referenced
-/// by multiple entity roots in the slice, then we need to be sure that we don't
-/// clobber the attribute for the first when inserting the second into the
-/// slice.
-fn merge_entities(entity_1: Entity, entity_2: Entity) -> Entity {
-    let (uid1, mut attrs1, ancestors1, tags1) = entity_1.into_inner();
-    let (uid2, attrs2, ancestors2, tags2) = entity_2.into_inner();
+/// Merge the contents of two entities in the slice. Combines the attributes
+/// records for both entities, recursively merging any attribute that exist in
+/// both. If one entity is referenced by multiple entity roots in the slice,
+/// then we need to be sure that we don't clobber the attribute for the first
+/// when inserting the second into the slice.
+// INVARIANT: `e1` and `e2` must be the result of slicing the same original
+// entity using the same entity manifest and request. I.e., they may differ only in
+// what attributes they contain. When an attribute exists in both, the
+// attributes may differ only if they are records, and then only in what nested
+// attributes they contain.
+fn merge_entities(e1: Entity, e2: Entity) -> Entity {
+    let (uid1, mut attrs1, ancestors1, tags1) = e1.into_inner();
+    let (uid2, attrs2, ancestors2, tags2) = e2.into_inner();
 
     assert_eq!(
         uid1, uid2,
@@ -364,6 +370,11 @@ fn merge_entities(entity_1: Entity, entity_2: Entity) -> Entity {
 }
 
 /// Merge two value for corresponding attributes in the slice.
+// INVARIANT: `v1` and `v2` must be the result of slicing the same original
+// value using the same entity manifest and request. I.e., they must be
+// identical, except for the attributes they contain when the values are a
+// records. When an attribute exists in both records, the attributes must be
+// recursively identical, with the same exception.
 fn merge_values(v1: Value, v2: Value) -> Value {
     match (v1.value, v2.value) {
         (ValueKind::Record(r1), ValueKind::Record(r2)) => {
@@ -563,4 +574,61 @@ fn compute_ancestors_request(
         ancestors,
         entity_id,
     })
+}
+
+#[cfg(test)]
+mod test {
+    use cedar_policy_core::ast::Value;
+    use smol_str::ToSmolStr;
+
+    use super::merge_values;
+
+    #[test]
+    fn test_merge_values() {
+        assert_eq!(
+            merge_values(Value::new(1, None), Value::new(1, None)),
+            Value::new(1, None),
+        );
+        assert_eq!(
+            merge_values(
+                Value::set([Value::new(1, None), Value::new(2, None)], None),
+                Value::set([Value::new(1, None), Value::new(2, None)], None),
+            ),
+            Value::set([Value::new(1, None), Value::new(2, None)], None),
+        );
+        assert_eq!(
+            merge_values(
+                Value::record([("a".to_smolstr(), Value::new(1, None))], None),
+                Value::record([("a".to_smolstr(), Value::new(1, None))], None),
+            ),
+            Value::record([("a".to_smolstr(), Value::new(1, None))], None),
+        );
+        assert_eq!(
+            merge_values(
+                Value::empty_record(None),
+                Value::record([("a".to_smolstr(), Value::new(1, None))], None),
+            ),
+            Value::record([("a".to_smolstr(), Value::new(1, None))], None),
+        );
+        assert_eq!(
+            merge_values(
+                Value::record([("a".to_smolstr(), Value::new(1, None))], None),
+                Value::empty_record(None),
+            ),
+            Value::record([("a".to_smolstr(), Value::new(1, None))], None),
+        );
+        assert_eq!(
+            merge_values(
+                Value::record([("a".to_smolstr(), Value::new(1, None))], None),
+                Value::record([("b".to_smolstr(), Value::new(2, None))], None),
+            ),
+            Value::record(
+                [
+                    ("a".to_smolstr(), Value::new(1, None)),
+                    ("b".to_smolstr(), Value::new(2, None))
+                ],
+                None
+            ),
+        );
+    }
 }
