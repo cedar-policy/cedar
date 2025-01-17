@@ -28,10 +28,11 @@ prost-build = {version = "0.13", optional = true}
 
 [features]
 default = []
-experimental = ["permissive-validate", "partial-validate", "partial-eval", "protobufs"]
+experimental = ["permissive-validate", "partial-validate", "partial-eval", "protobufs", "datetime"]
 permissive-validate = ["cedar-policy/permissive-validate"]
 partial-validate = ["cedar-policy/partial-validate"]
 partial-eval = ["cedar-policy/partial-eval"]
+datetime = ["cedar-policy/datetime"]
 protobufs = ["dep:prost", "dep:prost-build", "cedar-policy/protobufs", "cedar-policy-core/protobufs", "cedar-policy-validator/protobufs"]
 
 [dev-dependencies]
