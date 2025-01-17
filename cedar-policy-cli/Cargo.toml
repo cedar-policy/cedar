@@ -22,10 +22,11 @@ semver = "1.0.24"
 
 [features]
 default = []
-experimental = ["permissive-validate", "partial-validate", "partial-eval"]
+experimental = ["permissive-validate", "partial-validate", "partial-eval", "datetime"]
 permissive-validate = ["cedar-policy/permissive-validate"]
 partial-validate = ["cedar-policy/partial-validate"]
 partial-eval = ["cedar-policy/partial-eval"]
+datetime = ["cedar-policy/datetime"]
 
 [dev-dependencies]
 assert_cmd = "2.0"
