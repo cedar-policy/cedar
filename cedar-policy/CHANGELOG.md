@@ -13,18 +13,22 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ## [Unreleased]
 Cedar Language Version: TBD
 
+## [4.3.0] - Coming soon
+Cedar Language Version: 4.2
+
 ### Added
 
-- Implemented [RFC 80 (`datetime` extension)](https://github.com/strongdm/cedar-rfcs/blob/datetime-rfc/text/0080-datetime-extension.md) as an experimental feature under flag `datetime` (#1276, #1415)
-- Implemented [RFC 48 (schema annotations)](https://github.com/cedar-policy/rfcs/blob/main/text/0048-schema-annotations.md)  (#1316)
-- New `.isEmpty()` operator on sets (#1358, resolving #1356)
-- New `Entity::new_with_tags()` and `Entity::tag()` functions (#1402, resolving #1374)
-- Added protobuf schemas and (de)serialization code using on `prost` crate behind the experimental `protobufs` flag.
-- Added protobuf and JSON generation code to `cedar-policy-cli`.
-- Added a new get helper method to Context that allows easy extraction of generic values from the context by key. This method simplifies the common use case of retrieving values from Context objects.
 - Implemented [RFC 62 (extended `has` operator)](https://github.com/cedar-policy/rfcs/blob/main/text/0062-extended-has.md)  (#1327, resolving #1329)
-- Added a helper method to `PartialResponse` to accept substitutions from an iterator.
-- Added `unknown_*_with_type` methods to the RequestBuilder in partial-eval, allowing an unknown principal or resource to be constrained to a certain entity type.
+- Implemented [RFC 80 (`datetime` extension)](https://github.com/strongdm/cedar-rfcs/blob/datetime-rfc/text/0080-datetime-extension.md) as an experimental feature under flag `datetime` (#1276, #1415)
+- Added new `.isEmpty()` operator on sets (#1358, resolving #1356)
+- Implemented [RFC 48 (schema annotations)](https://github.com/cedar-policy/rfcs/blob/main/text/0048-schema-annotations.md) (#1316)
+- Implemented [RFC 74 (entity manifests and slicing)](https://github.com/cedar-policy/rfcs/pull/74) behind the experimental `entity-manifest` flag (#1239)
+- Added protobuf schemas and (de)serialization behind the experimental `protobufs` flag (#1277, #1345)
+- New `Entity::new_with_tags()` and `Entity::tag()` functions (#1402, resolving #1374)
+- Added `Request::context` and `Context::get` methods to allow easy extraction of  values from the context by key (#1318)
+- For the `partial-eval` experimental feature, added `PartialResponse::reauthorize_with_bindings` to accept substitutions from an iterator and deprecated `PartialResponse::reauthorize` (#1387)
+- For the `partial-eval` experimental feature, added `RequestBuild::unknown_principal_with_type` and `RequestBuild::unknown_resource_with_type` methods, allowing an unknown principal or resource to be constrained to a certain entity type (#1391)
+- Added `Clone` implementations for more types (#1324)
 
 ### Changed
 
