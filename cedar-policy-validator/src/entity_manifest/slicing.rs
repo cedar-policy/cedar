@@ -1058,4 +1058,71 @@ action Read appliesTo {
             &manifest,
         );
     }
+
+    #[test]
+    fn test_slice_with_entity_alias_ancestors() {
+        let schema = ValidatorSchema::from_cedarschema_str(
+            "
+entity User in Group = {
+  name: String
+};
+
+entity Group;
+
+entity Document;
+
+action Read appliesTo {
+  principal: [User],
+  resource: [Document]
+};",
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0;
+        let entities_json = serde_json::json!([{
+            "uid" : { "type" : "User", "id" : "oliver"},
+            "parents": [ { "type" : "Group", "id" : "oliver"}, ],
+            "attrs": { "name": "oliver" }
+        }]);
+
+        // The `principal` alias needs to load ancestors, but the lit alias does not. Slicing still needs to load ancestors
+        let pset = parser::parse_policyset(
+            r#"permit(principal in Group::"oliver", action, resource) when {User::"oliver".name == "oliver"};"#,
+        ).unwrap();
+        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        expect_entity_slice_to(
+            entities_json.clone(),
+            entities_json.clone(),
+            &schema,
+            &manifest,
+        );
+
+        // Lit wants ancestors, `principal` does not
+        let pset = parser::parse_policyset(
+            r#"permit(principal, action, resource) when { User::"oliver" in Group::"oliver" && principal.name == "oliver"};"#,
+        ).unwrap();
+        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        expect_entity_slice_to(
+            entities_json.clone(),
+            entities_json.clone(),
+            &schema,
+            &manifest,
+        );
+
+        // Both need ancestors
+        let pset = parser::parse_policyset(
+            r#"permit(principal, action, resource) when { User::"oliver" in Group::"oliver" && principal in Group::"oliver" };"#,
+        ).unwrap();
+        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        expect_entity_slice_to(
+            entities_json.clone(),
+            serde_json::json!([{
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "parents": [ { "type" : "Group", "id" : "oliver"}, ],
+                "attrs": {}
+            }]),
+            &schema,
+            &manifest,
+        );
+    }
 }
