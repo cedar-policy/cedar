@@ -311,8 +311,6 @@ dependencies = [
  "glob",
  "miette",
  "predicates",
- "prost",
- "prost-build",
  "rstest",
  "semver",
  "serde",
