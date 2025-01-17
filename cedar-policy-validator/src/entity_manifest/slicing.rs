@@ -1115,7 +1115,7 @@ action Read appliesTo {
         ).unwrap();
         let manifest = compute_entity_manifest(&schema, &pset).unwrap();
         expect_entity_slice_to(
-            entities_json.clone(),
+            entities_json,
             serde_json::json!([{
                 "uid" : { "type" : "User", "id" : "oliver"},
                 "parents": [ { "type" : "Group", "id" : "oliver"}, ],
