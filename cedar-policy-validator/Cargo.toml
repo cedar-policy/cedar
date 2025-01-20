@@ -56,7 +56,7 @@ protobufs = ["dep:prost", "dep:prost-build", "cedar-policy-core/protobufs"]
 entity-manifest = []
 
 [dev-dependencies]
-similar-asserts = "1.5.0"
+similar-asserts = "1.6.1"
 cool_asserts = "2.0"
 cedar-policy-core = { version = "=4.3.0", path = "../cedar-policy-core", features = ["test-util"] }
 miette = { version = "7.4.0", features = ["fancy"] }
