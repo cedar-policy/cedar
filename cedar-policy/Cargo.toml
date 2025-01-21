@@ -96,7 +96,7 @@ name = "deeply_nested_est"
 harness = false
 
 [package.metadata.docs.rs]
-features = ["experimental"]
+features = ["partial-eval", "permissive-validate", "partial-validate", "level-validate", "entity-manifest", "datetime"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [lints]
