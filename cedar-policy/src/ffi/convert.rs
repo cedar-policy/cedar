@@ -225,7 +225,7 @@ pub enum SchemaToJsonAnswer {
     },
 }
 
-/// Convert cedar_policy::ffi::PolicySet JSON to cedar_policy::PolicySet Object
+/// Convert `cedar_policy::ffi::PolicySet` JSON to `cedar_policy::PolicySet` Object
 pub fn json_to_policyset(
     json_string: &str,
 ) -> Result<crate::PolicySet, Box<dyn std::error::Error>> {
