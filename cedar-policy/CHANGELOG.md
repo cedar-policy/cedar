@@ -13,7 +13,14 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ## [Unreleased]
 Cedar Language Version: TBD
 
-## [4.3.0] - Coming soon
+## [4.3.1] - Coming soon
+Cedar Language Version: 4.2
+
+### Fixed
+
+- Disable doc generation for feature `protobuf`, unblocking that for other features (#1434)
+
+## [4.3.0] - 2025-01-21
 Cedar Language Version: 4.2
 
 ### Added
