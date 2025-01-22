@@ -18,7 +18,7 @@
 //! Cedar Wasm conversion functions are generated from the functions in this
 //! file.
 
-use super::utils::JsonValueWithNoDuplicateKeys;
+use super::utils::{JsonValueWithNoDuplicateKeys, PolicySet};
 use super::{DetailedError, Policy, Schema, Template};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "wasm")]
@@ -223,6 +223,23 @@ pub enum SchemaToJsonAnswer {
         /// Errors
         errors: Vec<DetailedError>,
     },
+}
+
+/// Convert cedar_policy::ffi::PolicySet JSON to cedar_policy::PolicySet Object
+pub fn json_to_policyset(
+    json_string: &str,
+) -> Result<crate::PolicySet, Box<dyn std::error::Error>> {
+    let policy_set_ffi: PolicySet =
+        serde_json::from_str(json_string).map_err(|e| format!("Failed to parse JSON: {}", e))?;
+    let policy_set = policy_set_ffi.parse().map_err(|errs| {
+        let err_msg = errs
+            .iter()
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("Failed to parse policy set: {}", err_msg)
+    })?;
+    Ok(policy_set)
 }
 
 #[cfg(test)]
