@@ -18,7 +18,7 @@ Cedar Language Version: 4.2
 
 ### Fixed
 
-- Disable doc generation for feature `protobuf`, unblocking that for other features (#1434)
+- Disable doc generation for feature `protobufs`, unblocking that for other features (#1434)
 
 ## [4.3.0] - 2025-01-21
 Cedar Language Version: 4.2
