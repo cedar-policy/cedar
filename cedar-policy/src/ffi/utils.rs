@@ -529,7 +529,7 @@ pub struct PolicySet {
 
 impl PolicySet {
     /// Parse a [`PolicySet`] into a [`crate::PolicySet`]
-    pub(super) fn parse(self) -> Result<crate::PolicySet, Vec<miette::Report>> {
+    pub fn parse(self) -> Result<crate::PolicySet, Vec<miette::Report>> {
         let mut errs = Vec::new();
         // Parse static policies
         let mut policies = self.static_policies.parse().unwrap_or_else(|mut e| {
