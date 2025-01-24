@@ -28,6 +28,9 @@ default = ["console_error_panic_hook"]
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(wasm_bindgen_unstable_test_coverage)'] }
+
 [dev-dependencies]
 wasm-bindgen-test = "0.3.13"
 cool_asserts = "2.0"
