@@ -72,6 +72,9 @@ oorandom = "11.1"
 
 proptest = "1.0.0"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(wasm_bindgen_unstable_test_coverage)'] }
+
 [[bench]]
 name = "cedar_benchmarks"
 harness = false
