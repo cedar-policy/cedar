@@ -23,7 +23,7 @@ unicode-security = "0.1.0"
 smol_str = { version = "0.3", features = ["serde"] }
 stacker = "0.1.15"
 arbitrary = { version = "1", features = ["derive"], optional = true }
-lalrpop-util = { version = "0.22.0", features = ["lexer", "unicode"] }
+lalrpop-util = { version = "0.22.1", features = ["lexer", "unicode"] }
 lazy_static = "1.4.0"
 nonempty = "0.10.0"
 educe = "0.6.0"
@@ -62,7 +62,7 @@ cedar-policy-core = { version = "=4.3.0", path = "../cedar-policy-core", feature
 miette = { version = "7.4.0", features = ["fancy"] }
 
 [build-dependencies]
-lalrpop = "0.22.0"
+lalrpop = "0.22.1"
 # protobuf dependency
 prost-build = { version = "0.13", optional = true }
 
