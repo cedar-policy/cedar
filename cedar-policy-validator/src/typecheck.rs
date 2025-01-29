@@ -47,7 +47,6 @@ use cedar_policy_core::{
     expr_builder::ExprBuilder as _,
 };
 
-#[cfg(not(target_arch = "wasm32"))]
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 
 /// Basic result for typechecking
@@ -352,8 +351,8 @@ impl<'a> SingleEnvTypechecker<'a> {
         e: &'b Expr,
         type_errors: &mut Vec<ValidationError>,
     ) -> TypecheckAnswer<'b> {
-        #[cfg(not(target_arch = "wasm32"))]
-        if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
+        // We assume there's enough space if we cannot determine it with `remaining_stack`
+        if stacker::remaining_stack().unwrap_or(REQUIRED_STACK_SPACE) < REQUIRED_STACK_SPACE {
             return TypecheckAnswer::RecursionLimit;
         }
 
