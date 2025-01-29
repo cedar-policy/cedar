@@ -514,9 +514,6 @@ impl Type {
     /// it does typecheck for some permissible substitutions of the unknowns,
     /// but does not typecheck for other permissible substitutions), this is
     /// reported as an error.
-    ///
-    /// TODO(#437): Handling of `Unknown`s is not yet complete and doesn't
-    /// properly behave according to the above description, as of this writing.
     pub(crate) fn typecheck_partial_value(
         &self,
         value: &PartialValue,
@@ -526,7 +523,7 @@ impl Type {
             PartialValue::Value(value) => self.typecheck_value(value, extensions),
             PartialValue::Residual(expr) => match BorrowedRestrictedExpr::new(expr) {
                 Ok(rexpr) => self.typecheck_restricted_expr(rexpr, extensions),
-                Err(_) => Ok(false), // TODO(#437): instead of just reporting typecheck fails for all nontrivial residuals, we should do something more intelligent
+                Err(_) => Ok(false),
             },
         }
     }
@@ -544,14 +541,14 @@ impl Type {
     }
 
     /// Does the given `BorrowedRestrictedExpr` have this validator type?
-    ///
-    /// TODO(#437): Handling of restricted exprs containing `Unknown`s is not
-    /// yet complete or correct, as of this writing.
     pub(crate) fn typecheck_restricted_expr(
         &self,
         restricted_expr: BorrowedRestrictedExpr<'_>,
         extensions: &Extensions<'_>,
     ) -> Result<bool, ExtensionFunctionLookupError> {
+        if restricted_expr.as_unknown().is_some() {
+            return Ok(true);
+        }
         match self {
             Type::Never => Ok(false), // no expr has type Never
             Type::Primitive {
@@ -2518,6 +2515,198 @@ mod test {
             Extensions::all_available(),
         )
         .expect("Expected valid schema")
+    }
+
+    #[test]
+    #[cfg(feature = "partial-eval")]
+    fn test_typecheck_partial_value_with_unknown() {
+        use cedar_policy_core::ast::Context;
+        let context = Context::from_json_value(serde_json::json!({
+            "a": {
+                "__extn": {
+                    "fn": "unknown",
+                    "arg": "test_arg"
+                }
+            },
+        }))
+        .unwrap();
+
+        let typeValidator = Type::record_with_attributes(
+            [
+                (
+                    "a".into(),
+                    AttributeType::optional_attribute(Type::primitive_boolean()),
+                ),
+                (
+                    "b".into(),
+                    AttributeType::optional_attribute(Type::primitive_boolean()),
+                ),
+                (
+                    "c".into(),
+                    AttributeType::optional_attribute(Type::primitive_boolean()),
+                ),
+            ],
+            OpenTag::ClosedAttributes,
+        );
+
+        let result = typeValidator
+            .typecheck_partial_value(&context.clone().into(), Extensions::all_available());
+        assert_eq!(result.unwrap(), true);
+    }
+
+    #[test]
+    #[cfg(feature = "partial-eval")]
+    fn test_typecheck_partial_value_with_embedded_unknown() {
+        use cedar_policy_core::ast::Context;
+        let context = Context::from_json_value(serde_json::json!({
+            "a": {
+                "b":{
+                    "__extn": {
+                        "fn": "unknown",
+                        "arg": "test_arg"
+                    }
+                }
+            },
+        }))
+        .unwrap();
+
+        let embedded_attributes = Type::record_with_attributes(
+            [
+                (
+                    "b".into(),
+                    AttributeType::optional_attribute(Type::primitive_boolean()),
+                ),
+                (
+                    "c".into(),
+                    AttributeType::optional_attribute(Type::primitive_boolean()),
+                ),
+            ],
+            OpenTag::ClosedAttributes,
+        );
+
+        let typeValidator = Type::record_with_attributes(
+            [(
+                "a".into(),
+                AttributeType::optional_attribute(embedded_attributes),
+            )],
+            OpenTag::ClosedAttributes,
+        );
+
+        let result = typeValidator
+            .typecheck_partial_value(&context.clone().into(), Extensions::all_available());
+
+        // c is optional attribute it is not required to provide it.
+        assert_eq!(result.unwrap(), true);
+    }
+
+    #[test]
+    #[cfg(feature = "partial-eval")]
+    fn test_typecheck_partial_value_with_unknown1() {
+        use cedar_policy_core::ast::Context;
+        let context = Context::from_json_value(serde_json::json!({
+            "foo": 1,
+            "bar": {
+                "__extn": {
+                    "fn": "unknown",
+                    "arg": "test_arg"
+                }
+            },
+        }))
+        .unwrap();
+
+        let typeValidator = Type::record_with_attributes(
+            [
+                (
+                    "foo".into(),
+                    AttributeType::required_attribute(Type::primitive_long()),
+                ),
+                (
+                    "bar".into(),
+                    AttributeType::required_attribute(Type::primitive_string()),
+                ),
+            ],
+            OpenTag::ClosedAttributes,
+        );
+
+        let result = typeValidator
+            .typecheck_partial_value(&context.clone().into(), Extensions::all_available());
+        //success both foo and bar are provided
+        assert_eq!(result.unwrap(), true);
+    }
+
+    #[test]
+    #[cfg(feature = "partial-eval")]
+    fn test_typecheck_partial_value_with_unknown2() {
+        use cedar_policy_core::ast::Context;
+        let context = Context::from_json_value(serde_json::json!({
+            "bar": {
+                "__extn": {
+                    "fn": "unknown",
+                    "arg": "test_arg"
+                }
+            },
+            "foo": 1,
+        }))
+        .unwrap();
+
+        let typeValidator = Type::record_with_attributes(
+            [
+                (
+                    "foo".into(),
+                    AttributeType::required_attribute(Type::primitive_string()),
+                ),
+                (
+                    "bar".into(),
+                    AttributeType::required_attribute(Type::primitive_string()),
+                ),
+            ],
+            OpenTag::ClosedAttributes,
+        );
+
+        let result = typeValidator
+            .typecheck_partial_value(&context.clone().into(), Extensions::all_available());
+        //fail foo is string in schema not long
+        assert_eq!(result.unwrap(), false);
+    }
+
+    #[test]
+    #[cfg(feature = "partial-eval")]
+    fn test_typecheck_partial_value_with_unknown3() {
+        use cedar_policy_core::ast::Context;
+        let context = Context::from_json_value(serde_json::json!({
+            "bar": {
+                "__extn": {
+                    "fn": "unknown",
+                    "arg": "test_arg"
+                }
+            },
+            "foo": 1,
+        }))
+        .unwrap();
+
+        let typeValidator = Type::record_with_attributes(
+            [
+                (
+                    "foo".into(),
+                    AttributeType::required_attribute(Type::primitive_long()),
+                ),
+                (
+                    "bar".into(),
+                    AttributeType::required_attribute(Type::primitive_string()),
+                ),
+                (
+                    "baz".into(),
+                    AttributeType::required_attribute(Type::primitive_string()),
+                ),
+            ],
+            OpenTag::ClosedAttributes,
+        );
+
+        let result = typeValidator
+            .typecheck_partial_value(&context.clone().into(), Extensions::all_available());
+
+        //fail baz is required in the schema
+        assert_eq!(result.unwrap(), false);
     }
 
     /// Test cases with entity type Action are interesting because Action
