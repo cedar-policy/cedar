@@ -872,7 +872,9 @@ impl Authorizer {
     ///
     /// The authorizer uses the `stacker` crate to manage stack size and tries to use a sane default.
     /// If the default is not right for you, you can try wrapping the authorizer or individual calls
-    /// to `is_authorized` in `stacker::grow`.
+    /// to `is_authorized` in `stacker::grow`. Note that `stacker` does not provide support in some
+    /// platforms like `wasm32`. In such cases, the authorizer will assume that the stack size is
+    /// sufficient.
     /// ```
     /// # use cedar_policy::{Authorizer, Context, Entities, EntityId, EntityTypeName,
     /// # EntityUid, Request,PolicySet};
