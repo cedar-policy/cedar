@@ -13,6 +13,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ## [Unreleased]
 Cedar Language Version: TBD
 
+### Fixed
+
+- Assume sufficient stack space when it cannot be determined (#1446, resolving #1443)
+
 ## [4.3.1] - Coming soon
 Cedar Language Version: 4.2
 

@@ -321,7 +321,6 @@ impl EvaluationError {
     }
 
     /// Construct a [`RecursionLimit`] error
-    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn recursion_limit(source_loc: Option<Loc>) -> Self {
         evaluation_errors::RecursionLimitError { source_loc }.into()
     }

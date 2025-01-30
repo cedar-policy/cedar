@@ -34,7 +34,6 @@ use itertools::{Either, Itertools};
 use nonempty::nonempty;
 use smol_str::SmolStr;
 
-#[cfg(not(target_arch = "wasm32"))]
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 
 // PANIC SAFETY `Name`s in here are valid `Name`s
@@ -1108,11 +1107,9 @@ impl Value {
 
 #[inline(always)]
 fn stack_size_check() -> Result<()> {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
-            return Err(EvaluationError::recursion_limit(None));
-        }
+    // We assume there's enough space if we cannot determine it with `remaining_stack`
+    if stacker::remaining_stack().unwrap_or(REQUIRED_STACK_SPACE) < REQUIRED_STACK_SPACE {
+        return Err(EvaluationError::recursion_limit(None));
     }
     Ok(())
 }
