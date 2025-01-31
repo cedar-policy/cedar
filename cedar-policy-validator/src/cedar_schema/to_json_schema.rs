@@ -709,7 +709,7 @@ mod preserves_source_locations {
             };
         }
         "#,
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .unwrap();
         let ns = schema
@@ -793,7 +793,7 @@ mod preserves_source_locations {
             };
         }
         "#,
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .unwrap();
         let ns = schema

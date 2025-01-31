@@ -562,7 +562,7 @@ namespace Baz {action "Foo" appliesTo {
                         type_name: "UserGroup".parse().unwrap(),
                     }, loc: None};
                 let attribute = attributes.get(group).expect("No attribute `{group}`");
-                assert_has_type(attribute, expected);
+                assert_has_type(attribute, &expected);
             });
         }});
         assert_matches!(github
@@ -577,14 +577,14 @@ namespace Baz {action "Foo" appliesTo {
             let attribute = attributes.get("repo").expect("No `repo`");
             assert_has_type(
                 attribute,
-                json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
+                &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "Repository".parse().unwrap(),
                 }, loc: None },
             );
             let attribute = attributes.get("reporter").expect("No `repo`");
             assert_has_type(
                 attribute,
-                json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
+                &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "User".parse().unwrap(),
                 }, loc: None },
             );
@@ -604,7 +604,7 @@ namespace Baz {action "Foo" appliesTo {
                     type_name: "UserGroup".parse().unwrap(),
                 }, loc: None };
                 let attribute = attributes.get(group).expect("No attribute `{group}`");
-                assert_has_type(attribute, expected);
+                assert_has_type(attribute, &expected);
             });
         }});
     }
@@ -612,10 +612,10 @@ namespace Baz {action "Foo" appliesTo {
     #[track_caller]
     fn assert_has_type<N: std::fmt::Debug + PartialEq>(
         e: &json_schema::TypeOfAttribute<N>,
-        expected: json_schema::Type<N>,
+        expected: &json_schema::Type<N>,
     ) {
         assert!(e.required);
-        assert_eq!(&e.ty, &expected);
+        assert_eq!(&e.ty, expected);
     }
 
     #[track_caller]
@@ -665,13 +665,13 @@ namespace Baz {action "Foo" appliesTo {
         }), loc: Some(_) }) => {
             assert_has_type(
                 attributes.get("personalGroup").unwrap(),
-                json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
+                &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "Group".parse().unwrap(),
                 }, loc: None }, // we do expect a `loc`, but `assert_has_type()` will ignore the mismatch in presence of `loc`. We have separate tests for the correctness of `loc`s coming from the Cedar schema syntax in a test module called `preserves_source_locations`.
             );
             assert_has_type(
                 attributes.get("blocked").unwrap(),
-                json_schema::Type::Type { ty: json_schema::TypeVariant::Set {
+                &json_schema::Type::Type { ty: json_schema::TypeVariant::Set {
                     element: Box::new(json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                         type_name: "User".parse().unwrap(),
                     }, loc: None }), // we do expect a `loc`, but `assert_has_type()` will ignore the mismatch in presence of `loc`. We have separate tests for the correctness of `loc`s coming from the Cedar schema syntax in a test module called `preserves_source_locations`.
@@ -692,7 +692,7 @@ namespace Baz {action "Foo" appliesTo {
         }), loc: Some(_) }) => {
             assert_has_type(
                 attributes.get("owner").unwrap(),
-                json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
+                &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "User".parse().unwrap(),
                 }, loc: None },
             );
@@ -708,37 +708,37 @@ namespace Baz {action "Foo" appliesTo {
         }), loc: Some(_) }) => {
             assert_has_type(
                 attributes.get("owner").unwrap(),
-                json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
+                &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "User".parse().unwrap(),
                 }, loc: None },
             );
             assert_has_type(
                 attributes.get("isPrivate").unwrap(),
-                json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
+                &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "Bool".parse().unwrap(),
                 }, loc: None },
             );
             assert_has_type(
                 attributes.get("publicAccess").unwrap(),
-                json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
+                &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "String".parse().unwrap(),
                 }, loc: None },
             );
             assert_has_type(
                 attributes.get("viewACL").unwrap(),
-                json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
+                &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "DocumentShare".parse().unwrap(),
                 }, loc: None },
             );
             assert_has_type(
                 attributes.get("modifyACL").unwrap(),
-                json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
+                &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "DocumentShare".parse().unwrap(),
                 }, loc: None },
             );
             assert_has_type(
                 attributes.get("manageACL").unwrap(),
-                json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
+                &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "DocumentShare".parse().unwrap(),
                 }, loc: None },
             );
@@ -2044,13 +2044,13 @@ mod translator_tests {
     }
 
     #[track_caller]
-    fn test_translation(src: &str, json_value: serde_json::Value) {
+    fn test_translation(src: &str, json_value: &serde_json::Value) {
         let (schema, _) = cedar_schema_to_json_schema(
             parse_schema(src).expect("should parse Cedar schema"),
             Extensions::none(),
         )
         .expect("should translate to JSON schema");
-        assert_eq!(serde_json::to_value(schema).unwrap(), json_value);
+        assert_eq!(&serde_json::to_value(schema).unwrap(), json_value);
     }
 
     #[test]
@@ -2058,7 +2058,7 @@ mod translator_tests {
         for id in SPECIAL_IDS {
             test_translation(
                 &format!("@{id} entity User {{}};"),
-                serde_json::json!({
+                &serde_json::json!({
                     "": {
                         "entityTypes": {
                             "User": {
@@ -2086,7 +2086,7 @@ mod translator_tests {
               entity E;
             }
             "#,
-            serde_json::json!({
+            &serde_json::json!({
                 "N": {
                     "entityTypes": {
                         "E": {}
@@ -2109,7 +2109,7 @@ mod translator_tests {
             @comment("B->A")
             type B = A;
             "#,
-            serde_json::json!({
+            &serde_json::json!({
                 "": {
                     "entityTypes": {},
                     "actions": {},
@@ -2147,7 +2147,7 @@ mod translator_tests {
             @ae("🌎")
             entity Earth;
             "#,
-            serde_json::json!({
+            &serde_json::json!({
                 "": {
                     "entityTypes": {
                         "Earth": {
@@ -2181,7 +2181,7 @@ mod translator_tests {
             @ae("🍎🍏")
             entity Apple1, Apple2;
             "#,
-            serde_json::json!({
+            &serde_json::json!({
                 "": {
                     "entityTypes": {
                         "Apple1": {
@@ -2217,7 +2217,7 @@ mod translator_tests {
                 resource: Earth,
             };
             "#,
-            serde_json::json!({
+            &serde_json::json!({
                 "": {
                     "entityTypes": {},
                     "actions": {
@@ -2276,7 +2276,7 @@ mod translator_tests {
                 }
             };
             "#,
-            serde_json::json!({
+            &serde_json::json!({
                 "": {
                     "entityTypes": {},
                     "actions": {},

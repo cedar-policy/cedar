@@ -1151,7 +1151,7 @@ mod test {
     fn assert_validate_policy_fails(
         validator: &Validator,
         policy: &Template,
-        expected: Vec<ValidationError>,
+        expected: &[ValidationError],
     ) {
         assert_eq!(
             validator
@@ -1299,7 +1299,7 @@ mod test {
         assert_validate_policy_fails(
             &validator,
             &policy,
-            vec![ValidationError::invalid_action_application(
+            &[ValidationError::invalid_action_application(
                 Some(Loc::new(0..43, Arc::from(src))),
                 PolicyID::from_string("policy0"),
                 false,
@@ -1314,7 +1314,7 @@ mod test {
         assert_validate_policy_fails(
             &validator,
             &policy,
-            vec![
+            &[
                 ValidationError::unrecognized_entity_type(
                     Some(Loc::new(27..30, Arc::from(src))),
                     PolicyID::from_string("policy0"),
@@ -1343,7 +1343,7 @@ mod test {
         assert_validate_policy_fails(
             &validator,
             &policy,
-            vec![ValidationError::invalid_action_application(
+            &[ValidationError::invalid_action_application(
                 Some(Loc::new(0..57, Arc::from(src))),
                 PolicyID::from_string("policy0"),
                 false,
@@ -1383,7 +1383,7 @@ mod test {
         assert_validate_policy_fails(
             &validator,
             &policy,
-            vec![ValidationError::invalid_action_application(
+            &[ValidationError::invalid_action_application(
                 Some(Loc::new(0..43, Arc::from(src))),
                 PolicyID::from_string("policy0"),
                 false,
@@ -1398,7 +1398,7 @@ mod test {
         assert_validate_policy_fails(
             &validator,
             &policy,
-            vec![ValidationError::invalid_action_application(
+            &[ValidationError::invalid_action_application(
                 Some(Loc::new(0..57, Arc::from(src))),
                 PolicyID::from_string("policy0"),
                 false,
@@ -1413,7 +1413,7 @@ mod test {
         assert_validate_policy_fails(
             &validator,
             &policy,
-            vec![
+            &[
                 ValidationError::unrecognized_entity_type(
                     Some(Loc::new(45..48, Arc::from(src))),
                     PolicyID::from_string("policy0"),

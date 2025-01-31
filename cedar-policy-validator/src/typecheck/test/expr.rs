@@ -46,19 +46,22 @@ use super::test_utils::{
 
 #[test]
 fn primitives_typecheck() {
-    assert_typechecks_empty_schema(Expr::val(true), Type::singleton_boolean(true));
-    assert_typechecks_empty_schema(Expr::val(1), Type::primitive_long());
-    assert_typechecks_empty_schema(Expr::val("foo"), Type::primitive_string());
+    assert_typechecks_empty_schema(&Expr::val(true), &Type::singleton_boolean(true));
+    assert_typechecks_empty_schema(&Expr::val(1), &Type::primitive_long());
+    assert_typechecks_empty_schema(&Expr::val("foo"), &Type::primitive_string());
 }
 
 #[test]
 fn slot_typechecks() {
     assert_typechecks_empty_schema(
-        Expr::slot(SlotId::principal()),
-        Type::any_entity_reference(),
+        &Expr::slot(SlotId::principal()),
+        &Type::any_entity_reference(),
     );
 
-    assert_typechecks_empty_schema(Expr::slot(SlotId::resource()), Type::any_entity_reference());
+    assert_typechecks_empty_schema(
+        &Expr::slot(SlotId::resource()),
+        &Type::any_entity_reference(),
+    );
 }
 
 #[test]
@@ -72,22 +75,22 @@ fn slot_in_typechecks() {
     let schema = json_schema::NamespaceDefinition::new([("typename".parse().unwrap(), etype)], []);
     assert_typechecks_for_mode(
         schema.clone(),
-        Expr::binary_app(
+        &Expr::binary_app(
             BinaryOp::In,
             Expr::val(EntityUID::with_eid_and_type("typename", "id").expect("Bad EUID")),
             Expr::slot(SlotId::principal()),
         ),
-        Type::primitive_boolean(),
+        &Type::primitive_boolean(),
         ValidationMode::Permissive,
     );
     assert_typechecks_for_mode(
         schema,
-        Expr::binary_app(
+        &Expr::binary_app(
             BinaryOp::In,
             Expr::val(EntityUID::with_eid_and_type("typename", "id").expect("Bad EUID")),
             Expr::slot(SlotId::resource()),
         ),
-        Type::primitive_boolean(),
+        &Type::primitive_boolean(),
         ValidationMode::Permissive,
     );
 }
@@ -107,22 +110,22 @@ fn slot_equals_typechecks() {
     let schema = json_schema::NamespaceDefinition::new([("typename".parse().unwrap(), etype)], []);
     assert_typechecks_for_mode(
         schema.clone(),
-        Expr::binary_app(
+        &Expr::binary_app(
             BinaryOp::Eq,
             Expr::val(EntityUID::with_eid_and_type("typename", "edi").expect("EUID Failed")),
             Expr::slot(SlotId::principal()),
         ),
-        Type::primitive_boolean(),
+        &Type::primitive_boolean(),
         ValidationMode::Permissive,
     );
     assert_typechecks_for_mode(
         schema,
-        Expr::binary_app(
+        &Expr::binary_app(
             BinaryOp::Eq,
             Expr::val(EntityUID::with_eid_and_type("typename", "edi").expect("EUID Failed")),
             Expr::slot(SlotId::resource()),
         ),
-        Type::primitive_boolean(),
+        &Type::primitive_boolean(),
         ValidationMode::Permissive,
     );
 }
@@ -130,27 +133,27 @@ fn slot_equals_typechecks() {
 #[test]
 fn slot_has_typechecks() {
     assert_typechecks_empty_schema(
-        Expr::has_attr(Expr::slot(SlotId::principal()), "test".into()),
-        Type::primitive_boolean(),
+        &Expr::has_attr(Expr::slot(SlotId::principal()), "test".into()),
+        &Type::primitive_boolean(),
     );
     assert_typechecks_empty_schema(
-        Expr::has_attr(Expr::slot(SlotId::resource()), "test".into()),
-        Type::primitive_boolean(),
+        &Expr::has_attr(Expr::slot(SlotId::resource()), "test".into()),
+        &Type::primitive_boolean(),
     );
 }
 
 #[test]
 fn set_typechecks() {
     assert_typechecks_empty_schema(
-        Expr::set([Expr::val(true)]),
-        Type::set(Type::singleton_boolean(true)),
+        &Expr::set([Expr::val(true)]),
+        &Type::set(Type::singleton_boolean(true)),
     );
 }
 
 #[test]
 fn heterogeneous_set() {
     let src = "[true, 1]";
-    let errors = assert_typecheck_fails_empty_schema_without_type(src.parse().unwrap());
+    let errors = assert_typecheck_fails_empty_schema_without_type(&src.parse().unwrap());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -167,16 +170,16 @@ fn heterogeneous_set() {
 #[test]
 fn record_typechecks() {
     assert_typechecks_empty_schema(
-        Expr::record([("foo".into(), Expr::val(1))]).unwrap(),
-        Type::closed_record_with_required_attributes([("foo".into(), Type::primitive_long())]),
+        &Expr::record([("foo".into(), Expr::val(1))]).unwrap(),
+        &Type::closed_record_with_required_attributes([("foo".into(), Type::primitive_long())]),
     )
 }
 
 #[test]
 fn and_typechecks() {
     assert_typechecks_empty_schema(
-        Expr::and(Expr::val(true), Expr::val(false)),
-        Type::singleton_boolean(false),
+        &Expr::and(Expr::val(true), Expr::val(false)),
+        &Type::singleton_boolean(false),
     );
 }
 
@@ -184,7 +187,7 @@ fn and_typechecks() {
 fn and_typecheck_fails() {
     let src = "1 && true";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -199,7 +202,7 @@ fn and_typecheck_fails() {
 
     let src = "(1 > 0) && 2";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -214,7 +217,7 @@ fn and_typecheck_fails() {
 
     let src = "(1 > false) && true";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -229,7 +232,7 @@ fn and_typecheck_fails() {
 
     let src = "true && (1 > false)";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -246,24 +249,24 @@ fn and_typecheck_fails() {
 #[test]
 fn or_left_true_is_true() {
     assert_typechecks_empty_schema(
-        Expr::or(Expr::val(true), Expr::val(false)),
-        Type::singleton_boolean(true),
+        &Expr::or(Expr::val(true), Expr::val(false)),
+        &Type::singleton_boolean(true),
     );
 }
 
 #[test]
 fn or_left_false_is_right() {
     assert_typechecks_empty_schema(
-        Expr::or(Expr::val(false), Expr::greater(Expr::val(1), Expr::val(0))),
-        Type::primitive_boolean(),
+        &Expr::or(Expr::val(false), Expr::greater(Expr::val(1), Expr::val(0))),
+        &Type::primitive_boolean(),
     );
 }
 
 #[test]
 fn or_left_true_ignores_right() {
     assert_typechecks_empty_schema(
-        Expr::or(Expr::val(true), Expr::not(Expr::val(1))),
-        Type::singleton_boolean(true),
+        &Expr::or(Expr::val(true), Expr::not(Expr::val(1))),
+        &Type::singleton_boolean(true),
     );
 }
 
@@ -271,7 +274,7 @@ fn or_left_true_ignores_right() {
 fn or_right_true_fails_left() {
     let src = "1 || true";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -288,35 +291,35 @@ fn or_right_true_fails_left() {
 #[test]
 fn or_right_true_is_true() {
     assert_typechecks_empty_schema(
-        Expr::or(Expr::greater(Expr::val(1), Expr::val(0)), Expr::val(true)),
-        Type::singleton_boolean(true),
+        &Expr::or(Expr::greater(Expr::val(1), Expr::val(0)), Expr::val(true)),
+        &Type::singleton_boolean(true),
     );
 }
 
 #[test]
 fn or_right_false_is_left() {
     assert_typechecks_empty_schema(
-        Expr::or(Expr::greater(Expr::val(1), Expr::val(0)), Expr::val(false)),
-        Type::primitive_boolean(),
+        &Expr::or(Expr::greater(Expr::val(1), Expr::val(0)), Expr::val(false)),
+        &Type::primitive_boolean(),
     );
 }
 
 #[test]
 fn or_boolean() {
     assert_typechecks_empty_schema(
-        Expr::or(
+        &Expr::or(
             Expr::greater(Expr::val(1), Expr::val(0)),
             Expr::greater(Expr::val(1), Expr::val(0)),
         ),
-        Type::primitive_boolean(),
+        &Type::primitive_boolean(),
     );
 }
 
 #[test]
 fn or_false() {
     assert_typechecks_empty_schema(
-        Expr::or(Expr::val(false), Expr::val(false)),
-        Type::singleton_boolean(false),
+        &Expr::or(Expr::val(false), Expr::val(false)),
+        &Type::singleton_boolean(false),
     );
 }
 
@@ -324,7 +327,7 @@ fn or_false() {
 fn or_typecheck_fails() {
     let src = "1 || true";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -339,7 +342,7 @@ fn or_typecheck_fails() {
 
     let src = "(2 > 0) || 1";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -354,7 +357,7 @@ fn or_typecheck_fails() {
 
     let src = "(1 > true) || false";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -369,7 +372,7 @@ fn or_typecheck_fails() {
 
     let src = "(1 > false) || true";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::singleton_boolean(true));
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::singleton_boolean(true));
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -384,7 +387,7 @@ fn or_typecheck_fails() {
 
     let src = "false || (1 > true)";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -401,8 +404,8 @@ fn or_typecheck_fails() {
 #[test]
 fn eq_typechecks() {
     assert_typechecks_empty_schema(
-        Expr::is_eq(Expr::val(2), Expr::val(1)),
-        Type::primitive_boolean(),
+        &Expr::is_eq(Expr::val(2), Expr::val(1)),
+        &Type::primitive_boolean(),
     );
 }
 
@@ -436,7 +439,7 @@ fn entity_eq_is_false() {
     .expect("Expected that schema would parse");
     assert_typechecks(
         schema,
-        Expr::is_eq(
+        &Expr::is_eq(
             Expr::get_attr(
                 Expr::val(
                     EntityUID::with_eid_and_type("Baz", "buz").expect("Expected EntityUID parse."),
@@ -450,7 +453,7 @@ fn entity_eq_is_false() {
                 "bar".into(),
             ),
         ),
-        Type::False,
+        &Type::False,
     );
 }
 
@@ -486,7 +489,7 @@ fn set_eq_is_not_false() {
     .expect("Expected that schema would parse");
     assert_typechecks_for_mode(
         schema,
-        Expr::is_eq(
+        &Expr::is_eq(
             Expr::get_attr(
                 Expr::val(
                     EntityUID::with_eid_and_type("some_type", "a")
@@ -502,7 +505,7 @@ fn set_eq_is_not_false() {
                 "bool_set".into(),
             ),
         ),
-        Type::primitive_boolean(),
+        &Type::primitive_boolean(),
         ValidationMode::Permissive,
     );
 }
@@ -522,7 +525,7 @@ fn eq_typecheck_action_literals_false() {
     .expect("Expected that schema would parse");
     assert_typechecks(
         schema,
-        Expr::is_eq(
+        &Expr::is_eq(
             Expr::val(
                 EntityUID::with_eid_and_type("Action", "view_photo")
                     .expect("Expected EntityUID parse."),
@@ -532,7 +535,7 @@ fn eq_typecheck_action_literals_false() {
                     .expect("Expected EntityUID parse."),
             ),
         ),
-        Type::singleton_boolean(false),
+        &Type::singleton_boolean(false),
     );
 }
 
@@ -551,93 +554,93 @@ fn eq_typecheck_entity_literals_false() {
     .expect("Expected that schema would parse");
     assert_typechecks(
         schema,
-        Expr::is_eq(
+        &Expr::is_eq(
             Expr::val(EntityUID::with_eid_and_type("A", "foo").expect("Expected EntityUID parse.")),
             Expr::val(EntityUID::with_eid_and_type("B", "foo").expect("Expected EntityUID parse.")),
         ),
-        Type::singleton_boolean(false),
+        &Type::singleton_boolean(false),
     );
 }
 
 #[test]
 fn entity_has_typechecks() {
     assert_typechecks_empty_schema(
-        Expr::has_attr(Expr::var(Var::Principal), "attr".into()),
-        Type::primitive_boolean(),
+        &Expr::has_attr(Expr::var(Var::Principal), "attr".into()),
+        &Type::primitive_boolean(),
     );
 }
 
 #[test]
 fn record_has_typechecks() {
     assert_typechecks_empty_schema(
-        Expr::has_attr(Expr::var(Var::Context), "attr".into()),
-        Type::singleton_boolean(false),
+        &Expr::has_attr(Expr::var(Var::Context), "attr".into()),
+        &Type::singleton_boolean(false),
     );
     assert_typechecks_empty_schema(
-        Expr::has_attr(Expr::record([]).unwrap(), "attr".into()),
-        Type::singleton_boolean(false),
+        &Expr::has_attr(Expr::record([]).unwrap(), "attr".into()),
+        &Type::singleton_boolean(false),
     );
     assert_typechecks_empty_schema(
-        Expr::from_str("{a: 1} has a").unwrap(),
-        Type::singleton_boolean(true),
+        &Expr::from_str("{a: 1} has a").unwrap(),
+        &Type::singleton_boolean(true),
     );
 }
 
 #[test]
 fn record_lub_has_typechecks_strict() {
     assert_typechecks_empty_schema(
-        Expr::from_str("(if 1 > 0 then {a: 1} else {a: 2}) has a").unwrap(),
-        Type::singleton_boolean(true),
+        &Expr::from_str("(if 1 > 0 then {a: 1} else {a: 2}) has a").unwrap(),
+        &Type::singleton_boolean(true),
     );
     assert_typechecks_empty_schema(
-        Expr::from_str("(if 1 > 0 then {a: 1} else {a: 2}) has b").unwrap(),
-        Type::singleton_boolean(false),
+        &Expr::from_str("(if 1 > 0 then {a: 1} else {a: 2}) has b").unwrap(),
+        &Type::singleton_boolean(false),
     );
     assert_typechecks_empty_schema(
-        Expr::from_str("(if 1 > 0 then {a: true} else {a: false}) has b").unwrap(),
-        Type::singleton_boolean(false),
+        &Expr::from_str("(if 1 > 0 then {a: true} else {a: false}) has b").unwrap(),
+        &Type::singleton_boolean(false),
     );
     assert_typechecks_empty_schema(
-        Expr::from_str("(if 1 > 0 then {a: true} else {a: false}) has a").unwrap(),
-        Type::singleton_boolean(true),
+        &Expr::from_str("(if 1 > 0 then {a: true} else {a: false}) has a").unwrap(),
+        &Type::singleton_boolean(true),
     );
 }
 
 #[test]
 fn record_lub_has_typechecks_permissive() {
     assert_typechecks_empty_schema_permissive(
-        Expr::from_str("(if 1 > 0 then {a: 1} else {a: 2, b: 3}) has a").unwrap(),
-        Type::singleton_boolean(true),
+        &Expr::from_str("(if 1 > 0 then {a: 1} else {a: 2, b: 3}) has a").unwrap(),
+        &Type::singleton_boolean(true),
     );
     assert_typechecks_empty_schema_permissive(
-        Expr::from_str("(if 1 > 0 then {a: 1, b: 2} else {a: 1, c: 2}) has a").unwrap(),
-        Type::singleton_boolean(true),
+        &Expr::from_str("(if 1 > 0 then {a: 1, b: 2} else {a: 1, c: 2}) has a").unwrap(),
+        &Type::singleton_boolean(true),
     );
     assert_typechecks_empty_schema_permissive(
-        Expr::from_str("(if 1 > 0 then {a: 1} else {}) has a").unwrap(),
-        Type::primitive_boolean(),
+        &Expr::from_str("(if 1 > 0 then {a: 1} else {}) has a").unwrap(),
+        &Type::primitive_boolean(),
     );
     assert_typechecks_empty_schema_permissive(
-        Expr::from_str("(if 1 > 0 then {a: 1, b: 2} else {a: 1, c: 2}) has b").unwrap(),
-        Type::primitive_boolean(),
+        &Expr::from_str("(if 1 > 0 then {a: 1, b: 2} else {a: 1, c: 2}) has b").unwrap(),
+        &Type::primitive_boolean(),
     );
     assert_typechecks_empty_schema_permissive(
-        Expr::from_str("(if 1 > 0 then (if 1 > 0 then {a: 1} else {}) else {}) has a").unwrap(),
-        Type::primitive_boolean(),
+        &Expr::from_str("(if 1 > 0 then (if 1 > 0 then {a: 1} else {}) else {}) has a").unwrap(),
+        &Type::primitive_boolean(),
     );
 
     // These cases are imprecise.
     assert_typechecks_empty_schema_permissive(
-        Expr::from_str("(if 1 > 0 then {a: 1} else {}) has c").unwrap(),
-        Type::primitive_boolean(),
+        &Expr::from_str("(if 1 > 0 then {a: 1} else {}) has c").unwrap(),
+        &Type::primitive_boolean(),
     );
     assert_typechecks_empty_schema_permissive(
-        Expr::from_str("(if 1 > 0 then {a: 1} else {b: 2}) has c").unwrap(),
-        Type::primitive_boolean(),
+        &Expr::from_str("(if 1 > 0 then {a: 1} else {b: 2}) has c").unwrap(),
+        &Type::primitive_boolean(),
     );
     assert_typechecks_empty_schema_permissive(
-        Expr::from_str("(if 1 > 0 then {a: 1} else {a : false}) has a").unwrap(),
-        Type::primitive_boolean(),
+        &Expr::from_str("(if 1 > 0 then {a: 1} else {a : false}) has a").unwrap(),
+        &Type::primitive_boolean(),
     );
 }
 
@@ -645,7 +648,7 @@ fn record_lub_has_typechecks_permissive() {
 fn has_typecheck_fails() {
     let src = "true has attr";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -663,8 +666,8 @@ fn has_typecheck_fails() {
 fn record_get_attr_typechecks() {
     let attr: SmolStr = "foo".into();
     assert_typechecks_empty_schema(
-        Expr::get_attr(Expr::record([(attr.clone(), Expr::val(1))]).unwrap(), attr),
-        Type::primitive_long(),
+        &Expr::get_attr(Expr::record([(attr.clone(), Expr::val(1))]).unwrap(), attr),
+        &Type::primitive_long(),
     );
 }
 
@@ -673,7 +676,7 @@ fn record_get_attr_incompatible() {
     let src = "(if (1 > 0) then {foo: true} else {foo: 1}).foo";
     let errors = assert_typecheck_fails_for_mode(
         empty_schema_file(),
-        src.parse().unwrap(),
+        &src.parse().unwrap(),
         None,
         crate::ValidationMode::Permissive,
     );
@@ -693,7 +696,7 @@ fn record_get_attr_incompatible() {
 #[test]
 fn record_get_attr_typecheck_fails() {
     let src = "2.foo";
-    let errors = assert_typecheck_fails_empty_schema_without_type(src.parse().unwrap());
+    let errors = assert_typecheck_fails_empty_schema_without_type(&src.parse().unwrap());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -710,7 +713,7 @@ fn record_get_attr_typecheck_fails() {
 #[test]
 fn record_get_attr_lub_typecheck_fails() {
     let src = "(if (0 < 1) then {foo: true} else 1).foo";
-    let errors = assert_typecheck_fails_empty_schema_without_type(src.parse().unwrap());
+    let errors = assert_typecheck_fails_empty_schema_without_type(&src.parse().unwrap());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -733,7 +736,7 @@ fn record_get_attr_lub_typecheck_fails() {
 #[test]
 fn record_get_attr_does_not_exist() {
     let src = "{}.foo";
-    let errors = assert_typecheck_fails_empty_schema_without_type(src.parse().unwrap());
+    let errors = assert_typecheck_fails_empty_schema_without_type(&src.parse().unwrap());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -750,7 +753,7 @@ fn record_get_attr_does_not_exist() {
 #[test]
 fn record_get_attr_lub_does_not_exist() {
     let src = "(if true then {} else {foo: 1}).foo";
-    let errors = assert_typecheck_fails_empty_schema_without_type(src.parse().unwrap());
+    let errors = assert_typecheck_fails_empty_schema_without_type(&src.parse().unwrap());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -767,38 +770,38 @@ fn record_get_attr_lub_does_not_exist() {
 #[test]
 fn in_typechecks_permissive() {
     assert_typechecks_empty_schema_permissive(
-        Expr::is_in(Expr::var(Var::Principal), Expr::var(Var::Resource)),
-        Type::primitive_boolean(),
+        &Expr::is_in(Expr::var(Var::Principal), Expr::var(Var::Resource)),
+        &Type::primitive_boolean(),
     );
 }
 
 #[test]
 fn in_typechecks() {
     assert_typechecks_empty_schema(
-        Expr::is_in(Expr::var(Var::Principal), Expr::var(Var::Principal)),
-        Type::primitive_boolean(),
+        &Expr::is_in(Expr::var(Var::Principal), Expr::var(Var::Principal)),
+        &Type::primitive_boolean(),
     );
 }
 
 #[test]
 fn in_set_typechecks_permissive() {
     assert_typechecks_empty_schema_permissive(
-        Expr::is_in(
+        &Expr::is_in(
             Expr::var(Var::Principal),
             Expr::set([Expr::var(Var::Resource)]),
         ),
-        Type::primitive_boolean(),
+        &Type::primitive_boolean(),
     );
 }
 
 #[test]
 fn in_set_typechecks_strict() {
     assert_typechecks_empty_schema(
-        Expr::is_in(
+        &Expr::is_in(
             Expr::var(Var::Principal),
             Expr::set([Expr::var(Var::Principal)]),
         ),
-        Type::primitive_boolean(),
+        &Type::primitive_boolean(),
     );
 }
 
@@ -806,7 +809,7 @@ fn in_set_typechecks_strict() {
 fn in_typecheck_fails() {
     let src = "0 in true";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     assert_sets_equal(
         errors,
         [
@@ -834,8 +837,8 @@ fn in_typecheck_fails() {
 #[test]
 fn contains_typechecks() {
     assert_typechecks_empty_schema(
-        Expr::contains(Expr::set([Expr::val(1)]), Expr::val(2)),
-        Type::primitive_boolean(),
+        &Expr::contains(Expr::set([Expr::val(1)]), Expr::val(2)),
+        &Type::primitive_boolean(),
     );
 }
 
@@ -844,7 +847,7 @@ fn contains_typecheck_fails() {
     use crate::types::AttributeType;
     let src = r#""foo".contains("bar")"#;
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -859,7 +862,7 @@ fn contains_typecheck_fails() {
 
     let src = r#"1.contains("bar")"#;
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -874,7 +877,7 @@ fn contains_typecheck_fails() {
 
     let src = r#"{foo: 1}.contains("foo")"#;
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -904,7 +907,7 @@ fn contains_typecheck_literals_false() {
     .expect("Expected that schema would parse");
     assert_typechecks(
         schema,
-        Expr::contains(
+        &Expr::contains(
             Expr::set([Expr::val(
                 EntityUID::with_eid_and_type("Action", "view_photo")
                     .expect("Expected EntityUID parse."),
@@ -916,15 +919,15 @@ fn contains_typecheck_literals_false() {
         ),
         // Previously had type `False`. This case might become false again if we
         // decide to restore some of the special cases for `contains`.
-        Type::primitive_boolean(),
+        &Type::primitive_boolean(),
     );
 }
 
 #[test]
 fn contains_all_typechecks() {
     assert_typechecks_empty_schema(
-        Expr::contains_all(Expr::set([Expr::val(1)]), Expr::set([Expr::val(1)])),
-        Type::primitive_boolean(),
+        &Expr::contains_all(Expr::set([Expr::val(1)]), Expr::set([Expr::val(1)])),
+        &Type::primitive_boolean(),
     );
 }
 
@@ -932,7 +935,7 @@ fn contains_all_typechecks() {
 fn contains_all_typecheck_fails() {
     let src = "1.containsAll(true)";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     assert_sets_equal(
         errors,
         [
@@ -967,7 +970,7 @@ fn contains_all_typecheck_literals_false() {
     .expect("Expected that schema would parse");
     assert_typechecks(
         schema,
-        Expr::contains_all(
+        &Expr::contains_all(
             Expr::set([Expr::val(
                 EntityUID::with_eid_and_type("Action", "view_photo")
                     .expect("Expected EntityUID parse."),
@@ -979,15 +982,15 @@ fn contains_all_typecheck_literals_false() {
         ),
         // Previously had type `False`. This case might become false again if we
         // decide to restore some of the special cases for `containsAll`.
-        Type::primitive_boolean(),
+        &Type::primitive_boolean(),
     );
 }
 
 #[test]
 fn is_empty_typechecks() {
     assert_typechecks_empty_schema(
-        Expr::is_empty(Expr::set([Expr::val(1)])),
-        Type::primitive_boolean(),
+        &Expr::is_empty(Expr::set([Expr::val(1)])),
+        &Type::primitive_boolean(),
     );
 }
 
@@ -995,7 +998,7 @@ fn is_empty_typechecks() {
 fn is_empty_typecheck_fails() {
     let src = "\"crab\".isEmpty()";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -1012,7 +1015,7 @@ fn is_empty_typecheck_fails() {
 #[test]
 fn like_typechecks() {
     assert_typechecks_empty_schema(
-        Expr::like(
+        &Expr::like(
             Expr::val("foo"),
             Pattern::from(vec![
                 PatternElem::Char('b'),
@@ -1020,7 +1023,7 @@ fn like_typechecks() {
                 PatternElem::Char('r'),
             ]),
         ),
-        Type::primitive_boolean(),
+        &Type::primitive_boolean(),
     );
 }
 
@@ -1028,7 +1031,7 @@ fn like_typechecks() {
 fn like_typecheck_fails() {
     let src = r#"1 like "bar""#;
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -1045,8 +1048,8 @@ fn like_typecheck_fails() {
 #[test]
 fn less_than_typechecks() {
     assert_typechecks_empty_schema(
-        Expr::less(Expr::val(1), Expr::val(2)),
-        Type::primitive_boolean(),
+        &Expr::less(Expr::val(1), Expr::val(2)),
+        &Type::primitive_boolean(),
     );
 }
 
@@ -1061,7 +1064,7 @@ fn less_than_typecheck_fails() {
         .collect_vec();
     let src = "true < false";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     assert_sets_equal(
         errors,
         [
@@ -1084,7 +1087,7 @@ fn less_than_typecheck_fails() {
 
     let src = "true < \"\"";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     assert_sets_equal(
         errors,
         [
@@ -1107,7 +1110,7 @@ fn less_than_typecheck_fails() {
 
     let src = "true < 1";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     assert_sets_equal(
         errors,
         [ValidationError::expected_type(
@@ -1122,15 +1125,15 @@ fn less_than_typecheck_fails() {
 
 #[test]
 fn not_typechecks() {
-    assert_typechecks_empty_schema(Expr::not(Expr::val(true)), Type::singleton_boolean(false));
-    assert_typechecks_empty_schema(Expr::not(Expr::val(false)), Type::singleton_boolean(true));
+    assert_typechecks_empty_schema(&Expr::not(Expr::val(true)), &Type::singleton_boolean(false));
+    assert_typechecks_empty_schema(&Expr::not(Expr::val(false)), &Type::singleton_boolean(true));
 }
 
 #[test]
 fn not_typecheck_fails() {
     let src = "!1";
     let errors =
-        assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -1147,31 +1150,31 @@ fn not_typecheck_fails() {
 #[test]
 fn if_typechecks() {
     assert_typechecks_empty_schema(
-        Expr::ite(Expr::val(true), Expr::val(1), Expr::val(22)),
-        Type::primitive_long(),
+        &Expr::ite(Expr::val(true), Expr::val(1), Expr::val(22)),
+        &Type::primitive_long(),
     );
 }
 
 #[test]
 fn if_true_ignore_else() {
     assert_typechecks_empty_schema(
-        Expr::ite(Expr::val(true), Expr::val(1), Expr::not(Expr::val(22))),
-        Type::primitive_long(),
+        &Expr::ite(Expr::val(true), Expr::val(1), Expr::not(Expr::val(22))),
+        &Type::primitive_long(),
     );
 }
 
 #[test]
 fn if_false_ignores_then() {
     assert_typechecks_empty_schema(
-        Expr::ite(Expr::val(false), Expr::not(Expr::val(1)), Expr::val(22)),
-        Type::primitive_long(),
+        &Expr::ite(Expr::val(false), Expr::not(Expr::val(1)), Expr::val(22)),
+        &Type::primitive_long(),
     );
 }
 
 #[test]
 fn if_no_lub_error() {
     let src = r#"if (1 < 2) then 1 else "test""#;
-    let errors = assert_typecheck_fails_empty_schema_without_type(src.parse().unwrap());
+    let errors = assert_typecheck_fails_empty_schema_without_type(&src.parse().unwrap());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -1188,7 +1191,7 @@ fn if_no_lub_error() {
 #[test]
 fn if_typecheck_fails() {
     let src = r#"if "fail" then 1 else "test""#;
-    let errors = assert_typecheck_fails_empty_schema_without_type(src.parse().unwrap());
+    let errors = assert_typecheck_fails_empty_schema_without_type(&src.parse().unwrap());
     assert_sets_equal(
         errors,
         [
@@ -1213,13 +1216,14 @@ fn if_typecheck_fails() {
 #[test]
 fn neg_typechecks() {
     let neg_expr = Expr::neg(Expr::val(1));
-    assert_typechecks_empty_schema(neg_expr, Type::primitive_long());
+    assert_typechecks_empty_schema(&neg_expr, &Type::primitive_long());
 }
 
 #[test]
 fn neg_typecheck_fails() {
     let src = r#"-"foo""#;
-    let errors = assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_long());
+    let errors =
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_long());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -1236,13 +1240,14 @@ fn neg_typecheck_fails() {
 #[test]
 fn mul_typechecks() {
     let neg_expr = Expr::mul(Expr::val(1), Expr::val(2));
-    assert_typechecks_empty_schema(neg_expr, Type::primitive_long());
+    assert_typechecks_empty_schema(&neg_expr, &Type::primitive_long());
 }
 
 #[test]
 fn mul_typecheck_fails() {
     let src = r#""foo" * 2"#;
-    let errors = assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_long());
+    let errors =
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_long());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -1259,15 +1264,16 @@ fn mul_typecheck_fails() {
 #[test]
 fn add_sub_typechecks() {
     let add_expr = Expr::add(Expr::val(1), Expr::val(2));
-    assert_typechecks_empty_schema(add_expr, Type::primitive_long());
+    assert_typechecks_empty_schema(&add_expr, &Type::primitive_long());
     let sub_expr = Expr::sub(Expr::val(1), Expr::val(2));
-    assert_typechecks_empty_schema(sub_expr, Type::primitive_long());
+    assert_typechecks_empty_schema(&sub_expr, &Type::primitive_long());
 }
 
 #[test]
 fn add_sub_typecheck_fails() {
     let src = r#"1 + "foo""#;
-    let errors = assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_long());
+    let errors =
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_long());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -1281,7 +1287,8 @@ fn add_sub_typecheck_fails() {
     );
 
     let src = r#""bar" - 2"#;
-    let errors = assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_long());
+    let errors =
+        assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_long());
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
         error,
@@ -1302,8 +1309,8 @@ fn is_typecheck_fails() {
     let src = r#"1 is User"#;
     let errors = assert_typecheck_fails(
         schema,
-        src.parse().unwrap(),
-        Some(Type::primitive_boolean()),
+        &src.parse().unwrap(),
+        Some(&Type::primitive_boolean()),
     );
     let error = assert_exactly_one_diagnostic(errors);
     assert_eq!(
@@ -1327,23 +1334,23 @@ fn is_typechecks() {
     .unwrap();
     assert_typechecks(
         schema.clone(),
-        r#"User::"alice" is User"#.parse().unwrap(),
-        Type::singleton_boolean(true),
+        &r#"User::"alice" is User"#.parse().unwrap(),
+        &Type::singleton_boolean(true),
     );
     assert_typechecks(
         schema.clone(),
-        r#"User::"alice" is Photo"#.parse().unwrap(),
-        Type::singleton_boolean(false),
+        &r#"User::"alice" is Photo"#.parse().unwrap(),
+        &Type::singleton_boolean(false),
     );
     assert_typechecks(
         schema.clone(),
-        r#"N::S::Foo::"alice" is N::S::Foo"#.parse().unwrap(),
-        Type::singleton_boolean(true),
+        &r#"N::S::Foo::"alice" is N::S::Foo"#.parse().unwrap(),
+        &Type::singleton_boolean(true),
     );
     assert_typechecks(
         schema,
-        r#"N::S::Foo::"alice" is User"#.parse().unwrap(),
-        Type::singleton_boolean(false),
+        &r#"N::S::Foo::"alice" is User"#.parse().unwrap(),
+        &Type::singleton_boolean(false),
     );
 }
 
@@ -1378,11 +1385,11 @@ mod datetime {
     #[test]
     fn less_than_typechecks() {
         assert_typechecks_empty_schema(
-            Expr::less(Expr::val(1), Expr::val(2)),
-            Type::primitive_boolean(),
+            &Expr::less(Expr::val(1), Expr::val(2)),
+            &Type::primitive_boolean(),
         );
         assert_typechecks_empty_schema(
-            Expr::less(
+            &Expr::less(
                 Expr::call_extension_fn(
                     get_datetime_constructor_name(),
                     vec![Value::from("1970-01-01").into()],
@@ -1392,10 +1399,10 @@ mod datetime {
                     vec![Value::from("1970-01-02").into()],
                 ),
             ),
-            Type::primitive_boolean(),
+            &Type::primitive_boolean(),
         );
         assert_typechecks_empty_schema(
-            Expr::lesseq(
+            &Expr::lesseq(
                 Expr::call_extension_fn(
                     get_datetime_constructor_name(),
                     vec![Value::from("1970-01-01").into()],
@@ -1405,10 +1412,10 @@ mod datetime {
                     vec![Value::from("1970-01-02").into()],
                 ),
             ),
-            Type::primitive_boolean(),
+            &Type::primitive_boolean(),
         );
         assert_typechecks_empty_schema(
-            Expr::less(
+            &Expr::less(
                 Expr::call_extension_fn(
                     get_duration_constructor_name(),
                     vec![Value::from("1h").into()],
@@ -1418,10 +1425,10 @@ mod datetime {
                     vec![Value::from("2h").into()],
                 ),
             ),
-            Type::primitive_boolean(),
+            &Type::primitive_boolean(),
         );
         assert_typechecks_empty_schema(
-            Expr::lesseq(
+            &Expr::lesseq(
                 Expr::call_extension_fn(
                     get_duration_constructor_name(),
                     vec![Value::from("1h").into()],
@@ -1431,7 +1438,7 @@ mod datetime {
                     vec![Value::from("2h").into()],
                 ),
             ),
-            Type::primitive_boolean(),
+            &Type::primitive_boolean(),
         );
     }
 
@@ -1446,7 +1453,7 @@ mod datetime {
             .collect_vec();
         let src = "true < false";
         let errors =
-            assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+            assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
         assert_sets_equal(
             errors,
             [
@@ -1469,7 +1476,7 @@ mod datetime {
 
         let src = "true < \"\"";
         let errors =
-            assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+            assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
         assert_sets_equal(
             errors,
             [
@@ -1492,7 +1499,7 @@ mod datetime {
 
         let src = "true < 1";
         let errors =
-            assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+            assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
         assert_sets_equal(
             errors,
             [ValidationError::expected_type(
@@ -1506,7 +1513,7 @@ mod datetime {
 
         let src = r#"true < duration("1h")"#;
         let errors =
-            assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+            assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
         assert_sets_equal(
             errors,
             [ValidationError::expected_type(
@@ -1523,7 +1530,7 @@ mod datetime {
         // Error reporting favors long
         let src = r#"duration("1d") < 1"#;
         let errors =
-            assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+            assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
         assert_sets_equal(
             errors,
             [ValidationError::expected_type(
@@ -1539,7 +1546,7 @@ mod datetime {
 
         let src = r#"1 < duration("1d")"#;
         let errors =
-            assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+            assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
         assert_sets_equal(
             errors,
             [ValidationError::expected_type(
@@ -1555,7 +1562,7 @@ mod datetime {
 
         let src = r#"datetime("1970-01-01") < duration("1d")"#;
         let errors =
-            assert_typecheck_fails_empty_schema(src.parse().unwrap(), Type::primitive_boolean());
+            assert_typecheck_fails_empty_schema(&src.parse().unwrap(), &Type::primitive_boolean());
         assert_sets_equal(
             errors,
             [ValidationError::expected_type(

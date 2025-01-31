@@ -308,24 +308,24 @@ pub(crate) fn assert_policy_typecheck_warns_for_mode(
 /// Assert that expr type checks successfully with a particular type, and
 /// that it does not generate any type errors.
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-pub(crate) fn assert_typechecks(schema: impl SchemaProvider, expr: Expr, expected: Type) {
+pub(crate) fn assert_typechecks(schema: impl SchemaProvider, expr: &Expr, expected: &Type) {
     assert_typechecks_for_mode(schema, expr, expected, ValidationMode::Strict);
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typechecks_for_mode(
     schema: impl SchemaProvider,
-    expr: Expr,
-    expected: Type,
+    expr: &Expr,
+    expected: &Type,
     mode: ValidationMode,
 ) {
     let schema = schema.schema();
     let typechecker = Typechecker::new(&schema, mode);
     let mut type_errors = HashSet::new();
     let pid = expr_id_placeholder();
-    let actual = typechecker.typecheck_expr(&expr, &pid, &mut type_errors);
+    let actual = typechecker.typecheck_expr(expr, &pid, &mut type_errors);
     assert_matches!(actual, TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
-        assert_types_eq(typechecker.schema, &expected, &expr_type.into_data().expect("Typechecked expression must have type"));
+        assert_types_eq(typechecker.schema, expected, &expr_type.into_data().expect("Typechecked expression must have type"));
     });
     assert_eq!(
         type_errors,
@@ -344,8 +344,8 @@ pub(crate) fn assert_typechecks_for_mode(
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_fails(
     schema: impl SchemaProvider,
-    expr: Expr,
-    expected_ty: Option<Type>,
+    expr: &Expr,
+    expected_ty: Option<&Type>,
 ) -> HashSet<ValidationError> {
     assert_typecheck_fails_for_mode(schema, expr, expected_ty, ValidationMode::Strict)
 }
@@ -359,15 +359,15 @@ pub(crate) fn assert_typecheck_fails(
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_fails_for_mode(
     schema: impl SchemaProvider,
-    expr: Expr,
-    expected_ty: Option<Type>,
+    expr: &Expr,
+    expected_ty: Option<&Type>,
     mode: ValidationMode,
 ) -> HashSet<ValidationError> {
     let schema = schema.schema();
     let typechecker = Typechecker::new(&schema, mode);
     let mut type_errors = HashSet::new();
     let pid = expr_id_placeholder();
-    let actual = typechecker.typecheck_expr(&expr, &pid, &mut type_errors);
+    let actual = typechecker.typecheck_expr(expr, &pid, &mut type_errors);
     assert_matches!(actual, TypecheckAnswer::TypecheckFail { expr_recovery_type } => {
         match (expected_ty.as_ref(), expr_recovery_type.data()) {
             (None, None) => (),
@@ -385,12 +385,12 @@ pub(crate) fn empty_schema_file() -> json_schema::NamespaceDefinition<RawName> {
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-pub(crate) fn assert_typechecks_empty_schema(expr: Expr, expected: Type) {
+pub(crate) fn assert_typechecks_empty_schema(expr: &Expr, expected: &Type) {
     assert_typechecks(empty_schema_file(), expr, expected)
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-pub(crate) fn assert_typechecks_empty_schema_permissive(expr: Expr, expected: Type) {
+pub(crate) fn assert_typechecks_empty_schema_permissive(expr: &Expr, expected: &Type) {
     assert_typechecks_for_mode(
         empty_schema_file(),
         expr,
@@ -401,15 +401,15 @@ pub(crate) fn assert_typechecks_empty_schema_permissive(expr: Expr, expected: Ty
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_fails_empty_schema(
-    expr: Expr,
-    expected: Type,
+    expr: &Expr,
+    expected: &Type,
 ) -> HashSet<ValidationError> {
     assert_typecheck_fails(empty_schema_file(), expr, Some(expected))
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 pub(crate) fn assert_typecheck_fails_empty_schema_without_type(
-    expr: Expr,
+    expr: &Expr,
 ) -> HashSet<ValidationError> {
     assert_typecheck_fails(empty_schema_file(), expr, None)
 }

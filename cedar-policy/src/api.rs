@@ -872,7 +872,9 @@ impl Authorizer {
     ///
     /// The authorizer uses the `stacker` crate to manage stack size and tries to use a sane default.
     /// If the default is not right for you, you can try wrapping the authorizer or individual calls
-    /// to `is_authorized` in `stacker::grow`.
+    /// to `is_authorized` in `stacker::grow`. Note that `stacker` does not provide support in some
+    /// platforms like `wasm32`. In such cases, the authorizer will assume that the stack size is
+    /// sufficient.
     /// ```
     /// # use cedar_policy::{Authorizer, Context, Entities, EntityId, EntityTypeName,
     /// # EntityUid, Request,PolicySet};
@@ -1535,7 +1537,7 @@ impl SchemaFragment {
     pub fn action_annotations(
         &self,
         namespace: Option<EntityNamespace>,
-        id: EntityId,
+        id: &EntityId,
     ) -> Option<impl Iterator<Item = (&str, &str)>> {
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
         ns_def
@@ -1554,7 +1556,7 @@ impl SchemaFragment {
     pub fn action_annotation(
         &self,
         namespace: Option<EntityNamespace>,
-        id: EntityId,
+        id: &EntityId,
         annotation_key: impl AsRef<str>,
     ) -> Option<&str> {
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;

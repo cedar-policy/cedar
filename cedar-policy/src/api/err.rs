@@ -198,7 +198,9 @@ pub mod to_cedar_syntax_errors {
     impl NameCollisionsError {
         /// Get the names that had collisions
         pub fn names(&self) -> impl Iterator<Item = &str> {
-            self.names_as_strings.iter().map(|s| s.as_str())
+            self.names_as_strings
+                .iter()
+                .map(std::string::String::as_str)
         }
     }
 }

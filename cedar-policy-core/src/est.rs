@@ -4594,7 +4594,7 @@ mod issue_891 {
     use cool_asserts::assert_matches;
     use serde_json::json;
 
-    fn est_json_with_body(body: serde_json::Value) -> serde_json::Value {
+    fn est_json_with_body(body: &serde_json::Value) -> serde_json::Value {
         json!(
             {
                 "effect": "permit",
@@ -4613,12 +4613,12 @@ mod issue_891 {
 
     #[test]
     fn invalid_extension_func() {
-        let src = est_json_with_body(json!( { "ow4": [ { "Var": "principal" } ] }));
+        let src = est_json_with_body(&json!( { "ow4": [ { "Var": "principal" } ] }));
         assert_matches!(serde_json::from_value::<est::Policy>(src), Err(e) => {
             assert!(e.to_string().starts_with("unknown variant `ow4`, expected one of `Value`, `Var`, "), "e was: {e}");
         });
 
-        let src = est_json_with_body(json!(
+        let src = est_json_with_body(&json!(
             {
                 "==": {
                     "left": {"Var": "principal"},
@@ -4635,7 +4635,7 @@ mod issue_891 {
             assert!(e.to_string().starts_with("unknown variant `ownerOrEqual`, expected one of `Value`, `Var`, "), "e was: {e}");
         });
 
-        let src = est_json_with_body(json!(
+        let src = est_json_with_body(&json!(
             {
                 "==": {
                     "left": {"Var": "principal"},
