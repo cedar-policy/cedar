@@ -43,7 +43,7 @@ pub struct ValidatorEntityType {
     /// this structure is initially constructed, the field will contain direct
     /// children, but it will be updated to contain the closure of all
     /// descendants before it is used in any validation.
-    pub(crate) descendants: HashSet<EntityType>,
+    pub descendants: HashSet<EntityType>,
     pub(crate) kind: ValidatorEntityTypeKind,
 }
 
