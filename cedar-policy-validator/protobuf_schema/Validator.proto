@@ -41,6 +41,7 @@ message ValidatorEntityType {
     Attributes attributes = 3;
     OpenTag open_attributes = 4;
     Tag tags = 5;
+    repeated string enums = 6;
 }
 
 message ValidatorActionId {

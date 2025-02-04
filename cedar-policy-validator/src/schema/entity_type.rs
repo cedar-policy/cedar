@@ -159,6 +159,12 @@ impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
         let tags = v.tag_type().map(|tags| proto::Tag {
             optional_type: Some(proto::Type::from(tags)),
         });
+        let enums: Vec<String> = match &v.kind {
+            ValidatorEntityTypeKind::Enum(choices) => {
+                choices.into_iter().map(|s| s.to_string()).collect()
+            }
+            ValidatorEntityTypeKind::Standard(_) => vec![],
+        };
         Self {
             name: Some(ast::proto::EntityType::from(&v.name)),
             descendants: v
@@ -175,6 +181,7 @@ impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
             )),
             open_attributes: proto::OpenTag::from(&v.open_attributes()).into(),
             tags,
+            enums,
         }
     }
 }
