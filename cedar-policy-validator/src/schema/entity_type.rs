@@ -106,7 +106,7 @@ impl ValidatorEntityType {
         }
     }
 
-    /// ...
+    /// Get the open attributes
     pub fn open_attributes(&self) -> OpenTag {
         match &self.kind {
             ValidatorEntityTypeKind::Enum(_) => OpenTag::ClosedAttributes,
