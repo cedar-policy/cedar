@@ -156,37 +156,9 @@ impl TCNode<EntityType> for ValidatorEntityType {
 #[cfg(feature = "protobufs")]
 impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
     fn from(v: &ValidatorEntityType) -> Self {
-        let kind = match &v.kind {
-            ValidatorEntityTypeKind::Enum(choices) => proto::ValidatorEntityTypeKind {
-                data: Some(proto::validator_entity_type_kind::Data::Choices(
-                    proto::Choices {
-                        choices: Vec::from(choices.clone().map(|s| s.to_string())),
-                    },
-                )),
-            },
-            ValidatorEntityTypeKind::Standard(StandardValidatorEntityType {
-                attributes,
-                open_attributes,
-                tags,
-            }) => proto::ValidatorEntityTypeKind {
-                data: Some(proto::validator_entity_type_kind::Data::Standard(
-                    proto::StandardValidatorEntityType {
-                        attributes: Some(proto::Attributes::from(
-                            &Attributes::with_required_attributes(
-                                attributes
-                                    .clone()
-                                    .into_iter()
-                                    .map(|(attr, ty)| (attr, ty.attr_type)),
-                            ),
-                        )),
-                        open_attributes: proto::OpenTag::from(open_attributes).into(),
-                        tags: tags.clone().map(|tags| proto::Tag {
-                            optional_type: Some(proto::Type::from(&tags)),
-                        }),
-                    },
-                )),
-            },
-        };
+        let tags = v.tag_type().map(|tags| proto::Tag {
+            optional_type: Some(proto::Type::from(tags)),
+        });
         Self {
             name: Some(ast::proto::EntityType::from(&v.name)),
             descendants: v
@@ -194,7 +166,15 @@ impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
                 .iter()
                 .map(ast::proto::EntityType::from)
                 .collect(),
-            kind: Some(kind),
+            attributes: Some(proto::Attributes::from(
+                &Attributes::with_required_attributes(
+                    v.attributes()
+                        .into_iter()
+                        .map(|(attr, ty)| (attr, ty.attr_type)),
+                ),
+            )),
+            open_attributes: proto::OpenTag::from(&v.open_attributes()).into(),
+            tags,
         }
     }
 }
@@ -204,41 +184,9 @@ impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &proto::ValidatorEntityType) -> Self {
-        let kind = match &v
-            .kind
-            .as_ref()
-            .expect("`as_ref()` for field that should exist")
-            .data
-            .as_ref()
-            .expect("`as_ref()` for field that should exist")
-        {
-            proto::validator_entity_type_kind::Data::Standard(
-                proto::StandardValidatorEntityType {
-                    attributes,
-                    open_attributes,
-                    tags,
-                },
-            ) => ValidatorEntityTypeKind::Standard(StandardValidatorEntityType {
-                attributes: Attributes::from(
-                    attributes
-                        .as_ref()
-                        .expect("`as_ref()` for field that should exist"),
-                ),
-                open_attributes: OpenTag::from(
-                    &proto::OpenTag::try_from(open_attributes.clone())
-                        .expect("decode should succeed"),
-                ),
-                tags: match tags {
-                    Some(tags) => tags.optional_type.as_ref().map(Type::from),
-                    None => None,
-                },
-            }),
-            proto::validator_entity_type_kind::Data::Choices(proto::Choices { choices }) => {
-                ValidatorEntityTypeKind::Enum(
-                    NonEmpty::collect(choices.into_iter().map(|s| SmolStr::new(s)))
-                        .expect("should be a nonempty vec"),
-                )
-            }
+        let tags = match &v.tags {
+            Some(tags) => tags.optional_type.as_ref().map(Type::from),
+            None => None,
         };
         Self {
             name: ast::EntityType::from(
@@ -247,7 +195,17 @@ impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
                     .expect("`as_ref()` for field that should exist"),
             ),
             descendants: v.descendants.iter().map(ast::EntityType::from).collect(),
-            kind,
+            kind: ValidatorEntityTypeKind::Standard(StandardValidatorEntityType {
+                attributes: Attributes::from(
+                    v.attributes
+                        .as_ref()
+                        .expect("`as_ref()` for field that should exist"),
+                ),
+                open_attributes: OpenTag::from(
+                    &proto::OpenTag::try_from(v.open_attributes).expect("decode should succeed"),
+                ),
+                tags,
+            }),
         }
     }
 }

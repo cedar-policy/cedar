@@ -35,27 +35,12 @@ message EntityUidWithActionIdsMap {
     ValidatorActionId value = 2;
 }
 
-message StandardValidatorEntityType {
-    Attributes attributes = 1;
-    OpenTag open_attributes = 2;
-    Tag tags = 3;
-}
-
-message Choices {
-    repeated string choices = 1;
-}
-
-message ValidatorEntityTypeKind {
-  oneof data {
-     StandardValidatorEntityType standard = 1;
-     Choices choices = 2;
-  }
-}
-
 message ValidatorEntityType {
     cedar_policy_core.EntityType name = 1;
     repeated cedar_policy_core.EntityType descendants = 2;
-    ValidatorEntityTypeKind kind = 3;
+    Attributes attributes = 3;
+    OpenTag open_attributes = 4;
+    Tag tags = 5;
 }
 
 message ValidatorActionId {
