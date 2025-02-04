@@ -44,7 +44,9 @@ pub struct ValidatorEntityType {
     /// children, but it will be updated to contain the closure of all
     /// descendants before it is used in any validation.
     pub descendants: HashSet<EntityType>,
-    pub(crate) kind: ValidatorEntityTypeKind,
+
+    /// The kind of entity type: enumerated and standard
+    pub kind: ValidatorEntityTypeKind,
 }
 
 #[derive(Clone, Debug, Serialize)]
