@@ -2163,6 +2163,7 @@ mod schema_based_parsing_tests {
     use crate::extensions::Extensions;
     use crate::test_utils::*;
     use cool_asserts::assert_matches;
+    use nonempty::NonEmpty;
     use serde_json::json;
     use smol_str::SmolStr;
     use std::collections::HashSet;
@@ -2253,6 +2254,9 @@ mod schema_based_parsing_tests {
     /// Mock schema impl for the `Employee` type used in most of these tests
     struct MockEmployeeDescription;
     impl EntityTypeDescription for MockEmployeeDescription {
+        fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
+            None
+        }
         fn entity_type(&self) -> EntityType {
             EntityType::from(Name::parse_unqualified_name("Employee").expect("valid"))
         }
@@ -3502,6 +3506,9 @@ mod schema_based_parsing_tests {
 
         struct MockEmployeeDescription;
         impl EntityTypeDescription for MockEmployeeDescription {
+            fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
+                None
+            }
             fn entity_type(&self) -> EntityType {
                 "XYZCorp::Employee".parse().expect("valid")
             }
@@ -3626,6 +3633,109 @@ mod schema_based_parsing_tests {
                 &ExpectedErrorMessageBuilder::error("error during entity deserialization")
                     .source(r#"entity `Employee::"12UA45"` has type `Employee` which is not declared in the schema"#)
                     .help(r#"did you mean `XYZCorp::Employee`?"#)
+                    .build()
+            );
+        });
+    }
+
+    #[test]
+    fn enumerated_entities() {
+        struct MockSchema;
+        struct StarTypeDescription;
+        impl EntityTypeDescription for StarTypeDescription {
+            fn entity_type(&self) -> EntityType {
+                "Star".parse().unwrap()
+            }
+
+            fn attr_type(&self, _attr: &str) -> Option<SchemaType> {
+                None
+            }
+
+            fn tag_type(&self) -> Option<SchemaType> {
+                None
+            }
+
+            fn required_attrs<'s>(&'s self) -> Box<dyn Iterator<Item = SmolStr> + 's> {
+                Box::new(std::iter::empty())
+            }
+
+            fn allowed_parent_types(&self) -> Arc<HashSet<EntityType>> {
+                Arc::new(HashSet::new())
+            }
+
+            fn open_attributes(&self) -> bool {
+                false
+            }
+
+            fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
+                Some(nonempty::nonempty![Eid::new("🌎"), Eid::new("🌕"),])
+            }
+        }
+        impl Schema for MockSchema {
+            type EntityTypeDescription = StarTypeDescription;
+
+            type ActionEntityIterator = std::iter::Empty<Arc<Entity>>;
+
+            fn entity_type(&self, entity_type: &EntityType) -> Option<Self::EntityTypeDescription> {
+                if entity_type == &"Star".parse::<EntityType>().unwrap() {
+                    Some(StarTypeDescription)
+                } else {
+                    None
+                }
+            }
+
+            fn action(&self, _action: &EntityUID) -> Option<Arc<Entity>> {
+                None
+            }
+
+            fn entity_types_with_basename<'a>(
+                &'a self,
+                basename: &'a UnreservedId,
+            ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
+                if basename == &"Star".parse::<UnreservedId>().unwrap() {
+                    Box::new(std::iter::once("Star".parse::<EntityType>().unwrap()))
+                } else {
+                    Box::new(std::iter::empty())
+                }
+            }
+
+            fn action_entities(&self) -> Self::ActionEntityIterator {
+                std::iter::empty()
+            }
+        }
+
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchema),
+            Extensions::none(),
+            TCComputation::ComputeNow,
+        );
+
+        assert_matches!(
+            eparser.from_json_value(serde_json::json!([
+                {
+                    "uid": { "type": "Star", "id": "🌎" },
+                    "attrs": {},
+                    "parents": [],
+                }
+            ])),
+            Ok(_)
+        );
+
+        let entitiesjson = serde_json::json!([
+            {
+                "uid": { "type": "Star", "id": "🪐" },
+                "attrs": {},
+                "parents": [],
+            }
+        ]);
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()),
+        Err(e) => {
+            expect_err(
+                &entitiesjson,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                    .source(r#"entity `Star::"🪐"` is of an enumerated entity type, but `"🪐"` is not declared as a valid eid"#)
+                    .help(r#"valid entity eids: "🌎", "🌕""#)
                     .build()
             );
         });
