@@ -855,6 +855,7 @@ impl ValidatorSchema {
             Entity::new_with_attr_partial_value_serialized_as_expr(
                 action_id.clone(),
                 action.attributes.clone(),
+                [].into_iter().collect(),
                 action_ancestors.remove(action_id).unwrap_or_default(),
             )
         })
@@ -2626,7 +2627,7 @@ pub(crate) mod test {
         let view_photo = actions.entity(&action_uid);
         assert_eq!(
             view_photo.unwrap(),
-            &Entity::new_with_attr_partial_value(action_uid, [], HashSet::new())
+            &Entity::new_with_attr_partial_value(action_uid, [], HashSet::new(), HashSet::new())
         );
     }
 
@@ -2661,6 +2662,7 @@ pub(crate) mod test {
             &Entity::new_with_attr_partial_value(
                 view_photo_uid,
                 [],
+                HashSet::new(),
                 HashSet::from([view_uid.clone(), read_uid.clone()])
             )
         );
@@ -2668,13 +2670,13 @@ pub(crate) mod test {
         let view_entity = actions.entity(&view_uid);
         assert_eq!(
             view_entity.unwrap(),
-            &Entity::new_with_attr_partial_value(view_uid, [], HashSet::from([read_uid.clone()]))
+            &Entity::new_with_attr_partial_value(view_uid, [], HashSet::new(), HashSet::from([read_uid.clone()]))
         );
 
         let read_entity = actions.entity(&read_uid);
         assert_eq!(
             read_entity.unwrap(),
-            &Entity::new_with_attr_partial_value(read_uid, [], HashSet::new())
+            &Entity::new_with_attr_partial_value(read_uid, [], HashSet::new(), HashSet::new())
         );
     }
 
@@ -2702,6 +2704,7 @@ pub(crate) mod test {
             &Entity::new(
                 action_uid,
                 [("attr".into(), RestrictedExpr::val("foo"))],
+                HashSet::new(),
                 HashSet::new(),
                 [],
                 Extensions::none(),

@@ -97,6 +97,7 @@ impl Schema for AllEntitiesNoAttrsSchema {
             action.clone(),
             [],
             HashSet::new(),
+            HashSet::new(),
         )))
     }
     fn entity_types_with_basename<'a>(

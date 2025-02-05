@@ -3768,7 +3768,7 @@ mod schema_based_parsing_tests {
 
         // Both entity jsons are ok (the default TC setting is `ComputeNow`)
         assert!(Entities::from_json_value(entitiesjson_tc, Some(&schema)).is_ok());
-        assert!(Entities::from_json_value(entitiesjson_no_tc.clone(), Some(&schema)).is_ok());
+        Entities::from_json_value(entitiesjson_no_tc.clone(), Some(&schema)).unwrap();
 
         // Parsing will fail if the TC doesn't match
         let entitiesjson_bad = json!(

@@ -180,6 +180,7 @@ impl Entity {
         Self(ast::Entity::new_with_attr_partial_value(
             uid.into(),
             [],
+            [].into_iter().collect(),
             parents.into_iter().map(EntityUid::into).collect(),
         ))
     }
@@ -199,6 +200,7 @@ impl Entity {
         Ok(Self(ast::Entity::new(
             uid.into(),
             attrs.into_iter().map(|(k, v)| (k.into(), v.0)),
+            [].into_iter().collect(),
             parents.into_iter().map(EntityUid::into).collect(),
             tags.into_iter().map(|(k, v)| (k.into(), v.0)),
             Extensions::all_available(),
@@ -279,7 +281,8 @@ impl Entity {
         HashMap<String, RestrictedExpression>,
         HashSet<EntityUid>,
     ) {
-        let (uid, attrs, ancestors, _) = self.0.into_inner();
+        let (uid, attrs, ancestors, mut parents, _) = self.0.into_inner();
+        parents.extend(ancestors);
 
         let attrs = attrs
             .into_iter()
@@ -301,7 +304,7 @@ impl Entity {
         (
             uid.into(),
             attrs,
-            ancestors.into_iter().map(Into::into).collect(),
+            parents.into_iter().map(Into::into).collect(),
         )
     }
 
@@ -499,6 +502,24 @@ impl Entities {
                     .as_ref(),
                 cedar_policy_core::entities::TCComputation::ComputeNow,
                 Extensions::all_available(),
+            )?,
+        ))
+    }
+
+    /// Removes each of the [`EntityUID`]s in the interator
+    /// from this [`Entities`] structure, re-computing the transitive
+    /// closure after removing all edges to/from the removed entities.
+    /// 
+    /// Re-computing the transitive closure can be expensive, so it is
+    /// advised to not call this method in a loop.
+    pub fn remove_entities(
+        self,
+        entity_ids: impl IntoIterator<Item = EntityUid>,
+    ) -> Result<Self, EntitiesError> {
+        Ok(Self(
+            self.0.remove_entities(
+                entity_ids.into_iter().map(|euid| euid.0),
+                cedar_policy_core::entities::TCComputation::ComputeNow,
             )?,
         ))
     }

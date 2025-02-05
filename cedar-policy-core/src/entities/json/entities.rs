@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
 use std::sync::Arc;
-use std::{collections::HashMap, io::Read};
+use std::{collections::{HashMap, HashSet}, io::Read};
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
@@ -248,6 +248,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 Ok(entity)
             }
         }
+        
     }
 
     /// Internal function that creates an [`Entities`] from a stream of [`EntityJson`].
@@ -416,7 +417,7 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
                 })
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
-        Ok(Entity::new(uid, attrs, parents, tags, self.extensions)?)
+        Ok(Entity::new(uid, attrs, HashSet::new(), parents, tags, self.extensions)?)
     }
 }
 
@@ -448,7 +449,7 @@ impl EntityJson {
                 .map(serialize_kpvalue)
                 .collect::<Result<_, JsonSerializationError>>()?,
             parents: entity
-                .ancestors()
+                .parents()
                 .map(|euid| EntityUidJson::ImplicitEntityEscape(TypeAndId::from(euid.clone())))
                 .collect(),
             tags: entity
