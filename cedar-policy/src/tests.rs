@@ -3825,6 +3825,255 @@ mod schema_based_parsing_tests {
             Err(EntitiesError::TransitiveClosureError(_))
         ));
     }
+
+    #[test]
+    fn enumerated_entity_types() {
+        let schema = Schema::from_str(
+            r#"
+                    entity Fruit enum ["🍉", "🍓", "🍒"];
+                    entity People {
+                        fruit?: Fruit,
+                        fruit_rec?: {name: Fruit},
+                    };
+                    entity DeliciousFruit in Fruit tags Fruit;
+                    action "eat" appliesTo {
+                        principal: [People],
+                        resource: [Fruit],
+                    };
+                "#,
+        )
+        .expect("should be a valid schema");
+        // invalid eid
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "Fruit",
+                    "id" : "🥝"
+                },
+                "attrs" : {},
+                "parents": []
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {},
+                "parents": []
+            }
+        ]);
+        assert_matches!(Entities::from_json_value(json.clone(), Some(&schema)), Err(EntitiesError::InvalidEntity(err)) => {
+            expect_err(
+                &json,
+                &Report::new(err),
+                &ExpectedErrorMessageBuilder::error(
+                    r#"entity `Fruit::"🥝"` is of an enumerated entity type, but `"🥝"` is not declared as a valid eid"#,
+                )
+                .help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                .build(),
+            );
+        });
+        // no attributes are allowed
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "Fruit",
+                    "id" : "🍉"
+                },
+                "attrs" : {
+                    "sweetness": "high",
+                },
+                "parents": []
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {},
+                "parents": []
+            }
+        ]);
+        assert_matches!(Entities::from_json_value(json.clone(), Some(&schema)), Err(EntitiesError::Deserialization(err)) => {
+            expect_err(
+                &json,
+                &Report::new(err),
+                &ExpectedErrorMessageBuilder::error(
+                    r#"attribute `sweetness` on `Fruit::"🍉"` should not exist according to the schema"#,
+                )
+                .build(),
+            );
+        });
+        // no parents are allowed
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "Fruit",
+                    "id" : "🍉"
+                },
+                "attrs" : {
+                },
+                "parents": [{"type": "Fruit", "id": "🍓"}]
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {},
+                "parents": []
+            }
+        ]);
+        assert_matches!(Entities::from_json_value(json.clone(), Some(&schema)), Err(EntitiesError::InvalidEntity(err)) => {
+            expect_err(
+                &json,
+                &Report::new(err),
+                &ExpectedErrorMessageBuilder::error(
+                    r#"`Fruit::"🍉"` is not allowed to have an ancestor of type `Fruit` according to the schema"#,
+                )
+                .build(),
+            );
+        });
+
+        // Reference to invalid eid in the `parents` field
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "DeliciousFruit",
+                    "id" : "🍉"
+                },
+                "attrs" : {
+                },
+                "parents": [{"type": "Fruit", "id": "🥝"}]
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {},
+                "parents": []
+            }
+        ]);
+        assert_matches!(
+            Entities::from_json_value(json.clone(), Some(&schema)),
+            Err(EntitiesError::InvalidEntity(err)) => {
+                expect_err(
+                    &json,
+                    &Report::new(err),
+                    &ExpectedErrorMessageBuilder::error(
+                        r#"entity `Fruit::"🥝"` is of an enumerated entity type, but `"🥝"` is not declared as a valid eid"#,
+                    ).help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                    .build(),
+                );}
+        );
+
+        // Reference to invalid eid in the `attrs` field
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "DeliciousFruit",
+                    "id" : "🍍"
+                },
+                "attrs" : {
+                },
+                "parents": [{"type": "Fruit", "id": "🍉"}]
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {
+                    "fruit": {"type": "Fruit", "id": "🍍"},
+                },
+                "parents": []
+            }
+        ]);
+        assert_matches!(
+            Entities::from_json_value(json.clone(), Some(&schema)),
+            Err(EntitiesError::InvalidEntity(err)) => {
+                expect_err(
+                    &json,
+                    &Report::new(err),
+                    &ExpectedErrorMessageBuilder::error(
+                        r#"entity `Fruit::"🍍"` is of an enumerated entity type, but `"🍍"` is not declared as a valid eid"#,
+                    ).help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                    .build(),
+                );}
+        );
+        // Reference to invalid eid in the `attrs` field
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "DeliciousFruit",
+                    "id" : "🍍"
+                },
+                "attrs" : {
+                },
+                "parents": [{"type": "Fruit", "id": "🍉"}]
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {
+                    "fruit_rec": {"name": {"type": "Fruit", "id": "🥭"}},
+                },
+                "parents": []
+            }
+        ]);
+        assert_matches!(
+            Entities::from_json_value(json.clone(), Some(&schema)),
+            Err(EntitiesError::InvalidEntity(err)) => {
+                expect_err(
+                    &json,
+                    &Report::new(err),
+                    &ExpectedErrorMessageBuilder::error(
+                        r#"entity `Fruit::"🥭"` is of an enumerated entity type, but `"🥭"` is not declared as a valid eid"#,
+                    ).help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                    .build(),
+                );}
+        );
+        // Reference to invalid eid in the `tags` field
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "DeliciousFruit",
+                    "id" : "🍍"
+                },
+                "attrs" : {
+                },
+                "parents": [{"type": "Fruit", "id": "🍉"}],
+                "tags": {
+                    "mango": {"type": "Fruit", "id": "🥭"},
+                }
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {
+                    "fruit_rec": {"name": {"type": "Fruit", "id": "🍉"}},
+                },
+                "parents": []
+            }
+        ]);
+        assert_matches!(
+            Entities::from_json_value(json.clone(), Some(&schema)),
+            Err(EntitiesError::InvalidEntity(err)) => {
+                expect_err(
+                    &json,
+                    &Report::new(err),
+                    &ExpectedErrorMessageBuilder::error(
+                        r#"entity `Fruit::"🥭"` is of an enumerated entity type, but `"🥭"` is not declared as a valid eid"#,
+                    ).help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                    .build(),
+                );}
+        );
+    }
 }
 
 #[cfg(not(feature = "partial-validate"))]

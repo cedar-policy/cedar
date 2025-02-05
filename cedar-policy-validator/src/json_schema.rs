@@ -25,7 +25,8 @@ use cedar_policy_core::{
     FromNormalizedStr,
 };
 use educe::Educe;
-use nonempty::nonempty;
+use itertools::Itertools;
+use nonempty::{nonempty, NonEmpty};
 use serde::{
     de::{MapAccess, Visitor},
     ser::SerializeMap,
@@ -431,6 +432,25 @@ impl NamespaceDefinition<ConditionalName> {
     }
 }
 
+/// The kind of entity type. There are currently two kinds: The standard entity
+/// type specified by [`StandardEntityType`] and the enumerated entity type
+/// proposed by RFC 53
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub enum EntityTypeKind<N> {
+    /// The standard entity type specified by [`StandardEntityType`]
+    Standard(StandardEntityType<N>),
+    /// The enumerated entity type: An entity type that can only have a
+    /// nonempty set of possible EIDs
+    Enum {
+        #[serde(rename = "enum")]
+        /// The nonempty set of possible EIDs
+        choices: NonEmpty<SmolStr>,
+    },
+}
+
 /// Represents the full definition of an entity type in the schema.
 /// Entity types describe the relationships in the entity store, including what
 /// entities can be members of groups of what types, and what attributes
@@ -439,27 +459,13 @@ impl NamespaceDefinition<ConditionalName> {
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`EntityType`], including recursively.
 /// See notes on [`Fragment`].
-#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[derive(Educe, Debug, Clone, Serialize)]
 #[educe(PartialEq, Eq)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
-#[serde(deny_unknown_fields)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct EntityType<N> {
-    /// Entities of this [`EntityType`] are allowed to be members of entities of
-    /// these types.
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub member_of_types: Vec<N>,
-    /// Description of the attributes for entities of this [`EntityType`].
-    #[serde(default)]
-    #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
-    pub shape: AttributesOrContext<N>,
-    /// Tag type for entities of this [`EntityType`]; `None` means entities of this [`EntityType`] do not have tags.
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tags: Option<Type<N>>,
+    /// The referred type
+    #[serde(flatten)]
+    pub kind: EntityTypeKind<N>,
     /// Annotations
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
@@ -474,24 +480,166 @@ pub struct EntityType<N> {
     pub loc: Option<Loc>,
 }
 
+impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N> {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // A "real" option that does not accept `null` during deserialization
+        enum RealOption<T> {
+            Some(T),
+            None,
+        }
+        impl<'de, T: Deserialize<'de>> Deserialize<'de> for RealOption<T> {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                T::deserialize(deserializer).map(Self::Some)
+            }
+        }
+        impl<T> Default for RealOption<T> {
+            fn default() -> Self {
+                Self::None
+            }
+        }
+
+        impl<T> From<RealOption<T>> for Option<T> {
+            fn from(value: RealOption<T>) -> Self {
+                match value {
+                    RealOption::Some(v) => Self::Some(v),
+                    RealOption::None => None,
+                }
+            }
+        }
+
+        // A struct that contains all possible fields of entity type
+        // I tried to apply the same idea to `EntityTypeKind` but serde allows
+        // unknown fields
+        #[derive(Deserialize)]
+        #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
+        #[serde(deny_unknown_fields)]
+        #[serde(rename_all = "camelCase")]
+        struct Everything<N> {
+            #[serde(default)]
+            member_of_types: RealOption<Vec<N>>,
+            #[serde(default)]
+            shape: RealOption<AttributesOrContext<N>>,
+            #[serde(default)]
+            tags: RealOption<Type<N>>,
+            #[serde(default)]
+            #[serde(rename = "enum")]
+            choices: RealOption<NonEmpty<SmolStr>>,
+            #[serde(default)]
+            annotations: Annotations,
+        }
+
+        let value: Everything<N> = Everything::deserialize(deserializer)?;
+        // We favor the "enum" key here. That is, when we observe this key, we
+        // assume the entity type is an enumerated one and hence reports fields
+        // of standard entity types as invalid.
+        if let Some(choices) = value.choices.into() {
+            let mut unexpected_fields: Vec<&str> = vec![];
+            if Option::<Vec<N>>::from(value.member_of_types).is_some() {
+                unexpected_fields.push("memberOfTypes");
+            }
+            if Option::<AttributesOrContext<N>>::from(value.shape).is_some() {
+                unexpected_fields.push("shape");
+            }
+            if Option::<Type<N>>::from(value.tags).is_some() {
+                unexpected_fields.push("tags");
+            }
+            if !unexpected_fields.is_empty() {
+                return Err(serde::de::Error::custom(format!(
+                    "unexpected field: {}",
+                    unexpected_fields.into_iter().join(", ")
+                )));
+            }
+            Ok(EntityType {
+                kind: EntityTypeKind::Enum { choices },
+                annotations: value.annotations,
+                loc: None,
+            })
+        } else {
+            Ok(EntityType {
+                kind: EntityTypeKind::Standard(StandardEntityType {
+                    member_of_types: Option::from(value.member_of_types).unwrap_or_default(),
+                    shape: Option::from(value.shape).unwrap_or_default(),
+                    tags: Option::from(value.tags),
+                }),
+                annotations: value.annotations,
+                loc: None,
+            })
+        }
+    }
+}
+
+/// The "standard" entity type. That is, an entity type defined by parent
+/// entity types, shape, and tags.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, Deserialize)]
+#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct StandardEntityType<N> {
+    /// Entities of this [`StandardEntityType`] are allowed to be members of entities of
+    /// these types.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    pub member_of_types: Vec<N>,
+    /// Description of the attributes for entities of this [`StandardEntityType`].
+    #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
+    #[serde(default)]
+    pub shape: AttributesOrContext<N>,
+    /// Tag type for entities of this [`StandardEntityType`]; `None` means entities of this [`StandardEntityType`] do not have tags.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub tags: Option<Type<N>>,
+}
+
+#[cfg(test)]
+impl<N> From<StandardEntityType<N>> for EntityType<N> {
+    fn from(value: StandardEntityType<N>) -> Self {
+        Self {
+            kind: EntityTypeKind::Standard(value),
+            annotations: Annotations::new(),
+            loc: None,
+        }
+    }
+}
+
 impl EntityType<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
         self,
         ns: Option<&InternalName>,
     ) -> EntityType<ConditionalName> {
-        EntityType {
-            member_of_types: self
-                .member_of_types
-                .into_iter()
-                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // Only entity, not common, here for now; see #1064
-                .collect(),
-            shape: self.shape.conditionally_qualify_type_references(ns),
-            tags: self
-                .tags
-                .map(|ty| ty.conditionally_qualify_type_references(ns)),
-            annotations: self.annotations,
-            loc: self.loc,
+        let Self {
+            kind,
+            annotations,
+            loc,
+        } = self;
+        match kind {
+            EntityTypeKind::Enum { choices } => EntityType {
+                kind: EntityTypeKind::Enum { choices },
+                annotations,
+                loc,
+            },
+            EntityTypeKind::Standard(ty) => EntityType {
+                kind: EntityTypeKind::Standard(StandardEntityType {
+                    member_of_types: ty
+                        .member_of_types
+                        .into_iter()
+                        .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // Only entity, not common, here for now; see #1064
+                        .collect(),
+                    shape: ty.shape.conditionally_qualify_type_references(ns),
+                    tags: ty
+                        .tags
+                        .map(|ty| ty.conditionally_qualify_type_references(ns)),
+                }),
+                annotations,
+                loc,
+            },
         }
     }
 }
@@ -507,19 +655,33 @@ impl EntityType<ConditionalName> {
         self,
         all_defs: &AllDefs,
     ) -> std::result::Result<EntityType<InternalName>, TypeNotDefinedError> {
-        Ok(EntityType {
-            member_of_types: self
-                .member_of_types
-                .into_iter()
-                .map(|cname| cname.resolve(all_defs))
-                .collect::<std::result::Result<_, _>>()?,
-            shape: self.shape.fully_qualify_type_references(all_defs)?,
-            tags: self
-                .tags
-                .map(|ty| ty.fully_qualify_type_references(all_defs))
-                .transpose()?,
-            annotations: self.annotations,
-            loc: self.loc,
+        let Self {
+            kind,
+            annotations,
+            loc,
+        } = self;
+        Ok(match kind {
+            EntityTypeKind::Enum { choices } => EntityType {
+                kind: EntityTypeKind::Enum { choices },
+                annotations,
+                loc,
+            },
+            EntityTypeKind::Standard(ty) => EntityType {
+                kind: EntityTypeKind::Standard(StandardEntityType {
+                    member_of_types: ty
+                        .member_of_types
+                        .into_iter()
+                        .map(|cname| cname.resolve(all_defs))
+                        .collect::<std::result::Result<_, _>>()?,
+                    shape: ty.shape.fully_qualify_type_references(all_defs)?,
+                    tags: ty
+                        .tags
+                        .map(|ty| ty.fully_qualify_type_references(all_defs))
+                        .transpose()?,
+                }),
+                annotations,
+                loc,
+            },
         })
     }
 }
@@ -1993,7 +2155,7 @@ mod test {
             "memberOfTypes" : ["UserGroup"]
         }
         "#;
-        let et = serde_json::from_str::<EntityType<RawName>>(user).expect("Parse Error");
+        assert_matches!(serde_json::from_str::<EntityType<RawName>>(user), Ok(EntityType { kind: EntityTypeKind::Standard(et), .. }) => {
         assert_eq!(et.member_of_types, vec!["UserGroup".parse().unwrap()]);
         assert_eq!(
             et.shape,
@@ -2004,7 +2166,7 @@ mod test {
                 }),
                 loc: None
             }),
-        );
+        );});
     }
 
     #[test]
@@ -2012,7 +2174,7 @@ mod test {
         let src = r#"
               { }
         "#;
-        let et = serde_json::from_str::<EntityType<RawName>>(src).expect("Parse Error");
+        assert_matches!(serde_json::from_str::<EntityType<RawName>>(src), Ok(EntityType { kind: EntityTypeKind::Standard(et), .. }) => {
         assert_eq!(et.member_of_types.len(), 0);
         assert_eq!(
             et.shape,
@@ -2023,7 +2185,7 @@ mod test {
                 }),
                 loc: None
             }),
-        );
+        );});
     }
 
     #[test]
@@ -2819,15 +2981,15 @@ mod entity_tags {
     fn basic() {
         let json = example_json_schema();
         assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
-            let user = &frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
-            assert_matches!(&user.tags, Some(Type::Type { ty: TypeVariant::Set { element }, loc: None }) => {
-                assert_matches!(&**element, Type::Type { ty: TypeVariant::String, loc: None }); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
+            assert_matches!(frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap(), EntityType { kind: EntityTypeKind::Standard(user), ..} => {
+            assert_matches!(&user.tags, Some(Type::Type { ty: TypeVariant::Set { element }, ..}) => {
+                assert_matches!(&**element, Type::Type{ ty: TypeVariant::String, ..}); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
+            });});
+            assert_matches!(frag.0.get(&None).unwrap().entity_types.get(&"Document".parse().unwrap()).unwrap(), EntityType { kind: EntityTypeKind::Standard(doc), ..} => {
+            assert_matches!(&doc.tags, Some(Type::Type { ty: TypeVariant::Set { element }, ..}) => {
+                assert_matches!(&**element, Type::Type{ ty: TypeVariant::String, ..}); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
             });
-            let doc = &frag.0.get(&None).unwrap().entity_types.get(&"Document".parse().unwrap()).unwrap();
-            assert_matches!(&doc.tags, Some(Type::Type { ty: TypeVariant::Set { element }, loc: None }) => {
-                assert_matches!(&**element, Type::Type { ty: TypeVariant::String, loc: None }); // TODO: why is this `TypeVariant::String` in this case but `EntityOrCommon { "String" }` in all the other cases in this test? Do we accept common types as the element type for sets?
-            });
-        })
+        })})
     }
 
     /// In this schema, the tag type is a common type
@@ -2853,11 +3015,11 @@ mod entity_tags {
             "actions": {}
         }});
         assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
-            let user = &frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
-            assert_matches!(&user.tags, Some(Type::CommonTypeRef { type_name, loc: None }) => {
+            assert_matches!(frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap(), EntityType {kind: EntityTypeKind::Standard(user), ..} => {
+            assert_matches!(&user.tags, Some(Type::CommonTypeRef { type_name, .. }) => {
                 assert_eq!(&format!("{type_name}"), "T");
             });
-        })
+        })});
     }
 
     /// In this schema, the tag type is an entity type
@@ -2880,11 +3042,11 @@ mod entity_tags {
             "actions": {}
         }});
         assert_matches!(Fragment::from_json_value(json), Ok(frag) => {
-            let user = &frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap();
-            assert_matches!(&user.tags, Some(Type::Type { ty: TypeVariant::Entity { name }, loc: None }) => {
+            assert_matches!(frag.0.get(&None).unwrap().entity_types.get(&"User".parse().unwrap()).unwrap(), EntityType { kind: EntityTypeKind::Standard(user), ..} => {
+            assert_matches!(&user.tags, Some(Type::Type{ ty: TypeVariant::Entity{ name }, ..}) => {
                 assert_eq!(&format!("{name}"), "User");
             });
-        })
+        })});
     }
 
     /// This schema has `tags` inside `shape` instead of parallel to it
@@ -2952,15 +3114,17 @@ mod test_json_roundtrip {
                 [(
                     "a".parse().unwrap(),
                     EntityType {
-                        member_of_types: vec!["a".parse().unwrap()],
-                        shape: AttributesOrContext(Type::Type {
-                            ty: TypeVariant::Record(RecordType {
-                                attributes: BTreeMap::new(),
-                                additional_attributes: false,
+                        kind: EntityTypeKind::Standard(StandardEntityType {
+                            member_of_types: vec!["a".parse().unwrap()],
+                            shape: AttributesOrContext(Type::Type {
+                                ty: TypeVariant::Record(RecordType {
+                                    attributes: BTreeMap::new(),
+                                    additional_attributes: false,
+                                }),
+                                loc: None,
                             }),
-                            loc: None,
+                            tags: None,
                         }),
-                        tags: None,
                         annotations: Annotations::new(),
                         loc: None,
                     },
@@ -2999,15 +3163,17 @@ mod test_json_roundtrip {
                     [(
                         "a".parse().unwrap(),
                         EntityType {
-                            member_of_types: vec!["a".parse().unwrap()],
-                            shape: AttributesOrContext(Type::Type {
-                                ty: TypeVariant::Record(RecordType {
-                                    attributes: BTreeMap::new(),
-                                    additional_attributes: false,
+                            kind: EntityTypeKind::Standard(StandardEntityType {
+                                member_of_types: vec!["a".parse().unwrap()],
+                                shape: AttributesOrContext(Type::Type {
+                                    ty: TypeVariant::Record(RecordType {
+                                        attributes: BTreeMap::new(),
+                                        additional_attributes: false,
+                                    }),
+                                    loc: None,
                                 }),
-                                loc: None,
+                                tags: None,
                             }),
-                            tags: None,
                             annotations: Annotations::new(),
                             loc: None,
                         },
@@ -3396,7 +3562,8 @@ mod annotations {
         });
     }
 
-    const ENTITY_TYPE_EXPECTED_ATTRIBUTES: &str = "`memberOfTypes`, `shape`, `tags`, `annotations`";
+    const ENTITY_TYPE_EXPECTED_ATTRIBUTES: &str =
+        "`memberOfTypes`, `shape`, `tags`, `enum`, `annotations`";
     const NAMESPACE_EXPECTED_ATTRIBUTES: &str =
         "`commonTypes`, `entityTypes`, `actions`, `annotations`";
     const ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES: &str =
@@ -3567,7 +3734,7 @@ mod annotations {
                     "annotations": {
                         "foo": ""
                     },
-                    "bar": 1
+                    "bar": 1,
                 }
             }
            }
@@ -3617,6 +3784,92 @@ mod ord {
         set.insert(Type::Type {
             ty: TypeVariant::String,
             loc: None,
+        });
+    }
+}
+
+#[cfg(test)]
+mod enumerated_entity_types {
+    use cool_asserts::assert_matches;
+
+    use crate::{
+        json_schema::{EntityType, EntityTypeKind, Fragment},
+        RawName,
+    };
+
+    #[test]
+    fn basic() {
+        let src = serde_json::json!({
+            "": {
+                "entityTypes": {
+                    "Foo": {
+                        "enum": ["foo", "bar"],
+                        "annotations": {
+                            "a": "b",
+                        }
+                    },
+                },
+                "actions": {},
+            }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Ok(frag) => {
+            assert_matches!(&frag.0[&None].entity_types[&"Foo".parse().unwrap()], EntityType {
+                kind: EntityTypeKind::Enum {choices},
+                ..
+            } => {
+                assert_eq!(Vec::from(choices.clone()), ["foo", "bar"]);
+            });
+        });
+
+        let src = serde_json::json!({
+            "": {
+                "entityTypes": {
+                    "Foo": {
+                        "enum": [],
+                        "annotations": {
+                            "a": "b",
+                        }
+                    },
+                },
+                "actions": {},
+            }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(errs) => {
+            // TODO: write our own error messages if it's deemed to be too ugly.
+            assert_eq!(errs.to_string(), "the vector provided was empty, NonEmpty needs at least one element");
+        });
+
+        let src = serde_json::json!({
+            "": {
+                "entityTypes": {
+                    "Foo": {
+                        "enum": null,
+                    },
+                },
+                "actions": {},
+            }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(errs) => {
+            assert_eq!(errs.to_string(), "invalid type: null, expected a sequence");
+        });
+
+        let src = serde_json::json!({
+            "": {
+                "entityTypes": {
+                    "Foo": {
+                        "enum": ["foo"],
+                        "memberOfTypes": ["bar"],
+                    },
+                },
+                "actions": {},
+            }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(errs) => {
+            assert_eq!(errs.to_string(), "unexpected field: memberOfTypes");
         });
     }
 }

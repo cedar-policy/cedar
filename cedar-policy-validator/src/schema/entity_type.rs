@@ -16,9 +16,10 @@
 
 //! This module contains the definition of `ValidatorEntityType`
 
+use nonempty::NonEmpty;
 use serde::Serialize;
 use smol_str::SmolStr;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use cedar_policy_core::{ast::EntityType, transitive_closure::TCNode};
 
@@ -44,6 +45,12 @@ pub struct ValidatorEntityType {
     /// descendants before it is used in any validation.
     pub descendants: HashSet<EntityType>,
 
+    /// The kind of entity type: enumerated and standard
+    pub kind: ValidatorEntityTypeKind,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct StandardValidatorEntityType {
     /// The attributes associated with this entity.
     pub(crate) attributes: Attributes,
 
@@ -60,21 +67,67 @@ pub struct ValidatorEntityType {
     pub(crate) tags: Option<Type>,
 }
 
+/// The kind of validator entity types
+/// It can either be a standard (non-enum) entity type, or
+/// an enumerated entity type
+#[derive(Clone, Debug, Serialize)]
+pub enum ValidatorEntityTypeKind {
+    /// Standard, aka non-enum
+    Standard(StandardValidatorEntityType),
+    /// Enumerated
+    Enum(NonEmpty<SmolStr>),
+}
+
 impl ValidatorEntityType {
-    /// Get the type of the attribute with the given name, if it exists
-    pub fn attr(&self, attr: &str) -> Option<&AttributeType> {
-        self.attributes.get_attr(attr)
-    }
-
-    /// An iterator over the attributes of this entity
-    pub fn attributes(&self) -> impl Iterator<Item = (&SmolStr, &AttributeType)> {
-        self.attributes.iter()
-    }
-
     /// Return `true` if this entity type has an [`EntityType`] declared as a
     /// possible descendant in the schema.
     pub fn has_descendant_entity_type(&self, ety: &EntityType) -> bool {
         self.descendants.contains(ety)
+    }
+
+    /// An iterator over the attributes of this entity
+    pub fn attributes(&self) -> Attributes {
+        match &self.kind {
+            ValidatorEntityTypeKind::Enum(_) => Attributes {
+                attrs: BTreeMap::new(),
+            },
+            ValidatorEntityTypeKind::Standard(ty) => Attributes::with_attributes(
+                ty.attributes()
+                    .map(|(key, value)| (key.clone(), value.clone())),
+            ),
+        }
+    }
+
+    /// Get the type of the attribute with the given name, if it exists
+    pub fn attr(&self, attr: &str) -> Option<&AttributeType> {
+        match &self.kind {
+            ValidatorEntityTypeKind::Enum(_) => None,
+            ValidatorEntityTypeKind::Standard(ty) => ty.attributes.get_attr(attr),
+        }
+    }
+
+    /// Get the open attributes
+    pub fn open_attributes(&self) -> OpenTag {
+        match &self.kind {
+            ValidatorEntityTypeKind::Enum(_) => OpenTag::ClosedAttributes,
+            ValidatorEntityTypeKind::Standard(ty) => ty.open_attributes,
+        }
+    }
+
+    /// Get the type of tags on this entity. `None` indicates that entities of
+    /// this type are not allowed to have tags.
+    pub fn tag_type(&self) -> Option<&Type> {
+        match &self.kind {
+            ValidatorEntityTypeKind::Enum(_) => None,
+            ValidatorEntityTypeKind::Standard(ty) => ty.tag_type(),
+        }
+    }
+}
+
+impl StandardValidatorEntityType {
+    /// An iterator over the attributes of this entity
+    pub fn attributes(&self) -> impl Iterator<Item = (&SmolStr, &AttributeType)> {
+        self.attributes.iter()
     }
 
     /// Get the type of tags on this entity. `None` indicates that entities of
@@ -105,9 +158,15 @@ impl TCNode<EntityType> for ValidatorEntityType {
 #[cfg(feature = "protobufs")]
 impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
     fn from(v: &ValidatorEntityType) -> Self {
-        let tags = v.tags.as_ref().map(|tags| proto::Tag {
+        let tags = v.tag_type().map(|tags| proto::Tag {
             optional_type: Some(proto::Type::from(tags)),
         });
+        let enums: Vec<String> = match &v.kind {
+            ValidatorEntityTypeKind::Enum(choices) => {
+                choices.into_iter().map(|s| s.to_string()).collect()
+            }
+            ValidatorEntityTypeKind::Standard(_) => vec![],
+        };
         Self {
             name: Some(ast::proto::EntityType::from(&v.name)),
             descendants: v
@@ -115,9 +174,16 @@ impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
                 .iter()
                 .map(ast::proto::EntityType::from)
                 .collect(),
-            attributes: Some(proto::Attributes::from(&v.attributes)),
-            open_attributes: proto::OpenTag::from(&v.open_attributes).into(),
+            attributes: Some(proto::Attributes::from(
+                &Attributes::with_required_attributes(
+                    v.attributes()
+                        .into_iter()
+                        .map(|(attr, ty)| (attr, ty.attr_type)),
+                ),
+            )),
+            open_attributes: proto::OpenTag::from(&v.open_attributes()).into(),
             tags,
+            enums,
         }
     }
 }
@@ -138,15 +204,17 @@ impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
                     .expect("`as_ref()` for field that should exist"),
             ),
             descendants: v.descendants.iter().map(ast::EntityType::from).collect(),
-            attributes: Attributes::from(
-                v.attributes
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-            open_attributes: OpenTag::from(
-                &proto::OpenTag::try_from(v.open_attributes).expect("decode should succeed"),
-            ),
-            tags,
+            kind: ValidatorEntityTypeKind::Standard(StandardValidatorEntityType {
+                attributes: Attributes::from(
+                    v.attributes
+                        .as_ref()
+                        .expect("`as_ref()` for field that should exist"),
+                ),
+                open_attributes: OpenTag::from(
+                    &proto::OpenTag::try_from(v.open_attributes).expect("decode should succeed"),
+                ),
+                tags,
+            }),
         }
     }
 }

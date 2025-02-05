@@ -13,6 +13,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ## [Unreleased]
 Cedar Language Version: TBD
 
+### Added
+
+- Implemented [RFC 53 (enumerated entity types)](https://github.com/cedar-policy/rfcs/blob/main/text/0053-enum-entities.md)  (#1377)
+
 ### Fixed
 
 - Assume sufficient stack space when it cannot be determined (#1446, resolving #1443)
