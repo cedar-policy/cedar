@@ -44,7 +44,6 @@ Cedar Language Version: 4.2
 - For the `partial-eval` experimental feature, added `PartialResponse::reauthorize_with_bindings` to accept substitutions from an iterator and deprecated `PartialResponse::reauthorize` (#1387)
 - For the `partial-eval` experimental feature, added `RequestBuild::unknown_principal_with_type` and `RequestBuild::unknown_resource_with_type` methods, allowing an unknown principal or resource to be constrained to a certain entity type (#1391)
 - Added `Clone` implementations for more types (#1324)
->>>>>>> origin/main
 
 ### Changed
 
