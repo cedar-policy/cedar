@@ -486,7 +486,6 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N
         D: serde::Deserializer<'de>,
     {
         // A "real" option that does not accept `null` during deserialization
-        // TODO: we should be able to use `serde_as` or `serde_with` instead
         enum RealOption<T> {
             Some(T),
             None,

@@ -2150,7 +2150,7 @@ mod schema_based_parsing_tests {
     /// Mock schema impl for the `Employee` type used in most of these tests
     struct MockEmployeeDescription;
     impl EntityTypeDescription for MockEmployeeDescription {
-        fn enum_enity_eids(&self) -> Option<NonEmpty<Eid>> {
+        fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
             None
         }
         fn entity_type(&self) -> EntityType {
@@ -3402,7 +3402,7 @@ mod schema_based_parsing_tests {
 
         struct MockEmployeeDescription;
         impl EntityTypeDescription for MockEmployeeDescription {
-            fn enum_enity_eids(&self) -> Option<NonEmpty<Eid>> {
+            fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
                 None
             }
             fn entity_type(&self) -> EntityType {
@@ -3563,7 +3563,7 @@ mod schema_based_parsing_tests {
                 false
             }
 
-            fn enum_enity_eids(&self) -> Option<NonEmpty<Eid>> {
+            fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
                 Some(nonempty::nonempty![Eid::new("🌎"), Eid::new("🌕"),])
             }
         }

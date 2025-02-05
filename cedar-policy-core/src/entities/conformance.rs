@@ -175,11 +175,23 @@ pub(crate) fn validate_euid(
     euid: &EntityUID,
 ) -> Result<(), InvalidEnumEntityError> {
     if let Some(desc) = schema.entity_type(euid.entity_type()) {
-        if let Some(choices) = desc.enum_enity_eids() {
+        if let Some(choices) = desc.enum_entity_eids() {
             is_valid_enumerated_entity(choices, euid)?;
         }
     }
     Ok(())
+}
+
+fn validate_euids_in_subexpressions<'a>(
+    exprs: impl Iterator<Item = &'a crate::ast::Expr>,
+    schema: &impl Schema,
+) -> std::result::Result<(), InvalidEnumEntityError> {
+    exprs
+        .map(|e| match e.expr_kind() {
+            ExprKind::Lit(Literal::EntityUID(euid)) => validate_euid(schema, &euid),
+            _ => Ok(()),
+        })
+        .collect::<std::result::Result<(), _>>()
 }
 
 /// Validate if enumerated entities in `val` are valid
@@ -188,18 +200,12 @@ pub fn validate_euids_in_partial_value(
     val: &PartialValue,
 ) -> Result<(), InvalidEnumEntityError> {
     match val {
-        PartialValue::Value(val) => {
-            for e in RestrictedExpr::from(val.clone()).subexpressions() {
-                match e.expr_kind() {
-                    ExprKind::Lit(Literal::EntityUID(euid)) => validate_euid(schema, &euid)?,
-                    _ => {}
-                }
-            }
-        }
-        _ => {}
-    };
-
-    Ok(())
+        PartialValue::Value(val) => validate_euids_in_subexpressions(
+            RestrictedExpr::from(val.clone()).subexpressions(),
+            schema,
+        ),
+        PartialValue::Residual(e) => validate_euids_in_subexpressions(e.subexpressions(), schema),
+    }
 }
 
 /// Check whether the given `PartialValue` typechecks with the given `SchemaType`.

@@ -436,7 +436,7 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     EntityDerefLevelViolation(#[from] validation_errors::EntityDerefLevelViolation),
-    /// Returned when ...
+    /// Returned when an entity is of an enumerated entity type but has invalid EID
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidEnumEntity(#[from] validation_errors::InvalidEnumEntity),

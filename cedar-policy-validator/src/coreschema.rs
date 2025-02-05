@@ -111,7 +111,7 @@ impl EntityTypeDescription {
 }
 
 impl entities::EntityTypeDescription for EntityTypeDescription {
-    fn enum_enity_eids(&self) -> Option<NonEmpty<Eid>> {
+    fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
         match &self.validator_type.kind {
             ValidatorEntityTypeKind::Enum(choices) => Some(choices.clone().map(|s| Eid::new(s))),
             _ => None,
