@@ -520,7 +520,6 @@ impl UTCOffset {
         }
     }
 
-    // Reference: https://en.wikipedia.org/wiki/List_of_UTC_offsets
     fn is_valid(&self) -> bool {
         self.hh < Self::MAX_HH && self.mm < Self::MAX_MM
     }
