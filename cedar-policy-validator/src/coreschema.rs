@@ -189,7 +189,7 @@ impl ast::RequestSchema for ValidatorSchema {
                         ..
                     } = et
                     {
-                        is_valid_enumerated_entity(choices.clone().map(Eid::new), euid)
+                        is_valid_enumerated_entity(&Vec::from(choices.clone().map(Eid::new)), euid)
                             .map_err(Self::Error::from)?;
                     }
                 }
@@ -208,7 +208,7 @@ impl ast::RequestSchema for ValidatorSchema {
                         ..
                     } = et
                     {
-                        is_valid_enumerated_entity(choices.clone().map(Eid::new), euid)
+                        is_valid_enumerated_entity(&Vec::from(choices.clone().map(Eid::new)), euid)
                             .map_err(Self::Error::from)?;
                     }
                 }

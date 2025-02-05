@@ -51,7 +51,7 @@ impl Validator {
                     ..
                 }) = self.schema.get_entity_type(e.entity_type())
                 {
-                    match is_valid_enumerated_entity(choices.clone().map(Eid::new), e) {
+                    match is_valid_enumerated_entity(&Vec::from(choices.clone().map(Eid::new)), e) {
                         Ok(_) => {}
                         Err(err) => {
                             return Some(ValidationError::invalid_enum_entity(

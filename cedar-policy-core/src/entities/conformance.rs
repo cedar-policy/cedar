@@ -156,19 +156,19 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
 
 /// Return an [`InvalidEnumEntityError`] if `uid`'s eid is not among valid `choices`
 pub fn is_valid_enumerated_entity(
-    choices: impl IntoIterator<Item = Eid>,
+    choices: &[Eid],
     uid: &EntityUID,
 ) -> Result<(), InvalidEnumEntityError> {
-    let choices: Vec<_> = choices.into_iter().collect();
-    if choices.contains(uid.eid()) {
-        Ok(())
-    } else {
-        Err(InvalidEnumEntityError {
+    choices
+        .iter()
+        .find(|id| uid.eid() == *id)
+        .ok_or(InvalidEnumEntityError {
             uid: uid.clone(),
-            choices,
+            choices: choices.to_vec(),
         })
-    }
+        .map(|_| ())
 }
+
 /// Validate if `euid` is valid, provided that it's of an enumerated type
 pub(crate) fn validate_euid(
     schema: &impl Schema,
@@ -176,7 +176,7 @@ pub(crate) fn validate_euid(
 ) -> Result<(), InvalidEnumEntityError> {
     if let Some(desc) = schema.entity_type(euid.entity_type()) {
         if let Some(choices) = desc.enum_entity_eids() {
-            is_valid_enumerated_entity(choices, euid)?;
+            is_valid_enumerated_entity(&Vec::from(choices), euid)?;
         }
     }
     Ok(())
