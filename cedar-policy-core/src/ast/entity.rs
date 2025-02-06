@@ -523,9 +523,9 @@ impl Entity {
 
     /// Test if two `Entity` objects are deep/structurally equal.
     /// That is, not only do they have the same UID, but also the same
-    /// attributes, attribute values, ancestors, and parents.
+    /// attributes, attribute values, and ancestors/parents.
     pub(crate) fn deep_eq(&self, other: &Self) -> bool {
-        self.uid == other.uid && self.attrs == other.attrs && self.ancestors == other.ancestors && self.parents == other.parents
+        self.uid == other.uid && self.attrs == other.attrs && (self.ancestors().collect::<HashSet<_>>()) == (other.ancestors().collect::<HashSet<_>>())
     }
 
     /// Set the UID to the given value.
@@ -699,7 +699,7 @@ impl std::fmt::Display for Entity {
                 .iter()
                 .map(|(k, v)| format!("{}: {}", k, v))
                 .join("; "),
-            self.ancestors.iter().join(", ")
+            self.ancestors().join(", ")
         )
     }
 }

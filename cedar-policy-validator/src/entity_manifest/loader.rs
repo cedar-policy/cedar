@@ -296,7 +296,7 @@ pub(crate) fn load_entities(
         if let Some(entity) = entities.get_mut(&request.entity_id) {
             ancestors
                 .into_iter()
-                .for_each(|ancestor| entity.add_ancestor(ancestor));
+                .for_each(|ancestor| entity.add_parent(ancestor));
         }
     }
 
