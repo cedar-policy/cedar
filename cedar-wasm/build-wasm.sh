@@ -26,6 +26,14 @@
 
 set -e
 main () {
+    # This should be enforced by `rust-toolchain.toml` in this directory, but we
+    # want to cause CI to fail-fast if that's not configured correctly.
+    echo 'Checking rustc version'
+    if ( cargo rustc -- --version | grep --invert-match "rustc 1.81" ) ; then
+      echo 'Unexpected rustc version. Wasm bindings expect to be built on Rust verison 1.81, check `cargo rustc --version`.'
+      exit 1
+    fi
+
     rm -rf pkg || true
     mkdir pkg
     cargo build
@@ -87,6 +95,10 @@ process_types_file() {
     ' "$types_file" > "$types_file.tmp" && mv "$types_file.tmp" "$types_file"
 
     echo "type SmolStr = string;" >> "$types_file"
+    echo "export type TypeOfAttribute<N> = Type<N> & { required?: boolean };" >> "$types_file"
+    echo "export type CommonType<N> = Type<N> & { annotations?: Annotations };" >> "$types_file"
+    echo "export type EntityType<N> = EntityTypeKind<N> & { annotations?: Annotations; };" >> "$types_file"
+    echo "export type NonEmpty<Type> = Array<Type>;" >> "$types_file"
 }
 
 check_types_file() {

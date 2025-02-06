@@ -21,7 +21,7 @@ use super::node::Node;
 
 /// Helper struct to handle non-existent nodes
 struct View<'a, T>(&'a Node<Option<T>>);
-impl<'a, T: fmt::Display> fmt::Display for View<'a, T> {
+impl<T: fmt::Display> fmt::Display for View<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(n) = &self.0.as_inner() {
             if f.alternate() {
@@ -37,8 +37,8 @@ impl<'a, T: fmt::Display> fmt::Display for View<'a, T> {
 
 impl fmt::Display for Policies {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut ps = self.0.iter();
         if f.alternate() {
-            let mut ps = self.0.iter();
             if let Some(p) = ps.next() {
                 write!(f, "{:#}", View(p))?;
             }
@@ -46,7 +46,6 @@ impl fmt::Display for Policies {
                 write!(f, "\n\n{:#}", View(p))?;
             }
         } else {
-            let mut ps = self.0.iter();
             if let Some(p) = ps.next() {
                 write!(f, "{}", View(p))?;
             }
@@ -116,7 +115,10 @@ impl fmt::Display for Policy {
 
 impl fmt::Display for Annotation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "@{}({})", View(&self.key), View(&self.value))
+        match self.value.as_ref() {
+            Some(value) => write!(f, "@{}({})", View(&self.key), View(value)),
+            None => write!(f, "@{}", View(&self.key)),
+        }
     }
 }
 

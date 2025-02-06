@@ -16,6 +16,9 @@
 
 use std::sync::Arc;
 
+#[cfg(feature = "protobufs")]
+use crate::ast::proto;
+
 use serde::{Deserialize, Serialize};
 
 /// Represent an element in a pattern literal (the RHS of the like operation)
@@ -28,6 +31,47 @@ pub enum PatternElem {
     Wildcard,
 }
 
+#[cfg(feature = "protobufs")]
+impl From<&proto::expr::like::PatternElem> for PatternElem {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::expr::like::PatternElem) -> Self {
+        match v
+            .data
+            .as_ref()
+            .expect("`as_ref()` for field that should exist")
+        {
+            proto::expr::like::pattern_elem::Data::C(c) => {
+                PatternElem::Char(c.chars().next().expect("c is non-empty"))
+            }
+
+            proto::expr::like::pattern_elem::Data::Ty(ty) => {
+                match proto::expr::like::pattern_elem::Ty::try_from(ty.to_owned())
+                    .expect("decode should succeed")
+                {
+                    proto::expr::like::pattern_elem::Ty::Wildcard => PatternElem::Wildcard,
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&PatternElem> for proto::expr::like::PatternElem {
+    fn from(v: &PatternElem) -> Self {
+        match v {
+            PatternElem::Char(c) => Self {
+                data: Some(proto::expr::like::pattern_elem::Data::C(c.to_string())),
+            },
+            PatternElem::Wildcard => Self {
+                data: Some(proto::expr::like::pattern_elem::Data::Ty(
+                    proto::expr::like::pattern_elem::Ty::Wildcard.into(),
+                )),
+            },
+        }
+    }
+}
+
 /// Represent a pattern literal (the RHS of the like operator)
 /// Also provides an implementation of the Display trait as well as a wildcard matching method.
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
@@ -38,11 +82,9 @@ pub struct Pattern {
 }
 
 impl Pattern {
-    /// Explicitly create a pattern literal out of a vector of pattern elements
-    pub fn new(elems: impl IntoIterator<Item = PatternElem>) -> Self {
-        Self {
-            elems: Arc::new(elems.into_iter().collect()),
-        }
+    /// Explicitly create a pattern literal out of a shared vector of pattern elements
+    fn new(elems: Arc<Vec<PatternElem>>) -> Self {
+        Self { elems }
     }
 
     /// Getter to the wrapped vector
@@ -53,6 +95,29 @@ impl Pattern {
     /// Iterate over pattern elements
     pub fn iter(&self) -> impl Iterator<Item = &PatternElem> {
         self.elems.iter()
+    }
+
+    /// Length of elems vector
+    pub fn len(&self) -> usize {
+        self.elems.len()
+    }
+}
+
+impl From<Arc<Vec<PatternElem>>> for Pattern {
+    fn from(value: Arc<Vec<PatternElem>>) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<Vec<PatternElem>> for Pattern {
+    fn from(value: Vec<PatternElem>) -> Self {
+        Self::new(Arc::new(value))
+    }
+}
+
+impl FromIterator<PatternElem> for Pattern {
+    fn from_iter<T: IntoIterator<Item = PatternElem>>(iter: T) -> Self {
+        Self::new(Arc::new(iter.into_iter().collect()))
     }
 }
 
@@ -139,30 +204,30 @@ impl Pattern {
 }
 
 #[cfg(test)]
-pub mod test {
+mod test {
     use super::*;
 
     impl std::ops::Add for Pattern {
         type Output = Pattern;
         fn add(self, rhs: Self) -> Self::Output {
             let elems = [self.get_elems(), rhs.get_elems()].concat();
-            Pattern::new(elems)
+            Pattern::from(elems)
         }
     }
 
     // Map a string into a pattern literal with `PatternElem::Char`
     fn string_map(text: &str) -> Pattern {
-        Pattern::new(text.chars().map(PatternElem::Char))
+        text.chars().map(PatternElem::Char).collect()
     }
 
     // Create a star pattern literal
     fn star() -> Pattern {
-        Pattern::new(vec![PatternElem::Wildcard])
+        Pattern::from(vec![PatternElem::Wildcard])
     }
 
     // Create an empty pattern literal
     fn empty() -> Pattern {
-        Pattern::new(vec![])
+        Pattern::from(vec![])
     }
 
     #[test]

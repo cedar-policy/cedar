@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use std::collections::BTreeSet;
+
 use crate::types::Type;
 use cedar_policy_core::ast::{Expr, Name};
 
@@ -23,6 +25,8 @@ pub struct ExtensionSchema {
     name: Name,
     /// Type information for extension functions
     function_types: Vec<ExtensionFunctionType>,
+    /// Types that support operator overloading
+    types_with_operator_overloading: BTreeSet<Name>,
 }
 
 impl std::fmt::Debug for ExtensionSchema {
@@ -36,10 +40,12 @@ impl ExtensionSchema {
     pub fn new(
         name: Name,
         function_types: impl IntoIterator<Item = ExtensionFunctionType>,
+        types_with_operator_overloading: impl IntoIterator<Item = Name>,
     ) -> Self {
         Self {
             name,
             function_types: function_types.into_iter().collect(),
+            types_with_operator_overloading: types_with_operator_overloading.into_iter().collect(),
         }
     }
 
@@ -50,6 +56,11 @@ impl ExtensionSchema {
 
     pub fn function_types(&self) -> impl Iterator<Item = &ExtensionFunctionType> {
         self.function_types.iter()
+    }
+
+    /// Get all extension types that support operator overloading
+    pub fn types_with_operator_overloading(&self) -> impl Iterator<Item = &Name> {
+        self.types_with_operator_overloading.iter()
     }
 }
 

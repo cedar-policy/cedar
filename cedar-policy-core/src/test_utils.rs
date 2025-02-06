@@ -157,15 +157,11 @@ impl<'a> ExpectedErrorMessage<'a> {
     /// Return a boolean indicating whether a given error matches this expected message.
     /// (If you want to assert that it matches, use [`expect_err()`] instead,
     /// for much better assertion-failure messages.)
-    ///
-    /// `src` is the full source text (which the miette labels index into).
-    /// It can be omitted only in the case where we expect no underlines.
-    /// Panics if this invariant is violated.
-    pub fn matches(&self, src: Option<&'a str>, error: &impl miette::Diagnostic) -> bool {
+    pub fn matches(&self, error: &impl miette::Diagnostic) -> bool {
         self.matches_error(error)
             && self.matches_help(error)
             && self.matches_source(error)
-            && self.matches_underlines(src, error)
+            && self.matches_underlines(error)
     }
 
     /// Internal helper: whether the main error message matches
@@ -281,21 +277,16 @@ impl<'a> ExpectedErrorMessage<'a> {
     }
 
     /// Internal helper: whether the underlines match
-    ///
-    /// `src` is the full source text (which the miette labels index into).
-    /// It can be omitted only in the case where we expect no underlines.
-    /// Panics if this invariant is violated.
-    fn matches_underlines(&self, src: Option<&'a str>, err: &impl miette::Diagnostic) -> bool {
+    fn matches_underlines(&self, err: &impl miette::Diagnostic) -> bool {
         let expected_num_labels = self.underlines.len();
         let actual_num_labels = err.labels().map(|iter| iter.count()).unwrap_or(0);
         if expected_num_labels != actual_num_labels {
             return false;
         }
-        if expected_num_labels == 0 {
-            true
-        } else {
-            let src =
-                src.expect("src can be `None` only in the case where we expect no underlines");
+        if expected_num_labels != 0 {
+            let src = err
+                .source_code()
+                .expect("err.source_code() should be `Some` if we are expecting underlines");
             for (expected, actual) in self
                 .underlines
                 .iter()
@@ -304,11 +295,8 @@ impl<'a> ExpectedErrorMessage<'a> {
                 let (expected_snippet, expected_label) = expected;
                 let actual_snippet = {
                     let span = actual.inner();
-                    if span.offset() < src.len() {
-                        &src[span.offset()..span.offset() + span.len()]
-                    } else {
-                        ""
-                    }
+                    std::str::from_utf8(src.read_span(span, 0, 0).expect("should read span").data())
+                        .expect("should be utf8 encoded")
                 };
                 let actual_label = actual.label();
                 if expected_snippet != &actual_snippet {
@@ -318,23 +306,20 @@ impl<'a> ExpectedErrorMessage<'a> {
                     return false;
                 }
             }
-            true
         }
+        true
     }
 
     /// Internal helper: assert the underlines match
-    ///
-    /// `src` is the full source text (which the miette labels index into).
-    /// It can be omitted only in the case where we expect no underlines.
-    /// Panics if this invariant is violated.
     #[track_caller]
-    fn expect_underlines_match(&self, src: Option<&'a str>, err: &miette::Report) {
+    fn expect_underlines_match(&self, err: &miette::Report) {
         let expected_num_labels = self.underlines.len();
         let actual_num_labels = err.labels().map(|iter| iter.count()).unwrap_or(0);
         assert_eq!(expected_num_labels, actual_num_labels, "in the following error:\n{err:?}\n\nexpected {expected_num_labels} underlines but found {actual_num_labels}"); // the Debug representation of miette::Report is the pretty one
         if expected_num_labels != 0 {
-            let src =
-                src.expect("src can be `None` only in the case where we expect no underlines");
+            let src = err
+                .source_code()
+                .expect("err.source_code() should be `Some` if we are expecting underlines");
             for (expected, actual) in self
                 .underlines
                 .iter()
@@ -343,11 +328,8 @@ impl<'a> ExpectedErrorMessage<'a> {
                 let (expected_snippet, expected_label) = expected;
                 let actual_snippet = {
                     let span = actual.inner();
-                    if span.offset() < src.len() {
-                        &src[span.offset()..span.offset() + span.len()]
-                    } else {
-                        ""
-                    }
+                    std::str::from_utf8(src.read_span(span, 0, 0).expect("should read span").data())
+                        .expect("should be utf8 encoded")
                 };
                 let actual_label = actual.label();
                 assert_eq!(
@@ -365,7 +347,7 @@ impl<'a> ExpectedErrorMessage<'a> {
     }
 }
 
-impl<'a> std::fmt::Display for ExpectedErrorMessage<'a> {
+impl std::fmt::Display for ExpectedErrorMessage<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.prefix {
             writeln!(f, "expected error to start with: {}", self.error)?;
@@ -386,9 +368,8 @@ impl<'a> std::fmt::Display for ExpectedErrorMessage<'a> {
             writeln!(f, "and expected the following underlined segments:")?;
             for (underline, label) in &self.underlines {
                 writeln!(f, "  {underline}")?;
-                match label {
-                    Some(label) => writeln!(f, "  with label {label}")?,
-                    None => (),
+                if let Some(label) = label {
+                    writeln!(f, "  with label {label}")?
                 }
             }
         }
@@ -419,7 +400,7 @@ impl<'a> From<&'a serde_json::Value> for OriginalInput<'a> {
     }
 }
 
-impl<'a> std::fmt::Display for OriginalInput<'a> {
+impl std::fmt::Display for OriginalInput<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::String(s) => write!(f, "{s}"),
@@ -442,18 +423,5 @@ pub fn expect_err<'a>(
     msg.expect_error_matches(src, err);
     msg.expect_help_matches(src, err);
     msg.expect_source_matches(src, err);
-    if msg.underlines.is_empty() {
-        msg.expect_underlines_match(None, err);
-    } else {
-        match src.into() {
-            OriginalInput::String(s) => {
-                msg.expect_underlines_match(Some(s), err);
-            }
-            OriginalInput::Json(val) => {
-                // need to convert to string so we can compute the underlines
-                let src = serde_json::to_string_pretty(val).unwrap();
-                msg.expect_underlines_match(Some(&src), err);
-            }
-        }
-    }
+    msg.expect_underlines_match(err);
 }

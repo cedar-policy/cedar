@@ -33,10 +33,9 @@ pub mod json;
 use json::err::JsonSerializationError;
 
 pub use json::{
-    schematype_of_partialvalue, schematype_of_restricted_expr, AllEntitiesNoAttrsSchema,
-    AttributeType, CedarValueJson, ContextJsonParser, ContextSchema, EntityJson, EntityJsonParser,
-    EntityTypeDescription, EntityUidJson, FnAndArg, GetSchemaTypeError, HeterogeneousSetError,
-    NoEntitiesSchema, NoStaticContext, Schema, SchemaType, TypeAndId,
+    AllEntitiesNoAttrsSchema, AttributeType, CedarValueJson, ContextJsonParser, ContextSchema,
+    EntityJson, EntityJsonParser, EntityTypeDescription, EntityUidJson, FnAndArg, NoEntitiesSchema,
+    NoStaticContext, Schema, SchemaType, TypeAndId,
 };
 
 use conformance::EntitySchemaConformanceChecker;
@@ -59,7 +58,7 @@ pub struct Entities {
     /// Important internal invariant: for any `Entities` object that exists, the
     /// the `ancestor` relation is transitively closed.
     #[serde_as(as = "Vec<(_, _)>")]
-    entities: HashMap<EntityUID, Entity>,
+    entities: HashMap<EntityUID, Arc<Entity>>,
 
     /// The mode flag determines whether this store functions as a partial store or
     /// as a fully concrete store.
@@ -110,7 +109,7 @@ impl Entities {
 
     /// Iterate over the `Entity`s in the `Entities`
     pub fn iter(&self) -> impl Iterator<Item = &Entity> {
-        self.entities.values()
+        self.entities.values().map(|e| e.as_ref())
     }
 
     /// Adds the [`crate::ast::Entity`]s in the iterator to this [`Entities`].
@@ -126,7 +125,7 @@ impl Entities {
     /// responsible for ensuring that TC and DAG hold before calling this method.
     pub fn add_entities(
         mut self,
-        collection: impl IntoIterator<Item = Entity>,
+        collection: impl IntoIterator<Item = Arc<Entity>>,
         schema: Option<&impl Schema>,
         tc_computation: TCComputation,
         extensions: &Extensions<'_>,
@@ -162,13 +161,20 @@ impl Entities {
     ///
     /// If you pass `TCComputation::AssumeAlreadyComputed`, then the caller is
     /// responsible for ensuring that TC and DAG hold before calling this method.
+    ///
+    /// # Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::TransitiveClosureError`] if `tc_computation ==
+    ///   TCComputation::EnforceAlreadyComputed` and the entities are not transitivly closed
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
     pub fn from_entities(
         entities: impl IntoIterator<Item = Entity>,
         schema: Option<&impl Schema>,
         tc_computation: TCComputation,
         extensions: &Extensions<'_>,
     ) -> Result<Self> {
-        let mut entity_map = create_entity_map(entities.into_iter())?;
+        let mut entity_map = create_entity_map(entities.into_iter().map(Arc::new))?;
         if let Some(schema) = schema {
             // Validate non-action entities against schema.
             // We do this before adding the actions, because we trust the
@@ -207,7 +213,7 @@ impl Entities {
                 schema
                     .action_entities()
                     .into_iter()
-                    .map(|e| (e.uid().clone(), Arc::unwrap_or_clone(e))),
+                    .map(|e: Arc<Entity>| (e.uid().clone(), e)),
             );
         }
         Ok(Self {
@@ -246,6 +252,7 @@ impl Entities {
     fn to_ejsons(&self) -> Result<Vec<EntityJson>> {
         self.entities
             .values()
+            .map(Arc::as_ref)
             .map(EntityJson::from_entity)
             .collect::<std::result::Result<_, JsonSerializationError>>()
             .map_err(Into::into)
@@ -316,7 +323,9 @@ impl Entities {
 }
 
 /// Create a map from EntityUids to Entities, erroring if there are any duplicates
-fn create_entity_map(es: impl Iterator<Item = Entity>) -> Result<HashMap<EntityUID, Entity>> {
+fn create_entity_map(
+    es: impl Iterator<Item = Arc<Entity>>,
+) -> Result<HashMap<EntityUID, Arc<Entity>>> {
     let mut map = HashMap::new();
     for e in es {
         match map.entry(e.uid().clone()) {
@@ -332,10 +341,13 @@ fn create_entity_map(es: impl Iterator<Item = Entity>) -> Result<HashMap<EntityU
 impl IntoIterator for Entities {
     type Item = Entity;
 
-    type IntoIter = hash_map::IntoValues<EntityUID, Entity>;
+    type IntoIter = std::iter::Map<
+        std::collections::hash_map::IntoValues<EntityUID, Arc<Entity>>,
+        fn(Arc<Entity>) -> Entity,
+    >;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.entities.into_values()
+        self.entities.into_values().map(Arc::unwrap_or_clone)
     }
 }
 
@@ -348,6 +360,61 @@ impl std::fmt::Display for Entities {
                 writeln!(f, "{e}")?;
             }
             Ok(())
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::Entities> for Entities {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::Entities) -> Self {
+        let entities: Vec<Arc<Entity>> = v
+            .entities
+            .iter()
+            .map(|e| Arc::new(Entity::from(e)))
+            .collect();
+
+        #[cfg(not(feature = "partial-eval"))]
+        let result = Entities::new();
+
+        #[cfg(feature = "partial-eval")]
+        let mut result = Entities::new();
+        #[cfg(feature = "partial-eval")]
+        if v.mode == crate::entities::proto::Mode::Partial as i32 {
+            result = result.partial();
+        }
+
+        result
+            .add_entities(
+                entities,
+                None::<&NoEntitiesSchema>,
+                TCComputation::AssumeAlreadyComputed,
+                Extensions::none(),
+            )
+            .expect("Should be able to add entities")
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&Entities> for proto::Entities {
+    fn from(v: &Entities) -> Self {
+        let mut entities: Vec<proto::Entity> = Vec::with_capacity(v.entities.len());
+        for entity in v.entities.values() {
+            entities.push(proto::Entity::from(entity));
+        }
+
+        #[cfg(feature = "partial-eval")]
+        if v.mode == Mode::Partial {
+            return Self {
+                entities,
+                mode: crate::entities::proto::Mode::Partial.into(),
+            };
+        }
+
+        Self {
+            entities,
+            mode: proto::Mode::Concrete.into(),
         }
     }
 }
@@ -441,6 +508,7 @@ pub enum TCComputation {
 #[cfg(test)]
 // PANIC SAFETY unit tests
 #[allow(clippy::panic)]
+#[allow(clippy::cognitive_complexity)]
 mod json_parsing_tests {
 
     use super::*;
@@ -460,7 +528,9 @@ mod json_parsing_tests {
         );
         let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        parser.from_json_value(v).unwrap();
+        parser
+            .from_json_value(v)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
     }
 
     #[test]
@@ -487,7 +557,10 @@ mod json_parsing_tests {
             }
         ]);
 
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -525,7 +598,10 @@ mod json_parsing_tests {
             }
         ]);
 
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -562,7 +638,10 @@ mod json_parsing_tests {
             }
         ]);
 
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -603,7 +682,10 @@ mod json_parsing_tests {
             }
         ]);
 
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -640,7 +722,10 @@ mod json_parsing_tests {
             }
         ]);
 
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -679,7 +764,10 @@ mod json_parsing_tests {
             }
         ]);
 
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -717,7 +805,10 @@ mod json_parsing_tests {
             }
         ]);
 
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let es = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -742,7 +833,10 @@ mod json_parsing_tests {
             {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : []},
             {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : []}]);
 
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser)
             .add_entities(
                 addl_entities,
@@ -761,7 +855,10 @@ mod json_parsing_tests {
         let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let new = serde_json::json!([{"uid":{ "type": "Test", "id": "alice" }, "attrs" : {}, "parents" : []}]);
-        let addl_entities = parser.iter_from_json_value(new).unwrap();
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
         let err = simple_entities(&parser).add_entities(
             addl_entities,
             None::<&NoEntitiesSchema>,
@@ -814,10 +911,12 @@ mod json_parsing_tests {
                 },
             ]
         );
-        parser.from_json_value(json).expect("JSON is correct")
+        parser
+            .from_json_value(json)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
     }
 
-    /// Ensure the initial conditions of the entiites still hold
+    /// Ensure the initial conditions of the entities still hold
     fn simple_entities_still_sane(e: &Entities) {
         let bob = r#"Test::"bob""#.parse().unwrap();
         let alice = e.entity(&r#"Test::"alice""#.parse().unwrap()).unwrap();
@@ -825,7 +924,7 @@ mod json_parsing_tests {
         assert_eq!(bar, &PartialValue::from(2));
         assert!(alice.is_descendant_of(&bob));
         let bob = e.entity(&bob).unwrap();
-        assert!(bob.ancestors().collect::<Vec<_>>().is_empty());
+        assert!(bob.ancestors().next().is_none());
     }
 
     #[cfg(feature = "partial-eval")]
@@ -875,7 +974,7 @@ mod json_parsing_tests {
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let es = eparser
             .from_json_value(json)
-            .expect("JSON is correct")
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
             .partial();
 
         let alice = es.entity(&EntityUID::with_eid("alice")).unwrap();
@@ -924,13 +1023,24 @@ mod json_parsing_tests {
                 },
                 "attrs": {},
                 "parents": []
+            },
+            {
+                "uid" : {
+                    "type" : "test_entity_type",
+                    "id" : "josephine"
+                },
+                "attrs": {},
+                "parents": [],
+                "tags": {}
             }
             ]
         );
 
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let es = eparser.from_json_value(json).expect("JSON is correct");
+        let es = eparser
+            .from_json_value(json)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
 
         let alice = es.entity(&EntityUID::with_eid("alice")).unwrap();
         // Double check transitive closure computation
@@ -1160,7 +1270,9 @@ mod json_parsing_tests {
 
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let es = eparser.from_json_value(json).expect("JSON is correct");
+        let es = eparser
+            .from_json_value(json)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
 
         let alice = es.entity(&EntityUID::with_eid("alice")).unwrap();
         assert_eq!(alice.get("bacon"), Some(&PartialValue::from("eggs")));
@@ -1249,7 +1361,9 @@ mod json_parsing_tests {
 
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let es = eparser.from_json_value(json).expect("JSON is correct");
+        let es = eparser
+            .from_json_value(json)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
 
         // check that all five entities exist
         let alice = es.entity(&EntityUID::with_eid("alice")).unwrap();
@@ -1618,13 +1732,13 @@ mod json_parsing_tests {
     }
 
     /// helper function
-    fn test_entities() -> (Entity, Entity, Entity, Entity) {
-        (
+    fn test_entities() -> [Entity; 4] {
+        [
             Entity::with_uid(EntityUID::with_eid("test_principal")),
             Entity::with_uid(EntityUID::with_eid("test_action")),
             Entity::with_uid(EntityUID::with_eid("test_resource")),
             Entity::with_uid(EntityUID::with_eid("test")),
-        )
+        ]
     }
 
     /// Test that we can take an Entities, write it to JSON, parse that JSON
@@ -1637,9 +1751,8 @@ mod json_parsing_tests {
             roundtrip(&empty_entities).expect("should roundtrip without errors")
         );
 
-        let (e0, e1, e2, e3) = test_entities();
         let entities = Entities::from_entities(
-            [e0, e1, e2, e3],
+            test_entities(),
             None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
             Extensions::none(),
@@ -1686,15 +1799,25 @@ mod json_parsing_tests {
                         vec![RestrictedExpr::val("222.222.222.222")],
                     ),
                 ),
-            ]
-            .into_iter()
-            .collect(),
+            ],
             [
                 EntityUID::with_eid("parent1"),
                 EntityUID::with_eid("parent2"),
             ]
             .into_iter()
             .collect(),
+            [
+                // note that `foo` is also an attribute, with a different type
+                ("foo".into(), RestrictedExpr::val(2345)),
+                // note that `bar` is also an attribute, with the same type
+                ("bar".into(), RestrictedExpr::val(-1)),
+                // note that `pancakes` is not an attribute. Also note that, in
+                // this non-schema world, tags need not all have the same type.
+                (
+                    "pancakes".into(),
+                    RestrictedExpr::val(EntityUID::with_eid("pancakes")),
+                ),
+            ],
             Extensions::all_available(),
         )
         .unwrap();
@@ -1720,15 +1843,14 @@ mod json_parsing_tests {
                 // record literal that happens to look like an escape
                 "oops".into(),
                 RestrictedExpr::record([("__entity".into(), RestrictedExpr::val("hi"))]).unwrap(),
-            )]
-            .into_iter()
-            .collect(),
+            )],
             [
                 EntityUID::with_eid("parent1"),
                 EntityUID::with_eid("parent2"),
             ]
             .into_iter()
             .collect(),
+            [],
             Extensions::all_available(),
         )
         .unwrap();
@@ -1795,7 +1917,9 @@ mod json_parsing_tests {
         );
         let eparser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        assert_matches!(eparser.from_json_value(json), Ok(_));
+        eparser
+            .from_json_value(json)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
     }
 
     /// test that duplicate keys in a record is an error
@@ -1836,17 +1960,18 @@ mod json_parsing_tests {
 
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
+#[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
-// PANIC SAFETY unit tests
-#[allow(clippy::panic)]
 mod entities_tests {
     use super::*;
 
     #[test]
     fn empty_entities() {
         let e = Entities::new();
-        let es = e.iter().collect::<Vec<_>>();
-        assert!(es.is_empty(), "This vec should be empty");
+        assert!(
+            e.iter().next().is_none(),
+            "The entity store should be empty"
+        );
     }
 
     /// helper function
@@ -1927,18 +2052,21 @@ mod entities_tests {
 
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
+#[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
 mod schema_based_parsing_tests {
+    use super::json::NullEntityTypeDescription;
     use super::*;
     use crate::extensions::Extensions;
     use crate::test_utils::*;
     use cool_asserts::assert_matches;
+    use nonempty::NonEmpty;
     use serde_json::json;
     use smol_str::SmolStr;
     use std::collections::HashSet;
     use std::sync::Arc;
 
-    /// Mock schema impl used for these tests
+    /// Mock schema impl used for most of these tests
     struct MockSchema;
     impl Schema for MockSchema {
         type EntityTypeDescription = MockEmployeeDescription;
@@ -1953,12 +2081,8 @@ mod schema_based_parsing_tests {
             match action.to_string().as_str() {
                 r#"Action::"view""# => Some(Arc::new(Entity::new_with_attr_partial_value(
                     action.clone(),
-                    [(SmolStr::from("foo"), PartialValue::from(34))]
-                        .into_iter()
-                        .collect(),
-                    [r#"Action::"readOnly""#.parse().expect("valid uid")]
-                        .into_iter()
-                        .collect(),
+                    [(SmolStr::from("foo"), PartialValue::from(34))],
+                    std::iter::once(r#"Action::"readOnly""#.parse().expect("valid uid")).collect(),
                 ))),
                 r#"Action::"readOnly""# => Some(Arc::new(Entity::with_uid(
                     r#"Action::"readOnly""#.parse().expect("valid uid"),
@@ -1985,9 +2109,50 @@ mod schema_based_parsing_tests {
         }
     }
 
-    /// Mock schema impl for the `Employee` type used in these tests
+    /// Mock schema impl with an entity type that doesn't have a tags declaration
+    struct MockSchemaNoTags;
+    impl Schema for MockSchemaNoTags {
+        type EntityTypeDescription = NullEntityTypeDescription;
+        type ActionEntityIterator = std::iter::Empty<Arc<Entity>>;
+        fn entity_type(&self, entity_type: &EntityType) -> Option<NullEntityTypeDescription> {
+            match entity_type.to_string().as_str() {
+                "Employee" => Some(NullEntityTypeDescription::new("Employee".parse().unwrap())),
+                _ => None,
+            }
+        }
+        fn action(&self, action: &EntityUID) -> Option<Arc<Entity>> {
+            match action.to_string().as_str() {
+                r#"Action::"view""# => Some(Arc::new(Entity::with_uid(
+                    r#"Action::"view""#.parse().expect("valid uid"),
+                ))),
+                _ => None,
+            }
+        }
+        fn entity_types_with_basename<'a>(
+            &'a self,
+            basename: &'a UnreservedId,
+        ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
+            match basename.as_ref() {
+                "Employee" => Box::new(std::iter::once(EntityType::from(Name::unqualified_name(
+                    basename.clone(),
+                )))),
+                "Action" => Box::new(std::iter::once(EntityType::from(Name::unqualified_name(
+                    basename.clone(),
+                )))),
+                _ => Box::new(std::iter::empty()),
+            }
+        }
+        fn action_entities(&self) -> Self::ActionEntityIterator {
+            std::iter::empty()
+        }
+    }
+
+    /// Mock schema impl for the `Employee` type used in most of these tests
     struct MockEmployeeDescription;
     impl EntityTypeDescription for MockEmployeeDescription {
+        fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
+            None
+        }
         fn entity_type(&self) -> EntityType {
             EntityType::from(Name::parse_unqualified_name("Employee").expect("valid"))
         }
@@ -2014,11 +2179,10 @@ mod schema_based_parsing_tests {
                         (
                             "inner3".into(),
                             AttributeType::required(SchemaType::Record {
-                                attrs: [(
+                                attrs: std::iter::once((
                                     "innerinner".into(),
                                     AttributeType::required(employee_ty()),
-                                )]
-                                .into_iter()
+                                ))
                                 .collect(),
                                 open_attrs: false,
                             }),
@@ -2048,6 +2212,12 @@ mod schema_based_parsing_tests {
                 }),
                 _ => None,
             }
+        }
+
+        fn tag_type(&self) -> Option<SchemaType> {
+            Some(SchemaType::Set {
+                element_ty: Box::new(SchemaType::String),
+            })
         }
 
         fn required_attrs(&self) -> Box<dyn Iterator<Item = SmolStr>> {
@@ -2104,7 +2274,10 @@ mod schema_based_parsing_tests {
                         "trust_score": "5.7",
                         "tricky": { "type": "Employee", "id": "34FB87" }
                     },
-                    "parents": []
+                    "parents": [],
+                    "tags": {
+                        "someTag": ["pancakes"],
+                    },
                 }
             ]
         );
@@ -2115,7 +2288,7 @@ mod schema_based_parsing_tests {
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
         let parsed = eparser
             .from_json_value(entitiesjson.clone())
-            .expect("Should parse without error");
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
         assert_eq!(parsed.iter().count(), 1);
         let parsed = parsed
             .entity(&r#"Employee::"12UA45""#.parse().unwrap())
@@ -2190,7 +2363,7 @@ mod schema_based_parsing_tests {
         );
         let parsed = eparser
             .from_json_value(entitiesjson)
-            .expect("Should parse without error");
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
         assert_eq!(parsed.iter().count(), 1);
         let parsed = parsed
             .entity(&r#"Employee::"12UA45""#.parse().unwrap())
@@ -2199,6 +2372,13 @@ mod schema_based_parsing_tests {
             .get("isFullTime")
             .expect("isFullTime attr should exist");
         assert_eq!(is_full_time, &PartialValue::Value(Value::from(true)),);
+        let some_tag = parsed
+            .get_tag("someTag")
+            .expect("someTag attr should exist");
+        assert_eq!(
+            some_tag,
+            &PartialValue::Value(Value::set(["pancakes".into()], None))
+        );
         let num_direct_reports = parsed
             .get("numDirectReports")
             .expect("numDirectReports attr should exist");
@@ -2309,7 +2489,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                    .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#)
+                    .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but it actually has type string: `"3"`"#)
                     .build()
             );
         });
@@ -2401,7 +2581,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("error during entity deserialization")
-                    .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but actually has type { "id" => (optional) string, "type" => (optional) string }: `{"id": "aaaaa", "type": "HR"}`"#)
+                    .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but it actually has type record: `{"id": "aaaaa", "type": "HR"}`"#)
                     .build()
             );
         });
@@ -2448,7 +2628,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                    .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#)
+                    .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but it actually has type (entity of type `HR`): `HR::"34FB87"`"#)
                     .build()
             );
         });
@@ -2496,7 +2676,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                    .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#)
+                    .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but it actually has type decimal: `decimal("3.33")`"#)
                     .build()
             );
         });
@@ -2589,11 +2769,12 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error_starts_with("entity does not conform to the schema")
-                    .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type {"#)
+                    .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type bool, but it actually has type long: `33`"#)
                     .build()
             );
         });
 
+        // this version with explicit __entity and __extn escapes should also pass
         let entitiesjson = json!(
             [
                 {
@@ -2623,7 +2804,58 @@ mod schema_based_parsing_tests {
         );
         let _ = eparser
             .from_json_value(entitiesjson)
-            .expect("this version with explicit __entity and __extn escapes should also pass");
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+    }
+
+    /// tag has the wrong type
+    #[test]
+    fn type_mismatch_in_tag() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {
+                        "isFullTime": true,
+                        "numDirectReports": 3,
+                        "department": "Sales",
+                        "manager": { "type": "Employee", "id": "34FB87" },
+                        "hr_contacts": [
+                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "HR", "id": "bbbbb" }
+                        ],
+                        "json_blob": {
+                            "inner1": false,
+                            "inner2": "-*/",
+                            "inner3": { "innerinner": { "type": "Employee", "id": "09AE76" }},
+                        },
+                        "home_ip": "222.222.222.101",
+                        "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
+                        "trust_score": "5.7",
+                        "tricky": { "type": "Employee", "id": "34FB87" }
+                    },
+                    "parents": [],
+                    "tags": {
+                        "someTag": "pancakes",
+                    }
+                }
+            ]
+        );
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
+        let expected_error_msg =
+            ExpectedErrorMessageBuilder::error_starts_with("error during entity deserialization")
+                .source(r#"in tag `someTag` on `Employee::"12UA45"`, type mismatch: value was expected to have type [string], but it actually has type string: `"pancakes"`"#)
+                .build();
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(
+                &entitiesjson,
+                &miette::Report::new(e),
+                &expected_error_msg,
+            );
+        });
     }
 
     #[cfg(all(feature = "decimal", feature = "ipaddr"))]
@@ -2768,6 +3000,37 @@ mod schema_based_parsing_tests {
         });
     }
 
+    /// unexpected entity tag
+    #[test]
+    fn unexpected_entity_tag() {
+        let entitiesjson = json!(
+            [
+                {
+                    "uid": { "type": "Employee", "id": "12UA45" },
+                    "attrs": {},
+                    "parents": [],
+                    "tags": {
+                        "someTag": 12,
+                    }
+                }
+            ]
+        );
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchemaNoTags),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        );
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()), Err(e) => {
+            expect_err(
+                &entitiesjson,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                    .source(r#"found a tag `someTag` on `Employee::"12UA45"`, but no tags should exist on `Employee::"12UA45"` according to the schema"#)
+                    .build()
+            );
+        });
+    }
+
     #[cfg(all(feature = "decimal", feature = "ipaddr"))]
     /// Test that involves parents of wrong types
     #[test]
@@ -2866,7 +3129,7 @@ mod schema_based_parsing_tests {
             expect_err(
                 &entitiesjson,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
                     .source(r#"found action entity `Action::"update"`, but it was not declared as an action in the schema"#)
                     .build()
             );
@@ -2896,7 +3159,7 @@ mod schema_based_parsing_tests {
         );
         let entities = eparser
             .from_json_value(entitiesjson)
-            .expect("should parse sucessfully");
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
         assert_eq!(entities.iter().count(), 1);
         let expected_uid = r#"Action::"view""#.parse().expect("valid uid");
         let parsed_entity = match entities.entity(&expected_uid) {
@@ -3029,7 +3292,7 @@ mod schema_based_parsing_tests {
             expect_err(
                 &entitiesjson,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
                     .source(r#"definition of action `Action::"view"` does not match its schema declaration"#)
                     .help(r#"to use the schema's definition of `Action::"view"`, simply omit it from the entities input data"#)
                     .build()
@@ -3139,6 +3402,9 @@ mod schema_based_parsing_tests {
 
         struct MockEmployeeDescription;
         impl EntityTypeDescription for MockEmployeeDescription {
+            fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
+                None
+            }
             fn entity_type(&self) -> EntityType {
                 "XYZCorp::Employee".parse().expect("valid")
             }
@@ -3152,6 +3418,10 @@ mod schema_based_parsing_tests {
                     }),
                     _ => None,
                 }
+            }
+
+            fn tag_type(&self) -> Option<SchemaType> {
+                None
             }
 
             fn required_attrs(&self) -> Box<dyn Iterator<Item = SmolStr>> {
@@ -3191,7 +3461,7 @@ mod schema_based_parsing_tests {
         );
         let parsed = eparser
             .from_json_value(entitiesjson)
-            .expect("Should parse without error");
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
         assert_eq!(parsed.iter().count(), 1);
         let parsed = parsed
             .entity(&r#"XYZCorp::Employee::"12UA45""#.parse().unwrap())
@@ -3233,7 +3503,7 @@ mod schema_based_parsing_tests {
                 &entitiesjson,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                    .source(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but actually has type `Employee`: `Employee::"34FB87"`"#)
+                    .source(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but it actually has type (entity of type `Employee`): `Employee::"34FB87"`"#)
                     .build()
             );
         });
@@ -3262,5 +3532,180 @@ mod schema_based_parsing_tests {
                     .build()
             );
         });
+    }
+
+    #[test]
+    fn enumerated_entities() {
+        struct MockSchema;
+        struct StarTypeDescription;
+        impl EntityTypeDescription for StarTypeDescription {
+            fn entity_type(&self) -> EntityType {
+                "Star".parse().unwrap()
+            }
+
+            fn attr_type(&self, _attr: &str) -> Option<SchemaType> {
+                None
+            }
+
+            fn tag_type(&self) -> Option<SchemaType> {
+                None
+            }
+
+            fn required_attrs<'s>(&'s self) -> Box<dyn Iterator<Item = SmolStr> + 's> {
+                Box::new(std::iter::empty())
+            }
+
+            fn allowed_parent_types(&self) -> Arc<HashSet<EntityType>> {
+                Arc::new(HashSet::new())
+            }
+
+            fn open_attributes(&self) -> bool {
+                false
+            }
+
+            fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
+                Some(nonempty::nonempty![Eid::new("🌎"), Eid::new("🌕"),])
+            }
+        }
+        impl Schema for MockSchema {
+            type EntityTypeDescription = StarTypeDescription;
+
+            type ActionEntityIterator = std::iter::Empty<Arc<Entity>>;
+
+            fn entity_type(&self, entity_type: &EntityType) -> Option<Self::EntityTypeDescription> {
+                if entity_type == &"Star".parse::<EntityType>().unwrap() {
+                    Some(StarTypeDescription)
+                } else {
+                    None
+                }
+            }
+
+            fn action(&self, _action: &EntityUID) -> Option<Arc<Entity>> {
+                None
+            }
+
+            fn entity_types_with_basename<'a>(
+                &'a self,
+                basename: &'a UnreservedId,
+            ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
+                if basename == &"Star".parse::<UnreservedId>().unwrap() {
+                    Box::new(std::iter::once("Star".parse::<EntityType>().unwrap()))
+                } else {
+                    Box::new(std::iter::empty())
+                }
+            }
+
+            fn action_entities(&self) -> Self::ActionEntityIterator {
+                std::iter::empty()
+            }
+        }
+
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchema),
+            Extensions::none(),
+            TCComputation::ComputeNow,
+        );
+
+        assert_matches!(
+            eparser.from_json_value(serde_json::json!([
+                {
+                    "uid": { "type": "Star", "id": "🌎" },
+                    "attrs": {},
+                    "parents": [],
+                }
+            ])),
+            Ok(_)
+        );
+
+        let entitiesjson = serde_json::json!([
+            {
+                "uid": { "type": "Star", "id": "🪐" },
+                "attrs": {},
+                "parents": [],
+            }
+        ]);
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()),
+        Err(e) => {
+            expect_err(
+                &entitiesjson,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                    .source(r#"entity `Star::"🪐"` is of an enumerated entity type, but `"🪐"` is not declared as a valid eid"#)
+                    .help(r#"valid entity eids: "🌎", "🌕""#)
+                    .build()
+            );
+        });
+    }
+}
+
+#[cfg(feature = "protobufs")]
+#[cfg(test)]
+mod protobuf_tests {
+    use super::*;
+    use smol_str::SmolStr;
+    use std::collections::{BTreeMap, HashSet};
+    use std::iter;
+
+    #[test]
+    fn roundtrip() {
+        // Empty Test
+        let entities1: Entities = Entities::new();
+        assert_eq!(
+            entities1,
+            Entities::from(&proto::Entities::from(&entities1))
+        );
+
+        // Single Element Test
+        let attrs = (1..=7)
+            .map(|id| (format!("{id}").into(), RestrictedExpr::val(true)))
+            .collect::<HashMap<SmolStr, _>>();
+        let entity: Arc<Entity> = Arc::new(
+            Entity::new(
+                r#"Foo::"bar""#.parse().unwrap(),
+                attrs.clone(),
+                HashSet::new(),
+                BTreeMap::new(),
+                Extensions::none(),
+            )
+            .unwrap(),
+        );
+        let mut entities2: Entities = Entities::new();
+        entities2 = entities2
+            .add_entities(
+                iter::once(entity.clone()),
+                None::<&NoEntitiesSchema>,
+                TCComputation::AssumeAlreadyComputed,
+                Extensions::none(),
+            )
+            .unwrap();
+        assert_eq!(
+            entities2,
+            Entities::from(&proto::Entities::from(&entities2))
+        );
+
+        // Two Element Test
+        let entity2: Arc<Entity> = Arc::new(
+            Entity::new(
+                r#"Bar::"foo""#.parse().unwrap(),
+                attrs,
+                HashSet::new(),
+                BTreeMap::new(),
+                Extensions::none(),
+            )
+            .unwrap(),
+        );
+        let mut entities3: Entities = Entities::new();
+        entities3 = entities3
+            .add_entities(
+                iter::once(entity).chain(iter::once(entity2)),
+                None::<&NoEntitiesSchema>,
+                TCComputation::AssumeAlreadyComputed,
+                Extensions::none(),
+            )
+            .unwrap();
+        assert_eq!(
+            entities3,
+            Entities::from(&proto::Entities::from(&entities3))
+        );
     }
 }

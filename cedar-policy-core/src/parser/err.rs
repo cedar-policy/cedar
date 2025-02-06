@@ -18,6 +18,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::{self, Display, Write};
 use std::iter;
 use std::ops::{Deref, DerefMut};
+use std::str::FromStr;
+use std::sync::Arc;
 
 use either::Either;
 use lalrpop_util as lalr;
@@ -123,6 +125,8 @@ const POLICY_SCOPE_HELP: &str =
     "policy scopes must contain a `principal`, `action`, and `resource` element in that order";
 
 /// Details about a particular kind of `ToASTError`.
+//
+// This is NOT a publicly exported error type.
 #[derive(Debug, Diagnostic, Error, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ToASTErrorKind {
@@ -157,7 +161,7 @@ pub enum ToASTErrorKind {
     /// Returned when a policy has an extra scope element
     #[error("this policy has an extra element in the scope: {0}")]
     #[diagnostic(help("{POLICY_SCOPE_HELP}"))]
-    ExtraScopeElement(cst::VariableDef),
+    ExtraScopeElement(Box<cst::VariableDef>),
     /// Returned when a policy uses a reserved keyword as an identifier.
     #[error("this identifier is reserved and cannot be used: {0}")]
     ReservedIdentifier(cst::Ident),
@@ -235,6 +239,10 @@ pub enum ToASTErrorKind {
     #[error("invalid attribute name: {0}")]
     #[diagnostic(help("attribute names can either be identifiers or string literals"))]
     InvalidAttribute(SmolStr),
+    /// Returned when the RHS of a `has` operation is invalid
+    #[error("invalid RHS of a `has` operation: {0}")]
+    #[diagnostic(help("valid RHS of a `has` operation is either a sequence of identifiers separated by `.` or a string literal"))]
+    InvalidHasRHS(SmolStr),
     /// Returned when attempting to use an attribute with a namespace
     #[error("`{0}` cannot be used as an attribute as it contains a namespace")]
     PathAsAttribute(String),
@@ -250,9 +258,14 @@ pub enum ToASTErrorKind {
     #[error("right hand side of a `like` expression must be a pattern literal, but got `{0}`")]
     InvalidPattern(String),
     /// Returned when the right hand side of a `is` expression is not an entity type name
-    #[error("right hand side of an `is` expression must be an entity type name, but got `{0}`")]
-    #[diagnostic(help("try using `==` to test for equality"))]
-    InvalidIsType(String),
+    #[error("right hand side of an `is` expression must be an entity type name, but got `{rhs}`")]
+    #[diagnostic(help("{}", invalid_is_help(lhs, rhs)))]
+    InvalidIsType {
+        /// LHS of the invalid `is` expression, as a string
+        lhs: String,
+        /// RHS of the invalid `is` expression, as a string
+        rhs: String,
+    },
     /// Returned when an unexpected node is in the policy scope
     #[error("expected {expected}, found {got}")]
     WrongNode {
@@ -295,11 +308,23 @@ pub enum ToASTErrorKind {
     #[error("attempted to call `{0}.{1}(...)`, but `{0}` does not have any methods")]
     NoMethods(ast::Name, ast::UnreservedId),
     /// Returned when a policy attempts to call a method that does not exist
-    #[error("`{0}` is not a valid method")]
-    UnknownMethod(ast::UnreservedId),
+    #[error("`{id}` is not a valid method")]
+    UnknownMethod {
+        /// The user-provided method id
+        id: ast::UnreservedId,
+        /// The hint to resolve the error
+        #[help]
+        hint: Option<String>,
+    },
     /// Returned when a policy attempts to call a function that does not exist
-    #[error("`{0}` is not a valid function")]
-    UnknownFunction(ast::Name),
+    #[error("`{id}` is not a valid function")]
+    UnknownFunction {
+        /// The user-provided function id
+        id: ast::Name,
+        /// The hint to resolve the error
+        #[help]
+        hint: Option<String>,
+    },
     /// Returned when a policy attempts to write an entity literal
     #[error("invalid entity literal: {0}")]
     #[diagnostic(help("entity literals should have a form like `Namespace::User::\"alice\"`"))]
@@ -309,11 +334,21 @@ pub enum ToASTErrorKind {
     #[error("function calls must be of the form `<name>(arg1, arg2, ...)`")]
     ExpressionCall,
     /// Returned when a policy attempts to access the fields of a value with no fields
-    #[error("invalid member access `{0}.{1}`, `{0}` has no fields or methods")]
-    InvalidAccess(ast::Name, SmolStr),
+    #[error("invalid member access `{lhs}.{field}`, `{lhs}` has no fields or methods")]
+    InvalidAccess {
+        /// what we attempted to access a field of
+        lhs: ast::Name,
+        /// field we attempted to access
+        field: SmolStr,
+    },
     /// Returned when a policy attempts to index on a fields of a value with no fields
-    #[error("invalid indexing expression `{0}[\"{}\"]`, `{0}` has no fields", .1.escape_debug())]
-    InvalidIndex(ast::Name, SmolStr),
+    #[error("invalid indexing expression `{lhs}[\"{}\"]`, `{lhs}` has no fields", .field.escape_debug())]
+    InvalidIndex {
+        /// what we attempted to access a field of
+        lhs: ast::Name,
+        /// field we attempted to access
+        field: SmolStr,
+    },
     /// Returned when the contents of an indexing expression is not a string literal
     #[error("the contents of an index expression must be a string literal")]
     NonStringIndex,
@@ -371,6 +406,22 @@ pub enum ToASTErrorKind {
     #[error("when `is` and `in` are used together, `is` must come first")]
     #[diagnostic(help("try `_ is _ in _`"))]
     InvertedIsIn,
+}
+
+fn invalid_is_help(lhs: &str, rhs: &str) -> String {
+    // in the specific case where rhs is double-quotes surrounding a valid
+    // (possibly reserved) identifier, give a different help message
+    match strip_surrounding_doublequotes(rhs).map(ast::Id::from_str) {
+        Some(Ok(stripped)) => format!("try removing the quotes: `{lhs} is {stripped}`"),
+        _ => format!("try using `==` to test for equality: `{lhs} == {rhs}`"),
+    }
+}
+
+/// If `s` has exactly `"` as both its first and last character, returns `Some`
+/// with the first and last character removed.
+/// In all other cases, returns `None`.
+fn strip_surrounding_doublequotes(s: &str) -> Option<&str> {
+    s.strip_prefix('"')?.strip_suffix('"')
 }
 
 impl ToASTErrorKind {
@@ -444,12 +495,21 @@ pub mod parse_errors {
     use super::*;
 
     /// Details about a `ExpectedStaticPolicy` error.
-    #[derive(Debug, Clone, Diagnostic, Error, PartialEq, Eq)]
+    #[derive(Debug, Clone, Error, PartialEq, Eq)]
     #[error("expected a static policy, got a template containing the slot {}", slot.id)]
-    #[diagnostic(help("try removing the template slot(s) from this policy"))]
     pub struct ExpectedStaticPolicy {
         /// Slot that was found (which is not valid in a static policy)
         pub(crate) slot: ast::Slot,
+    }
+
+    impl Diagnostic for ExpectedStaticPolicy {
+        fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+            Some(Box::new(
+                "try removing the template slot(s) from this policy",
+            ))
+        }
+
+        impl_diagnostic_from_source_loc_opt_field!(slot.loc);
     }
 
     impl From<ast::UnexpectedSlotError> for ExpectedStaticPolicy {
@@ -545,6 +605,7 @@ pub mod parse_errors {
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub struct ToCSTError {
     err: OwnedRawParseError,
+    src: Arc<str>,
 }
 
 impl ToCSTError {
@@ -564,14 +625,15 @@ impl ToCSTError {
         }
     }
 
-    pub(crate) fn from_raw_parse_err(err: RawParseError<'_>) -> Self {
+    pub(crate) fn from_raw_parse_err(err: RawParseError<'_>, src: Arc<str>) -> Self {
         Self {
             err: err.map_token(|token| token.to_string()),
+            src,
         }
     }
 
-    pub(crate) fn from_raw_err_recovery(recovery: RawErrorRecovery<'_>) -> Self {
-        Self::from_raw_parse_err(recovery.error)
+    pub(crate) fn from_raw_err_recovery(recovery: RawErrorRecovery<'_>, src: Arc<str>) -> Self {
+        Self::from_raw_parse_err(recovery.error, src)
     }
 }
 
@@ -594,6 +656,10 @@ impl Display for ToCSTError {
 }
 
 impl Diagnostic for ToCSTError {
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        Some(&self.src as &dyn miette::SourceCode)
+    }
+
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         let primary_source_span = self.primary_source_span();
         let labeled_span = match &self.err {
@@ -768,11 +834,12 @@ impl ParseErrors {
 
     /// Flatten a `Vec<ParseErrors>` into a single `ParseErrors`, returning
     /// `None` if the input vector is empty.
-    pub(crate) fn flatten(v: Vec<ParseErrors>) -> Option<Self> {
-        let (first, rest) = v.split_first()?;
-        let mut first = first.clone();
-        rest.iter()
-            .for_each(|errs| first.extend(errs.iter().cloned()));
+    pub(crate) fn flatten(errs: impl IntoIterator<Item = ParseErrors>) -> Option<Self> {
+        let mut errs = errs.into_iter();
+        let mut first = errs.next()?;
+        for inner in errs {
+            first.extend(inner);
+        }
         Some(first)
     }
 

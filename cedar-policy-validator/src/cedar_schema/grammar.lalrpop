@@ -16,14 +16,16 @@
 
 use std::str::FromStr;
 use std::sync::Arc;
-use crate::cedar_schema::err::{RawErrorRecovery, RawUserError, UserError};
+use crate::cedar_schema::err::{RawErrorRecovery, UserError};
 use cedar_policy_core::parser::{Node, Loc, unescape::to_unescaped_string, cst::Ref};
-use cedar_policy_core::ast::Id;
+use cedar_policy_core::ast::{Id, AnyId, Annotations};
 use smol_str::SmolStr;
 use smol_str::ToSmolStr;
 use crate::cedar_schema::ast::{
     Path,
     EntityDecl,
+    StandardEntityDecl,
+    EnumEntityDecl,
     Declaration,
     Namespace,
     Schema as ASchema,
@@ -35,9 +37,13 @@ use crate::cedar_schema::ast::{
     TypeDecl,
     PrimitiveType,
     QualName,
-    PRAppDecl};
+    PRAppDecl,
+    deduplicate_annotations,
+    Annotated,
+};
 use nonempty::{NonEmpty, nonempty};
 use itertools::Either;
+use std::collections::BTreeMap;
 
 use lalrpop_util::{ParseError, ErrorRecovery};
 
@@ -48,10 +54,9 @@ use lalrpop_util::{ParseError, ErrorRecovery};
 grammar<'err, 's>(errors: &'err mut Vec<RawErrorRecovery<'input>>, src: &'s Arc<str>);
 
 extern {
-    type Error = RawUserError;
+    type Error = UserError;
 }
 
-// New tokens should be reflected in the `FRIENDLY_TOKEN_NAMES` map in err.rs.
 match {
     // Whitespace and comments
     r"\s*" => { }, // The default whitespace skipping is disabled an `ignore pattern` is specified
@@ -69,9 +74,11 @@ match {
     "resource" => RESOURCE,
     "context" => CONTEXT,
     "attributes" => ATTRIBUTES,
+    "tags" => TAGS,
     "Long" => LONG,
     "String" => STRING,
     "Bool" => BOOL,
+    "enum" => ENUM,
 
     // data input
     r"[_a-zA-Z][_a-zA-Z0-9]*" => IDENTIFIER,
@@ -82,21 +89,36 @@ match {
 
     // other tokens
     ",", ";", ":", "::", "{", "}", "[", "]",
-    "<", ">", "=", "?",
+    "<", ">", "=", "?", "@", "(", ")",
 
 }
 
+// Annotations := {'@' AnyIdent '(' String ')'}
+Annotation: Node<(Node<AnyId>, Option<Node<SmolStr>>)> = {
+    <l:@L> "@" <key:AnyIdent> <value: ("(" <STR> ")")?> <r:@R> => Node::with_source_loc((key, value), Loc::new(l..r, Arc::clone(src)))
+}
+
+Annotated<E>: Annotated<E> = {
+   <annotations: Annotation*> <e:E> =>? {
+        Ok(deduplicate_annotations(e, annotations)?)
+    },
+}
 
 // Schema := {Namespace}
 pub Schema: ASchema = {
     <ns: Namespace*> => ns,
 }
 
+#[inline]
+Namedspace: Namespace = {
+    NAMESPACE <p: Path> "{" <decls: Annotated<Decl>*> "}"
+        => Namespace { name: Some(p), decls},
+}
+
 // Namespace := 'namespace' Path '{' {Decl} '}'
-Namespace: Node<Namespace> = {
-    <l:@L> NAMESPACE <p: Path> "{" <decls: Decl*> "}" <r:@R>
-        => Node::with_source_loc(Namespace { name: Some(Node::with_source_loc(p, Loc::new(l..r, Arc::clone(src)))), decls}, Loc::new(l..r, Arc::clone(src))),
-     <l:@L> <decl: Decl> <r:@R> => Node::with_source_loc(Namespace {name: None, decls: vec![decl]}, Loc::new(l..r, Arc::clone(src))),
+Namespace: Annotated<Namespace> = {
+    <ns: Annotated<Namedspace>> => ns,
+    <decl: Annotated<Decl>> <r:@R> => Annotated {data: Namespace {name: None, decls: vec![decl]}, annotations: Annotations::new()},
 }
 
 // Decl := Entity | Action | TypeDecl
@@ -106,10 +128,19 @@ Decl: Node<Declaration> = {
     <t:TypeDecl> => t,
 }
 
-// Entity := 'entity' Idents ['in' EntOrTypes] [['='] RecType] ';'
+// Entity := 'entity' Idents ['in' EntTypes] [['='] RecType] ';' <r:@R>
 Entity: Node<Declaration> = {
-    <l:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> <ds:("="? "{" <AttrDecls?> "}")?> ";" <r:@R>
-        => Node::with_source_loc(Declaration::Entity(EntityDecl { names: ets, member_of_types: ps.unwrap_or_default(), attrs: ds.map(|ds| ds.unwrap_or_default()).unwrap_or_default()}), Loc::new(l..r, Arc::clone(src))),
+    <l1:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> <l2:@L> <ds:("="? "{" <AttrDecls?> "}")?> <r2:@R> <ts:(TAGS <Type>)?> ";" <r1:@R>
+        => Node::with_source_loc(Declaration::Entity(EntityDecl::Standard(StandardEntityDecl {
+            names: ets,
+            member_of_types: ps.unwrap_or_default(),
+            attrs: Node::with_source_loc(ds.map(|ds| ds.unwrap_or_default()).unwrap_or_default(), Loc::new(l2..r2, Arc::clone(src))),
+            tags: ts,
+            })), Loc::new(l1..r1, Arc::clone(src))),
+    <l:@L> ENTITY <ets: Idents> ENUM "[" <choices: STRs> "]" ";" <r:@R> => Node::with_source_loc(Declaration::Entity(EntityDecl::Enum(EnumEntityDecl {
+        names: ets,
+        choices,
+    })), Loc::new(l..r, Arc::clone(src))),
 }
 
 // Action := 'action' Names ['in' QualNameOrNames]
@@ -123,13 +154,13 @@ TypeDecl: Node<Declaration> = {
         => Node::with_source_loc(Declaration::Type(TypeDecl { name : i, def : t}), Loc::new(l..r, Arc::clone(src))),
 }
 
-// AppDecls := ('principal' | 'resource') ':' EntOrTyps [',' | ',' AppDecls]
+// AppDecls := ('principal' | 'resource') ':' EntTypes [',' | ',' AppDecls]
 //          | 'context' ':' (Path | RecType) [',' | ',' AppDecls]
 AppDecls: Node<NonEmpty<Node<AppDecl>>> = {
     <l:@L> <pr: PrincipalOrResource> ":" <ets:EntTypes> ","? <r:@R>
         =>?
                 NonEmpty::collect(ets.into_iter()).ok_or(ParseError::User {
-                    error: Node::with_source_loc(UserError::EmptyList, Loc::new(l..r, Arc::clone(src)))})
+                    error: UserError::EmptyList(Node::with_source_loc((), Loc::new(l..r, Arc::clone(src))))})
                     .map(|ets|
                         Node::with_source_loc(
                             nonempty![Node::with_source_loc(AppDecl::PR(PRAppDecl { kind:pr, entity_tys: ets}), Loc::new(l..r, Arc::clone(src)))],
@@ -137,7 +168,7 @@ AppDecls: Node<NonEmpty<Node<AppDecl>>> = {
     <l:@L> <pr: PrincipalOrResource> ":" <ets:EntTypes> "," <r:@R> <mut ds: AppDecls>
         =>?
                 NonEmpty::collect(ets.into_iter()).ok_or(ParseError::User {
-                    error: Node::with_source_loc(UserError::EmptyList, Loc::new(l..r, Arc::clone(src)))})
+                    error: UserError::EmptyList(Node::with_source_loc((), Loc::new(l..r, Arc::clone(src))))})
                     .map(|ets|
                         {
                             let (mut ds, _) = ds.into_inner();
@@ -156,18 +187,18 @@ AppDecls: Node<NonEmpty<Node<AppDecl>>> = {
                 ds,
                 Loc::new(l..r, Arc::clone(src)))
         },
-    <l:@L> CONTEXT ":" "{" <attrs:AttrDecls?> "}" ","? <r:@R>
+    <l1:@L> CONTEXT ":" <l2:@L> "{" <attrs:AttrDecls?> "}" <r2:@R> ","? <r1:@R>
         =>
             Node::with_source_loc(
-                nonempty![Node::with_source_loc(AppDecl::Context(Either::Right(attrs.unwrap_or_default())), Loc::new(l..r, Arc::clone(src)))],
-                Loc::new(l..r, Arc::clone(src))),
-    <l:@L> CONTEXT ":" "{" <attrs:AttrDecls?> "}" "," <r:@R> <mut ds: AppDecls>
+                nonempty![Node::with_source_loc(AppDecl::Context(Either::Right(Node::with_source_loc(attrs.unwrap_or_default(), Loc::new(l2..r2, Arc::clone(src))))), Loc::new(l1..r1, Arc::clone(src)))],
+                Loc::new(l1..r1, Arc::clone(src))),
+    <l1:@L> CONTEXT ":" <l2:@L> "{" <attrs:AttrDecls?> "}" <r2:@R> "," <r1:@R> <mut ds: AppDecls>
         => {
             let (mut ds, _) = ds.into_inner();
-            ds.insert(0, Node::with_source_loc(AppDecl::Context(Either::Right(attrs.unwrap_or_default())), Loc::new(l..r, Arc::clone(src))));
+            ds.insert(0, Node::with_source_loc(AppDecl::Context(Either::Right(Node::with_source_loc(attrs.unwrap_or_default(), Loc::new(l2..r2, Arc::clone(src))))), Loc::new(l1..r1, Arc::clone(src))));
             Node::with_source_loc(
                 ds,
-                Loc::new(l..r, Arc::clone(src)))
+                Loc::new(l1..r1, Arc::clone(src)))
         },
 }
 
@@ -183,16 +214,12 @@ pub Type: Node<SType> = {
         => Node::with_source_loc(SType::Record(ds.unwrap_or_default()), Loc::new(l..r, Arc::clone(src))),
 }
 
-// AttrDecls := [Name ['?'] | '?'] ':' Type [',' | ',' AttrDecls]
-AttrDecls: Vec<Node<AttrDecl>> = {
-    <l:@L> <name: Name> <required:"?"?> ":" <ty:Type> ","? <r:@R>
-        => vec![Node::with_source_loc(AttrDecl::Concrete { name, required: required.is_none(), ty}, Loc::new(l..r, Arc::clone(src)))],
-    <l:@L> <name: Name> <required:"?"?> ":" <ty:Type> "," <r:@R> <mut ds: AttrDecls>
-        => {ds.insert(0, Node::with_source_loc(AttrDecl::Concrete { name, required: required.is_none(), ty}, Loc::new(l..r, Arc::clone(src)))); ds},
-    <l:@L> "?" ":" <value_ty:Type> ","? <r:@R>
-        => vec![Node::with_source_loc(AttrDecl::EAMap { value_ty }, Loc::new(l..r, Arc::clone(src)))],
-    <l:@L> "?" ":" <value_ty:Type> "," <r:@R> <mut ds: AttrDecls>
-        => {ds.insert(0, Node::with_source_loc(AttrDecl::EAMap { value_ty }, Loc::new(l..r, Arc::clone(src)))); ds},
+// AttrDecls := Annotation* Name ['?'] ':' Type [',' | ',' AttrDecls]
+AttrDecls: Vec<Node<Annotated<AttrDecl>>> = {
+    <l:@L> <annotations: Annotation*> <name: Name> <required:"?"?> ":" <ty:Type> ","? <r:@R>
+        =>? Ok(deduplicate_annotations(AttrDecl { name, required: required.is_none(), ty}, annotations).map(|decl| vec![Node::with_source_loc(decl, Loc::new(l..r, Arc::clone(src)))])?),
+    <l:@L> <annotations: Annotation*> <name: Name> <required:"?"?> ":" <ty:Type> "," <r:@R> <mut ds: AttrDecls>
+        =>? {ds.insert(0, deduplicate_annotations(AttrDecl { name, required: required.is_none(), ty}, annotations).map(|decl| Node::with_source_loc(decl, Loc::new(l..r, Arc::clone(src))))?); Ok(ds)},
 }
 
 Comma<E>: Vec<E> = {
@@ -203,8 +230,15 @@ Comma<E>: Vec<E> = {
     },
 }
 
-// IDENT := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']*
+// IDENT := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']* - RESERVED
 Ident: Node<Id> = {
+    <id: AnyIdent> =>? Id::from_str(id.node.as_ref()).map(|i| Node::with_source_loc(i, id.loc.clone())).map_err(|err : cedar_policy_core::parser::err::ParseErrors| ParseError::User {
+        error: UserError::ReservedIdentifierUsed(Node::with_source_loc(id.node.to_smolstr(), id.loc.clone()))
+    }),
+}
+
+// AnyIdent := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']*
+AnyIdent: Node<AnyId> = {
     <l:@L> NAMESPACE <r:@R>
         => Node::with_source_loc("namespace".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> ENTITY <r:@R>
@@ -223,6 +257,8 @@ Ident: Node<Id> = {
         => Node::with_source_loc("context".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> ATTRIBUTES <r:@R>
         => Node::with_source_loc("attributes".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> TAGS <r:@R>
+        => Node::with_source_loc("tags".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> BOOL <r:@R>
         => Node::with_source_loc("Bool".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> LONG <r:@R>
@@ -232,23 +268,17 @@ Ident: Node<Id> = {
     <l:@L> TYPE <r:@R>
         => Node::with_source_loc("type".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> IN <r:@R>
-        =>? Err(ParseError::User {
-            error: Node::with_source_loc(UserError::ReservedIdentifierUsed("in".into()), Loc::new(l..r, Arc::clone(src)))
-        }),
+        => Node::with_source_loc("in".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> ENUM <r:@R>
+        => Node::with_source_loc("enum".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <i:IDENTIFIER> <r:@R>
-        =>? Id::from_str(i)
-        .map(|id : Id| Node::with_source_loc(id, Loc::new(l..r, Arc::clone(src))))
-        .map_err(|err : cedar_policy_core::parser::err::ParseErrors|
-            ParseError::User {
-                error: Node::with_source_loc(UserError::ReservedIdentifierUsed(i.to_smolstr()), Loc::new(l..r, Arc::clone(src)))
-            }
-        )
+        => Node::with_source_loc(i.parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
 }
 
 STR: Node<SmolStr> = {
     <l:@L> <s:STRINGLIT> <r:@R>
         =>? to_unescaped_string(&s[1..(s.len() - 1)]).map_or_else(|e| Err(ParseError::User {
-            error: Node::with_source_loc(UserError::StringEscape(e), Loc::new(l..r, Arc::clone(src))),
+            error: UserError::StringEscape(Node::with_source_loc(e, Loc::new(l..r, Arc::clone(src)))),
         }), |v| Ok(Node::with_source_loc(v, Loc::new(l..r, Arc::clone(src))))),
 }
 
@@ -273,59 +303,38 @@ PathInline: Path = {
         => Path::new(i.node, is.into_iter().map(|n| n.node), Loc::new(l..r, Arc::clone(src))),
 }
 
-// Idents := IDENT {',' IDENT}
-Idents: Vec<Node<Id>> = {
-    <i:Ident> => vec![i],
-    <mut is:(<Ident> ",")+> <i:Ident> => {
-        is.push(i);
-        is
-    },
-}
-
-// Names := Name {',' Name}
-Names: NonEmpty<Node<SmolStr>> = {
-    <n:Name> => NonEmpty::new(n),
-    <mut ns:(<Name> ",")+> <n:Name> => {
-        let mut all = NonEmpty::new(n);
-        all.append(&mut ns);
+NonEmptyComma<E>: NonEmpty<E> = {
+    <e:E> => NonEmpty::singleton(e),
+    <es:(<E> ",")+> <e:E> => {
+        let mut all = NonEmpty::from_vec(es).unwrap();
+        all.push(e);
         all
     },
 }
 
+// Idents := IDENT {',' IDENT}
+Idents: NonEmpty<Node<Id>> = NonEmptyComma<Ident>;
+
+// Names := Name {',' Name}
+Names: NonEmpty<Node<SmolStr>> = NonEmptyComma<Name>;
 
 // Qualnames := Qualname {',' Qualname }
+QualNames : NonEmpty<Node<QualName>> = NonEmptyComma<QualName>;
 
-QualNames : NonEmpty<Node<QualName>> = {
-    <n:QualName> => NonEmpty::singleton(n),
-    <ns:(<QualName> ",")+> <n:QualName> => {
-        NonEmpty {
-            head : n,
-            tail : ns
-        }
-    },
-}
-
+// STRs := STR {',' STR}
+STRs: NonEmpty<Node<SmolStr>> = NonEmptyComma<STR>;
 
 PrincipalOrResource: Node<PR> = {
     <l:@L> PRINCIPAL <r:@R> => Node::with_source_loc(PR::Principal, Loc::new(l..r, Arc::clone(src))),
     <l:@L> RESOURCE <r:@R> => Node::with_source_loc(PR::Resource, Loc::new(l..r, Arc::clone(src))),
 }
 
-
-// EntType   := Path
-// EntTypes  := Path {',' Path}
-// EntOrTyps := EntType | '[' [EntTypes] ']'
+// EntTypes := Path | '[' [Path {',' Path}] ']'
 EntTypes: Vec<Path> = {
     <et: Path>
         => vec![et],
     "[" <ets: Comma<Path>> "]"
         => ets,
-}
-
-
-NameOrNames: Vec<Node<SmolStr>> = {
-    <n : Name> => vec![n],
-    "[" <ns:Comma<Name>> "]" => ns,
 }
 
 QualNameOrQualNames: NonEmpty<Node<QualName>> = {

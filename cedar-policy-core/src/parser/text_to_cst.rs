@@ -18,7 +18,7 @@
 //! It converts text to a CST
 
 lalrpop_mod!(
-    #[allow(warnings, unused)]
+    #[allow(warnings, unused, missing_debug_implementations)]
     //PANIC SAFETY: lalrpop uses unwraps, and we are trusting lalrpop to generate correct code
     #[allow(clippy::unwrap_used)]
     //PANIC SAFETY: lalrpop uses slicing, and we are trusting lalrpop to generate correct code
@@ -52,13 +52,13 @@ fn parse_collect_errors<'a, P, T>(
 
     let errors = errs
         .into_iter()
-        .map(err::ToCSTError::from_raw_err_recovery)
+        .map(|rc| err::ToCSTError::from_raw_err_recovery(rc, Arc::from(text)))
         .map(Into::into);
     let parsed = match result {
         Ok(parsed) => parsed,
         Err(e) => {
             return Err(err::ParseErrors::new(
-                err::ToCSTError::from_raw_parse_err(e).into(),
+                err::ToCSTError::from_raw_parse_err(e, Arc::from(text)).into(),
                 errors,
             ));
         }
@@ -1003,16 +1003,11 @@ mod tests {
             .expect("parser error")
             .node
             .expect("no data");
-        let success = policies
-            .0
-            .into_iter()
-            .filter_map(|p| p.node)
-            .collect::<Vec<_>>();
-        assert!(success.len() == 2);
+        assert_eq!(policies.0.into_iter().filter_map(|p| p.node).count(), 2);
     }
 
     #[test]
-    fn policy_annotations() {
+    fn policy_annotations_ok() {
         let policies = assert_parse_succeeds(
             parse_policies,
             r#"
@@ -1023,16 +1018,26 @@ mod tests {
         "#,
         );
         // should have successfully parsed 4 policies
-        assert_eq!(
-            policies
-                .0
-                .into_iter()
-                .filter_map(|p| p.node)
-                .collect::<Vec<_>>()
-                .len(),
-            4
-        );
+        assert_eq!(policies.0.into_iter().filter_map(|p| p.node).count(), 4);
+    }
 
+    #[test]
+    fn policy_annotations_no_value_ok() {
+        let policy = assert_parse_succeeds(
+            parse_policy,
+            r#"@foo permit (principal, action, resource);"#,
+        );
+        let annotation = policy.annotations.first().unwrap().as_inner().unwrap();
+        assert_eq!(annotation.value, None);
+        assert_eq!(
+            annotation.key.as_inner().unwrap().to_string(),
+            "foo".to_string()
+        );
+        assert_eq!(policy.annotations.len(), 1);
+    }
+
+    #[test]
+    fn policy_annotations_bad_id() {
         let src = r#"
             @bad-annotation("bad") permit (principal, action, resource);
         "#;
@@ -1041,10 +1046,42 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `-`")
-                .exactly_one_underline_with_label("-", "expected `(`")
+                .exactly_one_underline_with_label("-", "expected `(`, `@`, or identifier")
                 .build(),
         );
 
+        let src = r#"
+            @hi mom("this should be invalid")
+            permit(principal, action, resource);
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `\"this should be invalid\"`")
+                .exactly_one_underline_with_label(
+                    "\"this should be invalid\"",
+                    "expected `)` or identifier",
+                )
+                .build(),
+        );
+
+        let src = r#"
+            @hi+mom("this should be invalid")
+            permit(principal, action, resource);
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `+`")
+                .exactly_one_underline_with_label("+", "expected `(`, `@`, or identifier")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn policy_annotations_bad_val() {
         let src = r#"
             @bad_annotation("bad","annotation") permit (principal, action, resource);
         "#;
@@ -1054,6 +1091,18 @@ mod tests {
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `,`")
                 .exactly_one_underline_with_label(",", "expected `)`")
+                .build(),
+        );
+
+        let src = r#"
+            @bad_annotation() permit (principal, action, resource);
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `)`")
+                .exactly_one_underline_with_label(")", "expected string literal")
                 .build(),
         );
 
@@ -1068,7 +1117,10 @@ mod tests {
                 .exactly_one_underline_with_label("bad_annotation", "expected string literal")
                 .build(),
         );
+    }
 
+    #[test]
+    fn policy_annotation_bad_position() {
         let src = r#"
             permit (@comment("your name here") principal, action, resource);
         "#;
@@ -1078,32 +1130,6 @@ mod tests {
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `@`")
                 .exactly_one_underline_with_label("@", "expected `)` or identifier")
-                .build(),
-        );
-
-        let src = r#"
-            @hi mom("this should be invalid")
-            permit(principal, action, resource);
-        "#;
-        let errs = assert_parse_fails(parse_policies, src);
-        expect_exactly_one_error(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("unexpected token `mom`")
-                .exactly_one_underline_with_label("mom", "expected `(`")
-                .build(),
-        );
-
-        let src = r#"
-            @hi+mom("this should be invalid")
-            permit(principal, action, resource);
-        "#;
-        let errs = assert_parse_fails(parse_policies, src);
-        expect_exactly_one_error(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("unexpected token `+`")
-                .exactly_one_underline_with_label("+", "expected `(`")
                 .build(),
         );
     }
@@ -1171,6 +1197,158 @@ mod tests {
             &ExpectedErrorMessageBuilder::error("unexpected token `!`")
                 .exactly_one_underline_with_label("!", "expected identifier")
                 .build(),
+        );
+    }
+
+    #[test]
+    fn extended_has() {
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has a.b
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has a.if
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has if.a
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has if.if
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has true.if
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has if.true
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has if.then.else.in.like.has.is.__cedar
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has 1+1
+        };
+        "#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has a - 1
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has a*3 + 1
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has 3*a
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+                principal has -a.b
+              };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has !a.b
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has a::b.c
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has A::""
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has A::"".a
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has ?principal
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"permit(principal, action, resource) when {
+            principal has ?principal.a
+          };"#,
+        );
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+            principal has (b).a
+          };
+        "#,
+        );
+        assert_parse_fails(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has a.(b)
+        };
+        "#,
+        );
+        assert_parse_fails(
+            parse_policy,
+            r#"
+        permit(principal, action, resource) when {
+          principal has a.1
+        };
+        "#,
         );
     }
 }

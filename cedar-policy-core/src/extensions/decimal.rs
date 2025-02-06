@@ -17,8 +17,8 @@
 //! This module contains the Cedar 'decimal' extension.
 
 use crate::ast::{
-    CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue,
-    ExtensionValueWithArgs, Literal, Name, Type, Value, ValueKind,
+    CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue, Literal, Name,
+    RepresentableExtensionValue, Type, Value, ValueKind,
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
@@ -166,26 +166,34 @@ impl ExtensionValue for Decimal {
     fn typename(&self) -> Name {
         Self::typename()
     }
+    fn supports_operator_overloading(&self) -> bool {
+        false
+    }
 }
 
 const EXTENSION_NAME: &str = "decimal";
 
-fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
+fn extension_err(msg: impl Into<String>, advice: Option<String>) -> evaluator::EvaluationError {
     evaluator::EvaluationError::failed_extension_function_application(
         constants::DECIMAL_FROM_STR_NAME.clone(),
         msg.into(),
-        None, // source loc will be added by the evaluator
+        None,
+        advice.map(Into::into), // source loc will be added by the evaluator
     )
 }
 
 /// Cedar function that constructs a `decimal` Cedar type from a
 /// Cedar string
-fn decimal_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
+fn decimal_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
-    let decimal = Decimal::from_str(str.as_str()).map_err(|e| extension_err(e.to_string()))?;
-    let function_name = constants::DECIMAL_FROM_STR_NAME.clone();
+    let decimal =
+        Decimal::from_str(str.as_str()).map_err(|e| extension_err(e.to_string(), None))?;
     let arg_source_loc = arg.source_loc().cloned();
-    let e = ExtensionValueWithArgs::new(Arc::new(decimal), function_name, vec![arg.into()]);
+    let e = RepresentableExtensionValue::new(
+        Arc::new(decimal),
+        constants::DECIMAL_FROM_STR_NAME.clone(),
+        vec![arg.clone().into()],
+    );
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(e)),
         loc: arg_source_loc, // this gives the loc of the arg. We could perhaps give instead the loc of the entire `decimal("x.yz")` call, but that is hard to do at this program point
@@ -226,33 +234,33 @@ fn as_decimal(v: &Value) -> Result<&Decimal, evaluator::EvaluationError> {
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
 /// less than the second `decimal` Cedar type, returning a Cedar bool
-fn decimal_lt(left: Value, right: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let left = as_decimal(&left)?;
-    let right = as_decimal(&right)?;
+fn decimal_lt(left: &Value, right: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let left = as_decimal(left)?;
+    let right = as_decimal(right)?;
     Ok(Value::from(left < right).into())
 }
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
 /// less than or equal to the second `decimal` Cedar type, returning a Cedar bool
-fn decimal_le(left: Value, right: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let left = as_decimal(&left)?;
-    let right = as_decimal(&right)?;
+fn decimal_le(left: &Value, right: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let left = as_decimal(left)?;
+    let right = as_decimal(right)?;
     Ok(Value::from(left <= right).into())
 }
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
 /// greater than the second `decimal` Cedar type, returning a Cedar bool
-fn decimal_gt(left: Value, right: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let left = as_decimal(&left)?;
-    let right = as_decimal(&right)?;
+fn decimal_gt(left: &Value, right: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let left = as_decimal(left)?;
+    let right = as_decimal(right)?;
     Ok(Value::from(left > right).into())
 }
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
 /// greater than or equal to the second `decimal` Cedar type, returning a Cedar bool
-fn decimal_ge(left: Value, right: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let left = as_decimal(&left)?;
-    let right = as_decimal(&right)?;
+fn decimal_ge(left: &Value, right: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let left = as_decimal(left)?;
+    let right = as_decimal(right)?;
     Ok(Value::from(left >= right).into())
 }
 
@@ -300,6 +308,7 @@ pub fn extension() -> Extension {
                 (decimal_type.clone(), decimal_type),
             ),
         ],
+        std::iter::empty(),
     )
 }
 
@@ -624,7 +633,7 @@ mod tests {
                     name: Name::parse_unqualified_name("decimal")
                         .expect("should be a valid identifier")
                 });
-                assert_eq!(advice, None);
+                assert_eq!(advice, Some("Only types long support comparison".into()));
             }
         );
         assert_matches!(

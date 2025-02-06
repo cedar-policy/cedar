@@ -24,15 +24,18 @@ mod policy_set;
 pub use policy_set::*;
 mod scope_constraints;
 pub use scope_constraints::*;
+mod annotation;
+pub use annotation::*;
 
-use crate::ast;
-use crate::entities::json::EntityUidJson;
+use crate::ast::EntityUID;
+use crate::ast::{self, Annotation};
+use crate::entities::json::{err::JsonDeserializationError, EntityUidJson};
+use crate::expr_builder::ExprBuilder;
 use crate::parser::cst;
 use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap};
 
 #[cfg(feature = "wasm")]
@@ -63,10 +66,8 @@ pub struct Policy {
     conditions: Vec<Clause>,
     /// annotations
     #[serde(default)]
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
-    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, string>"))]
-    annotations: BTreeMap<ast::AnyId, SmolStr>,
+    #[serde(skip_serializing_if = "Annotations::is_empty")]
+    annotations: Annotations,
 }
 
 /// Serde JSON structure for a `when` or `unless` clause in the EST format
@@ -102,6 +103,25 @@ impl Policy {
             annotations: self.annotations,
         })
     }
+
+    /// Substitute entity literals
+    pub fn sub_entity_literals(
+        self,
+        mapping: &BTreeMap<EntityUID, EntityUID>,
+    ) -> Result<Self, JsonDeserializationError> {
+        Ok(Policy {
+            effect: self.effect,
+            principal: self.principal.sub_entity_literals(mapping)?,
+            action: self.action.sub_entity_literals(mapping)?,
+            resource: self.resource.sub_entity_literals(mapping)?,
+            conditions: self
+                .conditions
+                .into_iter()
+                .map(|clause| clause.sub_entity_literals(mapping))
+                .collect::<Result<Vec<_>, _>>()?,
+            annotations: self.annotations,
+        })
+    }
 }
 
 impl Clause {
@@ -112,6 +132,18 @@ impl Clause {
         // currently, slots are not allowed in clauses
         Ok(self)
     }
+
+    /// Substitute entity literals
+    pub fn sub_entity_literals(
+        self,
+        mapping: &BTreeMap<EntityUID, EntityUID>,
+    ) -> Result<Self, JsonDeserializationError> {
+        use Clause::{Unless, When};
+        match self {
+            When(e) => Ok(When(e.sub_entity_literals(mapping)?)),
+            Unless(e) => Ok(Unless(e.sub_entity_literals(mapping)?)),
+        }
+    }
 }
 
 impl TryFrom<cst::Policy> for Policy {
@@ -119,7 +151,12 @@ impl TryFrom<cst::Policy> for Policy {
     fn try_from(policy: cst::Policy) -> Result<Policy, ParseErrors> {
         let maybe_effect = policy.effect.to_effect();
         let maybe_scope = policy.extract_scope();
-        let maybe_annotations = policy.get_ast_annotations();
+        let maybe_annotations = policy.get_ast_annotations(|v, l| {
+            Some(Annotation {
+                val: v?,
+                loc: Some(l.clone()),
+            })
+        });
         let maybe_conditions = ParseErrors::transpose(policy.conds.into_iter().map(|node| {
             let (cond, loc) = node.into_inner();
             let cond = cond.ok_or_else(|| {
@@ -140,7 +177,7 @@ impl TryFrom<cst::Policy> for Policy {
             action: action.into(),
             resource: resource.into(),
             conditions,
-            annotations: annotations.into_iter().map(|(k, v)| (k, v.val)).collect(),
+            annotations: Annotations(annotations),
         })
     }
 }
@@ -215,7 +252,7 @@ impl Policy {
         self,
         id: Option<ast::PolicyID>,
     ) -> Result<ast::Template, FromJsonError> {
-        let id = id.unwrap_or(ast::PolicyID::from_string("JSON policy"));
+        let id = id.unwrap_or_else(|| ast::PolicyID::from_string("JSON policy"));
         let mut conditions_iter = self
             .conditions
             .into_iter()
@@ -229,8 +266,14 @@ impl Policy {
             id,
             None,
             self.annotations
+                .0
                 .into_iter()
-                .map(|(key, val)| (key, ast::Annotation { val, loc: None }))
+                .map(|(key, val)| {
+                    (
+                        key,
+                        ast::Annotation::with_optional_value(val.map(|v| v.val), None),
+                    )
+                })
                 .collect(),
             self.effect,
             self.principal.try_into()?,
@@ -274,10 +317,14 @@ impl From<ast::Policy> for Policy {
             action: ast.action_constraint().clone().into(),
             resource: ast.resource_constraint().into(),
             conditions: vec![ast.non_scope_constraints().clone().into()],
-            annotations: ast
-                .annotations()
-                .map(|(k, v)| (k.clone(), v.val.clone()))
-                .collect(),
+            annotations: Annotations(
+                ast.annotations()
+                    // When converting from AST to EST, we will always interpret an
+                    // empty-string annotation as an explicit `""` rather than
+                    // `null` (which is implicitly equivalent to `""`).
+                    .map(|(k, v)| (k.clone(), Some(v.clone())))
+                    .collect(),
+            ),
         }
     }
 }
@@ -291,24 +338,32 @@ impl From<ast::Template> for Policy {
             action: ast.action_constraint().clone().into(),
             resource: ast.resource_constraint().clone().into(),
             conditions: vec![ast.non_scope_constraints().clone().into()],
-            annotations: ast
-                .annotations()
-                .map(|(k, v)| (k.clone(), v.val.clone()))
-                .collect(),
+            annotations: Annotations(
+                ast.annotations()
+                    // When converting from AST to EST, we will always interpret an
+                    // empty-string annotation as an explicit `""` rather than
+                    // `null` (which is implicitly equivalent to `""`)
+                    .map(|(k, v)| (k.clone(), Some(v.clone())))
+                    .collect(),
+            ),
         }
     }
 }
 
-impl From<ast::Expr> for Clause {
-    fn from(expr: ast::Expr) -> Clause {
+impl<T: Clone> From<ast::Expr<T>> for Clause {
+    fn from(expr: ast::Expr<T>) -> Clause {
         Clause::When(expr.into())
     }
 }
 
 impl std::fmt::Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (k, v) in self.annotations.iter() {
-            writeln!(f, "@{k}(\"{}\") ", v.escape_debug())?;
+        for (k, v) in self.annotations.0.iter() {
+            write!(f, "@{k}")?;
+            if let Some(v) = v {
+                write!(f, "({v})")?;
+            }
+            writeln!(f)?;
         }
         write!(
             f,
@@ -566,6 +621,85 @@ mod test {
                     "foo": "bar",
                     "this1is2a3valid_identifier": "any arbitrary ! string \" is @ allowed in 🦀 here_",
                 }
+            }
+        );
+        let roundtripped = serde_json::to_value(ast_roundtrip(est.clone())).unwrap();
+        assert_eq!(
+            roundtripped,
+            expected_json_after_roundtrip,
+            "\nExpected after roundtrip:\n{}\n\nActual after roundtrip:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json_after_roundtrip).unwrap(),
+            serde_json::to_string_pretty(&roundtripped).unwrap()
+        );
+        let roundtripped = serde_json::to_value(circular_roundtrip(est)).unwrap();
+        assert_eq!(
+            roundtripped,
+            expected_json_after_roundtrip,
+            "\nExpected after roundtrip:\n{}\n\nActual after roundtrip:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json_after_roundtrip).unwrap(),
+            serde_json::to_string_pretty(&roundtripped).unwrap()
+        );
+    }
+
+    #[test]
+    fn annotated_without_value_policy() {
+        let policy = r#"@foo permit(principal, action, resource);"#;
+        let cst = parser::text_to_cst::parse_policy(policy)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let expected_json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All",
+                },
+                "action": {
+                    "op": "All",
+                },
+                "resource": {
+                    "op": "All",
+                },
+                "conditions": [],
+                "annotations": { "foo": null, }
+            }
+        );
+        assert_eq!(
+            serde_json::to_value(&est).unwrap(),
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&est).unwrap()
+        );
+        let old_est = est.clone();
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
+        assert_eq!(&old_est, &est);
+
+        // during the lossy transform to AST, the `null` annotation becomes an empty string
+        let expected_json_after_roundtrip = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All",
+                },
+                "action": {
+                    "op": "All",
+                },
+                "resource": {
+                    "op": "All",
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "Value": true
+                        }
+                    }
+                ],
+                "annotations": { "foo": "", }
             }
         );
         let roundtripped = serde_json::to_value(ast_roundtrip(est.clone())).unwrap();
@@ -2099,6 +2233,7 @@ mod test {
                 principal.owners.contains("foo")
                 && principal.owners.containsAny([1, Linux::Group::"sudoers"])
                 && [2+3, "spam"].containsAll(resource.foos)
+                && context.violations.isEmpty()
             };
         "#;
         let cst = parser::text_to_cst::parse_policy(policy)
@@ -2126,67 +2261,216 @@ mod test {
                                 "left": {
                                     "&&": {
                                         "left": {
-                                            "contains": {
+                                            "&&": {
                                                 "left": {
-                                                    ".": {
+                                                    "contains": {
                                                         "left": {
-                                                            "Var": "principal"
+                                                            ".": {
+                                                                "left": {
+                                                                    "Var": "principal"
+                                                                },
+                                                                "attr": "owners"
+                                                            }
                                                         },
-                                                        "attr": "owners"
+                                                        "right": {
+                                                            "Value": "foo"
+                                                        }
                                                     }
                                                 },
                                                 "right": {
-                                                    "Value": "foo"
+                                                    "containsAny": {
+                                                        "left": {
+                                                            ".": {
+                                                                "left": {
+                                                                    "Var": "principal"
+                                                                },
+                                                                "attr": "owners"
+                                                            }
+                                                        },
+                                                        "right": {
+                                                            "Set": [
+                                                                { "Value": 1 },
+                                                                { "Value": {
+                                                                    "__entity": {
+                                                                        "type": "Linux::Group",
+                                                                        "id": "sudoers"
+                                                                    }
+                                                                } }
+                                                            ]
+                                                        }
+                                                    }
                                                 }
                                             }
                                         },
                                         "right": {
-                                            "containsAny": {
+                                            "containsAll": {
                                                 "left": {
-                                                    ".": {
-                                                        "left": {
-                                                            "Var": "principal"
-                                                        },
-                                                        "attr": "owners"
-                                                    }
+                                                    "Set": [
+                                                        { "+": {
+                                                            "left": {
+                                                                "Value": 2
+                                                            },
+                                                            "right": {
+                                                                "Value": 3
+                                                            }
+                                                        } },
+                                                        { "Value": "spam" },
+                                                    ]
                                                 },
                                                 "right": {
-                                                    "Set": [
-                                                        { "Value": 1 },
-                                                        { "Value": {
-                                                            "__entity": {
-                                                                "type": "Linux::Group",
-                                                                "id": "sudoers"
-                                                            }
-                                                        } }
-                                                    ]
+                                                    ".": {
+                                                        "left": {
+                                                            "Var": "resource"
+                                                        },
+                                                        "attr": "foos"
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 },
                                 "right": {
-                                    "containsAll": {
-                                        "left": {
-                                            "Set": [
-                                                { "+": {
-                                                    "left": {
-                                                        "Value": 2
-                                                    },
-                                                    "right": {
-                                                        "Value": 3
-                                                    }
-                                                } },
-                                                { "Value": "spam" },
-                                            ]
-                                        },
-                                        "right": {
+                                    "isEmpty": {
+                                        "arg": {
                                             ".": {
                                                 "left": {
-                                                    "Var": "resource"
+                                                    "Var": "context"
                                                 },
-                                                "attr": "foos"
+                                                "attr": "violations"
                                             }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        );
+        assert_eq!(
+            serde_json::to_value(&est).unwrap(),
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&est).unwrap()
+        );
+        let old_est = est.clone();
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
+        assert_eq!(&old_est, &est);
+
+        assert_eq!(ast_roundtrip(est.clone()), est);
+        assert_eq!(circular_roundtrip(est.clone()), est);
+    }
+
+    #[test]
+    fn entity_tags() {
+        let policy = r#"
+            permit(principal, action, resource)
+            when {
+                resource.hasTag("writeable")
+                && resource.getTag("writeable").contains(principal.group)
+                && principal.hasTag(context.foo)
+                && principal.getTag(context.foo) == 72
+            };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(policy)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let expected_json = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All",
+                },
+                "action": {
+                    "op": "All",
+                },
+                "resource": {
+                    "op": "All",
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "&&": {
+                                "left": {
+                                    "&&": {
+                                        "left": {
+                                            "&&": {
+                                                "left": {
+                                                    "hasTag": {
+                                                        "left": {
+                                                            "Var": "resource"
+                                                        },
+                                                        "right": {
+                                                            "Value": "writeable"
+                                                        }
+                                                    }
+                                                },
+                                                "right": {
+                                                    "contains": {
+                                                        "left": {
+                                                            "getTag": {
+                                                                "left": {
+                                                                    "Var": "resource"
+                                                                },
+                                                                "right": {
+                                                                    "Value": "writeable"
+                                                                }
+                                                            }
+                                                        },
+                                                        "right": {
+                                                            ".": {
+                                                                "left": {
+                                                                    "Var": "principal"
+                                                                },
+                                                                "attr": "group"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "right": {
+                                            "hasTag": {
+                                                "left": {
+                                                    "Var": "principal"
+                                                },
+                                                "right": {
+                                                    ".": {
+                                                        "left": {
+                                                            "Var": "context",
+                                                        },
+                                                        "attr": "foo"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                    }
+                                },
+                                "right": {
+                                    "==": {
+                                        "left": {
+                                            "getTag": {
+                                                "left": {
+                                                    "Var": "principal"
+                                                },
+                                                "right": {
+                                                    ".": {
+                                                        "left": {
+                                                            "Var": "context",
+                                                        },
+                                                        "attr": "foo"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "right": {
+                                            "Value": 72
                                         }
                                     }
                                 }
@@ -3149,9 +3433,50 @@ mod test {
                 ]
             }
         );
-        let est: Policy = serde_json::from_value(bad).unwrap();
-        let ast: Result<ast::Policy, _> = est.try_into_ast_policy(None);
-        assert_matches!(ast, Err(FromJsonError::MissingOperator));
+        assert_matches!(serde_json::from_value::<Policy>(bad), Err(e) => {
+            assert_eq!(e.to_string(), "empty map is not a valid expression");
+        });
+
+        let bad = json!(
+            {
+                "effect": "permit",
+                "principal": {
+                    "op": "All"
+                },
+                "action": {
+                    "op": "All"
+                },
+                "resource": {
+                    "op": "All"
+                },
+                "conditions": [
+                    {
+                        "kind": "when",
+                        "body": {
+                            "+": {
+                                "left": {
+                                    "Value": 3
+                                },
+                                "right": {
+                                    "Value": 4
+                                }
+                            },
+                            "-": {
+                                "left": {
+                                    "Value": 8
+                                },
+                                "right": {
+                                    "Value": 2
+                                }
+                            },
+                        }
+                    }
+                ]
+            }
+        );
+        assert_matches!(serde_json::from_value::<Policy>(bad), Err(e) => {
+            assert_eq!(e.to_string(), "JSON object representing an `Expr` should have only one key, but found two keys: `+` and `-`");
+        });
 
         let bad = json!(
             {
@@ -3895,7 +4220,7 @@ mod test {
             );
             assert_panics!(
                 serde_json::from_value::<Policy>(bad).unwrap(),
-                includes("unknown variant `is`, expected one of `All`, `==`, `in`"),
+                includes("unknown variant `is`, expected one of `All`, `all`, `==`, `in`"),
             );
         }
 
@@ -4190,15 +4515,86 @@ mod test {
             );
         }
     }
+
+    #[test]
+    fn extended_has() {
+        let policy_text = r#"
+        permit(principal, action, resource) when
+        { principal has a.b.c };"#;
+        let cst = parser::text_to_cst::parse_policy(policy_text).unwrap();
+        let est: Policy = cst.node.unwrap().try_into().unwrap();
+        assert_eq!(
+            est,
+            serde_json::from_value(json!({
+               "effect": "permit",
+                   "principal": { "op": "All" },
+                   "action": { "op": "All" },
+                   "resource": { "op": "All" },
+                   "conditions": [
+                       {
+                           "kind": "when",
+                           "body": {
+                               "&&": {
+                                   "left": {
+                                       "&&": {
+                                           "left": {
+                                               "has": {
+                                                   "left": {
+                                                       "Var": "principal",
+                                                   },
+                                                   "attr": "a"
+                                               }
+                                           },
+                                           "right": {
+                                               "has": {
+                                                   "left": {
+                                                       ".": {
+                                                           "left": {
+                                                               "Var": "principal",
+                                                           },
+                                                           "attr": "a",
+                                                       },
+                                                   },
+                                                   "attr": "b"
+                                               }
+                                           },
+                                       }
+                                   },
+                                   "right": {
+                                       "has": {
+                                           "left": {
+                                               ".": {
+                                                   "left": {
+                                                       ".": {
+                                                           "left": {
+                                                               "Var": "principal",
+                                                           },
+                                                           "attr": "a"
+                                                       }
+                                                   },
+                                                   "attr": "b",
+                                               }
+                                           },
+                                           "attr": "c",
+                                       }
+                                   },
+                               },
+                           },
+                       }
+                   ]
+            }))
+            .unwrap()
+        );
+    }
 }
 
 #[cfg(test)]
 mod issue_891 {
-    use crate::est::{self, FromJsonError};
+    use crate::est;
     use cool_asserts::assert_matches;
     use serde_json::json;
 
-    fn est_json_with_body(body: serde_json::Value) -> serde_json::Value {
+    fn est_json_with_body(body: &serde_json::Value) -> serde_json::Value {
         json!(
             {
                 "effect": "permit",
@@ -4217,11 +4613,12 @@ mod issue_891 {
 
     #[test]
     fn invalid_extension_func() {
-        let src = est_json_with_body(json!( { "ow4": [ { "Var": "principal" } ] }));
-        let est: est::Policy = serde_json::from_value(src).expect("est JSON should deserialize");
-        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtensionFunction(n)) if n == "ow4".parse().unwrap());
+        let src = est_json_with_body(&json!( { "ow4": [ { "Var": "principal" } ] }));
+        assert_matches!(serde_json::from_value::<est::Policy>(src), Err(e) => {
+            assert!(e.to_string().starts_with("unknown variant `ow4`, expected one of `Value`, `Var`, "), "e was: {e}");
+        });
 
-        let src = est_json_with_body(json!(
+        let src = est_json_with_body(&json!(
             {
                 "==": {
                     "left": {"Var": "principal"},
@@ -4234,10 +4631,11 @@ mod issue_891 {
                 }
             }
         ));
-        let est: est::Policy = serde_json::from_value(src).expect("est JSON should deserialize");
-        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtensionFunction(n)) if n == "ownerOrEqual".parse().unwrap());
+        assert_matches!(serde_json::from_value::<est::Policy>(src), Err(e) => {
+            assert!(e.to_string().starts_with("unknown variant `ownerOrEqual`, expected one of `Value`, `Var`, "), "e was: {e}");
+        });
 
-        let src = est_json_with_body(json!(
+        let src = est_json_with_body(&json!(
             {
                 "==": {
                     "left": {"Var": "principal"},
@@ -4249,8 +4647,9 @@ mod issue_891 {
                 }
             }
         ));
-        let est: est::Policy = serde_json::from_value(src).expect("est JSON should deserialize");
-        assert_matches!(est.try_into_ast_policy(None), Err(FromJsonError::UnknownExtensionFunction(n)) if n == "resorThanOrEqual".parse().unwrap());
+        assert_matches!(serde_json::from_value::<est::Policy>(src), Err(e) => {
+            assert!(e.to_string().starts_with("unknown variant `resorThanOrEqual`, expected one of `Value`, `Var`, "), "e was: {e}");
+        });
     }
 }
 
@@ -4493,8 +4892,8 @@ mod issue_1061 {
                 ]
             }
         );
-        let est = serde_json::from_value::<est::Policy>(src.clone())
-            .expect("Failed to deserialize policy JSON");
+        let est =
+            serde_json::from_value::<est::Policy>(src).expect("Failed to deserialize policy JSON");
         let ast_from_est = est
             .try_into_ast_policy(None)
             .expect("Failed to convert EST to AST");

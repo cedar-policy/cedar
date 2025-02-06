@@ -15,11 +15,8 @@
  */
 
 //! Validator for Cedar policies
-#![forbid(unsafe_code)]
-#![warn(rust_2018_idioms)]
 #![deny(
     missing_docs,
-    missing_debug_implementations,
     rustdoc::broken_intra_doc_links,
     rustdoc::private_intra_doc_links,
     rustdoc::invalid_codeblock_attributes,
@@ -28,27 +25,33 @@
     rustdoc::bare_urls,
     clippy::doc_markdown
 )]
-#![allow(clippy::result_large_err, clippy::large_enum_variant)] // see #878
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
+
+#[cfg(feature = "protobufs")]
+pub mod proto {
+    #![allow(missing_docs)]
+    #![allow(clippy::doc_markdown)]
+    include!(concat!(env!("OUT_DIR"), "/cedar_policy_validator.rs"));
+}
 
 use cedar_policy_core::ast::{Policy, PolicySet, Template};
 use serde::Serialize;
 use std::collections::HashSet;
+#[cfg(feature = "level-validate")]
+mod level_validate;
 
+mod coreschema;
 #[cfg(feature = "entity-manifest")]
 pub mod entity_manifest;
-mod err;
-pub use err::*;
-mod coreschema;
 pub use coreschema::*;
 mod diagnostics;
 pub use diagnostics::*;
 mod expr_iterator;
 mod extension_schema;
 mod extensions;
-mod fuzzy_match;
 mod rbac;
 mod schema;
+pub use schema::err::*;
 pub use schema::*;
 pub mod json_schema;
 mod str_checks;
@@ -94,9 +97,33 @@ impl ValidationMode {
     }
 }
 
+#[cfg(feature = "protobufs")]
+impl From<&ValidationMode> for proto::ValidationMode {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::unimplemented)]
+    fn from(v: &ValidationMode) -> Self {
+        match v {
+            ValidationMode::Strict => proto::ValidationMode::Strict,
+            ValidationMode::Permissive => proto::ValidationMode::Permissive,
+            #[cfg(feature = "partial-validate")]
+            ValidationMode::Partial => unimplemented!(),
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::ValidationMode> for ValidationMode {
+    fn from(v: &proto::ValidationMode) -> Self {
+        match v {
+            proto::ValidationMode::Strict => ValidationMode::Strict,
+            proto::ValidationMode::Permissive => ValidationMode::Permissive,
+        }
+    }
+}
+
 /// Structure containing the context needed for policy validation. This is
 /// currently only the `EntityType`s and `ActionType`s from a single schema.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Validator {
     schema: ValidatorSchema,
 }
@@ -113,6 +140,34 @@ impl Validator {
         let validate_policy_results: (Vec<_>, Vec<_>) = policies
             .all_templates()
             .map(|p| self.validate_policy(p, mode))
+            .unzip();
+        let template_and_static_policy_errs = validate_policy_results.0.into_iter().flatten();
+        let template_and_static_policy_warnings = validate_policy_results.1.into_iter().flatten();
+        let link_errs = policies
+            .policies()
+            .filter_map(|p| self.validate_slots(p, mode))
+            .flatten();
+        ValidationResult::new(
+            template_and_static_policy_errs.chain(link_errs),
+            template_and_static_policy_warnings
+                .chain(confusable_string_checks(policies.all_templates())),
+        )
+    }
+
+    #[cfg(feature = "level-validate")]
+    /// Validate all templates, links, and static policies in a policy set.
+    /// If validation passes, also run level validation with `max_deref_level`
+    /// (see RFC 76).
+    /// Return a `ValidationResult`.
+    pub fn validate_with_level(
+        &self,
+        policies: &PolicySet,
+        mode: ValidationMode,
+        max_deref_level: u32,
+    ) -> ValidationResult {
+        let validate_policy_results: (Vec<_>, Vec<_>) = policies
+            .all_templates()
+            .map(|p| self.validate_policy_with_level(p, mode, max_deref_level))
             .unzip();
         let template_and_static_policy_errs = validate_policy_results.0.into_iter().flatten();
         let template_and_static_policy_warnings = validate_policy_results.1.into_iter().flatten();
@@ -147,6 +202,7 @@ impl Validator {
         } else {
             Some(
                 self.validate_entity_types(p)
+                    .chain(self.validate_enum_entity(p))
                     .chain(self.validate_action_ids(p))
                     // We could usefully update this pass to apply to partial
                     // schema if it only failed when there is a known action
@@ -157,8 +213,8 @@ impl Validator {
         }
         .into_iter()
         .flatten();
-        let (type_errors, warnings) = self.typecheck_policy(p, mode);
-        (validation_errors.chain(type_errors), warnings)
+        let (errors, warnings) = self.typecheck_policy(p, mode);
+        (validation_errors.chain(errors), warnings)
     }
 
     /// Run relevant validations against a single template-linked policy,
@@ -200,11 +256,11 @@ impl Validator {
         impl Iterator<Item = ValidationError> + 'a,
         impl Iterator<Item = ValidationWarning> + 'a,
     ) {
-        let typecheck = Typechecker::new(&self.schema, mode, t.id().clone());
-        let mut type_errors = HashSet::new();
+        let typecheck = Typechecker::new(&self.schema, mode);
+        let mut errors = HashSet::new();
         let mut warnings = HashSet::new();
-        typecheck.typecheck_policy(t, &mut type_errors, &mut warnings);
-        (type_errors.into_iter(), warnings.into_iter())
+        typecheck.typecheck_policy(t, &mut errors, &mut warnings);
+        (errors.into_iter(), warnings.into_iter())
     }
 }
 
@@ -214,11 +270,13 @@ mod test {
     use std::{collections::HashMap, sync::Arc};
 
     use crate::types::Type;
+    use crate::validation_errors::UnrecognizedActionIdHelp;
     use crate::Result;
 
     use super::*;
     use cedar_policy_core::{
         ast::{self, PolicyID},
+        est::Annotations,
         parser::{self, Loc},
     };
 
@@ -232,17 +290,21 @@ mod test {
             [
                 (
                     foo_type.parse().unwrap(),
-                    json_schema::EntityType {
+                    json_schema::StandardEntityType {
                         member_of_types: vec![],
-                        shape: json_schema::EntityAttributes::default(),
-                    },
+                        shape: json_schema::AttributesOrContext::default(),
+                        tags: None,
+                    }
+                    .into(),
                 ),
                 (
                     bar_type.parse().unwrap(),
-                    json_schema::EntityType {
+                    json_schema::StandardEntityType {
                         member_of_types: vec![],
-                        shape: json_schema::EntityAttributes::default(),
-                    },
+                        shape: json_schema::AttributesOrContext::default(),
+                        tags: None,
+                    }
+                    .into(),
                 ),
             ],
             [(
@@ -251,10 +313,12 @@ mod test {
                     applies_to: Some(json_schema::ApplySpec {
                         principal_types: vec!["foo_type".parse().unwrap()],
                         resource_types: vec!["bar_type".parse().unwrap()],
-                        context: json_schema::RecordOrContextAttributes::default(),
+                        context: json_schema::AttributesOrContext::default(),
                     }),
                     member_of: None,
                     attributes: None,
+                    annotations: Annotations::new(),
+                    loc: None,
                 },
             )],
         );
@@ -264,13 +328,13 @@ mod test {
         let policy_a_src = r#"permit(principal in foo_type::"a", action == Action::"actin", resource == bar_type::"b");"#;
         let policy_a = parser::parse_policy(Some(PolicyID::from_string("pola")), policy_a_src)
             .expect("Test Policy Should Parse");
-        set.add_static(policy_a.clone())
+        set.add_static(policy_a)
             .expect("Policy already present in PolicySet");
 
         let policy_b_src = r#"permit(principal in foo_tye::"a", action == Action::"action", resource == br_type::"b");"#;
         let policy_b = parser::parse_policy(Some(PolicyID::from_string("polb")), policy_b_src)
             .expect("Test Policy Should Parse");
-        set.add_static(policy_b.clone())
+        set.add_static(policy_b)
             .expect("Policy already present in PolicySet");
 
         let result = validator.validate(&set, ValidationMode::default());
@@ -290,7 +354,9 @@ mod test {
             Some(Loc::new(45..60, Arc::from(policy_a_src))),
             PolicyID::from_string("pola"),
             "Action::\"actin\"".to_string(),
-            Some("Action::\"action\"".to_string()),
+            Some(UnrecognizedActionIdHelp::SuggestAlternative(
+                "Action::\"action\"".to_string(),
+            )),
         );
 
         assert!(!result.validation_passed());
@@ -447,7 +513,7 @@ mod test {
         // `result` contains the two prior error messages plus one new one
         assert_eq!(result.validation_errors().count(), 3);
         let invalid_action_err = ValidationError::invalid_action_application(
-            loc.clone(),
+            loc,
             PolicyID::from_string("link3"),
             false,
             false,
@@ -505,6 +571,225 @@ mod test {
                 None,
                 PolicyID::from_string("policy0"),
                 "һenry"
+            )]
+        );
+    }
+}
+
+#[cfg(test)]
+mod enumerated_entity_types {
+    use cedar_policy_core::{
+        ast::{Eid, EntityUID, ExprBuilder, PolicyID},
+        expr_builder::ExprBuilder as _,
+        extensions::Extensions,
+        parser::parse_policy_or_template,
+    };
+    use cool_asserts::assert_matches;
+    use itertools::Itertools;
+
+    use crate::{
+        typecheck::test::test_utils::get_loc,
+        types::{EntityLUB, Type},
+        validation_errors::AttributeAccess,
+        ValidationError, Validator, ValidatorSchema,
+    };
+
+    #[track_caller]
+    fn schema() -> ValidatorSchema {
+        ValidatorSchema::from_json_value(
+            serde_json::json!(
+                {
+                    "":  {  "entityTypes": {
+                             "Foo": {
+                                "enum": [ "foo" ],
+                            },
+                            "Bar": {
+                                "memberOfTypes": ["Foo"],
+                            }
+                        },
+                        "actions": {
+                            "a": {
+                                "appliesTo": {
+                                    "principalTypes": ["Foo"],
+                                    "resourceTypes": ["Bar"],
+                                }
+                            }
+                        }
+                }
+            }
+            ),
+            Extensions::none(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn basic() {
+        let schema = schema();
+        let template = parse_policy_or_template(None, r#"permit(principal, action == Action::"a", resource) when { principal == Foo::"foo" };"#).unwrap();
+        let validator = Validator::new(schema);
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert!(errors.collect_vec().is_empty());
+    }
+
+    #[test]
+    fn basic_invalid() {
+        let schema = schema();
+        let template = parse_policy_or_template(None, r#"permit(principal, action == Action::"a", resource) when { principal == Foo::"fo" };"#).unwrap();
+        let validator = Validator::new(schema.clone());
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
+            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "fo").unwrap());
+        });
+
+        let template = parse_policy_or_template(
+            None,
+            r#"permit(principal == Foo::"🏈", action == Action::"a", resource);"#,
+        )
+        .unwrap();
+        let validator = Validator::new(schema.clone());
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
+            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "🏈").unwrap());
+        });
+
+        let template = parse_policy_or_template(
+            None,
+            r#"permit(principal in Foo::"🏈", action == Action::"a", resource);"#,
+        )
+        .unwrap();
+        let validator = Validator::new(schema.clone());
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
+            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "🏈").unwrap());
+        });
+
+        let template = parse_policy_or_template(
+            None,
+            r#"permit(principal, action == Action::"a", resource)
+            when { {"🏈": Foo::"🏈"} has "🏈" };
+        "#,
+        )
+        .unwrap();
+        let validator = Validator::new(schema.clone());
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
+            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "🏈").unwrap());
+        });
+
+        let template = parse_policy_or_template(
+            None,
+            r#"permit(principal, action == Action::"a", resource)
+            when { [Foo::"🏈"].isEmpty() };
+        "#,
+        )
+        .unwrap();
+        let validator = Validator::new(schema.clone());
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
+            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "🏈").unwrap());
+        });
+
+        let template = parse_policy_or_template(
+            None,
+            r#"permit(principal, action == Action::"a", resource)
+            when { [{"🏈": Foo::"🏈"}].isEmpty() };
+        "#,
+        )
+        .unwrap();
+        let validator = Validator::new(schema.clone());
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
+            assert_eq!(err.err.choices, vec![Eid::new("foo")]);
+            assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "🏈").unwrap());
+        });
+    }
+
+    #[test]
+    fn no_attrs_allowed() {
+        let schema = schema();
+        let src = r#"permit(principal, action == Action::"a", resource) when { principal.foo == "foo" };"#;
+        let template = parse_policy_or_template(None, src).unwrap();
+        let validator = Validator::new(schema);
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_eq!(
+            errors.collect_vec(),
+            [ValidationError::unsafe_attribute_access(
+                get_loc(src, "principal.foo"),
+                PolicyID::from_string("policy0"),
+                AttributeAccess::EntityLUB(
+                    EntityLUB::single_entity("Foo".parse().unwrap()),
+                    vec!["foo".into()],
+                ),
+                None,
+                false,
+            )]
+        );
+    }
+
+    #[test]
+    fn no_ancestors() {
+        let schema = schema();
+        let src =
+            r#"permit(principal, action == Action::"a", resource) when { principal in resource };"#;
+        let template = parse_policy_or_template(None, src).unwrap();
+        let validator = Validator::new(schema);
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_eq!(
+            errors.collect_vec(),
+            [ValidationError::hierarchy_not_respected(
+                get_loc(src, "principal in resource"),
+                PolicyID::from_string("policy0"),
+                Some("Foo".parse().unwrap()),
+                Some("Bar".parse().unwrap()),
+            )]
+        );
+    }
+
+    #[test]
+    fn no_tags_allowed() {
+        let schema = schema();
+        let src = r#"permit(principal, action == Action::"a", resource) when { principal.getTag("foo") == "foo" };"#;
+        let template = parse_policy_or_template(None, src).unwrap();
+        let validator = Validator::new(schema);
+        let (errors, warnings) =
+            validator.validate_policy(&template, crate::ValidationMode::Strict);
+        assert!(warnings.collect_vec().is_empty());
+        assert_eq!(
+            errors.collect_vec(),
+            [ValidationError::unsafe_tag_access(
+                get_loc(src, r#"principal.getTag("foo")"#),
+                PolicyID::from_string("policy0"),
+                Some(EntityLUB::single_entity("Foo".parse().unwrap()),),
+                {
+                    let builder = ExprBuilder::new();
+                    let mut expr = builder.val("foo");
+                    expr.set_data(Some(Type::primitive_string()));
+                    expr
+                },
             )]
         );
     }

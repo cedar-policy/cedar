@@ -16,6 +16,8 @@
 
 fn main() {
     generate_parsers();
+    #[cfg(feature = "protobufs")]
+    generate_schemas();
 }
 
 /// Reads parser grammar files (.lalrpop) and generates Rust modules
@@ -25,4 +27,13 @@ fn generate_parsers() {
     lalrpop::Configuration::new()
         .process_dir("src/parser/")
         .expect("parser synth");
+}
+
+#[cfg(feature = "protobufs")]
+/// Reads protobuf schema files (.proto) and generates Rust modules
+fn generate_schemas() {
+    // PANIC SAFETY: static file compiled at build time
+    #[allow(clippy::expect_used)]
+    prost_build::compile_protos(&["./protobuf_schema/AST.proto"], &["./protobuf_schema"])
+        .expect("failed to compile `.proto` schema files");
 }

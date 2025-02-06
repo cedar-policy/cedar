@@ -14,14 +14,20 @@
  * limitations under the License.
  */
 //! This module cotnains errors around entities not conforming to schemas
-use super::{HeterogeneousSetError, TypeMismatchError};
-use crate::ast::{EntityType, EntityUID};
+use super::TypeMismatchError;
+use crate::ast::{Eid, EntityType, EntityUID};
 use crate::extensions::ExtensionFunctionLookupError;
+use crate::impl_diagnostic_from_method_on_field;
+use itertools::Itertools;
 use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
 
 /// Errors raised when entities do not conform to the schema
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Diagnostic, Error)]
 #[non_exhaustive]
 pub enum EntitySchemaConformanceError {
@@ -29,6 +35,10 @@ pub enum EntitySchemaConformanceError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnexpectedEntityAttr(UnexpectedEntityAttr),
+    /// Encountered tag, but no tags should exist on entities of this type
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnexpectedEntityTag(UnexpectedEntityTag),
     /// Didn't encounter attribute that should exist
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -38,11 +48,6 @@ pub enum EntitySchemaConformanceError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     TypeMismatch(TypeMismatch),
-    /// Found a set whose elements don't all have the same type. This doesn't match
-    /// any possible schema.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    HeterogeneousSet(HeterogeneousSet),
     /// Found an ancestor of a type that's not allowed for that entity
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -67,6 +72,10 @@ pub enum EntitySchemaConformanceError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ExtensionFunctionLookup(ExtensionFunctionLookup),
+    /// Returned when an entity is of an enumerated entity type but has invalid EID
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidEnumEntity(#[from] InvalidEnumEntity),
 }
 
 impl EntitySchemaConformanceError {
@@ -77,6 +86,13 @@ impl EntitySchemaConformanceError {
         })
     }
 
+    pub(crate) fn unexpected_entity_tag(uid: EntityUID, tag: impl Into<SmolStr>) -> Self {
+        Self::UnexpectedEntityTag(UnexpectedEntityTag {
+            uid,
+            tag: tag.into(),
+        })
+    }
+
     pub(crate) fn missing_entity_attr(uid: EntityUID, attr: impl Into<SmolStr>) -> Self {
         Self::MissingRequiredEntityAttr(MissingRequiredEntityAttr {
             uid,
@@ -84,24 +100,12 @@ impl EntitySchemaConformanceError {
         })
     }
 
-    pub(crate) fn type_mistmatch(
+    pub(crate) fn type_mismatch(
         uid: EntityUID,
         attr: impl Into<SmolStr>,
         err: TypeMismatchError,
     ) -> Self {
         Self::TypeMismatch(TypeMismatch {
-            uid,
-            attr: attr.into(),
-            err,
-        })
-    }
-
-    pub(crate) fn heterogeneous_set(
-        uid: EntityUID,
-        attr: impl Into<SmolStr>,
-        err: HeterogeneousSetError,
-    ) -> Self {
-        Self::HeterogeneousSet(HeterogeneousSet {
             uid,
             attr: attr.into(),
             err,
@@ -139,6 +143,10 @@ impl EntitySchemaConformanceError {
 /// Error looking up an extension function. This error can occur when
 /// checking entity conformance because that may require getting information
 /// about any extension functions referenced in entity attribute values.
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("in attribute `{attr}` on `{uid}`, {err}")]
 pub struct ExtensionFunctionLookup {
@@ -153,6 +161,10 @@ pub struct ExtensionFunctionLookup {
 
 /// Encountered an action whose definition doesn't precisely match the
 /// schema's declaration of that action
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("definition of action `{uid}` does not match its schema declaration")]
 #[diagnostic(help(
@@ -164,6 +176,10 @@ pub struct ActionDeclarationMismatch {
 }
 
 /// Encountered an action which was not declared in the schema
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("found action entity `{uid}`, but it was not declared as an action in the schema")]
 pub struct UndeclaredAction {
@@ -171,21 +187,11 @@ pub struct UndeclaredAction {
     uid: EntityUID,
 }
 
-/// Found a set whose elements don't all have the same type. This doesn't match
-/// any possible schema.
-#[derive(Debug, Error, Diagnostic)]
-#[error("in attribute `{attr}` on `{uid}`, {err}")]
-pub struct HeterogeneousSet {
-    /// Entity where the error occurred
-    uid: EntityUID,
-    /// Name of the attribute where the error occurred
-    attr: SmolStr,
-    /// Underlying error
-    #[diagnostic(transparent)]
-    err: HeterogeneousSetError,
-}
-
 /// Found an ancestor of a type that's not allowed for that entity
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error(
     "`{uid}` is not allowed to have an ancestor of type `{ancestor_ty}` according to the schema"
@@ -198,6 +204,10 @@ pub struct InvalidAncestorType {
 }
 
 /// Encountered attribute that shouldn't exist on entities of this type
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("attribute `{attr}` on `{uid}` should not exist according to the schema")]
 pub struct UnexpectedEntityAttr {
@@ -205,7 +215,25 @@ pub struct UnexpectedEntityAttr {
     attr: SmolStr,
 }
 
+/// Encountered tag, but no tags should exist on entities of this type
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
+#[derive(Debug, Error, Diagnostic)]
+#[error(
+    "found a tag `{tag}` on `{uid}`, but no tags should exist on `{uid}` according to the schema"
+)]
+pub struct UnexpectedEntityTag {
+    uid: EntityUID,
+    tag: SmolStr,
+}
+
 /// Didn't encounter attribute that should exist
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("expected entity `{uid}` to have attribute `{attr}`, but it does not")]
 pub struct MissingRequiredEntityAttr {
@@ -213,10 +241,14 @@ pub struct MissingRequiredEntityAttr {
     attr: SmolStr,
 }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("in attribute `{attr}` on `{uid}`, {err}")]
 /// The given attribute on the given entity had a different type than the
 /// schema indicated
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
+#[derive(Debug, Error, Diagnostic)]
+#[error("in attribute `{attr}` on `{uid}`, {err}")]
 pub struct TypeMismatch {
     uid: EntityUID,
     attr: SmolStr,
@@ -226,6 +258,10 @@ pub struct TypeMismatch {
 
 /// Encountered an entity of a type which is not declared in the schema.
 /// Note that this error is only used for non-Action entity types.
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error)]
 #[error("entity `{uid}` has type `{}` which is not declared in the schema", .uid.entity_type())]
 pub struct UnexpectedEntityTypeError {
@@ -245,5 +281,47 @@ impl Diagnostic for UnexpectedEntityTypeError {
                 tys.iter().map(ToString::to_string).collect::<Vec<String>>()
             ))),
         }
+    }
+}
+
+/// Returned when an entity is of an enumerated entity type but has invalid EID
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
+#[derive(Debug, Error, Diagnostic)]
+#[error(transparent)]
+#[diagnostic(transparent)]
+pub struct InvalidEnumEntity {
+    err: InvalidEnumEntityError,
+}
+
+impl From<InvalidEnumEntityError> for InvalidEnumEntity {
+    fn from(value: InvalidEnumEntityError) -> Self {
+        Self { err: value }
+    }
+}
+
+/// Returned when an entity is of an enumerated entity type but has invalid EID
+#[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
+#[error("entity `{uid}` is of an enumerated entity type, but `\"{}\"` is not declared as a valid eid", uid.eid().escaped())]
+pub struct InvalidEnumEntityError {
+    /// Entity where the error occurred
+    pub uid: EntityUID,
+    /// Name of the attribute where the error occurred
+    pub choices: Vec<Eid>,
+}
+
+impl Diagnostic for InvalidEnumEntityError {
+    impl_diagnostic_from_method_on_field!(uid, loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(format!(
+            "valid entity eids: {}",
+            self.choices
+                .iter()
+                .map(|e| format!("\"{}\"", e.escaped()))
+                .join(", ")
+        )))
     }
 }

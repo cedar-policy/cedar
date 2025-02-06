@@ -296,6 +296,11 @@ impl Policy {
     }
 
     /// Get valid principals, actions, and resources.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error result if `self` cannot be parsed as a
+    /// [`crate::Policy`] or if `s` cannot be parsed as a [`crate::Schema`].
     pub fn get_valid_request_envs(
         self,
         s: Schema,
@@ -375,6 +380,11 @@ impl Template {
     }
 
     /// Get valid principals, actions, and resources.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error result if `self` cannot be parsed as a
+    /// [`crate::Template`] or if `s` cannot be parsed as a [`crate::Schema`].
     pub fn get_valid_request_envs(
         self,
         s: Schema,
@@ -529,7 +539,7 @@ pub struct PolicySet {
 
 impl PolicySet {
     /// Parse a [`PolicySet`] into a [`crate::PolicySet`]
-    pub(super) fn parse(self) -> Result<crate::PolicySet, Vec<miette::Report>> {
+    pub fn parse(self) -> Result<crate::PolicySet, Vec<miette::Report>> {
         let mut errs = Vec::new();
         // Parse static policies
         let mut policies = self.static_policies.parse().unwrap_or_else(|mut e| {
@@ -629,6 +639,7 @@ pub(super) struct WithWarnings<T> {
     pub warnings: Vec<miette::Report>,
 }
 
+/// Testing utilities used here and elsewhere
 // PANIC SAFETY unit tests
 #[allow(clippy::panic, clippy::indexing_slicing)]
 // Also disable some other clippy lints that are unimportant for testing code
@@ -734,7 +745,7 @@ mod test {
             &err,
             &ExpectedErrorMessageBuilder::error("failed to parse policy from string")
                 .source("expected a static policy, got a template containing the slot ?principal")
-                .exactly_one_underline(src)
+                .exactly_one_underline("?principal")
                 .help("try removing the template slot(s) from this policy")
                 .build(),
         );
@@ -906,7 +917,7 @@ mod test {
                 "failed to parse policy with id `policy0` from string",
             )
             .source("expected a static policy, got a template containing the slot ?principal")
-            .exactly_one_underline("permit(principal == ?principal, action, resource);")
+            .exactly_one_underline("?principal")
             .help("try removing the template slot(s) from this policy")
             .build(),
         );
@@ -1185,7 +1196,7 @@ mod test {
             &ExpectedErrorMessageBuilder::error("failed to parse schema from string")
                 .exactly_one_underline_with_label(
                     "permit",
-                    "expected `action`, `entity`, `namespace`, or `type`",
+                    "expected `@`, `action`, `entity`, `namespace`, or `type`",
                 )
                 .source("error parsing schema: unexpected token `permit`")
                 .build(),

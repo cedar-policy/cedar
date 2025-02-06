@@ -17,8 +17,8 @@
 //! This module contains the Cedar 'ipaddr' extension.
 
 use crate::ast::{
-    CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue,
-    ExtensionValueWithArgs, Literal, Name, Type, Value, ValueKind,
+    CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue, Literal, Name,
+    RepresentableExtensionValue, Type, Value, ValueKind,
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
@@ -227,6 +227,9 @@ impl ExtensionValue for IPAddr {
     fn typename(&self) -> Name {
         Self::typename()
     }
+    fn supports_operator_overloading(&self) -> bool {
+        false
+    }
 }
 
 fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
@@ -234,6 +237,7 @@ fn extension_err(msg: impl Into<String>) -> evaluator::EvaluationError {
         names::EXTENSION_NAME.clone(),
         msg.into(),
         None, // source loc will be added by the evaluator
+        None,
     )
 }
 
@@ -301,14 +305,13 @@ fn str_contains_colons_and_dots(s: &str) -> Result<(), String> {
 
 /// Cedar function which constructs an `ipaddr` Cedar type from a
 /// Cedar string
-fn ip_from_str(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
+fn ip_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
-    let function_name = names::IP_FROM_STR_NAME.clone();
     let arg_source_loc = arg.source_loc().cloned();
-    let ipaddr = ExtensionValueWithArgs::new(
+    let ipaddr = RepresentableExtensionValue::new(
         Arc::new(IPAddr::from_str(str.as_str()).map_err(extension_err)?),
-        function_name,
-        vec![arg.into()],
+        names::IP_FROM_STR_NAME.clone(),
+        vec![arg.clone().into()],
     );
     Ok(Value {
         value: ValueKind::ExtensionValue(Arc::new(ipaddr)),
@@ -349,38 +352,38 @@ fn as_ipaddr(v: &Value) -> Result<&IPAddr, evaluator::EvaluationError> {
 
 /// Cedar function which tests whether an `ipaddr` Cedar type is an IPv4
 /// address, returning a Cedar bool
-fn is_ipv4(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let ipaddr = as_ipaddr(&arg)?;
+fn is_ipv4(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let ipaddr = as_ipaddr(arg)?;
     Ok(ipaddr.is_ipv4().into())
 }
 
 /// Cedar function which tests whether an `ipaddr` Cedar type is an IPv6
 /// address, returning a Cedar bool
-fn is_ipv6(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let ipaddr = as_ipaddr(&arg)?;
+fn is_ipv6(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let ipaddr = as_ipaddr(arg)?;
     Ok(ipaddr.is_ipv6().into())
 }
 
 /// Cedar function which tests whether an `ipaddr` Cedar type is a
 /// loopback address, returning a Cedar bool
-fn is_loopback(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let ipaddr = as_ipaddr(&arg)?;
+fn is_loopback(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let ipaddr = as_ipaddr(arg)?;
     Ok(ipaddr.is_loopback().into())
 }
 
 /// Cedar function which tests whether an `ipaddr` Cedar type is a
 /// multicast address, returning a Cedar bool
-fn is_multicast(arg: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let ipaddr = as_ipaddr(&arg)?;
+fn is_multicast(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let ipaddr = as_ipaddr(arg)?;
     Ok(ipaddr.is_multicast().into())
 }
 
 /// Cedar function which tests whether the first `ipaddr` Cedar type is
 /// in the IP range represented by the second `ipaddr` Cedar type, returning
 /// a Cedar bool
-fn is_in_range(child: Value, parent: Value) -> evaluator::Result<ExtensionOutputValue> {
-    let child_ip = as_ipaddr(&child)?;
-    let parent_ip = as_ipaddr(&parent)?;
+fn is_in_range(child: &Value, parent: &Value) -> evaluator::Result<ExtensionOutputValue> {
+    let child_ip = as_ipaddr(child)?;
+    let parent_ip = as_ipaddr(parent)?;
     Ok(child_ip.is_in_range(parent_ip).into())
 }
 
@@ -435,12 +438,14 @@ pub fn extension() -> Extension {
                 (ipaddr_type.clone(), ipaddr_type),
             ),
         ],
+        std::iter::empty(),
     )
 }
 
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 #[cfg(test)]
+#[allow(clippy::cognitive_complexity)]
 mod tests {
     use super::*;
     use crate::ast::{Expr, Type, Value};
@@ -587,12 +592,12 @@ mod tests {
         assert_matches!(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("ip").expect("should be a valid identifier"),
-                vec![Expr::set(vec!(
+                vec![Expr::set(vec![
                     Expr::val(127),
                     Expr::val(0),
                     Expr::val(0),
                     Expr::val(1)
-                ))]
+                ])]
             )),
             Err(EvaluationError::TypeError(evaluation_errors::TypeError { expected, actual, advice, .. })) => {
                 assert_eq!(expected, nonempty![Type::String]);
@@ -610,7 +615,7 @@ mod tests {
                     name: Name::parse_unqualified_name("ipaddr")
                         .expect("should be a valid identifier")
                 });
-                assert_eq!(advice, None);
+                assert_eq!(advice, Some("Only types long support comparison".into()));
             }
         );
         // test that isIpv4 on a String is an error
@@ -634,13 +639,13 @@ mod tests {
             eval.interpret_inline_policy(&ip("127.0.0.1"))
                 .unwrap()
                 .to_string(),
-            "127.0.0.1/32"
+            r#"ip("127.0.0.1")"#
         );
         assert_eq!(
             eval.interpret_inline_policy(&ip("ffee::11"))
                 .unwrap()
                 .to_string(),
-            "ffee::11/128"
+            r#"ip("ffee::11")"#
         );
     }
 
@@ -704,25 +709,25 @@ mod tests {
             eval.interpret_inline_policy(&ip("127.0.0.1/0"))
                 .unwrap()
                 .to_string(),
-            "127.0.0.1/0"
+            r#"ip("127.0.0.1/0")"#
         );
         assert_eq!(
             eval.interpret_inline_policy(&ip("127.0.0.1/8"))
                 .unwrap()
                 .to_string(),
-            "127.0.0.1/8"
+            r#"ip("127.0.0.1/8")"#
         );
         assert_eq!(
             eval.interpret_inline_policy(&ip("127.0.0.1/32"))
                 .unwrap()
                 .to_string(),
-            "127.0.0.1/32"
+            r#"ip("127.0.0.1/32")"#
         );
         assert_eq!(
             eval.interpret_inline_policy(&ip("ffee::/64"))
                 .unwrap()
                 .to_string(),
-            "ffee::/64"
+            r#"ip("ffee::/64")"#
         );
     }
 

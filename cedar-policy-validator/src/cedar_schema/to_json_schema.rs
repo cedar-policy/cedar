@@ -19,29 +19,25 @@
 use std::collections::HashMap;
 
 use cedar_policy_core::{
-    ast::{Id, Name, UnreservedId},
+    ast::{Annotations, Id, Name, UnreservedId},
     extensions::Extensions,
     parser::{Loc, Node},
 };
-use itertools::{Either, Itertools};
+use itertools::Either;
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::hash_map::Entry;
 
 use super::{
     ast::{
-        ActionDecl, AppDecl, AttrDecl, Decl, Declaration, EntityDecl, Namespace, PRAppDecl, Path,
-        QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, PR,
+        ActionDecl, Annotated, AppDecl, AttrDecl, Decl, Declaration, EntityDecl, Namespace,
+        PRAppDecl, Path, QualName, Schema, Type, TypeDecl, BUILTIN_TYPES, PR,
     },
-    err::{
-        schema_warnings, EAMapError, EAMapNotAllowedHereError, EAMapNotAllowedHereHelp,
-        EAMapWithConcreteAttributesError, MultipleEAMapDeclarationsError, SchemaWarning,
-        ToJsonSchemaError, ToJsonSchemaErrors,
-    },
+    err::{schema_warnings, SchemaWarning, ToJsonSchemaError, ToJsonSchemaErrors},
 };
 use crate::{
     cedar_schema,
-    json_schema::{self, is_reserved_schema_keyword, CommonTypeId},
+    json_schema::{self, CommonType},
     RawName,
 };
 
@@ -77,14 +73,13 @@ pub fn cedar_schema_to_json_schema(
     // namespaces with matching non-empty names, so that all definitions from
     // that namespace make it into the JSON schema structure under that
     // namespace's key.
-    let (qualified_namespaces, unqualified_namespace) =
-        split_unqualified_namespace(schema.into_iter().map(|n| n.node));
+    let (qualified_namespaces, unqualified_namespace) = split_unqualified_namespace(schema);
     // Create a single iterator for all namespaces
     let all_namespaces = qualified_namespaces
         .chain(unqualified_namespace)
         .collect::<Vec<_>>();
 
-    let names = build_namespace_bindings(all_namespaces.iter())?;
+    let names = build_namespace_bindings(all_namespaces.iter().map(|ns| &ns.data))?;
     let warnings = compute_namespace_warnings(&names, extensions);
     let fragment = collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?.collect();
     Ok((
@@ -101,113 +96,42 @@ fn is_valid_ext_type(ty: &Id, extensions: &Extensions<'_>) -> bool {
         .any(|ext_ty| ty == ext_ty.basename_as_ref())
 }
 
-/// Convert a [`Type`] into the JSON representation of the type.
-/// In this function, `EAMap` types are not allowed and will result in errors.
-/// For a similar function that accepts `EAMap` types, see
-/// [`cedar_type_to_entity_attr_type()`].
-fn cedar_type_to_json_type(
-    ty: Node<Type>,
-) -> Result<json_schema::Type<RawName>, EAMapNotAllowedHereError> {
-    match ty.node {
-        Type::Set(t) => Ok(json_schema::Type::Type(json_schema::TypeVariant::Set {
-            element: Box::new(cedar_type_to_json_type(*t)?),
-        })),
-        Type::Ident(p) => Ok(json_schema::Type::Type(
-            json_schema::TypeVariant::EntityOrCommon {
-                type_name: RawName::from(p),
-            },
-        )),
-        Type::Record(fields) => Ok(json_schema::Type::Type(json_schema::TypeVariant::Record(
-            json_schema::RecordType {
-                attributes: fields
-                    .into_iter()
-                    .map(convert_attr_decl_for_record)
-                    .collect::<Result<_, _>>()?,
-                additional_attributes: false,
-            },
-        ))),
-    }
-}
-
-/// Convert a [`Type`] representing an entity attribute type into the JSON
-/// representation of the type. Unlike [`cedar_type_to_json_type()`], this
-/// function allows (and handles) `EAMap` types as well.
-///
-/// This can still return [`EAMapError`] if an `EAMap` is found, e.g., in a set
-/// element type, or nested in another `EAMap`.
-fn cedar_type_to_entity_attr_type(
-    ty: Node<Type>,
-) -> Result<json_schema::EntityAttributeTypeInternal<RawName>, EAMapError> {
-    match &ty.node {
-        Type::Record(decls) => {
-            let (ea_map_decls, non_ea_map_decls): (Vec<(&Loc, &Node<Type>)>, Vec<&Node<AttrDecl>>) =
-                decls.iter().partition_map(|decl| match &decl.node {
-                    AttrDecl::EAMap { value_ty } => Either::Left((&decl.loc, value_ty)),
-                    _ => Either::Right(decl),
-                });
-            match (ea_map_decls.len(), non_ea_map_decls.len()) {
-                (0, _) => {
-                    // no `EAMap` decls
-                    Ok(json_schema::EntityAttributeTypeInternal::Type(
-                        cedar_type_to_json_type(ty)?,
-                    ))
-                }
-                (1, 0) => {
-                    // exactly one decl, and it's an `EAMap` decl like `?: String`.
-                    // Convert to an `EAMap`.
-                    // PANIC SAFETY: already determined `ea_map_decls.len() == 1`
-                    #[allow(clippy::indexing_slicing)]
-                    let (_, value_type) = ea_map_decls[0];
-                    Ok(json_schema::EntityAttributeTypeInternal::EAMap {
-                        value_type: cedar_type_to_json_type(value_type.clone())?,
-                    })
-                }
-                (1, 1..) => {
-                    // one `EAMap` decl, but also at least one non-`EAMap` decl.
-                    // This is an error.
-                    // PANIC SAFETY: already determined `ea_map_decls.len() == 1`
-                    #[allow(clippy::indexing_slicing)]
-                    let (source_loc, _) = ea_map_decls[0];
-                    Err(EAMapWithConcreteAttributesError {
-                        source_loc: source_loc.clone(),
-                    }
-                    .into())
-                }
-                (2.., _) => {
-                    // multiple `EAMap` decls. This is an error.
-                    // PANIC SAFETY: already determined `ea_map_decls.len()` is at least 2
-                    #[allow(clippy::indexing_slicing)]
-                    let (source_loc_1, _) = ea_map_decls[0];
-                    // PANIC SAFETY: already determined `ea_map_decls.len()` is at least 2
-                    #[allow(clippy::indexing_slicing)]
-                    let (source_loc_2, _) = ea_map_decls[1];
-                    Err(MultipleEAMapDeclarationsError {
-                        source_loc_1: source_loc_1.clone(),
-                        source_loc_2: source_loc_2.clone(),
-                    }
-                    .into())
-                }
-            }
-        }
-        Type::Set(_) | Type::Ident(_) => Ok(json_schema::EntityAttributeTypeInternal::Type(
-            cedar_type_to_json_type(ty)?,
-        )),
+/// Convert a `Type` into the JSON representation of the type.
+pub fn cedar_type_to_json_type(ty: Node<Type>) -> json_schema::Type<RawName> {
+    let variant = match ty.node {
+        Type::Set(t) => json_schema::TypeVariant::Set {
+            element: Box::new(cedar_type_to_json_type(*t)),
+        },
+        Type::Ident(p) => json_schema::TypeVariant::EntityOrCommon {
+            type_name: RawName::from(p),
+        },
+        Type::Record(fields) => json_schema::TypeVariant::Record(json_schema::RecordType {
+            attributes: fields.into_iter().map(convert_attr_decl).collect(),
+            additional_attributes: false,
+        }),
+    };
+    json_schema::Type::Type {
+        ty: variant,
+        loc: Some(ty.loc),
     }
 }
 
 // Split namespaces into two groups: named namespaces and the implicit unqualified namespace
 // The rhs of the tuple will be [`None`] if there are no items in the unqualified namespace.
 fn split_unqualified_namespace(
-    namespaces: impl IntoIterator<Item = Namespace>,
-) -> (impl Iterator<Item = Namespace>, Option<Namespace>) {
+    namespaces: impl IntoIterator<Item = Annotated<Namespace>>,
+) -> (
+    impl Iterator<Item = Annotated<Namespace>>,
+    Option<Annotated<Namespace>>,
+) {
     // First split every namespace into those with explicit names and those without
     let (qualified, unqualified): (Vec<_>, Vec<_>) =
-        namespaces.into_iter().partition(|n| n.name.is_some());
+        namespaces.into_iter().partition(|n| n.data.name.is_some());
 
     // Now combine all the decls in namespaces without names into one unqualified namespace
     let mut unqualified_decls = vec![];
     for mut unqualified_namespace in unqualified.into_iter() {
-        unqualified_decls.append(&mut unqualified_namespace.decls);
+        unqualified_decls.append(&mut unqualified_namespace.data.decls);
     }
 
     if unqualified_decls.is_empty() {
@@ -217,33 +141,42 @@ fn split_unqualified_namespace(
             name: None,
             decls: unqualified_decls,
         };
-        (qualified.into_iter(), Some(unqual))
+        (
+            qualified.into_iter(),
+            Some(Annotated {
+                data: unqual,
+                annotations: Annotations::new(),
+            }),
+        )
     }
 }
 
 /// Converts a CST namespace to a JSON namespace
 fn convert_namespace(
-    namespace: Namespace,
+    namespace: Annotated<Namespace>,
 ) -> Result<(Option<Name>, json_schema::NamespaceDefinition<RawName>), ToJsonSchemaErrors> {
     let ns_name = namespace
+        .data
         .name
         .clone()
         .map(|p| {
-            let internal_name = RawName::from(p.node).qualify_with(None); // namespace names are always written already-fully-qualified in the Cedar schema syntax
+            let internal_name = RawName::from(p.clone()).qualify_with(None); // namespace names are always written already-fully-qualified in the Cedar schema syntax
             Name::try_from(internal_name)
-                .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), p.loc))
+                .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), p.loc().clone()))
         })
         .transpose()?;
     let def = namespace.try_into()?;
     Ok((ns_name, def))
 }
 
-impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
+impl TryFrom<Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName> {
     type Error = ToJsonSchemaErrors;
 
-    fn try_from(n: Namespace) -> Result<json_schema::NamespaceDefinition<RawName>, Self::Error> {
+    fn try_from(
+        n: Annotated<Namespace>,
+    ) -> Result<json_schema::NamespaceDefinition<RawName>, Self::Error> {
         // Partition the decls into entities, actions, and common types
-        let (entity_types, action, common_types) = into_partition_decls(n.decls);
+        let (entity_types, action, common_types) = into_partition_decls(n.data.decls);
 
         // Convert entity type decls, collecting all errors
         let entity_types = collect_all_errors(entity_types.into_iter().map(convert_entity_decl))?
@@ -259,17 +192,19 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
         let common_types = common_types
             .into_iter()
             .map(|decl| {
-                let name_loc = decl.name.loc.clone();
-                let id = UnreservedId::try_from(decl.name.node)
+                let name_loc = decl.data.node.name.loc.clone();
+                let id = UnreservedId::try_from(decl.data.node.name.node)
                     .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), name_loc.clone()))?;
-                if is_reserved_schema_keyword(&id) {
-                    Err(ToJsonSchemaError::reserved_keyword(id, name_loc))
-                } else {
-                    Ok((
-                        CommonTypeId::unchecked(id),
-                        cedar_type_to_json_type(decl.def).map_err(EAMapError::from)?,
-                    ))
-                }
+                let ctid = json_schema::CommonTypeId::new(id)
+                    .map_err(|e| ToJsonSchemaError::reserved_keyword(&e.id, name_loc))?;
+                Ok((
+                    ctid,
+                    CommonType {
+                        ty: cedar_type_to_json_type(decl.data.node.def),
+                        annotations: decl.annotations.into(),
+                        loc: Some(decl.data.loc),
+                    },
+                ))
             })
             .collect::<Result<_, ToJsonSchemaError>>()?;
 
@@ -277,19 +212,20 @@ impl TryFrom<Namespace> for json_schema::NamespaceDefinition<RawName> {
             common_types,
             entity_types,
             actions,
+            annotations: n.annotations.into(),
         })
     }
 }
 
 /// Converts action type decls
 fn convert_action_decl(
-    a: ActionDecl,
+    a: Annotated<Node<ActionDecl>>,
 ) -> Result<impl Iterator<Item = (SmolStr, json_schema::ActionType<RawName>)>, ToJsonSchemaErrors> {
     let ActionDecl {
         names,
         parents,
         app_decls,
-    } = a;
+    } = a.data.node;
     // Create the internal type from the 'applies_to' clause and 'member_of'
     let applies_to = app_decls
         .map(|decls| convert_app_decls(&names.first().node, &names.first().loc, decls))
@@ -297,13 +233,15 @@ fn convert_action_decl(
         .unwrap_or_else(|| json_schema::ApplySpec {
             resource_types: vec![],
             principal_types: vec![],
-            context: json_schema::RecordOrContextAttributes::default(),
+            context: json_schema::AttributesOrContext::default(),
         });
     let member_of = parents.map(|parents| parents.into_iter().map(convert_qual_name).collect());
     let ty = json_schema::ActionType {
         attributes: None, // Action attributes are currently unsupported in the Cedar schema format
         applies_to: Some(applies_to),
         member_of,
+        annotations: a.annotations.into(),
+        loc: Some(a.data.loc),
     };
     // Then map that type across all of the bound names
     Ok(names.into_iter().map(move |name| (name.node, ty.clone())))
@@ -326,7 +264,7 @@ fn convert_app_decls(
     let (decls, _) = decls.into_inner();
     let mut principal_types: Option<Node<Vec<RawName>>> = None;
     let mut resource_types: Option<Node<Vec<RawName>>> = None;
-    let mut context: Option<Node<json_schema::RecordOrContextAttributes<RawName>>> = None;
+    let mut context: Option<Node<json_schema::AttributesOrContext<RawName>>> = None;
 
     for decl in decls {
         match decl {
@@ -336,7 +274,7 @@ fn convert_app_decls(
             } => match context {
                 Some(existing_context) => {
                     return Err(ToJsonSchemaError::duplicate_context(
-                        name.clone(),
+                        name,
                         existing_context.loc,
                         loc,
                     )
@@ -344,7 +282,7 @@ fn convert_app_decls(
                 }
                 None => {
                     context = Some(Node::with_source_loc(
-                        convert_context_decl(context_decl).map_err(EAMapError::from)?,
+                        convert_context_decl(context_decl),
                         loc,
                     ));
                 }
@@ -363,7 +301,7 @@ fn convert_app_decls(
             } => match principal_types {
                 Some(existing_tys) => {
                     return Err(ToJsonSchemaError::duplicate_principal(
-                        name.clone(),
+                        name,
                         existing_tys.loc,
                         loc,
                     )
@@ -388,12 +326,9 @@ fn convert_app_decls(
                 loc,
             } => match resource_types {
                 Some(existing_tys) => {
-                    return Err(ToJsonSchemaError::duplicate_resource(
-                        name.clone(),
-                        existing_tys.loc,
-                        loc,
-                    )
-                    .into());
+                    return Err(
+                        ToJsonSchemaError::duplicate_resource(name, existing_tys.loc, loc).into(),
+                    );
                 }
                 None => {
                     resource_types = Some(Node::with_source_loc(
@@ -405,12 +340,12 @@ fn convert_app_decls(
         }
     }
     Ok(json_schema::ApplySpec {
-        resource_types: resource_types.map(|node| node.node).ok_or(
-            ToJsonSchemaError::no_resource(name.clone(), name_loc.clone()),
-        )?,
-        principal_types: principal_types.map(|node| node.node).ok_or(
-            ToJsonSchemaError::no_principal(name.clone(), name_loc.clone()),
-        )?,
+        resource_types: resource_types
+            .map(|node| node.node)
+            .ok_or_else(|| ToJsonSchemaError::no_resource(&name, name_loc.clone()))?,
+        principal_types: principal_types
+            .map(|node| node.node)
+            .ok_or_else(|| ToJsonSchemaError::no_principal(&name, name_loc.clone()))?,
         context: context.map(|c| c.node).unwrap_or_default(),
     })
 }
@@ -422,22 +357,33 @@ fn convert_id(node: Node<Id>) -> Result<UnreservedId, ToJsonSchemaError> {
 
 /// Convert Entity declarations
 fn convert_entity_decl(
-    e: EntityDecl,
+    e: Annotated<Node<EntityDecl>>,
 ) -> Result<
     impl Iterator<Item = (UnreservedId, json_schema::EntityType<RawName>)>,
     ToJsonSchemaErrors,
 > {
-    // First build up the defined entity type
+    let names: Vec<Node<Id>> = e.data.node.names().cloned().collect();
     let etype = json_schema::EntityType {
-        member_of_types: e.member_of_types.into_iter().map(RawName::from).collect(),
-        shape: convert_attr_decls_for_entity(e.attrs)
-            .map(Into::into)
-            .map_err(ToJsonSchemaError::from)?,
+        kind: match e.data.node {
+            EntityDecl::Enum(d) => json_schema::EntityTypeKind::Enum {
+                choices: d.choices.map(|n| n.node),
+            },
+            EntityDecl::Standard(d) => {
+                // First build up the defined entity type
+                json_schema::EntityTypeKind::Standard(json_schema::StandardEntityType {
+                    member_of_types: d.member_of_types.into_iter().map(RawName::from).collect(),
+                    shape: convert_attr_decls(d.attrs),
+                    tags: d.tags.map(cedar_type_to_json_type),
+                })
+            }
+        },
+        annotations: e.annotations.into(),
+        loc: Some(e.data.loc.clone()),
     };
 
     // Then map over all of the bound names
     collect_all_errors(
-        e.names
+        names
             .into_iter()
             .map(move |name| -> Result<_, ToJsonSchemaErrors> {
                 Ok((convert_id(name)?, etype.clone()))
@@ -445,86 +391,50 @@ fn convert_entity_decl(
     )
 }
 
-/// Create a [`json_schema::RecordType`] from a series of `AttrDecl`s
-/// representing the attributes of an entity
-fn convert_attr_decls_for_entity(
-    attrs: impl IntoIterator<Item = Node<AttrDecl>>,
-) -> Result<json_schema::RecordType<json_schema::EntityAttributeType<RawName>>, EAMapError> {
-    Ok(json_schema::RecordType {
-        attributes: attrs
-            .into_iter()
-            .map(convert_attr_decl_for_entity)
-            .collect::<Result<_, _>>()?,
-        additional_attributes: false,
+/// Create a [`json_schema::AttributesOrContext`] from a series of `AttrDecl`s
+fn convert_attr_decls(
+    attrs: Node<impl IntoIterator<Item = Node<Annotated<AttrDecl>>>>,
+) -> json_schema::AttributesOrContext<RawName> {
+    json_schema::AttributesOrContext(json_schema::Type::Type {
+        ty: json_schema::TypeVariant::Record(json_schema::RecordType {
+            attributes: attrs.node.into_iter().map(convert_attr_decl).collect(),
+            additional_attributes: false,
+        }),
+        loc: Some(attrs.loc),
     })
 }
 
-/// Create a [`json_schema::RecordOrContextAttributes`] from a series of
-/// `AttrDecl`s representing the attributes of the context (or a `Path`
-/// representing the common-type defining those attributes)
+/// Create a context decl
 fn convert_context_decl(
-    decl: Either<Path, Vec<Node<AttrDecl>>>,
-) -> Result<json_schema::RecordOrContextAttributes<RawName>, EAMapNotAllowedHereError> {
-    Ok(json_schema::RecordOrContextAttributes(match decl {
+    decl: Either<Path, Node<Vec<Node<Annotated<AttrDecl>>>>>,
+) -> json_schema::AttributesOrContext<RawName> {
+    json_schema::AttributesOrContext(match decl {
         Either::Left(p) => json_schema::Type::CommonTypeRef {
+            loc: Some(p.loc().clone()),
             type_name: p.into(),
         },
-        Either::Right(attrs) => {
-            json_schema::Type::Type(json_schema::TypeVariant::Record(json_schema::RecordType {
-                attributes: attrs
-                    .into_iter()
-                    .map(convert_attr_decl_for_record)
-                    .collect::<Result<_, _>>()?,
+        Either::Right(attrs) => json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Record(json_schema::RecordType {
+                attributes: attrs.node.into_iter().map(convert_attr_decl).collect(),
                 additional_attributes: false,
-            }))
-        }
-    }))
+            }),
+            loc: Some(attrs.loc),
+        },
+    })
 }
 
 /// Convert an attribute type from an `AttrDecl`
-fn convert_attr_decl_for_record(
-    attr: Node<AttrDecl>,
-) -> Result<(SmolStr, json_schema::RecordAttributeType<RawName>), EAMapNotAllowedHereError> {
-    match attr.node {
-        AttrDecl::Concrete { name, required, ty } => Ok((
-            name.node,
-            json_schema::RecordAttributeType {
-                ty: cedar_type_to_json_type(ty)?,
-                required,
-            },
-        )),
-        AttrDecl::EAMap { .. } => Err(EAMapNotAllowedHereError {
-            source_loc: attr.loc,
-            help: None,
-        }),
-    }
-}
-
-/// Convert an `AttrDecl` representing an entity attribute type to a pair `(name, ty)`.
-/// `attr` is not allowed to be `AttrDecl::EAMap` itself, but in the returned pair
-/// `(name, ty)`, `ty` is allowed to be an `EAMap`.
-fn convert_attr_decl_for_entity(
-    attr: Node<AttrDecl>,
-) -> Result<(SmolStr, json_schema::EntityAttributeType<RawName>), EAMapError> {
-    match attr.node {
-        AttrDecl::Concrete { name, required, ty } => Ok((
-            name.node,
-            json_schema::EntityAttributeType {
-                ty: cedar_type_to_entity_attr_type(ty)?,
-                required,
-            },
-        )),
-        AttrDecl::EAMap { .. } => {
-            // EAMap is not allowed here, as the descriptor of all entity attributes.
-            // EAMap is only allowed as the top-level type of one of the entity attributes.
-            // That is, as `ty` in `AttrDecl::Concrete`.
-            Err(EAMapNotAllowedHereError {
-                source_loc: attr.loc,
-                help: Some(EAMapNotAllowedHereHelp::TopLevelEAMap),
-            }
-            .into())
-        }
-    }
+fn convert_attr_decl(
+    attr: Node<Annotated<AttrDecl>>,
+) -> (SmolStr, json_schema::TypeOfAttribute<RawName>) {
+    (
+        attr.node.data.name.node,
+        json_schema::TypeOfAttribute {
+            ty: cedar_type_to_json_type(attr.node.data.ty),
+            required: attr.node.data.required,
+            annotations: attr.node.annotations.into(),
+        },
+    )
 }
 
 /// Takes a collection of results returning multiple errors
@@ -568,9 +478,9 @@ impl NamespaceRecord {
             .name
             .clone()
             .map(|n| {
-                let internal_name = RawName::from(n.node).qualify_with(None); // namespace names are already fully-qualified
+                let internal_name = RawName::from(n.clone()).qualify_with(None); // namespace names are already fully-qualified
                 Name::try_from(internal_name)
-                    .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), n.loc))
+                    .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), n.loc().clone()))
             })
             .transpose()?;
         let (entities, actions, types) = partition_decls(&namespace.decls);
@@ -578,7 +488,7 @@ impl NamespaceRecord {
         let entities = collect_decls(
             entities
                 .into_iter()
-                .flat_map(|decl| decl.names.clone())
+                .flat_map(|decl| decl.names().cloned())
                 .map(extract_name),
         )?;
         // Ensure no duplicate actions
@@ -598,7 +508,7 @@ impl NamespaceRecord {
         let record = NamespaceRecord {
             entities,
             common_types,
-            loc: namespace.name.as_ref().map(|n| n.loc.clone()),
+            loc: namespace.name.as_ref().map(|n| n.loc().clone()),
         };
 
         Ok((ns, record))
@@ -615,7 +525,7 @@ where
     for (key, node) in i {
         match map.entry(key.clone()) {
             Entry::Occupied(entry) => Err(ToJsonSchemaError::duplicate_decls(
-                key,
+                &key,
                 entry.get().loc.clone(),
                 node.loc,
             )),
@@ -705,7 +615,7 @@ fn update_namespace_record(
 ) -> Result<(), ToJsonSchemaErrors> {
     match map.entry(name.clone()) {
         Entry::Occupied(entry) => Err(ToJsonSchemaError::duplicate_namespace(
-            name.map_or("".into(), |n| n.to_smolstr()),
+            &name.map_or("".into(), |n| n.to_smolstr()),
             record.loc,
             entry.get().loc.clone(),
         )
@@ -718,14 +628,14 @@ fn update_namespace_record(
 }
 
 fn partition_decls(
-    decls: &[Node<Declaration>],
+    decls: &[Annotated<Node<Declaration>>],
 ) -> (Vec<&EntityDecl>, Vec<&ActionDecl>, Vec<&TypeDecl>) {
     let mut entities = vec![];
     let mut actions = vec![];
     let mut types = vec![];
 
     for decl in decls.iter() {
-        match &decl.node {
+        match &decl.data.node {
             Declaration::Entity(e) => entities.push(e),
             Declaration::Action(a) => actions.push(a),
             Declaration::Type(t) => types.push(t),
@@ -736,19 +646,230 @@ fn partition_decls(
 }
 
 fn into_partition_decls(
-    decls: Vec<Node<Declaration>>,
-) -> (Vec<EntityDecl>, Vec<ActionDecl>, Vec<TypeDecl>) {
+    decls: impl IntoIterator<Item = Annotated<Node<Declaration>>>,
+) -> (
+    Vec<Annotated<Node<EntityDecl>>>,
+    Vec<Annotated<Node<ActionDecl>>>,
+    Vec<Annotated<Node<TypeDecl>>>,
+) {
     let mut entities = vec![];
     let mut actions = vec![];
     let mut types = vec![];
 
     for decl in decls.into_iter() {
-        match decl.node {
-            Declaration::Entity(e) => entities.push(e),
-            Declaration::Action(a) => actions.push(a),
-            Declaration::Type(t) => types.push(t),
+        let loc = decl.data.loc;
+        match decl.data.node {
+            Declaration::Entity(e) => entities.push(Annotated {
+                data: Node { node: e, loc },
+                annotations: decl.annotations,
+            }),
+            Declaration::Action(a) => actions.push(Annotated {
+                data: Node { node: a, loc },
+                annotations: decl.annotations,
+            }),
+            Declaration::Type(t) => types.push(Annotated {
+                data: Node { node: t, loc },
+                annotations: decl.annotations,
+            }),
         }
     }
 
     (entities, actions, types)
+}
+
+#[cfg(test)]
+mod preserves_source_locations {
+    use super::*;
+    use cool_asserts::assert_matches;
+    use json_schema::{EntityType, EntityTypeKind};
+
+    #[test]
+    fn entity_action_and_common_type_decls() {
+        let (schema, _) = json_schema::Fragment::from_cedarschema_str(
+            r#"
+        namespace NS {
+            type S = String;
+            entity A;
+            entity B in A;
+            entity C in A {
+                bool: Bool,
+                s: S,
+                a: Set<A>,
+                b: { inner: B },
+            };
+            type AA = A;
+            action Read, Write;
+            action List in Read appliesTo {
+                principal: [A],
+                resource: [B, C],
+                context: {
+                    s: Set<S>,
+                    ab: { a: AA, b: B },
+                }
+            };
+        }
+        "#,
+            Extensions::all_available(),
+        )
+        .unwrap();
+        let ns = schema
+            .0
+            .get(&Some(Name::parse_unqualified_name("NS").unwrap()))
+            .expect("couldn't find namespace NS");
+
+        let entityA = ns
+            .entity_types
+            .get(&"A".parse().unwrap())
+            .expect("couldn't find entity A");
+        let entityB = ns
+            .entity_types
+            .get(&"B".parse().unwrap())
+            .expect("couldn't find entity B");
+        let entityC = ns
+            .entity_types
+            .get(&"C".parse().unwrap())
+            .expect("couldn't find entity C");
+        let ctypeS = ns
+            .common_types
+            .get(&json_schema::CommonTypeId::new("S".parse().unwrap()).unwrap())
+            .expect("couldn't find common type S");
+        let ctypeAA = ns
+            .common_types
+            .get(&json_schema::CommonTypeId::new("AA".parse().unwrap()).unwrap())
+            .expect("couldn't find common type AA");
+        let actionRead = ns.actions.get("Read").expect("couldn't find action Read");
+        let actionWrite = ns.actions.get("Write").expect("couldn't find action Write");
+        let actionList = ns.actions.get("List").expect("couldn't find action List");
+
+        assert_matches!(&entityA.loc, Some(loc) => assert_matches!(loc.snippet(),
+            Some("entity A;")
+        ));
+        assert_matches!(&entityB.loc, Some(loc) => assert_matches!(loc.snippet(),
+            Some("entity B in A;")
+        ));
+        assert_matches!(&entityC.loc, Some(loc) => assert_matches!(loc.snippet(),
+            Some("entity C in A {\n                bool: Bool,\n                s: S,\n                a: Set<A>,\n                b: { inner: B },\n            };")
+        ));
+        assert_matches!(&ctypeS.loc, Some(loc) => assert_matches!(loc.snippet(),
+            Some("type S = String;")
+        ));
+        assert_matches!(&ctypeAA.loc, Some(loc) => assert_matches!(loc.snippet(),
+            Some("type AA = A;")
+        ));
+        assert_matches!(&actionRead.loc, Some(loc) => assert_matches!(loc.snippet(),
+            Some("action Read, Write;")
+        ));
+        assert_matches!(&actionWrite.loc, Some(loc) => assert_matches!(loc.snippet(),
+            Some("action Read, Write;")
+        ));
+        assert_matches!(&actionList.loc, Some(loc) => assert_matches!(loc.snippet(),
+            Some("action List in Read appliesTo {\n                principal: [A],\n                resource: [B, C],\n                context: {\n                    s: Set<S>,\n                    ab: { a: AA, b: B },\n                }\n            };")
+        ));
+    }
+
+    #[test]
+    fn types() {
+        let (schema, _) = json_schema::Fragment::from_cedarschema_str(
+            r#"
+        namespace NS {
+            type S = String;
+            entity A;
+            entity B in A;
+            entity C in A {
+                bool: Bool,
+                s: S,
+                a: Set<A>,
+                b: { inner: B },
+            };
+            type AA = A;
+            action Read, Write;
+            action List in Read appliesTo {
+                principal: [A],
+                resource: [B, C],
+                context: {
+                    s: Set<S>,
+                    ab: { a: AA, b: B },
+                }
+            };
+        }
+        "#,
+            Extensions::all_available(),
+        )
+        .unwrap();
+        let ns = schema
+            .0
+            .get(&Some(Name::parse_unqualified_name("NS").unwrap()))
+            .expect("couldn't find namespace NS");
+
+        assert_matches!(ns
+            .entity_types
+            .get(&"C".parse().unwrap())
+            .expect("couldn't find entity C"), EntityType { kind: EntityTypeKind::Standard(entityC), ..} => { 
+        assert_matches!(entityC.member_of_types.first().unwrap().loc(), Some(loc) => {
+            assert_matches!(loc.snippet(), Some("A"));
+        });
+        assert_matches!(entityC.shape.0.loc(), Some(loc) => {
+            assert_matches!(loc.snippet(), Some("{\n                bool: Bool,\n                s: S,\n                a: Set<A>,\n                b: { inner: B },\n            }"));
+        });
+        assert_matches!(&entityC.shape.0, json_schema::Type::Type { ty: json_schema::TypeVariant::Record(rty), .. } => {
+            let b = rty.attributes.get("bool").expect("couldn't find attribute `bool` on entity C");
+            assert_matches!(b.ty.loc(), Some(loc) => {
+                assert_matches!(loc.snippet(), Some("Bool"));
+            });
+            let s = rty.attributes.get("s").expect("couldn't find attribute `s` on entity C");
+            assert_matches!(s.ty.loc(), Some(loc) => {
+                assert_matches!(loc.snippet(), Some("S"));
+            });
+            let a = rty.attributes.get("a").expect("couldn't find attribute `a` on entity C");
+            assert_matches!(a.ty.loc(), Some(loc) => {
+                assert_matches!(loc.snippet(), Some("Set<A>"));
+            });
+            assert_matches!(&a.ty, json_schema::Type::Type { ty: json_schema::TypeVariant::Set { element }, .. } => {
+                assert_matches!(element.loc(), Some(loc) => {
+                    assert_matches!(loc.snippet(), Some("A"));
+                });
+            });
+            let b = rty.attributes.get("b").expect("couldn't find attribute `b` on entity C");
+            assert_matches!(b.ty.loc(), Some(loc) => {
+                assert_matches!(loc.snippet(), Some("{ inner: B }"));
+            });
+            assert_matches!(&b.ty, json_schema::Type::Type { ty: json_schema::TypeVariant::Record(b_rty), .. } => {
+                let inner = b_rty.attributes.get("inner").expect("couldn't find inner attribute");
+                assert_matches!(inner.ty.loc(), Some(loc) => {
+                    assert_matches!(loc.snippet(), Some("B"));
+                });
+            });
+        });});
+
+        let ctypeAA = ns
+            .common_types
+            .get(&json_schema::CommonTypeId::new("AA".parse().unwrap()).unwrap())
+            .expect("couldn't find common type AA");
+        assert_matches!(ctypeAA.ty.loc(), Some(loc) => {
+            assert_matches!(loc.snippet(), Some("A"));
+        });
+
+        let actionList = ns.actions.get("List").expect("couldn't find action List");
+        assert_matches!(&actionList.applies_to, Some(appliesto) => {
+            assert_matches!(appliesto.principal_types.first().expect("principal types were empty").loc(), Some(loc) => {
+                assert_matches!(loc.snippet(), Some("A"));
+            });
+            assert_matches!(appliesto.resource_types.first().expect("resource types were empty").loc(), Some(loc) => {
+                assert_matches!(loc.snippet(), Some("B"));
+            });
+            assert_matches!(appliesto.context.loc(), Some(loc) => {
+                assert_matches!(loc.snippet(), Some("{\n                    s: Set<S>,\n                    ab: { a: AA, b: B },\n                }"));
+            });
+            assert_matches!(&appliesto.context.0, json_schema::Type::Type { ty: json_schema::TypeVariant::Record(rty), .. } => {
+                let s = rty.attributes.get("s").expect("couldn't find attribute `s` on context");
+                assert_matches!(s.ty.loc(), Some(loc) => {
+                    assert_matches!(loc.snippet(), Some("Set<S>"));
+                });
+                let ab = rty.attributes.get("ab").expect("couldn't find attribute `ab` on context");
+                assert_matches!(ab.ty.loc(), Some(loc) => {
+                    assert_matches!(loc.snippet(), Some("{ a: AA, b: B }"));
+                });
+            });
+        });
+    }
 }

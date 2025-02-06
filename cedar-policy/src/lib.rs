@@ -20,11 +20,9 @@
 // to add a separate test specifically for README examples by introducing a
 // private, empty, and unused function with `#[doc = include_str!("../README.md")]`.
 #![doc = include_str!("../README.md")]
-#![forbid(unsafe_code)]
-#![warn(rust_2018_idioms, clippy::pedantic, clippy::nursery)]
+#![warn(clippy::pedantic, clippy::use_self, clippy::option_if_let_else)]
 #![deny(
     missing_docs,
-    missing_debug_implementations,
     rustdoc::broken_intra_doc_links,
     rustdoc::private_intra_doc_links,
     rustdoc::invalid_codeblock_attributes,
@@ -32,13 +30,10 @@
     rustdoc::invalid_rust_codeblocks,
     rustdoc::bare_urls,
     clippy::doc_markdown,
-    clippy::doc_lazy_continuation
+    clippy::doc_lazy_continuation,
+    clippy::too_long_first_doc_paragraph
 )]
-#![allow(
-    clippy::needless_doctest_main,
-    clippy::must_use_candidate,
-    clippy::missing_const_for_fn
-)]
+#![allow(clippy::must_use_candidate)]
 // enable doc_auto_cfg feature if docsrs cfg is present
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
@@ -46,6 +41,7 @@
 /// Rust public API
 mod api;
 
+pub use api::version::{get_lang_version, get_sdk_version};
 pub use api::*;
 
 /// FFI utilities, see comments in the module itself

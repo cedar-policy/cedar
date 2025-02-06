@@ -15,10 +15,11 @@
  */
 
 use super::{
-    EntityUID, Expr, ExprKind, ExpressionConstructionError, Literal, Name, PartialValue, Unknown,
-    Value, ValueKind,
+    EntityUID, Expr, ExprKind, ExpressionConstructionError, Literal, Name, PartialValue, Type,
+    Unknown, Value, ValueKind,
 };
 use crate::entities::json::err::JsonSerializationError;
+use crate::extensions::Extensions;
 use crate::parser::err::ParseErrors;
 use crate::parser::{self, Loc};
 use miette::Diagnostic;
@@ -262,7 +263,7 @@ impl From<ValueKind> for RestrictedExpr {
             .expect("can't have duplicate keys, because the input `map` was already a BTreeMap"),
             ValueKind::ExtensionValue(ev) => {
                 let ev = Arc::unwrap_or_clone(ev);
-                RestrictedExpr::call_extension_fn(ev.constructor, ev.args)
+                ev.into()
             }
         }
     }
@@ -286,7 +287,7 @@ impl TryFrom<PartialValue> for RestrictedExpr {
 }
 
 /// Errors when converting `PartialValue` to `RestrictedExpr`
-#[derive(Debug, PartialEq, Diagnostic, Error)]
+#[derive(Debug, PartialEq, Eq, Diagnostic, Error)]
 pub enum PartialValueToRestrictedExprError {
     /// The `PartialValue` contains a nontrivial residual that isn't a valid `RestrictedExpr`
     #[error("residual is not a valid restricted expression: `{residual}`")]
@@ -447,6 +448,16 @@ impl<'a> BorrowedRestrictedExpr<'a> {
             _ => None,
         }
     }
+
+    /// Try to compute the runtime type of this expression. See
+    /// [`Expr::try_type_of`] for exactly what this computes.
+    ///
+    /// On a restricted expression, there are fewer cases where we might fail to
+    /// compute the type, but there are still `unknown`s and extension function
+    /// calls which may cause this function to return `None` .
+    pub fn try_type_of(&self, extensions: &Extensions<'_>) -> Option<Type> {
+        self.0.try_type_of(extensions)
+    }
 }
 
 /// Helper function: does the given `Expr` qualify as a "restricted" expression.
@@ -574,7 +585,7 @@ impl<'a> Deref for BorrowedRestrictedExpr<'a> {
     }
 }
 
-impl<'a> std::fmt::Display for BorrowedRestrictedExpr<'a> {
+impl std::fmt::Display for BorrowedRestrictedExpr<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", &self.0)
     }
@@ -598,13 +609,13 @@ impl<'a> RestrictedExprShapeOnly<'a> {
     }
 }
 
-impl<'a> PartialEq for RestrictedExprShapeOnly<'a> {
+impl PartialEq for RestrictedExprShapeOnly<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.0.eq_shape(&other.0)
     }
 }
 
-impl<'a> Hash for RestrictedExprShapeOnly<'a> {
+impl Hash for RestrictedExprShapeOnly<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.hash_shape(state);
     }
@@ -628,7 +639,7 @@ pub enum RestrictedExpressionError {
 /// Error subtypes for [`RestrictedExpressionError`]
 pub mod restricted_expr_errors {
     use super::Expr;
-    use crate::impl_diagnostic_from_expr_field;
+    use crate::impl_diagnostic_from_method_on_field;
     use miette::Diagnostic;
     use smol_str::SmolStr;
     use thiserror::Error;
@@ -649,9 +660,9 @@ pub mod restricted_expr_errors {
         pub(crate) expr: Expr,
     }
 
-    // custom impl of `Diagnostic`: take source location from the `expr` field
+    // custom impl of `Diagnostic`: take source location from the `expr` field's `.source_loc()` method
     impl Diagnostic for InvalidRestrictedExpressionError {
-        impl_diagnostic_from_expr_field!(expr);
+        impl_diagnostic_from_method_on_field!(expr, source_loc);
     }
 }
 

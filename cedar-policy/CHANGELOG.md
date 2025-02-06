@@ -1,6 +1,7 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+Changes affecting only the CLI are documented [separately](../cedar-policy-cli/CHANGELOG.md).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -13,12 +14,103 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 Cedar Language Version: TBD
 
 ### Added
-- Implemented [RFC 74](https://github.com/cedar-policy/rfcs/pull/74): A new experimental API (`compute_entity_manifest`)
-  that provides the Entity Manifest: a data
-  structure that describes what data is required to satisfy a
-  Cedar request. To use this API you must enable the `entity-manifest` feature flag.
 
-## [4.0.0] - Coming soon
+- Implemented [RFC 53 (enumerated entity types)](https://github.com/cedar-policy/rfcs/blob/main/text/0053-enum-entities.md)  (#1377)
+
+### Fixed
+
+- Assume sufficient stack space when it cannot be determined (#1446, resolving #1443)
+
+## [4.3.1] - Coming soon
+Cedar Language Version: 4.2
+
+### Fixed
+
+- Disable doc generation for feature `protobufs`, unblocking that for other features (#1434)
+
+## [4.3.0] - 2025-01-21
+Cedar Language Version: 4.2
+
+### Added
+
+- Implemented [RFC 62 (extended `has` operator)](https://github.com/cedar-policy/rfcs/blob/main/text/0062-extended-has.md)  (#1327, resolving #1329)
+- Implemented [RFC 80 (`datetime` extension)](https://github.com/strongdm/cedar-rfcs/blob/datetime-rfc/text/0080-datetime-extension.md) as an experimental feature under flag `datetime` (#1276, #1415)
+- Added new `.isEmpty()` operator on sets (#1358, resolving #1356)
+- Implemented [RFC 48 (schema annotations)](https://github.com/cedar-policy/rfcs/blob/main/text/0048-schema-annotations.md) (#1316)
+- Implemented [RFC 74 (entity manifests and slicing)](https://github.com/cedar-policy/rfcs/pull/74) behind the experimental `entity-manifest` flag (#1239)
+- Added protobuf schemas and (de)serialization behind the experimental `protobufs` flag (#1277, #1345)
+- New `Entity::new_with_tags()` and `Entity::tag()` functions (#1402, resolving #1374)
+- Added `Request::context` and `Context::get` methods to allow easy extraction of  values from the context by key (#1318)
+- For the `partial-eval` experimental feature, added `PartialResponse::reauthorize_with_bindings` to accept substitutions from an iterator and deprecated `PartialResponse::reauthorize` (#1387)
+- For the `partial-eval` experimental feature, added `RequestBuild::unknown_principal_with_type` and `RequestBuild::unknown_resource_with_type` methods, allowing an unknown principal or resource to be constrained to a certain entity type (#1391)
+- Added `Clone` implementations for more types (#1324)
+
+### Changed
+
+- Stopped emitting warnings for identifiers containing certain printable ASCII
+  characters (e.g., `/` and `:`) (#1336, resolving #621)
+
+### Fixed
+
+- Attach source code to certain errors so that `miette::Report`s derived from these errors are self-contained (#1351, resolving #977 and #1335)
+
+## [4.2.2] - 2024-11-11
+Cedar Language version: 4.1
+
+### Changed
+
+- The error associated with parsing a non-existent extension function additionally
+  includes a suggestion based on available extension functions (#1280, resolving #332).
+- The error associated with parsing a non-existent extension method additionally
+  includes a suggestion based on available extension methods (#1289, resolving #246).
+- Improved entity validation speed, particularly for large schemas with many
+  actions (#1290 and #1296, resolving #1285)
+
+### Fixed
+
+- Some misleading parser errors for JSON schema with mistakes in nested attribute definitions (#1270, resolving #417)
+- Cedar schema printer now correctly prints entity tags (#1304)
+
+## [4.2.1] - 2024-10-08
+Cedar Language version: 4.1
+
+### Fixed
+
+- Fixes a minor issues preventing documentation from building on docs.rs
+
+## [4.2.0] - 2024-10-07
+Cedar Language version: 4.1
+
+### Added
+
+- Added `sub_entity_literals` API (#1233).
+- Added level validation [RFC 76](https://github.com/cedar-policy/rfcs/pull/76) as an experimental feature.
+- Annotations without explicit values. It is now possible to write an annotation `@my_annotation` as
+  short-hand for `@my_annotation("")` (#1231, resolving #1031).
+- Stabilized [RFC 82](https://github.com/cedar-policy/rfcs/pull/82), removing
+  the experimental `entity-tags` feature flag. That functionality is now available
+  without the feature flag.
+
+### Changed
+
+- The validator provides a more specific hint when an action ID cannot be found
+  and the same action ID with `Action::` has been defined (#1258, resolving #166)
+
+## [4.1.0] - 2024-09-30
+Cedar Language Version: 4.0
+
+### Added
+
+- Added `get_entity_literals` API (#1149).
+- Implemented [RFC 82](https://github.com/cedar-policy/rfcs/pull/82), adding
+  entity tags to the Cedar language under experimental flag `entity-tags` (#1204, #1207, #1213, #1218)
+- Added public APIs to get language and SDK version numbers (#1219).
+
+### Fixed
+
+- The formatter will now consistently add a trailing newline. (resolving #1217)
+
+## [4.0.0] - 2024-09-16
 Cedar Language Version: 4.0
 
 ### Added
@@ -29,7 +121,6 @@ Cedar Language Version: 4.0
   typename that can resolve to either an entity or common type, matching the
   behavior of typenames written in the human-readable (Cedar) syntax. (#1060, as
   part of resolving #579)
-- Add convenience methods to see how many policies and templates a policy set has (#1179)
 
 ### Changed
 
@@ -90,6 +181,33 @@ Cedar Language Version: 4.0
   extension type. This was already an error for human-readable schema syntax. (#890, resolving #875)
 - (*) Schemas can now reference entity and common types defined in the empty namespace,
   even in contexts occurring in a non-empty namespace. (#1060, resolving #579)
+
+## [3.4.1] - 2024-09-23
+Cedar Language Version: 3.4
+
+### Fixed
+
+- The schema format conversion method `SchemaFragment::to_cedarschema` will now
+  return a name collision error when trying to convert a schema where any
+  namespaced type name collides with an unqualified type. This avoids a
+  situation where format conversion could change the target of an entity type
+  reference. (#1212, resolving #1063) This _does not_ change what schema are
+  accepted by the parsing functions for either format.
+
+## [3.4.0] - 2024-09-16
+Cedar Language Version: 3.4
+
+### Added
+
+- Convenience methods `num_of_policies()` and `num_of_templates()` to see how
+  many policies and templates a policy set has (#1180)
+- `Entity` is now `Hash`. The hash implementation compares the hash of
+  the entity UID (#1186)
+
+### Fixed
+
+- (*) `Entities::from_entities()` will now correctly reject record
+  attributes with superfluous attributes. (#1177, resolving #1176)
 
 ## [3.3.0] - 2024-08-19
 Cedar Language Version: 3.4
@@ -446,6 +564,14 @@ Cedar Language Version: 3.0
   To continue using this feature you must enable the `permissive-validate`
   feature flag. (#428)
 
+## [2.5.0] - 2024-09-16
+Cedar Language Version: 2.2
+
+### Added
+
+- Convenience methods `num_of_policies()` and `num_of_templates()` to see how
+  many policies and templates a policy set has (#1180)
+
 ## [2.4.7] - 2024-05-31
 Cedar Language Version: 2.2
 
@@ -673,8 +799,14 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.0.0...main
-[4.0.0]: https://github.com/cedar-policy/cedar/compare/v3.3.0...v4.0.0
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.2.2...main
+[4.2.2]: https://github.com/cedar-policy/cedar/compare/v4.2.1...v4.2.2
+[4.2.1]: https://github.com/cedar-policy/cedar/compare/v4.2.0...v4.2.1
+[4.2.0]: https://github.com/cedar-policy/cedar/compare/v4.1.0...v4.2.0
+[4.1.0]: https://github.com/cedar-policy/cedar/compare/v4.0.0...v4.1.0
+[4.0.0]: https://github.com/cedar-policy/cedar/compare/v3.4.0...v4.0.0
+[3.4.1]: https://github.com/cedar-policy/cedar/compare/v3.4.0...v3.4.1
+[3.4.0]: https://github.com/cedar-policy/cedar/compare/v3.3.0...v3.4.0
 [3.3.0]: https://github.com/cedar-policy/cedar/compare/v3.2.4...v3.3.0
 [3.2.4]: https://github.com/cedar-policy/cedar/compare/v3.2.1...v3.2.4
 [3.2.1]: https://github.com/cedar-policy/cedar/compare/v3.2.0...v3.2.1
@@ -685,7 +817,8 @@ Cedar Language Version: 2.0
 [3.1.1]: https://github.com/cedar-policy/cedar/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/cedar-policy/cedar/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/cedar-policy/cedar/compare/v3.0.0...v3.0.1
-[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.4.7...v3.0.0
+[3.0.0]: https://github.com/cedar-policy/cedar/compare/v2.5.0...v3.0.0
+[2.5.0]: https://github.com/cedar-policy/cedar/compare/v2.4.7...v2.5.0
 [2.4.7]: https://github.com/cedar-policy/cedar/compare/v2.4.6...v2.4.7
 [2.4.6]: https://github.com/cedar-policy/cedar/compare/v2.4.5...v2.4.6
 [2.4.5]: https://github.com/cedar-policy/cedar/compare/v2.4.4...v2.4.5

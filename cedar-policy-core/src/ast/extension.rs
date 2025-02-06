@@ -18,8 +18,8 @@ use crate::ast::*;
 use crate::entities::SchemaType;
 use crate::evaluator;
 use std::any::Any;
-use std::collections::HashMap;
-use std::fmt::{Debug, Display};
+use std::collections::{BTreeSet, HashMap};
+use std::fmt::Debug;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::Arc;
 
@@ -34,14 +34,21 @@ pub struct Extension {
     name: Name,
     /// Extension functions. These are legal to call in Cedar expressions.
     functions: HashMap<Name, ExtensionFunction>,
+    /// Types with operator overloading
+    types_with_operator_overloading: BTreeSet<Name>,
 }
 
 impl Extension {
     /// Create a new `Extension` with the given name and extension functions
-    pub fn new(name: Name, functions: impl IntoIterator<Item = ExtensionFunction>) -> Self {
+    pub fn new(
+        name: Name,
+        functions: impl IntoIterator<Item = ExtensionFunction>,
+        types_with_operator_overloading: impl IntoIterator<Item = Name>,
+    ) -> Self {
         Self {
             name,
             functions: functions.into_iter().map(|f| (f.name.clone(), f)).collect(),
+            types_with_operator_overloading: types_with_operator_overloading.into_iter().collect(),
         }
     }
 
@@ -65,6 +72,11 @@ impl Extension {
     /// in this extension
     pub fn ext_types(&self) -> impl Iterator<Item = &Name> + '_ {
         self.funcs().flat_map(|func| func.ext_types())
+    }
+
+    /// Iterate over extension types with operator overloading
+    pub fn types_with_operator_overloading(&self) -> impl Iterator<Item = &Name> + '_ {
+        self.types_with_operator_overloading.iter()
     }
 }
 
@@ -104,9 +116,22 @@ pub enum CallStyle {
 
 // Note: we could use currying to make this a little nicer
 
-/// Trait object that implements the extension function call.
-pub type ExtensionFunctionObject =
-    Box<dyn Fn(&[Value]) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static>;
+macro_rules! extension_function_object {
+    ( $( $tys:ty ), * ) => {
+        Box<dyn Fn($($tys,)*) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static>
+    }
+}
+
+/// Trait object that implements the extension function call accepting any number of arguments.
+pub type ExtensionFunctionObject = extension_function_object!(&[Value]);
+/// Trait object that implements the extension function call accepting exactly 0 arguments
+pub type NullaryExtensionFunctionObject = extension_function_object!();
+/// Trait object that implements the extension function call accepting exactly 1 arguments
+pub type UnaryExtensionFunctionObject = extension_function_object!(&Value);
+/// Trait object that implements the extension function call accepting exactly 2 arguments
+pub type BinaryExtensionFunctionObject = extension_function_object!(&Value, &Value);
+/// Trait object that implements the extension function call accepting exactly 3 arguments
+pub type TernaryExtensionFunctionObject = extension_function_object!(&Value, &Value, &Value);
 
 /// Extension function. These can be called by the given `name` in Ceder
 /// expressions.
@@ -152,7 +177,7 @@ impl ExtensionFunction {
     pub fn nullary(
         name: Name,
         style: CallStyle,
-        func: Box<dyn Fn() -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static>,
+        func: NullaryExtensionFunctionObject,
         return_type: SchemaType,
     ) -> Self {
         Self::new(
@@ -180,14 +205,14 @@ impl ExtensionFunction {
     pub fn partial_eval_unknown(
         name: Name,
         style: CallStyle,
-        func: Box<dyn Fn(Value) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static>,
+        func: UnaryExtensionFunctionObject,
         arg_type: SchemaType,
     ) -> Self {
         Self::new(
             name.clone(),
             style,
             Box::new(move |args: &[Value]| match args.first() {
-                Some(arg) => func(arg.clone()),
+                Some(arg) => func(arg),
                 None => Err(evaluator::EvaluationError::wrong_num_arguments(
                     name.clone(),
                     1,
@@ -201,10 +226,11 @@ impl ExtensionFunction {
     }
 
     /// Create a new `ExtensionFunction` taking one argument
+    #[allow(clippy::type_complexity)]
     pub fn unary(
         name: Name,
         style: CallStyle,
-        func: Box<dyn Fn(Value) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static>,
+        func: UnaryExtensionFunctionObject,
         return_type: SchemaType,
         arg_type: SchemaType,
     ) -> Self {
@@ -212,7 +238,7 @@ impl ExtensionFunction {
             name.clone(),
             style,
             Box::new(move |args: &[Value]| match &args {
-                &[arg] => func(arg.clone()),
+                &[arg] => func(arg),
                 _ => Err(evaluator::EvaluationError::wrong_num_arguments(
                     name.clone(),
                     1,
@@ -226,12 +252,11 @@ impl ExtensionFunction {
     }
 
     /// Create a new `ExtensionFunction` taking two arguments
+    #[allow(clippy::type_complexity)]
     pub fn binary(
         name: Name,
         style: CallStyle,
-        func: Box<
-            dyn Fn(Value, Value) -> evaluator::Result<ExtensionOutputValue> + Sync + Send + 'static,
-        >,
+        func: BinaryExtensionFunctionObject,
         return_type: SchemaType,
         arg_types: (SchemaType, SchemaType),
     ) -> Self {
@@ -239,7 +264,7 @@ impl ExtensionFunction {
             name.clone(),
             style,
             Box::new(move |args: &[Value]| match &args {
-                &[first, second] => func(first.clone(), second.clone()),
+                &[first, second] => func(first, second),
                 _ => Err(evaluator::EvaluationError::wrong_num_arguments(
                     name.clone(),
                     2,
@@ -253,15 +278,11 @@ impl ExtensionFunction {
     }
 
     /// Create a new `ExtensionFunction` taking three arguments
+    #[allow(clippy::type_complexity)]
     pub fn ternary(
         name: Name,
         style: CallStyle,
-        func: Box<
-            dyn Fn(Value, Value, Value) -> evaluator::Result<ExtensionOutputValue>
-                + Sync
-                + Send
-                + 'static,
-        >,
+        func: TernaryExtensionFunctionObject,
         return_type: SchemaType,
         arg_types: (SchemaType, SchemaType, SchemaType),
     ) -> Self {
@@ -269,7 +290,7 @@ impl ExtensionFunction {
             name.clone(),
             style,
             Box::new(move |args: &[Value]| match &args {
-                &[first, second, third] => func(first.clone(), second.clone(), third.clone()),
+                &[first, second, third] => func(first, second, third),
                 _ => Err(evaluator::EvaluationError::wrong_num_arguments(
                     name.clone(),
                     3,
@@ -343,12 +364,15 @@ impl std::fmt::Debug for ExtensionFunction {
 /// Anything implementing this trait can be used as a first-class value in
 /// Cedar. For instance, the `ipaddr` extension uses this mechanism
 /// to implement IPAddr as a Cedar first-class value.
-pub trait ExtensionValue: Debug + Display + Send + Sync + UnwindSafe + RefUnwindSafe {
+pub trait ExtensionValue: Debug + Send + Sync + UnwindSafe + RefUnwindSafe {
     /// Get the name of the type of this value.
     ///
     /// Cedar has nominal typing, so two values have the same type iff they
     /// return the same typename here.
     fn typename(&self) -> Name;
+
+    /// If it supports operator overloading
+    fn supports_operator_overloading(&self) -> bool;
 }
 
 impl<V: ExtensionValue> StaticallyTyped for V {
@@ -360,30 +384,26 @@ impl<V: ExtensionValue> StaticallyTyped for V {
 }
 
 #[derive(Debug, Clone)]
-/// Object container for extension values, also stores the constructor-and-args
-/// that can reproduce the value (important for converting the value back to
-/// `RestrictedExpr` for instance)
-pub struct ExtensionValueWithArgs {
-    value: Arc<dyn InternalExtensionValue>,
-    pub(crate) constructor: Name,
-    /// Args are stored in `RestrictedExpr` form, just because that's most
-    /// convenient for reconstructing a `RestrictedExpr` that reproduces this
-    /// extension value
+/// Object container for extension values
+/// An extension value must be representable by a [`RestrictedExpr`]
+/// Specifically, it will be a function call `func` on `args`
+/// Note that `func` may not be the constructor. A counterexample is that a
+/// `datetime` is represented by an `offset` method call.
+/// Nevertheless, an invariant is that `eval(<func>(<args>)) == value`
+pub struct RepresentableExtensionValue {
+    pub(crate) func: Name,
     pub(crate) args: Vec<RestrictedExpr>,
+    pub(crate) value: Arc<dyn InternalExtensionValue>,
 }
 
-impl ExtensionValueWithArgs {
-    /// Create a new `ExtensionValueWithArgs`
+impl RepresentableExtensionValue {
+    /// Create a new [`RepresentableExtensionValue`]
     pub fn new(
         value: Arc<dyn InternalExtensionValue + Send + Sync>,
-        constructor: Name,
+        func: Name,
         args: Vec<RestrictedExpr>,
     ) -> Self {
-        Self {
-            value,
-            constructor,
-            args,
-        }
+        Self { value, func, args }
     }
 
     /// Get the internal value
@@ -396,46 +416,40 @@ impl ExtensionValueWithArgs {
         self.value.typename()
     }
 
-    /// Get the constructor and args that can reproduce this value
-    pub fn constructor_and_args(&self) -> (&Name, &[RestrictedExpr]) {
-        (&self.constructor, &self.args)
+    /// If this value supports operator overloading
+    pub(crate) fn supports_operator_overloading(&self) -> bool {
+        self.value.supports_operator_overloading()
     }
 }
 
-impl From<ExtensionValueWithArgs> for Expr {
-    fn from(val: ExtensionValueWithArgs) -> Self {
-        ExprBuilder::new().call_extension_fn(val.constructor, val.args.into_iter().map(Into::into))
+impl From<RepresentableExtensionValue> for RestrictedExpr {
+    fn from(val: RepresentableExtensionValue) -> Self {
+        RestrictedExpr::call_extension_fn(val.func, val.args)
     }
 }
 
-impl StaticallyTyped for ExtensionValueWithArgs {
+impl StaticallyTyped for RepresentableExtensionValue {
     fn type_of(&self) -> Type {
         self.value.type_of()
     }
 }
 
-impl Display for ExtensionValueWithArgs {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value)
-    }
-}
-
-impl PartialEq for ExtensionValueWithArgs {
+impl PartialEq for RepresentableExtensionValue {
     fn eq(&self, other: &Self) -> bool {
         // Values that are equal are equal regardless of which arguments made them
         self.value.as_ref() == other.value.as_ref()
     }
 }
 
-impl Eq for ExtensionValueWithArgs {}
+impl Eq for RepresentableExtensionValue {}
 
-impl PartialOrd for ExtensionValueWithArgs {
+impl PartialOrd for RepresentableExtensionValue {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for ExtensionValueWithArgs {
+impl Ord for RepresentableExtensionValue {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.value.cmp(&other.value)
     }
@@ -464,7 +478,7 @@ pub trait InternalExtensionValue: ExtensionValue {
     fn cmp_extvalue(&self, other: &dyn InternalExtensionValue) -> std::cmp::Ordering;
 }
 
-impl<V: 'static + Eq + Ord + ExtensionValue + Send + Sync> InternalExtensionValue for V {
+impl<V: 'static + Eq + Ord + ExtensionValue + Send + Sync + Clone> InternalExtensionValue for V {
     fn as_any(&self) -> &dyn Any {
         self
     }

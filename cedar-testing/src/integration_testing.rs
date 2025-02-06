@@ -27,6 +27,8 @@ use cedar_policy_core::ast::{EntityUID, PolicySet, Request};
 use cedar_policy_core::entities::{self, json::err::JsonDeserializationErrorContext, Entities};
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::{jsonvalue::JsonValueWithNoDuplicateKeys, parser};
+#[cfg(feature = "entity-manifest")]
+use cedar_policy_validator::entity_manifest::compute_entity_manifest;
 use cedar_policy_validator::ValidatorSchema;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -152,7 +154,7 @@ pub fn parse_schema_from_test(test: &JsonTest) -> ValidatorSchema {
     let schema_file = resolve_integration_test_path(&test.schema);
     let schema_text = std::fs::read_to_string(schema_file)
         .unwrap_or_else(|e| panic!("error loading schema file {}: {e}", &test.schema));
-    ValidatorSchema::from_cedarschema_str(&schema_text, &Extensions::all_available())
+    ValidatorSchema::from_cedarschema_str(&schema_text, Extensions::all_available())
         .unwrap_or_else(|e| panic!("error parsing schema in {}: {e}", &test.schema))
         .0
 }
@@ -182,7 +184,7 @@ pub fn parse_entities_from_test(test: &JsonTest, schema: &ValidatorSchema) -> En
 
 // PANIC SAFETY this is testing code
 #[allow(clippy::panic)]
-fn parse_entity_uid(json: JsonValueWithNoDuplicateKeys, error_string: String) -> EntityUID {
+fn parse_entity_uid(json: JsonValueWithNoDuplicateKeys, error_string: &str) -> EntityUID {
     let parsed: entities::EntityUidJson =
         serde_json::from_value(json.into()).unwrap_or_else(|e| panic!("{}: {e}", error_string));
     parsed
@@ -204,17 +206,17 @@ pub fn parse_request_from_test(
         "Failed to parse principal for request \"{}\" in {}",
         json_request.description, test_name
     );
-    let principal = parse_entity_uid(json_request.principal.clone(), error_string);
+    let principal = parse_entity_uid(json_request.principal.clone(), &error_string);
     let error_string = format!(
         "Failed to parse action for request \"{}\" in {}",
         json_request.description, test_name
     );
-    let action = parse_entity_uid(json_request.action.clone(), error_string);
+    let action = parse_entity_uid(json_request.action.clone(), &error_string);
     let error_string = format!(
         "Failed to parse resource for request \"{}\" in {}",
         json_request.description, test_name
     );
-    let resource = parse_entity_uid(json_request.resource.clone(), error_string);
+    let resource = parse_entity_uid(json_request.resource.clone(), &error_string);
 
     let context_schema = cedar_policy_validator::context_schema_for_action(schema, &action)
         .unwrap_or_else(|| {
@@ -252,6 +254,47 @@ pub fn parse_request_from_test(
     })
 }
 
+/// Asserts that the test response matches the json request,
+/// including errors when the error comparison mode is enabled.
+fn check_matches_json(
+    response: &TestResponse,
+    json_request: &JsonRequest,
+    error_comparison_mode: &ErrorComparisonMode,
+    test_name: &str,
+) {
+    // check decision
+    assert_eq!(
+        response.response.decision(),
+        json_request.decision,
+        "test {test_name} failed for request \"{}\": unexpected decision",
+        &json_request.description
+    );
+    // check reason
+    let reason: HashSet<PolicyId> = response.response.diagnostics().reason().cloned().collect();
+    assert_eq!(
+        reason,
+        json_request.reason.iter().cloned().collect(),
+        "test {test_name} failed for request \"{}\": unexpected reason",
+        &json_request.description
+    );
+    // check errors, if applicable
+    // for now, the integration tests only support the `PolicyIds` comparison mode
+    if matches!(error_comparison_mode, ErrorComparisonMode::PolicyIds) {
+        let errors: HashSet<PolicyId> = response
+            .response
+            .diagnostics()
+            .errors()
+            .map(|err| err.policy_id.clone())
+            .collect();
+        assert_eq!(
+            errors,
+            json_request.errors.iter().cloned().collect(),
+            "test {test_name} failed for request \"{}\": unexpected errors",
+            &json_request.description
+        );
+    }
+}
+
 /// Run an integration test starting from a pre-parsed `JsonTest`.
 ///
 /// # Panics
@@ -260,16 +303,16 @@ pub fn parse_request_from_test(
 // PANIC SAFETY this is testing code
 #[allow(clippy::panic)]
 pub fn perform_integration_test(
-    policies: PolicySet,
-    entities: Entities,
-    schema: ValidatorSchema,
+    policies: &PolicySet,
+    entities: &Entities,
+    schema: &ValidatorSchema,
     should_validate: bool,
     requests: Vec<JsonRequest>,
     test_name: &str,
     test_impl: &impl CedarTestImplementation,
 ) {
     let validation_result = test_impl
-        .validate(&schema, &policies, ValidationMode::default().into())
+        .validate(schema, policies, ValidationMode::default().into())
         .expect("Validation failed");
     if should_validate {
         assert!(
@@ -290,42 +333,32 @@ pub fn perform_integration_test(
     }
 
     for json_request in requests {
-        let request = parse_request_from_test(&json_request, &schema, test_name);
+        let request = parse_request_from_test(&json_request, schema, test_name);
         let response = test_impl
-            .is_authorized(&request, &policies, &entities)
+            .is_authorized(&request, policies, entities)
             .expect("Authorization failed");
-        // check decision
-        assert_eq!(
-            response.response.decision(),
-            json_request.decision,
-            "test {test_name} failed for request \"{}\": unexpected decision",
-            &json_request.description
+        check_matches_json(
+            &response,
+            &json_request,
+            &test_impl.error_comparison_mode(),
+            test_name,
         );
-        // check reason
-        let reason: HashSet<PolicyId> = response.response.diagnostics().reason().cloned().collect();
-        assert_eq!(
-            reason,
-            json_request.reason.into_iter().collect(),
-            "test {test_name} failed for request \"{}\": unexpected reason",
-            &json_request.description
-        );
-        // check errors, if applicable
-        // for now, the integration tests only support the `PolicyIds` comparison mode
-        if matches!(
-            test_impl.error_comparison_mode(),
-            ErrorComparisonMode::PolicyIds
-        ) {
-            let errors: HashSet<PolicyId> = response
-                .response
-                .diagnostics()
-                .errors()
-                .map(|err| err.policy_id.clone())
-                .collect();
-            assert_eq!(
-                errors,
-                json_request.errors.into_iter().collect(),
-                "test {test_name} failed for request \"{}\": unexpected errors",
-                &json_request.description
+
+        // now check that entity slicing arrives at the same decision
+        #[cfg(feature = "entity-manifest")]
+        if should_validate {
+            let entity_manifest = compute_entity_manifest(&schema, &policies).expect("test failed");
+            let entity_slice = entity_manifest
+                .slice_entities(&entities, &request)
+                .expect("test failed");
+            let slice_response = test_impl
+                .is_authorized(&request, &policies, &entity_slice)
+                .expect("Authorization failed");
+            check_matches_json(
+                &slice_response,
+                &json_request,
+                &test_impl.error_comparison_mode(),
+                test_name,
             );
         }
     }
@@ -357,9 +390,9 @@ pub fn perform_integration_test_from_json_custom(
     let schema = parse_schema_from_test(&test);
     let entities = parse_entities_from_test(&test, &schema);
     perform_integration_test(
-        policies,
-        entities,
-        schema,
+        &policies,
+        &entities,
+        &schema,
         test.should_validate,
         test.requests,
         test_name.as_ref(),

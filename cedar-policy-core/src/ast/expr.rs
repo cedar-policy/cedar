@@ -14,11 +14,18 @@
  * limitations under the License.
  */
 
-use crate::{ast::*, parser::err::ParseErrors, parser::Loc};
+use crate::{
+    ast::*,
+    expr_builder::{self, ExprBuilder as _},
+    extensions::Extensions,
+    parser::{err::ParseErrors, Loc},
+};
+use educe::Educe;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::{
+    borrow::Cow,
     collections::{btree_map, BTreeMap, HashMap},
     hash::{Hash, Hasher},
     mem,
@@ -35,9 +42,12 @@ extern crate tsify;
 /// where the expression was written in policy source code, and some generic
 /// data which is stored on each node of the AST.
 /// Cloning is O(1).
-#[derive(Serialize, Deserialize, Hash, Debug, Clone, PartialEq, Eq)]
+#[derive(Educe, Serialize, Deserialize, Debug, Clone)]
+#[educe(PartialEq, Eq, Hash)]
 pub struct Expr<T = ()> {
     expr_kind: ExprKind<T>,
+    #[educe(PartialEq(ignore))]
+    #[educe(Hash(ignore))]
     source_loc: Option<Loc>,
     data: T,
 }
@@ -166,7 +176,7 @@ impl From<ValueKind> for Expr {
                     .map(|(k, v)| (k, Expr::from(v))),
             )
             .expect("cannot have duplicate key because the input was already a BTreeMap"),
-            ValueKind::ExtensionValue(ev) => Expr::from(ev.as_ref().clone()),
+            ValueKind::ExtensionValue(ev) => RestrictedExpr::from(ev.as_ref().clone()).into(),
         }
     }
 }
@@ -176,30 +186,6 @@ impl From<PartialValue> for Expr {
         match pv {
             PartialValue::Value(v) => Expr::from(v),
             PartialValue::Residual(expr) => expr,
-        }
-    }
-}
-
-impl<T> ExprKind<T> {
-    /// Describe this operator for error messages.
-    pub fn operator_description(self: &ExprKind<T>) -> String {
-        match self {
-            ExprKind::Lit(_) => "literal".to_string(),
-            ExprKind::Var(_) => "variable".to_string(),
-            ExprKind::Slot(_) => "slot".to_string(),
-            ExprKind::Unknown(_) => "unknown".to_string(),
-            ExprKind::If { .. } => "if".to_string(),
-            ExprKind::And { .. } => "&&".to_string(),
-            ExprKind::Or { .. } => "||".to_string(),
-            ExprKind::UnaryApp { op, .. } => op.to_string(),
-            ExprKind::BinaryApp { op, .. } => op.to_string(),
-            ExprKind::ExtensionFunctionApp { fn_name, .. } => fn_name.to_string(),
-            ExprKind::GetAttr { .. } => "get attribute".to_string(),
-            ExprKind::HasAttr { .. } => "has attribute".to_string(),
-            ExprKind::Like { .. } => "like".to_string(),
-            ExprKind::Is { .. } => "is".to_string(),
-            ExprKind::Set(_) => "set".to_string(),
-            ExprKind::Record(_) => "record".to_string(),
         }
     }
 }
@@ -234,6 +220,12 @@ impl<T> Expr<T> {
     /// `Expr`.
     pub fn into_data(self) -> T {
         self.data
+    }
+
+    /// Consume the `Expr`, returning the `ExprKind`, `source_loc`, and stored
+    /// data.
+    pub fn into_parts(self) -> (ExprKind<T>, Option<Loc>, T) {
+        (self.expr_kind, self.source_loc, self.data)
     }
 
     /// Access the `Loc` stored on the `Expr`.
@@ -310,6 +302,90 @@ impl<T> Expr<T> {
                     | ExprKind::Record(_)
             )
         })
+    }
+
+    /// Try to compute the runtime type of this expression. This operation may
+    /// fail (returning `None`), for example, when asked to get the type of any
+    /// variables, any attributes of entities or records, or an `unknown`
+    /// without an explicitly annotated type.
+    ///
+    /// Also note that this is _not_ typechecking the expression. It does not
+    /// check that the expression actually evaluates to a value (as opposed to
+    /// erroring).
+    ///
+    /// Because of these limitations, this function should only be used to
+    /// obtain a type for use in diagnostics such as error strings.
+    pub fn try_type_of(&self, extensions: &Extensions<'_>) -> Option<Type> {
+        match &self.expr_kind {
+            ExprKind::Lit(l) => Some(l.type_of()),
+            ExprKind::Var(_) => None,
+            ExprKind::Slot(_) => None,
+            ExprKind::Unknown(u) => u.type_annotation.clone(),
+            ExprKind::If {
+                then_expr,
+                else_expr,
+                ..
+            } => {
+                let type_of_then = then_expr.try_type_of(extensions);
+                let type_of_else = else_expr.try_type_of(extensions);
+                if type_of_then == type_of_else {
+                    type_of_then
+                } else {
+                    None
+                }
+            }
+            ExprKind::And { .. } => Some(Type::Bool),
+            ExprKind::Or { .. } => Some(Type::Bool),
+            ExprKind::UnaryApp {
+                op: UnaryOp::Neg, ..
+            } => Some(Type::Long),
+            ExprKind::UnaryApp {
+                op: UnaryOp::Not, ..
+            } => Some(Type::Bool),
+            ExprKind::UnaryApp {
+                op: UnaryOp::IsEmpty,
+                ..
+            } => Some(Type::Bool),
+            ExprKind::BinaryApp {
+                op: BinaryOp::Add | BinaryOp::Mul | BinaryOp::Sub,
+                ..
+            } => Some(Type::Long),
+            ExprKind::BinaryApp {
+                op:
+                    BinaryOp::Contains
+                    | BinaryOp::ContainsAll
+                    | BinaryOp::ContainsAny
+                    | BinaryOp::Eq
+                    | BinaryOp::In
+                    | BinaryOp::Less
+                    | BinaryOp::LessEq,
+                ..
+            } => Some(Type::Bool),
+            ExprKind::BinaryApp {
+                op: BinaryOp::HasTag,
+                ..
+            } => Some(Type::Bool),
+            ExprKind::ExtensionFunctionApp { fn_name, .. } => extensions
+                .func(fn_name)
+                .ok()?
+                .return_type()
+                .map(|rty| rty.clone().into()),
+            // We could try to be more complete here, but we can't do all that
+            // much better without evaluating the argument. Even if we know it's
+            // a record `Type::Record` tells us nothing about the type of the
+            // attribute.
+            ExprKind::GetAttr { .. } => None,
+            // similarly to `GetAttr`
+            ExprKind::BinaryApp {
+                op: BinaryOp::GetTag,
+                ..
+            } => None,
+            ExprKind::HasAttr { .. } => Some(Type::Bool),
+            ExprKind::Like { .. } => Some(Type::Bool),
+            ExprKind::Is { .. } => Some(Type::Bool),
+            ExprKind::Set(_) => Some(Type::Set),
+            ExprKind::Record(_) => Some(Type::Record),
+        }
     }
 }
 
@@ -424,20 +500,37 @@ impl Expr {
         ExprBuilder::new().is_in(e1, e2)
     }
 
-    /// Create a 'contains' expression.
+    /// Create a `contains` expression.
     /// First argument must have Set type.
     pub fn contains(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().contains(e1, e2)
     }
 
-    /// Create a 'contains_all' expression. Arguments must evaluate to Set type
+    /// Create a `containsAll` expression. Arguments must evaluate to Set type
     pub fn contains_all(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().contains_all(e1, e2)
     }
 
-    /// Create an 'contains_any' expression. Arguments must evaluate to Set type
+    /// Create a `containsAny` expression. Arguments must evaluate to Set type
     pub fn contains_any(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().contains_any(e1, e2)
+    }
+
+    /// Create a `isEmpty` expression. Argument must evaluate to Set type
+    pub fn is_empty(e: Expr) -> Self {
+        ExprBuilder::new().is_empty(e)
+    }
+
+    /// Create a `getTag` expression.
+    /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
+    pub fn get_tag(expr: Expr, tag: Expr) -> Self {
+        ExprBuilder::new().get_tag(expr, tag)
+    }
+
+    /// Create a `hasTag` expression.
+    /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
+    pub fn has_tag(expr: Expr, tag: Expr) -> Self {
+        ExprBuilder::new().has_tag(expr, tag)
     }
 
     /// Create an `Expr` which evaluates to a Set of the given `Expr`s
@@ -481,8 +574,7 @@ impl Expr {
         ExprBuilder::new().binary_app(op, arg1, arg2)
     }
 
-    /// Create an `Expr` which gets the attribute of some `Entity` or the field
-    /// of some record.
+    /// Create an `Expr` which gets a given attribute of a given `Entity` or record.
     ///
     /// `expr` must evaluate to either Entity or Record type
     pub fn get_attr(expr: Expr, attr: SmolStr) -> Self {
@@ -490,7 +582,7 @@ impl Expr {
     }
 
     /// Create an `Expr` which tests for the existence of a given
-    /// attribute on a given `Entity`, or field on a given record.
+    /// attribute on a given `Entity` or record.
     ///
     /// `expr` must evaluate to either Entity or Record type
     pub fn has_attr(expr: Expr, attr: SmolStr) -> Self {
@@ -500,7 +592,7 @@ impl Expr {
     /// Create a 'like' expression.
     ///
     /// `expr` must evaluate to a String type
-    pub fn like(expr: Expr, pattern: impl IntoIterator<Item = PatternElem>) -> Self {
+    pub fn like(expr: Expr, pattern: Pattern) -> Self {
         ExprBuilder::new().like(expr, pattern)
     }
 
@@ -602,7 +694,7 @@ impl Expr {
             )),
             ExprKind::Like { expr, pattern } => Ok(Expr::like(
                 expr.substitute_general::<T>(definitions)?,
-                pattern.iter().cloned(),
+                pattern.clone(),
             )),
             ExprKind::Set(members) => {
                 let members = members
@@ -676,12 +768,20 @@ impl SubstitutionFunction for UntypedSubstitution {
     }
 }
 
-impl std::fmt::Display for Expr {
+impl<T: Clone> std::fmt::Display for Expr<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // To avoid code duplication between pretty-printers for AST Expr and EST Expr,
         // we just convert to EST and use the EST pretty-printer.
         // Note that converting AST->EST is lossless and infallible.
         write!(f, "{}", crate::est::Expr::from(self.clone()))
+    }
+}
+
+impl<T: Clone> BoundedDisplay for Expr<T> {
+    fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
+        // Like the `std::fmt::Display` impl, we convert to EST and use the EST
+        // pretty-printer. Note that converting AST->EST is lossless and infallible.
+        BoundedDisplay::fmt(&crate::est::Expr::from(self.clone()), f, n)
     }
 }
 
@@ -744,113 +844,355 @@ impl std::fmt::Display for Unknown {
     }
 }
 
+#[cfg(feature = "protobufs")]
+impl From<&proto::Expr> for Expr {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::Expr) -> Self {
+        let pdata = v
+            .expr_kind
+            .as_ref()
+            .expect("`as_ref()` for field that should exist");
+        let ety = pdata
+            .data
+            .as_ref()
+            .expect("`as_ref()` for field that should exist");
+
+        match ety {
+            proto::expr::expr_kind::Data::Lit(lit) => Expr::val(Literal::from(lit)),
+
+            proto::expr::expr_kind::Data::Var(var) => {
+                let pvar =
+                    proto::expr::Var::try_from(var.to_owned()).expect("decode should succeed");
+                Expr::var(Var::from(&pvar))
+            }
+
+            proto::expr::expr_kind::Data::Slot(slot) => {
+                let pslot =
+                    proto::SlotId::try_from(slot.to_owned()).expect("decode should succeed");
+                Expr::slot(SlotId::from(&pslot))
+            }
+
+            proto::expr::expr_kind::Data::If(msg) => {
+                let test_expr = msg
+                    .test_expr
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist")
+                    .as_ref();
+                let then_expr = msg
+                    .then_expr
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist")
+                    .as_ref();
+                let else_expr = msg
+                    .else_expr
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist")
+                    .as_ref();
+                Expr::ite(
+                    Expr::from(test_expr),
+                    Expr::from(then_expr),
+                    Expr::from(else_expr),
+                )
+            }
+
+            proto::expr::expr_kind::Data::And(msg) => {
+                let left = msg
+                    .left
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist")
+                    .as_ref();
+                let right = msg
+                    .right
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist")
+                    .as_ref();
+                Expr::and(Expr::from(left), Expr::from(right))
+            }
+
+            proto::expr::expr_kind::Data::Or(msg) => {
+                let left = msg
+                    .left
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist")
+                    .as_ref();
+                let right = msg
+                    .right
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist")
+                    .as_ref();
+                Expr::or(Expr::from(left), Expr::from(right))
+            }
+
+            proto::expr::expr_kind::Data::UApp(msg) => {
+                let arg = msg
+                    .expr
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist")
+                    .as_ref();
+                let puop =
+                    proto::expr::unary_app::Op::try_from(msg.op).expect("decode should succeed");
+                Expr::unary_app(UnaryOp::from(&puop), Expr::from(arg))
+            }
+
+            proto::expr::expr_kind::Data::BApp(msg) => {
+                let pbop =
+                    proto::expr::binary_app::Op::try_from(msg.op).expect("decode should succeed");
+                let left = msg
+                    .left
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist");
+                let right = msg
+                    .right
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist");
+                Expr::binary_app(
+                    BinaryOp::from(&pbop),
+                    Expr::from(left.as_ref()),
+                    Expr::from(right.as_ref()),
+                )
+            }
+
+            proto::expr::expr_kind::Data::ExtApp(msg) => Expr::call_extension_fn(
+                Name::from(
+                    msg.fn_name
+                        .as_ref()
+                        .expect("`as_ref()` for field that should exist"),
+                ),
+                msg.args.iter().map(Expr::from).collect(),
+            ),
+
+            proto::expr::expr_kind::Data::GetAttr(msg) => {
+                let arg = msg
+                    .expr
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist")
+                    .as_ref();
+                Expr::get_attr(Expr::from(arg), msg.attr.clone().into())
+            }
+
+            proto::expr::expr_kind::Data::HasAttr(msg) => {
+                let arg = msg
+                    .expr
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist")
+                    .as_ref();
+                Expr::has_attr(Expr::from(arg), msg.attr.clone().into())
+            }
+
+            proto::expr::expr_kind::Data::Like(msg) => {
+                let arg = msg
+                    .expr
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist")
+                    .as_ref();
+                Expr::like(
+                    Expr::from(arg),
+                    msg.pattern.iter().map(PatternElem::from).collect(),
+                )
+            }
+
+            proto::expr::expr_kind::Data::Is(msg) => {
+                let arg = msg
+                    .expr
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist")
+                    .as_ref();
+                Expr::is_entity_type(
+                    Expr::from(arg),
+                    EntityType::from(
+                        msg.entity_type
+                            .as_ref()
+                            .expect("`as_ref()` for field that should exist"),
+                    ),
+                )
+            }
+
+            proto::expr::expr_kind::Data::Set(msg) => {
+                Expr::set(msg.elements.iter().map(Expr::from))
+            }
+
+            proto::expr::expr_kind::Data::Record(msg) => Expr::record(
+                msg.items
+                    .iter()
+                    .map(|(key, value)| (key.into(), Expr::from(value))),
+            )
+            .expect("Expr should be valid"),
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&Expr> for proto::Expr {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::unimplemented)]
+    fn from(v: &Expr) -> Self {
+        let expr_kind = match &v.expr_kind {
+            ExprKind::Lit(l) => proto::expr::expr_kind::Data::Lit(proto::expr::Literal::from(l)),
+            ExprKind::Var(v) => proto::expr::expr_kind::Data::Var(proto::expr::Var::from(v).into()),
+            ExprKind::Slot(sid) => {
+                proto::expr::expr_kind::Data::Slot(proto::SlotId::from(sid).into())
+            }
+
+            ExprKind::Unknown(_u) => {
+                unimplemented!("Protobuffer interface does not support Unknown expressions")
+            }
+            ExprKind::If {
+                test_expr,
+                then_expr,
+                else_expr,
+            } => proto::expr::expr_kind::Data::If(Box::new(proto::expr::If {
+                test_expr: Some(Box::new(proto::Expr::from(test_expr.as_ref()))),
+                then_expr: Some(Box::new(proto::Expr::from(then_expr.as_ref()))),
+                else_expr: Some(Box::new(proto::Expr::from(else_expr.as_ref()))),
+            })),
+            ExprKind::And { left, right } => {
+                proto::expr::expr_kind::Data::And(Box::new(proto::expr::And {
+                    left: Some(Box::new(proto::Expr::from(left.as_ref()))),
+                    right: Some(Box::new(proto::Expr::from(right.as_ref()))),
+                }))
+            }
+            ExprKind::Or { left, right } => {
+                proto::expr::expr_kind::Data::Or(Box::new(proto::expr::Or {
+                    left: Some(Box::new(proto::Expr::from(left.as_ref()))),
+                    right: Some(Box::new(proto::Expr::from(right.as_ref()))),
+                }))
+            }
+            ExprKind::UnaryApp { op, arg } => {
+                proto::expr::expr_kind::Data::UApp(Box::new(proto::expr::UnaryApp {
+                    op: proto::expr::unary_app::Op::from(op).into(),
+                    expr: Some(Box::new(proto::Expr::from(arg.as_ref()))),
+                }))
+            }
+            ExprKind::BinaryApp { op, arg1, arg2 } => {
+                proto::expr::expr_kind::Data::BApp(Box::new(proto::expr::BinaryApp {
+                    op: proto::expr::binary_app::Op::from(op).into(),
+                    left: Some(Box::new(proto::Expr::from(arg1.as_ref()))),
+                    right: Some(Box::new(proto::Expr::from(arg2.as_ref()))),
+                }))
+            }
+            ExprKind::ExtensionFunctionApp { fn_name, args } => {
+                let mut pargs: Vec<proto::Expr> = Vec::with_capacity(args.as_ref().len());
+                for value in args.as_ref() {
+                    pargs.push(proto::Expr::from(value));
+                }
+                proto::expr::expr_kind::Data::ExtApp(proto::expr::ExtensionFunctionApp {
+                    fn_name: Some(proto::Name::from(fn_name)),
+                    args: pargs,
+                })
+            }
+            ExprKind::GetAttr { expr, attr } => {
+                proto::expr::expr_kind::Data::GetAttr(Box::new(proto::expr::GetAttr {
+                    attr: attr.to_string(),
+                    expr: Some(Box::new(proto::Expr::from(expr.as_ref()))),
+                }))
+            }
+            ExprKind::HasAttr { expr, attr } => {
+                proto::expr::expr_kind::Data::HasAttr(Box::new(proto::expr::HasAttr {
+                    attr: attr.to_string(),
+                    expr: Some(Box::new(proto::Expr::from(expr.as_ref()))),
+                }))
+            }
+            ExprKind::Like { expr, pattern } => {
+                let mut ppattern: Vec<proto::expr::like::PatternElem> =
+                    Vec::with_capacity(pattern.len());
+                for value in pattern.iter() {
+                    ppattern.push(proto::expr::like::PatternElem::from(value));
+                }
+                proto::expr::expr_kind::Data::Like(Box::new(proto::expr::Like {
+                    expr: Some(Box::new(proto::Expr::from(expr.as_ref()))),
+                    pattern: ppattern,
+                }))
+            }
+            ExprKind::Is { expr, entity_type } => {
+                proto::expr::expr_kind::Data::Is(Box::new(proto::expr::Is {
+                    expr: Some(Box::new(proto::Expr::from(expr.as_ref()))),
+                    entity_type: Some(proto::EntityType::from(entity_type)),
+                }))
+            }
+            ExprKind::Set(args) => {
+                let mut pargs: Vec<proto::Expr> = Vec::with_capacity(args.as_ref().len());
+                for arg in args.as_ref() {
+                    pargs.push(proto::Expr::from(arg));
+                }
+                proto::expr::expr_kind::Data::Set(proto::expr::Set { elements: pargs })
+            }
+            ExprKind::Record(record) => {
+                let precord = record
+                    .as_ref()
+                    .iter()
+                    .map(|(key, value)| (key.to_string(), proto::Expr::from(value)))
+                    .collect();
+                proto::expr::expr_kind::Data::Record(proto::expr::Record { items: precord })
+            }
+        };
+        Self {
+            expr_kind: Some(Box::new(proto::expr::ExprKind {
+                data: Some(expr_kind),
+            })),
+        }
+    }
+}
+
 /// Builder for constructing `Expr` objects annotated with some `data`
 /// (possibly taking default value) and optionally a `source_loc`.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ExprBuilder<T> {
     source_loc: Option<Loc>,
     data: T,
 }
 
-impl<T> ExprBuilder<T>
-where
-    T: Default,
-{
-    /// Construct a new `ExprBuilder` where the data used for an expression
-    /// takes a default value.
-    pub fn new() -> Self {
-        Self {
-            source_loc: None,
-            data: T::default(),
-        }
+impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
+    type Expr = Expr<T>;
+
+    type Data = T;
+
+    fn loc(&self) -> Option<&Loc> {
+        self.source_loc.as_ref()
     }
 
-    /// Create a '!=' expression.
-    /// Defined only for `T: Default` because the caller would otherwise need to
-    /// provide a `data` for the intermediate `not` Expr node.
-    pub fn noteq(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
-        match &self.source_loc {
-            Some(source_loc) => ExprBuilder::new().with_source_loc(source_loc.clone()),
-            None => ExprBuilder::new(),
-        }
-        .not(self.with_expr_kind(ExprKind::BinaryApp {
-            op: BinaryOp::Eq,
-            arg1: Arc::new(e1),
-            arg2: Arc::new(e2),
-        }))
+    fn data(&self) -> &Self::Data {
+        &self.data
     }
-}
 
-impl<T: Default> Default for ExprBuilder<T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<T> ExprBuilder<T> {
-    /// Construct a new `ExprBuild` where the specified data will be stored on
-    /// the `Expr`. This constructor does not populate the `source_loc` field,
-    /// so `with_source_loc` should be called if constructing an `Expr` where
-    /// the source location is known.
-    pub fn with_data(data: T) -> Self {
+    fn with_data(data: T) -> Self {
         Self {
             source_loc: None,
             data,
         }
     }
 
-    /// Update the `ExprBuilder` to build an expression with some known location
-    /// in policy source code.
-    pub fn with_source_loc(self, source_loc: Loc) -> Self {
-        self.with_maybe_source_loc(Some(source_loc))
-    }
-
-    /// Utility used the validator to get an expression with the same source
-    /// location as an existing expression. This is done when reconstructing the
-    /// `Expr` with type information.
-    pub fn with_same_source_loc<U>(self, expr: &Expr<U>) -> Self {
-        self.with_maybe_source_loc(expr.source_loc.clone())
-    }
-
-    /// internally used to update `.source_loc` to the given `Some` or `None`
-    fn with_maybe_source_loc(mut self, maybe_source_loc: Option<Loc>) -> Self {
-        self.source_loc = maybe_source_loc;
+    fn with_maybe_source_loc(mut self, maybe_source_loc: Option<&Loc>) -> Self {
+        self.source_loc = maybe_source_loc.cloned();
         self
-    }
-
-    /// Internally used by the following methods to construct an `Expr`
-    /// containing the `data` and `source_loc` in this `ExprBuilder` with some
-    /// inner `ExprKind`.
-    fn with_expr_kind(self, expr_kind: ExprKind<T>) -> Expr<T> {
-        Expr::new(expr_kind, self.source_loc, self.data)
     }
 
     /// Create an `Expr` that's just a single `Literal`.
     ///
     /// Note that you can pass this a `Literal`, an `Integer`, a `String`, etc.
-    pub fn val(self, v: impl Into<Literal>) -> Expr<T> {
+    fn val(self, v: impl Into<Literal>) -> Expr<T> {
         self.with_expr_kind(ExprKind::Lit(v.into()))
     }
 
     /// Create an `Unknown` `Expr`
-    pub fn unknown(self, u: Unknown) -> Expr<T> {
+    fn unknown(self, u: Unknown) -> Expr<T> {
         self.with_expr_kind(ExprKind::Unknown(u))
     }
 
     /// Create an `Expr` that's just this literal `Var`
-    pub fn var(self, v: Var) -> Expr<T> {
+    fn var(self, v: Var) -> Expr<T> {
         self.with_expr_kind(ExprKind::Var(v))
     }
 
     /// Create an `Expr` that's just this `SlotId`
-    pub fn slot(self, s: SlotId) -> Expr<T> {
+    fn slot(self, s: SlotId) -> Expr<T> {
         self.with_expr_kind(ExprKind::Slot(s))
     }
 
     /// Create a ternary (if-then-else) `Expr`.
     ///
     /// `test_expr` must evaluate to a Bool type
-    pub fn ite(self, test_expr: Expr<T>, then_expr: Expr<T>, else_expr: Expr<T>) -> Expr<T> {
+    fn ite(self, test_expr: Expr<T>, then_expr: Expr<T>, else_expr: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::If {
             test_expr: Arc::new(test_expr),
             then_expr: Arc::new(then_expr),
@@ -858,24 +1200,8 @@ impl<T> ExprBuilder<T> {
         })
     }
 
-    /// Create a ternary (if-then-else) `Expr`.
-    /// Takes `Arc`s instead of owned `Expr`s.
-    /// `test_expr` must evaluate to a Bool type
-    pub fn ite_arc(
-        self,
-        test_expr: Arc<Expr<T>>,
-        then_expr: Arc<Expr<T>>,
-        else_expr: Arc<Expr<T>>,
-    ) -> Expr<T> {
-        self.with_expr_kind(ExprKind::If {
-            test_expr,
-            then_expr,
-            else_expr,
-        })
-    }
-
     /// Create a 'not' expression. `e` must evaluate to Bool type
-    pub fn not(self, e: Expr<T>) -> Expr<T> {
+    fn not(self, e: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::UnaryApp {
             op: UnaryOp::Not,
             arg: Arc::new(e),
@@ -883,7 +1209,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create a '==' expression
-    pub fn is_eq(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+    fn is_eq(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
             op: BinaryOp::Eq,
             arg1: Arc::new(e1),
@@ -892,7 +1218,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an 'and' expression. Arguments must evaluate to Bool type
-    pub fn and(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+    fn and(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(match (&e1.expr_kind, &e2.expr_kind) {
             (ExprKind::Lit(Literal::Bool(b1)), ExprKind::Lit(Literal::Bool(b2))) => {
                 ExprKind::Lit(Literal::Bool(*b1 && *b2))
@@ -905,7 +1231,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an 'or' expression. Arguments must evaluate to Bool type
-    pub fn or(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+    fn or(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(match (&e1.expr_kind, &e2.expr_kind) {
             (ExprKind::Lit(Literal::Bool(b1)), ExprKind::Lit(Literal::Bool(b2))) => {
                 ExprKind::Lit(Literal::Bool(*b1 || *b2))
@@ -919,7 +1245,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create a '<' expression. Arguments must evaluate to Long type
-    pub fn less(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+    fn less(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
             op: BinaryOp::Less,
             arg1: Arc::new(e1),
@@ -928,7 +1254,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create a '<=' expression. Arguments must evaluate to Long type
-    pub fn lesseq(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+    fn lesseq(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
             op: BinaryOp::LessEq,
             arg1: Arc::new(e1),
@@ -937,7 +1263,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an 'add' expression. Arguments must evaluate to Long type
-    pub fn add(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+    fn add(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
             op: BinaryOp::Add,
             arg1: Arc::new(e1),
@@ -946,7 +1272,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create a 'sub' expression. Arguments must evaluate to Long type
-    pub fn sub(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+    fn sub(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
             op: BinaryOp::Sub,
             arg1: Arc::new(e1),
@@ -955,7 +1281,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create a 'mul' expression. Arguments must evaluate to Long type
-    pub fn mul(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+    fn mul(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
             op: BinaryOp::Mul,
             arg1: Arc::new(e1),
@@ -964,7 +1290,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create a 'neg' expression. `e` must evaluate to Long type.
-    pub fn neg(self, e: Expr<T>) -> Expr<T> {
+    fn neg(self, e: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::UnaryApp {
             op: UnaryOp::Neg,
             arg: Arc::new(e),
@@ -974,7 +1300,7 @@ impl<T> ExprBuilder<T> {
     /// Create an 'in' expression. First argument must evaluate to Entity type.
     /// Second argument must evaluate to either Entity type or Set type where
     /// all set elements have Entity type.
-    pub fn is_in(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+    fn is_in(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
             op: BinaryOp::In,
             arg1: Arc::new(e1),
@@ -984,7 +1310,7 @@ impl<T> ExprBuilder<T> {
 
     /// Create a 'contains' expression.
     /// First argument must have Set type.
-    pub fn contains(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+    fn contains(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
             op: BinaryOp::Contains,
             arg1: Arc::new(e1),
@@ -993,7 +1319,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create a 'contains_all' expression. Arguments must evaluate to Set type
-    pub fn contains_all(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+    fn contains_all(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
             op: BinaryOp::ContainsAll,
             arg1: Arc::new(e1),
@@ -1002,7 +1328,7 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an 'contains_any' expression. Arguments must evaluate to Set type
-    pub fn contains_any(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+    fn contains_any(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
             op: BinaryOp::ContainsAny,
             arg1: Arc::new(e1),
@@ -1010,13 +1336,41 @@ impl<T> ExprBuilder<T> {
         })
     }
 
+    /// Create an 'is_empty' expression. Argument must evaluate to Set type
+    fn is_empty(self, expr: Expr<T>) -> Expr<T> {
+        self.with_expr_kind(ExprKind::UnaryApp {
+            op: UnaryOp::IsEmpty,
+            arg: Arc::new(expr),
+        })
+    }
+
+    /// Create a 'getTag' expression.
+    /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
+    fn get_tag(self, expr: Expr<T>, tag: Expr<T>) -> Expr<T> {
+        self.with_expr_kind(ExprKind::BinaryApp {
+            op: BinaryOp::GetTag,
+            arg1: Arc::new(expr),
+            arg2: Arc::new(tag),
+        })
+    }
+
+    /// Create a 'hasTag' expression.
+    /// `expr` must evaluate to Entity type, `tag` must evaluate to String type.
+    fn has_tag(self, expr: Expr<T>, tag: Expr<T>) -> Expr<T> {
+        self.with_expr_kind(ExprKind::BinaryApp {
+            op: BinaryOp::HasTag,
+            arg1: Arc::new(expr),
+            arg2: Arc::new(tag),
+        })
+    }
+
     /// Create an `Expr` which evaluates to a Set of the given `Expr`s
-    pub fn set(self, exprs: impl IntoIterator<Item = Expr<T>>) -> Expr<T> {
+    fn set(self, exprs: impl IntoIterator<Item = Expr<T>>) -> Expr<T> {
         self.with_expr_kind(ExprKind::Set(Arc::new(exprs.into_iter().collect())))
     }
 
     /// Create an `Expr` which evaluates to a Record with the given (key, value) pairs.
-    pub fn record(
+    fn record(
         self,
         pairs: impl IntoIterator<Item = (SmolStr, Expr<T>)>,
     ) -> Result<Expr<T>, ExpressionConstructionError> {
@@ -1038,23 +1392,9 @@ impl<T> ExprBuilder<T> {
         Ok(self.with_expr_kind(ExprKind::Record(Arc::new(map))))
     }
 
-    /// Create an `Expr` which evalutes to a Record with the given key-value mapping.
-    ///
-    /// If you have an iterator of pairs, generally prefer calling `.record()`
-    /// instead of `.collect()`-ing yourself and calling this, potentially for
-    /// efficiency reasons but also because `.record()` will properly handle
-    /// duplicate keys but your own `.collect()` will not (by default).
-    pub fn record_arc(self, map: Arc<BTreeMap<SmolStr, Expr<T>>>) -> Expr<T> {
-        self.with_expr_kind(ExprKind::Record(map))
-    }
-
     /// Create an `Expr` which calls the extension function with the given
     /// `Name` on `args`
-    pub fn call_extension_fn(
-        self,
-        fn_name: Name,
-        args: impl IntoIterator<Item = Expr<T>>,
-    ) -> Expr<T> {
+    fn call_extension_fn(self, fn_name: Name, args: impl IntoIterator<Item = Expr<T>>) -> Expr<T> {
         self.with_expr_kind(ExprKind::ExtensionFunctionApp {
             fn_name,
             args: Arc::new(args.into_iter().collect()),
@@ -1063,7 +1403,7 @@ impl<T> ExprBuilder<T> {
 
     /// Create an application `Expr` which applies the given built-in unary
     /// operator to the given `arg`
-    pub fn unary_app(self, op: impl Into<UnaryOp>, arg: Expr<T>) -> Expr<T> {
+    fn unary_app(self, op: impl Into<UnaryOp>, arg: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::UnaryApp {
             op: op.into(),
             arg: Arc::new(arg),
@@ -1072,7 +1412,7 @@ impl<T> ExprBuilder<T> {
 
     /// Create an application `Expr` which applies the given built-in binary
     /// operator to `arg1` and `arg2`
-    pub fn binary_app(self, op: impl Into<BinaryOp>, arg1: Expr<T>, arg2: Expr<T>) -> Expr<T> {
+    fn binary_app(self, op: impl Into<BinaryOp>, arg1: Expr<T>, arg2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
             op: op.into(),
             arg1: Arc::new(arg1),
@@ -1080,11 +1420,10 @@ impl<T> ExprBuilder<T> {
         })
     }
 
-    /// Create an `Expr` which gets the attribute of some `Entity` or the field
-    /// of some record.
+    /// Create an `Expr` which gets a given attribute of a given `Entity` or record.
     ///
     /// `expr` must evaluate to either Entity or Record type
-    pub fn get_attr(self, expr: Expr<T>, attr: SmolStr) -> Expr<T> {
+    fn get_attr(self, expr: Expr<T>, attr: SmolStr) -> Expr<T> {
         self.with_expr_kind(ExprKind::GetAttr {
             expr: Arc::new(expr),
             attr,
@@ -1092,10 +1431,10 @@ impl<T> ExprBuilder<T> {
     }
 
     /// Create an `Expr` which tests for the existence of a given
-    /// attribute on a given `Entity`, or field on a given record.
+    /// attribute on a given `Entity` or record.
     ///
     /// `expr` must evaluate to either Entity or Record type
-    pub fn has_attr(self, expr: Expr<T>, attr: SmolStr) -> Expr<T> {
+    fn has_attr(self, expr: Expr<T>, attr: SmolStr) -> Expr<T> {
         self.with_expr_kind(ExprKind::HasAttr {
             expr: Arc::new(expr),
             attr,
@@ -1105,15 +1444,15 @@ impl<T> ExprBuilder<T> {
     /// Create a 'like' expression.
     ///
     /// `expr` must evaluate to a String type
-    pub fn like(self, expr: Expr<T>, pattern: impl IntoIterator<Item = PatternElem>) -> Expr<T> {
+    fn like(self, expr: Expr<T>, pattern: Pattern) -> Expr<T> {
         self.with_expr_kind(ExprKind::Like {
             expr: Arc::new(expr),
-            pattern: Pattern::new(pattern),
+            pattern,
         })
     }
 
     /// Create an 'is' expression.
-    pub fn is_entity_type(self, expr: Expr<T>, entity_type: EntityType) -> Expr<T> {
+    fn is_entity_type(self, expr: Expr<T>, entity_type: EntityType) -> Expr<T> {
         self.with_expr_kind(ExprKind::Is {
             expr: Arc::new(expr),
             entity_type,
@@ -1121,53 +1460,46 @@ impl<T> ExprBuilder<T> {
     }
 }
 
-impl<T: Clone> ExprBuilder<T> {
-    /// Create an `and` expression that may have more than two subexpressions (A && B && C)
-    /// or may have only one subexpression, in which case no `&&` is performed at all.
-    /// Arguments must evaluate to Bool type.
-    ///
-    /// This may create multiple AST `&&` nodes. If it does, all the nodes will have the same
-    /// source location and the same `T` data (taken from this builder) unless overridden, e.g.,
-    /// with another call to `with_source_loc()`.
-    pub fn and_nary(self, first: Expr<T>, others: impl IntoIterator<Item = Expr<T>>) -> Expr<T> {
-        others.into_iter().fold(first, |acc, next| {
-            Self::with_data(self.data.clone())
-                .with_maybe_source_loc(self.source_loc.clone())
-                .and(acc, next)
+impl<T> ExprBuilder<T> {
+    /// Construct an `Expr` containing the `data` and `source_loc` in this
+    /// `ExprBuilder` and the given `ExprKind`.
+    pub fn with_expr_kind(self, expr_kind: ExprKind<T>) -> Expr<T> {
+        Expr::new(expr_kind, self.source_loc, self.data)
+    }
+
+    /// Create a ternary (if-then-else) `Expr`.
+    /// Takes `Arc`s instead of owned `Expr`s.
+    /// `test_expr` must evaluate to a Bool type
+    pub fn ite_arc(
+        self,
+        test_expr: Arc<Expr<T>>,
+        then_expr: Arc<Expr<T>>,
+        else_expr: Arc<Expr<T>>,
+    ) -> Expr<T> {
+        self.with_expr_kind(ExprKind::If {
+            test_expr,
+            then_expr,
+            else_expr,
         })
     }
 
-    /// Create an `or` expression that may have more than two subexpressions (A || B || C)
-    /// or may have only one subexpression, in which case no `||` is performed at all.
-    /// Arguments must evaluate to Bool type.
+    /// Create an `Expr` which evaluates to a Record with the given key-value mapping.
     ///
-    /// This may create multiple AST `||` nodes. If it does, all the nodes will have the same
-    /// source location and the same `T` data (taken from this builder) unless overridden, e.g.,
-    /// with another call to `with_source_loc()`.
-    pub fn or_nary(self, first: Expr<T>, others: impl IntoIterator<Item = Expr<T>>) -> Expr<T> {
-        others.into_iter().fold(first, |acc, next| {
-            Self::with_data(self.data.clone())
-                .with_maybe_source_loc(self.source_loc.clone())
-                .or(acc, next)
-        })
+    /// If you have an iterator of pairs, generally prefer calling `.record()`
+    /// instead of `.collect()`-ing yourself and calling this, potentially for
+    /// efficiency reasons but also because `.record()` will properly handle
+    /// duplicate keys but your own `.collect()` will not (by default).
+    pub fn record_arc(self, map: Arc<BTreeMap<SmolStr, Expr<T>>>) -> Expr<T> {
+        self.with_expr_kind(ExprKind::Record(map))
     }
+}
 
-    /// Create a '>' expression. Arguments must evaluate to Long type
-    pub fn greater(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
-        // e1 > e2 is defined as !(e1 <= e2)
-        let leq = Self::with_data(self.data.clone())
-            .with_maybe_source_loc(self.source_loc.clone())
-            .lesseq(e1, e2);
-        self.not(leq)
-    }
-
-    /// Create a '>=' expression. Arguments must evaluate to Long type
-    pub fn greatereq(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
-        // e1 >= e2 is defined as !(e1 < e2)
-        let leq = Self::with_data(self.data.clone())
-            .with_maybe_source_loc(self.source_loc.clone())
-            .less(e1, e2);
-        self.not(leq)
+impl<T: Clone + Default> ExprBuilder<T> {
+    /// Utility used the validator to get an expression with the same source
+    /// location as an existing expression. This is done when reconstructing the
+    /// `Expr` with type information.
+    pub fn with_same_source_loc<U>(self, expr: &Expr<U>) -> Self {
+        self.with_maybe_source_loc(expr.source_loc.as_ref())
     }
 }
 
@@ -1221,24 +1553,31 @@ pub mod expression_construction_errors {
 /// implementations that ignore any source information or other generic data
 /// used to annotate the `Expr`.
 #[derive(Eq, Debug, Clone)]
-pub struct ExprShapeOnly<'a, T = ()>(&'a Expr<T>);
+pub struct ExprShapeOnly<'a, T: Clone = ()>(Cow<'a, Expr<T>>);
 
-impl<'a, T> ExprShapeOnly<'a, T> {
-    /// Construct an `ExprShapeOnly` from an `Expr`. The `Expr` is not modified,
-    /// but any comparisons on the resulting `ExprShapeOnly` will ignore source
-    /// information and generic data.
-    pub fn new(e: &'a Expr<T>) -> ExprShapeOnly<'a, T> {
-        ExprShapeOnly(e)
+impl<'a, T: Clone> ExprShapeOnly<'a, T> {
+    /// Construct an `ExprShapeOnly` from a borrowed `Expr`. The `Expr` is not
+    /// modified, but any comparisons on the resulting `ExprShapeOnly` will
+    /// ignore source information and generic data.
+    pub fn new_from_borrowed(e: &'a Expr<T>) -> ExprShapeOnly<'a, T> {
+        ExprShapeOnly(Cow::Borrowed(e))
+    }
+
+    /// Construct an `ExprShapeOnly` from an owned `Expr`. The `Expr` is not
+    /// modified, but any comparisons on the resulting `ExprShapeOnly` will
+    /// ignore source information and generic data.
+    pub fn new_from_owned(e: Expr<T>) -> ExprShapeOnly<'a, T> {
+        ExprShapeOnly(Cow::Owned(e))
     }
 }
 
-impl<'a, T> PartialEq for ExprShapeOnly<'a, T> {
+impl<T: Clone> PartialEq for ExprShapeOnly<'_, T> {
     fn eq(&self, other: &Self) -> bool {
-        self.0.eq_shape(other.0)
+        self.0.eq_shape(&other.0)
     }
 }
 
-impl<'a, T> Hash for ExprShapeOnly<'a, T> {
+impl<T: Clone> Hash for ExprShapeOnly<'_, T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0.hash_shape(state);
     }
@@ -1455,7 +1794,7 @@ pub enum Var {
 }
 
 #[cfg(test)]
-pub mod var_generator {
+mod var_generator {
     use super::Var;
     #[cfg(test)]
     pub fn all_vars() -> impl Iterator<Item = Var> {
@@ -1508,11 +1847,37 @@ impl std::fmt::Display for Var {
     }
 }
 
+#[cfg(feature = "protobufs")]
+impl From<&proto::expr::Var> for Var {
+    fn from(v: &proto::expr::Var) -> Self {
+        match v {
+            proto::expr::Var::Principal => Var::Principal,
+            proto::expr::Var::Action => Var::Action,
+            proto::expr::Var::Resource => Var::Resource,
+            proto::expr::Var::Context => Var::Context,
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&Var> for proto::expr::Var {
+    fn from(v: &Var) -> Self {
+        match v {
+            Var::Principal => proto::expr::Var::Principal,
+            Var::Action => proto::expr::Var::Action,
+            Var::Resource => proto::expr::Var::Resource,
+            Var::Context => proto::expr::Var::Context,
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use cool_asserts::assert_matches;
     use itertools::Itertools;
     use std::collections::{hash_map::DefaultHasher, HashSet};
+
+    use crate::expr_builder::ExprBuilder as _;
 
     use super::{var_generator::all_vars, *};
 
@@ -1623,24 +1988,24 @@ mod test {
     #[test]
     fn like_display() {
         // `\0` escaped form is `\0`.
-        let e = Expr::like(Expr::val("a"), vec![PatternElem::Char('\0')]);
+        let e = Expr::like(Expr::val("a"), Pattern::from(vec![PatternElem::Char('\0')]));
         assert_eq!(format!("{e}"), r#""a" like "\0""#);
         // `\`'s escaped form is `\\`
         let e = Expr::like(
             Expr::val("a"),
-            vec![PatternElem::Char('\\'), PatternElem::Char('0')],
+            Pattern::from(vec![PatternElem::Char('\\'), PatternElem::Char('0')]),
         );
         assert_eq!(format!("{e}"), r#""a" like "\\0""#);
         // `\`'s escaped form is `\\`
         let e = Expr::like(
             Expr::val("a"),
-            vec![PatternElem::Char('\\'), PatternElem::Wildcard],
+            Pattern::from(vec![PatternElem::Char('\\'), PatternElem::Wildcard]),
         );
         assert_eq!(format!("{e}"), r#""a" like "\\*""#);
         // literal star's escaped from is `\*`
         let e = Expr::like(
             Expr::val("a"),
-            vec![PatternElem::Char('\\'), PatternElem::Char('*')],
+            Pattern::from(vec![PatternElem::Char('\\'), PatternElem::Char('*')]),
         );
         assert_eq!(format!("{e}"), r#""a" like "\\\*""#);
     }
@@ -1803,6 +2168,10 @@ mod test {
                 Expr::contains_any(Expr::val(1), Expr::val(1)),
             ),
             (
+                ExprBuilder::with_data(1).is_empty(temp.clone()),
+                Expr::is_empty(Expr::val(1)),
+            ),
+            (
                 ExprBuilder::with_data(1).set([temp.clone()]),
                 Expr::set([Expr::val(1)]),
             ),
@@ -1826,8 +2195,9 @@ mod test {
                 Expr::has_attr(Expr::val(1), "foo".into()),
             ),
             (
-                ExprBuilder::with_data(1).like(temp.clone(), vec![PatternElem::Wildcard]),
-                Expr::like(Expr::val(1), vec![PatternElem::Wildcard]),
+                ExprBuilder::with_data(1)
+                    .like(temp.clone(), Pattern::from(vec![PatternElem::Wildcard])),
+                Expr::like(Expr::val(1), Pattern::from(vec![PatternElem::Wildcard])),
             ),
             (
                 ExprBuilder::with_data(1).is_entity_type(temp, "T".parse().unwrap()),
@@ -1857,7 +2227,10 @@ mod test {
     fn expr_shape_only_not_eq() {
         let expr1 = ExprBuilder::with_data(1).val(1);
         let expr2 = ExprBuilder::with_data(1).val(2);
-        assert_ne!(ExprShapeOnly::new(&expr1), ExprShapeOnly::new(&expr2));
+        assert_ne!(
+            ExprShapeOnly::new_from_borrowed(&expr1),
+            ExprShapeOnly::new_from_borrowed(&expr2)
+        );
     }
 
     #[test]
@@ -1956,5 +2329,34 @@ mod test {
         };
         let r = TypedSubstitution::substitute(&u, None).unwrap();
         assert_eq!(r, Expr::unknown(u));
+    }
+
+    #[cfg(feature = "protobufs")]
+    #[test]
+    fn protobuf_roundtrip() {
+        let e1: Expr = Expr::val(33);
+        assert_eq!(e1, Expr::from(&proto::Expr::from(&e1)));
+        let e2: Expr = Expr::val("hello");
+        assert_eq!(e2, Expr::from(&proto::Expr::from(&e2)));
+        let e3: Expr = Expr::val(EntityUID::with_eid("foo"));
+        assert_eq!(
+            e3,
+            Expr::from(&proto::Expr::from(&Expr::val(EntityUID::with_eid("foo"))))
+        );
+        let e4: Expr = Expr::var(Var::Principal);
+        assert_eq!(e4, Expr::from(&proto::Expr::from(&e4)));
+        let e5: Expr = Expr::ite(Expr::val(true), Expr::val(88), Expr::val(-100));
+        assert_eq!(e5, Expr::from(&proto::Expr::from(&e5)));
+        let e6: Expr = Expr::not(Expr::val(false));
+        assert_eq!(e6, Expr::from(&proto::Expr::from(&e6)));
+        let e7: Expr = Expr::get_attr(Expr::val(EntityUID::with_eid("foo")), "some_attr".into());
+        assert_eq!(e7, Expr::from(&proto::Expr::from(&e7)));
+        let e8: Expr = Expr::has_attr(Expr::val(EntityUID::with_eid("foo")), "some_attr".into());
+        assert_eq!(e8, Expr::from(&proto::Expr::from(&e8)));
+        let e9: Expr = Expr::is_entity_type(
+            Expr::val(EntityUID::with_eid("foo")),
+            "Type".parse().unwrap(),
+        );
+        assert_eq!(e9, Expr::from(&proto::Expr::from(&e9)));
     }
 }

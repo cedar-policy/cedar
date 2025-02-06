@@ -27,16 +27,16 @@ use cedar_policy_core::{
     entities::{json::err::JsonDeserializationErrorContext, CedarValueJson},
     evaluator::RestrictedEvaluator,
     extensions::Extensions,
+    fuzzy_match::fuzzy_search,
 };
 use itertools::Itertools;
-use nonempty::NonEmpty;
+use nonempty::{nonempty, NonEmpty};
 use smol_str::{SmolStr, ToSmolStr};
 
 use super::{internal_name_to_entity_type, AllDefs, ValidatorApplySpec};
 use crate::{
     err::{schema_errors::*, SchemaError},
-    fuzzy_match::fuzzy_search,
-    json_schema::{self, CommonTypeId},
+    json_schema::{self, CommonTypeId, EntityTypeKind},
     types::{AttributeType, Attributes, OpenTag, Type},
     ActionBehavior, ConditionalName, RawName, ReferenceType,
 };
@@ -66,7 +66,7 @@ use crate::{
 ///
 /// `A` is like `N`, but `A` governs typenames in `appliesTo` fields, while
 /// `N` governs all other type references.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ValidatorNamespaceDef<N, A> {
     /// The (fully-qualified) name of the namespace this is a definition of, or
     /// `None` if this is a definition for the empty namespace.
@@ -132,8 +132,13 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
 
         // Convert the common types, actions and entity types from the schema
         // file into the representation used by the validator.
-        let common_types =
-            CommonTypeDefs::from_raw_common_types(namespace_def.common_types, namespace.as_ref())?;
+        let common_types = CommonTypeDefs::from_raw_common_types(
+            namespace_def
+                .common_types
+                .into_iter()
+                .map(|(key, value)| (key, value.ty)),
+            namespace.as_ref(),
+        )?;
         let actions =
             ActionsDef::from_raw_actions(namespace_def.actions, namespace.as_ref(), extensions)?;
         let entity_types =
@@ -266,7 +271,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
 /// [`json_schema::Type`]s (values in the map), entity/common type references may or
 /// may not be fully qualified yet, depending on `N`; see notes on
 /// [`json_schema::Type`].
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CommonTypeDefs<N> {
     pub(super) defs: HashMap<InternalName, json_schema::Type<N>>,
 }
@@ -276,10 +281,10 @@ impl CommonTypeDefs<ConditionalName> {
     /// structures used by the schema format to those used internally by the
     /// validator.
     pub(crate) fn from_raw_common_types(
-        schema_file_type_def: HashMap<CommonTypeId, json_schema::Type<RawName>>,
+        schema_file_type_def: impl IntoIterator<Item = (CommonTypeId, json_schema::Type<RawName>)>,
         schema_namespace: Option<&InternalName>,
     ) -> crate::err::Result<Self> {
-        let mut defs = HashMap::with_capacity(schema_file_type_def.len());
+        let mut defs = HashMap::new();
         for (id, schema_ty) in schema_file_type_def {
             let name = RawName::new_from_unreserved(id.into()).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
             match defs.entry(name) {
@@ -288,9 +293,9 @@ impl CommonTypeDefs<ConditionalName> {
                         .insert(schema_ty.conditionally_qualify_type_references(schema_namespace));
                 }
                 Entry::Occupied(oentry) => {
-                    return Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError(
-                        oentry.key().clone(),
-                    )));
+                    return Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError {
+                        ty: oentry.key().clone(),
+                    }));
                 }
             }
         }
@@ -313,9 +318,9 @@ impl CommonTypeDefs<ConditionalName> {
                     ventry.insert(schema_ty);
                 }
                 Entry::Occupied(oentry) => {
-                    return Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError(
-                        oentry.key().clone(),
-                    )));
+                    return Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError {
+                        ty: oentry.key().clone(),
+                    }));
                 }
             }
         }
@@ -371,7 +376,7 @@ impl CommonTypeDefs<ConditionalName> {
 /// different schema fragment).
 ///
 /// All [`EntityType`] keys in this map are declared in this schema fragment.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EntityTypesDef<N> {
     pub(super) defs: HashMap<EntityType, EntityTypeFragment<N>>,
 }
@@ -390,10 +395,10 @@ impl EntityTypesDef<ConditionalName> {
     /// structures used by the schema format to those used internally by the
     /// validator.
     pub(crate) fn from_raw_entity_types(
-        schema_files_types: HashMap<UnreservedId, json_schema::EntityType<RawName>>,
+        schema_files_types: impl IntoIterator<Item = (UnreservedId, json_schema::EntityType<RawName>)>,
         schema_namespace: Option<&InternalName>,
     ) -> crate::err::Result<Self> {
-        let mut defs: HashMap<EntityType, _> = HashMap::with_capacity(schema_files_types.len());
+        let mut defs: HashMap<EntityType, _> = HashMap::new();
         for (id, entity_type) in schema_files_types {
             let ety = internal_name_to_entity_type(
                 RawName::new_from_unreserved(id).qualify_with(schema_namespace), // the declaration name is always (unconditionally) prefixed by the current/active namespace
@@ -406,7 +411,10 @@ impl EntityTypesDef<ConditionalName> {
                     ));
                 }
                 Entry::Occupied(entry) => {
-                    return Err(DuplicateEntityTypeError(entry.key().clone()).into());
+                    return Err(DuplicateEntityTypeError {
+                        ty: entry.key().clone(),
+                    }
+                    .into());
                 }
             }
         }
@@ -436,24 +444,46 @@ impl EntityTypesDef<ConditionalName> {
 /// Holds the attributes and parents information for an entity type definition.
 ///
 /// In this representation, references to common types may not yet have been
-/// fully resolved/inlined, and both `parents` and `attributes` may reference
-/// undeclared entity/common types. Furthermore, entity/common type references
-/// in `attributes` may or may not be fully qualified yet, depending on `N`.
-#[derive(Debug)]
-pub struct EntityTypeFragment<N> {
-    /// Description of the attribute types for this entity type. This may
-    /// contain references to common types which have not yet been
-    /// resolved/inlined (e.g., because they are not defined in this schema
-    /// fragment).
-    /// In the extreme case, this may itself be just a common type pointing to a
-    /// `Record` type defined in another fragment.
-    pub(super) attributes: json_schema::EntityAttributes<N>,
-    /// Direct parent entity types for this entity type.
-    /// These entity types may be declared in a different namespace or schema
-    /// fragment.
-    /// We will check for undeclared parent types when combining fragments into
-    /// a [`crate::ValidatorSchema`].
-    pub(super) parents: HashSet<N>,
+/// fully resolved/inlined, and `parents`, `attributes`, and `tags` may all
+/// reference undeclared entity/common types. Furthermore, entity/common type
+/// references in `parents`, `attributes`, and `tags` may or may not be fully
+/// qualified yet, depending on `N`.
+#[derive(Debug, Clone)]
+pub enum EntityTypeFragment<N> {
+    Standard {
+        /// Description of the attribute types for this entity type.
+        ///
+        /// This may contain references to common types which have not yet been
+        /// resolved/inlined (e.g., because they are not defined in this schema
+        /// fragment).
+        /// In the extreme case, this may itself be just a common type pointing to a
+        /// `Record` type defined in another fragment.
+        attributes: json_schema::AttributesOrContext<N>,
+        /// Direct parent entity types for this entity type.
+        /// These entity types may be declared in a different namespace or schema
+        /// fragment.
+        ///
+        /// We will check for undeclared parent types when combining fragments into
+        /// a [`crate::ValidatorSchema`].
+        parents: HashSet<N>,
+        /// Tag type for this entity type. `None` means no tags are allowed on this
+        /// entity type.
+        ///
+        /// This may contain references to common types which have not yet been
+        /// resolved/inlined (e.g., because they are not defined in this schema
+        /// fragment).
+        tags: Option<json_schema::Type<N>>,
+    },
+    Enum(NonEmpty<SmolStr>),
+}
+
+impl<N> EntityTypeFragment<N> {
+    pub(crate) fn parents(&self) -> Box<dyn Iterator<Item = &N> + '_> {
+        match self {
+            Self::Standard { parents, .. } => Box::new(parents.iter()),
+            Self::Enum(_) => Box::new(std::iter::empty()),
+        }
+    }
 }
 
 impl EntityTypeFragment<ConditionalName> {
@@ -464,18 +494,24 @@ impl EntityTypeFragment<ConditionalName> {
         schema_file_type: json_schema::EntityType<RawName>,
         schema_namespace: Option<&InternalName>,
     ) -> Self {
-        Self {
-            attributes: schema_file_type
-                .shape
-                .conditionally_qualify_type_references(schema_namespace),
-            parents: schema_file_type
-                .member_of_types
-                .into_iter()
-                .map(|raw_name| {
-                    // Only entity, not common, here for now; see #1064
-                    raw_name.conditionally_qualify_with(schema_namespace, ReferenceType::Entity)
-                })
-                .collect(),
+        match schema_file_type.kind {
+            EntityTypeKind::Enum { choices } => Self::Enum(choices),
+            EntityTypeKind::Standard(ty) => Self::Standard {
+                attributes: ty
+                    .shape
+                    .conditionally_qualify_type_references(schema_namespace),
+                parents: ty
+                    .member_of_types
+                    .into_iter()
+                    .map(|raw_name| {
+                        // Only entity, not common, here for now; see #1064
+                        raw_name.conditionally_qualify_with(schema_namespace, ReferenceType::Entity)
+                    })
+                    .collect(),
+                tags: ty
+                    .tags
+                    .map(|tags| tags.conditionally_qualify_type_references(schema_namespace)),
+            },
         }
     }
 
@@ -489,35 +525,63 @@ impl EntityTypeFragment<ConditionalName> {
         self,
         all_defs: &AllDefs,
     ) -> Result<EntityTypeFragment<InternalName>, TypeNotDefinedError> {
-        // Fully qualify typenames appearing in `attributes`
-        let fully_qual_attributes = self.attributes.fully_qualify_type_references(all_defs);
-        // Fully qualify typenames appearing in `parents`
-        let parents: HashSet<InternalName> = self
-            .parents
-            .into_iter()
-            .map(|parent| parent.resolve(all_defs))
-            .collect::<Result<_, TypeNotDefinedError>>()?;
-        // Now is the time to check whether any parents are dangling, i.e.,
-        // refer to entity types that are not declared in any fragment (since we
-        // now have the set of typenames that are declared in all fragments).
-        let undeclared_parents: Option<NonEmpty<ConditionalName>> = NonEmpty::collect(
-            parents
-                .iter()
-                .filter(|ety| !all_defs.is_defined_as_entity(ety))
-                .map(|ety| ConditionalName::unconditional(ety.clone(), ReferenceType::Entity)),
-        );
-        match (fully_qual_attributes, undeclared_parents) {
-            (Ok(attributes), None) => Ok(EntityTypeFragment {
+        match self {
+            Self::Enum(choices) => Ok(EntityTypeFragment::Enum(choices)),
+            Self::Standard {
                 attributes,
                 parents,
-            }),
-            (Ok(_), Some(undeclared_parents)) => {
-                Err(TypeNotDefinedError(undeclared_parents).into())
-            }
-            (Err(e), None) => Err(e),
-            (Err(e), Some(mut undeclared)) => {
-                undeclared.extend(e.0);
-                Err(TypeNotDefinedError(undeclared))
+                tags,
+            } => {
+                // Fully qualify typenames appearing in `attributes`
+                let fully_qual_attributes = attributes.fully_qualify_type_references(all_defs);
+                // Fully qualify typenames appearing in `parents`
+                let parents: HashSet<InternalName> = parents
+                    .into_iter()
+                    .map(|parent| parent.resolve(all_defs))
+                    .collect::<Result<_, TypeNotDefinedError>>()?;
+                // Fully qualify typenames appearing in `tags`
+                let fully_qual_tags = tags
+                    .map(|tags| tags.fully_qualify_type_references(all_defs))
+                    .transpose();
+                // Now is the time to check whether any parents are dangling, i.e.,
+                // refer to entity types that are not declared in any fragment (since we
+                // now have the set of typenames that are declared in all fragments).
+                let undeclared_parents: Option<NonEmpty<ConditionalName>> = NonEmpty::collect(
+                    parents
+                        .iter()
+                        .filter(|ety| !all_defs.is_defined_as_entity(ety))
+                        .map(|ety| {
+                            ConditionalName::unconditional(ety.clone(), ReferenceType::Entity)
+                        }),
+                );
+                match (fully_qual_attributes, fully_qual_tags, undeclared_parents) {
+                    (Ok(attributes), Ok(tags), None) => Ok(EntityTypeFragment::Standard {
+                        attributes,
+                        parents,
+                        tags,
+                    }),
+                    (Ok(_), Ok(_), Some(undeclared_parents)) => Err(TypeNotDefinedError {
+                        undefined_types: undeclared_parents,
+                    }),
+                    (Err(e), Ok(_), None) | (Ok(_), Err(e), None) => Err(e),
+                    (Err(e1), Err(e2), None) => {
+                        Err(TypeNotDefinedError::join_nonempty(nonempty![e1, e2]))
+                    }
+                    (Err(e), Ok(_), Some(mut undeclared))
+                    | (Ok(_), Err(e), Some(mut undeclared)) => {
+                        undeclared.extend(e.undefined_types);
+                        Err(TypeNotDefinedError {
+                            undefined_types: undeclared,
+                        })
+                    }
+                    (Err(e1), Err(e2), Some(mut undeclared)) => {
+                        undeclared.extend(e1.undefined_types);
+                        undeclared.extend(e2.undefined_types);
+                        Err(TypeNotDefinedError {
+                            undefined_types: undeclared,
+                        })
+                    }
+                }
             }
         }
     }
@@ -537,7 +601,7 @@ impl EntityTypeFragment<ConditionalName> {
 /// types. All action entities are required to use a single `Action` entity
 /// type. However, the action entity type may be namespaced, so an action entity
 /// may have a fully qualified entity type `My::Namespace::Action`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ActionsDef<N, A> {
     pub(super) actions: HashMap<EntityUID, ActionFragment<N, A>>,
 }
@@ -555,11 +619,11 @@ impl ActionsDef<ConditionalName, ConditionalName> {
     /// Construct an [`ActionsDef<ConditionalName>`] by converting the structures used by the
     /// schema format to those used internally by the validator.
     pub(crate) fn from_raw_actions(
-        schema_file_actions: HashMap<SmolStr, json_schema::ActionType<RawName>>,
+        schema_file_actions: impl IntoIterator<Item = (SmolStr, json_schema::ActionType<RawName>)>,
         schema_namespace: Option<&InternalName>,
         extensions: &Extensions<'_>,
     ) -> crate::err::Result<Self> {
-        let mut actions = HashMap::with_capacity(schema_file_actions.len());
+        let mut actions = HashMap::new();
         for (action_id_str, action_type) in schema_file_actions {
             let action_uid = json_schema::ActionEntityUID::default_type(action_id_str.clone())
                 .qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
@@ -611,7 +675,7 @@ impl ActionsDef<ConditionalName, ConditionalName> {
 ///
 /// `A` is used for typenames in `applies_to`, and `N` is used for all other
 /// type references.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ActionFragment<N, A> {
     /// The type of the context record for this action. This may contain
     /// references to common types which have not yet been resolved/inlined
@@ -744,7 +808,8 @@ impl ActionFragment<ConditionalName, ConditionalName> {
                 .map_err(|err| {
                     ActionAttrEvalError(EntityAttrEvaluationError {
                         uid: action_id.clone(),
-                        attr: k.clone(),
+                        attr_or_tag: k.clone(),
+                        was_attr: true,
                         err,
                     })
                 })?;
@@ -785,7 +850,10 @@ impl ActionFragment<ConditionalName, ConditionalName> {
             }
             CedarValueJson::Set(v) => match v.first() {
                 //sets with elements of different types will be rejected elsewhere
-                None => Err(ActionAttributesContainEmptySetError(action_id.clone()).into()),
+                None => Err(ActionAttributesContainEmptySetError {
+                    uid: action_id.clone(),
+                }
+                .into()),
                 Some(element) => {
                     let element_type = Self::jsonval_to_type_helper(element, action_id);
                     match element_type {
@@ -796,24 +864,26 @@ impl ActionFragment<ConditionalName, ConditionalName> {
                     }
                 }
             },
-            CedarValueJson::EntityEscape { __entity: _ } => Err(UnsupportedActionAttributeError(
-                action_id.clone(),
-                "entity escape (`__entity`)".into(),
-            )
-            .into()),
-            CedarValueJson::ExprEscape { __expr: _ } => Err(UnsupportedActionAttributeError(
-                action_id.clone(),
-                "expression escape (`__expr`)".into(),
-            )
-            .into()),
-            CedarValueJson::ExtnEscape { __extn: _ } => Err(UnsupportedActionAttributeError(
-                action_id.clone(),
-                "extension function escape (`__extn`)".into(),
-            )
-            .into()),
-            CedarValueJson::Null => {
-                Err(UnsupportedActionAttributeError(action_id.clone(), "null".into()).into())
+            CedarValueJson::EntityEscape { __entity: _ } => Err(UnsupportedActionAttributeError {
+                uid: action_id.clone(),
+                attr: "entity escape (`__entity`)".into(),
             }
+            .into()),
+            CedarValueJson::ExprEscape { __expr: _ } => Err(UnsupportedActionAttributeError {
+                uid: action_id.clone(),
+                attr: "expression escape (`__expr`)".into(),
+            }
+            .into()),
+            CedarValueJson::ExtnEscape { __extn: _ } => Err(UnsupportedActionAttributeError {
+                uid: action_id.clone(),
+                attr: "extension function escape (`__extn`)".into(),
+            }
+            .into()),
+            CedarValueJson::Null => Err(UnsupportedActionAttributeError {
+                uid: action_id.clone(),
+                attr: "null".into(),
+            }
+            .into()),
         }
     }
 }
@@ -910,25 +980,34 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
     extensions: &Extensions<'_>,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Type>> {
     match schema_ty {
-        json_schema::Type::Type(json_schema::TypeVariant::String) => {
-            Ok(Type::primitive_string().into())
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Long) => {
-            Ok(Type::primitive_long().into())
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Boolean) => {
-            Ok(Type::primitive_boolean().into())
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Set { element }) => {
-            Ok(try_jsonschema_type_into_validator_type(*element, extensions)?.map(Type::set))
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Record(rty)) => {
-            try_record_record_type_into_validator_type(rty, extensions)
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Entity { name }) => {
-            Ok(Type::named_entity_reference(internal_name_to_entity_type(name)?).into())
-        }
-        json_schema::Type::Type(json_schema::TypeVariant::Extension { name }) => {
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::String,
+            ..
+        } => Ok(Type::primitive_string().into()),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Long,
+            ..
+        } => Ok(Type::primitive_long().into()),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Boolean,
+            ..
+        } => Ok(Type::primitive_boolean().into()),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Set { element },
+            ..
+        } => Ok(try_jsonschema_type_into_validator_type(*element, extensions)?.map(Type::set)),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Record(rty),
+            ..
+        } => try_record_type_into_validator_type(rty, extensions),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Entity { name },
+            ..
+        } => Ok(Type::named_entity_reference(internal_name_to_entity_type(name)?).into()),
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::Extension { name },
+            ..
+        } => {
             let extension_type_name = Name::unqualified_name(name);
             if extensions.ext_types().contains(&extension_type_name) {
                 Ok(Type::extension(extension_type_name).into())
@@ -948,7 +1027,7 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
                 ))
             }
         }
-        json_schema::Type::CommonTypeRef { type_name } => {
+        json_schema::Type::CommonTypeRef { type_name, .. } => {
             Ok(WithUnresolvedCommonTypeRefs::new(move |common_type_defs| {
                 common_type_defs
                     .get(&type_name)
@@ -961,10 +1040,13 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
                     // Nonetheless, instead of panicking if that internal
                     // invariant is violated, it's easy to return this dynamic
                     // error instead.
-                    .ok_or(CommonTypeInvariantViolationError { name: type_name }.into())
+                    .ok_or_else(|| CommonTypeInvariantViolationError { name: type_name }.into())
             }))
         }
-        json_schema::Type::Type(json_schema::TypeVariant::EntityOrCommon { type_name }) => {
+        json_schema::Type::Type {
+            ty: json_schema::TypeVariant::EntityOrCommon { type_name },
+            ..
+        } => {
             Ok(WithUnresolvedCommonTypeRefs::new(move |common_type_defs| {
                 // First check if it's a common type, because in the edge case where
                 // the name is both a valid common type name and a valid entity type
@@ -987,17 +1069,17 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
     }
 }
 
-/// Convert a [`json_schema::RecordType<json_schema::RecordAttributeType>`]
-/// (with fully qualified names) into the [`Type`] type used by the validator.
-pub(crate) fn try_record_record_type_into_validator_type(
-    rty: json_schema::RecordType<json_schema::RecordAttributeType<InternalName>>,
+/// Convert a [`json_schema::RecordType`] (with fully qualified names) into the
+/// [`Type`] type used by the validator.
+pub(crate) fn try_record_type_into_validator_type(
+    rty: json_schema::RecordType<InternalName>,
     extensions: &Extensions<'_>,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Type>> {
     if cfg!(not(feature = "partial-validate")) && rty.additional_attributes {
         Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
     } else {
         Ok(
-            parse_record_attributes(rty.attributes, extensions)?.map(move |attrs| {
+            parse_record_attributes(rty.attributes.into_iter(), extensions)?.map(move |attrs| {
                 Type::record_with_attributes(
                     attrs,
                     if rty.additional_attributes {
@@ -1011,52 +1093,12 @@ pub(crate) fn try_record_record_type_into_validator_type(
     }
 }
 
-/// Convert a [`json_schema::RecordType<json_schema::EntityAttributeType>`]
-/// (with fully qualified names) into the [`Type`] type used by the validator.
-pub(crate) fn try_record_entity_type_into_validator_type(
-    rty: json_schema::RecordType<json_schema::EntityAttributeType<InternalName>>,
-    extensions: &Extensions<'_>,
-) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Type>> {
-    if cfg!(not(feature = "partial-validate")) && rty.additional_attributes {
-        Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
-    } else {
-        Ok(
-            parse_entity_attributes(rty.attributes, extensions)?.map(move |attrs| {
-                Type::record_with_attributes(
-                    attrs,
-                    if rty.additional_attributes {
-                        OpenTag::OpenAttributes
-                    } else {
-                        OpenTag::ClosedAttributes
-                    },
-                )
-            }),
-        )
-    }
-}
-
-/// Convert a [`json_schema::EntityAttributes`] (with fully qualified names)
-/// into the [`Type`] type used by the validator.
-pub(crate) fn try_entity_attributes_into_validator_type(
-    attrs: json_schema::EntityAttributes<InternalName>,
-    extensions: &Extensions<'_>,
-) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Type>> {
-    match attrs {
-        json_schema::EntityAttributes::RecordAttributes(attrs) => {
-            try_jsonschema_type_into_validator_type(attrs.0, extensions)
-        }
-        json_schema::EntityAttributes::EntityAttributes(
-            json_schema::EntityAttributesInternal { attrs, .. },
-        ) => try_record_entity_type_into_validator_type(attrs, extensions),
-    }
-}
-
-/// Given the attributes for a record type in the schema file format structures
-/// (but with fully-qualified names), convert the types of the attributes into
-/// the [`Type`] data structure used by the validator, and return the result as
-/// an [`Attributes`] structure.
+/// Given the attributes for an entity or record type in the schema file format
+/// structures (but with fully-qualified names), convert the types of the
+/// attributes into the [`Type`] data structure used by the validator, and
+/// return the result as an [`Attributes`] structure.
 fn parse_record_attributes(
-    attrs: impl IntoIterator<Item = (SmolStr, json_schema::RecordAttributeType<InternalName>)>,
+    attrs: impl IntoIterator<Item = (SmolStr, json_schema::TypeOfAttribute<InternalName>)>,
     extensions: &Extensions<'_>,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Attributes>> {
     let attrs_with_common_type_refs = attrs
@@ -1071,45 +1113,8 @@ fn parse_record_attributes(
             ))
         })
         .collect::<crate::err::Result<Vec<_>>>()?;
-    Ok(attributes_from_attributes(attrs_with_common_type_refs))
-}
-
-/// Given the attributes for an entity type in the schema file format structures
-/// (but with fully-qualified names), convert the types of the attributes into
-/// the [`Type`] data structure used by the validator, and return the result as
-/// an [`Attributes`] structure.
-fn parse_entity_attributes(
-    attrs: impl IntoIterator<Item = (SmolStr, json_schema::EntityAttributeType<InternalName>)>,
-    extensions: &Extensions<'_>,
-) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Attributes>> {
-    let attrs_with_common_type_refs = attrs
-        .into_iter()
-        .map(|(attr, ty)| -> crate::err::Result<_> {
-            match ty.ty {
-                json_schema::EntityAttributeTypeInternal::Type(inner_ty) => {
-                    let validator_type =
-                        try_jsonschema_type_into_validator_type(inner_ty, extensions)?;
-                    Ok((attr, (validator_type, ty.required)))
-                }
-                json_schema::EntityAttributeTypeInternal::EAMap { .. } => {
-                    // This will be implemented in the next RFC 68 PR, which will
-                    // introduce the necessary changes to [`Attributes`] and its
-                    // associated types
-                    Err(UnsupportedFeatureError(UnsupportedFeature::EAMaps).into())
-                }
-            }
-        })
-        .collect::<crate::err::Result<Vec<_>>>()?;
-    Ok(attributes_from_attributes(attrs_with_common_type_refs))
-}
-
-/// Given an iterator of attribute types `(attribute name, (attribute type, is_required))`,
-/// build an [`Attributes`] structure.
-fn attributes_from_attributes(
-    attrs: impl IntoIterator<Item = (SmolStr, (WithUnresolvedCommonTypeRefs<Type>, bool))> + 'static,
-) -> WithUnresolvedCommonTypeRefs<Attributes> {
-    WithUnresolvedCommonTypeRefs::new(|common_type_defs| {
-        attrs
+    Ok(WithUnresolvedCommonTypeRefs::new(|common_type_defs| {
+        attrs_with_common_type_refs
             .into_iter()
             .map(|(s, (attr_ty, is_req))| {
                 attr_ty
@@ -1118,5 +1123,5 @@ fn attributes_from_attributes(
             })
             .collect::<crate::err::Result<Vec<_>>>()
             .map(Attributes::with_attributes)
-    })
+    }))
 }

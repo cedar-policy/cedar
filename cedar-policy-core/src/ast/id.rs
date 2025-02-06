@@ -155,7 +155,7 @@ impl UnreservedId {
 
 struct IdVisitor;
 
-impl<'de> serde::de::Visitor<'de> for IdVisitor {
+impl serde::de::Visitor<'_> for IdVisitor {
     type Value = Id;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -262,6 +262,8 @@ impl<'a> arbitrary::Arbitrary<'a> for UnreservedId {
 //
 // For now, internally, `AnyId`s are just owned `SmolString`s.
 #[derive(Serialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct AnyId(SmolStr);
 
 impl AnyId {
@@ -286,7 +288,7 @@ impl AnyId {
 
 struct AnyIdVisitor;
 
-impl<'de> serde::de::Visitor<'de> for AnyIdVisitor {
+impl serde::de::Visitor<'_> for AnyIdVisitor {
     type Value = AnyId;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

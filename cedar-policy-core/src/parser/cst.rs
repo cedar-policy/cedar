@@ -31,7 +31,7 @@ pub struct Annotation {
     /// key
     pub key: Node<Ident>,
     /// value
-    pub value: Node<Str>,
+    pub value: Option<Node<Str>>,
 }
 
 /// Literal strings

@@ -43,8 +43,10 @@ use crate::ast::{
     self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
     PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
 };
-use crate::est::extract_single_argument;
-use itertools::Either;
+use crate::expr_builder::ExprBuilder;
+use crate::fuzzy_match::fuzzy_search_limited;
+use itertools::{Either, Itertools};
+use nonempty::nonempty;
 use nonempty::NonEmpty;
 use smol_str::{SmolStr, ToSmolStr};
 use std::cmp::Ordering;
@@ -63,8 +65,12 @@ type Result<T> = std::result::Result<T, ParseErrors>;
 
 // for storing extension function names per callstyle
 struct ExtStyles<'a> {
+    /// All extension function names (just functions, not methods), as `Name`s
     functions: HashSet<&'a ast::Name>,
+    /// All extension function methods. `UnreservedId` is appropriate because methods cannot be namespaced.
     methods: HashSet<ast::UnreservedId>,
+    /// All extension function and method names (both qualified and unqualified), in their string (`Display`) form
+    functions_and_methods_as_str: HashSet<SmolStr>,
 }
 
 // Store extension function call styles
@@ -74,13 +80,24 @@ lazy_static::lazy_static! {
 fn load_styles() -> ExtStyles<'static> {
     let mut functions = HashSet::new();
     let mut methods = HashSet::new();
+    let mut functions_and_methods_as_str = HashSet::new();
     for func in crate::extensions::Extensions::all_available().all_funcs() {
+        functions_and_methods_as_str.insert(func.name().to_smolstr());
         match func.style() {
-            CallStyle::FunctionStyle => functions.insert(func.name()),
-            CallStyle::MethodStyle => methods.insert(func.name().basename()),
+            CallStyle::FunctionStyle => {
+                functions.insert(func.name());
+            }
+            CallStyle::MethodStyle => {
+                debug_assert!(func.name().is_unqualified());
+                methods.insert(func.name().basename());
+            }
         };
     }
-    ExtStyles { functions, methods }
+    ExtStyles {
+        functions,
+        methods,
+        functions_and_methods_as_str,
+    }
 }
 
 impl Node<Option<cst::Policies>> {
@@ -204,14 +221,16 @@ impl Node<Option<cst::Policy>> {
         let maybe_effect = policy.effect.to_effect();
 
         // convert annotations
-        let maybe_annotations = policy.get_ast_annotations();
+        let maybe_annotations = policy.get_ast_annotations(|value, loc| {
+            ast::Annotation::with_optional_value(value, Some(loc.clone()))
+        });
 
         // convert scope
         let maybe_scope = policy.extract_scope();
 
         // convert conditions
         let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
-            let (e, is_when) = c.to_expr()?;
+            let (e, is_when) = c.to_expr::<ast::ExprBuilder<()>>()?;
             let slot_errs = e.slots().map(|slot| {
                 ToASTError::new(
                     ToASTErrorKind::slots_in_condition_clause(
@@ -232,7 +251,7 @@ impl Node<Option<cst::Policy>> {
             flatten_tuple_4(maybe_effect, maybe_annotations, maybe_scope, maybe_conds)?;
         Ok(construct_template_policy(
             id,
-            annotations,
+            annotations.into(),
             effect,
             principal,
             action,
@@ -288,7 +307,10 @@ impl cst::Policy {
             vars.map(|extra_var| {
                 extra_var
                     .try_as_inner()
-                    .map(|def| extra_var.to_ast_err(ToASTErrorKind::ExtraScopeElement(def.clone())))
+                    .map(|def| {
+                        extra_var
+                            .to_ast_err(ToASTErrorKind::ExtraScopeElement(Box::new(def.clone())))
+                    })
                     .unwrap_or_else(|e| e)
                     .into()
             }),
@@ -307,11 +329,14 @@ impl cst::Policy {
     }
 
     /// Get annotations from the `cst::Policy`
-    pub fn get_ast_annotations(&self) -> Result<ast::Annotations> {
+    pub fn get_ast_annotations<T>(
+        &self,
+        annotation_constructor: impl Fn(Option<SmolStr>, &Loc) -> T,
+    ) -> Result<BTreeMap<ast::AnyId, T>> {
         let mut annotations = BTreeMap::new();
         let mut all_errs: Vec<ParseErrors> = vec![];
         for node in self.annotations.iter() {
-            match node.to_kv_pair() {
+            match node.to_kv_pair(&annotation_constructor) {
                 Ok((k, v)) => {
                     use std::collections::btree_map::Entry;
                     match annotations.entry(k) {
@@ -336,7 +361,7 @@ impl cst::Policy {
         }
         match ParseErrors::flatten(all_errs) {
             Some(errs) => Err(errs),
-            None => Ok(annotations.into()),
+            None => Ok(annotations),
         }
     }
 }
@@ -344,24 +369,29 @@ impl cst::Policy {
 impl Node<Option<cst::Annotation>> {
     /// Get the (k, v) pair for the annotation. Critically, this checks validity
     /// for the strings and does unescaping
-    pub fn to_kv_pair(&self) -> Result<(ast::AnyId, ast::Annotation)> {
+    pub fn to_kv_pair<T>(
+        &self,
+        annotation_constructor: impl Fn(Option<SmolStr>, &Loc) -> T,
+    ) -> Result<(ast::AnyId, T)> {
         let anno = self.try_as_inner()?;
 
         let maybe_key = anno.key.to_any_ident();
-        let maybe_value = anno.value.as_valid_string().and_then(|s| {
-            to_unescaped_string(s).map_err(|unescape_errs| {
-                ParseErrors::new_from_nonempty(unescape_errs.map(|e| self.to_ast_err(e).into()))
+        let maybe_value = anno
+            .value
+            .as_ref()
+            .map(|a| {
+                a.as_valid_string().and_then(|s| {
+                    to_unescaped_string(s).map_err(|unescape_errs| {
+                        ParseErrors::new_from_nonempty(
+                            unescape_errs.map(|e| self.to_ast_err(e).into()),
+                        )
+                    })
+                })
             })
-        });
+            .transpose();
 
         let (k, v) = flatten_tuple_2(maybe_key, maybe_value)?;
-        Ok((
-            k,
-            ast::Annotation {
-                val: v,
-                loc: Some(self.loc.clone()), // self's loc, not the loc of the value alone; see comments on ast::Annotation
-            },
-        ))
+        Ok((k, annotation_constructor(v, &self.loc)))
     }
 }
 
@@ -369,7 +399,7 @@ impl Node<Option<cst::Ident>> {
     /// Convert `cst::Ident` to `ast::UnreservedId`. Fails for reserved or invalid identifiers
     pub(crate) fn to_unreserved_ident(&self) -> Result<ast::UnreservedId> {
         self.to_valid_ident()
-            .and_then(|id| id.try_into().map_err(ParseErrors::singleton))
+            .and_then(|id| id.try_into().map_err(|err| self.to_ast_err(err).into()))
     }
     /// Convert `cst::Ident` to `ast::Id`. Fails for reserved or invalid identifiers
     pub fn to_valid_ident(&self) -> Result<ast::Id> {
@@ -451,21 +481,35 @@ impl Node<Option<cst::Ident>> {
 }
 
 impl ast::UnreservedId {
-    fn to_meth(&self, e: ast::Expr, args: Vec<ast::Expr>, loc: &Loc) -> Result<ast::Expr> {
+    fn to_meth<Build: ExprBuilder>(
+        &self,
+        e: Build::Expr,
+        args: Vec<Build::Expr>,
+        loc: &Loc,
+    ) -> Result<Build::Expr> {
+        let builder = Build::new().with_source_loc(loc);
         match self.as_ref() {
             "contains" => extract_single_argument(args.into_iter(), "contains", loc)
-                .map(|arg| construct_method_contains(e, arg, loc.clone())),
+                .map(|arg| builder.contains(e, arg)),
             "containsAll" => extract_single_argument(args.into_iter(), "containsAll", loc)
-                .map(|arg| construct_method_contains_all(e, arg, loc.clone())),
+                .map(|arg| builder.contains_all(e, arg)),
             "containsAny" => extract_single_argument(args.into_iter(), "containsAny", loc)
-                .map(|arg| construct_method_contains_any(e, arg, loc.clone())),
+                .map(|arg| builder.contains_any(e, arg)),
+            "isEmpty" => {
+                require_zero_arguments(&args.into_iter(), "isEmpty", loc)?;
+                Ok(builder.is_empty(e))
+            }
+            "getTag" => extract_single_argument(args.into_iter(), "getTag", loc)
+                .map(|arg| builder.get_tag(e, arg)),
+            "hasTag" => extract_single_argument(args.into_iter(), "hasTag", loc)
+                .map(|arg| builder.has_tag(e, arg)),
             _ => {
                 if EXTENSION_STYLES.methods.contains(self) {
                     let args = NonEmpty {
                         head: e,
                         tail: args,
                     };
-                    Ok(construct_ext_meth(self.clone(), args, loc.clone()))
+                    Ok(builder.call_extension_fn(ast::Name::unqualified_name(self.clone()), args))
                 } else {
                     let unqual_name = ast::Name::unqualified_name(self.clone());
                     if EXTENSION_STYLES.functions.contains(&unqual_name) {
@@ -475,8 +519,26 @@ impl ast::UnreservedId {
                         )
                         .into())
                     } else {
+                        fn suggest_method(
+                            name: &ast::UnreservedId,
+                            methods: &HashSet<ast::UnreservedId>,
+                        ) -> Option<String> {
+                            const SUGGEST_METHOD_MAX_DISTANCE: usize = 3;
+                            let method_names =
+                                methods.iter().map(ToString::to_string).collect::<Vec<_>>();
+                            let suggested_method = fuzzy_search_limited(
+                                name.as_ref(),
+                                method_names.as_slice(),
+                                Some(SUGGEST_METHOD_MAX_DISTANCE),
+                            );
+                            suggested_method.map(|m| format!("did you mean `{m}`?"))
+                        }
+                        let hint = suggest_method(self, &EXTENSION_STYLES.methods);
                         Err(ToASTError::new(
-                            ToASTErrorKind::UnknownMethod(self.clone()),
+                            ToASTErrorKind::UnknownMethod {
+                                id: self.clone(),
+                                hint,
+                            },
                             loc.clone(),
                         )
                         .into())
@@ -484,6 +546,36 @@ impl ast::UnreservedId {
                 }
             }
         }
+    }
+}
+
+/// Return the single argument in `args` iterator, or return a wrong arity error
+/// if the iterator has 0 elements or more than 1 element.
+fn extract_single_argument<T>(
+    args: impl ExactSizeIterator<Item = T>,
+    fn_name: &'static str,
+    loc: &Loc,
+) -> Result<T> {
+    args.exactly_one().map_err(|args| {
+        ParseErrors::singleton(ToASTError::new(
+            ToASTErrorKind::wrong_arity(fn_name, 1, args.len()),
+            loc.clone(),
+        ))
+    })
+}
+
+/// Return a wrong arity error if the iterator has any elements.
+fn require_zero_arguments<T>(
+    args: &impl ExactSizeIterator<Item = T>,
+    fn_name: &'static str,
+    loc: &Loc,
+) -> Result<()> {
+    match args.len() {
+        0 => Ok(()),
+        n => Err(ParseErrors::singleton(ToASTError::new(
+            ToASTErrorKind::wrong_arity(fn_name, 0, n),
+            loc.clone(),
+        ))),
     }
 }
 
@@ -527,13 +619,13 @@ impl Node<Option<cst::VariableDef>> {
         let var = vardef.variable.to_var()?;
 
         if let Some(unused_typename) = vardef.unused_type_name.as_ref() {
-            unused_typename.to_type_constraint()?;
+            unused_typename.to_type_constraint::<ast::ExprBuilder<()>>()?;
         }
 
         let c = if let Some((op, rel_expr)) = &vardef.ineq {
             // special check for the syntax `_ in _ is _`
             if op == &cst::RelOp::In {
-                if let Ok(expr) = rel_expr.to_expr() {
+                if let Ok(expr) = rel_expr.to_expr::<ast::ExprBuilder<()>>() {
                     if matches!(expr.expr_kind(), ast::ExprKind::Is { .. }) {
                         return Err(self.to_ast_err(ToASTErrorKind::InvertedIsIn).into());
                     }
@@ -544,19 +636,34 @@ impl Node<Option<cst::VariableDef>> {
                 (cst::RelOp::Eq, None) => Ok(PrincipalOrResourceConstraint::Eq(eref)),
                 (cst::RelOp::Eq, Some(_)) => Err(self.to_ast_err(ToASTErrorKind::IsWithEq)),
                 (cst::RelOp::In, None) => Ok(PrincipalOrResourceConstraint::In(eref)),
-                (cst::RelOp::In, Some(entity_type)) => Ok(PrincipalOrResourceConstraint::IsIn(
-                    Arc::new(entity_type.to_expr_or_special()?.into_entity_type()?),
-                    eref,
-                )),
+                (cst::RelOp::In, Some(entity_type)) => {
+                    match entity_type
+                        .to_expr_or_special::<ast::ExprBuilder<()>>()?
+                        .into_entity_type()
+                    {
+                        Ok(et) => Ok(PrincipalOrResourceConstraint::IsIn(Arc::new(et), eref)),
+                        Err(eos) => Err(eos.to_ast_err(ToASTErrorKind::InvalidIsType {
+                            lhs: var.to_string(),
+                            rhs: eos.loc().snippet().unwrap_or("<invalid>").to_string(),
+                        })),
+                    }
+                }
                 (cst::RelOp::InvalidSingleEq, _) => {
                     Err(self.to_ast_err(ToASTErrorKind::InvalidSingleEq))
                 }
                 (op, _) => Err(self.to_ast_err(ToASTErrorKind::InvalidScopeOperator(*op))),
             }
         } else if let Some(entity_type) = &vardef.entity_type {
-            Ok(PrincipalOrResourceConstraint::Is(Arc::new(
-                entity_type.to_expr_or_special()?.into_entity_type()?,
-            )))
+            match entity_type
+                .to_expr_or_special::<ast::ExprBuilder<()>>()?
+                .into_entity_type()
+            {
+                Ok(et) => Ok(PrincipalOrResourceConstraint::Is(Arc::new(et))),
+                Err(eos) => Err(eos.to_ast_err(ToASTErrorKind::InvalidIsType {
+                    lhs: var.to_string(),
+                    rhs: eos.loc().snippet().unwrap_or("<invalid>").to_string(),
+                })),
+            }
         } else {
             Ok(PrincipalOrResourceConstraint::Any)
         }?;
@@ -584,7 +691,7 @@ impl Node<Option<cst::VariableDef>> {
         }?;
 
         if let Some(typename) = vardef.unused_type_name.as_ref() {
-            typename.to_type_constraint()?;
+            typename.to_type_constraint::<ast::ExprBuilder<()>>()?;
         }
 
         if vardef.entity_type.is_some() {
@@ -595,7 +702,7 @@ impl Node<Option<cst::VariableDef>> {
             let action_constraint = match op {
                 cst::RelOp::In => {
                     // special check for the syntax `_ in _ is _`
-                    if let Ok(expr) = rel_expr.to_expr() {
+                    if let Ok(expr) = rel_expr.to_expr::<ast::ExprBuilder<()>>() {
                         if matches!(expr.expr_kind(), ast::ExprKind::Is { .. }) {
                             return Err(self.to_ast_err(ToASTErrorKind::IsInActionScope).into());
                         }
@@ -636,13 +743,13 @@ impl Node<Option<cst::Cond>> {
     /// `true` if the cond is a `when` clause, `false` if it is an `unless`
     /// clause. (The returned `expr` is already adjusted for this, the `bool` is
     /// for information only.)
-    fn to_expr(&self) -> Result<(ast::Expr, bool)> {
+    fn to_expr<Build: ExprBuilder>(&self) -> Result<(Build::Expr, bool)> {
         let cond = self.try_as_inner()?;
 
         let is_when = cond.cond.to_cond_is_when()?;
 
         let maybe_expr = match &cond.expr {
-            Some(expr) => expr.to_expr(),
+            Some(expr) => expr.to_expr::<Build>(),
             None => {
                 let ident = match cond.cond.as_inner() {
                     Some(ident) => ident.clone(),
@@ -667,7 +774,7 @@ impl Node<Option<cst::Cond>> {
             if is_when {
                 (e, true)
             } else {
-                (construct_expr_not(e, self.loc.clone()), false)
+                (Build::new().with_source_loc(&self.loc).not(e), false)
             }
         })
     }
@@ -693,9 +800,9 @@ impl Node<Option<cst::Str>> {
 /// as function names, record names, or record attributes. This prevents parsing these
 /// terms to a general Expr expression and then immediately unwrapping them.
 #[derive(Debug)]
-pub(crate) enum ExprOrSpecial<'a> {
-    /// Any expression except a variable, name, or string literal
-    Expr { expr: ast::Expr, loc: Loc },
+pub(crate) enum ExprOrSpecial<'a, Expr> {
+    /// Any expression except a variable, name, string literal, or boolean literal
+    Expr { expr: Expr, loc: Loc },
     /// Variables, which act as expressions or names
     Var { var: ast::Var, loc: Loc },
     /// Name that isn't an expr and couldn't be converted to var
@@ -703,25 +810,32 @@ pub(crate) enum ExprOrSpecial<'a> {
     /// String literal, not yet unescaped
     /// Must be processed with to_unescaped_string or to_pattern before inclusion in the AST
     StrLit { lit: &'a SmolStr, loc: Loc },
+    /// A boolean literal
+    BoolLit { val: bool, loc: Loc },
 }
 
-impl ExprOrSpecial<'_> {
-    fn to_ast_err(&self, kind: impl Into<ToASTErrorKind>) -> ToASTError {
-        ToASTError::new(
-            kind.into(),
-            match self {
-                ExprOrSpecial::Expr { loc, .. } => loc.clone(),
-                ExprOrSpecial::Var { loc, .. } => loc.clone(),
-                ExprOrSpecial::Name { loc, .. } => loc.clone(),
-                ExprOrSpecial::StrLit { loc, .. } => loc.clone(),
-            },
-        )
+impl<Expr> ExprOrSpecial<'_, Expr>
+where
+    Expr: std::fmt::Display,
+{
+    fn loc(&self) -> &Loc {
+        match self {
+            Self::Expr { loc, .. } => loc,
+            Self::Var { loc, .. } => loc,
+            Self::Name { loc, .. } => loc,
+            Self::StrLit { loc, .. } => loc,
+            Self::BoolLit { loc, .. } => loc,
+        }
     }
 
-    fn into_expr(self) -> Result<ast::Expr> {
+    fn to_ast_err(&self, kind: impl Into<ToASTErrorKind>) -> ToASTError {
+        ToASTError::new(kind.into(), self.loc().clone())
+    }
+
+    fn into_expr<Build: ExprBuilder<Expr = Expr>>(self) -> Result<Expr> {
         match self {
             Self::Expr { expr, .. } => Ok(expr),
-            Self::Var { var, loc } => Ok(construct_expr_var(var, loc)),
+            Self::Var { var, loc } => Ok(Build::new().with_source_loc(&loc).var(var)),
             Self::Name { name, loc } => Err(ToASTError::new(
                 ToASTErrorKind::ArbitraryVariable(name.to_string().into()),
                 loc,
@@ -729,12 +843,13 @@ impl ExprOrSpecial<'_> {
             .into()),
             Self::StrLit { lit, loc } => {
                 match to_unescaped_string(lit) {
-                    Ok(s) => Ok(construct_expr_string(s, loc)),
+                    Ok(s) => Ok(Build::new().with_source_loc(&loc).val(s)),
                     Err(escape_errs) => Err(ParseErrors::new_from_nonempty(escape_errs.map(|e| {
                         ToASTError::new(ToASTErrorKind::Unescape(e), loc.clone()).into()
                     }))),
                 }
             }
+            Self::BoolLit { val, loc } => Ok(Build::new().with_source_loc(&loc).val(val)),
         }
     }
 
@@ -751,6 +866,15 @@ impl ExprOrSpecial<'_> {
             }),
             Self::Expr { expr, loc } => Err(ToASTError::new(
                 ToASTErrorKind::InvalidAttribute(expr.to_string().into()),
+                loc,
+            )
+            .into()),
+            Self::BoolLit { val, loc } => Err(ToASTError::new(
+                ToASTErrorKind::ReservedIdentifier(if val {
+                    cst::Ident::True
+                } else {
+                    cst::Ident::False
+                }),
                 loc,
             )
             .into()),
@@ -773,6 +897,9 @@ impl ExprOrSpecial<'_> {
             Self::Expr { expr, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidPattern(expr.to_string()))
                 .into()),
+            Self::BoolLit { val, .. } => Err(self
+                .to_ast_err(ToASTErrorKind::InvalidPattern(val.to_string()))
+                .into()),
         }
     }
     /// to string literal
@@ -792,45 +919,47 @@ impl ExprOrSpecial<'_> {
             Self::Expr { expr, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidString(expr.to_string()))
                 .into()),
+            Self::BoolLit { val, .. } => Err(self
+                .to_ast_err(ToASTErrorKind::InvalidString(val.to_string()))
+                .into()),
         }
     }
 
-    fn into_entity_type(self) -> Result<ast::EntityType> {
+    /// Returns `Err` if `self` is not an `ast::EntityType`. The `Err` will give you the `self` reference back
+    fn into_entity_type(self) -> std::result::Result<ast::EntityType, Self> {
         self.into_name().map(ast::EntityType::from)
     }
 
-    fn into_name(self) -> Result<ast::Name> {
+    /// Returns `Err` if `self` is not an `ast::Name`. The `Err` will give you the `self` reference back
+    fn into_name(self) -> std::result::Result<ast::Name, Self> {
         match self {
-            Self::StrLit { lit, .. } => Err(self
-                .to_ast_err(ToASTErrorKind::InvalidIsType(lit.to_string()))
-                .into()),
             Self::Var { var, .. } => Ok(ast::Name::unqualified_name(var.into())),
             Self::Name { name, .. } => Ok(name),
-            Self::Expr { ref expr, .. } => Err(self
-                .to_ast_err(ToASTErrorKind::InvalidIsType(expr.to_string()))
-                .into()),
+            _ => Err(self),
         }
     }
 }
 
 impl Node<Option<cst::Expr>> {
     /// convert `cst::Expr` to `ast::Expr`
-    pub fn to_expr(&self) -> Result<ast::Expr> {
-        self.to_expr_or_special()?.into_expr()
+    pub fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+        self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    pub(crate) fn to_expr_or_special(&self) -> Result<ExprOrSpecial<'_>> {
+    pub(crate) fn to_expr_or_special<Build: ExprBuilder>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let expr = self.try_as_inner()?;
 
         match &*expr.expr {
-            cst::ExprData::Or(or) => or.to_expr_or_special(),
+            cst::ExprData::Or(or) => or.to_expr_or_special::<Build>(),
             cst::ExprData::If(i, t, e) => {
-                let maybe_guard = i.to_expr();
-                let maybe_then = t.to_expr();
-                let maybe_else = e.to_expr();
+                let maybe_guard = i.to_expr::<Build>();
+                let maybe_then = t.to_expr::<Build>();
+                let maybe_else = e.to_expr::<Build>();
 
                 let (i, t, e) = flatten_tuple_3(maybe_guard, maybe_then, maybe_else)?;
                 Ok(ExprOrSpecial::Expr {
-                    expr: construct_expr_if(i, t, e, self.loc.clone()),
+                    expr: Build::new().with_source_loc(&self.loc).ite(i, t, e),
                     loc: self.loc.clone(),
                 })
             }
@@ -839,60 +968,66 @@ impl Node<Option<cst::Expr>> {
 }
 
 impl Node<Option<cst::Or>> {
-    fn to_expr_or_special(&self) -> Result<ExprOrSpecial<'_>> {
+    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let or = self.try_as_inner()?;
 
-        let maybe_first = or.initial.to_expr_or_special();
-        let maybe_rest = ParseErrors::transpose(or.extended.iter().map(|i| i.to_expr()));
+        let maybe_first = or.initial.to_expr_or_special::<Build>();
+        let maybe_rest = ParseErrors::transpose(or.extended.iter().map(|i| i.to_expr::<Build>()));
 
         let (first, rest) = flatten_tuple_2(maybe_first, maybe_rest)?;
-        let mut rest = rest.into_iter();
-        let second = rest.next();
-        match second {
-            None => Ok(first),
-            Some(second) => first.into_expr().map(|first| ExprOrSpecial::Expr {
-                expr: construct_expr_or(first, second, rest, &self.loc),
+        if rest.is_empty() {
+            // This case is required so the "special" expression variants are
+            // not converted into a plain `ExprOrSpecial::Expr`.
+            Ok(first)
+        } else {
+            first.into_expr::<Build>().map(|first| ExprOrSpecial::Expr {
+                expr: Build::new().with_source_loc(&self.loc).or_nary(first, rest),
                 loc: self.loc.clone(),
-            }),
+            })
         }
     }
 }
 
 impl Node<Option<cst::And>> {
-    fn to_expr(&self) -> Result<ast::Expr> {
-        self.to_expr_or_special()?.into_expr()
+    pub(crate) fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+        self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    fn to_expr_or_special(&self) -> Result<ExprOrSpecial<'_>> {
+    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let and = self.try_as_inner()?;
 
-        let maybe_first = and.initial.to_expr_or_special();
-        let maybe_rest = ParseErrors::transpose(and.extended.iter().map(|i| i.to_expr()));
+        let maybe_first = and.initial.to_expr_or_special::<Build>();
+        let maybe_rest = ParseErrors::transpose(and.extended.iter().map(|i| i.to_expr::<Build>()));
 
         let (first, rest) = flatten_tuple_2(maybe_first, maybe_rest)?;
-        let mut rest = rest.into_iter();
-        let second = rest.next();
-        match second {
-            None => Ok(first),
-            Some(second) => first.into_expr().map(|first| ExprOrSpecial::Expr {
-                expr: construct_expr_and(first, second, rest, &self.loc),
+        if rest.is_empty() {
+            // This case is required so the "special" expression variants are
+            // not converted into a plain `ExprOrSpecial::Expr`.
+            Ok(first)
+        } else {
+            first.into_expr::<Build>().map(|first| ExprOrSpecial::Expr {
+                expr: Build::new()
+                    .with_source_loc(&self.loc)
+                    .and_nary(first, rest),
                 loc: self.loc.clone(),
-            }),
+            })
         }
     }
 }
 
 impl Node<Option<cst::Relation>> {
-    fn to_expr(&self) -> Result<ast::Expr> {
-        self.to_expr_or_special()?.into_expr()
+    fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+        self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    fn to_expr_or_special(&self) -> Result<ExprOrSpecial<'_>> {
+    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let rel = self.try_as_inner()?;
 
         match rel {
             cst::Relation::Common { initial, extended } => {
-                let maybe_first = initial.to_expr_or_special();
+                let maybe_first = initial.to_expr_or_special::<Build>();
                 let maybe_rest = ParseErrors::transpose(
-                    extended.iter().map(|(op, i)| i.to_expr().map(|e| (op, e))),
+                    extended
+                        .iter()
+                        .map(|(op, i)| i.to_expr::<Build>().map(|e| (op, e))),
                 );
                 let maybe_extra_elmts = if extended.len() > 1 {
                     Err(self.to_ast_err(ToASTErrorKind::AmbiguousOperators).into())
@@ -904,29 +1039,34 @@ impl Node<Option<cst::Relation>> {
                 let second = rest.next();
                 match second {
                     None => Ok(first),
-                    Some((&op, second)) => first.into_expr().and_then(|first| {
+                    Some((&op, second)) => first.into_expr::<Build>().and_then(|first| {
                         Ok(ExprOrSpecial::Expr {
-                            expr: construct_expr_rel(first, op, second, self.loc.clone())?,
+                            expr: construct_expr_rel::<Build>(first, op, second, self.loc.clone())?,
                             loc: self.loc.clone(),
                         })
                     }),
                 }
             }
             cst::Relation::Has { target, field } => {
-                let maybe_target = target.to_expr();
-                let maybe_field = field.to_expr_or_special()?.into_valid_attr();
+                let maybe_target = target.to_expr::<Build>();
+                let maybe_field = Ok(match field.to_has_rhs::<Build>()? {
+                    Either::Left(s) => nonempty![s],
+                    Either::Right(ids) => ids.map(|id| id.to_smolstr()),
+                });
                 let (target, field) = flatten_tuple_2(maybe_target, maybe_field)?;
                 Ok(ExprOrSpecial::Expr {
-                    expr: construct_expr_has(target, field, self.loc.clone()),
+                    expr: construct_exprs_extended_has::<Build>(target, &field, &self.loc),
                     loc: self.loc.clone(),
                 })
             }
             cst::Relation::Like { target, pattern } => {
-                let maybe_target = target.to_expr();
-                let maybe_pattern = pattern.to_expr_or_special()?.into_pattern();
+                let maybe_target = target.to_expr::<Build>();
+                let maybe_pattern = pattern.to_expr_or_special::<Build>()?.into_pattern();
                 let (target, pattern) = flatten_tuple_2(maybe_target, maybe_pattern)?;
                 Ok(ExprOrSpecial::Expr {
-                    expr: construct_expr_like(target, pattern, self.loc.clone()),
+                    expr: Build::new()
+                        .with_source_loc(&self.loc)
+                        .like(target, pattern.into()),
                     loc: self.loc.clone(),
                 })
             }
@@ -935,24 +1075,33 @@ impl Node<Option<cst::Relation>> {
                 entity_type,
                 in_entity,
             } => {
-                let maybe_target = target.to_expr();
-                let maybe_entity_type = entity_type.to_expr_or_special()?.into_entity_type();
+                let maybe_target = target.to_expr::<Build>();
+                let maybe_entity_type = entity_type
+                    .to_expr_or_special::<Build>()?
+                    .into_entity_type()
+                    .map_err(|eos| {
+                        eos.to_ast_err(ToASTErrorKind::InvalidIsType {
+                            lhs: maybe_target
+                                .as_ref()
+                                .map(|expr| expr.to_string())
+                                .unwrap_or_else(|_| "..".to_string()),
+                            rhs: eos.loc().snippet().unwrap_or("<invalid>").to_string(),
+                        })
+                        .into()
+                    });
                 let (t, n) = flatten_tuple_2(maybe_target, maybe_entity_type)?;
                 match in_entity {
                     Some(in_entity) => {
-                        let in_expr = in_entity.to_expr()?;
+                        let in_expr = in_entity.to_expr::<Build>()?;
                         Ok(ExprOrSpecial::Expr {
-                            expr: construct_expr_and(
-                                construct_expr_is(t.clone(), n, self.loc.clone()),
-                                construct_expr_rel(t, cst::RelOp::In, in_expr, self.loc.clone())?,
-                                std::iter::empty(),
-                                &self.loc,
-                            ),
+                            expr: Build::new()
+                                .with_source_loc(&self.loc)
+                                .is_in_entity_type(t, n, in_expr),
                             loc: self.loc.clone(),
                         })
                     }
                     None => Ok(ExprOrSpecial::Expr {
-                        expr: construct_expr_is(t, n, self.loc.clone()),
+                        expr: Build::new().with_source_loc(&self.loc).is_entity_type(t, n),
                         loc: self.loc.clone(),
                     }),
                 }
@@ -962,24 +1111,132 @@ impl Node<Option<cst::Relation>> {
 }
 
 impl Node<Option<cst::Add>> {
-    fn to_expr(&self) -> Result<ast::Expr> {
-        self.to_expr_or_special()?.into_expr()
+    fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+        self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    pub(crate) fn to_expr_or_special(&self) -> Result<ExprOrSpecial<'_>> {
+
+    // Peel the grammar onion until we see valid RHS
+    // This function is added to implement RFC 62 (extended `has` operator).
+    // We could modify existing code instead of having this function. However,
+    // the former requires adding a weird variant to `ExprOrSpecial` to
+    // accommodate a sequence of identifiers as RHS, which greatly complicates
+    // the conversion from CSTs to `ExprOrSpecial`. Hence, this function is
+    // added to directly tackle the CST to AST conversion for the has operator,
+    // This design choice should be noninvasive to existing CST to AST logic,
+    // despite producing deadcode.
+    pub(crate) fn to_has_rhs<Build: ExprBuilder>(
+        &self,
+    ) -> Result<Either<SmolStr, NonEmpty<UnreservedId>>> {
+        let inner @ cst::Add { initial, extended } = self.try_as_inner()?;
+        let err = |loc| {
+            ToASTError::new(ToASTErrorKind::InvalidHasRHS(inner.to_string().into()), loc).into()
+        };
+        let construct_attrs =
+            |first, rest: &[Node<Option<cst::MemAccess>>]| -> Result<NonEmpty<UnreservedId>> {
+                let mut acc = nonempty![first];
+                rest.iter().try_for_each(|ma_node| {
+                    let ma = ma_node.try_as_inner()?;
+                    match ma {
+                        cst::MemAccess::Field(id) => {
+                            acc.push(id.to_unreserved_ident()?);
+                            Ok(())
+                        }
+                        _ => Err(err(ma_node.loc.clone())),
+                    }
+                })?;
+                Ok(acc)
+            };
+        if !extended.is_empty() {
+            return Err(err(self.loc.clone()));
+        }
+        let cst::Mult { initial, extended } = initial.try_as_inner()?;
+        if !extended.is_empty() {
+            return Err(err(self.loc.clone()));
+        }
+        if let cst::Unary {
+            op: None,
+            item: item_node,
+        } = initial.try_as_inner()?
+        {
+            let cst::Member { item, access } = item_node.try_as_inner()?;
+            // Among successful conversion from `Primary` to `ExprOrSpecial`,
+            // an `Ident` or `Str` becomes `ExprOrSpecial::StrLit`,
+            // `ExprOrSpecial::Var`, and `ExprOrSpecial::Name`. Other
+            // syntactical variants become `ExprOrSpecial::Expr`.
+            match item.try_as_inner()? {
+                cst::Primary::EList(_)
+                | cst::Primary::Expr(_)
+                | cst::Primary::RInits(_)
+                | cst::Primary::Ref(_)
+                | cst::Primary::Slot(_) => Err(err(item.loc.clone())),
+                cst::Primary::Literal(_) | cst::Primary::Name(_) => {
+                    let item = item.to_expr_or_special::<Build>()?;
+                    match (item, access.as_slice()) {
+                        (ExprOrSpecial::StrLit { lit, loc }, []) => Ok(Either::Left(
+                            to_unescaped_string(lit).map_err(|escape_errs| {
+                                ParseErrors::new_from_nonempty(escape_errs.map(|e| {
+                                    ToASTError::new(ToASTErrorKind::Unescape(e), loc.clone()).into()
+                                }))
+                            })?,
+                        )),
+                        (ExprOrSpecial::Var { var, .. }, rest) => {
+                            // PANIC SAFETY: any variable should be a valid identifier
+                            #[allow(clippy::unwrap_used)]
+                            let first = construct_string_from_var(var).parse().unwrap();
+                            Ok(Either::Right(construct_attrs(first, rest)?))
+                        }
+                        (ExprOrSpecial::Name { name, loc }, rest) => {
+                            if name.is_unqualified() {
+                                let first = name.basename();
+
+                                Ok(Either::Right(construct_attrs(first, rest)?))
+                            } else {
+                                Err(ToASTError::new(
+                                    ToASTErrorKind::PathAsAttribute(inner.to_string()),
+                                    loc,
+                                )
+                                .into())
+                            }
+                        }
+                        // Attempt to return a precise error message for RHS like `true.<...>` and `false.<...>`
+                        (ExprOrSpecial::BoolLit { val, loc }, _) => Err(ToASTError::new(
+                            ToASTErrorKind::ReservedIdentifier(if val {
+                                cst::Ident::True
+                            } else {
+                                cst::Ident::False
+                            }),
+                            loc,
+                        )
+                        .into()),
+                        (ExprOrSpecial::Expr { loc, .. }, _) => Err(err(loc)),
+                        _ => Err(err(self.loc.clone())),
+                    }
+                }
+            }
+        } else {
+            Err(err(self.loc.clone()))
+        }
+    }
+
+    pub(crate) fn to_expr_or_special<Build: ExprBuilder>(
+        &self,
+    ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let add = self.try_as_inner()?;
 
-        let maybe_first = add.initial.to_expr_or_special();
+        let maybe_first = add.initial.to_expr_or_special::<Build>();
         let maybe_rest = ParseErrors::transpose(
             add.extended
                 .iter()
-                .map(|&(op, ref i)| i.to_expr().map(|e| (op, e))),
+                .map(|&(op, ref i)| i.to_expr::<Build>().map(|e| (op, e))),
         );
         let (first, rest) = flatten_tuple_2(maybe_first, maybe_rest)?;
         if !rest.is_empty() {
             // in this case, `first` must be an expr, we should check for errors there as well
-            let first = first.into_expr()?;
+            let first = first.into_expr::<Build>()?;
             Ok(ExprOrSpecial::Expr {
-                expr: construct_expr_add(first, rest, &self.loc),
+                expr: Build::new()
+                    .with_source_loc(&self.loc)
+                    .add_nary(first, rest),
                 loc: self.loc.clone(),
             })
         } else {
@@ -989,15 +1246,15 @@ impl Node<Option<cst::Add>> {
 }
 
 impl Node<Option<cst::Mult>> {
-    fn to_expr(&self) -> Result<ast::Expr> {
-        self.to_expr_or_special()?.into_expr()
+    fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+        self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    fn to_expr_or_special(&self) -> Result<ExprOrSpecial<'_>> {
+    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let mult = self.try_as_inner()?;
 
-        let maybe_first = mult.initial.to_expr_or_special();
+        let maybe_first = mult.initial.to_expr_or_special::<Build>();
         let maybe_rest = ParseErrors::transpose(mult.extended.iter().map(|&(op, ref i)| {
-            i.to_expr().and_then(|e| match op {
+            i.to_expr::<Build>().and_then(|e| match op {
                 cst::MultOp::Times => Ok(e),
                 cst::MultOp::Divide => {
                     Err(self.to_ast_err(ToASTErrorKind::UnsupportedDivision).into())
@@ -1009,9 +1266,11 @@ impl Node<Option<cst::Mult>> {
         let (first, rest) = flatten_tuple_2(maybe_first, maybe_rest)?;
         if !rest.is_empty() {
             // in this case, `first` must be an expr, we should check for errors there as well
-            let first = first.into_expr()?;
+            let first = first.into_expr::<Build>()?;
             Ok(ExprOrSpecial::Expr {
-                expr: construct_expr_mul(first, rest, &self.loc),
+                expr: Build::new()
+                    .with_source_loc(&self.loc)
+                    .mul_nary(first, rest),
                 loc: self.loc.clone(),
             })
         } else {
@@ -1021,25 +1280,25 @@ impl Node<Option<cst::Mult>> {
 }
 
 impl Node<Option<cst::Unary>> {
-    fn to_expr(&self) -> Result<ast::Expr> {
-        self.to_expr_or_special()?.into_expr()
+    fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+        self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    fn to_expr_or_special(&self) -> Result<ExprOrSpecial<'_>> {
+    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let unary = self.try_as_inner()?;
 
         match unary.op {
-            None => unary.item.to_expr_or_special(),
+            None => unary.item.to_expr_or_special::<Build>(),
             Some(cst::NegOp::Bang(n)) => {
-                (0..n).fold(unary.item.to_expr_or_special(), |inner, _| {
+                (0..n).fold(unary.item.to_expr_or_special::<Build>(), |inner, _| {
                     inner
-                        .and_then(|e| e.into_expr())
+                        .and_then(|e| e.into_expr::<Build>())
                         .map(|expr| ExprOrSpecial::Expr {
-                            expr: construct_expr_not(expr, self.loc.clone()),
+                            expr: Build::new().with_source_loc(&self.loc).not(expr),
                             loc: self.loc.clone(),
                         })
                 })
             }
-            Some(cst::NegOp::Dash(0)) => unary.item.to_expr_or_special(),
+            Some(cst::NegOp::Dash(0)) => unary.item.to_expr_or_special::<Build>(),
             Some(cst::NegOp::Dash(c)) => {
                 // Test if there is a negative numeric literal.
                 // A negative numeric literal should match regex pattern
@@ -1049,11 +1308,13 @@ impl Node<Option<cst::Unary>> {
                 let (last, rc) = if let Some(cst::Literal::Num(n)) = unary.item.to_lit() {
                     match n.cmp(&(i64::MAX as u64 + 1)) {
                         Ordering::Equal => (
-                            Ok(construct_expr_num(i64::MIN, unary.item.loc.clone())),
+                            Ok(Build::new().with_source_loc(&unary.item.loc).val(i64::MIN)),
                             c - 1,
                         ),
                         Ordering::Less => (
-                            Ok(construct_expr_num(-(*n as i64), unary.item.loc.clone())),
+                            Ok(Build::new()
+                                .with_source_loc(&unary.item.loc)
+                                .val(-(*n as i64))),
                             c - 1,
                         ),
                         Ordering::Greater => (
@@ -1067,14 +1328,17 @@ impl Node<Option<cst::Unary>> {
                     // If the operand is not a CST literal, convert it into
                     // an expression.
                     (
-                        unary.item.to_expr_or_special().and_then(|i| i.into_expr()),
+                        unary
+                            .item
+                            .to_expr_or_special::<Build>()
+                            .and_then(|i| i.into_expr::<Build>()),
                         c,
                     )
                 };
                 // Fold the expression into a series of negation operations.
                 (0..rc)
                     .fold(last, |r, _| {
-                        r.map(|e| (construct_expr_neg(e, self.loc.clone())))
+                        r.map(|e| Build::new().with_source_loc(&self.loc).neg(e))
                     })
                     .map(|expr| ExprOrSpecial::Expr {
                         expr,
@@ -1092,9 +1356,9 @@ impl Node<Option<cst::Unary>> {
 }
 
 /// Temporary converted data, mirroring `cst::MemAccess`
-enum AstAccessor {
+enum AstAccessor<Expr> {
     Field(ast::UnreservedId),
-    Call(Vec<ast::Expr>),
+    Call(Vec<Expr>),
     Index(SmolStr),
 }
 
@@ -1114,212 +1378,176 @@ impl Node<Option<cst::Member>> {
         }
     }
 
-    fn to_expr_or_special(&self) -> Result<ExprOrSpecial<'_>> {
+    /// Construct an attribute access or method call on an expression. This also
+    /// handles function calls, but a function call of an arbitrary expression
+    /// is always an error.
+    ///
+    /// The input `head` is an arbitrary expression, while `next` and `tail` are
+    /// togther a non-empty list of accesses applied to that expression.
+    ///
+    /// Returns a tuple where the first element is the expression built for the
+    /// `next` access applied to `head`, and the second element is the new tail of
+    /// acessors. In most cases, `tail` is returned unmodified, but in the method
+    /// call case we need to pull off the `Call` element containing the arguments.
+    #[allow(clippy::type_complexity)]
+    fn build_expr_accessor<'a, Build: ExprBuilder>(
+        &self,
+        head: Build::Expr,
+        next: &mut AstAccessor<Build::Expr>,
+        tail: &'a mut [AstAccessor<Build::Expr>],
+    ) -> Result<(Build::Expr, &'a mut [AstAccessor<Build::Expr>])> {
+        use AstAccessor::*;
+        match (next, tail) {
+            // trying to "call" an expression as a function like `(1 + 1)("foo")`. Always an error.
+            (Call(_), _) => Err(self.to_ast_err(ToASTErrorKind::ExpressionCall).into()),
+
+            // method call on arbitrary expression like `[].contains(1)`
+            (Field(id), [Call(args), rest @ ..]) => {
+                // move the expr and args out of the slice
+                let args = std::mem::take(args);
+                // move the id out of the slice as well, to avoid cloning the internal string
+                let id = mem::replace(id, ast::UnreservedId::empty());
+                Ok((id.to_meth::<Build>(head, args, &self.loc)?, rest))
+            }
+
+            // field of arbitrary expr like `(principal.foo).bar`
+            (Field(id), rest) => {
+                let id = mem::replace(id, ast::UnreservedId::empty());
+                Ok((
+                    Build::new()
+                        .with_source_loc(&self.loc)
+                        .get_attr(head, id.to_smolstr()),
+                    rest,
+                ))
+            }
+
+            // index into arbitrary expr like `(principal.foo)["bar"]`
+            (Index(i), rest) => {
+                let i = mem::take(i);
+                Ok((
+                    Build::new().with_source_loc(&self.loc).get_attr(head, i),
+                    rest,
+                ))
+            }
+        }
+    }
+
+    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let mem = self.try_as_inner()?;
 
-        let maybe_prim = mem.item.to_expr_or_special();
-        let maybe_accessors = ParseErrors::transpose(mem.access.iter().map(|a| a.to_access()));
+        let maybe_prim = mem.item.to_expr_or_special::<Build>();
+        let maybe_accessors =
+            ParseErrors::transpose(mem.access.iter().map(|a| a.to_access::<Build>()));
 
         // Return errors in case parsing failed for any element
         let (prim, mut accessors) = flatten_tuple_2(maybe_prim, maybe_accessors)?;
 
-        // `head` will store the current translated expression
-        let mut head = prim;
-        // `tail` will store what remains to be translated
-        let mut tail = &mut accessors[..];
-
-        // This algorithm is essentially an iterator over the accessor slice, but the
-        // pattern match should be easier to read, since we have to check multiple elements
-        // at once. We use `mem::replace` to "deconstruct" the slice as we go, filling it
-        // with empty data and taking ownership of its contents.
-        // The loop returns on the first error observed.
-        loop {
+        let (mut head, mut tail) = {
             use AstAccessor::*;
             use ExprOrSpecial::*;
-            match (&mut head, tail) {
-                // no accessors left - we're done
-                (_, []) => break Ok(head),
+            match (prim, accessors.as_mut_slice()) {
+                // no accessors, return head immediately.
+                (prim, []) => return Ok(prim),
+
+                // Any access on an arbitrary expression (or string or boolean
+                // literal). We will handle the possibility of multiple chained
+                // accesses on this expression in the loop at the end of this
+                // function.
+                (prim @ (Expr { .. } | StrLit { .. } | BoolLit { .. }), [next, rest @ ..]) => {
+                    self.build_expr_accessor::<Build>(prim.into_expr::<Build>()?, next, rest)?
+                }
+
                 // function call
-                (Name { name, .. }, [Call(a), rest @ ..]) => {
+                (Name { name, .. }, [Call(args), rest @ ..]) => {
                     // move the vec out of the slice, we won't use the slice after
-                    let args = std::mem::take(a);
-                    // replace the object `name` refers to with a default value since it won't be used afterwards
-                    let nn = mem::replace(
-                        name,
-                        ast::Name::unqualified_name(ast::UnreservedId::empty()),
-                    );
-                    head = nn.into_func(args, self.loc.clone()).map(|expr| Expr {
-                        expr,
-                        loc: self.loc.clone(),
-                    })?;
-                    tail = rest;
+                    let args = std::mem::take(args);
+                    (name.into_func::<Build>(args, self.loc.clone())?, rest)
                 }
-                // variable call - error
+                // variable function call - error
                 (Var { var, .. }, [Call(_), ..]) => {
-                    break Err(self.to_ast_err(ToASTErrorKind::VariableCall(*var)).into())
+                    return Err(self.to_ast_err(ToASTErrorKind::VariableCall(var)).into());
                 }
-                // arbitrary call - error
-                (_, [Call(_), ..]) => {
-                    break Err(self.to_ast_err(ToASTErrorKind::ExpressionCall).into())
-                }
+
                 // method call on name - error
                 (Name { name, .. }, [Field(f), Call(_), ..]) => {
-                    break Err(self
-                        .to_ast_err(ToASTErrorKind::NoMethods(name.clone(), f.clone()))
-                        .into())
+                    return Err(self
+                        .to_ast_err(ToASTErrorKind::NoMethods(name, f.clone()))
+                        .into());
                 }
                 // method call on variable
-                (Var { var, loc: var_loc }, [Field(i), Call(a), rest @ ..]) => {
-                    // move var and args out of the slice
-                    let var = mem::replace(var, ast::Var::Principal);
-                    let args = std::mem::take(a);
+                (Var { var, loc: var_loc }, [Field(id), Call(args), rest @ ..]) => {
+                    let args = std::mem::take(args);
                     // move the id out of the slice as well, to avoid cloning the internal string
-                    let id = mem::replace(i, ast::UnreservedId::empty());
+                    let id = mem::replace(id, ast::UnreservedId::empty());
+                    (
+                        id.to_meth::<Build>(
+                            Build::new().with_source_loc(&var_loc).var(var),
+                            args,
+                            &self.loc,
+                        )?,
+                        rest,
+                    )
+                }
 
-                    head = id
-                        .to_meth(construct_expr_var(var, var_loc.clone()), args, &self.loc)
-                        .map(|expr| Expr {
-                            expr,
-                            loc: self.loc.clone(),
-                        })?;
-                    tail = rest;
-                }
-                // method call on arbitrary expression
-                (Expr { expr, .. }, [Field(i), Call(a), rest @ ..]) => {
-                    // move the expr and args out of the slice
-                    let args = std::mem::take(a);
-                    let expr = mem::replace(expr, ast::Expr::val(false));
-                    // move the id out of the slice as well, to avoid cloning the internal string
-                    let id = mem::replace(i, ast::UnreservedId::empty());
-                    head = id.to_meth(expr, args, &self.loc).map(|expr| Expr {
-                        expr,
-                        loc: self.loc.clone(),
-                    })?;
-                    tail = rest;
-                }
-                // method call on string literal (same as Expr case)
-                (StrLit { lit, loc: lit_loc }, [Field(i), Call(a), rest @ ..]) => {
-                    let args = std::mem::take(a);
-                    let id = mem::replace(i, ast::UnreservedId::empty());
-                    let maybe_expr = match to_unescaped_string(lit) {
-                        Ok(s) => Ok(construct_expr_string(s, lit_loc.clone())),
-                        Err(escape_errs) => {
-                            Err(ParseErrors::new_from_nonempty(escape_errs.map(|e| {
-                                self.to_ast_err(ToASTErrorKind::Unescape(e)).into()
-                            })))
-                        }
-                    };
-                    head = maybe_expr.and_then(|e| {
-                        id.to_meth(e, args, &self.loc).map(|expr| Expr {
-                            expr,
-                            loc: self.loc.clone(),
-                        })
-                    })?;
-                    tail = rest;
-                }
-                // access on arbitrary name - error
-                (Name { name, .. }, [Field(f), ..]) => {
-                    break Err(self
-                        .to_ast_err(ToASTErrorKind::InvalidAccess(
-                            name.clone(),
-                            f.to_string().into(),
-                        ))
-                        .into())
-                }
-                (Name { name, .. }, [Index(i), ..]) => {
-                    break Err(self
-                        .to_ast_err(ToASTErrorKind::InvalidIndex(name.clone(), i.clone()))
-                        .into())
-                }
-                // attribute of variable
+                // attribute access on a variable
                 (Var { var, loc: var_loc }, [Field(i), rest @ ..]) => {
-                    let var = mem::replace(var, ast::Var::Principal);
                     let id = mem::replace(i, ast::UnreservedId::empty());
-                    head = Expr {
-                        expr: construct_expr_attr(
-                            construct_expr_var(var, var_loc.clone()),
+                    (
+                        Build::new().with_source_loc(&self.loc).get_attr(
+                            Build::new().with_source_loc(&var_loc).var(var),
                             id.to_smolstr(),
-                            self.loc.clone(),
                         ),
-                        loc: self.loc.clone(),
-                    };
-                    tail = rest;
+                        rest,
+                    )
                 }
-                // field of arbitrary expr
-                (Expr { expr, .. }, [Field(i), rest @ ..]) => {
-                    let expr = mem::replace(expr, ast::Expr::val(false));
-                    let id = mem::replace(i, ast::UnreservedId::empty());
-                    head = Expr {
-                        expr: construct_expr_attr(expr, id.to_smolstr(), self.loc.clone()),
-                        loc: self.loc.clone(),
-                    };
-                    tail = rest;
+                // attribute access on an arbitrary name - error
+                (Name { name, .. }, [Field(f), ..]) => {
+                    return Err(self
+                        .to_ast_err(ToASTErrorKind::InvalidAccess {
+                            lhs: name,
+                            field: f.to_smolstr(),
+                        })
+                        .into());
                 }
-                // field of string literal (same as Expr case)
-                (StrLit { lit, loc: lit_loc }, [Field(i), rest @ ..]) => {
-                    let id = mem::replace(i, ast::UnreservedId::empty());
-                    let maybe_expr = match to_unescaped_string(lit) {
-                        Ok(s) => Ok(construct_expr_string(s, lit_loc.clone())),
-                        Err(escape_errs) => {
-                            Err(ParseErrors::new_from_nonempty(escape_errs.map(|e| {
-                                self.to_ast_err(ToASTErrorKind::Unescape(e)).into()
-                            })))
-                        }
-                    };
-                    head = maybe_expr.map(|e| Expr {
-                        expr: construct_expr_attr(e, id.to_smolstr(), self.loc.clone()),
-                        loc: self.loc.clone(),
-                    })?;
-                    tail = rest;
+                // index style attribute access on an arbitrary name - error
+                (Name { name, .. }, [Index(i), ..]) => {
+                    return Err(self
+                        .to_ast_err(ToASTErrorKind::InvalidIndex {
+                            lhs: name,
+                            field: i.clone(),
+                        })
+                        .into());
                 }
-                // index into var
+
+                // index style attribute access on a variable
                 (Var { var, loc: var_loc }, [Index(i), rest @ ..]) => {
-                    let var = mem::replace(var, ast::Var::Principal);
-                    let s = mem::take(i);
-                    head = Expr {
-                        expr: construct_expr_attr(
-                            construct_expr_var(var, var_loc.clone()),
-                            s,
-                            self.loc.clone(),
-                        ),
-                        loc: self.loc.clone(),
-                    };
-                    tail = rest;
-                }
-                // index into arbitrary expr
-                (Expr { expr, .. }, [Index(i), rest @ ..]) => {
-                    let expr = mem::replace(expr, ast::Expr::val(false));
-                    let s = mem::take(i);
-                    head = Expr {
-                        expr: construct_expr_attr(expr, s, self.loc.clone()),
-                        loc: self.loc.clone(),
-                    };
-                    tail = rest;
-                }
-                // index into string literal (same as Expr case)
-                (StrLit { lit, loc: lit_loc }, [Index(i), rest @ ..]) => {
-                    let id = mem::take(i);
-                    let maybe_expr = match to_unescaped_string(lit) {
-                        Ok(s) => Ok(construct_expr_string(s, lit_loc.clone())),
-                        Err(escape_errs) => {
-                            Err(ParseErrors::new_from_nonempty(escape_errs.map(|e| {
-                                self.to_ast_err(ToASTErrorKind::Unescape(e)).into()
-                            })))
-                        }
-                    };
-                    head = maybe_expr.map(|e| Expr {
-                        expr: construct_expr_attr(e, id, self.loc.clone()),
-                        loc: self.loc.clone(),
-                    })?;
-                    tail = rest;
+                    let i = mem::take(i);
+                    (
+                        Build::new()
+                            .with_source_loc(&self.loc)
+                            .get_attr(Build::new().with_source_loc(&var_loc).var(var), i),
+                        rest,
+                    )
                 }
             }
+        };
+
+        // After processing the first element, we know that `head` is always an
+        // expression, so we repeatedly apply `build_expr_access` on head
+        // without need to consider the other cases until we've consumed the
+        // list of accesses.
+        while let [next, rest @ ..] = tail {
+            (head, tail) = self.build_expr_accessor::<Build>(head, next, rest)?;
         }
+        Ok(ExprOrSpecial::Expr {
+            expr: head,
+            loc: self.loc.clone(),
+        })
     }
 }
 
 impl Node<Option<cst::MemAccess>> {
-    fn to_access(&self) -> Result<AstAccessor> {
+    fn to_access<Build: ExprBuilder>(&self) -> Result<AstAccessor<Build::Expr>> {
         let acc = self.try_as_inner()?;
 
         match acc {
@@ -1328,11 +1556,11 @@ impl Node<Option<cst::MemAccess>> {
                 maybe_ident.map(AstAccessor::Field)
             }
             cst::MemAccess::Call(args) => {
-                let maybe_args = ParseErrors::transpose(args.iter().map(|e| e.to_expr()));
+                let maybe_args = ParseErrors::transpose(args.iter().map(|e| e.to_expr::<Build>()));
                 maybe_args.map(AstAccessor::Call)
             }
             cst::MemAccess::Index(index) => {
-                let maybe_index = index.to_expr_or_special()?.into_string_literal();
+                let maybe_index = index.to_expr_or_special::<Build>()?.into_string_literal();
                 maybe_index.map(AstAccessor::Index)
             }
         }
@@ -1340,22 +1568,26 @@ impl Node<Option<cst::MemAccess>> {
 }
 
 impl Node<Option<cst::Primary>> {
-    pub(crate) fn to_expr(&self) -> Result<ast::Expr> {
-        self.to_expr_or_special()?.into_expr()
+    pub(crate) fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
+        self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
-    fn to_expr_or_special(&self) -> Result<ExprOrSpecial<'_>> {
+    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let prim = self.try_as_inner()?;
 
         match prim {
-            cst::Primary::Literal(lit) => lit.to_expr_or_special(),
-            cst::Primary::Ref(r) => r.to_expr().map(|expr| ExprOrSpecial::Expr {
+            cst::Primary::Literal(lit) => lit.to_expr_or_special::<Build>(),
+            cst::Primary::Ref(r) => r.to_expr::<Build>().map(|expr| ExprOrSpecial::Expr {
                 expr,
                 loc: r.loc.clone(),
             }),
-            cst::Primary::Slot(s) => s.clone().into_expr().map(|expr| ExprOrSpecial::Expr {
-                expr,
-                loc: s.loc.clone(),
-            }),
+            cst::Primary::Slot(s) => {
+                s.clone()
+                    .into_expr::<Build>()
+                    .map(|expr| ExprOrSpecial::Expr {
+                        expr,
+                        loc: s.loc.clone(),
+                    })
+            }
             #[allow(clippy::manual_map)]
             cst::Primary::Name(n) => {
                 // ignore errors in the case where `n` isn't a var - we'll get them elsewhere
@@ -1374,20 +1606,25 @@ impl Node<Option<cst::Primary>> {
                     })
                 }
             }
-            cst::Primary::Expr(e) => e.to_expr().map(|expr| ExprOrSpecial::Expr {
+            cst::Primary::Expr(e) => e.to_expr::<Build>().map(|expr| ExprOrSpecial::Expr {
                 expr,
                 loc: e.loc.clone(),
             }),
             cst::Primary::EList(es) => {
-                let maybe_list = ParseErrors::transpose(es.iter().map(|e| e.to_expr()));
+                let maybe_list = ParseErrors::transpose(es.iter().map(|e| e.to_expr::<Build>()));
                 maybe_list.map(|list| ExprOrSpecial::Expr {
-                    expr: construct_expr_set(list, self.loc.clone()),
+                    expr: Build::new().with_source_loc(&self.loc).set(list),
                     loc: self.loc.clone(),
                 })
             }
             cst::Primary::RInits(is) => {
-                let rec = ParseErrors::transpose(is.iter().map(|i| i.to_init()))?;
-                let expr = construct_expr_record(rec, self.loc.clone())?;
+                let rec = ParseErrors::transpose(is.iter().map(|i| i.to_init::<Build>()))?;
+                let expr = Build::new()
+                    .with_source_loc(&self.loc)
+                    .record(rec)
+                    .map_err(|e| {
+                        Into::<ParseErrors>::into(ToASTError::new(e.into(), self.loc.clone()))
+                    })?;
                 Ok(ExprOrSpecial::Expr {
                     expr,
                     loc: self.loc.clone(),
@@ -1397,11 +1634,11 @@ impl Node<Option<cst::Primary>> {
     }
 
     /// convert `cst::Primary` representing a string literal to a `SmolStr`.
-    pub fn to_string_literal(&self) -> Result<SmolStr> {
+    pub fn to_string_literal<Build: ExprBuilder>(&self) -> Result<SmolStr> {
         let prim = self.try_as_inner()?;
 
         match prim {
-            cst::Primary::Literal(lit) => lit.to_expr_or_special()?.into_string_literal(),
+            cst::Primary::Literal(lit) => lit.to_expr_or_special::<Build>()?.into_string_literal(),
             _ => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidString(prim.to_string()))
                 .into()),
@@ -1410,11 +1647,9 @@ impl Node<Option<cst::Primary>> {
 }
 
 impl Node<Option<cst::Slot>> {
-    fn into_expr(self) -> Result<ast::Expr> {
+    fn into_expr<Build: ExprBuilder>(self) -> Result<Build::Expr> {
         match self.try_as_inner()?.try_into() {
-            Ok(slot_id) => Ok(ast::ExprBuilder::new()
-                .with_source_loc(self.loc)
-                .slot(slot_id)),
+            Ok(slot_id) => Ok(Build::new().with_source_loc(&self.loc).slot(slot_id)),
             Err(e) => Err(self.to_ast_err(e).into()),
         }
     }
@@ -1443,10 +1678,10 @@ impl From<ast::SlotId> for cst::Slot {
 
 impl Node<Option<cst::Name>> {
     /// Build type constraints
-    fn to_type_constraint(&self) -> Result<ast::Expr> {
+    fn to_type_constraint<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
         match self.as_inner() {
             Some(_) => Err(self.to_ast_err(ToASTErrorKind::TypeConstraints).into()),
-            None => Ok(construct_expr_bool(true, self.loc.clone())),
+            None => Ok(Build::new().with_source_loc(&self.loc).val(true)),
         }
     }
 
@@ -1493,6 +1728,20 @@ impl Node<Option<cst::Name>> {
     }
 }
 
+/// If this [`ast::Name`] is a known extension function/method name or not
+pub(crate) fn is_known_extension_func_name(name: &ast::Name) -> bool {
+    EXTENSION_STYLES.functions.contains(name)
+        || (name.0.path.is_empty() && EXTENSION_STYLES.methods.contains(&name.basename()))
+}
+
+/// If this [`SmolStr`] is a known extension function/method name or not. Works
+/// with both qualified and unqualified `s`. (As of this writing, there are no
+/// qualified extension function/method names, so qualified `s` always results
+/// in `false`.)
+pub(crate) fn is_known_extension_func_str(s: &SmolStr) -> bool {
+    EXTENSION_STYLES.functions_and_methods_as_str.contains(s)
+}
+
 impl ast::Name {
     /// Convert the `Name` into a `String` attribute, which fails if it had any namespaces
     fn into_valid_attr(self, loc: Loc) -> Result<SmolStr> {
@@ -1503,18 +1752,19 @@ impl ast::Name {
         }
     }
 
-    /// If this name is a known extension function/method name or not
-    pub(crate) fn is_known_extension_func_name(&self) -> bool {
-        EXTENSION_STYLES.functions.contains(self)
-            || (self.0.path.is_empty() && EXTENSION_STYLES.methods.contains(&self.basename()))
-    }
-
-    fn into_func(self, args: Vec<ast::Expr>, loc: Loc) -> Result<ast::Expr> {
+    fn into_func<Build: ExprBuilder>(
+        self,
+        args: Vec<Build::Expr>,
+        loc: Loc,
+    ) -> Result<Build::Expr> {
         // error on standard methods
         if self.0.path.is_empty() {
             let id = self.basename();
             if EXTENSION_STYLES.methods.contains(&id)
-                || matches!(id.as_ref(), "contains" | "containsAll" | "containsAny")
+                || matches!(
+                    id.as_ref(),
+                    "contains" | "containsAll" | "containsAny" | "isEmpty" | "getTag" | "hasTag"
+                )
             {
                 return Err(ToASTError::new(
                     ToASTErrorKind::FunctionCallOnMethod(self.basename()),
@@ -1524,9 +1774,22 @@ impl ast::Name {
             }
         }
         if EXTENSION_STYLES.functions.contains(&self) {
-            Ok(construct_ext_func(self, args, loc))
+            Ok(Build::new()
+                .with_source_loc(&loc)
+                .call_extension_fn(self, args))
         } else {
-            Err(ToASTError::new(ToASTErrorKind::UnknownFunction(self), loc).into())
+            fn suggest_function(name: &ast::Name, funs: &HashSet<&ast::Name>) -> Option<String> {
+                const SUGGEST_FUNCTION_MAX_DISTANCE: usize = 3;
+                let fnames = funs.iter().map(ToString::to_string).collect::<Vec<_>>();
+                let suggested_function = fuzzy_search_limited(
+                    &name.to_string(),
+                    fnames.as_slice(),
+                    Some(SUGGEST_FUNCTION_MAX_DISTANCE),
+                );
+                suggested_function.map(|f| format!("did you mean `{f}`?"))
+            }
+            let hint = suggest_function(&self, &EXTENSION_STYLES.functions);
+            Err(ToASTError::new(ToASTErrorKind::UnknownFunction { id: self, hint }, loc).into())
         }
     }
 }
@@ -1549,35 +1812,38 @@ impl Node<Option<cst::Ref>> {
                 });
 
                 let (p, e) = flatten_tuple_2(maybe_path, maybe_eid)?;
-                Ok(construct_refr(p, e, self.loc.clone()))
+                Ok({
+                    let loc = self.loc.clone();
+                    ast::EntityUID::from_components(p, ast::Eid::new(e), Some(loc))
+                })
             }
             r @ cst::Ref::Ref { .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidEntityLiteral(r.to_string()))
                 .into()),
         }
     }
-    fn to_expr(&self) -> Result<ast::Expr> {
+    fn to_expr<Build: ExprBuilder>(&self) -> Result<Build::Expr> {
         self.to_ref()
-            .map(|euid| construct_expr_ref(euid, self.loc.clone()))
+            .map(|euid| Build::new().with_source_loc(&self.loc).val(euid))
     }
 }
 
 impl Node<Option<cst::Literal>> {
-    fn to_expr_or_special(&self) -> Result<ExprOrSpecial<'_>> {
+    fn to_expr_or_special<Build: ExprBuilder>(&self) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let lit = self.try_as_inner()?;
 
         match lit {
-            cst::Literal::True => Ok(ExprOrSpecial::Expr {
-                expr: construct_expr_bool(true, self.loc.clone()),
+            cst::Literal::True => Ok(ExprOrSpecial::BoolLit {
+                val: true,
                 loc: self.loc.clone(),
             }),
-            cst::Literal::False => Ok(ExprOrSpecial::Expr {
-                expr: construct_expr_bool(false, self.loc.clone()),
+            cst::Literal::False => Ok(ExprOrSpecial::BoolLit {
+                val: false,
                 loc: self.loc.clone(),
             }),
             cst::Literal::Num(n) => match Integer::try_from(*n) {
                 Ok(i) => Ok(ExprOrSpecial::Expr {
-                    expr: construct_expr_num(i, self.loc.clone()),
+                    expr: Build::new().with_source_loc(&self.loc).val(i),
                     loc: self.loc.clone(),
                 }),
                 Err(_) => Err(self
@@ -1596,11 +1862,11 @@ impl Node<Option<cst::Literal>> {
 }
 
 impl Node<Option<cst::RecInit>> {
-    fn to_init(&self) -> Result<(SmolStr, ast::Expr)> {
+    fn to_init<Build: ExprBuilder>(&self) -> Result<(SmolStr, Build::Expr)> {
         let lit = self.try_as_inner()?;
 
-        let maybe_attr = lit.0.to_expr_or_special()?.into_valid_attr();
-        let maybe_value = lit.1.to_expr();
+        let maybe_attr = lit.0.to_expr_or_special::<Build>()?.into_valid_attr();
+        let maybe_value = lit.1.to_expr::<Build>();
 
         flatten_tuple_2(maybe_attr, maybe_value)
     }
@@ -1635,13 +1901,14 @@ fn construct_template_policy(
     if let Some(first_expr) = conds_iter.next() {
         // a left fold of conditions
         // e.g., [c1, c2, c3,] --> ((c1 && c2) && c3)
-        construct_template(match conds_iter.next() {
-            Some(e) => construct_expr_and(first_expr, e, conds_iter, loc),
-            None => first_expr,
-        })
+        construct_template(
+            ast::ExprBuilder::new()
+                .with_source_loc(loc)
+                .and_nary(first_expr, conds_iter),
+        )
     } else {
         // use `true` to mark the absence of non-scope constraints
-        construct_template(construct_expr_bool(true, loc.clone()))
+        construct_template(ast::ExprBuilder::new().with_source_loc(loc).val(true))
     }
 }
 fn construct_string_from_var(v: ast::Var) -> SmolStr {
@@ -1659,65 +1926,14 @@ fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Loc) -> ast::InternalNam
         loc: Some(loc),
     }
 }
-fn construct_refr(p: ast::EntityType, n: SmolStr, loc: Loc) -> ast::EntityUID {
-    ast::EntityUID::from_components(p, ast::Eid::new(n), Some(loc))
-}
-fn construct_expr_ref(r: ast::EntityUID, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_loc(loc).val(r)
-}
-fn construct_expr_num(n: Integer, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_loc(loc).val(n)
-}
-fn construct_expr_string(s: SmolStr, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_loc(loc).val(s)
-}
-fn construct_expr_bool(b: bool, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_loc(loc).val(b)
-}
-fn construct_expr_neg(e: ast::Expr, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_loc(loc).neg(e)
-}
-fn construct_expr_not(e: ast::Expr, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_loc(loc).not(e)
-}
-fn construct_expr_var(v: ast::Var, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_loc(loc).var(v)
-}
-fn construct_expr_if(i: ast::Expr, t: ast::Expr, e: ast::Expr, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_loc(loc).ite(i, t, e)
-}
-fn construct_expr_or(
-    f: ast::Expr,
-    s: ast::Expr,
-    chained: impl IntoIterator<Item = ast::Expr>,
-    loc: &Loc,
-) -> ast::Expr {
-    let first = ast::ExprBuilder::new()
-        .with_source_loc(loc.clone())
-        .or(f, s);
-    chained.into_iter().fold(first, |a, n| {
-        ast::ExprBuilder::new()
-            .with_source_loc(loc.clone())
-            .or(a, n)
-    })
-}
-fn construct_expr_and(
-    f: ast::Expr,
-    s: ast::Expr,
-    chained: impl IntoIterator<Item = ast::Expr>,
-    loc: &Loc,
-) -> ast::Expr {
-    let first = ast::ExprBuilder::new()
-        .with_source_loc(loc.clone())
-        .and(f, s);
-    chained.into_iter().fold(first, |a, n| {
-        ast::ExprBuilder::new()
-            .with_source_loc(loc.clone())
-            .and(a, n)
-    })
-}
-fn construct_expr_rel(f: ast::Expr, rel: cst::RelOp, s: ast::Expr, loc: Loc) -> Result<ast::Expr> {
-    let builder = ast::ExprBuilder::new().with_source_loc(loc.clone());
+
+fn construct_expr_rel<Build: ExprBuilder>(
+    f: Build::Expr,
+    rel: cst::RelOp,
+    s: Build::Expr,
+    loc: Loc,
+) -> Result<Build::Expr> {
+    let builder = Build::new().with_source_loc(&loc);
     match rel {
         cst::RelOp::Less => Ok(builder.less(f, s)),
         cst::RelOp::LessEq => Ok(builder.lesseq(f, s)),
@@ -1731,94 +1947,62 @@ fn construct_expr_rel(f: ast::Expr, rel: cst::RelOp, s: ast::Expr, loc: Loc) -> 
         }
     }
 }
-/// used for a chain of addition and/or subtraction
-fn construct_expr_add(
-    f: ast::Expr,
-    chained: impl IntoIterator<Item = (cst::AddOp, ast::Expr)>,
-    loc: &Loc,
-) -> ast::Expr {
-    let mut expr = f;
-    for (op, next_expr) in chained {
-        let builder = ast::ExprBuilder::new().with_source_loc(loc.clone());
-        expr = match op {
-            cst::AddOp::Plus => builder.add(expr, next_expr),
-            cst::AddOp::Minus => builder.sub(expr, next_expr),
-        };
-    }
-    expr
-}
-/// used for a chain of multiplication only (no division or mod)
-fn construct_expr_mul(
-    f: ast::Expr,
-    chained: impl IntoIterator<Item = ast::Expr>,
-    loc: &Loc,
-) -> ast::Expr {
-    let mut expr = f;
-    for next_expr in chained {
-        expr = ast::ExprBuilder::new()
-            .with_source_loc(loc.clone())
-            .mul(expr, next_expr);
-    }
-    expr
-}
-fn construct_expr_has(t: ast::Expr, s: SmolStr, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_loc(loc).has_attr(t, s)
-}
-fn construct_expr_attr(e: ast::Expr, s: SmolStr, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_loc(loc).get_attr(e, s)
-}
-fn construct_expr_like(e: ast::Expr, s: Vec<PatternElem>, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_loc(loc).like(e, s)
-}
-fn construct_expr_is(e: ast::Expr, n: ast::EntityType, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new()
-        .with_source_loc(loc)
-        .is_entity_type(e, n)
-}
-fn construct_ext_func(name: ast::Name, args: Vec<ast::Expr>, loc: Loc) -> ast::Expr {
-    // INVARIANT (MethodStyleArgs): CallStyle is not MethodStyle, so any args vector is fine
-    ast::ExprBuilder::new()
-        .with_source_loc(loc)
-        .call_extension_fn(name, args)
-}
 
-fn construct_method_contains(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new()
+fn construct_exprs_extended_has<Build: ExprBuilder>(
+    t: Build::Expr,
+    attrs: &NonEmpty<SmolStr>,
+    loc: &Loc,
+) -> Build::Expr {
+    let (first, rest) = attrs.split_first();
+    let has_expr = Build::new()
         .with_source_loc(loc)
-        .contains(e0, e1)
-}
-fn construct_method_contains_all(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new()
+        .has_attr(t.clone(), first.to_owned());
+    let get_expr = Build::new()
         .with_source_loc(loc)
-        .contains_all(e0, e1)
-}
-fn construct_method_contains_any(e0: ast::Expr, e1: ast::Expr, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new()
-        .with_source_loc(loc)
-        .contains_any(e0, e1)
-}
-
-fn construct_ext_meth(n: UnreservedId, args: NonEmpty<ast::Expr>, loc: Loc) -> ast::Expr {
-    let name = ast::Name::unqualified_name(n);
-    // Satisfies INVARIANT (MethodStyleArgs), because `args` is a `NonEmpty`, so it's not empty.
-    ast::ExprBuilder::new()
-        .with_source_loc(loc)
-        .call_extension_fn(name, args)
-}
-fn construct_expr_set(s: Vec<ast::Expr>, loc: Loc) -> ast::Expr {
-    ast::ExprBuilder::new().with_source_loc(loc).set(s)
-}
-fn construct_expr_record(kvs: Vec<(SmolStr, ast::Expr)>, loc: Loc) -> Result<ast::Expr> {
-    ast::ExprBuilder::new()
-        .with_source_loc(loc.clone())
-        .record(kvs)
-        .map_err(|e| ToASTError::new(e.into(), loc).into())
+        .get_attr(t, first.to_owned());
+    // Foldl on the attribute list
+    // It produces the following for `principal has contactInfo.address.zip`
+    //     Expr.and
+    //   (Expr.and
+    //     (Expr.hasAttr (Expr.var .principal) "contactInfo")
+    //     (Expr.hasAttr
+    //       (Expr.getAttr (Expr.var .principal) "contactInfo")
+    //       "address"))
+    //   (Expr.hasAttr
+    //     (Expr.getAttr
+    //       (Expr.getAttr (Expr.var .principal) "contactInfo")
+    //       "address")
+    //     "zip")
+    // This is sound. However, the evaluator has to recur multiple times to the
+    // left-most node to evaluate the existence of the first attribute. The
+    // desugared expression should be the following to avoid the issue above,
+    // Expr.and
+    //   Expr.hasAttr (Expr.var .principal) "contactInfo"
+    //   (Expr.and
+    //      (Expr.hasAttr (Expr.getAttr (Expr.var .principal) "contactInfo")"address")
+    //      (Expr.hasAttr ..., "zip"))
+    rest.iter()
+        .fold((has_expr, get_expr), |(has_expr, get_expr), attr| {
+            (
+                Build::new().with_source_loc(loc).and(
+                    has_expr,
+                    Build::new()
+                        .with_source_loc(loc)
+                        .has_attr(get_expr.clone(), attr.to_owned()),
+                ),
+                Build::new()
+                    .with_source_loc(loc)
+                    .get_attr(get_expr, attr.to_owned()),
+            )
+        })
+        .0
 }
 
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic)]
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::indexing_slicing)]
+#[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1834,7 +2018,7 @@ mod tests {
     fn assert_parse_expr_succeeds(text: &str) -> Expr {
         text_to_cst::parse_expr(text)
             .expect("failed parser")
-            .to_expr()
+            .to_expr::<ast::ExprBuilder<()>>()
             .unwrap_or_else(|errs| {
                 panic!("failed conversion to AST:\n{:?}", miette::Report::new(errs))
             })
@@ -1844,7 +2028,7 @@ mod tests {
     fn assert_parse_expr_fails(text: &str) -> ParseErrors {
         let result = text_to_cst::parse_expr(text)
             .expect("failed parser")
-            .to_expr();
+            .to_expr::<ast::ExprBuilder<()>>();
         match result {
             Ok(expr) => {
                 panic!("conversion to AST should have failed, but succeeded with:\n{expr}")
@@ -2219,7 +2403,7 @@ mod tests {
     }
 
     #[test]
-    fn policy_annotations() {
+    fn single_annotation() {
         // common use-case
         let policy = assert_parse_policy_succeeds(
             r#"
@@ -2228,9 +2412,12 @@ mod tests {
         );
         assert_matches!(
             policy.annotation(&ast::AnyId::new_unchecked("anno")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "good annotation")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "good annotation")
         );
+    }
 
+    #[test]
+    fn duplicate_annotations_error() {
         // duplication is error
         let src = r#"
             @anno("good annotation")
@@ -2248,7 +2435,10 @@ mod tests {
                 .exactly_one_underline("@anno(\"oops, duplicate\")")
                 .build(),
         );
+    }
 
+    #[test]
+    fn multiple_policys_and_annotations_ok() {
         // can have multiple annotations
         let policyset = text_to_cst::parse_policies(
             r#"
@@ -2278,28 +2468,28 @@ mod tests {
                 .get(&ast::PolicyID::from_string("policy0"))
                 .expect("should be a policy")
                 .annotation(&ast::AnyId::new_unchecked("anno1")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "first")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "first")
         );
         assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy1"))
                 .expect("should be a policy")
                 .annotation(&ast::AnyId::new_unchecked("anno2")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "second")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "second")
         );
         assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy2"))
                 .expect("should be a policy")
                 .annotation(&ast::AnyId::new_unchecked("anno3a")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "third-a")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "third-a")
         );
         assert_matches!(
             policyset
                 .get(&ast::PolicyID::from_string("policy2"))
                 .expect("should be a policy")
                 .annotation(&ast::AnyId::new_unchecked("anno3b")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "third-b")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "third-b")
         );
         assert_matches!(
             policyset
@@ -2316,7 +2506,10 @@ mod tests {
                 .count(),
             2
         );
+    }
 
+    #[test]
+    fn reserved_word_annotations_ok() {
         // can have Cedar reserved words as annotation keys
         let policyset = text_to_cst::parse_policies(
             r#"
@@ -2340,43 +2533,80 @@ mod tests {
             .expect("should be the right policy ID");
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("if")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `if`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `if`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("then")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `then`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `then`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("else")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `else`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `else`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("true")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `true`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `true`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("false")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `false`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `false`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("in")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `in`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `in`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("is")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `is`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `is`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("like")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `like`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `like`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("has")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `has`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `has`")
         );
         assert_matches!(
             policy0.annotation(&ast::AnyId::new_unchecked("principal")),
-            Some(ast::Annotation { val, .. }) => assert_eq!(val.as_ref(), "this is the annotation for `principal`")
+            Some(annotation) => assert_eq!(annotation.as_ref(), "this is the annotation for `principal`")
+        );
+    }
+
+    #[test]
+    fn single_annotation_without_value() {
+        let policy = assert_parse_policy_succeeds(r#"@anno permit(principal,action,resource);"#);
+        assert_matches!(
+            policy.annotation(&ast::AnyId::new_unchecked("anno")),
+            Some(annotation) => assert_eq!(annotation.as_ref(), ""),
+        );
+    }
+
+    #[test]
+    fn duplicate_annotations_without_value() {
+        let src = "@anno @anno permit(principal,action,resource);";
+        let errs = assert_parse_policy_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("duplicate annotation: @anno")
+                .exactly_one_underline("@anno")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn multiple_annotation_without_value() {
+        let policy =
+            assert_parse_policy_succeeds(r#"@foo @bar permit(principal,action,resource);"#);
+        assert_matches!(
+            policy.annotation(&ast::AnyId::new_unchecked("foo")),
+            Some(annotation) => assert_eq!(annotation.as_ref(), ""),
+        );
+        assert_matches!(
+            policy.annotation(&ast::AnyId::new_unchecked("bar")),
+            Some(annotation) => assert_eq!(annotation.as_ref(), ""),
         );
     }
 
@@ -2589,6 +2819,22 @@ mod tests {
     }
 
     #[test]
+    fn construct_invalid_get_var() {
+        let src = r#"
+            {"principal":1, "two":"two"}[principal]
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid string literal: principal")
+                .exactly_one_underline("principal")
+                .build(),
+        );
+    }
+
+    #[test]
     fn construct_has_1() {
         let expr = assert_parse_expr_succeeds(
             r#"
@@ -2610,8 +2856,8 @@ mod tests {
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("invalid attribute name: 1")
-                .help("attribute names can either be identifiers or string literals")
+            &ExpectedErrorMessageBuilder::error("invalid RHS of a `has` operation: 1")
+                .help("valid RHS of a `has` operation is either a sequence of identifiers separated by `.` or a string literal")
                 .exactly_one_underline("1")
                 .build(),
         );
@@ -2716,8 +2962,44 @@ mod tests {
     }
 
     #[test]
+    fn construct_like_var() {
+        let src = r#"
+            "principal" like principal
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "right hand side of a `like` expression must be a pattern literal, but got `principal`",
+            )
+            .exactly_one_underline("principal")
+            .build(),
+        );
+    }
+
+    #[test]
+    fn construct_like_name() {
+        let src = r#"
+            "foo::bar::baz" like foo::bar
+        "#;
+        let errs = assert_parse_expr_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "right hand side of a `like` expression must be a pattern literal, but got `foo::bar`",
+            )
+            .exactly_one_underline("foo::bar")
+            .build(),
+        );
+    }
+
+    #[test]
     fn pattern_roundtrip() {
-        let test_pattern = &vec![
+        let test_pattern = ast::Pattern::from(vec![
             PatternElem::Char('h'),
             PatternElem::Char('e'),
             PatternElem::Char('l'),
@@ -2728,14 +3010,14 @@ mod tests {
             PatternElem::Char('*'),
             PatternElem::Char('\\'),
             PatternElem::Char('*'),
-        ];
+        ]);
         let e1 = ast::Expr::like(ast::Expr::val("hello"), test_pattern.clone());
         let s1 = format!("{e1}");
         // Char('\\') prints to r#"\\"# and Char('*') prints to r#"\*"#.
         assert_eq!(s1, r#""hello" like "hello\\0\*\\\*""#);
         let e2 = assert_parse_expr_succeeds(&s1);
         assert_matches!(e2.expr_kind(), ast::ExprKind::Like { pattern, .. } => {
-            assert_eq!(pattern.get_elems(), test_pattern);
+            assert_eq!(pattern.get_elems(), test_pattern.get_elems());
         });
         let s2 = format!("{e2}");
         assert_eq!(s1, s2);
@@ -2789,8 +3071,8 @@ mod tests {
         expect_some_error_matches(
             src,
             &errs,
-            &ExpectedErrorMessageBuilder::error("invalid attribute name: 1")
-                .help("attribute names can either be identifiers or string literals")
+            &ExpectedErrorMessageBuilder::error("invalid RHS of a `has` operation: 1")
+                .help("valid RHS of a `has` operation is either a sequence of identifiers separated by `.` or a string literal")
                 .exactly_one_underline("1")
                 .build(),
         );
@@ -2963,15 +3245,15 @@ mod tests {
         );
         assert_invalid_escape(
             r#"permit(principal, action, resource) when { "\q".contains(0) };"#,
-            r#""\q".contains(0)"#,
+            r#""\q""#,
         );
         assert_invalid_escape(
             r#"permit(principal, action, resource) when { "\q".bar };"#,
-            r#""\q".bar"#,
+            r#""\q""#,
         );
         assert_invalid_escape(
             r#"permit(principal, action, resource) when { "\q"["a"] };"#,
-            r#""\q"["a"]"#,
+            r#""\q""#,
         );
         assert_invalid_escape(
             r#"permit(principal, action, resource) when { "" like "\q" };"#,
@@ -3597,17 +3879,15 @@ mod tests {
                 r#"permit(principal is User::"alice", action, resource);"#,
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice"`"#,
-                ).help(
-                    "try using `==` to test for equality"
-                ).exactly_one_underline("User::\"alice\"").build(),
+                ).help(r#"try using `==` to test for equality: `principal == User::"alice"`"#)
+                .exactly_one_underline("User::\"alice\"").build(),
             ),
             (
                 r#"permit(principal, action, resource is File::"f");"#,
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `File::"f"`"#,
-                ).help(
-                    "try using `==` to test for equality"
-                ).exactly_one_underline("File::\"f\"").build(),
+                ).help(r#"try using `==` to test for equality: `resource == File::"f"`"#)
+                .exactly_one_underline("File::\"f\"").build(),
             ),
             (
                 r#"permit(principal is User in 1, action, resource);"#,
@@ -3635,9 +3915,8 @@ mod tests {
                 r#"permit(principal is User::"Alice" in Group::"f", action, resource);"#,
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `User::"Alice"`"#,
-                ).help(
-                    "try using `==` to test for equality"
-                ).exactly_one_underline("User::\"Alice\"").build(),
+                ).help(r#"try using `==` to test for equality: `principal == User::"Alice"`"#)
+                .exactly_one_underline("User::\"Alice\"").build(),
             ),
             (
                 r#"permit(principal, action, resource is File in File);"#,
@@ -3654,7 +3933,7 @@ mod tests {
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `File::"file"`"#,
                 ).help(
-                    "try using `==` to test for equality"
+                    r#"try using `==` to test for equality: `resource == File::"file"`"#
                 ).exactly_one_underline("File::\"file\"").build(),
             ),
             (
@@ -3662,7 +3941,7 @@ mod tests {
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
                 ).help(
-                    "try using `==` to test for equality"
+                    "try using `==` to test for equality: `principal == 1`"
                 ).exactly_one_underline("1").build(),
             ),
             (
@@ -3670,7 +3949,7 @@ mod tests {
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
                 ).help(
-                    "try using `==` to test for equality"
+                    "try using `==` to test for equality: `resource == 1`"
                 ).exactly_one_underline("1").build(),
             ),
             (
@@ -3742,7 +4021,7 @@ mod tests {
                 ExpectedErrorMessageBuilder::error(
                     "right hand side of an `is` expression must be an entity type name, but got `?principal`",
                 ).help(
-                    "try using `==` to test for equality"
+                    "try using `==` to test for equality: `principal == ?principal`"
                 ).exactly_one_underline("?principal").build(),
             ),
             (
@@ -3750,7 +4029,7 @@ mod tests {
                 ExpectedErrorMessageBuilder::error(
                     "right hand side of an `is` expression must be an entity type name, but got `?resource`",
                 ).help(
-                    "try using `==` to test for equality"
+                    "try using `==` to test for equality: `resource == ?resource`"
                 ).exactly_one_underline("?resource").build(),
             ),
             (
@@ -3758,7 +4037,7 @@ mod tests {
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `1`"#,
                 ).help(
-                    "try using `==` to test for equality"
+                    "try using `==` to test for equality: `principal == 1`"
                 ).exactly_one_underline("1").build(),
             ),
             (
@@ -3766,15 +4045,15 @@ mod tests {
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice"`"#,
                 ).help(
-                    "try using `==` to test for equality"
+                    r#"try using `==` to test for equality: `principal == User::"alice"`"#
                 ).exactly_one_underline("User::\"alice\"").build(),
             ),
             (
                 r#"permit(principal, action, resource) when { principal is ! User::"alice" in Group::"friends" };"#,
                 ExpectedErrorMessageBuilder::error(
-                    r#"right hand side of an `is` expression must be an entity type name, but got `!User::"alice"`"#,
+                    r#"right hand side of an `is` expression must be an entity type name, but got `! User::"alice"`"#,
                 ).help(
-                    "try using `==` to test for equality"
+                    r#"try using `==` to test for equality: `principal == ! User::"alice"`"#
                 ).exactly_one_underline("! User::\"alice\"").build(),
             ),
             (
@@ -3782,7 +4061,7 @@ mod tests {
                 ExpectedErrorMessageBuilder::error(
                     r#"right hand side of an `is` expression must be an entity type name, but got `User::"alice" + User::"alice"`"#,
                 ).help(
-                    "try using `==` to test for equality"
+                    r#"try using `==` to test for equality: `principal == User::"alice" + User::"alice"`"#
                 ).exactly_one_underline("User::\"alice\" + User::\"alice\"").build(),
             ),
             (
@@ -3803,6 +4082,22 @@ mod tests {
                 ExpectedErrorMessageBuilder::error("unexpected token `is`")
                     .exactly_one_underline_with_label(r#"is"#, "expected `!=`, `&&`, `<`, `<=`, `==`, `>`, `>=`, `||`, `}`, or `in`")
                     .build(),
+            ),
+            (
+                r#"permit(principal is "User", action, resource);"#,
+                ExpectedErrorMessageBuilder::error(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `"User"`"#,
+                ).help(
+                    "try removing the quotes: `principal is User`"
+                ).exactly_one_underline("\"User\"").build(),
+            ),
+            (
+                r#"permit(principal, action, resource) when { principal is "User" };"#,
+                ExpectedErrorMessageBuilder::error(
+                    r#"right hand side of an `is` expression must be an entity type name, but got `"User"`"#,
+                ).help(
+                    "try removing the quotes: `principal is User`"
+                ).exactly_one_underline("\"User\"").build(),
             ),
         ];
         for (p_src, expected) in invalid_is_policies {
@@ -3893,6 +4188,14 @@ mod tests {
                 .build(),
             ),
             (
+                r#"[].isEmpty([])"#,
+                ExpectedErrorMessageBuilder::error(
+                    "call to `isEmpty` requires exactly 0 arguments, but got 1 argument",
+                )
+                .exactly_one_underline("[].isEmpty([])")
+                .build(),
+            ),
+            (
                 r#""1.1.1.1".ip()"#,
                 ExpectedErrorMessageBuilder::error("`ip` is a function, not a method")
                     .help("use a function-style call `ip(..)`")
@@ -3913,9 +4216,24 @@ mod tests {
                     .build(),
             ),
             (
+                "principal.addr.isipv4()",
+                ExpectedErrorMessageBuilder::error("`isipv4` is not a valid method")
+                    .exactly_one_underline("principal.addr.isipv4()")
+                    .help("did you mean `isIpv4`?")
+                    .build(),
+            ),
+            (
                 "bar([])",
                 ExpectedErrorMessageBuilder::error("`bar` is not a valid function")
                     .exactly_one_underline("bar([])")
+                    .help("did you mean `ip`?")
+                    .build(),
+            ),
+            (
+                r#"Ip("1.1.1.1/24")"#,
+                ExpectedErrorMessageBuilder::error("`Ip` is not a valid function")
+                    .exactly_one_underline(r#"Ip("1.1.1.1/24")"#)
+                    .help("did you mean `ip`?")
                     .build(),
             ),
             (
@@ -4384,7 +4702,7 @@ mod tests {
         let src = "!!!!!!false";
         assert_matches!(parse_expr(src), Err(e) => {
             expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "too many occurrences of `!_`",
+                "too many occurrences of `!`",
                 ).help(
                 "cannot chain more the 4 applications of a unary operator"
             ).exactly_one_underline("!!!!!!false").build());
@@ -4392,7 +4710,7 @@ mod tests {
         let src = "-------0";
         assert_matches!(parse_expr(src), Err(e) => {
             expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
-                "too many occurrences of `-_`",
+                "too many occurrences of `-`",
                 ).help(
                 "cannot chain more the 4 applications of a unary operator"
             ).exactly_one_underline("-------0").build());
@@ -4575,5 +4893,254 @@ mod tests {
                     .build()
             );
         });
+    }
+
+    #[test]
+    fn extended_has() {
+        assert_matches!(
+            parse_policy(
+                None,
+                r#"
+        permit(
+  principal is User,
+  action == Action::"preview",
+  resource == Movie::"Blockbuster"
+) when {
+  principal has contactInfo.address.zip &&
+  principal.contactInfo.address.zip == "90210"
+};
+        "#
+            ),
+            Ok(_)
+        );
+
+        assert_matches!(parse_expr(r#"context has a.b"#), Ok(e) => {
+            assert!(e.eq_shape(&parse_expr(r#"(context has a) && (context.a has b)"#).unwrap()));
+        });
+
+        assert_matches!(parse_expr(r#"context has a.b.c"#), Ok(e) => {
+            assert!(e.eq_shape(&parse_expr(r#"((context has a) && (context.a has b)) && (context.a.b has c)"#).unwrap()));
+        });
+
+        let policy = r#"permit(principal, action, resource) when {
+            principal has a.if
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "this identifier is reserved and cannot be used: if",
+                ).exactly_one_underline(r#"if"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has if.a
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "this identifier is reserved and cannot be used: if",
+                ).exactly_one_underline(r#"if"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has true.if
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "this identifier is reserved and cannot be used: true",
+                ).exactly_one_underline(r#"true"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has a.__cedar
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "The name `__cedar` contains `__cedar`, which is reserved",
+                ).exactly_one_underline(r#"__cedar"#).build());
+            }
+        );
+
+        let help_msg = "valid RHS of a `has` operation is either a sequence of identifiers separated by `.` or a string literal";
+
+        let policy = r#"permit(principal, action, resource) when {
+            principal has 1 + 1
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: 1 + 1",
+                ).help(help_msg).
+                exactly_one_underline(r#"1 + 1"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has a - 1
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: a - 1",
+                ).help(help_msg).exactly_one_underline(r#"a - 1"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has a*3 + 1
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: a * 3 + 1",
+                ).help(help_msg).exactly_one_underline(r#"a*3 + 1"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has 3*a
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: 3 * a",
+                ).help(help_msg).exactly_one_underline(r#"3*a"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has -a.b
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: -a.b",
+                ).help(help_msg).exactly_one_underline(r#"-a.b"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has !a.b
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: !a.b",
+                ).help(help_msg).exactly_one_underline(r#"!a.b"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has a::b.c
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "`a::b.c` cannot be used as an attribute as it contains a namespace",
+                ).exactly_one_underline(r#"a::b"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has A::""
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: A::\"\"",
+                ).help(help_msg).exactly_one_underline(r#"A::"""#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has A::"".a
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: A::\"\".a",
+                ).help(help_msg).exactly_one_underline(r#"A::"""#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has ?principal
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: ?principal",
+                ).help(help_msg).exactly_one_underline(r#"?principal"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has ?principal.a
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: ?principal.a",
+                ).help(help_msg).exactly_one_underline(r#"?principal"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has (b).a
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: (b).a",
+                ).help(help_msg).exactly_one_underline(r#"(b)"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has [b].a
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: [b].a",
+                ).help(help_msg).exactly_one_underline(r#"[b]"#).build());
+            }
+        );
+        let policy = r#"permit(principal, action, resource) when {
+            principal has {b:1}.a
+          };"#;
+        assert_matches!(
+            parse_policy(None, policy),
+            Err(e) => {
+                expect_n_errors(policy, &e, 1);
+                expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
+                    "invalid RHS of a `has` operation: {b: 1}.a",
+                ).help(help_msg).exactly_one_underline(r#"{b:1}"#).build());
+            }
+        );
     }
 }

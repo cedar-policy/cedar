@@ -22,7 +22,7 @@ use super::Type;
 
 /// Represents a request type environment. In principle, this contains full
 /// types for the four variables (principal, action, resource, context).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RequestEnv<'a> {
     /// Contains the four variables bound in the type environment. These together
     /// represent the full type of (principal, action, resource, context)
@@ -98,7 +98,7 @@ impl<'a> RequestEnv<'a> {
     /// [`Type`] of the `action` for this request environment
     pub fn action_type(&self, schema: &ValidatorSchema) -> Option<Type> {
         match self.action_entity_uid() {
-            Some(action) => Type::euid_literal(action.clone(), schema),
+            Some(action) => Type::euid_literal(action, schema),
             None => Some(Type::any_entity_reference()),
         }
     }

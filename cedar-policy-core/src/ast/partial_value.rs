@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use super::{Expr, Unknown, Value};
+use super::{BoundedDisplay, Expr, Unknown, Value};
 use crate::parser::Loc;
 use itertools::Either;
 use miette::Diagnostic;
@@ -60,7 +60,7 @@ impl From<Expr> for PartialValue {
 
 /// Errors encountered when converting `PartialValue` to `Value`
 // CAUTION: this type is publicly exported in `cedar-policy`.
-#[derive(Debug, PartialEq, Diagnostic, Error)]
+#[derive(Debug, PartialEq, Eq, Diagnostic, Error)]
 pub enum PartialValueToValueError {
     /// The `PartialValue` is a residual, i.e., contains an unknown
     #[diagnostic(transparent)]
@@ -72,7 +72,7 @@ pub enum PartialValueToValueError {
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
-#[derive(Debug, PartialEq, Diagnostic, Error)]
+#[derive(Debug, PartialEq, Eq, Diagnostic, Error)]
 #[error("value contains a residual expression: `{residual}`")]
 pub struct ContainsUnknown {
     /// Residual expression which contains an unknown
@@ -95,6 +95,15 @@ impl std::fmt::Display for PartialValue {
         match self {
             PartialValue::Value(v) => write!(f, "{v}"),
             PartialValue::Residual(r) => write!(f, "{r}"),
+        }
+    }
+}
+
+impl BoundedDisplay for PartialValue {
+    fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
+        match self {
+            PartialValue::Value(v) => BoundedDisplay::fmt(v, f, n),
+            PartialValue::Residual(r) => BoundedDisplay::fmt(r, f, n),
         }
     }
 }

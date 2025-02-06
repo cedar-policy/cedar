@@ -17,6 +17,7 @@
 #![cfg(test)]
 // PANIC SAFETY unit tests
 #![allow(clippy::panic)]
+#![allow(clippy::cognitive_complexity, clippy::too_many_lines)]
 
 use super::*;
 
@@ -349,14 +350,8 @@ mod scope_constraints_tests {
             p.principal_constraint(),
             PrincipalConstraint::In(euid.clone())
         );
-        let p = link(
-            "permit(principal == ?principal,action,resource);",
-            map.clone(),
-        );
-        assert_eq!(
-            p.principal_constraint(),
-            PrincipalConstraint::Eq(euid.clone())
-        );
+        let p = link("permit(principal == ?principal,action,resource);", map);
+        assert_eq!(p.principal_constraint(), PrincipalConstraint::Eq(euid));
     }
 
     #[test]
@@ -1382,6 +1377,7 @@ mod ancestors_tests {
 /// schema-based parsing.
 mod entity_validate_tests {
     use super::*;
+    use cool_asserts::assert_matches;
     use entities::err::EntitiesError;
     use serde_json::json;
 
@@ -1709,6 +1705,460 @@ mod entity_validate_tests {
             }
         }
     }
+
+    /// Record inside entity doesn't conform to schema
+    #[test]
+    fn issue_1176_should_fail1() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            "
+            entity E {
+              rec: {
+                foo: Long
+              }
+            };
+            action Act appliesTo {
+              principal: [E],
+              resource: [E],
+            };
+        ",
+        )
+        .unwrap();
+        let entity = Entity::new(
+            EntityUid::from_str(r#"E::"abc""#).unwrap(),
+            HashMap::from_iter([(
+                "rec".into(),
+                RestrictedExpression::new_record([
+                    ("foo".into(), RestrictedExpression::new_long(4567)),
+                    (
+                        "extra".into(),
+                        RestrictedExpression::new_string("bad".into()),
+                    ),
+                ])
+                .unwrap(),
+            )]),
+            HashSet::new(),
+        )
+        .unwrap();
+        assert_matches!(
+            Entities::from_entities([entity], Some(&schema)),
+            Err(e @ EntitiesError::InvalidEntity(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"in attribute `rec` on `E::"abc"`, type mismatch: value was expected to have type { "foo" => (required) long }, but it contains an unexpected attribute `extra`: `{"extra": "bad", "foo": 4567}`"#)
+                        .build()
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn from_entities_missing_attribute() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            "
+            entity E {
+              rec: {
+                foo: Long
+              }
+            };
+            action Act appliesTo {
+              principal: [E],
+              resource: [E],
+            };
+        ",
+        )
+        .unwrap();
+        let entity = Entity::new(
+            EntityUid::from_str(r#"E::"abc""#).unwrap(),
+            HashMap::from_iter([("rec".into(), RestrictedExpression::new_record([]).unwrap())]),
+            HashSet::new(),
+        )
+        .unwrap();
+        assert_matches!(
+            Entities::from_entities([entity], Some(&schema)),
+            Err(e @ EntitiesError::InvalidEntity(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"in attribute `rec` on `E::"abc"`, type mismatch: value was expected to have type { "foo" => (required) long }, but it is missing the required attribute `foo`: `{}`"#)
+                        .build()
+                );
+            }
+        );
+    }
+
+    /// Record inside entity doesn't conform to schema
+    #[test]
+    #[cfg(feature = "partial-validate")]
+    fn issue_1176_should_fail2() {
+        let schema = Schema::from_json_value(json!(
+        {
+            "": {
+                "entityTypes": {
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "rec": {
+                                    "type": "Record",
+                                    "attributes": {
+                                        "foo": {
+                                            "type": "Long"
+                                        },
+                                        "bar": {
+                                            "type": "Boolean",
+                                            "required": false
+                                        }
+                                    },
+                                    "additionalAttributes": true
+                                }
+                            }
+                        },
+                        "memberOfTypes": []
+                    }
+                },
+                "actions": {
+                    "pull": {
+                        "appliesTo": {
+                            "principalTypes": [
+                                "User"
+                            ],
+                            "resourceTypes": [
+                                "User"
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+        ))
+        .expect("should be a valid schema");
+        let entity = Entity::new(
+            EntityUid::from_str(r#"User::"abc""#).unwrap(),
+            HashMap::from_iter([(
+                "rec".into(),
+                RestrictedExpression::new_record([
+                    ("foo".into(), RestrictedExpression::new_long(4567)),
+                    ("bar".into(), RestrictedExpression::new_string("bad".into())),
+                ])
+                .unwrap(),
+            )]),
+            HashSet::new(),
+        )
+        .unwrap();
+        assert_matches!(
+            Entities::from_entities([entity], Some(&schema)),
+            Err(e @ EntitiesError::InvalidEntity(_)) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                        .source(r#"in attribute `rec` on `User::"abc"`, type mismatch: value was expected to have type bool, but it actually has type string: `"bad"`"#)
+                        .build()
+                );
+            }
+        );
+    }
+
+    /// Record inside entity doesn't conform to schema
+    #[test]
+    fn issue_1176_should_fail3() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            r#"
+entity A = {"foo": Set < Set < {"bar": __cedar::Bool, "baz"?: __cedar::Bool} > >};
+action "g" appliesTo {
+  principal: [A],
+  resource: [A],
+};
+        "#,
+        )
+        .unwrap();
+        let entity_str = r#"
+        {
+            "uid": {
+              "type": "A",
+              "id": "alice"
+            },
+            "attrs": {
+              "foo": [
+                [],
+                [
+                  {
+                    "bar": false
+                  },
+                  {
+                    "bar": true
+                  },
+                  {
+                    "bar": true,
+                    "baz": true
+                  }
+                ],
+                [
+                  {
+                    "bar": false,
+                    "baz": false
+                  },
+                  {
+                    "bar": true
+                  }
+                ],
+                [
+                  {
+                    "bar": true
+                  },
+                  {
+                    "baz": false
+                  }
+                ]
+              ]
+            },
+            "parents": []
+          }
+        "#;
+
+        assert_matches!(
+            Entity::from_json_str(entity_str, Some(&schema)),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &Report::new(e),
+                    &ExpectedErrorMessageBuilder::error("error during entity deserialization")
+                        .source(r#"in attribute `foo` on `A::"alice"`, expected the record to have an attribute `bar`, but it does not"#)
+                        .build()
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn from_entities_non_constructor_extension() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            "
+            entity E {
+              foo: { bar: Bool }
+            };
+            action Act appliesTo {
+              principal: [E],
+              resource: [E],
+            };
+        ",
+        )
+        .unwrap();
+        let entity_json = json!({
+            "uid": {
+                "type": "E",
+                "id": ""
+            },
+            "attrs": {
+                "foo": {"bar": { "__extn": { "fn": "isLoopback", "arg": {"__extn": {"fn": "ip", "arg": "127.0.0.1"}}}}}
+            },
+            "parents": []
+        });
+        assert_matches!(Entity::from_json_value(entity_json, Some(&schema)), Ok(_));
+    }
+
+    #[test]
+    fn should_pass_set_set_rec_one_req_one_opt() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            r#"
+entity A = {"foo": Set < Set < {"bar": __cedar::Bool, "baz"?: __cedar::Bool} > >};
+action "g" appliesTo {
+  principal: [A],
+  resource: [A],
+};
+        "#,
+        )
+        .unwrap();
+        let entity_str = r#"
+        {
+            "uid": {
+              "type": "A",
+              "id": "alice"
+            },
+            "attrs": {
+              "foo": [
+                [],
+                [
+                  {
+                    "bar": false
+                  },
+                  {
+                    "bar": true
+                  },
+                  {
+                    "bar": true,
+                    "baz": true
+                  }
+                ],
+                [
+                  {
+                    "bar": false,
+                    "baz": false
+                  },
+                  {
+                    "bar": true
+                  }
+                ],
+                [
+                  {
+                    "bar": true
+                  },
+                  {
+                    "bar": true,
+                    "baz": false
+                  }
+                ]
+              ]
+            },
+            "parents": []
+          }
+        "#;
+
+        assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
+    }
+
+    #[test]
+    fn example_app_tags() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            r#"
+            entity User {
+              allowedTagsForRole: {
+                "Role-A"?: {
+                    production_status?: Set<String>,
+                    country?: Set<String>,
+                    stage?: Set<String>,
+                },
+                "Role-B"?: {
+                    production_status?: Set<String>,
+                    country?: Set<String>,
+                    stage?: Set<String>,
+                },
+              },
+            };
+
+            action UpdateWorkspace appliesTo {
+              principal: User,
+              resource: User,
+            };
+        "#,
+        )
+        .unwrap();
+        let entity_str = r#"
+        {
+            "uid": {
+                "type": "User",
+                "id": "Alice"
+            },
+            "attrs": {
+                "allowedTagsForRole": {
+                    "Role-B": {
+                        "production_status": [
+                            "production"
+                        ],
+                        "country": [
+                            "ALL"
+                        ],
+                        "stage": [
+                            "valuation"
+                        ]
+                    }
+                }
+            },
+            "parents": []
+        }
+        "#;
+        assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
+    }
+
+    #[test]
+    fn should_pass_set_set_record_one_req_one_opt() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            r#"
+            entity A = {"qqamncWam": Set < Set < {"": __cedar::Bool, "bbrb"?: __cedar::Bool} > >};
+            action "g" appliesTo {
+              principal: [A],
+              resource: [A],
+              context: {"vlipwwpm0am": Set < Set < {"": __cedar::String, "b"?: __cedar::Bool} > >}
+            };
+        "#,
+        )
+        .unwrap();
+        let entity_str = r#"
+        {
+            "uid": {
+              "type": "A",
+              "id": ""
+            },
+            "attrs": {
+              "qqamncWam": [
+                [
+                  {
+                    "": false
+                  },
+                  {
+                    "": false,
+                    "bbrb": false
+                  },
+                  {
+                    "": true
+                  },
+                  {
+                    "": true,
+                    "bbrb": false
+                  },
+                  {
+                    "": true,
+                    "bbrb": true
+                  }
+                ],
+                [
+                  {
+                    "": false
+                  },
+                  {
+                    "": false,
+                    "bbrb": true
+                  },
+                  {
+                    "": true,
+                    "bbrb": false
+                  }
+                ],
+                [
+                  {
+                    "": false,
+                    "bbrb": false
+                  },
+                  {
+                    "": false,
+                    "bbrb": true
+                  }
+                ],
+                [
+                  {
+                    "": true
+                  },
+                  {
+                    "": true,
+                    "bbrb": true
+                  }
+                ],
+                [
+                  {
+                    "": true,
+                    "bbrb": true
+                  }
+                ]
+              ]
+            },
+            "parents": []
+          }
+        "#;
+        assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
+    }
 }
 
 /// The main unit tests for schema-based parsing live here, as they require both
@@ -1743,7 +2193,7 @@ mod schema_based_parsing_tests {
     #[test]
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::cognitive_complexity)]
-    fn signle_attr_types() {
+    fn single_attr_types() {
         let schema = Schema::from_json_value(json!(
         {"": {
             "entityTypes": {
@@ -1885,15 +2335,15 @@ mod schema_based_parsing_tests {
         };
         assert_matches!(
             parsed.attr("home_ip"),
-            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "222.222.222.101/32"
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"ip("222.222.222.101")"#
         );
         assert_matches!(
             parsed.attr("work_ip"),
-            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "2.2.2.0/24"
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"ip("2.2.2.0/24")"#
         );
         assert_matches!(
             parsed.attr("trust_score"),
-            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "5.7000"
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"decimal("5.7")"#
         );
 
         // simple type mismatch with expected type
@@ -1928,7 +2378,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#)
+                .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but it actually has type string: `"3"`"#)
                 .build()
         );
 
@@ -1998,7 +2448,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("error during entity deserialization")
-                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but actually has type { "id" => (optional) string, "type" => (optional) string }: `{"id": "aaaaa", "type": "HR"}`"#)
+                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but it actually has type record: `{"id": "aaaaa", "type": "HR"}`"#)
                 .build()
         );
 
@@ -2034,7 +2484,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#)
+                .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but it actually has type (entity of type `HR`): `HR::"34FB87"`"#)
                 .build()
         );
 
@@ -2071,7 +2521,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#)
+                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but it actually has type decimal: `decimal("3.33")`"#)
                 .build()
         );
 
@@ -2142,7 +2592,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error_starts_with("entity does not conform to the schema")
-                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type {"#)
+                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type bool, but it actually has type long: `33`"#)
                 .build()
         );
 
@@ -2368,15 +2818,15 @@ mod schema_based_parsing_tests {
         };
         assert_matches!(
             parsed.attr("home_ip"),
-            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "222.222.222.101/32"
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"ip("222.222.222.101")"#
         );
         assert_matches!(
             parsed.attr("work_ip"),
-            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "2.2.2.0/24"
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"ip("2.2.2.0/24")"#
         );
         assert_matches!(
             parsed.attr("trust_score"),
-            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == "5.7000"
+            Some(Ok(EvalResult::ExtensionValue(ev))) if &ev == r#"decimal("5.7")"#
         );
 
         // simple type mismatch with expected type
@@ -2413,7 +2863,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but actually has type string: `"3"`"#)
+                .source(r#"in attribute `numDirectReports` on `Employee::"12UA45"`, type mismatch: value was expected to have type long, but it actually has type string: `"3"`"#)
                 .build()
         );
 
@@ -2487,7 +2937,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("error during entity deserialization")
-                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but actually has type { "id" => (optional) string, "type" => (optional) string }: `{"id": "aaaaa", "type": "HR"}`"#)
+                .source(r#"in attribute `hr_contacts` on `Employee::"12UA45"`, type mismatch: value was expected to have type [`HR`], but it actually has type record: `{"id": "aaaaa", "type": "HR"}`"#)
                 .build()
         );
 
@@ -2525,7 +2975,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but actually has type `HR`: `HR::"34FB87"`"#)
+                .source(r#"in attribute `manager` on `Employee::"12UA45"`, type mismatch: value was expected to have type `Employee`, but it actually has type (entity of type `HR`): `HR::"34FB87"`"#)
                 .build()
         );
 
@@ -2564,7 +3014,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but actually has type decimal: `decimal("3.33")`"#)
+                .source(r#"in attribute `home_ip` on `Employee::"12UA45"`, type mismatch: value was expected to have type ipaddr, but it actually has type decimal: `decimal("3.33")`"#)
                 .build()
         );
 
@@ -2639,7 +3089,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type { "inner1" => (required) bool, "inner2" => (required) string, "inner3" => (required) { "innerinner" => (required) `Employee` } }, but actually has type { "inner1" => (optional) long, "inner2" => (optional) string, "inner3" => (optional) { "innerinner" => (optional) `Employee` } }: `{"inner1": 33, "inner2": "-*/", "inner3": {"innerinner": Employee::"09AE76"}}`"#)
+                .source(r#"in attribute `json_blob` on `Employee::"12UA45"`, type mismatch: value was expected to have type bool, but it actually has type long: `33`"#)
                 .build()
         );
 
@@ -2763,7 +3213,7 @@ mod schema_based_parsing_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
-                .source(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but actually has type `Employee`: `Employee::"34FB87"`"#)
+                .source(r#"in attribute `manager` on `XYZCorp::Employee::"12UA45"`, type mismatch: value was expected to have type `XYZCorp::Employee`, but it actually has type (entity of type `Employee`): `Employee::"34FB87"`"#)
                 .build()
         );
     }
@@ -3173,7 +3623,7 @@ mod schema_based_parsing_tests {
                         "manager": { "__extn": { "fn": "unknown", "arg": "www" }},
                         "hr_contacts": { "__extn": { "fn": "unknown", "arg": "yyy" }},
                         "sales_contacts": [
-                            { "type": "HR", "id": "aaaaa" },
+                            { "type": "Employee", "id": "aaaaa" },
                             { "__extn": { "fn": "unknown", "arg": "123" }}
                         ],
                         "json_blob": {
@@ -3375,6 +3825,255 @@ mod schema_based_parsing_tests {
             Err(EntitiesError::TransitiveClosureError(_))
         ));
     }
+
+    #[test]
+    fn enumerated_entity_types() {
+        let schema = Schema::from_str(
+            r#"
+                    entity Fruit enum ["🍉", "🍓", "🍒"];
+                    entity People {
+                        fruit?: Fruit,
+                        fruit_rec?: {name: Fruit},
+                    };
+                    entity DeliciousFruit in Fruit tags Fruit;
+                    action "eat" appliesTo {
+                        principal: [People],
+                        resource: [Fruit],
+                    };
+                "#,
+        )
+        .expect("should be a valid schema");
+        // invalid eid
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "Fruit",
+                    "id" : "🥝"
+                },
+                "attrs" : {},
+                "parents": []
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {},
+                "parents": []
+            }
+        ]);
+        assert_matches!(Entities::from_json_value(json.clone(), Some(&schema)), Err(EntitiesError::InvalidEntity(err)) => {
+            expect_err(
+                &json,
+                &Report::new(err),
+                &ExpectedErrorMessageBuilder::error(
+                    r#"entity `Fruit::"🥝"` is of an enumerated entity type, but `"🥝"` is not declared as a valid eid"#,
+                )
+                .help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                .build(),
+            );
+        });
+        // no attributes are allowed
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "Fruit",
+                    "id" : "🍉"
+                },
+                "attrs" : {
+                    "sweetness": "high",
+                },
+                "parents": []
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {},
+                "parents": []
+            }
+        ]);
+        assert_matches!(Entities::from_json_value(json.clone(), Some(&schema)), Err(EntitiesError::Deserialization(err)) => {
+            expect_err(
+                &json,
+                &Report::new(err),
+                &ExpectedErrorMessageBuilder::error(
+                    r#"attribute `sweetness` on `Fruit::"🍉"` should not exist according to the schema"#,
+                )
+                .build(),
+            );
+        });
+        // no parents are allowed
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "Fruit",
+                    "id" : "🍉"
+                },
+                "attrs" : {
+                },
+                "parents": [{"type": "Fruit", "id": "🍓"}]
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {},
+                "parents": []
+            }
+        ]);
+        assert_matches!(Entities::from_json_value(json.clone(), Some(&schema)), Err(EntitiesError::InvalidEntity(err)) => {
+            expect_err(
+                &json,
+                &Report::new(err),
+                &ExpectedErrorMessageBuilder::error(
+                    r#"`Fruit::"🍉"` is not allowed to have an ancestor of type `Fruit` according to the schema"#,
+                )
+                .build(),
+            );
+        });
+
+        // Reference to invalid eid in the `parents` field
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "DeliciousFruit",
+                    "id" : "🍉"
+                },
+                "attrs" : {
+                },
+                "parents": [{"type": "Fruit", "id": "🥝"}]
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {},
+                "parents": []
+            }
+        ]);
+        assert_matches!(
+            Entities::from_json_value(json.clone(), Some(&schema)),
+            Err(EntitiesError::InvalidEntity(err)) => {
+                expect_err(
+                    &json,
+                    &Report::new(err),
+                    &ExpectedErrorMessageBuilder::error(
+                        r#"entity `Fruit::"🥝"` is of an enumerated entity type, but `"🥝"` is not declared as a valid eid"#,
+                    ).help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                    .build(),
+                );}
+        );
+
+        // Reference to invalid eid in the `attrs` field
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "DeliciousFruit",
+                    "id" : "🍍"
+                },
+                "attrs" : {
+                },
+                "parents": [{"type": "Fruit", "id": "🍉"}]
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {
+                    "fruit": {"type": "Fruit", "id": "🍍"},
+                },
+                "parents": []
+            }
+        ]);
+        assert_matches!(
+            Entities::from_json_value(json.clone(), Some(&schema)),
+            Err(EntitiesError::InvalidEntity(err)) => {
+                expect_err(
+                    &json,
+                    &Report::new(err),
+                    &ExpectedErrorMessageBuilder::error(
+                        r#"entity `Fruit::"🍍"` is of an enumerated entity type, but `"🍍"` is not declared as a valid eid"#,
+                    ).help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                    .build(),
+                );}
+        );
+        // Reference to invalid eid in the `attrs` field
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "DeliciousFruit",
+                    "id" : "🍍"
+                },
+                "attrs" : {
+                },
+                "parents": [{"type": "Fruit", "id": "🍉"}]
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {
+                    "fruit_rec": {"name": {"type": "Fruit", "id": "🥭"}},
+                },
+                "parents": []
+            }
+        ]);
+        assert_matches!(
+            Entities::from_json_value(json.clone(), Some(&schema)),
+            Err(EntitiesError::InvalidEntity(err)) => {
+                expect_err(
+                    &json,
+                    &Report::new(err),
+                    &ExpectedErrorMessageBuilder::error(
+                        r#"entity `Fruit::"🥭"` is of an enumerated entity type, but `"🥭"` is not declared as a valid eid"#,
+                    ).help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                    .build(),
+                );}
+        );
+        // Reference to invalid eid in the `tags` field
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "DeliciousFruit",
+                    "id" : "🍍"
+                },
+                "attrs" : {
+                },
+                "parents": [{"type": "Fruit", "id": "🍉"}],
+                "tags": {
+                    "mango": {"type": "Fruit", "id": "🥭"},
+                }
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {
+                    "fruit_rec": {"name": {"type": "Fruit", "id": "🍉"}},
+                },
+                "parents": []
+            }
+        ]);
+        assert_matches!(
+            Entities::from_json_value(json.clone(), Some(&schema)),
+            Err(EntitiesError::InvalidEntity(err)) => {
+                expect_err(
+                    &json,
+                    &Report::new(err),
+                    &ExpectedErrorMessageBuilder::error(
+                        r#"entity `Fruit::"🥭"` is of an enumerated entity type, but `"🥭"` is not declared as a valid eid"#,
+                    ).help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                    .build(),
+                );}
+        );
+    }
 }
 
 #[cfg(not(feature = "partial-validate"))]
@@ -3474,6 +4173,249 @@ mod partial_schema {
     }
 }
 
+#[cfg(feature = "level-validate")]
+mod level_validation_tests {
+    use crate::ValidationMode;
+    use crate::{Policy, PolicySet, ValidationError, Validator};
+    use cool_asserts::assert_matches;
+    use serde_json::json;
+
+    use super::Schema;
+
+    fn get_schema() -> Schema {
+        Schema::from_json_value(json!(
+        {
+            "": {
+                "entityTypes": {
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "is_admin": {
+                                    "type": "Boolean",
+                                    "required": true
+                                },
+                                "profile_pic": {
+                                    "type": "Entity",
+                                    "name": "Photo",
+                                    "required": true
+                                }
+                            }
+                        },
+                        "memberOfTypes": ["User"]
+                    },
+                    "Photo": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "foo": {
+                                    "type": "Entity",
+                                    "name": "User",
+                                    "required": true
+                                }
+                            }
+                        }
+                    }
+                },
+                "actions": {
+                    "view": {
+                        "appliesTo": {
+                            "resourceTypes": [ "Photo" ],
+                            "principalTypes": [ "User" ]
+                        }
+                    }
+                }
+            }
+        }))
+        .expect("Schema parse error.")
+        .try_into()
+        .expect("Expected valid schema.")
+    }
+
+    #[test]
+    fn level_validation_passes() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when {1 > 0};"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(result.validation_passed());
+    }
+
+    #[test]
+    fn level_validation_fails() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when {principal in resource.foo};"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(!result.validation_passed());
+        assert_eq!(result.validation_errors().count(), 1);
+        assert_matches!(
+            result.validation_errors().next().unwrap(),
+            ValidationError::EntityDerefLevelViolation(_)
+        );
+    }
+
+    #[test]
+    fn level_validation_fails_rhs_in() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when {principal.profile_pic in resource.foo.profile_pic};"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(!result.validation_passed());
+        assert_eq!(result.validation_errors().count(), 1);
+        let err = result.validation_errors().next().unwrap();
+        assert_matches!(err, ValidationError::EntityDerefLevelViolation(_));
+        match err {
+            ValidationError::EntityDerefLevelViolation(inner) => {
+                assert!(format!("{inner}").contains("Actual level is 2"));
+            }
+            _ => unreachable!(),
+        };
+    }
+
+    #[test]
+    fn level_validation_passes_level2() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { resource.foo.is_admin };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 2);
+        assert!(result.validation_passed());
+    }
+
+    #[test]
+    fn level_validation_irrelevant_policy_passes() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { false && principal.is_admin };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(result.validation_passed());
+    }
+
+    #[test]
+    fn level_validation_irrelevant_policy_fails() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { principal.is_admin && false };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(!result.validation_passed());
+        assert_eq!(result.validation_errors().count(), 1);
+        assert_matches!(
+            result.validation_errors().next().unwrap(),
+            ValidationError::EntityDerefLevelViolation(_)
+        );
+    }
+
+    #[test]
+    fn level_validation_fails_ite() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { if principal == User::"henry" then true else principal in resource.foo };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(!result.validation_passed());
+        assert_eq!(result.validation_errors().count(), 1);
+        assert_matches!(
+            result.validation_errors().next().unwrap(),
+            ValidationError::EntityDerefLevelViolation(_)
+        );
+    }
+
+    #[test]
+    fn level_validation_passes_ite() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { if principal == User::"henry" then true else principal in resource.foo };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 1);
+        assert!(result.validation_passed());
+    }
+
+    #[test]
+    fn level_validation_fails_record() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": true, "bar": resource.foo.is_admin }.bar };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(!result.validation_passed());
+        assert_eq!(result.validation_errors().count(), 1);
+        assert_matches!(
+            result.validation_errors().next().unwrap(),
+            ValidationError::EntityDerefLevelViolation(_)
+        );
+    }
+
+    #[test]
+    fn level_validation_passes_record_increased_level() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": true, "bar": resource.foo.is_admin }.bar };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 2);
+        assert!(result.validation_passed());
+    }
+
+    #[test]
+    fn level_validation_passes_record_other_attr() {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+
+        let mut set = PolicySet::new();
+        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": true, "bar": resource.foo.is_admin }.foo };"#;
+        let p = Policy::parse(None, src).unwrap();
+        set.add(p).unwrap();
+
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+        assert!(result.validation_passed());
+    }
+}
+
 mod template_tests {
     use std::str::FromStr;
 
@@ -3511,7 +4453,7 @@ mod template_tests {
                 .help("a template should include slot(s) `?principal` or `?resource`")
                 .exactly_one_underline(src)
                 .build(),
-        )
+        );
     }
 
     #[test]
@@ -3706,7 +4648,7 @@ mod issue_618 {
         round_trip(r#"permit(principal, action, resource) when { principal["\n"] };"#);
         round_trip(r#"permit(principal, action, resource) when { {"\n": 0} };"#);
         round_trip(
-            r#"@annotation("\n") 
+            r#"@annotation("\n")
 permit(principal, action, resource) when { {"\n": 0} };"#,
         );
     }
@@ -3739,18 +4681,18 @@ mod issue_604 {
     #[track_caller]
     fn make_policy_with_get_attr(attr: &str) -> String {
         format!(
-            r#"
+            r"
         permit(principal, action, resource) when {{ principal == resource.{attr} }};
-        "#
+        "
         )
     }
 
     #[track_caller]
     fn make_policy_with_has_attr(attr: &str) -> String {
         format!(
-            r#"
+            r"
         permit(principal, action, resource) when {{ resource has {attr} }};
-        "#
+        "
         )
     }
 
@@ -3900,7 +4842,7 @@ mod issue_596 {
 
     fn test_single_int_with_dashes(x: i64, num_dashes: usize) {
         let dashes = vec!['-'; num_dashes].into_iter().collect::<String>();
-        let src = format!(r#"permit(principal, action, resource) when {{ {dashes}{x} }};"#);
+        let src = format!(r"permit(principal, action, resource) when {{ {dashes}{x} }};");
         let p: Policy = src.parse().unwrap();
         let json = p.to_json().unwrap();
         let round_trip = Policy::from_json(None, json).unwrap();
@@ -3997,7 +4939,7 @@ mod decimal_ip_constructors {
     fn expr_ip() {
         let ip = Expression::new_ip("10.10.10.10");
         assert_matches!(evaluate_empty(&ip),
-                Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, "10.10.10.10/32")
+                Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, r#"ip("10.10.10.10")"#)
         );
     }
 
@@ -4005,7 +4947,7 @@ mod decimal_ip_constructors {
     fn expr_ip_network() {
         let ip = Expression::new_ip("10.10.10.10/16");
         assert_matches!(evaluate_empty(&ip),
-            Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, "10.10.10.10/16")
+            Ok(EvalResult::ExtensionValue(o)) => assert_eq!(&o, r#"ip("10.10.10.10/16")"#)
         );
     }
 
@@ -4166,7 +5108,7 @@ mod policy_set_est_tests {
     #[test]
     fn test_partition_fold_err() {
         let even_or_odd = |s: &str| {
-            i64::from_str_radix(s, 10).map(|i| {
+            s.parse::<i64>().map(|i| {
                 if i % 2 == 0 {
                     Either::Left(i)
                 } else {
@@ -4382,10 +5324,11 @@ mod policy_set_est_tests {
                 r#"User::"John""#.parse().unwrap()
             )]))
         );
-        if let Err(_) = policyset
+        if policyset
             .get_linked_policies(PolicyId::new("template"))
             .unwrap()
             .exactly_one()
+            .is_err()
         {
             panic!("Should have exactly one");
         };
@@ -4895,6 +5838,10 @@ mod request_validation_tests {
                 "entityTypes": {
                     "Principal": {},
                     "Resource": {},
+                    "Cat": {},
+                    "Duck": {},
+                    "Folder": {},
+                    "Widget": {},
                 },
                 "actions": {
                     "action": {
@@ -4909,6 +5856,22 @@ mod request_validation_tests {
                                     }
                                 }
                             }
+                        }
+                    },
+                    "manipulate": {
+                        "appliesTo": {
+                            "principalTypes": ["Principal", "Cat", "Duck"],
+                            "resourceTypes": ["Resource", "Folder", "Widget"],
+                            "context": {
+                                "type": "Record",
+                                "attributes": {},
+                            },
+                        }
+                    },
+                    "group": {
+                        "appliesTo": {
+                            "principalTypes": [],
+                            "resourceTypes": [],
                         }
                     }
                 }
@@ -4956,6 +5919,7 @@ mod request_validation_tests {
             &ExpectedErrorMessageBuilder::error(
                 "principal type `Undeclared` is not declared in the schema",
             )
+            .exactly_one_underline("Undeclared")
             .build(),
         );
     }
@@ -4977,6 +5941,7 @@ mod request_validation_tests {
             &ExpectedErrorMessageBuilder::error(
                 "resource type `Undeclared` is not declared in the schema",
             )
+            .exactly_one_underline("Undeclared")
             .build(),
         );
     }
@@ -4998,6 +5963,46 @@ mod request_validation_tests {
             &ExpectedErrorMessageBuilder::error(
                 r#"principal type `Resource` is not valid for `Action::"action"`"#,
             )
+            .help(r#"valid principal types for `Action::"action"`: `Principal`"#)
+            .exactly_one_underline("Resource")
+            .build(),
+        );
+
+        let err = Request::new(
+            EntityUid::from_strs("Resource", "principal"),
+            EntityUid::from_strs("Action", "manipulate"),
+            EntityUid::from_strs("Resource", "resource"),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"principal type `Resource` is not valid for `Action::"manipulate"`"#,
+            )
+            .help(r#"valid principal types for `Action::"manipulate"`: `Cat`, `Duck`, `Principal`"#)
+            .exactly_one_underline("Resource")
+            .build(),
+        );
+
+        let err = Request::new(
+            EntityUid::from_strs("Resource", "principal"),
+            EntityUid::from_strs("Action", "group"),
+            EntityUid::from_strs("Resource", "resource"),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"principal type `Resource` is not valid for `Action::"group"`"#,
+            )
+            .help(r#"no principal types are valid for `Action::"group"`"#)
+            .exactly_one_underline("Resource")
             .build(),
         );
     }
@@ -5019,6 +6024,27 @@ mod request_validation_tests {
             &ExpectedErrorMessageBuilder::error(
                 r#"resource type `Principal` is not valid for `Action::"action"`"#,
             )
+            .help(r#"valid resource types for `Action::"action"`: `Resource`"#)
+            .exactly_one_underline("Principal")
+            .build(),
+        );
+
+        let err = Request::new(
+            EntityUid::from_strs("Principal", "principal"),
+            EntityUid::from_strs("Action", "manipulate"),
+            EntityUid::from_strs("Principal", "resource"),
+            Context::empty(),
+            Some(&schema),
+        )
+        .unwrap_err();
+        expect_err(
+            "",
+            &Report::new(err),
+            &ExpectedErrorMessageBuilder::error(
+                r#"resource type `Principal` is not valid for `Action::"manipulate"`"#,
+            )
+            .help(r#"valid resource types for `Action::"manipulate"`: `Folder`, `Resource`, `Widget`"#)
+            .exactly_one_underline("Principal")
             .build(),
         );
     }
@@ -5038,7 +6064,7 @@ mod request_validation_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error(
-                r#"context `<first-class record with 0 fields>` is not valid for `Action::"action"`"#,
+                r#"context `{}` is not valid for `Action::"action"`"#,
             )
             .build(),
         );
@@ -5056,7 +6082,7 @@ mod request_validation_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error(
-                r#"context `<first-class record with 1 fields>` is not valid for `Action::"action"`"#,
+                r#"context `{foo: 123}` is not valid for `Action::"action"`"#,
             )
             .build(),
         );
@@ -5263,6 +6289,803 @@ mod context_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error("duplicate key `key2` in context").build(),
+        );
+    }
+}
+
+mod policy_manipulation_functions_tests {
+    use std::collections::BTreeMap;
+
+    use cool_asserts::assert_matches;
+
+    use super::*;
+
+    #[test]
+    fn empty_policy() {
+        let policy_str = r"permit(principal, action, resource);
+        ";
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+        assert_eq!(policy.entity_literals(), vec![]);
+    }
+
+    #[test]
+    fn non_empty_policy() {
+        let policy_str = r#"permit(principal == User::"Bob", action == Action::"view", resource) when {
+            !resource.private && resource.owner != User::"Alice"
+        };
+        "#;
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+        let res = policy.entity_literals();
+        assert_eq!(res.len(), 3);
+        assert!(res.contains(&EntityUid::from_str("User::\"Bob\"").expect("should parse")));
+        assert!(res.contains(&EntityUid::from_str("Action::\"view\"").expect("should parse")));
+        assert!(res.contains(&EntityUid::from_str("User::\"Alice\"").expect("should parse")));
+    }
+
+    #[test]
+    fn test_entity_sub_principal() {
+        let policy_str = r#"permit(principal == User::"Alice", action, resource);"#;
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_eq!(policy.to_string(), new_policy.to_string());
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Bob").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_ne!(policy.to_string(), new_policy.to_string());
+    }
+
+    #[test]
+    fn test_entity_sub_action() {
+        let policy_str = r#"permit(principal, action == Action::"view", resource);"#;
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("Action").unwrap(),
+                    EntityId::from_str("view").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("Action").unwrap(),
+                    EntityId::from_str("view").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_eq!(policy.to_string(), new_policy.to_string());
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("Action").unwrap(),
+                    EntityId::from_str("view").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("Action").unwrap(),
+                    EntityId::from_str("read").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_ne!(policy.to_string(), new_policy.to_string());
+    }
+
+    #[test]
+    fn test_entity_sub_resource() {
+        let policy_str = r#"permit(principal, action, resource == User::"Alice");"#;
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_eq!(policy.to_string(), new_policy.to_string());
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Bob").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_ne!(policy.to_string(), new_policy.to_string());
+    }
+
+    #[test]
+    fn test_entity_sub_body() {
+        let policy_str =
+            r#"permit(principal, action, resource) when { principal == User::"Alice" };"#;
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_eq!(policy.to_string(), new_policy.to_string());
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Bob").unwrap(),
+                ),
+            )]))
+            .unwrap();
+        assert_ne!(policy.to_string(), new_policy.to_string());
+    }
+
+    #[test]
+    fn test_entity_swap() {
+        let policy_str = r#"permit(principal, action in [Action::"1", Action::"2"], resource) when { principal in [User::"1", User::"2"] };"#;
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+        let expected_policy_str = r#"permit(principal, action in [Action::"2", Action::"1"], resource) when { principal in [User::"2", User::"1"] };"#;
+
+        let new_policy = policy
+            .sub_entity_literals(BTreeMap::from([
+                (
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("User").unwrap(),
+                        EntityId::from_str("1").unwrap(),
+                    ),
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("User").unwrap(),
+                        EntityId::from_str("2").unwrap(),
+                    ),
+                ),
+                (
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("User").unwrap(),
+                        EntityId::from_str("2").unwrap(),
+                    ),
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("User").unwrap(),
+                        EntityId::from_str("1").unwrap(),
+                    ),
+                ),
+                (
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("Action").unwrap(),
+                        EntityId::from_str("1").unwrap(),
+                    ),
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("Action").unwrap(),
+                        EntityId::from_str("2").unwrap(),
+                    ),
+                ),
+                (
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("Action").unwrap(),
+                        EntityId::from_str("2").unwrap(),
+                    ),
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("Action").unwrap(),
+                        EntityId::from_str("1").unwrap(),
+                    ),
+                ),
+            ]))
+            .unwrap();
+        assert_eq!(new_policy.to_string(), expected_policy_str.to_string());
+    }
+
+    #[test]
+    fn test_err_illegal_substitution() {
+        let policy_str = r#"permit(principal, action == Action::"1", resource);"#;
+        let policy = Policy::from_str(policy_str).expect("should succeed");
+
+        assert_matches!(
+            policy.sub_entity_literals(BTreeMap::from([(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("Action").unwrap(),
+                    EntityId::from_str("1").unwrap(),
+                ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("2").unwrap(),
+                ),
+            )])),
+            Err(PolicyFromJsonError {
+                inner: cedar_policy_core::est::FromJsonError::InvalidActionType(_)
+            })
+        );
+    }
+}
+
+mod version_tests {
+    use crate::{get_lang_version, get_sdk_version};
+
+    #[test]
+    fn test_sdk_version() {
+        assert_eq!(get_sdk_version().to_string(), "4.3.0");
+    }
+
+    #[test]
+    fn test_lang_version() {
+        assert_eq!(get_lang_version().to_string(), "4.2.0");
+    }
+}
+
+mod reserved_keywords_in_policies {
+    use super::*;
+    use cool_asserts::assert_matches;
+
+    const RESERVED_IDENTS: [&str; 9] = [
+        "true", "false", "if", "then", "else", "in", "like", "has", "is",
+    ];
+    const RESERVED_NAMESPACE: [&str; 1] = ["__cedar"];
+    const OTHER_SPECIAL_IDENTS: [&str; 8] = [
+        "principal",
+        "action",
+        "resource",
+        "context",
+        "permit",
+        "forbid",
+        "when",
+        "unless",
+    ];
+
+    const RESERVED_IDENT_MSG: fn(&str) -> String =
+        |id| format!("this identifier is reserved and cannot be used: {id}");
+    const RESERVED_NAMESPACE_MSG: fn(&str) -> String =
+        |name| format!("The name `{name}` contains `__cedar`, which is reserved");
+
+    #[track_caller]
+    fn assert_valid_annotation(id: &str) {
+        let res = Policy::from_str(&format!(
+            r#"
+          @{id}("foo")
+          permit(principal, action, resource);
+        "#
+        ));
+        assert_matches!(res, Ok(_));
+    }
+
+    #[track_caller]
+    fn assert_valid_expression(src: &str) {
+        assert_matches!(Expression::from_str(src), Ok(_));
+    }
+
+    #[track_caller]
+    fn assert_invalid_expression(src: &str, error: &str, underline: &str) {
+        let expected_err = ExpectedErrorMessageBuilder::error(error)
+            .exactly_one_underline(underline)
+            .build();
+        assert_matches!(Expression::from_str(src), Err(err) => expect_err(src, &Report::new(err), &expected_err));
+    }
+
+    #[track_caller]
+    #[allow(unused)]
+    fn assert_invalid_expression_with_help(src: &str, error: &str, underline: &str, help: &str) {
+        let expected_err = ExpectedErrorMessageBuilder::error(error)
+            .exactly_one_underline(underline)
+            .help(help)
+            .build();
+        assert_matches!(Expression::from_str(src), Err(err) => expect_err(src, &Report::new(err), &expected_err));
+    }
+
+    #[test]
+    fn test_reserved_annotations() {
+        // Currently, any identifier can be used as an annotation key
+        RESERVED_IDENTS
+            .iter()
+            .chain(RESERVED_NAMESPACE.iter())
+            .chain(OTHER_SPECIAL_IDENTS.iter())
+            .for_each(|id| assert_valid_annotation(id));
+    }
+
+    #[test]
+    fn test_reserved_keys() {
+        // Any ident can be used as a record key if it's wrapped in quotes
+        RESERVED_IDENTS
+            .iter()
+            .chain(RESERVED_NAMESPACE.iter())
+            .chain(OTHER_SPECIAL_IDENTS.iter())
+            .for_each(|id| {
+                assert_valid_expression(&format!("{{ \"{id}\": 1 }}"));
+                assert_valid_expression(&format!("principal has \"{id}\""));
+                assert_valid_expression(&format!("principal[\"{id}\"] == \"foo\""));
+            });
+
+        // No restrictions on OTHER_SPECIAL_IDENTS
+        for id in &OTHER_SPECIAL_IDENTS {
+            assert_valid_expression(&format!("{{ {id}: 1 }}"));
+            assert_valid_expression(&format!("principal has {id}"));
+            assert_valid_expression(&format!("principal.{id} == \"foo\""));
+        }
+
+        // RESERVED_IDENTS cannot be used as keys without quotes
+        for id in RESERVED_IDENTS {
+            // slightly different errors depending on `id`; related to #407
+            match id {
+                "true" | "false" => {
+                    assert_invalid_expression(
+                        &format!("{{ {id}: 1 }}"),
+                        &RESERVED_IDENT_MSG(id),
+                        id,
+                    );
+                    assert_invalid_expression(
+                        &format!("principal has {id}"),
+                        &RESERVED_IDENT_MSG(id),
+                        id,
+                    );
+                    assert_invalid_expression(
+                        &format!("principal has {id}"),
+                        &RESERVED_IDENT_MSG(id),
+                        id,
+                    );
+                }
+                "if" => {
+                    assert_invalid_expression(
+                        &format!("{{ {id}: 1 }}"),
+                        &RESERVED_IDENT_MSG(id),
+                        &format!("{id}: 1"),
+                    );
+                    assert_invalid_expression(
+                        &format!("principal has {id}"),
+                        &RESERVED_IDENT_MSG(id),
+                        id,
+                    );
+                }
+                _ => {
+                    assert_invalid_expression(
+                        &format!("{{ {id}: 1 }}"),
+                        &RESERVED_IDENT_MSG(id),
+                        id,
+                    );
+                    assert_invalid_expression(
+                        &format!("principal has {id}"),
+                        &RESERVED_IDENT_MSG(id),
+                        id,
+                    );
+                }
+            }
+            // this case leads to a consistent error for all keywords
+            assert_invalid_expression(
+                &format!("principal.{id} == \"foo\""),
+                &RESERVED_IDENT_MSG(id),
+                id,
+            );
+        }
+
+        // RESERVED_NAMESPACE cannot be used as keys without quotes
+        for id in RESERVED_NAMESPACE {
+            assert_invalid_expression(&format!("{{ {id}: 1 }}"), &RESERVED_NAMESPACE_MSG(id), id);
+            assert_invalid_expression(
+                &format!("principal has {id}"),
+                &RESERVED_NAMESPACE_MSG(id),
+                id,
+            );
+            assert_invalid_expression(
+                &format!("principal.{id} == \"foo\""),
+                &RESERVED_NAMESPACE_MSG(id),
+                id,
+            );
+        }
+    }
+
+    #[test]
+    fn test_reserved_namespace_elements() {
+        // No restrictions on OTHER_SPECIAL_IDENTS
+        for id in &OTHER_SPECIAL_IDENTS {
+            assert_valid_expression(&format!("foo::{id}::\"bar\""));
+            assert_valid_expression(&format!("principal is {id}::foo"));
+        }
+
+        // RESERVED_IDENTS cannot be used in namespaces
+        for id in RESERVED_IDENTS {
+            assert_invalid_expression(&format!("foo::{id}::\"bar\""), &RESERVED_IDENT_MSG(id), id);
+            assert_invalid_expression(
+                &format!("principal is {id}::foo"),
+                &RESERVED_IDENT_MSG(id),
+                id,
+            );
+        }
+
+        // RESERVED_NAMESPACE cannot be used in namespaces
+        for id in RESERVED_NAMESPACE {
+            assert_invalid_expression(
+                &format!("foo::{id}::\"bar\""),
+                &RESERVED_NAMESPACE_MSG(&format!("foo::{id}")),
+                &format!("foo::{id}"),
+            );
+            assert_invalid_expression(
+                &format!("principal is {id}::foo"),
+                &RESERVED_NAMESPACE_MSG(&format!("{id}::foo")),
+                &format!("{id}::foo"),
+            );
+        }
+    }
+
+    #[test]
+    fn test_reserved_extfun_names() {
+        // No keyword is allowed as an extension function names since we check
+        // against the known extension functions at parse time.
+
+        for id in RESERVED_IDENTS {
+            assert_invalid_expression(
+                &format!("extension::function::{id}(\"foo\")"),
+                &RESERVED_IDENT_MSG(id),
+                id,
+            );
+            assert_invalid_expression(&format!("context.{id}(1)"), &RESERVED_IDENT_MSG(id), id);
+        }
+
+        for id in RESERVED_NAMESPACE {
+            assert_invalid_expression(
+                &format!("extension::function::{id}(\"foo\")"),
+                &RESERVED_NAMESPACE_MSG(&format!("extension::function::{id}")),
+                &format!("extension::function::{id}"),
+            );
+            assert_invalid_expression(&format!("context.{id}(1)"), &RESERVED_NAMESPACE_MSG(id), id);
+        }
+
+        for id in OTHER_SPECIAL_IDENTS {
+            assert_invalid_expression(
+                &format!("extension::function::{id}(\"foo\")"),
+                &format!("`extension::function::{id}` is not a valid function"),
+                &format!("extension::function::{id}(\"foo\")"),
+            );
+            assert_invalid_expression(
+                &format!("context.{id}(1)"),
+                &format!("`{id}` is not a valid method"),
+                &format!("context.{id}(1)"),
+            );
+        }
+    }
+}
+
+mod schema_annotations {
+    use std::collections::BTreeMap;
+
+    use cool_asserts::assert_matches;
+
+    use crate::EntityNamespace;
+
+    use super::SchemaFragment;
+
+    #[track_caller]
+    fn example_schema() -> SchemaFragment {
+        SchemaFragment::from_cedarschema_str(
+            r#"
+        @a("a")
+        @b
+        entity A1,A2 {};
+        @c("c")
+        @d
+        type T = Long;
+        @e("e")
+        @f
+        action a1, a2 appliesTo { principal: [A1], resource: [A2] };
+
+        @m("m")
+        @n
+        namespace N {
+          @a("a")
+          @b
+          entity A1,A2 {};
+          @c("c")
+          @d
+          type T = Long;
+          @e("e")
+          @f
+          action a1, a2 appliesTo { principal: [N::A1], resource: [A2] };
+        }
+        "#,
+        )
+        .expect("should be a valid schema fragment")
+        .0
+    }
+
+    #[test]
+    fn namespace_annotations() {
+        let schema = example_schema();
+        let namespace: EntityNamespace = "N".parse().expect("should be a valid name");
+        let annotations = schema
+            .namespace_annotations(namespace.clone())
+            .expect("should get annotations")
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(annotations, BTreeMap::from_iter([("m", "m"), ("n", "")]));
+        assert_matches!(
+            schema
+                .namespace_annotations("NM".parse().unwrap())
+                .map(|_| ()),
+            None
+        );
+
+        assert_matches!(
+            schema.namespace_annotation(namespace.clone(), "m"),
+            Some("m")
+        );
+        assert_matches!(
+            schema.namespace_annotation(namespace.clone(), "n"),
+            Some("")
+        );
+        assert_matches!(schema.namespace_annotation(namespace, "x"), None);
+        assert_matches!(
+            schema.namespace_annotation("NM".parse().unwrap(), "n"),
+            None
+        );
+    }
+
+    #[test]
+    fn entity_type_annotations() {
+        let schema = example_schema();
+        let annotations = BTreeMap::from_iter([("a", "a"), ("b", "")]);
+        assert_eq!(
+            annotations,
+            schema
+                .entity_type_annotations(None, "A1")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
+        );
+        assert_eq!(
+            annotations,
+            schema
+                .entity_type_annotations(None, "A2")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
+        );
+        assert_eq!(
+            annotations,
+            schema
+                .entity_type_annotations(Some("N".parse().expect("should be a valid name")), "A1")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
+        );
+        assert_eq!(
+            annotations,
+            schema
+                .entity_type_annotations(Some("N".parse().expect("should be a valid name")), "A2")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
+        );
+
+        assert_matches!(schema.entity_type_annotation(None, "A1", "b",), Some(""));
+        assert_matches!(schema.entity_type_annotation(None, "A2", "a",), Some("a"));
+        assert_matches!(schema.entity_type_annotation(None, "A3", "a",), None);
+        assert_matches!(schema.entity_type_annotation(None, "A2", "x",), None);
+        assert_matches!(
+            schema.entity_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "A1",
+                "b",
+            ),
+            Some("")
+        );
+        assert_matches!(
+            schema.entity_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "A2",
+                "a",
+            ),
+            Some("a")
+        );
+        assert_matches!(
+            schema.entity_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "A3",
+                "a",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.entity_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "A2",
+                "x",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.entity_type_annotation(
+                Some("NM".parse().expect("should be a valid name")),
+                "A1",
+                "b",
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn common_type_annotations() {
+        let schema = example_schema();
+        let annotations = BTreeMap::from_iter([("c", "c"), ("d", "")]);
+        assert_eq!(
+            annotations,
+            schema
+                .common_type_annotations(None, "T")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
+        );
+        assert_eq!(
+            annotations,
+            schema
+                .common_type_annotations(Some("N".parse().expect("should be a valid name")), "T")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
+        );
+        assert_matches!(schema.common_type_annotation(None, "T", "c",), Some("c"));
+        assert_matches!(schema.common_type_annotation(None, "T", "d",), Some(""));
+        assert_matches!(schema.common_type_annotation(None, "T1", "c",), None);
+        assert_matches!(schema.common_type_annotation(None, "T", "x",), None);
+
+        assert_matches!(
+            schema.common_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "T",
+                "c",
+            ),
+            Some("c")
+        );
+        assert_matches!(
+            schema.common_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "T",
+                "d",
+            ),
+            Some("")
+        );
+        assert_matches!(
+            schema.common_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "T1",
+                "c",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.common_type_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "T",
+                "x",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.common_type_annotation(
+                Some("NM".parse().expect("should be a valid name")),
+                "T",
+                "c",
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn action_type_annotations() {
+        let schema = example_schema();
+        let annotations = BTreeMap::from_iter([("e", "e"), ("f", "")]);
+        assert_eq!(
+            annotations,
+            schema
+                .action_annotations(None, &"a1".parse().unwrap(),)
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
+        );
+        assert_eq!(
+            annotations,
+            schema
+                .action_annotations(None, &"a2".parse().unwrap(),)
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
+        );
+        assert_eq!(
+            annotations,
+            schema
+                .action_annotations(
+                    Some("N".parse().expect("should be a valid name")),
+                    &"a1".parse().unwrap(),
+                )
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
+        );
+        assert_eq!(
+            annotations,
+            schema
+                .action_annotations(
+                    Some("N".parse().expect("should be a valid name")),
+                    &"a2".parse().unwrap(),
+                )
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
+        );
+
+        assert_matches!(
+            schema.action_annotation(None, &"a1".parse().unwrap(), "e",),
+            Some("e")
+        );
+        assert_matches!(
+            schema.action_annotation(None, &"a2".parse().unwrap(), "f",),
+            Some("")
+        );
+        assert_matches!(
+            schema.action_annotation(None, &"a3".parse().unwrap(), "e",),
+            None
+        );
+        assert_matches!(
+            schema.action_annotation(None, &"a2".parse().unwrap(), "x",),
+            None
+        );
+
+        assert_matches!(
+            schema.action_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                &"a1".parse().unwrap(),
+                "e",
+            ),
+            Some("e")
+        );
+        assert_matches!(
+            schema.action_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                &"a2".parse().unwrap(),
+                "f",
+            ),
+            Some("")
+        );
+        assert_matches!(
+            schema.action_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                &"a3".parse().unwrap(),
+                "e",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.action_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                &"a2".parse().unwrap(),
+                "x",
+            ),
+            None
+        );
+        assert_matches!(
+            schema.action_annotation(
+                Some("NM".parse().expect("should be a valid name")),
+                &"a1".parse().unwrap(),
+                "e",
+            ),
+            None
         );
     }
 }

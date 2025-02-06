@@ -16,12 +16,13 @@
 
 use crate::ast::*;
 use crate::parser::Loc;
+use annotation::{Annotation, Annotations};
+use educe::Educe;
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
-use std::collections::BTreeMap;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 
@@ -303,7 +304,7 @@ impl std::fmt::Display for Template {
 pub enum LinkingError {
     /// An error with the slot arguments provided
     // INVARIANT: `unbound_values` and `extra_values` can't both be empty
-    #[error("{}", describe_arity_error(.unbound_values, .extra_values))]
+    #[error(fmt = describe_arity_error)]
     ArityError {
         /// Error for when some Slots were not provided values
         unbound_values: Vec<SlotId>,
@@ -338,14 +339,18 @@ impl LinkingError {
     }
 }
 
-fn describe_arity_error(unbound_values: &[SlotId], extra_values: &[SlotId]) -> String {
+fn describe_arity_error(
+    unbound_values: &[SlotId],
+    extra_values: &[SlotId],
+    fmt: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
     match (unbound_values.len(), extra_values.len()) {
         // PANIC SAFETY 0,0 case is not an error
         #[allow(clippy::unreachable)]
         (0,0) => unreachable!(),
-        (_unbound, 0) => format!("the following slots were not provided as arguments: {}", unbound_values.iter().join(",")),
-        (0, _extra) => format!("the following slots were provided as arguments, but did not exist in the template: {}", extra_values.iter().join(",")),
-        (_unbound, _extra) => format!("the following slots were not provided as arguments: {}. The following slots were provided as arguments, but did not exist in the template: {}", unbound_values.iter().join(","), extra_values.iter().join(","))
+        (_unbound, 0) => write!(fmt, "the following slots were not provided as arguments: {}", unbound_values.iter().join(",")),
+        (0, _extra) => write!(fmt, "the following slots were provided as arguments, but did not exist in the template: {}", extra_values.iter().join(",")),
+        (_unbound, _extra) => write!(fmt, "the following slots were not provided as arguments: {}. The following slots were provided as arguments, but did not exist in the template: {}", unbound_values.iter().join(","), extra_values.iter().join(",")),
     }
 }
 
@@ -558,7 +563,7 @@ pub type SlotEnv = HashMap<SlotId, EntityUID>;
 
 /// Represents either an static policy or a template linked policy
 /// This is the serializable version because it simply refers to the Template by its Id;
-#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LiteralPolicy {
     /// ID of the template this policy is an instance of
     template_id: PolicyID,
@@ -568,6 +573,119 @@ pub struct LiteralPolicy {
     link_id: Option<PolicyID>,
     /// Values of the slots
     values: SlotEnv,
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::LiteralPolicy> for LiteralPolicy {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::LiteralPolicy) -> Self {
+        let link_id: &str = v.link_id.as_ref();
+        let link: Option<PolicyID> = if v.link_id_specified {
+            Some(PolicyID::from_string(link_id))
+        } else {
+            None
+        };
+
+        let mut values: SlotEnv = HashMap::new();
+        if v.principal_euid.is_some() {
+            values.insert(
+                SlotId::principal(),
+                EntityUID::from(
+                    v.principal_euid
+                        .as_ref()
+                        .expect("`as_ref()` for field that should exist"),
+                ),
+            );
+        }
+        if v.resource_euid.is_some() {
+            values.insert(
+                SlotId::resource(),
+                EntityUID::from(
+                    v.resource_euid
+                        .as_ref()
+                        .expect("`as_ref()` for field that should exist"),
+                ),
+            );
+        }
+
+        let template_id: &str = v.template_id.as_ref();
+
+        Self {
+            template_id: PolicyID::from_string(template_id),
+            link_id: link,
+            values,
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl TryFrom<&proto::LiteralPolicy> for Policy {
+    type Error = ReificationError;
+    fn try_from(policy: &proto::LiteralPolicy) -> Result<Self, Self::Error> {
+        // TODO: do we need to provide a nonempty `templates` argument to `.reify()`
+        LiteralPolicy::from(policy).reify(&HashMap::new())
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&LiteralPolicy> for proto::LiteralPolicy {
+    fn from(v: &LiteralPolicy) -> Self {
+        let template_id_str: &str = v.template_id.as_ref();
+        let link_id_str: &str = match v.link_id {
+            Some(ref pid) => pid.as_ref(),
+            None => "",
+        };
+
+        // Are both principal and resource ids necessary
+        let principal_euid: Option<proto::EntityUid> = v
+            .values
+            .get(&SlotId::principal())
+            .map(proto::EntityUid::from);
+
+        let resource_euid: Option<proto::EntityUid> = v
+            .values
+            .get(&SlotId::resource())
+            .map(proto::EntityUid::from);
+
+        Self {
+            template_id: String::from(template_id_str),
+            link_id: String::from(link_id_str),
+            link_id_specified: v.link_id.is_some(),
+            principal_euid,
+            resource_euid,
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&Policy> for proto::LiteralPolicy {
+    fn from(v: &Policy) -> Self {
+        let template_id_str: &str = v.template.id().as_ref();
+        let link_id_str: &str = match v.link {
+            Some(ref pid) => pid.as_ref(),
+            None => "",
+        };
+
+        // Are both principal and resource ids necessary
+        let principal_euid: Option<proto::EntityUid> = v
+            .values
+            .get(&SlotId::principal())
+            .map(proto::EntityUid::from);
+
+        let resource_euid: Option<proto::EntityUid> = v
+            .values
+            .get(&SlotId::resource())
+            .map(proto::EntityUid::from);
+
+        Self {
+            template_id: String::from(template_id_str),
+            link_id: String::from(link_id_str),
+            link_id_specified: v.link.is_some(),
+            principal_euid,
+            resource_euid,
+        }
+    }
 }
 
 /// A borrowed version of LiteralPolicy exclusively for serialization
@@ -608,14 +726,6 @@ impl std::hash::Hash for LiteralPolicy {
     }
 }
 
-impl std::cmp::PartialEq for LiteralPolicy {
-    fn eq(&self, other: &Self) -> bool {
-        self.template_id() == other.template_id()
-            && self.link_id == other.link_id
-            && self.values == other.values
-    }
-}
-
 // These would be great as property tests
 #[cfg(test)]
 mod hashing_tests {
@@ -626,7 +736,7 @@ mod hashing_tests {
 
     use super::*;
 
-    fn compute_hash(ir: LiteralPolicy) -> u64 {
+    fn compute_hash(ir: &LiteralPolicy) -> u64 {
         let mut s = DefaultHasher::new();
         ir.hash(&mut s);
         s.finish()
@@ -647,7 +757,7 @@ mod hashing_tests {
         let a = build_template_linked_policy();
         let b = build_template_linked_policy();
         assert_eq!(a, b);
-        assert_eq!(compute_hash(a), compute_hash(b));
+        assert_eq!(compute_hash(&a), compute_hash(&b));
     }
 }
 // by default, Coverlay does not track coverage for lines after a line
@@ -888,11 +998,14 @@ impl From<StaticPolicy> for Arc<Template> {
 
 /// Policy datatype. This is used for both templates (in which case it contains
 /// slots) and static policies (in which case it contains zero slots).
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Educe, Serialize, Deserialize, Clone, Debug)]
+#[educe(PartialEq, Eq, Hash)]
 pub struct TemplateBody {
     /// ID of this policy
     id: PolicyID,
     /// Source location spanning the entire policy
+    #[educe(PartialEq(ignore))]
+    #[educe(Hash(ignore))]
     loc: Option<Loc>,
     /// Annotations available for external applications, as key-value store.
     /// Note that the keys are `AnyId`, so Cedar reserved words like `if` and `has`
@@ -1084,9 +1197,7 @@ impl From<StaticPolicy> for TemplateBody {
 
 impl std::fmt::Display for TemplateBody {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (k, v) in self.annotations.iter() {
-            writeln!(f, "@{}(\"{}\")", k, v.val.escape_debug())?
-        }
+        self.annotations.fmt(f)?;
         write!(
             f,
             "{}(\n  {},\n  {},\n  {}\n) when {{\n  {}\n}};",
@@ -1099,80 +1210,87 @@ impl std::fmt::Display for TemplateBody {
     }
 }
 
-/// Struct which holds the annotations for a policy
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
-pub struct Annotations(BTreeMap<AnyId, Annotation>);
-
-impl Annotations {
-    /// Create a new empty `Annotations` (with no annotations)
-    pub fn new() -> Self {
-        Self(BTreeMap::new())
-    }
-
-    /// Get an annotation by key
-    pub fn get(&self, key: &AnyId) -> Option<&Annotation> {
-        self.0.get(key)
-    }
-
-    /// Iterate over all annotations
-    pub fn iter(&self) -> impl Iterator<Item = (&AnyId, &Annotation)> {
-        self.0.iter()
+#[cfg(feature = "protobufs")]
+impl From<&proto::TemplateBody> for Template {
+    fn from(v: &proto::TemplateBody) -> Self {
+        Template::from(TemplateBody::from(v))
     }
 }
 
-/// Wraps the [`BTreeMap`]` into an opaque type so we can change it later if need be
-#[derive(Debug)]
-pub struct IntoIter(std::collections::btree_map::IntoIter<AnyId, Annotation>);
+#[cfg(feature = "protobufs")]
+impl From<&proto::TemplateBody> for TemplateBody {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::TemplateBody) -> Self {
+        let annotations: Annotations = Annotations::from_iter(
+            v.annotations
+                .iter()
+                .map(|(key, value)| (AnyId::new_unchecked(key), Annotation::from(value))),
+        );
+        let effect =
+            Effect::from(&proto::Effect::try_from(v.effect).expect("decode should succeed"));
+        let policy_id: &str = v.id.as_ref();
 
-impl Iterator for IntoIter {
-    type Item = (AnyId, Annotation);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
+        let body: TemplateBody = TemplateBody::new(
+            PolicyID::from_string(policy_id),
+            None,
+            annotations,
+            effect,
+            PrincipalConstraint::from(
+                v.principal_constraint
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist"),
+            ),
+            ActionConstraint::from(
+                v.action_constraint
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist"),
+            ),
+            ResourceConstraint::from(
+                v.resource_constraint
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist"),
+            ),
+            Expr::from(
+                v.non_scope_constraints
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist"),
+            ),
+        );
+        body
     }
 }
 
-impl IntoIterator for Annotations {
-    type Item = (AnyId, Annotation);
+#[cfg(feature = "protobufs")]
+impl From<&TemplateBody> for proto::TemplateBody {
+    fn from(v: &TemplateBody) -> Self {
+        let id_str: &str = v.id.as_ref();
+        let annotations: HashMap<String, proto::Annotation> = v
+            .annotations
+            .as_ref()
+            .iter()
+            .map(|(key, value)| {
+                let id_str: &str = key.as_ref();
+                (String::from(id_str), proto::Annotation::from(value))
+            })
+            .collect();
 
-    type IntoIter = IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        IntoIter(self.0.into_iter())
+        Self {
+            id: String::from(id_str),
+            annotations,
+            effect: proto::Effect::from(&v.effect).into(),
+            principal_constraint: Some(proto::PrincipalConstraint::from(&v.principal_constraint)),
+            action_constraint: Some(proto::ActionConstraint::from(&v.action_constraint)),
+            resource_constraint: Some(proto::ResourceConstraint::from(&v.resource_constraint)),
+            non_scope_constraints: Some(proto::Expr::from(v.non_scope_constraints.as_ref())),
+        }
     }
 }
 
-impl Default for Annotations {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl FromIterator<(AnyId, Annotation)> for Annotations {
-    fn from_iter<T: IntoIterator<Item = (AnyId, Annotation)>>(iter: T) -> Self {
-        Self(BTreeMap::from_iter(iter))
-    }
-}
-
-impl From<BTreeMap<AnyId, Annotation>> for Annotations {
-    fn from(value: BTreeMap<AnyId, Annotation>) -> Self {
-        Self(value)
-    }
-}
-
-/// Struct which holds the value of a particular annotation
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug, PartialOrd, Ord)]
-pub struct Annotation {
-    /// Annotation value
-    pub val: SmolStr,
-    /// Source location. Note this is the location of _the entire key-value
-    /// pair_ for the annotation, not just `val` above
-    pub loc: Option<Loc>,
-}
-
-impl AsRef<str> for Annotation {
-    fn as_ref(&self) -> &str {
-        &self.val
+#[cfg(feature = "protobufs")]
+impl From<&Template> for proto::TemplateBody {
+    fn from(v: &Template) -> Self {
+        proto::TemplateBody::from(&v.body)
     }
 }
 
@@ -1262,10 +1380,10 @@ impl PrincipalConstraint {
     /// Fill in the Slot, if any, with the given EUID
     pub fn with_filled_slot(self, euid: Arc<EntityUID>) -> Self {
         match self.constraint {
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot) => Self {
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_)) => Self {
                 constraint: PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)),
             },
-            PrincipalOrResourceConstraint::In(EntityReference::Slot) => Self {
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(_)) => Self {
                 constraint: PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)),
             },
             _ => self,
@@ -1280,6 +1398,30 @@ impl std::fmt::Display for PrincipalConstraint {
             "{}",
             self.constraint.display(PrincipalOrResource::Principal)
         )
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::PrincipalConstraint> for PrincipalConstraint {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::PrincipalConstraint) -> Self {
+        Self {
+            constraint: PrincipalOrResourceConstraint::from(
+                v.constraint
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist"),
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&PrincipalConstraint> for proto::PrincipalConstraint {
+    fn from(v: &PrincipalConstraint) -> Self {
+        Self {
+            constraint: Some(proto::PrincipalOrResourceConstraint::from(&v.constraint)),
+        }
     }
 }
 
@@ -1369,10 +1511,10 @@ impl ResourceConstraint {
     /// Fill in the Slot, if any, with the given EUID
     pub fn with_filled_slot(self, euid: Arc<EntityUID>) -> Self {
         match self.constraint {
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot) => Self {
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_)) => Self {
                 constraint: PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)),
             },
-            PrincipalOrResourceConstraint::In(EntityReference::Slot) => Self {
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(_)) => Self {
                 constraint: PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)),
             },
             _ => self,
@@ -1390,13 +1532,44 @@ impl std::fmt::Display for ResourceConstraint {
     }
 }
 
+#[cfg(feature = "protobufs")]
+impl From<&proto::ResourceConstraint> for ResourceConstraint {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::ResourceConstraint) -> Self {
+        Self {
+            constraint: PrincipalOrResourceConstraint::from(
+                v.constraint
+                    .as_ref()
+                    .expect("`as_ref()` for field that should exist"),
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&ResourceConstraint> for proto::ResourceConstraint {
+    fn from(v: &ResourceConstraint) -> Self {
+        Self {
+            constraint: Some(proto::PrincipalOrResourceConstraint::from(&v.constraint)),
+        }
+    }
+}
+
 /// A reference to an EntityUID that may be a Slot
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
+#[derive(Educe, Serialize, Deserialize, Clone, Debug, Eq)]
+#[educe(Hash, PartialEq, PartialOrd, Ord)]
 pub enum EntityReference {
     /// Reference to a literal EUID
     EUID(Arc<EntityUID>),
     /// Template Slot
-    Slot,
+    Slot(
+        #[serde(skip)]
+        #[educe(PartialEq(ignore))]
+        #[educe(PartialOrd(ignore))]
+        #[educe(Hash(ignore))]
+        Option<Loc>,
+    ),
 }
 
 impl EntityReference {
@@ -1413,13 +1586,57 @@ impl EntityReference {
     pub fn into_expr(&self, slot: SlotId) -> Expr {
         match self {
             EntityReference::EUID(euid) => Expr::val(euid.clone()),
-            EntityReference::Slot => Expr::slot(slot),
+            EntityReference::Slot(loc) => {
+                Expr::slot(slot).with_maybe_source_loc(loc.as_ref().cloned())
+            }
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::EntityReference> for EntityReference {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::EntityReference) -> Self {
+        match v
+            .data
+            .as_ref()
+            .expect("`as_ref()` for field that should exist")
+        {
+            proto::entity_reference::Data::Ty(ty) => {
+                match proto::entity_reference::Ty::try_from(ty.to_owned())
+                    .expect("decode should succeed")
+                {
+                    proto::entity_reference::Ty::Slot => EntityReference::Slot(None),
+                }
+            }
+            proto::entity_reference::Data::Euid(euid) => {
+                EntityReference::euid(EntityUID::from(euid).into())
+            }
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&EntityReference> for proto::EntityReference {
+    fn from(v: &EntityReference) -> Self {
+        match v {
+            EntityReference::EUID(euid) => Self {
+                data: Some(proto::entity_reference::Data::Euid(proto::EntityUid::from(
+                    euid.as_ref(),
+                ))),
+            },
+            EntityReference::Slot(_) => Self {
+                data: Some(proto::entity_reference::Data::Ty(
+                    proto::entity_reference::Ty::Slot.into(),
+                )),
+            },
         }
     }
 }
 
 /// Error for unexpected slots
-#[derive(Debug, Clone, PartialEq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum UnexpectedSlotError {
     /// Found this slot where slots are not allowed
     #[error("found slot `{}` where slots are not allowed", .0.id)]
@@ -1433,6 +1650,12 @@ impl Diagnostic for UnexpectedSlotError {
                 let label = miette::LabeledSpan::underline(loc.span);
                 Box::new(std::iter::once(label)) as Box<dyn Iterator<Item = miette::LabeledSpan>>
             }),
+        }
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        match self {
+            Self::FoundSlot(Slot { loc, .. }) => loc.as_ref().map(|l| l as &dyn miette::SourceCode),
         }
     }
 }
@@ -1502,12 +1725,12 @@ impl PrincipalOrResourceConstraint {
 
     /// Constrained to equal a slot
     pub fn is_eq_slot() -> Self {
-        PrincipalOrResourceConstraint::Eq(EntityReference::Slot)
+        PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None))
     }
 
     /// Constrained to be in a slot
     pub fn is_in_slot() -> Self {
-        PrincipalOrResourceConstraint::In(EntityReference::Slot)
+        PrincipalOrResourceConstraint::In(EntityReference::Slot(None))
     }
 
     /// Hierarchical constraint.
@@ -1517,7 +1740,7 @@ impl PrincipalOrResourceConstraint {
 
     /// Type constraint additionally constrained to be in a slot.
     pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>) -> Self {
-        PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot)
+        PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot(None))
     }
 
     /// Type constraint with a hierarchical constraint.
@@ -1578,11 +1801,11 @@ impl PrincipalOrResourceConstraint {
         match self {
             PrincipalOrResourceConstraint::Any => None,
             PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)) => Some(euid),
-            PrincipalOrResourceConstraint::In(EntityReference::Slot) => None,
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(_)) => None,
             PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)) => Some(euid),
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot) => None,
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_)) => None,
             PrincipalOrResourceConstraint::IsIn(_, EntityReference::EUID(euid)) => Some(euid),
-            PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot) => None,
+            PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot(_)) => None,
             PrincipalOrResourceConstraint::Is(_) => None,
         }
     }
@@ -1597,6 +1820,110 @@ impl PrincipalOrResourceConstraint {
                 | PrincipalOrResourceConstraint::IsIn(entity_type, _) => Some(entity_type.as_ref()),
                 _ => None,
             })
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::PrincipalOrResourceConstraint> for PrincipalOrResourceConstraint {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::PrincipalOrResourceConstraint) -> Self {
+        match v
+            .data
+            .as_ref()
+            .expect("`as_ref()` for field that should exist")
+        {
+            proto::principal_or_resource_constraint::Data::Ty(ty) => {
+                match proto::principal_or_resource_constraint::Ty::try_from(ty.to_owned())
+                    .expect("decode should succeed")
+                {
+                    proto::principal_or_resource_constraint::Ty::Any => {
+                        PrincipalOrResourceConstraint::Any
+                    }
+                }
+            }
+            proto::principal_or_resource_constraint::Data::In(msg) => {
+                PrincipalOrResourceConstraint::In(EntityReference::from(
+                    msg.er
+                        .as_ref()
+                        .expect("`as_ref()` for field that should exist"),
+                ))
+            }
+            proto::principal_or_resource_constraint::Data::Eq(msg) => {
+                PrincipalOrResourceConstraint::Eq(EntityReference::from(
+                    msg.er
+                        .as_ref()
+                        .expect("`as_ref()` for field that should exist"),
+                ))
+            }
+            proto::principal_or_resource_constraint::Data::Is(msg) => {
+                PrincipalOrResourceConstraint::Is(
+                    EntityType::from(
+                        msg.et
+                            .as_ref()
+                            .expect("`as_ref()` for field that should exist"),
+                    )
+                    .into(),
+                )
+            }
+            proto::principal_or_resource_constraint::Data::IsIn(msg) => {
+                PrincipalOrResourceConstraint::IsIn(
+                    EntityType::from(
+                        msg.et
+                            .as_ref()
+                            .expect("`as_ref()` for field that should exist"),
+                    )
+                    .into(),
+                    EntityReference::from(
+                        msg.er
+                            .as_ref()
+                            .expect("`as_ref()` for field that should exist"),
+                    ),
+                )
+            }
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&PrincipalOrResourceConstraint> for proto::PrincipalOrResourceConstraint {
+    fn from(v: &PrincipalOrResourceConstraint) -> Self {
+        match v {
+            PrincipalOrResourceConstraint::Any => Self {
+                data: Some(proto::principal_or_resource_constraint::Data::Ty(
+                    proto::principal_or_resource_constraint::Ty::Any.into(),
+                )),
+            },
+            PrincipalOrResourceConstraint::In(er) => Self {
+                data: Some(proto::principal_or_resource_constraint::Data::In(
+                    proto::principal_or_resource_constraint::InMessage {
+                        er: Some(proto::EntityReference::from(er)),
+                    },
+                )),
+            },
+            PrincipalOrResourceConstraint::Eq(er) => Self {
+                data: Some(proto::principal_or_resource_constraint::Data::Eq(
+                    proto::principal_or_resource_constraint::EqMessage {
+                        er: Some(proto::EntityReference::from(er)),
+                    },
+                )),
+            },
+            PrincipalOrResourceConstraint::Is(na) => Self {
+                data: Some(proto::principal_or_resource_constraint::Data::Is(
+                    proto::principal_or_resource_constraint::IsMessage {
+                        et: Some(proto::EntityType::from(na.as_ref())),
+                    },
+                )),
+            },
+            PrincipalOrResourceConstraint::IsIn(na, er) => Self {
+                data: Some(proto::principal_or_resource_constraint::Data::IsIn(
+                    proto::principal_or_resource_constraint::IsInMessage {
+                        er: Some(proto::EntityReference::from(er)),
+                        et: Some(proto::EntityType::from(na.as_ref())),
+                    },
+                )),
+            },
+        }
     }
 }
 
@@ -1701,6 +2028,63 @@ impl ActionConstraint {
     }
 }
 
+#[cfg(feature = "protobufs")]
+impl From<&proto::ActionConstraint> for ActionConstraint {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::ActionConstraint) -> Self {
+        match v.data.as_ref().expect("data.as_ref()") {
+            proto::action_constraint::Data::Ty(ty) => {
+                match proto::action_constraint::Ty::try_from(ty.to_owned())
+                    .expect("decode should succeed")
+                {
+                    proto::action_constraint::Ty::Any => ActionConstraint::Any,
+                }
+            }
+            proto::action_constraint::Data::In(msg) => ActionConstraint::In(
+                msg.euids
+                    .iter()
+                    .map(|value| EntityUID::from(value).into())
+                    .collect(),
+            ),
+            proto::action_constraint::Data::Eq(msg) => ActionConstraint::Eq(
+                EntityUID::from(msg.euid.as_ref().expect("euid.as_ref()")).into(),
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&ActionConstraint> for proto::ActionConstraint {
+    fn from(v: &ActionConstraint) -> Self {
+        match v {
+            ActionConstraint::Any => Self {
+                data: Some(proto::action_constraint::Data::Ty(
+                    proto::action_constraint::Ty::Any.into(),
+                )),
+            },
+            ActionConstraint::In(euids) => {
+                let mut peuids: Vec<proto::EntityUid> = Vec::with_capacity(euids.len());
+                for value in euids {
+                    peuids.push(proto::EntityUid::from(value.as_ref()));
+                }
+                Self {
+                    data: Some(proto::action_constraint::Data::In(
+                        proto::action_constraint::InMessage { euids: peuids },
+                    )),
+                }
+            }
+            ActionConstraint::Eq(euid) => Self {
+                data: Some(proto::action_constraint::Data::Eq(
+                    proto::action_constraint::EqMessage {
+                        euid: Some(proto::EntityUid::from(euid.as_ref())),
+                    },
+                )),
+            },
+        }
+    }
+}
+
 impl std::fmt::Display for StaticPolicy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (k, v) in self.0.annotations.iter() {
@@ -1747,7 +2131,7 @@ impl AsRef<str> for PolicyID {
 }
 
 #[cfg(feature = "arbitrary")]
-impl<'u> arbitrary::Arbitrary<'u> for PolicyID {
+impl arbitrary::Arbitrary<'_> for PolicyID {
     fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<PolicyID> {
         let s: String = u.arbitrary()?;
         Ok(PolicyID::from_string(s))
@@ -1779,6 +2163,26 @@ impl std::fmt::Display for Effect {
     }
 }
 
+#[cfg(feature = "protobufs")]
+impl From<&proto::Effect> for Effect {
+    fn from(v: &proto::Effect) -> Self {
+        match v {
+            proto::Effect::Forbid => Effect::Forbid,
+            proto::Effect::Permit => Effect::Permit,
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&Effect> for proto::Effect {
+    fn from(v: &Effect) -> Self {
+        match v {
+            Effect::Permit => proto::Effect::Permit,
+            Effect::Forbid => proto::Effect::Forbid,
+        }
+    }
+}
+
 enum EntityIterator<'a> {
     None,
     One(&'a EntityUID),
@@ -1803,7 +2207,7 @@ impl<'a> Iterator for EntityIterator<'a> {
 }
 
 #[cfg(test)]
-pub mod test_generators {
+pub(crate) mod test_generators {
     use super::*;
 
     pub fn all_por_constraints() -> impl Iterator<Item = PrincipalOrResourceConstraint> {
@@ -1811,9 +2215,9 @@ pub mod test_generators {
         let v = vec![
             PrincipalOrResourceConstraint::any(),
             PrincipalOrResourceConstraint::is_eq(euid.clone()),
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot),
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None)),
             PrincipalOrResourceConstraint::is_in(euid),
-            PrincipalOrResourceConstraint::In(EntityReference::Slot),
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(None)),
         ];
 
         v.into_iter()
@@ -1894,6 +2298,9 @@ mod test {
         },
         test_utils::ExpectedErrorMessageBuilder,
     };
+
+    #[cfg(feature = "protobufs")]
+    use crate::from_normalized_str::FromNormalizedStr;
 
     #[test]
     fn literal_and_borrowed() {
@@ -2094,7 +2501,7 @@ mod test {
             Some(&e)
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::In(EntityReference::Slot).get_euid(),
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(None)).get_euid(),
             None
         );
         assert_eq!(
@@ -2102,7 +2509,7 @@ mod test {
             Some(&e)
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot).get_euid(),
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None)).get_euid(),
             None
         );
         assert_eq!(
@@ -2120,7 +2527,7 @@ mod test {
         assert_eq!(
             PrincipalOrResourceConstraint::IsIn(
                 Arc::new("T".parse().unwrap()),
-                EntityReference::Slot
+                EntityReference::Slot(None)
             )
             .get_euid(),
             None
@@ -2181,7 +2588,7 @@ mod test {
 
     #[test]
     fn euid_into_expr() {
-        let e = EntityReference::Slot;
+        let e = EntityReference::Slot(None);
         assert_eq!(
             e.into_expr(SlotId::principal()),
             Expr::slot(SlotId::principal())
@@ -2195,7 +2602,7 @@ mod test {
 
     #[test]
     fn por_constraint_display() {
-        let t = PrincipalOrResourceConstraint::Eq(EntityReference::Slot);
+        let t = PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None));
         let s = t.display(PrincipalOrResource::Principal);
         assert_eq!(s, "principal == ?principal");
         let t = PrincipalOrResourceConstraint::Eq(EntityReference::euid(Arc::new(
@@ -2213,7 +2620,7 @@ mod test {
                 "expected a static policy, got a template containing the slot ?principal"
                 )
                 .help("try removing the template slot(s) from this policy")
-                .exactly_one_underline("permit(principal == ?principal, action, resource);")
+                .exactly_one_underline("?principal")
                 .build()
             );
         });
@@ -2230,5 +2637,145 @@ mod test {
             );
             assert_eq!(e.len(), 2);
         });
+    }
+
+    #[cfg(feature = "protobufs")]
+    #[test]
+    fn protobuf_roundtrip() {
+        let annotation1: Annotation = Annotation {
+            val: "".into(),
+            loc: None,
+        };
+        assert_eq!(
+            annotation1,
+            Annotation::from(&proto::Annotation::from(&annotation1))
+        );
+
+        let annotation2: Annotation = Annotation {
+            val: "Hello World".into(),
+            loc: None,
+        };
+        assert_eq!(
+            annotation2,
+            Annotation::from(&proto::Annotation::from(&annotation2))
+        );
+
+        assert_eq!(
+            Effect::Permit,
+            Effect::from(&proto::Effect::from(&Effect::Permit))
+        );
+        assert_eq!(
+            Effect::Forbid,
+            Effect::from(&proto::Effect::from(&Effect::Forbid))
+        );
+
+        let er1: EntityReference = EntityReference::euid(Arc::new(EntityUID::with_eid("foo")));
+        assert_eq!(
+            er1,
+            EntityReference::from(&proto::EntityReference::from(&er1))
+        );
+        assert_eq!(
+            EntityReference::Slot(None),
+            EntityReference::from(&proto::EntityReference::from(&EntityReference::Slot(None)))
+        );
+
+        let read_euid: Arc<EntityUID> = Arc::new(EntityUID::with_eid("read"));
+        let write_euid: Arc<EntityUID> = Arc::new(EntityUID::with_eid("write"));
+        let ac1: ActionConstraint = ActionConstraint::Eq(read_euid.clone());
+        let ac2: ActionConstraint = ActionConstraint::In(vec![read_euid, write_euid]);
+        assert_eq!(
+            ActionConstraint::Any,
+            ActionConstraint::from(&proto::ActionConstraint::from(&ActionConstraint::Any))
+        );
+        assert_eq!(
+            ac1,
+            ActionConstraint::from(&proto::ActionConstraint::from(&ac1))
+        );
+        assert_eq!(
+            ac2,
+            ActionConstraint::from(&proto::ActionConstraint::from(&ac2))
+        );
+
+        let euid1: Arc<EntityUID> = Arc::new(EntityUID::with_eid("friend"));
+        let name1: Arc<EntityType> = Arc::new(EntityType::from(
+            Name::from_normalized_str("B::C::D").unwrap(),
+        ));
+        let prc1: PrincipalOrResourceConstraint =
+            PrincipalOrResourceConstraint::is_eq(euid1.to_owned());
+        let prc2: PrincipalOrResourceConstraint =
+            PrincipalOrResourceConstraint::is_in(euid1.to_owned());
+        let prc3: PrincipalOrResourceConstraint =
+            PrincipalOrResourceConstraint::is_entity_type(name1.to_owned());
+        let prc4: PrincipalOrResourceConstraint =
+            PrincipalOrResourceConstraint::is_entity_type_in(name1, euid1);
+        assert_eq!(
+            PrincipalOrResourceConstraint::any(),
+            PrincipalOrResourceConstraint::from(&proto::PrincipalOrResourceConstraint::from(
+                &PrincipalOrResourceConstraint::any()
+            ))
+        );
+        assert_eq!(
+            prc1,
+            PrincipalOrResourceConstraint::from(&proto::PrincipalOrResourceConstraint::from(&prc1))
+        );
+        assert_eq!(
+            prc2,
+            PrincipalOrResourceConstraint::from(&proto::PrincipalOrResourceConstraint::from(&prc2))
+        );
+        assert_eq!(
+            prc3,
+            PrincipalOrResourceConstraint::from(&proto::PrincipalOrResourceConstraint::from(&prc3))
+        );
+        assert_eq!(
+            prc4,
+            PrincipalOrResourceConstraint::from(&proto::PrincipalOrResourceConstraint::from(&prc4))
+        );
+
+        let pc: PrincipalConstraint = PrincipalConstraint { constraint: prc1 };
+        let rc: ResourceConstraint = ResourceConstraint { constraint: prc3 };
+        assert_eq!(
+            pc,
+            PrincipalConstraint::from(&proto::PrincipalConstraint::from(&pc))
+        );
+        assert_eq!(
+            rc,
+            ResourceConstraint::from(&proto::ResourceConstraint::from(&rc))
+        );
+
+        assert_eq!(
+            Effect::Permit,
+            Effect::from(&proto::Effect::from(&Effect::Permit))
+        );
+        assert_eq!(
+            Effect::Forbid,
+            Effect::from(&proto::Effect::from(&Effect::Forbid))
+        );
+
+        let tb: TemplateBody = TemplateBody {
+            id: PolicyID::from_string("template"),
+            annotations: Arc::new(Annotations::from_iter(vec![(
+                AnyId::new_unchecked("read"),
+                annotation1,
+            )])),
+            effect: Effect::Permit,
+            principal_constraint: pc,
+            action_constraint: ac1,
+            resource_constraint: rc,
+            loc: None,
+            non_scope_constraints: Arc::new(Expr::val(true)),
+        };
+        assert_eq!(tb, TemplateBody::from(&proto::TemplateBody::from(&tb)));
+
+        let mut v: HashMap<SlotId, EntityUID> = HashMap::new();
+        v.insert(SlotId::principal(), EntityUID::with_eid("eid"));
+        let policy: LiteralPolicy = LiteralPolicy {
+            template_id: PolicyID::from_string("template"),
+            link_id: Some(PolicyID::from_string("id")),
+            values: v,
+        };
+        assert_eq!(
+            policy,
+            LiteralPolicy::from(&proto::LiteralPolicy::from(&policy))
+        );
     }
 }

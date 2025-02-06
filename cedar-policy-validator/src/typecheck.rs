@@ -21,6 +21,7 @@
 pub(crate) mod test;
 
 mod typecheck_answer;
+use itertools::Itertools;
 pub(crate) use typecheck_answer::TypecheckAnswer;
 
 use std::{borrow::Cow, collections::HashSet, iter::zip};
@@ -28,7 +29,6 @@ use std::{borrow::Cow, collections::HashSet, iter::zip};
 use crate::{
     extension_schema::ExtensionFunctionType,
     extensions::ExtensionSchemas,
-    fuzzy_match::fuzzy_search,
     schema::ValidatorSchema,
     types::{
         AttributeType, Capability, CapabilitySet, EntityRecordKind, OpenTag, Primitive, RequestEnv,
@@ -38,12 +38,15 @@ use crate::{
     ValidationError, ValidationMode, ValidationWarning,
 };
 
-use cedar_policy_core::ast::{
-    BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
-    PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
+use cedar_policy_core::fuzzy_match::fuzzy_search;
+use cedar_policy_core::{
+    ast::{
+        BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
+        PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
+    },
+    expr_builder::ExprBuilder as _,
 };
 
-#[cfg(not(target_arch = "wasm32"))]
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 
 /// Basic result for typechecking
@@ -52,7 +55,7 @@ pub enum PolicyCheck {
     /// Policy will evaluate to a bool
     Success(Expr<Option<Type>>),
     /// Policy will always evaluate to false, and may have errors
-    Irrelevant(Vec<ValidationError>),
+    Irrelevant(Vec<ValidationError>, Expr<Option<Type>>),
     /// Policy will have errors
     Fail(Vec<ValidationError>),
 }
@@ -64,23 +67,20 @@ pub struct Typechecker<'a> {
     schema: &'a ValidatorSchema,
     extensions: &'static ExtensionSchemas<'static>,
     mode: ValidationMode,
-    policy_id: PolicyID,
+    /// List of valid (unlinked) `RequestEnv`s for this schema.
+    /// Cached here so it can be computed once (during `Typechecker`
+    /// construction) and potentially used for many typechecking operations.
+    unlinked_envs: Vec<RequestEnv<'a>>,
 }
 
 impl<'a> Typechecker<'a> {
-    /// Construct a new typechecker.
-    pub fn new(
-        schema: &'a ValidatorSchema,
-        mode: ValidationMode,
-        policy_id: PolicyID,
-    ) -> Typechecker<'a> {
-        // Set the extensions using `all_available_extension_schemas`.
-        let extensions = ExtensionSchemas::all_available();
+    /// Construct a new typechecker. All extensions are enabled by default.
+    pub fn new(schema: &'a ValidatorSchema, mode: ValidationMode) -> Typechecker<'a> {
         Self {
             schema,
-            extensions,
+            extensions: ExtensionSchemas::all_available(),
             mode,
-            policy_id,
+            unlinked_envs: Self::unlinked_request_envs(schema, mode).collect(),
         }
     }
 
@@ -106,7 +106,7 @@ impl<'a> Typechecker<'a> {
             (true, true),
             |(all_false, all_succ), (_, check)| match check {
                 PolicyCheck::Success(_) => (false, all_succ),
-                PolicyCheck::Irrelevant(err) => {
+                PolicyCheck::Irrelevant(err, _) => {
                     let no_err = err.is_empty();
                     type_errors.extend(err);
                     (all_false, all_succ && no_err)
@@ -134,15 +134,25 @@ impl<'a> Typechecker<'a> {
     /// typechecks it under every schema-defined request environment. The result contains
     /// these environments and the individual typechecking response for each, in no
     /// particular order.
+    ///
+    /// Callers using this as the toplevel entry point, rather than
+    /// `typecheck_policy()`, will not get `impossible_policy` validation
+    /// warnings.
     pub fn typecheck_by_request_env<'b>(
         &'b self,
         t: &'b Template,
-    ) -> Vec<(RequestEnv<'_>, PolicyCheck)> {
-        self.apply_typecheck_fn_by_request_env(t, |request, expr| {
+    ) -> Vec<(RequestEnv<'b>, PolicyCheck)> {
+        self.apply_typecheck_fn_by_request_env(t, |request_env, policy_id, expr| {
             let mut type_errors = Vec::new();
+            let single_env_typechecker = SingleEnvTypechecker {
+                schema: self.schema,
+                extensions: self.extensions,
+                mode: self.mode,
+                policy_id,
+                request_env,
+            };
             let empty_prior_capability = CapabilitySet::new();
-            let ty = self.expect_type(
-                request,
+            let ans = single_env_typechecker.expect_type(
                 &empty_prior_capability,
                 expr,
                 Type::primitive_boolean(),
@@ -150,89 +160,55 @@ impl<'a> Typechecker<'a> {
                 |_| None,
             );
 
-            let is_false = ty.contains_type(&Type::singleton_boolean(false));
-            match (is_false, ty.typechecked(), ty.into_typed_expr()) {
+            let is_false = ans.contains_type(&Type::singleton_boolean(false));
+            match (is_false, ans.typechecked(), ans.into_typed_expr()) {
                 (false, true, None) => PolicyCheck::Fail(type_errors),
                 (false, true, Some(e)) => PolicyCheck::Success(e),
                 (false, false, _) => PolicyCheck::Fail(type_errors),
-                (true, _, _) => PolicyCheck::Irrelevant(type_errors),
+                (true, _, Some(e)) => PolicyCheck::Irrelevant(type_errors, e),
+                // PANIC SAFETY: `is_false` implies `e` has a type implies `Some(e)`.
+                #[allow(clippy::unreachable)]
+                (true, _, None) => unreachable!(),
             }
         })
     }
 
-    /// Utility abstracting the common logic for strict and regular typechecking
-    /// by request environment.
+    /// Apply `typecheck_fn` to the given policy in every schema-defined request
+    /// environment, and collect all the results.
+    ///
+    /// Results are returned in no particular order.
     fn apply_typecheck_fn_by_request_env<'b, F, C>(
         &'b self,
         t: &'b Template,
         typecheck_fn: F,
-    ) -> Vec<(RequestEnv<'_>, C)>
+    ) -> Vec<(RequestEnv<'b>, C)>
     where
-        F: Fn(&RequestEnv<'_>, &Expr) -> C,
+        F: Fn(&RequestEnv<'b>, &PolicyID, &Expr) -> C,
     {
-        let mut result_checks = Vec::new();
+        // compute `.condition()` just once, and cache it here
+        let cond = t.condition();
 
         // Validate each (principal, resource) pair with the substituted policy
-        // for the corresponding action. Implemented as for loop to make it
-        // explicit that `expect_type` will be called for every element of
-        // request_env without short circuiting.
-        let policy_condition = &t.condition();
-        for requeste in self
-            .unlinked_request_envs()
-            .flat_map(|env| self.link_request_env(env, t))
-        {
-            let check = typecheck_fn(&requeste, policy_condition);
-            result_checks.push((requeste, check))
-        }
-        result_checks
+        // for the corresponding action.
+        self.unlinked_envs
+            .iter()
+            .flat_map(|unlinked_e| {
+                self.link_request_env(unlinked_e, t).map(|linked_e| {
+                    let check = typecheck_fn(&linked_e, t.id(), &cond);
+                    (linked_e, check)
+                })
+            })
+            .collect()
     }
 
-    /// Additional entry point for typechecking requests. This method takes a slice
-    /// over policies and typechecks each under every schema-defined request environment.
-    ///
-    /// The result contains these environments in no particular order, but each list of
-    /// policy checks will always match the original order.
-    pub fn multi_typecheck_by_request_env(
-        &self,
-        policy_templates: &[&Template],
-    ) -> Vec<(RequestEnv<'_>, Vec<PolicyCheck>)> {
-        let mut env_checks = Vec::new();
-        for request in self.unlinked_request_envs() {
-            let mut policy_checks = Vec::new();
-            for t in policy_templates.iter() {
-                let condition_expr = t.condition();
-                for linked_env in self.link_request_env(request.clone(), t) {
-                    let mut type_errors = Vec::new();
-                    let empty_prior_capability = CapabilitySet::new();
-                    let ty = self.expect_type(
-                        &linked_env,
-                        &empty_prior_capability,
-                        &condition_expr,
-                        Type::primitive_boolean(),
-                        &mut type_errors,
-                        |_| None,
-                    );
-
-                    let is_false = ty.contains_type(&Type::singleton_boolean(false));
-                    match (is_false, ty.typechecked(), ty.into_typed_expr()) {
-                        (false, true, None) => policy_checks.push(PolicyCheck::Fail(type_errors)),
-                        (false, true, Some(e)) => policy_checks.push(PolicyCheck::Success(e)),
-                        (false, false, _) => policy_checks.push(PolicyCheck::Fail(type_errors)),
-                        (true, _, _) => policy_checks.push(PolicyCheck::Irrelevant(type_errors)),
-                    }
-                }
-            }
-            env_checks.push((request, policy_checks));
-        }
-        env_checks
-    }
-
-    fn unlinked_request_envs(&self) -> impl Iterator<Item = RequestEnv<'_>> + '_ {
+    fn unlinked_request_envs(
+        schema: &ValidatorSchema,
+        mode: ValidationMode,
+    ) -> impl Iterator<Item = RequestEnv<'_>> + '_ {
         // Gather all of the actions declared in the schema.
-        let all_actions = self
-            .schema
+        let all_actions = schema
             .known_action_ids()
-            .filter_map(|a| self.schema.get_action_id(a));
+            .filter_map(|a| schema.get_action_id(a));
 
         // For every action compute the cross product of the principal and
         // resource applies_to sets.
@@ -251,7 +227,7 @@ impl<'a> Typechecker<'a> {
                         })
                 })
             })
-            .chain(if self.mode.is_partial() {
+            .chain(if mode.is_partial() {
                 // A partial schema might not list all actions, and may not
                 // include all principal and resource types for the listed ones.
                 // So we typecheck with a fully unknown request to handle these
@@ -264,11 +240,11 @@ impl<'a> Typechecker<'a> {
 
     /// Given a request environment and a template, return new environments
     /// formed by linking template slots with possible entity types.
-    fn link_request_env<'b>(
+    fn link_request_env<'b, 'c>(
         &'b self,
-        env: RequestEnv<'b>,
+        env: &'c RequestEnv<'b>,
         t: &'b Template,
-    ) -> Box<dyn Iterator<Item = RequestEnv<'_>> + 'b> {
+    ) -> Box<dyn Iterator<Item = RequestEnv<'b>> + 'c> {
         match env {
             RequestEnv::UndeclaredAction => Box::new(std::iter::once(RequestEnv::UndeclaredAction)),
             RequestEnv::DeclaredAction {
@@ -297,7 +273,7 @@ impl<'a> Typechecker<'a> {
                         resource,
                         context,
                         principal_slot: p_slot.clone(),
-                        resource_slot: r_slot.clone(),
+                        resource_slot: r_slot,
                     })
                 }),
             ),
@@ -349,22 +325,34 @@ impl<'a> Typechecker<'a> {
             Box::new(std::iter::once(None))
         }
     }
+}
 
-    /// This method handles the majority of the work. Given an expression,
-    /// the type for the request, and the prior capability, return the result of
-    /// typechecking the expression, and add any errors encountered into the
-    /// `type_errors` list. The result of typechecking contains the type of the
-    /// expression, any resulting capability after the expression, and a flag
-    /// indicating whether the expression successfully typechecked.
+/// Struct which implements typechecking for policies within a single request
+/// env.
+struct SingleEnvTypechecker<'a> {
+    schema: &'a ValidatorSchema,
+    extensions: &'a ExtensionSchemas<'a>,
+    mode: ValidationMode,
+    /// ID of the policy we're typechecking; used for associating any validation
+    /// errors with the correct policy ID
+    policy_id: &'a PolicyID,
+    /// The single env which we're performing typechecking for
+    request_env: &'a RequestEnv<'a>,
+}
+
+impl<'a> SingleEnvTypechecker<'a> {
+    /// This method handles the majority of the work. Given an expression, and
+    /// the prior capability, return the result of typechecking the expression
+    /// in the single env this typechecker was constructed for, and add any
+    /// errors encountered into the `type_errors` list.
     fn typecheck<'b>(
         &self,
-        request_env: &RequestEnv<'_>,
         prior_capability: &CapabilitySet<'b>,
         e: &'b Expr,
         type_errors: &mut Vec<ValidationError>,
     ) -> TypecheckAnswer<'b> {
-        #[cfg(not(target_arch = "wasm32"))]
-        if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
+        // We assume there's enough space if we cannot determine it with `remaining_stack`
+        if stacker::remaining_stack().unwrap_or(REQUIRED_STACK_SPACE) < REQUIRED_STACK_SPACE {
             return TypecheckAnswer::RecursionLimit;
         }
 
@@ -372,7 +360,7 @@ impl<'a> Typechecker<'a> {
             // Principal, resource, and context have types defined by
             // the request type.
             ExprKind::Var(Var::Principal) => TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(request_env.principal_type()))
+                ExprBuilder::with_data(Some(self.request_env.principal_type()))
                     .with_same_source_loc(e)
                     .var(Var::Principal),
             ),
@@ -381,7 +369,7 @@ impl<'a> Typechecker<'a> {
             // entity type), so the type of Action is only the entity type name
             // taken from the euid.
             ExprKind::Var(Var::Action) => {
-                match request_env.action_type(self.schema) {
+                match self.request_env.action_type(self.schema) {
                     Some(ty) => TypecheckAnswer::success(
                         ExprBuilder::with_data(Some(ty))
                             .with_same_source_loc(e)
@@ -399,12 +387,12 @@ impl<'a> Typechecker<'a> {
                 }
             }
             ExprKind::Var(Var::Resource) => TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(request_env.resource_type()))
+                ExprBuilder::with_data(Some(self.request_env.resource_type()))
                     .with_same_source_loc(e)
                     .var(Var::Resource),
             ),
             ExprKind::Var(Var::Context) => TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(request_env.context_type()))
+                ExprBuilder::with_data(Some(self.request_env.context_type()))
                     .with_same_source_loc(e)
                     .var(Var::Context),
             ),
@@ -414,17 +402,17 @@ impl<'a> Typechecker<'a> {
             // Template Slots, always has to be an entity.
             ExprKind::Slot(slotid) => TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(if slotid.is_principal() {
-                    request_env
+                    self.request_env
                         .principal_slot()
                         .clone()
                         .map(Type::named_entity_reference)
-                        .unwrap_or(Type::any_entity_reference())
+                        .unwrap_or_else(Type::any_entity_reference)
                 } else if slotid.is_resource() {
-                    request_env
+                    self.request_env
                         .resource_slot()
                         .clone()
                         .map(Type::named_entity_reference)
-                        .unwrap_or(Type::any_entity_reference())
+                        .unwrap_or_else(Type::any_entity_reference)
                 } else {
                     Type::any_entity_reference()
                 }))
@@ -457,7 +445,7 @@ impl<'a> Typechecker<'a> {
                 // detected by a different part of the validator, so a ValidationError is
                 // not generated here. We still return `TypecheckFail` so that
                 // typechecking is not considered successful.
-                match Type::euid_literal((**euid).clone(), self.schema) {
+                match Type::euid_literal(euid.as_ref(), self.schema) {
                     // The entity type is undeclared, but that's OK for a
                     // partial schema. The attributes record will be empty if we
                     // try to access it later, so all attributes will have the
@@ -487,7 +475,6 @@ impl<'a> Typechecker<'a> {
             } => {
                 // The guard expression must be boolean.
                 let ans_test = self.expect_type(
-                    request_env,
                     prior_capability,
                     test_expr,
                     Type::primitive_boolean(),
@@ -503,7 +490,6 @@ impl<'a> Typechecker<'a> {
                         // by `test`. This enables an attribute access
                         // `principal.foo` after a condition `principal has foo`.
                         let ans_then = self.typecheck(
-                            request_env,
                             &prior_capability.union(&test_capability),
                             then_expr,
                             type_errors,
@@ -522,8 +508,7 @@ impl<'a> Typechecker<'a> {
                         // we know in the `else` branch that the condition
                         // evaluated to `false`. It still can use the original
                         // prior capability.
-                        let ans_else =
-                            self.typecheck(request_env, prior_capability, else_expr, type_errors);
+                        let ans_else = self.typecheck(prior_capability, else_expr, type_errors);
 
                         ans_else.then_typecheck(|typ_else, else_capability| {
                             TypecheckAnswer::success_with_capability(typ_else, else_capability)
@@ -534,14 +519,12 @@ impl<'a> Typechecker<'a> {
                         // prior capability are in their individual cases.
                         let ans_then = self
                             .typecheck(
-                                request_env,
                                 &prior_capability.union(&test_capability),
                                 then_expr,
                                 type_errors,
                             )
                             .map_capability(|capability| capability.union(&test_capability));
-                        let ans_else =
-                            self.typecheck(request_env, prior_capability, else_expr, type_errors);
+                        let ans_else = self.typecheck(prior_capability, else_expr, type_errors);
                         // The type of the if expression is then the least
                         // upper bound of the types of the then and else
                         // branches.  If either of these fails to typecheck, the
@@ -584,7 +567,6 @@ impl<'a> Typechecker<'a> {
 
             ExprKind::And { left, right } => {
                 let ans_left = self.expect_type(
-                    request_env,
                     prior_capability,
                     left,
                     Type::primitive_boolean(),
@@ -613,7 +595,6 @@ impl<'a> Typechecker<'a> {
                             // the right will only be evaluated after the left
                             // evaluated to `true`.
                             let ans_right = self.expect_type(
-                                request_env,
                                 &prior_capability.union(&capability_left),
                                 right,
                                 Type::primitive_boolean(),
@@ -682,7 +663,6 @@ impl<'a> Typechecker<'a> {
             // capability propagation adjusted as necessary.
             ExprKind::Or { left, right } => {
                 let ans_left = self.expect_type(
-                    request_env,
                     prior_capability,
                     left,
                     Type::primitive_boolean(),
@@ -704,7 +684,6 @@ impl<'a> Typechecker<'a> {
                         // left could have evaluated to either `true` or `false`
                         // when the left is evaluated.
                         let ans_right = self.expect_type(
-                            request_env,
                             prior_capability,
                             right,
                             Type::primitive_boolean(),
@@ -770,22 +749,21 @@ impl<'a> Typechecker<'a> {
 
             ExprKind::UnaryApp { .. } => {
                 // INVARIANT: typecheck_unary requires a `UnaryApp`, we've just ensured this
-                self.typecheck_unary(request_env, prior_capability, e, type_errors)
+                self.typecheck_unary(prior_capability, e, type_errors)
             }
             ExprKind::BinaryApp { .. } => {
                 // INVARIANT: typecheck_binary requires a `BinaryApp`, we've just ensured this
-                self.typecheck_binary(request_env, prior_capability, e, type_errors)
+                self.typecheck_binary(prior_capability, e, type_errors)
             }
             ExprKind::ExtensionFunctionApp { .. } => {
                 // INVARIANT: typecheck_extension requires a `ExtensionFunctionApp`, we've just ensured this
-                self.typecheck_extension(request_env, prior_capability, e, type_errors)
+                self.typecheck_extension(prior_capability, e, type_errors)
             }
 
             ExprKind::GetAttr { expr, attr } => {
                 // Accessing an attribute requires either an entity or a record
                 // that has the attribute.
                 let actual = self.expect_one_of_types(
-                    request_env,
                     prior_capability,
                     expr,
                     &[Type::any_entity_reference(), Type::any_record()],
@@ -812,7 +790,8 @@ impl<'a> Typechecker<'a> {
                                 // evaluate to `true` when the attribute is
                                 // present).
                                 if ty.is_required
-                                    || prior_capability.contains(&Capability::new(expr, attr))
+                                    || prior_capability
+                                        .contains(&Capability::new_attribute(expr, attr.clone()))
                                 {
                                     TypecheckAnswer::success(annot_expr)
                                 } else {
@@ -821,7 +800,7 @@ impl<'a> Typechecker<'a> {
                                             e.source_loc().cloned(),
                                             self.policy_id.clone(),
                                             AttributeAccess::from_expr(
-                                                request_env,
+                                                self.request_env,
                                                 &typ_expr_actual,
                                                 attr.clone(),
                                             ),
@@ -851,7 +830,7 @@ impl<'a> Typechecker<'a> {
                                     e.source_loc().cloned(),
                                     self.policy_id.clone(),
                                     AttributeAccess::from_expr(
-                                        request_env,
+                                        self.request_env,
                                         &typ_expr_actual,
                                         attr.clone(),
                                     ),
@@ -873,7 +852,6 @@ impl<'a> Typechecker<'a> {
             ExprKind::HasAttr { expr, attr } => {
                 // `has` applies to an entity or a record
                 let actual = self.expect_one_of_types(
-                    request_env,
                     prior_capability,
                     expr,
                     &[Type::any_entity_reference(), Type::any_record()],
@@ -904,8 +882,8 @@ impl<'a> Typechecker<'a> {
                                 // However, we can make an exception when the attribute
                                 // access of the expression is already in the prior capability,
                                 // which means the entity must exist.
-                                let in_prior_capability =
-                                    prior_capability.contains(&Capability::new(expr, attr));
+                                let in_prior_capability = prior_capability
+                                    .contains(&Capability::new_attribute(expr, attr.clone()));
                                 let type_of_has = if exists_in_store || in_prior_capability {
                                     Type::singleton_boolean(true)
                                 } else {
@@ -915,7 +893,10 @@ impl<'a> Typechecker<'a> {
                                     ExprBuilder::with_data(Some(type_of_has))
                                         .with_same_source_loc(e)
                                         .has_attr(typ_expr_actual, attr.clone()),
-                                    CapabilitySet::singleton(Capability::new(expr, attr)),
+                                    CapabilitySet::singleton(Capability::new_attribute(
+                                        expr,
+                                        attr.clone(),
+                                    )),
                                 )
                             }
                             // This is where capability information is generated. If
@@ -931,7 +912,9 @@ impl<'a> Typechecker<'a> {
                                     // type `true` if it occurs after the attribute
                                     // access of the expression is already in the
                                     // prior capability.
-                                    if prior_capability.contains(&Capability::new(expr, attr)) {
+                                    if prior_capability
+                                        .contains(&Capability::new_attribute(expr, attr.clone()))
+                                    {
                                         Type::singleton_boolean(true)
                                     } else {
                                         Type::primitive_boolean()
@@ -939,7 +922,10 @@ impl<'a> Typechecker<'a> {
                                 ))
                                 .with_same_source_loc(e)
                                 .has_attr(typ_expr_actual, attr.clone()),
-                                CapabilitySet::singleton(Capability::new(expr, attr)),
+                                CapabilitySet::singleton(Capability::new_attribute(
+                                    expr,
+                                    attr.clone(),
+                                )),
                             ),
                             None => TypecheckAnswer::success(
                                 ExprBuilder::with_data(Some(
@@ -975,7 +961,6 @@ impl<'a> Typechecker<'a> {
             ExprKind::Like { expr, pattern } => {
                 // `like` applies to a string
                 let actual = self.expect_type(
-                    request_env,
                     prior_capability,
                     expr,
                     Type::primitive_string(),
@@ -993,17 +978,13 @@ impl<'a> Typechecker<'a> {
                     TypecheckAnswer::success(
                         ExprBuilder::with_data(Some(Type::primitive_boolean()))
                             .with_same_source_loc(e)
-                            // FIXME: `pattern` contains an `Arc<Vec<...>>` that
-                            // could be cloned cheap, but this reallocated the
-                            // pattern vec. Need a different constructor.
-                            .like(actual_expr_ty, pattern.iter().cloned()),
+                            .like(actual_expr_ty, pattern.clone()),
                     )
                 })
             }
 
             ExprKind::Is { expr, entity_type } => {
                 self.expect_type(
-                    request_env,
                     prior_capability,
                     expr,
                     Type::any_entity_reference(),
@@ -1077,7 +1058,7 @@ impl<'a> Typechecker<'a> {
             ExprKind::Set(exprs) => {
                 let elem_types = exprs
                     .iter()
-                    .map(|elem| self.typecheck(request_env, prior_capability, elem, type_errors))
+                    .map(|elem| self.typecheck(prior_capability, elem, type_errors))
                     .collect::<Vec<_>>();
 
                 // If we cannot compute a least upper bound for the element
@@ -1126,7 +1107,7 @@ impl<'a> Typechecker<'a> {
                 // Typecheck each attribute initializer expression individually.
                 let record_attr_tys = map
                     .values()
-                    .map(|value| self.typecheck(request_env, prior_capability, value, type_errors));
+                    .map(|value| self.typecheck(prior_capability, value, type_errors));
                 // This will cause the return value to be `TypecheckFail` if any
                 // of the attributes did not typecheck.
                 TypecheckAnswer::sequence_all_then_typecheck(
@@ -1171,12 +1152,38 @@ impl<'a> Typechecker<'a> {
         }
     }
 
+    // Return if `ty` is a valid comparison operator type
+    // Currently, only primitive long and certain extension types are valid
+    fn is_valid_comparison_op_type(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Primitive {
+                primitive_type: Primitive::Long,
+            } => true,
+            Type::ExtensionType { name } => {
+                self.extensions.has_type_with_operator_overloading(name)
+            }
+            _ => false,
+        }
+    }
+
+    // Get all valid types satisfying `is_valid_comparison_op_type`
+    // Only used for error message construction
+    fn expected_comparison_op_types(&self) -> Vec<Type> {
+        let expected_types = self
+            .extensions
+            .types_with_operator_overloading()
+            .cloned()
+            .map(Type::extension)
+            .chain(std::iter::once(Type::primitive_long()))
+            .collect_vec();
+        expected_types
+    }
+
     /// A utility called by the main typecheck method to handle binary operator
     /// application.
     /// INVARIANT: `bin_expr` must be a `BinaryApp`
     fn typecheck_binary<'b>(
         &self,
-        request_env: &RequestEnv<'_>,
         prior_capability: &CapabilitySet<'b>,
         bin_expr: &'b Expr,
         type_errors: &mut Vec<ValidationError>,
@@ -1191,16 +1198,15 @@ impl<'a> Typechecker<'a> {
             // The arguments to `==` may typecheck with any type, but we will
             // return false if the types are disjoint.
             BinaryOp::Eq => {
-                let lhs_ty = self.typecheck(request_env, prior_capability, arg1, type_errors);
-                let rhs_ty = self.typecheck(request_env, prior_capability, arg2, type_errors);
+                let lhs_ty = self.typecheck(prior_capability, arg1, type_errors);
+                let rhs_ty = self.typecheck(prior_capability, arg2, type_errors);
                 lhs_ty.then_typecheck(|lhs_ty, _| {
                     rhs_ty.then_typecheck(|rhs_ty, _| {
                         let type_of_eq = self.type_of_equality(
-                            request_env,
                             arg1,
-                            lhs_ty.data(),
+                            lhs_ty.data().as_ref(),
                             arg2,
-                            rhs_ty.data(),
+                            rhs_ty.data().as_ref(),
                         );
 
                         if self.mode.is_strict() {
@@ -1210,8 +1216,8 @@ impl<'a> Typechecker<'a> {
                             self.enforce_strict_equality(
                                 bin_expr,
                                 annotated_eq,
-                                lhs_ty.data(),
-                                rhs_ty.data(),
+                                lhs_ty.data().as_ref(),
+                                rhs_ty.data().as_ref(),
                                 type_errors,
                                 LubContext::Equality,
                             )
@@ -1227,29 +1233,120 @@ impl<'a> Typechecker<'a> {
             }
 
             BinaryOp::Less | BinaryOp::LessEq => {
-                let ans_arg1 = self.expect_type(
-                    request_env,
-                    prior_capability,
-                    arg1,
-                    Type::primitive_long(),
-                    type_errors,
-                    |_| None,
-                );
+                let ans_arg1 = self.typecheck(prior_capability, arg1, type_errors);
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
-                    let ans_arg2 = self.expect_type(
-                        request_env,
-                        prior_capability,
-                        arg2,
-                        Type::primitive_long(),
-                        type_errors,
-                        |_| None,
-                    );
+                    let ans_arg2 = self.typecheck(prior_capability, arg2, type_errors);
                     ans_arg2.then_typecheck(|expr_ty_arg2, _| {
-                        TypecheckAnswer::success(
-                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                .with_same_source_loc(bin_expr)
-                                .binary_app(*op, expr_ty_arg1, expr_ty_arg2),
-                        )
+                        let expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                            .with_same_source_loc(bin_expr)
+                            .binary_app(*op, expr_ty_arg1.clone(), expr_ty_arg2.clone());
+                        let t1 = expr_ty_arg1.data().as_ref();
+                        let t2 = expr_ty_arg2.data().as_ref();
+                        match (t1, t2) {
+                            (Some(Type::Never), Some(Type::Never)) => TypecheckAnswer::fail(expr),
+                            (Some(Type::Never), Some(other)) => {
+                                if self.is_valid_comparison_op_type(other) {
+                                    TypecheckAnswer::success(expr)
+                                } else {
+                                    type_errors.push(ValidationError::expected_one_of_types(
+                                        expr_ty_arg2.source_loc().cloned(),
+                                        self.policy_id.clone(),
+                                        self.expected_comparison_op_types(),
+                                        other.clone(),
+                                        None,
+                                    ));
+                                    TypecheckAnswer::fail(expr)
+                                }
+                            }
+                            (Some(other), Some(Type::Never)) => {
+                                if self.is_valid_comparison_op_type(other) {
+                                    TypecheckAnswer::success(expr)
+                                } else {
+                                    type_errors.push(ValidationError::expected_one_of_types(
+                                        expr_ty_arg1.source_loc().cloned(),
+                                        self.policy_id.clone(),
+                                        self.expected_comparison_op_types(),
+                                        other.clone(),
+                                        None,
+                                    ));
+                                    TypecheckAnswer::fail(expr)
+                                }
+                            }
+                            (Some(t1), Some(t2))
+                                if t1 == t2 && self.is_valid_comparison_op_type(t1) =>
+                            {
+                                TypecheckAnswer::success(expr)
+                            }
+                            (
+                                Some(Type::Primitive {
+                                    primitive_type: Primitive::Long,
+                                }),
+                                Some(other),
+                            ) => {
+                                type_errors.push(ValidationError::expected_one_of_types(
+                                    expr_ty_arg2.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    vec![Type::primitive_long()],
+                                    other.clone(),
+                                    None,
+                                ));
+                                TypecheckAnswer::fail(expr)
+                            }
+                            (
+                                Some(other),
+                                Some(Type::Primitive {
+                                    primitive_type: Primitive::Long,
+                                }),
+                            ) => {
+                                type_errors.push(ValidationError::expected_one_of_types(
+                                    expr_ty_arg1.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    vec![Type::primitive_long()],
+                                    other.clone(),
+                                    None,
+                                ));
+                                TypecheckAnswer::fail(expr)
+                            }
+                            (Some(lhs), Some(rhs)) if self.is_valid_comparison_op_type(lhs) => {
+                                type_errors.push(ValidationError::expected_one_of_types(
+                                    expr_ty_arg2.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    vec![lhs.clone()],
+                                    rhs.clone(),
+                                    None,
+                                ));
+                                TypecheckAnswer::fail(expr)
+                            }
+                            (Some(lhs), Some(rhs)) if self.is_valid_comparison_op_type(rhs) => {
+                                type_errors.push(ValidationError::expected_one_of_types(
+                                    expr_ty_arg1.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    vec![rhs.clone()],
+                                    lhs.clone(),
+                                    None,
+                                ));
+                                TypecheckAnswer::fail(expr)
+                            }
+                            (Some(lhs), Some(rhs)) => {
+                                let expected_types = self.expected_comparison_op_types();
+                                type_errors.push(ValidationError::expected_one_of_types(
+                                    expr_ty_arg1.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    expected_types.clone(),
+                                    lhs.clone(),
+                                    None,
+                                ));
+                                type_errors.push(ValidationError::expected_one_of_types(
+                                    expr_ty_arg2.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    expected_types,
+                                    rhs.clone(),
+                                    None,
+                                ));
+                                TypecheckAnswer::fail(expr)
+                            }
+                            _ => TypecheckAnswer::fail(expr),
+                        }
                     })
                 })
             }
@@ -1266,7 +1363,6 @@ impl<'a> Typechecker<'a> {
                     _ => None,
                 };
                 let ans_arg1 = self.expect_type(
-                    request_env,
                     prior_capability,
                     arg1,
                     Type::primitive_long(),
@@ -1275,7 +1371,6 @@ impl<'a> Typechecker<'a> {
                 );
                 ans_arg1.then_typecheck(|expr_ty_arg1, _| {
                     let ans_arg2 = self.expect_type(
-                        request_env,
                         prior_capability,
                         arg2,
                         Type::primitive_long(),
@@ -1292,19 +1387,11 @@ impl<'a> Typechecker<'a> {
                 })
             }
 
-            BinaryOp::In => self.typecheck_in(
-                request_env,
-                prior_capability,
-                bin_expr,
-                arg1,
-                arg2,
-                type_errors,
-            ),
+            BinaryOp::In => self.typecheck_in(prior_capability, bin_expr, arg1, arg2, type_errors),
 
             BinaryOp::Contains => {
                 // The first argument must be a set.
                 self.expect_type(
-                    request_env,
                     prior_capability,
                     arg1,
                     Type::any_set(),
@@ -1326,7 +1413,7 @@ impl<'a> Typechecker<'a> {
                 )
                 .then_typecheck(|expr_ty_arg1, _| {
                     // The second argument may be any type. We do not care if the element type cannot be in the set.
-                    self.typecheck(request_env, prior_capability, arg2, type_errors)
+                    self.typecheck(prior_capability, arg2, type_errors)
                         .then_typecheck(|expr_ty_arg2, _| {
                             if self.mode.is_strict() {
                                 let annotated_expr =
@@ -1340,13 +1427,13 @@ impl<'a> Typechecker<'a> {
                                 self.enforce_strict_equality(
                                     bin_expr,
                                     annotated_expr,
-                                    &match expr_ty_arg1.data() {
+                                    match expr_ty_arg1.data() {
                                         Some(Type::Set {
                                             element_type: Some(ty),
-                                        }) => Some(*ty.clone()),
+                                        }) => Some(ty.as_ref()),
                                         _ => None,
                                     },
-                                    expr_ty_arg2.data(),
+                                    expr_ty_arg2.data().as_ref(),
                                     type_errors,
                                     LubContext::Contains,
                                 )
@@ -1364,7 +1451,6 @@ impl<'a> Typechecker<'a> {
             BinaryOp::ContainsAll | BinaryOp::ContainsAny => {
                 // Both arguments to a `containsAll` or `containsAny` must be sets.
                 self.expect_type(
-                    request_env,
                     prior_capability,
                     arg1,
                     Type::any_set(),
@@ -1385,14 +1471,9 @@ impl<'a> Typechecker<'a> {
                     },
                 )
                 .then_typecheck(|expr_ty_arg1, _| {
-                    self.expect_type(
-                        request_env,
-                        prior_capability,
-                        arg2,
-                        Type::any_set(),
-                        type_errors,
-                        |_| Some(UnexpectedTypeHelp::TryUsingSingleContains),
-                    )
+                    self.expect_type(prior_capability, arg2, Type::any_set(), type_errors, |_| {
+                        Some(UnexpectedTypeHelp::TryUsingSingleContains)
+                    })
                     .then_typecheck(|expr_ty_arg2, _| {
                         if self.mode.is_strict() {
                             let annotated_expr =
@@ -1402,8 +1483,8 @@ impl<'a> Typechecker<'a> {
                             self.enforce_strict_equality(
                                 bin_expr,
                                 annotated_expr,
-                                expr_ty_arg1.data(),
-                                expr_ty_arg2.data(),
+                                expr_ty_arg1.data().as_ref(),
+                                expr_ty_arg2.data().as_ref(),
                                 type_errors,
                                 LubContext::ContainsAnyAll,
                             )
@@ -1417,6 +1498,213 @@ impl<'a> Typechecker<'a> {
                     })
                 })
             }
+
+            BinaryOp::HasTag => self
+                .expect_type(
+                    prior_capability,
+                    arg1,
+                    Type::any_entity_reference(),
+                    type_errors,
+                    |_| None,
+                )
+                .then_typecheck(|expr_ty_arg1, _| {
+                    self.expect_type(
+                        prior_capability,
+                        arg2,
+                        Type::primitive_string(),
+                        type_errors,
+                        |_| None,
+                    )
+                    .then_typecheck(|expr_ty_arg2, _| {
+                        let kind = match expr_ty_arg1.data() {
+                            Some(Type::EntityOrRecord(kind)) => kind,
+                            None => {
+                                // should have already reported an error in this case.
+                                // just return a failure.
+                                return TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .has_tag(expr_ty_arg1, expr_ty_arg2),
+                                );
+                            }
+                            _ => {
+                                // should be unreachable, as we already typechecked that this matches
+                                // `Type::any_entity_reference()`
+                                type_errors.push(ValidationError::internal_invariant_violation(
+                                    bin_expr.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                ));
+                                return TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .has_tag(expr_ty_arg1, expr_ty_arg2),
+                                );
+                            }
+                        };
+                        let type_of_has = match self.tag_types(kind) {
+                            Ok(tag_types) if tag_types.is_empty() => {
+                                // impossible for the type to have any tags, thus the `has` will always be `False`
+                                Type::singleton_boolean(false)
+                            }
+                            Err(()) => {
+                                // Not an entity type; should be unreachable, as we already typechecked
+                                // that this matches `Type::any_entity_reference()`
+                                type_errors.push(ValidationError::internal_invariant_violation(
+                                    bin_expr.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                ));
+                                return TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .has_tag(expr_ty_arg1, expr_ty_arg2),
+                                );
+                            }
+                            _ => Type::primitive_boolean(),
+                        };
+                        TypecheckAnswer::success_with_capability(
+                            ExprBuilder::with_data(Some(type_of_has))
+                                .with_same_source_loc(bin_expr)
+                                .binary_app(BinaryOp::HasTag, expr_ty_arg1, expr_ty_arg2),
+                            CapabilitySet::singleton(Capability::new_borrowed_tag(arg1, arg2)),
+                        )
+                    })
+                }),
+
+            BinaryOp::GetTag => {
+                self.expect_type(
+                    prior_capability,
+                    arg1,
+                    Type::any_entity_reference(),
+                    type_errors,
+                    |_actual| None,
+                )
+                .then_typecheck(|expr_ty_arg1, _| {
+                    self.expect_type(
+                        prior_capability,
+                        arg2,
+                        Type::primitive_string(),
+                        type_errors,
+                        |_| None,
+                    )
+                    .then_typecheck(|expr_ty_arg2, _| {
+                        let kind = match expr_ty_arg1.data() {
+                            Some(Type::EntityOrRecord(kind)) => kind,
+                            None => {
+                                // should have already reported an error in this case.
+                                // just return a failure.
+                                return TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .get_tag(expr_ty_arg1, expr_ty_arg2),
+                                );
+                            }
+                            _ => {
+                                // should be unreachable, as we already typechecked that this matches
+                                // `Type::any_entity_reference()`
+                                type_errors.push(ValidationError::internal_invariant_violation(
+                                    bin_expr.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                ));
+                                return TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .get_tag(expr_ty_arg1, expr_ty_arg2),
+                                );
+                            }
+                        };
+                        if prior_capability.contains(&Capability::new_borrowed_tag(arg1, arg2)) {
+                            // Determine the set of possible tag types for this access.
+                            let tag_types = match self.tag_types(kind) {
+                                Ok(tag_types) => tag_types,
+                                Err(()) => {
+                                    // `kind` was not an entity type.
+                                    // should be unreachable, as we already typechecked that this matches
+                                    // `Type::any_entity_reference()`
+                                    type_errors.push(
+                                        ValidationError::internal_invariant_violation(
+                                            bin_expr.source_loc().cloned(),
+                                            self.policy_id.clone(),
+                                        ),
+                                    );
+                                    return TypecheckAnswer::fail(
+                                        ExprBuilder::new()
+                                            .with_same_source_loc(bin_expr)
+                                            .get_tag(expr_ty_arg1, expr_ty_arg2),
+                                    );
+                                }
+                            };
+                            if tag_types.is_empty() {
+                                // no entities in the LUB are allowed to have tags.
+                                // This is a somewhat weird case where we did do a `has` check (we
+                                // already confirmed farther above that we have the capability for
+                                // this tag), but the entity type(s) we're operating on just can't
+                                // have tags.
+                                let entity_ty = match kind {
+                                    EntityRecordKind::Entity(lub) => lub.get_single_entity(),
+                                    EntityRecordKind::AnyEntity => None,
+                                    EntityRecordKind::ActionEntity { name, .. } => Some(name),
+                                    EntityRecordKind::Record { .. } => None,
+                                };
+                                type_errors.push(ValidationError::no_tags_allowed(
+                                    bin_expr.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    entity_ty.cloned(),
+                                ));
+                                TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .get_tag(expr_ty_arg1, expr_ty_arg2),
+                                )
+                            } else {
+                                // one or more entities in the LUB are allowed to have tags.
+                                // compute the LUB of all the relevant tag types, and assign that
+                                // as the type.
+                                let tag_type = match Type::reduce_to_least_upper_bound(
+                                    self.schema,
+                                    tag_types.clone(),
+                                    self.mode,
+                                ) {
+                                    Ok(ty) => ty,
+                                    Err(e) => {
+                                        type_errors.push(ValidationError::incompatible_types(
+                                            bin_expr.source_loc().cloned(),
+                                            self.policy_id.clone(),
+                                            tag_types.into_iter().cloned(),
+                                            e,
+                                            LubContext::GetTag,
+                                        ));
+                                        return TypecheckAnswer::fail(
+                                            ExprBuilder::new()
+                                                .with_same_source_loc(bin_expr)
+                                                .get_tag(expr_ty_arg1, expr_ty_arg2),
+                                        );
+                                    }
+                                };
+                                TypecheckAnswer::success(
+                                    ExprBuilder::with_data(Some(tag_type))
+                                        .with_same_source_loc(bin_expr)
+                                        .get_tag(expr_ty_arg1, expr_ty_arg2),
+                                )
+                            }
+                        } else {
+                            type_errors.push(ValidationError::unsafe_tag_access(
+                                bin_expr.source_loc().cloned(),
+                                self.policy_id.clone(),
+                                match kind {
+                                    EntityRecordKind::Entity(lub) => Some(lub.clone()),
+                                    _ => None,
+                                },
+                                expr_ty_arg2.clone(),
+                            ));
+                            TypecheckAnswer::fail(
+                                ExprBuilder::new()
+                                    .with_same_source_loc(bin_expr)
+                                    .get_tag(expr_ty_arg1, expr_ty_arg2),
+                            )
+                        }
+                    })
+                })
+            }
         }
     }
 
@@ -1424,8 +1712,8 @@ impl<'a> Typechecker<'a> {
         &self,
         unannotated_expr: &'b Expr,
         annotated_expr: Expr<Option<Type>>,
-        lhs_ty: &Option<Type>,
-        rhs_ty: &Option<Type>,
+        lhs_ty: Option<&Type>,
+        rhs_ty: Option<&Type>,
         type_errors: &mut Vec<ValidationError>,
         context: LubContext,
     ) -> TypecheckAnswer<'b> {
@@ -1465,11 +1753,10 @@ impl<'a> Typechecker<'a> {
     /// Get the type for an `==` expression given the input types.
     fn type_of_equality<'b>(
         &self,
-        request_env: &RequestEnv<'_>,
         lhs_expr: &'b Expr,
-        lhs_ty: &Option<Type>,
+        lhs_ty: Option<&Type>,
         rhs_expr: &'b Expr,
-        rhs_ty: &Option<Type>,
+        rhs_ty: Option<&Type>,
     ) -> Type {
         // If we know the types are disjoint, then we can return give the
         // expression type False. See `are_types_disjoint` definition for
@@ -1487,8 +1774,8 @@ impl<'a> Typechecker<'a> {
             // the action variable (which is converted into a literal euid
             // according to the binding in the request environment), then we
             // compare the euids on either side.
-            let lhs_euid = Typechecker::euid_from_euid_literal_or_action(request_env, lhs_expr);
-            let rhs_euid = Typechecker::euid_from_euid_literal_or_action(request_env, rhs_expr);
+            let lhs_euid = self.euid_from_euid_literal_or_action(lhs_expr);
+            let rhs_euid = self.euid_from_euid_literal_or_action(rhs_expr);
             if let (Some(lhs_euid), Some(rhs_euid)) = (lhs_euid, rhs_euid) {
                 if lhs_euid == rhs_euid {
                     // If lhs and rhs euid are the same, the equality has type `True`.
@@ -1506,6 +1793,36 @@ impl<'a> Typechecker<'a> {
         }
     }
 
+    /// Get the set of types that are possible tag types for `kind`.
+    ///
+    /// If `kind` is not an entity type (e.g., a record type), this returns `Err`.
+    /// If `kind` is an entity type without a `tags` declaration, this returns
+    /// `Ok` with the empty set.
+    ///
+    /// If `kind` is a LUB containing some entity types that have tags and some
+    /// that do not, this ignores the entity types that do not; we just assume
+    /// the access is not on one of those entity types.
+    fn tag_types<'s>(&'s self, kind: &EntityRecordKind) -> Result<HashSet<&'s Type>, ()> {
+        use crate::schema::ValidatorEntityType;
+        match kind {
+            EntityRecordKind::Entity(lub) => Ok(lub
+                .iter()
+                .filter_map(|ety| {
+                    self.schema
+                        .get_entity_type(ety)
+                        .and_then(ValidatorEntityType::tag_type)
+                })
+                .collect()),
+            EntityRecordKind::AnyEntity => Ok(self
+                .schema
+                .entity_types()
+                .filter_map(|(_, vety)| vety.tag_type())
+                .collect()),
+            EntityRecordKind::ActionEntity { .. } => Ok(HashSet::new()), // currently, action entities cannot be declared with tags in the schema
+            EntityRecordKind::Record { .. } => Err(()),
+        }
+    }
+
     /// Handles typechecking of `in` expressions. This is complicated because it
     /// requires searching the schema to determine if an `in` expression
     /// consisting of variables and literals can ever be true. When we find that
@@ -1513,7 +1830,6 @@ impl<'a> Typechecker<'a> {
     /// type false, allowing for short circuiting in `if` and `and` expressions.
     fn typecheck_in<'b>(
         &self,
-        request_env: &RequestEnv<'_>,
         prior_capability: &CapabilitySet<'b>,
         in_expr: &Expr,
         lhs: &'b Expr,
@@ -1523,7 +1839,6 @@ impl<'a> Typechecker<'a> {
         // First, the basic typechecking rules for `in` that apply regardless of
         // the syntactic special cases that follow.
         let ty_lhs = self.expect_type(
-            request_env,
             prior_capability,
             lhs,
             Type::any_entity_reference(),
@@ -1531,7 +1846,6 @@ impl<'a> Typechecker<'a> {
             |_| Some(UnexpectedTypeHelp::TryUsingContains),
         );
         let ty_rhs = self.expect_one_of_types(
-            request_env,
             prior_capability,
             rhs,
             &[
@@ -1564,8 +1878,8 @@ impl<'a> Typechecker<'a> {
                 }
                 let lhs_ty = lhs_expr.data().clone();
                 let rhs_ty = rhs_expr.data().clone();
-                let lhs_as_euid_lit = Typechecker::replace_action_var_with_euid(request_env, lhs);
-                let rhs_as_euid_lit = Typechecker::replace_action_var_with_euid(request_env, rhs);
+                let lhs_as_euid_lit = self.replace_action_var_with_euid(lhs);
+                let rhs_as_euid_lit = self.replace_action_var_with_euid(rhs);
                 match (lhs_as_euid_lit.expr_kind(), rhs_as_euid_lit.expr_kind()) {
                     // var in EntityLiteral. Lookup the descendant types of the entity
                     // literals.  If the principal/resource type is not one of the
@@ -1575,7 +1889,6 @@ impl<'a> Typechecker<'a> {
                         ExprKind::Var(var @ (Var::Principal | Var::Resource)),
                         ExprKind::Lit(Literal::EntityUID(_)),
                     ) => self.type_of_var_in_entity_literals(
-                        request_env,
                         *var,
                         [rhs_as_euid_lit.as_ref()],
                         in_expr,
@@ -1590,7 +1903,6 @@ impl<'a> Typechecker<'a> {
                         ExprKind::Var(var @ (Var::Principal | Var::Resource)),
                         ExprKind::Set(elems),
                     ) => self.type_of_var_in_entity_literals(
-                        request_env,
                         *var,
                         elems.as_ref(),
                         in_expr,
@@ -1608,7 +1920,6 @@ impl<'a> Typechecker<'a> {
                         ExprKind::Lit(Literal::EntityUID(euid0)),
                         ExprKind::Lit(Literal::EntityUID(_)),
                     ) => self.type_of_entity_literal_in_entity_literals(
-                        request_env,
                         euid0,
                         [rhs_as_euid_lit.as_ref()],
                         in_expr,
@@ -1619,7 +1930,6 @@ impl<'a> Typechecker<'a> {
                     // As above, with the same complication, but applied to set of entities.
                     (ExprKind::Lit(Literal::EntityUID(euid)), ExprKind::Set(elems)) => self
                         .type_of_entity_literal_in_entity_literals(
-                            request_env,
                             euid,
                             elems.as_ref(),
                             in_expr,
@@ -1721,14 +2031,8 @@ impl<'a> Typechecker<'a> {
 
     // Given an expression, if that expression is a literal or the `action`
     // variable, return it as an EntityUID. Return `None` otherwise.
-    fn euid_from_euid_literal_or_action(
-        request_env: &RequestEnv<'_>,
-        e: &Expr,
-    ) -> Option<EntityUID> {
-        match Typechecker::replace_action_var_with_euid(request_env, e)
-            .as_ref()
-            .expr_kind()
-        {
+    fn euid_from_euid_literal_or_action(&self, e: &Expr) -> Option<EntityUID> {
+        match self.replace_action_var_with_euid(e).expr_kind() {
             ExprKind::Lit(Literal::EntityUID(e)) => Some((**e).clone()),
             _ => None,
         }
@@ -1738,12 +2042,12 @@ impl<'a> Typechecker<'a> {
     // extracted by `euid_from_uid_literal_or_action`. Return `None` if any
     // cannot be converted.
     fn euids_from_euid_literals_or_action<'b>(
-        request_env: &RequestEnv<'_>,
+        &self,
         exprs: impl IntoIterator<Item = &'b Expr>,
     ) -> Option<Vec<EntityUID>> {
         exprs
             .into_iter()
-            .map(|e| Self::euid_from_euid_literal_or_action(request_env, e))
+            .map(|e| self.euid_from_euid_literal_or_action(e))
             .collect::<Option<Vec<_>>>()
     }
 
@@ -1751,18 +2055,17 @@ impl<'a> Typechecker<'a> {
     /// entity literal or set of entity literals.
     fn type_of_var_in_entity_literals<'b, 'c>(
         &self,
-        request_env: &RequestEnv<'_>,
         lhs_var: Var,
         rhs_elems: impl IntoIterator<Item = &'b Expr>,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
     ) -> TypecheckAnswer<'c> {
-        if let Some(rhs) = Typechecker::euids_from_euid_literals_or_action(request_env, rhs_elems) {
+        if let Some(rhs) = self.euids_from_euid_literals_or_action(rhs_elems) {
             let var_etype = if matches!(lhs_var, Var::Principal) {
-                request_env.principal_entity_type()
+                self.request_env.principal_entity_type()
             } else {
-                request_env.resource_entity_type()
+                self.request_env.resource_entity_type()
             };
             match var_etype {
                 None => {
@@ -1788,7 +2091,7 @@ impl<'a> Typechecker<'a> {
                         .all(|e| self.schema.euid_has_known_entity_type(e));
                     if self.schema.is_known_entity_type(var_name) && all_rhs_known {
                         let descendants = self.schema.get_entity_types_in_set(rhs.iter());
-                        Typechecker::entity_in_descendants(
+                        Self::entity_in_descendants(
                             var_name,
                             descendants,
                             in_expr,
@@ -1828,14 +2131,13 @@ impl<'a> Typechecker<'a> {
 
     fn type_of_entity_literal_in_entity_literals<'b, 'c>(
         &self,
-        request_env: &RequestEnv<'_>,
         lhs_euid: &EntityUID,
         rhs_elems: impl IntoIterator<Item = &'b Expr>,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
     ) -> TypecheckAnswer<'c> {
-        if let Some(rhs) = Typechecker::euids_from_euid_literals_or_action(request_env, rhs_elems) {
+        if let Some(rhs) = self.euids_from_euid_literals_or_action(rhs_elems) {
             let name = lhs_euid.entity_type();
             // We don't want to apply the action hierarchy check to
             // non-action entities, but now we have a set of entities.
@@ -1898,7 +2200,7 @@ impl<'a> Typechecker<'a> {
     ) -> TypecheckAnswer<'b> {
         let rhs_descendants = self.schema.get_actions_in_set(rhs);
         if let Some(rhs_descendants) = rhs_descendants {
-            Typechecker::entity_in_descendants(lhs, rhs_descendants, in_expr, lhs_expr, rhs_expr)
+            Self::entity_in_descendants(lhs, rhs_descendants, in_expr, lhs_expr, rhs_expr)
         } else {
             let annotated_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
                 .with_same_source_loc(in_expr)
@@ -1930,13 +2232,7 @@ impl<'a> Typechecker<'a> {
             .all(|e| self.schema.euid_has_known_entity_type(e));
         if self.schema.is_known_entity_type(lhs_ety) && all_rhs_known {
             let rhs_descendants = self.schema.get_entity_types_in_set(rhs.iter());
-            Typechecker::entity_in_descendants(
-                lhs_ety,
-                rhs_descendants,
-                in_expr,
-                lhs_expr,
-                rhs_expr,
-            )
+            Self::entity_in_descendants(lhs_ety, rhs_descendants, in_expr, lhs_expr, rhs_expr)
         } else {
             let annotated_expr = ExprBuilder::with_data(Some(Type::primitive_boolean()))
                 .with_same_source_loc(in_expr)
@@ -1951,15 +2247,15 @@ impl<'a> Typechecker<'a> {
 
     /// Check if the entity is in the list of descendants. Return the singleton
     /// type false if it is not, and boolean otherwise.
-    fn entity_in_descendants<'b, K>(
+    fn entity_in_descendants<'b, 'c, K>(
         lhs_entity: &K,
-        rhs_descendants: impl IntoIterator<Item = &'a K>,
+        rhs_descendants: impl IntoIterator<Item = &'c K>,
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
     ) -> TypecheckAnswer<'b>
     where
-        K: PartialEq + 'a,
+        K: PartialEq + 'c,
     {
         let is_var_in_descendants = rhs_descendants.into_iter().any(|e| e == lhs_entity);
         TypecheckAnswer::success(
@@ -1978,7 +2274,6 @@ impl<'a> Typechecker<'a> {
     /// INVARIANT: `unary_expr` must be of kind `UnaryApp`
     fn typecheck_unary<'b>(
         &self,
-        request_env: &RequestEnv<'_>,
         prior_capability: &CapabilitySet<'b>,
         unary_expr: &'b Expr,
         type_errors: &mut Vec<ValidationError>,
@@ -1991,7 +2286,6 @@ impl<'a> Typechecker<'a> {
         match op {
             UnaryOp::Not => {
                 let ans_arg = self.expect_type(
-                    request_env,
                     prior_capability,
                     arg,
                     Type::primitive_boolean(),
@@ -2023,7 +2317,6 @@ impl<'a> Typechecker<'a> {
             }
             UnaryOp::Neg => {
                 let ans_arg = self.expect_type(
-                    request_env,
                     prior_capability,
                     arg,
                     Type::primitive_long(),
@@ -2038,6 +2331,27 @@ impl<'a> Typechecker<'a> {
                     )
                 })
             }
+            UnaryOp::IsEmpty => {
+                let ans_arg = self.expect_type(
+                    prior_capability,
+                    arg,
+                    Type::any_set(),
+                    type_errors,
+                    |actual| match actual {
+                        Type::Primitive {
+                            primitive_type: Primitive::String,
+                        } => Some(UnexpectedTypeHelp::TryUsingEqEmptyString),
+                        _ => None,
+                    },
+                );
+                ans_arg.then_typecheck(|typ_expr_arg, _| {
+                    TypecheckAnswer::success(
+                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                            .with_same_source_loc(unary_expr)
+                            .is_empty(typ_expr_arg),
+                    )
+                })
+            }
         }
     }
 
@@ -2046,7 +2360,6 @@ impl<'a> Typechecker<'a> {
     /// Return `TypecheckSuccess` with the type otherwise.
     fn expect_one_of_types<'b, F>(
         &self,
-        request_env: &RequestEnv<'_>,
         prior_capability: &CapabilitySet<'b>,
         expr: &'b Expr,
         expected: &[Type],
@@ -2056,7 +2369,7 @@ impl<'a> Typechecker<'a> {
     where
         F: FnOnce(&Type) -> Option<UnexpectedTypeHelp>,
     {
-        let actual = self.typecheck(request_env, prior_capability, expr, type_errors);
+        let actual = self.typecheck(prior_capability, expr, type_errors);
         actual.then_typecheck(|mut typ_actual, capability| match typ_actual.data() {
             Some(actual_ty) => {
                 if !expected.iter().any(|expected_ty| {
@@ -2106,7 +2419,6 @@ impl<'a> Typechecker<'a> {
     /// type.
     fn expect_type<'b, F>(
         &self,
-        request_env: &RequestEnv<'_>,
         prior_capability: &CapabilitySet<'b>,
         expr: &'b Expr,
         expected: Type,
@@ -2117,7 +2429,6 @@ impl<'a> Typechecker<'a> {
         F: FnOnce(&Type) -> Option<UnexpectedTypeHelp>,
     {
         self.expect_one_of_types(
-            request_env,
             prior_capability,
             expr,
             &[expected],
@@ -2169,12 +2480,9 @@ impl<'a> Typechecker<'a> {
     /// If the `maybe_action_var` expression is `Expr::Var(Var::Action)`, return
     /// a expression for the entity uid for the action variable in the request
     /// environment. Otherwise, return the expression unchanged.
-    fn replace_action_var_with_euid(
-        request_env: &RequestEnv<'_>,
-        maybe_action_var: &'a Expr,
-    ) -> Cow<'a, Expr> {
+    fn replace_action_var_with_euid(&self, maybe_action_var: &'a Expr) -> Cow<'a, Expr> {
         match maybe_action_var.expr_kind() {
-            ExprKind::Var(Var::Action) => match request_env.action_entity_uid() {
+            ExprKind::Var(Var::Action) => match self.request_env.action_entity_uid() {
                 Some(action) => Cow::Owned(Expr::val(action.clone())),
                 None => Cow::Borrowed(maybe_action_var),
             },
@@ -2202,7 +2510,6 @@ impl<'a> Typechecker<'a> {
     /// INVARIANT `ext_expr` must be a `ExtensionFunctionApp`
     fn typecheck_extension<'b>(
         &self,
-        request_env: &RequestEnv<'_>,
         prior_capability: &CapabilitySet<'b>,
         ext_expr: &'b Expr,
         type_errors: &mut Vec<ValidationError>,
@@ -2216,7 +2523,7 @@ impl<'a> Typechecker<'a> {
         let typed_arg_exprs = |type_errors: &mut Vec<ValidationError>| {
             args.iter()
                 .map(|arg| {
-                    self.typecheck(request_env, prior_capability, arg, type_errors)
+                    self.typecheck(prior_capability, arg, type_errors)
                         .into_typed_expr()
                 })
                 .collect::<Option<Vec<_>>>()
@@ -2269,14 +2576,7 @@ impl<'a> Typechecker<'a> {
                     }
                 } else {
                     let typechecked_args = zip(args.as_ref(), arg_tys).map(|(arg, ty)| {
-                        self.expect_type(
-                            request_env,
-                            prior_capability,
-                            arg,
-                            ty.clone(),
-                            type_errors,
-                            |_| None,
-                        )
+                        self.expect_type(prior_capability, arg, ty.clone(), type_errors, |_| None)
                     });
                     TypecheckAnswer::sequence_all_then_typecheck(
                         typechecked_args,

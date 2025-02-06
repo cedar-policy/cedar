@@ -17,15 +17,17 @@
 //! This module contains the diagnostics (i.e., errors and warnings) that are
 //! returned by the validator.
 
+use cedar_policy_core::entities::conformance::err::InvalidEnumEntityError;
 use miette::Diagnostic;
 use thiserror::Error;
+use validation_errors::UnrecognizedActionIdHelp;
 
 use std::collections::BTreeSet;
 
-use cedar_policy_core::ast::{EntityType, PolicyID};
+use cedar_policy_core::ast::{EntityType, Expr, PolicyID};
 use cedar_policy_core::parser::Loc;
 
-use crate::types::Type;
+use crate::types::{EntityLUB, Type};
 
 pub mod validation_errors;
 pub mod validation_warnings;
@@ -124,6 +126,14 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnsafeOptionalAttributeAccess(#[from] validation_errors::UnsafeOptionalAttributeAccess),
+    /// The typechecker could not conclude that an access to a tag was safe.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnsafeTagAccess(#[from] validation_errors::UnsafeTagAccess),
+    /// `.getTag()` on an entity type which cannot have tags according to the schema.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NoTagsAllowed(#[from] validation_errors::NoTagsAllowed),
     /// Undefined extension function.
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -152,6 +162,22 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     HierarchyNotRespected(#[from] validation_errors::HierarchyNotRespected),
+    /// Returned when an internal invariant is violated (should not happen; if
+    /// this is ever returned, please file an issue)
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InternalInvariantViolation(#[from] validation_errors::InternalInvariantViolation),
+    /// Returned when an entity literal is of an enumerated entity type but has
+    /// undeclared UID
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidEnumEntity(#[from] validation_errors::InvalidEnumEntity),
+    #[cfg(feature = "level-validate")]
+    /// If a entity dereference level was provided, the policies cannot deref
+    /// more than `level` hops away from PARX
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    EntityDerefLevelViolation(#[from] validation_errors::EntityDerefLevelViolation),
 }
 
 impl ValidationError {
@@ -175,13 +201,13 @@ impl ValidationError {
 
         policy_id: PolicyID,
         actual_action_id: String,
-        suggested_action_id: Option<String>,
+        hint: Option<UnrecognizedActionIdHelp>,
     ) -> Self {
         validation_errors::UnrecognizedActionId {
             source_loc,
             policy_id,
             actual_action_id,
-            suggested_action_id,
+            hint,
         }
         .into()
     }
@@ -205,14 +231,14 @@ impl ValidationError {
     pub(crate) fn expected_one_of_types(
         source_loc: Option<Loc>,
         policy_id: PolicyID,
-        expected: impl IntoIterator<Item = Type>,
+        expected: Vec<Type>,
         actual: Type,
         help: Option<validation_errors::UnexpectedTypeHelp>,
     ) -> Self {
         validation_errors::UnexpectedType {
             source_loc,
             policy_id,
-            expected: expected.into_iter().collect::<BTreeSet<_>>(),
+            expected,
             actual,
             help,
         }
@@ -268,6 +294,34 @@ impl ValidationError {
         .into()
     }
 
+    pub(crate) fn unsafe_tag_access(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        entity_ty: Option<EntityLUB>,
+        tag: Expr<Option<Type>>,
+    ) -> Self {
+        validation_errors::UnsafeTagAccess {
+            source_loc,
+            policy_id,
+            entity_ty,
+            tag,
+        }
+        .into()
+    }
+
+    pub(crate) fn no_tags_allowed(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        entity_ty: Option<EntityType>,
+    ) -> Self {
+        validation_errors::NoTagsAllowed {
+            source_loc,
+            policy_id,
+            entity_ty,
+        }
+        .into()
+    }
+
     pub(crate) fn undefined_extension(
         source_loc: Option<Loc>,
         policy_id: PolicyID,
@@ -283,7 +337,6 @@ impl ValidationError {
 
     pub(crate) fn wrong_number_args(
         source_loc: Option<Loc>,
-
         policy_id: PolicyID,
         expected: usize,
         actual: usize,
@@ -328,7 +381,6 @@ impl ValidationError {
 
     pub(crate) fn hierarchy_not_respected(
         source_loc: Option<Loc>,
-
         policy_id: PolicyID,
         in_lhs: Option<EntityType>,
         in_rhs: Option<EntityType>,
@@ -338,6 +390,30 @@ impl ValidationError {
             policy_id,
             in_lhs,
             in_rhs,
+        }
+        .into()
+    }
+
+    pub(crate) fn internal_invariant_violation(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+    ) -> Self {
+        validation_errors::InternalInvariantViolation {
+            source_loc,
+            policy_id,
+        }
+        .into()
+    }
+
+    pub(crate) fn invalid_enum_entity(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        err: InvalidEnumEntityError,
+    ) -> Self {
+        validation_errors::InvalidEnumEntity {
+            source_loc,
+            policy_id,
+            err,
         }
         .into()
     }
@@ -430,11 +506,13 @@ impl ValidationWarning {
         source_loc: Option<Loc>,
         policy_id: PolicyID,
         id: impl Into<String>,
+        confusable_character: char,
     ) -> Self {
         validation_warnings::ConfusableIdentifier {
             source_loc,
             policy_id,
             id: id.into(),
+            confusable_character,
         }
         .into()
     }

@@ -184,7 +184,7 @@ fn authorize_custom_request() -> Result<(), Box<dyn Error>> {
 
     // Same request with empty context
     let request2 = Request::new(
-        principal.clone(),
+        principal,
         action.clone(),
         resource.clone(),
         Context::empty(),
@@ -413,6 +413,30 @@ fn policy_annotations() {
         s.template_annotation(&tid, "tanno"),
         Some("good annotation")
     );
+}
+
+#[test]
+fn policy_annotation_without_value() {
+    let p: Policy = r#"@anno permit(principal, action, resource);"#.parse().unwrap();
+    assert_eq!(p.annotation("anno"), Some(""));
+    assert_eq!(p.annotations().next(), Some(("anno", "")));
+
+    // and on templates
+    let t: Template = r#"@tanno permit(principal == ?principal, action, resource);"#
+        .parse()
+        .unwrap();
+    let t = t.new_id(PolicyId::new("new_template_id"));
+    assert_eq!(t.annotation("tanno"), Some(""));
+    assert_eq!(t.annotations().next(), Some(("tanno", "")));
+
+    // and on policy sets
+    let pid = p.id().clone();
+    let tid = t.id().clone();
+    let mut s = PolicySet::new();
+    s.add(p).unwrap();
+    s.add_template(t).unwrap();
+    assert_eq!(s.annotation(&pid, "anno"), Some(""));
+    assert_eq!(s.template_annotation(&tid, "tanno"), Some(""));
 }
 
 #[test]

@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-use super::id::Id;
+use super::{id::Id, PrincipalOrResource, UnreservedId};
+use educe::Educe;
 use itertools::Itertools;
 use miette::Diagnostic;
 use ref_cast::RefCast;
@@ -23,13 +24,14 @@ use smol_str::ToSmolStr;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
+use thiserror::Error;
 
 use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::Loc;
 use crate::FromNormalizedStr;
 
-use super::{PrincipalOrResource, UnreservedId};
-use thiserror::Error;
+#[cfg(feature = "protobufs")]
+use crate::ast::proto;
 
 /// Represents the name of an entity type, function, etc.
 /// The name may include namespaces.
@@ -37,42 +39,18 @@ use thiserror::Error;
 ///
 /// This type may contain any name valid for use internally, including names
 /// with reserved `__cedar` components (and also names without `__cedar`).
-#[derive(Debug, Clone)]
+#[derive(Educe, Debug, Clone)]
+#[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct InternalName {
     /// Basename
     pub(crate) id: Id,
     /// Namespaces
     pub(crate) path: Arc<Vec<Id>>,
     /// Location of the name in source
+    #[educe(PartialEq(ignore))]
+    #[educe(Hash(ignore))]
+    #[educe(PartialOrd(ignore))]
     pub(crate) loc: Option<Loc>,
-}
-
-/// `PartialEq` implementation ignores the `loc`.
-impl PartialEq for InternalName {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id && self.path == other.path
-    }
-}
-impl Eq for InternalName {}
-
-impl std::hash::Hash for InternalName {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // hash the id and path, in line with the `PartialEq` impl which
-        // compares the id and path.
-        self.id.hash(state);
-        self.path.hash(state);
-    }
-}
-
-impl PartialOrd for InternalName {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-impl Ord for InternalName {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.id.cmp(&other.id).then(self.path.cmp(&other.path))
-    }
 }
 
 /// A shortcut for [`InternalName::unqualified_name`]
@@ -279,7 +257,7 @@ impl<'a> arbitrary::Arbitrary<'a> for InternalName {
 
 struct NameVisitor;
 
-impl<'de> serde::de::Visitor<'de> for NameVisitor {
+impl serde::de::Visitor<'_> for NameVisitor {
     type Value = InternalName;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -351,6 +329,26 @@ impl std::fmt::Display for SlotId {
     }
 }
 
+#[cfg(feature = "protobufs")]
+impl From<&proto::SlotId> for SlotId {
+    fn from(v: &proto::SlotId) -> Self {
+        match v {
+            proto::SlotId::Principal => SlotId::principal(),
+            proto::SlotId::Resource => SlotId::resource(),
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&SlotId> for proto::SlotId {
+    fn from(v: &SlotId) -> Self {
+        match v {
+            SlotId(ValidSlotId::Principal) => proto::SlotId::Principal,
+            SlotId(ValidSlotId::Resource) => proto::SlotId::Resource,
+        }
+    }
+}
+
 /// Two possible variants for Slots
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub(crate) enum ValidSlotId {
@@ -371,29 +369,15 @@ impl std::fmt::Display for ValidSlotId {
 }
 
 /// [`SlotId`] plus a source location
-#[derive(Debug, Clone)]
+#[derive(Educe, Debug, Clone)]
+#[educe(PartialEq, Eq, Hash)]
 pub struct Slot {
     /// [`SlotId`]
     pub id: SlotId,
     /// Source location, if available
+    #[educe(PartialEq(ignore))]
+    #[educe(Hash(ignore))]
     pub loc: Option<Loc>,
-}
-
-/// `PartialEq` implementation ignores the `loc`. Slots are equal if their ids
-/// are equal.
-impl PartialEq for Slot {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-impl Eq for Slot {}
-
-impl std::hash::Hash for Slot {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // hash only the id, in line with the `PartialEq` impl which compares
-        // only the id
-        self.id.hash(state);
-    }
 }
 
 #[cfg(test)]
@@ -500,7 +484,7 @@ impl Name {
         self.0.basename().clone().try_into().unwrap()
     }
 
-    /// Test if a [`Name`] is an [`Id`]
+    /// Test if a [`Name`] is an [`UnreservedId`]
     pub fn is_unqualified(&self) -> bool {
         self.0.is_unqualified()
     }
@@ -525,6 +509,33 @@ impl Name {
     /// Get the source location
     pub fn loc(&self) -> Option<&Loc> {
         self.0.loc()
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::Name> for Name {
+    fn from(v: &proto::Name) -> Self {
+        let path: Arc<Vec<Id>> = Arc::new(v.path.iter().map(Id::new_unchecked).collect());
+        Self(InternalName {
+            id: Id::new_unchecked(&v.id),
+            path,
+            loc: None,
+        })
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&Name> for proto::Name {
+    fn from(v: &Name) -> Self {
+        let mut path: Vec<String> = Vec::with_capacity(v.0.path.len());
+        for value in v.0.path.as_ref() {
+            path.push(String::from(value.as_ref()));
+        }
+
+        Self {
+            id: String::from(v.0.id.as_ref()),
+            path,
+        }
     }
 }
 
@@ -592,8 +603,14 @@ impl AsRef<InternalName> for Name {
 #[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for Name {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        // Computing hash of long id strings can be expensive
+        // Hence we limit the size of `path` such that DRT does not report slow
+        // units
+        let path_size = u.int_in_range(0..=8)?;
         let basename: UnreservedId = u.arbitrary()?;
-        let path: Vec<UnreservedId> = u.arbitrary()?;
+        let path: Vec<UnreservedId> = (0..path_size)
+            .map(|_| u.arbitrary())
+            .collect::<Result<Vec<_>, _>>()?;
         let name = InternalName::new(basename.into(), path.into_iter().map(|id| id.into()), None);
         // PANIC SAFETY: `name` is made of `UnreservedId`s and thus should be a valid `Name`
         #[allow(clippy::unwrap_used)]
@@ -657,6 +674,19 @@ mod test {
                 .qualify_with(None)
                 .to_smolstr()
         )
+    }
+
+    #[cfg(feature = "protobufs")]
+    #[test]
+    fn protobuf_roundtrip() {
+        let orig_name: Name = Name::from_normalized_str("B::C::D").unwrap();
+        assert_eq!(orig_name, Name::from(&proto::Name::from(&orig_name)));
+
+        let orig_slot1: SlotId = SlotId::principal();
+        assert_eq!(orig_slot1, SlotId::from(&proto::SlotId::from(&orig_slot1)));
+
+        let orig_slot2: SlotId = SlotId::resource();
+        assert_eq!(orig_slot2, SlotId::from(&proto::SlotId::from(&orig_slot2)));
     }
 
     #[test]

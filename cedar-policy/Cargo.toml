@@ -11,25 +11,28 @@ homepage.workspace = true
 repository = "https://github.com/cedar-policy/cedar"
 
 [dependencies]
-cedar-policy-core = { version = "=4.0.0", path = "../cedar-policy-core" }
-cedar-policy-validator = { version = "=4.0.0", path = "../cedar-policy-validator" }
-cedar-policy-formatter = { version = "=4.0.0", path = "../cedar-policy-formatter" }
+cedar-policy-core = { version = "=4.3.0", path = "../cedar-policy-core" }
+cedar-policy-validator = { version = "=4.3.0", path = "../cedar-policy-validator" }
+cedar-policy-formatter = { version = "=4.3.0", path = "../cedar-policy-formatter" }
 ref-cast = "1.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
-lalrpop-util = { version = "0.21.0", features = ["lexer"] }
-itertools = "0.13"
-miette = "7.1.0"
-thiserror = "1.0"
-smol_str = { version = "0.2", features = ["serde"] }
+lalrpop-util = { version = "0.22.1", features = ["lexer"] }
+itertools = "0.14"
+miette = "7.5.0"
+thiserror = "2.0"
+smol_str = { version = "0.3", features = ["serde"] }
 dhat = { version = "0.3.2", optional = true }
-serde_with = "3.3.0"
+serde_with = "3.12.0"
 nonempty = "0.10"
+prost = { version = "0.13", optional = true }
 
 # wasm dependencies
 serde-wasm-bindgen = { version = "0.6", optional = true }
 tsify = { version = "0.4.5", optional = true }
-wasm-bindgen = { version = "0.2.82", optional = true }
+wasm-bindgen = { version = "0.2.97", optional = true }
+semver = "1.0.25"
+lazy_static = "1.5.0"
 
 [features]
 # by default, enable all Cedar extensions, but not other crate features
@@ -38,6 +41,7 @@ default = ["ipaddr", "decimal"]
 # Cedar extensions
 ipaddr = ["cedar-policy-core/ipaddr", "cedar-policy-validator/ipaddr"]
 decimal = ["cedar-policy-core/decimal", "cedar-policy-validator/decimal"]
+datetime = ["cedar-policy-core/datetime", "cedar-policy-validator/datetime"]
 
 # Features for memory or runtime profiling
 heap-profiling = ["dep:dhat"]
@@ -45,11 +49,13 @@ corpus-timing = []
 
 # Experimental features.
 # Enable all experimental features with `cargo build --features "experimental"`
-experimental = ["partial-eval", "permissive-validate", "partial-validate", "entity-manifest"]
+experimental = ["partial-eval", "permissive-validate", "partial-validate", "level-validate", "entity-manifest", "protobufs", "datetime"]
 entity-manifest = ["cedar-policy-validator/entity-manifest"]
 partial-eval = ["cedar-policy-core/partial-eval", "cedar-policy-validator/partial-eval"]
 permissive-validate = []
 partial-validate = ["cedar-policy-validator/partial-validate"]
+protobufs = ["dep:prost", "cedar-policy-validator/protobufs", "cedar-policy-core/protobufs"]
+level-validate = ["cedar-policy-validator/level-validate"]
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
 [lib]
@@ -57,16 +63,17 @@ wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 crate-type = ["rlib", "cdylib"]
 
 [dev-dependencies]
+miette = { version = "7.5.0", features = ["fancy"] }
 cool_asserts = "2.0"
 criterion = "0.5"
 globset = "0.4"
-cedar-policy-core = { version = "=4.0.0", features = [
+cedar-policy-core = { version = "=4.3.0", features = [
     "test-util",
 ], path = "../cedar-policy-core" }
 # NON-CRYPTOGRAPHIC random number generators
 oorandom = "11.1"
 
-proptest = "1.0.0"
+proptest = "1.6.0"
 
 [[bench]]
 name = "cedar_benchmarks"
@@ -84,6 +91,13 @@ harness = false
 name = "extension_fn_validation"
 harness = false
 
+[[bench]]
+name = "deeply_nested_est"
+harness = false
+
 [package.metadata.docs.rs]
-features = ["experimental"]
+features = ["partial-eval", "permissive-validate", "partial-validate", "level-validate", "entity-manifest", "datetime"]
 rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true

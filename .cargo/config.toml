@@ -1,9 +1,0 @@
-[target.'cfg(all())']
-rustflags = [
-    "-Dclippy::unwrap_used",
-    "-Dclippy::expect_used",
-    "-Dclippy::fallible_impl_from",
-    "-Dclippy::unreachable",
-    "-Dclippy::indexing_slicing",
-    "-Dclippy::panic",
-]

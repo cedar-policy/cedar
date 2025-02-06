@@ -15,9 +15,7 @@
  */
 
 //! Implementation of the Cedar parser and evaluation engine in Rust.
-#![forbid(unsafe_code)]
-#![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
-#![allow(clippy::result_large_err, clippy::large_enum_variant)] // see #878
+#![warn(missing_docs)]
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
 
 #[macro_use]
@@ -32,7 +30,9 @@ pub mod entities;
 mod error_macros;
 pub mod est;
 pub mod evaluator;
+pub mod expr_builder;
 pub mod extensions;
+pub mod fuzzy_match;
 pub mod jsonvalue;
 pub mod parser;
 pub mod transitive_closure;

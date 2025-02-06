@@ -152,7 +152,7 @@ mod test {
         });
 
         let result = assert_format_succeeds(json);
-        assert_eq!(result, "permit (\n    principal in UserGroup::\"alice_friends\",\n    action == Action::\"viewPhoto\",\n    resource\n);");
+        assert_eq!(result, "permit (\n    principal in UserGroup::\"alice_friends\",\n    action == Action::\"viewPhoto\",\n    resource\n);\n");
     }
 
     #[test]
@@ -162,7 +162,7 @@ mod test {
         });
 
         let result = assert_format_succeeds(json);
-        assert_eq!(result, "permit (\n  principal in UserGroup::\"alice_friends\",\n  action == Action::\"viewPhoto\",\n  resource\n);");
+        assert_eq!(result, "permit (\n  principal in UserGroup::\"alice_friends\",\n  action == Action::\"viewPhoto\",\n  resource\n);\n");
     }
 
     #[test]

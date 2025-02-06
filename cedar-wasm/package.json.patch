@@ -30,6 +30,7 @@
     },
     "./nodejs": {
       "require": "./nodejs/cedar_wasm.js",
+      "import": "./nodejs/cedar_wasm.js",
       "types": "./nodejs/cedar_wasm.d.ts"
     },
     "./web": {

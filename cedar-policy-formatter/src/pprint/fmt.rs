@@ -29,11 +29,11 @@ use super::utils::remove_empty_lines;
 use super::config::{self, Config};
 use super::doc::*;
 
-fn tree_to_pretty<T: Doc>(t: &T, context: &mut config::Context<'_>) -> Result<String> {
+fn tree_to_pretty<T: Doc>(t: &T, context: &mut config::Context<'_, '_>) -> Result<String> {
     let mut w = Vec::new();
     let config = context.config;
     let doc = t.to_doc(context);
-    doc.ok_or(miette!("failed to produce doc"))?
+    doc.ok_or_else(|| miette!("failed to produce doc"))?
         .render(config.line_width, &mut w)
         .map_err(|err| miette!(format!("failed to render doc: {err}")))?;
     String::from_utf8(w)
@@ -99,20 +99,25 @@ pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
     let cst = parse_policies(ps).wrap_err("cannot parse input policies")?;
     let ast = cst.to_policyset().wrap_err("cannot parse input policies")?;
     let (tokens, end_of_file_comment) =
-        get_token_stream(ps).ok_or(miette!("cannot get token stream"))?;
+        get_token_stream(ps).ok_or_else(|| miette!("cannot get token stream"))?;
     let mut context = config::Context { config, tokens };
     let mut formatted_policies = cst
         .as_inner()
-        .ok_or(miette!("fail to get input policy CST"))?
+        .ok_or_else(|| miette!("fail to get input policy CST"))?
         .0
         .iter()
         .map(|p| Ok(remove_empty_lines(&tree_to_pretty(p, &mut context)?)))
         .collect::<Result<Vec<String>>>()?
         .join("\n\n");
+
+    // add a trailing newline
+    formatted_policies.push('\n');
+
     // handle comment at the end of a policyset
-    if !end_of_file_comment.is_empty() {
+    for comment_line in end_of_file_comment {
+        formatted_policies.push_str(comment_line);
+        // note: each `comment_line` is guaranteed to never end with a newline
         formatted_policies.push('\n');
-        formatted_policies.push_str(&end_of_file_comment);
     }
 
     // add soundness check to make sure formatting doesn't alter policy ASTs
@@ -170,6 +175,59 @@ mod tests {
         permit (principal, action, resource)
         when { "b"};"#;
         assert!(soundness_check(p2, &parse_policyset(p1).unwrap()).is_ok());
+    }
+
+    #[test]
+    fn test_add_trailing_newline() {
+        // The formatter should add a trailing newline.
+        // This behavior isn't tested by the snapshots below because `insta`
+        // ignores trailing whitespace.
+
+        let config = Config {
+            line_width: 80,
+            indent_width: 2,
+        };
+
+        let formatted_p = "permit (principal, action, resource);\n";
+        let p1 = "permit (principal, action, resource);";
+        let p2 = "permit (principal, action, resource);\r\n";
+        let p3 = "permit (principal, action, resource);\n\r\n\n";
+
+        assert_eq!(
+            policies_str_to_pretty(formatted_p, &config).unwrap(),
+            formatted_p
+        );
+        assert_eq!(policies_str_to_pretty(p1, &config).unwrap(), formatted_p);
+        assert_eq!(policies_str_to_pretty(p2, &config).unwrap(), formatted_p);
+        assert_eq!(policies_str_to_pretty(p3, &config).unwrap(), formatted_p);
+
+        let formatted_p = "permit (principal, action, resource);\n//foo\n";
+        let p1 = "permit (principal, action, resource);\n//foo";
+        let p2 = "permit (principal, action, resource);\n//foo\n\n\n";
+
+        assert_eq!(
+            policies_str_to_pretty(formatted_p, &config).unwrap(),
+            formatted_p
+        );
+        assert_eq!(policies_str_to_pretty(p1, &config).unwrap(), formatted_p);
+        assert_eq!(policies_str_to_pretty(p2, &config).unwrap(), formatted_p);
+
+        let formatted_p = "permit (principal, action, resource);\n//foo\n//bar\n";
+        let p1 = "permit (principal, action, resource);\n//foo\n//bar";
+        let p2 = "permit (principal, action, resource);\n//foo\n//bar ";
+        let p3 = "permit (principal, action, resource);\n//foo\n//bar\n\n\n";
+        let p4 = "permit (principal, action, resource);\n//foo\n//bar   \n\n\n";
+        let p5 = "permit (principal, action, resource);\n//foo\n//bar   \n \n \n";
+
+        assert_eq!(
+            policies_str_to_pretty(formatted_p, &config).unwrap(),
+            formatted_p
+        );
+        assert_eq!(policies_str_to_pretty(p1, &config).unwrap(), formatted_p);
+        assert_eq!(policies_str_to_pretty(p2, &config).unwrap(), formatted_p);
+        assert_eq!(policies_str_to_pretty(p3, &config).unwrap(), formatted_p);
+        assert_eq!(policies_str_to_pretty(p4, &config).unwrap(), formatted_p);
+        assert_eq!(policies_str_to_pretty(p5, &config).unwrap(), formatted_p);
     }
 
     #[test]

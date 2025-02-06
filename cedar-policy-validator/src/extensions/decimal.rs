@@ -26,10 +26,10 @@ use itertools::Itertools;
 
 use super::eval_extension_constructor;
 
-/// Note on safety:
-/// This module depends on the Cedar parser only constructing AST with valid extension calls
-/// If any of the panics in this file are triggered, that means that this file has become
-/// out-of-date with the decimal extension definition in Core.
+// Note on safety:
+// This module depends on the Cedar parser only constructing AST with valid extension calls
+// If any of the panics in this file are triggered, that means that this file has become
+// out-of-date with the decimal extension definition in Core.
 
 // PANIC SAFETY see `Note on safety` above
 #[allow(clippy::panic)]
@@ -97,7 +97,7 @@ pub fn extension_schema() -> ExtensionSchema {
             get_argument_check(f.name()),
         )
     });
-    ExtensionSchema::new(decimal_ext.name().clone(), fun_tys)
+    ExtensionSchema::new(decimal_ext.name().clone(), fun_tys, std::iter::empty())
 }
 
 /// Extra validation step for the `decimal` function.

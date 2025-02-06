@@ -30,8 +30,10 @@ pub use cedar_policy_core::extensions::{
 use cedar_policy_core::{ast, authorizer, est};
 pub use cedar_policy_validator::cedar_schema::{schema_warnings, SchemaWarning};
 #[cfg(feature = "entity-manifest")]
+pub use cedar_policy_validator::entity_manifest::slicing::EntitySliceError;
+#[cfg(feature = "entity-manifest")]
 use cedar_policy_validator::entity_manifest::{
-    self, FailedAnalysisError, PartialExpressionError, PartialRequestError,
+    self, PartialExpressionError, PartialRequestError, UnsupportedCedarFeatureError,
 };
 pub use cedar_policy_validator::{schema_errors, SchemaError};
 use miette::Diagnostic;
@@ -52,11 +54,9 @@ pub mod entities_errors {
 pub mod entities_json_errors {
     pub use cedar_policy_core::entities::json::err::{
         ActionParentIsNotAction, DuplicateKey, ExpectedExtnValue, ExpectedLiteralEntityRef,
-        ExtensionFunctionLookup, ExtnCall0Arguments, ExtnCall2OrMoreArguments, HeterogeneousSet,
-        JsonDeserializationError, JsonError, JsonSerializationError, MissingImpliedConstructor,
-        MissingRequiredRecordAttr, ParseEscape, ReservedKey, Residual, TypeMismatch,
-        TypeMismatchError, UnexpectedRecordAttr, UnexpectedRestrictedExprKind,
-        UnknownInImplicitConstructorArg,
+        ExtnCall0Arguments, ExtnCall2OrMoreArguments, JsonDeserializationError, JsonError,
+        JsonSerializationError, MissingImpliedConstructor, MissingRequiredRecordAttr, ParseEscape,
+        ReservedKey, Residual, TypeMismatch, UnexpectedRecordAttr, UnexpectedRestrictedExprKind,
     };
 }
 
@@ -64,8 +64,8 @@ pub mod entities_json_errors {
 pub mod conformance_errors {
     pub use cedar_policy_core::entities::conformance::err::{
         ActionDeclarationMismatch, EntitySchemaConformanceError, ExtensionFunctionLookup,
-        HeterogeneousSet, InvalidAncestorType, MissingRequiredEntityAttr, TypeMismatch,
-        UndeclaredAction, UnexpectedEntityAttr, UnexpectedEntityTypeError,
+        InvalidAncestorType, MissingRequiredEntityAttr, TypeMismatch, UndeclaredAction,
+        UnexpectedEntityAttr, UnexpectedEntityTag, UnexpectedEntityTypeError,
     };
 }
 
@@ -187,16 +187,20 @@ pub mod to_cedar_syntax_errors {
 
     /// Duplicate names were found in the schema
     #[derive(Debug, Error, Diagnostic)]
-    #[repr(transparent)]
-    #[error(transparent)]
-    pub struct NameCollisionsError(
-        pub(super) cedar_policy_validator::cedar_schema::fmt::NameCollisionsError,
-    );
+    #[error("{err}")]
+    pub struct NameCollisionsError {
+        #[diagnostic(transparent)]
+        pub(super) err: cedar_policy_validator::cedar_schema::fmt::NameCollisionsError,
+        // because `.names()` needs to return borrowed `&str`, we need somewhere to borrow from, hence here
+        pub(super) names_as_strings: Vec<String>,
+    }
 
     impl NameCollisionsError {
         /// Get the names that had collisions
         pub fn names(&self) -> impl Iterator<Item = &str> {
-            self.0.names()
+            self.names_as_strings
+                .iter()
+                .map(std::string::String::as_str)
         }
     }
 }
@@ -209,7 +213,14 @@ impl From<cedar_policy_validator::cedar_schema::fmt::ToCedarSchemaSyntaxError>
         match value {
             cedar_policy_validator::cedar_schema::fmt::ToCedarSchemaSyntaxError::NameCollisions(
                 name_collision_err,
-            ) => NameCollisionsError(name_collision_err).into(),
+            ) => NameCollisionsError {
+                names_as_strings: name_collision_err
+                    .names()
+                    .map(ToString::to_string)
+                    .collect(),
+                err: name_collision_err,
+            }
+            .into(),
         }
     }
 }
@@ -258,14 +269,16 @@ impl From<cedar_policy_validator::CedarSchemaError> for CedarSchemaError {
     }
 }
 
-/// Error when evaluating an entity attribute
+/// Error when evaluating an entity attribute or tag
 #[derive(Debug, Diagnostic, Error)]
-#[error("in attribute `{attr}` of `{uid}`: {err}")]
+#[error("in {} `{attr_or_tag}` of `{uid}`: {err}", if *.was_attr { "attribute" } else { "tag" })]
 pub struct EntityAttrEvaluationError {
-    /// Action that had the attribute with the error
+    /// Action that had the attribute or tag with the error
     uid: EntityUid,
-    /// Attribute that had the error
-    attr: SmolStr,
+    /// Attribute or tag that had the error
+    attr_or_tag: SmolStr,
+    /// Is `attr_or_tag` an attribute (`true`) or a tag (`false`)
+    was_attr: bool,
     /// Underlying evaluation error
     #[diagnostic(transparent)]
     err: EvaluationError,
@@ -277,9 +290,11 @@ impl EntityAttrEvaluationError {
         &self.uid
     }
 
-    /// Get the name of the attribute that had the error
+    /// Get the name of the attribute or tag that had the error
+    //
+    // Method is named `.attr()` and not `.attr_or_tag()` for historical / backwards-compatibility reasons
     pub fn attr(&self) -> &SmolStr {
-        &self.attr
+        &self.attr_or_tag
     }
 
     /// Get the underlying evaluation error
@@ -293,7 +308,8 @@ impl From<ast::EntityAttrEvaluationError> for EntityAttrEvaluationError {
     fn from(err: ast::EntityAttrEvaluationError) -> Self {
         Self {
             uid: err.uid.into(),
-            attr: err.attr,
+            attr_or_tag: err.attr_or_tag,
+            was_attr: err.was_attr,
             err: err.err,
         }
     }
@@ -377,6 +393,14 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnsafeOptionalAttributeAccess(#[from] validation_errors::UnsafeOptionalAttributeAccess),
+    /// The typechecker could not conclude that an access to a tag was safe.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnsafeTagAccess(#[from] validation_errors::UnsafeTagAccess),
+    /// `.getTag()` on an entity type which cannot have tags according to the schema.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NoTagsAllowed(#[from] validation_errors::NoTagsAllowed),
     /// Undefined extension function.
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -403,6 +427,19 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     HierarchyNotRespected(#[from] validation_errors::HierarchyNotRespected),
+    /// Returned when an internal invariant is violated (should not happen; if
+    /// this is ever returned, please file an issue)
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InternalInvariantViolation(#[from] validation_errors::InternalInvariantViolation),
+    /// Entity level violation
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    EntityDerefLevelViolation(#[from] validation_errors::EntityDerefLevelViolation),
+    /// Returned when an entity is of an enumerated entity type but has invalid EID
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidEnumEntity(#[from] validation_errors::InvalidEnumEntity),
 }
 
 impl ValidationError {
@@ -416,12 +453,17 @@ impl ValidationError {
             Self::IncompatibleTypes(e) => e.policy_id(),
             Self::UnsafeAttributeAccess(e) => e.policy_id(),
             Self::UnsafeOptionalAttributeAccess(e) => e.policy_id(),
+            Self::UnsafeTagAccess(e) => e.policy_id(),
+            Self::NoTagsAllowed(e) => e.policy_id(),
             Self::UndefinedFunction(e) => e.policy_id(),
             Self::WrongNumberArguments(e) => e.policy_id(),
             Self::FunctionArgumentValidation(e) => e.policy_id(),
             Self::EmptySetForbidden(e) => e.policy_id(),
             Self::NonLitExtConstructor(e) => e.policy_id(),
             Self::HierarchyNotRespected(e) => e.policy_id(),
+            Self::InternalInvariantViolation(e) => e.policy_id(),
+            Self::EntityDerefLevelViolation(e) => e.policy_id(),
+            Self::InvalidEnumEntity(e) => e.policy_id(),
         }
     }
 }
@@ -451,6 +493,12 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             cedar_policy_validator::ValidationError::UnsafeOptionalAttributeAccess(e) => {
                 Self::UnsafeOptionalAttributeAccess(e.into())
             }
+            cedar_policy_validator::ValidationError::UnsafeTagAccess(e) => {
+                Self::UnsafeTagAccess(e.into())
+            }
+            cedar_policy_validator::ValidationError::NoTagsAllowed(e) => {
+                Self::NoTagsAllowed(e.into())
+            }
             cedar_policy_validator::ValidationError::UndefinedFunction(e) => {
                 Self::UndefinedFunction(e.into())
             }
@@ -469,6 +517,16 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             cedar_policy_validator::ValidationError::HierarchyNotRespected(e) => {
                 Self::HierarchyNotRespected(e.into())
             }
+            cedar_policy_validator::ValidationError::InternalInvariantViolation(e) => {
+                Self::InternalInvariantViolation(e.into())
+            }
+            cedar_policy_validator::ValidationError::InvalidEnumEntity(e) => {
+                Self::InvalidEnumEntity(e.into())
+            }
+            #[cfg(feature = "level-validate")]
+            cedar_policy_validator::ValidationError::EntityDerefLevelViolation(e) => {
+                Self::EntityDerefLevelViolation(e.into())
+            }
         }
     }
 }
@@ -483,23 +541,30 @@ pub mod validation_warnings;
 #[derive(Debug, Clone, Error, Diagnostic)]
 #[non_exhaustive]
 pub enum ValidationWarning {
-    /// A string contains mixed scripts. Different scripts can contain visually similar characters which may be confused for each other.
+    /// A string contains a mix of characters for different scripts (e.g., latin
+    /// and cyrillic alphabets). Different scripts can contain visually similar
+    /// characters which may be confused for each other.
     #[diagnostic(transparent)]
     #[error(transparent)]
     MixedScriptString(#[from] validation_warnings::MixedScriptString),
-    /// A string contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
+    /// A string contains bidirectional text control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
     #[diagnostic(transparent)]
     #[error(transparent)]
     BidiCharsInString(#[from] validation_warnings::BidiCharsInString),
-    /// An id contains BIDI control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
+    /// An id contains bidirectional text control characters. These can be used to create crafted pieces of code that obfuscate true control flow.
     #[diagnostic(transparent)]
     #[error(transparent)]
     BidiCharsInIdentifier(#[from] validation_warnings::BidiCharsInIdentifier),
-    /// An id contains mixed scripts. This can cause characters to be confused for each other.
+    /// An id contains a mix of characters for different scripts (e.g., latin and
+    /// cyrillic alphabets). Different scripts can contain visually similar
+    /// characters which may be confused for each other.
     #[diagnostic(transparent)]
     #[error(transparent)]
     MixedScriptIdentifier(#[from] validation_warnings::MixedScriptIdentifier),
-    /// An id contains characters that fall outside of the General Security Profile for Identifiers. We recommend adhering to this if possible. See Unicode® Technical Standard #39 for more info.
+    /// An id contains characters that is not a [graphical ASCII character](https://doc.rust-lang.org/std/primitive.char.html#method.is_ascii_graphic),
+    /// not the space character (`U+0020`), and falls outside of the General
+    /// Security Profile for Identifiers. We recommend adhering to this if
+    /// possible. See [Unicode® Technical Standard #39](https://unicode.org/reports/tr39/#General_Security_Profile) for more information.
     #[diagnostic(transparent)]
     #[error(transparent)]
     ConfusableIdentifier(#[from] validation_warnings::ConfusableIdentifier),
@@ -806,6 +871,7 @@ impl From<est::PolicySetFromJsonError> for PolicySetError {
 
 /// Represents one or more [`ParseError`]s encountered when parsing a policy or
 /// expression.
+///
 /// By default, the `Diagnostic` and `Error` implementations will only print the
 /// first error. If you want to see all errors, use `.iter()` or `.into_iter()`.
 #[derive(Debug, Diagnostic, Error)]
@@ -1019,6 +1085,11 @@ pub enum RequestValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     TypeOfContext(#[from] request_validation_errors::TypeOfContextError),
+    /// Error when a principal or resource entity is of an enumerated entity
+    /// type but has an invalid EID
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidEnumEntity(#[from] request_validation_errors::InvalidEnumEntityError),
 }
 
 #[doc(hidden)]
@@ -1046,12 +1117,16 @@ impl From<cedar_policy_validator::RequestValidationError> for RequestValidationE
             cedar_policy_validator::RequestValidationError::TypeOfContext(e) => {
                 Self::TypeOfContext(e.into())
             }
+            cedar_policy_validator::RequestValidationError::InvalidEnumEntity(e) => {
+                Self::InvalidEnumEntity(e.into())
+            }
         }
     }
 }
 
 /// Error subtypes for [`RequestValidationError`]
 pub mod request_validation_errors {
+    use cedar_policy_core::extensions::ExtensionFunctionLookupError;
     use miette::Diagnostic;
     use ref_cast::RefCast;
     use thiserror::Error;
@@ -1169,15 +1244,19 @@ pub mod request_validation_errors {
     #[derive(Debug, Diagnostic, Error)]
     #[error(transparent)]
     #[diagnostic(transparent)]
-    pub struct TypeOfContextError(#[from] cedar_policy_core::entities::json::GetSchemaTypeError);
+    pub struct TypeOfContextError(#[from] ExtensionFunctionLookupError);
+
+    /// Error when a principal or resource entity is of an enumerated entity
+    /// type but has an invalid EID
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct InvalidEnumEntityError(
+        #[from] cedar_policy_core::entities::conformance::err::InvalidEnumEntityError,
+    );
 }
 
 /// An error generated by entity slicing.
-/// See [`FailedAnalysisError`] for details on the fragment
-/// of Cedar handled by entity slicing.
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[non_exhaustive]
 #[cfg(feature = "entity-manifest")]
@@ -1199,12 +1278,10 @@ pub enum EntityManifestError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     PartialExpression(#[from] PartialExpressionError),
-
-    /// A policy was not analyzable because it used unsupported operators.
-    /// See [`FailedAnalysisError`] for more details.
+    /// Encounters unsupported Cedar feature
     #[error(transparent)]
     #[diagnostic(transparent)]
-    FailedAnalysis(#[from] FailedAnalysisError),
+    UnsupportedCedarFeature(#[from] UnsupportedCedarFeatureError),
 }
 
 #[cfg(feature = "entity-manifest")]
@@ -1217,7 +1294,9 @@ impl From<entity_manifest::EntityManifestError> for EntityManifestError {
             entity_manifest::EntityManifestError::PartialExpression(e) => {
                 Self::PartialExpression(e)
             }
-            entity_manifest::EntityManifestError::FailedAnalysis(e) => Self::FailedAnalysis(e),
+            entity_manifest::EntityManifestError::UnsupportedCedarFeature(e) => {
+                Self::UnsupportedCedarFeature(e)
+            }
         }
     }
 }

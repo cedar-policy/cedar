@@ -22,17 +22,17 @@ use std::{collections::HashSet, fmt::Display};
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::NonEmpty;
-use smol_str::{SmolStr, ToSmolStr};
 use thiserror::Error;
 
 use crate::{json_schema, RawName};
+use cedar_policy_core::{ast::InternalName, impl_diagnostic_from_method_on_nonempty_field};
 
 impl<N: Display> Display for json_schema::Fragment<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (ns, def) in &self.0 {
             match ns {
                 None => write!(f, "{def}")?,
-                Some(ns) => write!(f, "namespace {ns} {{\n{def}}}\n")?,
+                Some(ns) => write!(f, "{}namespace {ns} {{\n{}}}\n", def.annotations, def)?,
             }
         }
         Ok(())
@@ -42,13 +42,13 @@ impl<N: Display> Display for json_schema::Fragment<N> {
 impl<N: Display> Display for json_schema::NamespaceDefinition<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (n, ty) in &self.common_types {
-            writeln!(f, "type {n} = {ty};")?
+            writeln!(f, "{}type {n} = {};", ty.annotations, ty.ty)?
         }
         for (n, ty) in &self.entity_types {
-            writeln!(f, "entity {n}{ty};")?
+            writeln!(f, "{}entity {n}{};", ty.annotations, ty)?
         }
         for (n, a) in &self.actions {
-            writeln!(f, "action \"{}\"{a};", n.escape_debug())?
+            writeln!(f, "{}action \"{}\"{};", a.annotations, n.escape_debug(), a)?
         }
         Ok(())
     }
@@ -57,7 +57,7 @@ impl<N: Display> Display for json_schema::NamespaceDefinition<N> {
 impl<N: Display> Display for json_schema::Type<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            json_schema::Type::Type(ty) => match ty {
+            json_schema::Type::Type { ty, .. } => match ty {
                 json_schema::TypeVariant::Boolean => write!(f, "__cedar::Bool"),
                 json_schema::TypeVariant::Entity { name } => write!(f, "{name}"),
                 json_schema::TypeVariant::EntityOrCommon { type_name } => {
@@ -69,24 +69,25 @@ impl<N: Display> Display for json_schema::Type<N> {
                 json_schema::TypeVariant::Set { element } => write!(f, "Set < {element} >"),
                 json_schema::TypeVariant::String => write!(f, "__cedar::String"),
             },
-            json_schema::Type::CommonTypeRef { type_name } => write!(f, "{type_name}"),
+            json_schema::Type::CommonTypeRef { type_name, .. } => write!(f, "{type_name}"),
         }
     }
 }
 
-impl<N: Display> Display for json_schema::RecordType<json_schema::RecordAttributeType<N>> {
+impl<N: Display> Display for json_schema::RecordType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{")?;
         for (i, (n, ty)) in self.attributes.iter().enumerate() {
             write!(
                 f,
-                "\"{}\"{}: {}",
+                "{}\"{}\"{}: {}",
+                ty.annotations,
                 n.escape_debug(),
                 if ty.required { "" } else { "?" },
                 ty.ty
             )?;
             if i < (self.attributes.len() - 1) {
-                write!(f, ", ")?;
+                writeln!(f, ", ")?;
             }
         }
         write!(f, "}}")?;
@@ -94,53 +95,38 @@ impl<N: Display> Display for json_schema::RecordType<json_schema::RecordAttribut
     }
 }
 
-impl<N: Display> Display for json_schema::RecordType<json_schema::EntityAttributeType<N>> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{{")?;
-        for (i, (n, ty)) in self.attributes.iter().enumerate() {
-            write!(
-                f,
-                "\"{}\"{}: {}",
-                n.escape_debug(),
-                if ty.required { "" } else { "?" },
-                ty.ty
-            )?;
-            if i < (self.attributes.len() - 1) {
-                write!(f, ", ")?;
-            }
-        }
-        write!(f, "}}")?;
-        Ok(())
+fn fmt_non_empty_slice<T: Display>(
+    f: &mut std::fmt::Formatter<'_>,
+    (head, tail): (&T, &[T]),
+) -> std::fmt::Result {
+    write!(f, "[{head}")?;
+    for e in tail {
+        write!(f, ", {e}")?;
     }
-}
-
-impl<N: Display> Display for json_schema::EntityAttributeTypeInternal<N> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            json_schema::EntityAttributeTypeInternal::Type(ty) => ty.fmt(f),
-            json_schema::EntityAttributeTypeInternal::EAMap { value_type } => {
-                write!(f, "{{ ?: {value_type} }}")
-            }
-        }
-    }
-}
-
-/// Create a non-empty with borrowed contents from a slice
-fn non_empty_slice<T>(v: &[T]) -> Option<NonEmpty<&T>> {
-    let vs: Vec<&T> = v.iter().collect();
-    NonEmpty::from_vec(vs)
-}
-
-fn fmt_vec<T: Display>(f: &mut std::fmt::Formatter<'_>, ets: NonEmpty<T>) -> std::fmt::Result {
-    let contents = ets.iter().map(T::to_string).join(", ");
-    write!(f, "[{contents}]")
+    write!(f, "]")
 }
 
 impl<N: Display> Display for json_schema::EntityType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(non_empty) = non_empty_slice(&self.member_of_types) {
+        match &self.kind {
+            json_schema::EntityTypeKind::Standard(ty) => ty.fmt(f),
+            json_schema::EntityTypeKind::Enum { choices } => write!(
+                f,
+                " enum [{}]",
+                choices
+                    .iter()
+                    .map(|e| format!("\"{}\"", e.escape_debug()))
+                    .join(", ")
+            ),
+        }
+    }
+}
+
+impl<N: Display> Display for json_schema::StandardEntityType<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(non_empty) = self.member_of_types.split_first() {
             write!(f, " in ")?;
-            fmt_vec(f, non_empty)?;
+            fmt_non_empty_slice(f, non_empty)?;
         }
 
         let ty = &self.shape;
@@ -149,24 +135,24 @@ impl<N: Display> Display for json_schema::EntityType<N> {
             write!(f, " = {ty}")?;
         }
 
+        if let Some(tags) = &self.tags {
+            write!(f, " tags {tags}")?;
+        }
+
         Ok(())
     }
 }
 
 impl<N: Display> Display for json_schema::ActionType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(parents) = self
-            .member_of
-            .as_ref()
-            .and_then(|refs| non_empty_slice(refs.as_slice()))
-        {
+        if let Some(parents) = self.member_of.as_ref().and_then(|refs| refs.split_first()) {
             write!(f, " in ")?;
-            fmt_vec(f, parents)?;
+            fmt_non_empty_slice(f, parents)?;
         }
         if let Some(spec) = &self.applies_to {
             match (
-                non_empty_slice(spec.principal_types.as_slice()),
-                non_empty_slice(spec.resource_types.as_slice()),
+                spec.principal_types.split_first(),
+                spec.resource_types.split_first(),
             ) {
                 // One of the lists is empty
                 // This can only be represented by the empty action
@@ -178,9 +164,9 @@ impl<N: Display> Display for json_schema::ActionType<N> {
                 (Some(ps), Some(rs)) => {
                     write!(f, " appliesTo {{")?;
                     write!(f, "\n  principal: ")?;
-                    fmt_vec(f, ps)?;
+                    fmt_non_empty_slice(f, ps)?;
                     write!(f, ",\n  resource: ")?;
-                    fmt_vec(f, rs)?;
+                    fmt_non_empty_slice(f, rs)?;
                     write!(f, ",\n  context: {}", &spec.context.0)?;
                     write!(f, "\n}}")?;
                 }
@@ -201,17 +187,23 @@ pub enum ToCedarSchemaSyntaxError {
 }
 
 /// Duplicate names were found in the schema
-#[derive(Debug, Error, Diagnostic)]
+//
+// This is NOT a publicly exported error type.
+#[derive(Debug, Error)]
 #[error("There are name collisions: [{}]", .names.iter().join(", "))]
 pub struct NameCollisionsError {
     /// Names that had collisions
-    names: NonEmpty<SmolStr>,
+    names: NonEmpty<InternalName>,
+}
+
+impl Diagnostic for NameCollisionsError {
+    impl_diagnostic_from_method_on_nonempty_field!(names, loc);
 }
 
 impl NameCollisionsError {
     /// Get the names that had collisions
-    pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.names.iter().map(smol_str::SmolStr::as_str)
+    pub fn names(&self) -> impl Iterator<Item = &InternalName> {
+        self.names.iter()
     }
 }
 
@@ -233,24 +225,21 @@ impl NameCollisionsError {
 pub fn json_schema_to_cedar_schema_str<N: Display>(
     json_schema: &json_schema::Fragment<N>,
 ) -> Result<String, ToCedarSchemaSyntaxError> {
-    let mut name_collisions: Vec<SmolStr> = Vec::new();
+    let mut name_collisions: Vec<InternalName> = Vec::new();
     for (name, ns) in json_schema.0.iter().filter(|(name, _)| !name.is_none()) {
-        let entity_types: HashSet<SmolStr> = ns
+        let entity_types: HashSet<InternalName> = ns
             .entity_types
             .keys()
             .map(|ty_name| {
-                RawName::new_from_unreserved(ty_name.clone())
-                    .qualify_with_name(name.as_ref())
-                    .to_smolstr()
+                RawName::new_from_unreserved(ty_name.clone()).qualify_with_name(name.as_ref())
             })
             .collect();
-        let common_types: HashSet<SmolStr> = ns
+        let common_types: HashSet<InternalName> = ns
             .common_types
             .keys()
             .map(|ty_name| {
                 RawName::new_from_unreserved(ty_name.clone().into())
                     .qualify_with_name(name.as_ref())
-                    .to_smolstr()
             })
             .collect();
         name_collisions.extend(entity_types.intersection(&common_types).cloned());
@@ -262,4 +251,68 @@ pub fn json_schema_to_cedar_schema_str<N: Display>(
         .into());
     }
     Ok(json_schema.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use cedar_policy_core::extensions::Extensions;
+
+    use crate::cedar_schema::parser::parse_cedar_schema_fragment;
+
+    #[track_caller]
+    fn test_round_trip(src: &str) {
+        let (cedar_schema, _) =
+            parse_cedar_schema_fragment(src, Extensions::none()).expect("should parse");
+        let printed_cedar_schema = cedar_schema.to_cedarschema().expect("should convert");
+        let (parsed_cedar_schema, _) =
+            parse_cedar_schema_fragment(&printed_cedar_schema, Extensions::none())
+                .expect("should parse");
+        assert_eq!(cedar_schema, parsed_cedar_schema);
+    }
+
+    #[test]
+    fn rfc_example() {
+        let src = "entity User = {
+            jobLevel: Long,
+          } tags Set<String>;
+          entity Document = {
+            owner: User,
+          } tags Set<String>;";
+        test_round_trip(src);
+    }
+
+    #[test]
+    fn annotations() {
+        let src = r#"@doc("this is the namespace")
+namespace TinyTodo {
+    @doc("a common type representing a task")
+    type Task = {
+        @doc("task id")
+        "id": Long,
+        "name": String,
+        "state": String,
+    };
+    @doc("a common type representing a set of tasks")
+    type Tasks = Set<Task>;
+
+    @doc("an entity type representing a list")
+    @docComment("any entity type is a child of type `Application`")
+    entity List in [Application] = {
+        @doc("editors of a list")
+        "editors": Team,
+        "name": String,
+        "owner": User,
+        @doc("readers of a list")
+        "readers": Team,
+        "tasks": Tasks,
+    };
+
+    @doc("actions that a user can operate on a list")
+    action DeleteList, GetList, UpdateList appliesTo {
+        principal: [User],
+        resource: [List]
+    };
+}"#;
+        test_round_trip(src);
+    }
 }

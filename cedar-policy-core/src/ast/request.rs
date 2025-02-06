@@ -27,9 +27,12 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use thiserror::Error;
 
+#[cfg(feature = "protobufs")]
+use crate::ast::proto;
+
 use super::{
-    BorrowedRestrictedExpr, EntityType, EntityUID, Expr, ExprKind, ExpressionConstructionError,
-    PartialValue, RestrictedExpr, Unknown, Value, ValueKind, Var,
+    BorrowedRestrictedExpr, BoundedDisplay, EntityType, EntityUID, Expr, ExprKind,
+    ExpressionConstructionError, PartialValue, RestrictedExpr, Unknown, Value, ValueKind, Var,
 };
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
@@ -75,6 +78,9 @@ pub enum EntityUIDEntry {
     },
     /// An EntityUID left as unknown for partial evaluation
     Unknown {
+        /// The type of the unknown EntityUID, if known.
+        ty: Option<EntityType>,
+
         /// Source location associated with the `EntityUIDEntry`, if any
         loc: Option<Loc>,
     },
@@ -89,9 +95,22 @@ impl EntityUIDEntry {
             EntityUIDEntry::Known { euid, loc } => {
                 Value::new(Arc::unwrap_or_clone(Arc::clone(euid)), loc.clone()).into()
             }
-            EntityUIDEntry::Unknown { loc } => Expr::unknown(Unknown::new_untyped(var.to_string()))
-                .with_maybe_source_loc(loc.clone())
-                .into(),
+            EntityUIDEntry::Unknown { ty: None, loc } => {
+                Expr::unknown(Unknown::new_untyped(var.to_string()))
+                    .with_maybe_source_loc(loc.clone())
+                    .into()
+            }
+            EntityUIDEntry::Unknown {
+                ty: Some(known_type),
+                loc,
+            } => Expr::unknown(Unknown::new_with_type(
+                var.to_string(),
+                super::Type::Entity {
+                    ty: known_type.clone(),
+                },
+            ))
+            .with_maybe_source_loc(loc.clone())
+            .into(),
         }
     }
 
@@ -103,11 +122,62 @@ impl EntityUIDEntry {
         }
     }
 
+    /// Create an entry with an entirely unknown EntityUID
+    pub fn unknown() -> Self {
+        Self::Unknown {
+            ty: None,
+            loc: None,
+        }
+    }
+
+    /// Create an entry with an unknown EntityUID but known EntityType
+    pub fn unknown_with_type(ty: EntityType, loc: Option<Loc>) -> Self {
+        Self::Unknown { ty: Some(ty), loc }
+    }
+
     /// Get the UID of the entry, or `None` if it is unknown (partial evaluation)
     pub fn uid(&self) -> Option<&EntityUID> {
         match self {
             Self::Known { euid, .. } => Some(euid),
             Self::Unknown { .. } => None,
+        }
+    }
+
+    /// Get the type of the entry, or `None` if it is unknown (partial evaluation with no type annotation)
+    pub fn get_type(&self) -> Option<&EntityType> {
+        match self {
+            Self::Known { euid, .. } => Some(euid.entity_type()),
+            Self::Unknown { ty, .. } => ty.as_ref(),
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::EntityUidEntry> for EntityUIDEntry {
+    fn from(v: &proto::EntityUidEntry) -> Self {
+        // PANIC SAFETY: experimental feature
+        #[allow(clippy::expect_used)]
+        EntityUIDEntry::known(
+            EntityUID::from(v.euid.as_ref().expect("euid.as_ref()")),
+            None,
+        )
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&EntityUIDEntry> for proto::EntityUidEntry {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::unimplemented)]
+    fn from(v: &EntityUIDEntry) -> Self {
+        match v {
+            EntityUIDEntry::Unknown { .. } => {
+                unimplemented!(
+                    "Unknown EntityUID is not currently supported by the Protobuf interface"
+                );
+            }
+            EntityUIDEntry::Known { euid, .. } => Self {
+                euid: Some(proto::EntityUid::from(euid.as_ref())),
+            },
         }
     }
 }
@@ -217,7 +287,11 @@ impl std::fmt::Display for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let display_euid = |maybe_euid: &EntityUIDEntry| match maybe_euid {
             EntityUIDEntry::Known { euid, .. } => format!("{euid}"),
-            EntityUIDEntry::Unknown { .. } => "unknown".to_string(),
+            EntityUIDEntry::Unknown { ty: None, .. } => "unknown".to_string(),
+            EntityUIDEntry::Unknown {
+                ty: Some(known_type),
+                ..
+            } => format!("unknown of type {}", known_type),
         };
         write!(
             f,
@@ -233,8 +307,34 @@ impl std::fmt::Display for Request {
     }
 }
 
+#[cfg(feature = "protobufs")]
+impl From<&proto::Request> for Request {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &proto::Request) -> Self {
+        Request::new_unchecked(
+            EntityUIDEntry::from(v.principal.as_ref().expect("principal.as_ref()")),
+            EntityUIDEntry::from(v.action.as_ref().expect("action.as_ref()")),
+            EntityUIDEntry::from(v.resource.as_ref().expect("resource.as_ref()")),
+            v.context.as_ref().map(Context::from),
+        )
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&Request> for proto::Request {
+    fn from(v: &Request) -> Self {
+        Self {
+            principal: Some(proto::EntityUidEntry::from(&v.principal)),
+            action: Some(proto::EntityUidEntry::from(&v.action)),
+            resource: Some(proto::EntityUidEntry::from(&v.resource)),
+            context: v.context.as_ref().map(proto::Context::from),
+        }
+    }
+}
+
 /// `Context` field of a `Request`
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 // Serialization is used for differential testing, which requires that `Context`
 // is serialized as a `RestrictedExpr`.
 #[serde(into = "RestrictedExpr")]
@@ -368,10 +468,21 @@ impl Context {
             .from_json_file(json)
     }
 
+    /// Get the number of keys in this `Context`.
+    pub fn num_keys(&self) -> usize {
+        match self {
+            Context::Value(record) => record.len(),
+            Context::RestrictedResidual(record) => record.len(),
+        }
+    }
+
     /// Private helper function to implement `into_iter()` for `Context`.
     /// Gets an iterator over the (key, value) pairs in the `Context`, cloning
     /// only if necessary.
-    fn into_values(self) -> Box<dyn Iterator<Item = (SmolStr, RestrictedExpr)>> {
+    ///
+    /// Note that some error messages rely on this function returning keys in
+    /// sorted order, or else the error message will not be fully deterministic.
+    fn into_pairs(self) -> Box<dyn Iterator<Item = (SmolStr, RestrictedExpr)>> {
         match self {
             Context::Value(record) => Box::new(
                 Arc::unwrap_or_clone(record)
@@ -448,11 +559,10 @@ mod iter {
 
 impl IntoIterator for Context {
     type Item = (SmolStr, RestrictedExpr);
-
     type IntoIter = iter::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        iter::IntoIter(self.into_values())
+        iter::IntoIter(self.into_pairs())
     }
 }
 
@@ -497,6 +607,37 @@ impl std::fmt::Display for Context {
     }
 }
 
+impl BoundedDisplay for Context {
+    fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
+        BoundedDisplay::fmt(&PartialValue::from(self.clone()), f, n)
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::Context> for Context {
+    fn from(v: &proto::Context) -> Self {
+        // PANIC SAFETY: experimental feature
+        #[allow(clippy::expect_used)]
+        Context::from_expr(
+            BorrowedRestrictedExpr::new(&Expr::from(v.context.as_ref().expect("context.as_ref")))
+                .expect("Expr::from"),
+            Extensions::none(),
+        )
+        .expect("Context::from_expr")
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&Context> for proto::Context {
+    fn from(v: &Context) -> Self {
+        Self {
+            context: Some(proto::Expr::from(&Expr::from(PartialValue::from(
+                v.to_owned(),
+            )))),
+        }
+    }
+}
+
 /// Errors while trying to create a `Context`
 #[derive(Debug, Diagnostic, Error)]
 pub enum ContextCreationError {
@@ -526,7 +667,7 @@ impl ContextCreationError {
 /// Error subtypes for [`ContextCreationError`]
 pub mod context_creation_errors {
     use super::Expr;
-    use crate::impl_diagnostic_from_expr_field;
+    use crate::impl_diagnostic_from_method_on_field;
     use miette::Diagnostic;
     use thiserror::Error;
 
@@ -542,9 +683,9 @@ pub mod context_creation_errors {
         pub(super) expr: Box<Expr>,
     }
 
-    // custom impl of `Diagnostic`: take source location from the `expr` field
+    // custom impl of `Diagnostic`: take source location from the `expr` field's `.source_loc()` method
     impl Diagnostic for NotARecord {
-        impl_diagnostic_from_expr_field!(expr);
+        impl_diagnostic_from_method_on_field!(expr, source_loc);
     }
 }
 
@@ -597,5 +738,37 @@ mod test {
                 ContextCreationError::NotARecord { .. }
             ))
         );
+    }
+
+    #[cfg(feature = "protobufs")]
+    #[test]
+    fn protobuf_roundtrip() {
+        let context: Context = Context::from_expr(
+            RestrictedExpr::record([("foo".into(), RestrictedExpr::val(37))])
+                .expect("Error creating restricted record.")
+                .as_borrowed(),
+            Extensions::none(),
+        )
+        .expect("Error creating context");
+        let request = Request::new_unchecked(
+            EntityUIDEntry::Known {
+                euid: Arc::new(EntityUID::with_eid("andrew")),
+                loc: None,
+            },
+            EntityUIDEntry::Known {
+                euid: Arc::new(EntityUID::with_eid("read")),
+                loc: None,
+            },
+            EntityUIDEntry::Known {
+                euid: Arc::new(EntityUID::with_eid("book")),
+                loc: None,
+            },
+            Some(context.clone()),
+        );
+        let request_rt: Request = Request::from(&proto::Request::from(&request));
+        assert_eq!(context, Context::from(&proto::Context::from(&context)));
+        assert_eq!(request.principal().uid(), request_rt.principal().uid());
+        assert_eq!(request.action().uid(), request_rt.action().uid());
+        assert_eq!(request.resource().uid(), request_rt.resource().uid());
     }
 }

@@ -14,8 +14,10 @@
  * limitations under the License.
  */
 
-use crate::ast::CallStyle;
 use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "protobufs")]
+use crate::ast::proto;
 
 /// Built-in operators with exactly one argument
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -29,6 +31,42 @@ pub enum UnaryOp {
     ///
     /// Argument must have Long type
     Neg,
+    /// isEmpty test for sets
+    ///
+    /// Argument must have Set type
+    IsEmpty,
+}
+
+impl std::fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UnaryOp::Not => write!(f, "!"),
+            UnaryOp::Neg => write!(f, "-"),
+            UnaryOp::IsEmpty => write!(f, "isEmpty"),
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&proto::expr::unary_app::Op> for UnaryOp {
+    fn from(v: &proto::expr::unary_app::Op) -> Self {
+        match v {
+            proto::expr::unary_app::Op::Not => UnaryOp::Not,
+            proto::expr::unary_app::Op::Neg => UnaryOp::Neg,
+            proto::expr::unary_app::Op::IsEmpty => UnaryOp::IsEmpty,
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&UnaryOp> for proto::expr::unary_app::Op {
+    fn from(v: &UnaryOp) -> Self {
+        match v {
+            UnaryOp::Not => proto::expr::unary_app::Op::Not,
+            UnaryOp::Neg => proto::expr::unary_app::Op::Neg,
+            UnaryOp::IsEmpty => proto::expr::unary_app::Op::IsEmpty,
+        }
+    }
 }
 
 /// Built-in operators with exactly two arguments
@@ -89,39 +127,73 @@ pub enum BinaryOp {
     ///
     /// Arguments must have Set type
     ContainsAny,
-}
 
-impl std::fmt::Display for UnaryOp {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            UnaryOp::Not => write!(f, "!_"),
-            UnaryOp::Neg => write!(f, "-_"),
-        }
-    }
+    /// Get a tag of an entity.
+    ///
+    /// First argument must have Entity type, second argument must have String type.
+    GetTag,
+
+    /// Does the given `expr` have the given `tag`?
+    ///
+    /// First argument must have Entity type, second argument must have String type.
+    HasTag,
 }
 
 impl std::fmt::Display for BinaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BinaryOp::Eq => write!(f, "_==_"),
-            BinaryOp::Less => write!(f, "_<_"),
-            BinaryOp::LessEq => write!(f, "_<=_"),
-            BinaryOp::Add => write!(f, "_+_"),
-            BinaryOp::Sub => write!(f, "_-_"),
-            BinaryOp::Mul => write!(f, "_*_"),
-            BinaryOp::In => write!(f, "_in_"),
+            BinaryOp::Eq => write!(f, "=="),
+            BinaryOp::Less => write!(f, "<"),
+            BinaryOp::LessEq => write!(f, "<="),
+            BinaryOp::Add => write!(f, "+"),
+            BinaryOp::Sub => write!(f, "-"),
+            BinaryOp::Mul => write!(f, "*"),
+            BinaryOp::In => write!(f, "in"),
             BinaryOp::Contains => write!(f, "contains"),
             BinaryOp::ContainsAll => write!(f, "containsAll"),
             BinaryOp::ContainsAny => write!(f, "containsAny"),
+            BinaryOp::GetTag => write!(f, "getTag"),
+            BinaryOp::HasTag => write!(f, "hasTag"),
         }
     }
 }
 
-impl std::fmt::Display for CallStyle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::FunctionStyle => write!(f, "function-style"),
-            Self::MethodStyle => write!(f, "method-style"),
+#[cfg(feature = "protobufs")]
+impl From<&proto::expr::binary_app::Op> for BinaryOp {
+    fn from(v: &proto::expr::binary_app::Op) -> Self {
+        match v {
+            proto::expr::binary_app::Op::Eq => BinaryOp::Eq,
+            proto::expr::binary_app::Op::Less => BinaryOp::Less,
+            proto::expr::binary_app::Op::LessEq => BinaryOp::LessEq,
+            proto::expr::binary_app::Op::Add => BinaryOp::Add,
+            proto::expr::binary_app::Op::Sub => BinaryOp::Sub,
+            proto::expr::binary_app::Op::Mul => BinaryOp::Mul,
+            proto::expr::binary_app::Op::In => BinaryOp::In,
+            proto::expr::binary_app::Op::Contains => BinaryOp::Contains,
+            proto::expr::binary_app::Op::ContainsAll => BinaryOp::ContainsAll,
+            proto::expr::binary_app::Op::ContainsAny => BinaryOp::ContainsAny,
+            proto::expr::binary_app::Op::GetTag => BinaryOp::GetTag,
+            proto::expr::binary_app::Op::HasTag => BinaryOp::HasTag,
+        }
+    }
+}
+
+#[cfg(feature = "protobufs")]
+impl From<&BinaryOp> for proto::expr::binary_app::Op {
+    fn from(v: &BinaryOp) -> Self {
+        match v {
+            BinaryOp::Eq => proto::expr::binary_app::Op::Eq,
+            BinaryOp::Less => proto::expr::binary_app::Op::Less,
+            BinaryOp::LessEq => proto::expr::binary_app::Op::LessEq,
+            BinaryOp::Add => proto::expr::binary_app::Op::Add,
+            BinaryOp::Sub => proto::expr::binary_app::Op::Sub,
+            BinaryOp::Mul => proto::expr::binary_app::Op::Mul,
+            BinaryOp::In => proto::expr::binary_app::Op::In,
+            BinaryOp::Contains => proto::expr::binary_app::Op::Contains,
+            BinaryOp::ContainsAll => proto::expr::binary_app::Op::ContainsAll,
+            BinaryOp::ContainsAny => proto::expr::binary_app::Op::ContainsAny,
+            BinaryOp::GetTag => proto::expr::binary_app::Op::GetTag,
+            BinaryOp::HasTag => proto::expr::binary_app::Op::HasTag,
         }
     }
 }

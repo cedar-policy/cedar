@@ -5,6 +5,10 @@
 # Don't check in the Emacs temp files
 *~
 
+# Don't check in common editors configs
+.vscode
+.zed
+
 # Don't check in test framework files
 .attach_pid*
 

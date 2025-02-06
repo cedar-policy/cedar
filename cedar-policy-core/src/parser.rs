@@ -19,7 +19,7 @@
 /// Concrete Syntax Tree def used as parser first pass
 pub mod cst;
 /// Step two: convert CST to package AST
-mod cst_to_ast;
+pub mod cst_to_ast;
 /// error handling utilities
 pub mod err;
 /// implementations for formatting, like `Display`
@@ -108,7 +108,7 @@ pub fn parse_policy_or_template(
     id: Option<ast::PolicyID>,
     text: &str,
 ) -> Result<ast::Template, err::ParseErrors> {
-    let id = id.unwrap_or(ast::PolicyID::from_string("policy0"));
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
     cst.to_policy_template(id)
 }
@@ -120,7 +120,7 @@ pub fn parse_policy_or_template_to_est_and_ast(
     id: Option<ast::PolicyID>,
     text: &str,
 ) -> Result<(est::Policy, ast::Template), err::ParseErrors> {
-    let id = id.unwrap_or(ast::PolicyID::from_string("policy0"));
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
     let ast = cst.to_policy_template(id)?;
     let est = cst.try_into_inner()?.try_into()?;
@@ -135,11 +135,11 @@ pub fn parse_template(
     id: Option<ast::PolicyID>,
     text: &str,
 ) -> Result<ast::Template, err::ParseErrors> {
-    let id = id.unwrap_or(ast::PolicyID::from_string("policy0"));
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
     let template = cst.to_policy_template(id)?;
     if template.slots().count() == 0 {
-        Err(err::ToASTError::new(err::ToASTErrorKind::expected_template(), cst.loc.clone()).into())
+        Err(err::ToASTError::new(err::ToASTErrorKind::expected_template(), cst.loc).into())
     } else {
         Ok(template)
     }
@@ -153,7 +153,7 @@ pub fn parse_policy(
     id: Option<ast::PolicyID>,
     text: &str,
 ) -> Result<ast::StaticPolicy, err::ParseErrors> {
-    let id = id.unwrap_or(ast::PolicyID::from_string("policy0"));
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
     cst.to_policy(id)
 }
@@ -165,7 +165,7 @@ pub fn parse_policy_to_est_and_ast(
     id: Option<ast::PolicyID>,
     text: &str,
 ) -> Result<(est::Policy, ast::StaticPolicy), err::ParseErrors> {
-    let id = id.unwrap_or(ast::PolicyID::from_string("policy0"));
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
     let ast = cst.to_policy(id)?;
     let est = cst.try_into_inner()?.try_into()?;
@@ -187,7 +187,7 @@ pub fn parse_policy_or_template_to_est(text: &str) -> Result<est::Policy, err::P
 /// or its constructors
 pub(crate) fn parse_expr(ptext: &str) -> Result<ast::Expr, err::ParseErrors> {
     let cst = text_to_cst::parse_expr(ptext)?;
-    cst.to_expr()
+    cst.to_expr::<ast::ExprBuilder<()>>()
 }
 
 /// parse a RestrictedExpr
@@ -225,7 +225,7 @@ pub(crate) fn parse_internal_name(name: &str) -> Result<ast::InternalName, err::
 /// or its constructors
 pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, err::LiteralParseError> {
     let cst = text_to_cst::parse_primary(val)?;
-    match cst.to_expr() {
+    match cst.to_expr::<ast::ExprBuilder<()>>() {
         Ok(ast) => match ast.expr_kind() {
             ast::ExprKind::Lit(v) => Ok(v.clone()),
             _ => Err(err::LiteralParseError::InvalidLiteral(ast)),
@@ -247,7 +247,7 @@ pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, err::LiteralParse
 pub fn parse_internal_string(val: &str) -> Result<SmolStr, err::ParseErrors> {
     // we need to add quotes for this to be a valid string literal
     let cst = text_to_cst::parse_primary(&format!(r#""{val}""#))?;
-    cst.to_string_literal()
+    cst.to_string_literal::<ast::ExprBuilder<()>>()
 }
 
 /// parse an identifier
@@ -300,7 +300,7 @@ pub(crate) mod test_utils {
         msg: &ExpectedErrorMessage<'_>,
     ) {
         assert!(
-            errs.iter().any(|e| msg.matches(Some(src), e)),
+            errs.iter().any(|e| msg.matches(e)),
             "for the following input:\n{src}\nexpected some error to match the following:\n{msg}\nbut actual errors were:\n{:?}", // the Debug representation of `miette::Report` is the pretty one, for some reason
             miette::Report::new(errs.clone()),
         );
@@ -308,7 +308,7 @@ pub(crate) mod test_utils {
 
     /// Expect that the given `ParseErrors` contains exactly one error, and that it matches the given `ExpectedErrorMessage`.
     ///
-    /// `src` is the original input text, just for better assertion-failure messages
+    /// `src` is the original input text (which the miette labels index into).
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
     pub fn expect_exactly_one_error(src: &str, errs: &ParseErrors, msg: &ExpectedErrorMessage<'_>) {
         match errs.len() {
@@ -327,6 +327,7 @@ pub(crate) mod test_utils {
 
 // PANIC SAFETY: Unit Test Code
 #[allow(clippy::panic, clippy::indexing_slicing)]
+#[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
 /// Tests for the top-level parsing APIs
 mod tests {
@@ -573,6 +574,7 @@ mod tests {
         );
     }
 
+    /// Tests parser+evaluator with relations `<`, `<=`, `>`, `&&`, `||`, `!=`
     #[test]
     fn interpret_relation() {
         let request = eval::test::basic_request();
@@ -610,6 +612,63 @@ mod tests {
         );
     }
 
+    /// Tests parser+evaluator with builtin methods `containsAll()`, `hasTag()`, `getTag()`
+    #[test]
+    fn interpret_methods() {
+        let src = r#"
+            [2, 3, "foo"].containsAll([3, "foo"])
+            && context.violations.isEmpty()
+            && principal.hasTag(resource.getTag(context.cur_time))
+        "#;
+        let request = eval::test::basic_request();
+        let entities = eval::test::basic_entities();
+        let exts = Extensions::none();
+        let evaluator = eval::Evaluator::new(request, &entities, exts);
+
+        let expr = parse_expr(src).unwrap();
+        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error(r#"`test_entity_type::"test_resource"` does not have the tag `03:22:11`"#)
+                    .help(r#"`test_entity_type::"test_resource"` does not have any tags"#)
+                    .exactly_one_underline("resource.getTag(context.cur_time)")
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn unquoted_tags() {
+        let src = r#"
+            principal.hasTag(foo)
+        "#;
+        assert_matches!(parse_expr(src), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("invalid variable: foo")
+                    .help("the valid Cedar variables are `principal`, `action`, `resource`, and `context`; did you mean to enclose `foo` in quotes to make a string?")
+                    .exactly_one_underline("foo")
+                    .build(),
+            );
+        });
+
+        let src = r#"
+            principal.getTag(foo)
+        "#;
+        assert_matches!(parse_expr(src), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("invalid variable: foo")
+                    .help("the valid Cedar variables are `principal`, `action`, `resource`, and `context`; did you mean to enclose `foo` in quotes to make a string?")
+                    .exactly_one_underline("foo")
+                    .build(),
+            );
+        });
+    }
+
     #[test]
     fn parse_exists() {
         let result = parse_policyset(
@@ -619,6 +678,18 @@ mod tests {
         "#,
         );
         assert!(!result.expect("parse error").is_empty());
+    }
+
+    #[test]
+    fn attr_named_tags() {
+        let src = r#"
+            permit(principal, action, resource)
+            when {
+                resource.tags.contains({k: "foo", v: "bar"})
+            };
+        "#;
+        parse_policy_to_est_and_ast(None, src)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
     }
 
     #[test]

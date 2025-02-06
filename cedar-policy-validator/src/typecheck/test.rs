@@ -19,6 +19,7 @@
 #![allow(clippy::panic)]
 // PANIC SAFETY unit tests
 #![allow(clippy::indexing_slicing)]
+#![allow(clippy::cognitive_complexity)]
 
 pub(crate) mod test_utils;
 
@@ -30,5 +31,6 @@ mod optional_attributes;
 mod partial;
 mod policy;
 mod strict;
+mod tags;
 mod type_annotation;
 mod unspecified_entity;

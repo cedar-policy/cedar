@@ -22,9 +22,7 @@ use std::collections::HashSet;
 use cedar_policy_core::ast::{PolicyID, StaticPolicy, Template};
 use cedar_policy_core::parser::parse_policy;
 
-use super::test_utils::{
-    assert_expected_type_errors, assert_expected_warnings, empty_schema_file, get_loc,
-};
+use super::test_utils::{assert_sets_equal, empty_schema_file, get_loc};
 use crate::json_schema;
 use crate::typecheck::Typechecker;
 use crate::types::{EntityLUB, Type};
@@ -37,15 +35,15 @@ pub(crate) fn assert_partial_typecheck(
     policy: StaticPolicy,
 ) {
     let schema = schema.try_into().expect("Failed to construct schema.");
-    let typechecker = Typechecker::new(&schema, ValidationMode::Partial, policy.id().clone());
-    let mut type_errors: HashSet<ValidationError> = HashSet::new();
+    let typechecker = Typechecker::new(&schema, ValidationMode::Partial);
+    let mut errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
-        &Template::link_static_policy(policy.clone()).0,
-        &mut type_errors,
+        &Template::link_static_policy(policy).0,
+        &mut errors,
         &mut warnings,
     );
-    assert_eq!(type_errors, HashSet::new(), "Did not expect any errors.");
+    assert_eq!(errors, HashSet::new(), "Did not expect any errors.");
     assert!(typechecked, "Expected that policy would typecheck.");
 }
 
@@ -53,18 +51,18 @@ pub(crate) fn assert_partial_typecheck(
 pub(crate) fn assert_partial_typecheck_fails(
     schema: impl TryInto<ValidatorSchema, Error = impl core::fmt::Debug>,
     policy: StaticPolicy,
-    expected_type_errors: impl IntoIterator<Item = ValidationError>,
+    expected_errors: impl IntoIterator<Item = ValidationError>,
 ) {
     let schema = schema.try_into().expect("Failed to construct schema.");
-    let typechecker = Typechecker::new(&schema, ValidationMode::Partial, policy.id().clone());
-    let mut type_errors: HashSet<ValidationError> = HashSet::new();
+    let typechecker = Typechecker::new(&schema, ValidationMode::Partial);
+    let mut errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
-        &Template::link_static_policy(policy.clone()).0,
-        &mut type_errors,
+        &Template::link_static_policy(policy).0,
+        &mut errors,
         &mut warnings,
     );
-    assert_expected_type_errors(expected_type_errors, &type_errors);
+    assert_sets_equal(expected_errors, errors);
     assert!(!typechecked, "Expected that policy would not typecheck.");
 }
 
@@ -75,15 +73,15 @@ pub(crate) fn assert_partial_typecheck_warns(
     expected_warnings: impl IntoIterator<Item = ValidationWarning>,
 ) {
     let schema = schema.try_into().expect("Failed to construct schema.");
-    let typechecker = Typechecker::new(&schema, ValidationMode::Partial, policy.id().clone());
-    let mut type_errors: HashSet<ValidationError> = HashSet::new();
+    let typechecker = Typechecker::new(&schema, ValidationMode::Partial);
+    let mut errors: HashSet<ValidationError> = HashSet::new();
     let mut warnings: HashSet<ValidationWarning> = HashSet::new();
     let typechecked = typechecker.typecheck_policy(
-        &Template::link_static_policy(policy.clone()).0,
-        &mut type_errors,
+        &Template::link_static_policy(policy).0,
+        &mut errors,
         &mut warnings,
     );
-    assert_expected_warnings(expected_warnings, &warnings);
+    assert_sets_equal(warnings, expected_warnings);
     assert!(
         typechecked,
         "Expected that policy would typecheck (with warnings)."
@@ -389,7 +387,7 @@ mod passes_empty_schema {
 }
 
 mod fails_empty_schema {
-    use cedar_policy_core::ast::PolicyID;
+    use cedar_policy_core::{ast::PolicyID, extensions::Extensions};
 
     use crate::types::Type;
 
@@ -400,14 +398,19 @@ mod fails_empty_schema {
         // We expect to see a type error for the incorrect literal argument to
         // various operators. No error should be generated for missing
         // attributes or the type of the attributes.
-
+        let extensions = Extensions::all_available();
         let src = r#"permit(principal, action, resource) when { principal.foo > "a" };"#;
         assert_typecheck_fails_empty_schema(
             parse_policy(None, src).unwrap(),
-            [ValidationError::expected_type(
+            [ValidationError::expected_one_of_types(
                 get_loc(src, r#""a""#),
                 PolicyID::from_string("policy0"),
-                Type::primitive_long(),
+                extensions
+                    .types_with_operator_overloading()
+                    .cloned()
+                    .map(Type::extension)
+                    .chain(std::iter::once(Type::primitive_long()))
+                    .collect(),
                 Type::primitive_string(),
                 None,
             )],
@@ -458,7 +461,7 @@ mod fails_empty_schema {
         let src = r#"permit(principal, action, resource) when { resource.bar && false };"#;
         let p = parse_policy(None, src).unwrap();
         assert_typecheck_warns_empty_schema(
-            p.clone(),
+            p,
             [ValidationWarning::impossible_policy(
                 get_loc(src, src),
                 PolicyID::from_string("policy0"),
@@ -471,7 +474,7 @@ mod fails_empty_schema {
         let src = r#"permit(principal, action, resource) when { {foo: 1}.bar };"#;
         let p = parse_policy(None, src).unwrap();
         assert_typecheck_fails_empty_schema(
-            p.clone(),
+            p,
             [ValidationError::unsafe_attribute_access(
                 get_loc(src, "{foo: 1}.bar"),
                 PolicyID::from_string("policy0"),
@@ -636,22 +639,28 @@ mod passes_partial_schema {
 }
 
 mod fail_partial_schema {
-    use cedar_policy_core::ast::PolicyID;
+    use cedar_policy_core::{ast::PolicyID, extensions::Extensions};
 
     use super::*;
     use crate::validation_errors::{LubContext, LubHelp};
 
     #[test]
     fn error_on_declared_attr() {
+        let extensions = Extensions::all_available();
         // `name` is declared as a `String` in the partial schema, so we can
         // error even though `principal.unknown` is not declared.
         let src = r#"permit(principal == User::"alice", action, resource) when { principal.name > principal.unknown };"#;
         assert_typecheck_fails_partial_schema(
             parse_policy(None, src).unwrap(),
-            [ValidationError::expected_type(
+            [ValidationError::expected_one_of_types(
                 get_loc(src, "principal.name"),
                 PolicyID::from_string("policy0"),
-                Type::primitive_long(),
+                extensions
+                    .types_with_operator_overloading()
+                    .cloned()
+                    .map(Type::extension)
+                    .chain(std::iter::once(Type::primitive_long()))
+                    .collect(),
                 Type::primitive_string(),
                 None,
             )],

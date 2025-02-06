@@ -339,9 +339,9 @@ mod test {
 
     #[test]
     fn test_template_to_json() {
-        let text = r#"
+        let text = r"
             permit(principal in ?principal, action, resource);
-        "#;
+        ";
         let result = template_to_json(Template::Cedar(text.into()));
         let expected = json!({
             "effect": "permit",
@@ -455,9 +455,9 @@ mod test {
 
     #[test]
     fn test_schema_to_json_error() {
-        let text = r#"
+        let text = r"
             action sendMessage appliesTo {principal: User, resource: User};
-        "#;
+        ";
         let result = schema_to_json(Schema::Cedar(text.into()));
         assert_matches!(result, SchemaToJsonAnswer::Failure { errors } => {
             assert_exactly_one_error(

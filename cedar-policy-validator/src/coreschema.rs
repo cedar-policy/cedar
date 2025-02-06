@@ -13,14 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-use crate::{ValidatorEntityType, ValidatorSchema};
-use cedar_policy_core::entities::json::GetSchemaTypeError;
-use cedar_policy_core::extensions::Extensions;
+use crate::{ValidatorActionId, ValidatorEntityType, ValidatorEntityTypeKind, ValidatorSchema};
+use cedar_policy_core::ast::{Eid, EntityType, EntityUID};
+use cedar_policy_core::entities::conformance::err::InvalidEnumEntityError;
+use cedar_policy_core::entities::conformance::{
+    is_valid_enumerated_entity, validate_euids_in_partial_value,
+};
+use cedar_policy_core::extensions::{ExtensionFunctionLookupError, Extensions};
 use cedar_policy_core::{ast, entities};
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
-use std::collections::{HashMap, HashSet};
+use std::collections::hash_map::Values;
+use std::collections::HashSet;
+use std::iter::Cloned;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -29,37 +35,25 @@ use thiserror::Error;
 pub struct CoreSchema<'a> {
     /// Contains all the information
     schema: &'a ValidatorSchema,
-    /// For easy lookup, this is a map from action name to `Entity` object
-    /// for each action in the schema. This information is contained in the
-    /// `ValidatorSchema`, but not efficient to extract -- getting the `Entity`
-    /// from the `ValidatorSchema` is O(N) as of this writing, but with this
-    /// cache it's O(1).
-    actions: HashMap<ast::EntityUID, Arc<ast::Entity>>,
 }
 
 impl<'a> CoreSchema<'a> {
     /// Create a new `CoreSchema` for the given `ValidatorSchema`
     pub fn new(schema: &'a ValidatorSchema) -> Self {
-        Self {
-            actions: schema
-                .action_entities_iter()
-                .map(|e| (e.uid().clone(), Arc::new(e)))
-                .collect(),
-            schema,
-        }
+        Self { schema }
     }
 }
 
 impl<'a> entities::Schema for CoreSchema<'a> {
     type EntityTypeDescription = EntityTypeDescription;
-    type ActionEntityIterator = Vec<Arc<ast::Entity>>;
+    type ActionEntityIterator = Cloned<Values<'a, ast::EntityUID, Arc<ast::Entity>>>;
 
     fn entity_type(&self, entity_type: &ast::EntityType) -> Option<EntityTypeDescription> {
         EntityTypeDescription::new(self.schema, entity_type)
     }
 
     fn action(&self, action: &ast::EntityUID) -> Option<Arc<ast::Entity>> {
-        self.actions.get(action).cloned()
+        self.schema.actions.get(action).cloned()
     }
 
     fn entity_types_with_basename<'b>(
@@ -80,7 +74,7 @@ impl<'a> entities::Schema for CoreSchema<'a> {
     }
 
     fn action_entities(&self) -> Self::ActionEntityIterator {
-        self.actions.values().map(Arc::clone).collect()
+        self.schema.actions.values().cloned()
     }
 }
 
@@ -117,36 +111,54 @@ impl EntityTypeDescription {
 }
 
 impl entities::EntityTypeDescription for EntityTypeDescription {
+    fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
+        match &self.validator_type.kind {
+            ValidatorEntityTypeKind::Enum(choices) => Some(choices.clone().map(|s| Eid::new(s))),
+            _ => None,
+        }
+    }
+
     fn entity_type(&self) -> ast::EntityType {
         self.core_type.clone()
     }
 
     fn attr_type(&self, attr: &str) -> Option<entities::SchemaType> {
-        let attr_type: &crate::types::AttributeType = self.validator_type.attr(attr)?;
+        let attr_type: &crate::types::Type = &self.validator_type.attr(attr)?.attr_type;
         // This converts a type from a schema into the representation of schema
         // types used by core. `attr_type` is taken from a `ValidatorEntityType`
         // which was constructed from a schema.
         // PANIC SAFETY: see above
         #[allow(clippy::expect_used)]
         let core_schema_type: entities::SchemaType = attr_type
-            .attr_type
             .clone()
             .try_into()
             .expect("failed to convert validator type into Core SchemaType");
-        debug_assert!(crate::types::Type::is_consistent_with(
-            &attr_type.attr_type,
-            &core_schema_type,
-        ));
+        debug_assert!(attr_type.is_consistent_with(&core_schema_type));
+        Some(core_schema_type)
+    }
+
+    fn tag_type(&self) -> Option<entities::SchemaType> {
+        let tag_type: &crate::types::Type = self.validator_type.tag_type()?;
+        // This converts a type from a schema into the representation of schema
+        // types used by core. `tag_type` is taken from a `ValidatorEntityType`
+        // which was constructed from a schema.
+        // PANIC SAFETY: see above
+        #[allow(clippy::expect_used)]
+        let core_schema_type: entities::SchemaType = tag_type
+            .clone()
+            .try_into()
+            .expect("failed to convert validator type into Core SchemaType");
+        debug_assert!(tag_type.is_consistent_with(&core_schema_type));
         Some(core_schema_type)
     }
 
     fn required_attrs<'s>(&'s self) -> Box<dyn Iterator<Item = SmolStr> + 's> {
         Box::new(
             self.validator_type
-                .attributes
-                .iter()
+                .attributes()
+                .into_iter()
                 .filter(|(_, ty)| ty.is_required)
-                .map(|(attr, _)| attr.clone()),
+                .map(|(attr, _)| attr),
         )
     }
 
@@ -155,7 +167,7 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
     }
 
     fn open_attributes(&self) -> bool {
-        self.validator_type.open_attributes.is_open()
+        self.validator_type.open_attributes().is_open()
     }
 }
 
@@ -169,21 +181,40 @@ impl ast::RequestSchema for ValidatorSchema {
         use ast::EntityUIDEntry;
         // first check that principal and resource are of types that exist in
         // the schema, we can do this check even if action is unknown.
-        if let EntityUIDEntry::Known {
-            euid: principal, ..
-        } = request.principal()
-        {
-            if self.get_entity_type(principal.entity_type()).is_none() {
+        if let Some(principal_type) = request.principal().get_type() {
+            if let Some(et) = self.get_entity_type(principal_type) {
+                if let Some(euid) = request.principal().uid() {
+                    if let ValidatorEntityType {
+                        kind: ValidatorEntityTypeKind::Enum(choices),
+                        ..
+                    } = et
+                    {
+                        is_valid_enumerated_entity(&Vec::from(choices.clone().map(Eid::new)), euid)
+                            .map_err(Self::Error::from)?;
+                    }
+                }
+            } else {
                 return Err(request_validation_errors::UndeclaredPrincipalTypeError {
-                    principal_ty: principal.entity_type().clone(),
+                    principal_ty: principal_type.clone(),
                 }
                 .into());
             }
         }
-        if let EntityUIDEntry::Known { euid: resource, .. } = request.resource() {
-            if self.get_entity_type(resource.entity_type()).is_none() {
+        if let Some(resource_type) = request.resource().get_type() {
+            if let Some(et) = self.get_entity_type(resource_type) {
+                if let Some(euid) = request.resource().uid() {
+                    if let ValidatorEntityType {
+                        kind: ValidatorEntityTypeKind::Enum(choices),
+                        ..
+                    } = et
+                    {
+                        is_valid_enumerated_entity(&Vec::from(choices.clone().map(Eid::new)), euid)
+                            .map_err(Self::Error::from)?;
+                    }
+                }
+            } else {
                 return Err(request_validation_errors::UndeclaredResourceTypeError {
-                    resource_ty: resource.entity_type().clone(),
+                    resource_ty: resource_type.clone(),
                 }
                 .into());
             }
@@ -197,28 +228,18 @@ impl ast::RequestSchema for ValidatorSchema {
                         action: Arc::clone(action),
                     }
                 })?;
-                if let EntityUIDEntry::Known {
-                    euid: principal, ..
-                } = request.principal()
-                {
-                    if !validator_action_id.is_applicable_principal_type(principal.entity_type()) {
-                        return Err(request_validation_errors::InvalidPrincipalTypeError {
-                            principal_ty: principal.entity_type().clone(),
-                            action: Arc::clone(action),
-                        }
-                        .into());
-                    }
+                if let Some(principal_type) = request.principal().get_type() {
+                    validator_action_id.check_principal_type(principal_type, action)?;
                 }
-                if let EntityUIDEntry::Known { euid: resource, .. } = request.resource() {
-                    if !validator_action_id.is_applicable_resource_type(resource.entity_type()) {
-                        return Err(request_validation_errors::InvalidResourceTypeError {
-                            resource_ty: resource.entity_type().clone(),
-                            action: Arc::clone(action),
-                        }
-                        .into());
-                    }
+                if let Some(principal_type) = request.resource().get_type() {
+                    validator_action_id.check_resource_type(principal_type, action)?;
                 }
                 if let Some(context) = request.context() {
+                    validate_euids_in_partial_value(
+                        &CoreSchema::new(&self),
+                        &context.clone().into(),
+                    )
+                    .map_err(|err| RequestValidationError::InvalidEnumEntity(err))?;
                     let expected_context_ty = validator_action_id.context_type();
                     if !expected_context_ty
                         .typecheck_partial_value(&context.clone().into(), extensions)
@@ -245,7 +266,41 @@ impl ast::RequestSchema for ValidatorSchema {
     }
 }
 
-impl<'a> ast::RequestSchema for CoreSchema<'a> {
+impl ValidatorActionId {
+    fn check_principal_type(
+        &self,
+        principal_type: &EntityType,
+        action: &Arc<EntityUID>,
+    ) -> Result<(), request_validation_errors::InvalidPrincipalTypeError> {
+        if !self.is_applicable_principal_type(principal_type) {
+            Err(request_validation_errors::InvalidPrincipalTypeError {
+                principal_ty: principal_type.clone(),
+                action: Arc::clone(action),
+                valid_principal_tys: self.applies_to_principals().cloned().collect(),
+            })
+        } else {
+            Ok(())
+        }
+    }
+
+    fn check_resource_type(
+        &self,
+        resource_type: &EntityType,
+        action: &Arc<EntityUID>,
+    ) -> Result<(), request_validation_errors::InvalidResourceTypeError> {
+        if !self.is_applicable_resource_type(resource_type) {
+            Err(request_validation_errors::InvalidResourceTypeError {
+                resource_ty: resource_type.clone(),
+                action: Arc::clone(action),
+                valid_resource_tys: self.applies_to_resources().cloned().collect(),
+            })
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl ast::RequestSchema for CoreSchema<'_> {
     type Error = RequestValidationError;
     fn validate_request(
         &self,
@@ -291,22 +346,33 @@ pub enum RequestValidationError {
     /// for details about the kinds of errors that can occur
     #[error("context is not valid: {0}")]
     #[diagnostic(transparent)]
-    TypeOfContext(GetSchemaTypeError),
+    TypeOfContext(ExtensionFunctionLookupError),
+    /// Error when a principal or resource entity is of an enumerated entity
+    /// type but has an invalid EID
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidEnumEntity(#[from] InvalidEnumEntityError),
 }
 
 /// Errors related to validation
 pub mod request_validation_errors {
     use cedar_policy_core::ast;
+    use cedar_policy_core::impl_diagnostic_from_method_on_field;
+    use itertools::Itertools;
     use miette::Diagnostic;
     use std::sync::Arc;
     use thiserror::Error;
 
     /// Request action is not declared in the schema
-    #[derive(Debug, Error, Diagnostic)]
+    #[derive(Debug, Error)]
     #[error("request's action `{action}` is not declared in the schema")]
     pub struct UndeclaredActionError {
         /// Action which was not declared in the schema
         pub(super) action: Arc<ast::EntityUID>,
+    }
+
+    impl Diagnostic for UndeclaredActionError {
+        impl_diagnostic_from_method_on_field!(action, loc);
     }
 
     impl UndeclaredActionError {
@@ -317,11 +383,15 @@ pub mod request_validation_errors {
     }
 
     /// Request principal is of a type not declared in the schema
-    #[derive(Debug, Error, Diagnostic)]
+    #[derive(Debug, Error)]
     #[error("principal type `{principal_ty}` is not declared in the schema")]
     pub struct UndeclaredPrincipalTypeError {
         /// Principal type which was not declared in the schema
         pub(super) principal_ty: ast::EntityType,
+    }
+
+    impl Diagnostic for UndeclaredPrincipalTypeError {
+        impl_diagnostic_from_method_on_field!(principal_ty, loc);
     }
 
     impl UndeclaredPrincipalTypeError {
@@ -332,11 +402,15 @@ pub mod request_validation_errors {
     }
 
     /// Request resource is of a type not declared in the schema
-    #[derive(Debug, Error, Diagnostic)]
+    #[derive(Debug, Error)]
     #[error("resource type `{resource_ty}` is not declared in the schema")]
     pub struct UndeclaredResourceTypeError {
         /// Resource type which was not declared in the schema
         pub(super) resource_ty: ast::EntityType,
+    }
+
+    impl Diagnostic for UndeclaredResourceTypeError {
+        impl_diagnostic_from_method_on_field!(resource_ty, loc);
     }
 
     impl UndeclaredResourceTypeError {
@@ -348,13 +422,46 @@ pub mod request_validation_errors {
 
     /// Request principal is of a type that is declared in the schema, but is
     /// not valid for the request action
-    #[derive(Debug, Error, Diagnostic)]
+    #[derive(Debug, Error)]
     #[error("principal type `{principal_ty}` is not valid for `{action}`")]
     pub struct InvalidPrincipalTypeError {
         /// Principal type which is not valid
         pub(super) principal_ty: ast::EntityType,
         /// Action which it is not valid for
         pub(super) action: Arc<ast::EntityUID>,
+        /// Principal types which actually are valid for that `action`
+        pub(super) valid_principal_tys: Vec<ast::EntityType>,
+    }
+
+    impl Diagnostic for InvalidPrincipalTypeError {
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            Some(Box::new(invalid_principal_type_help(
+                &self.valid_principal_tys,
+                &self.action,
+            )))
+        }
+
+        // possible future improvement: provide two labels, one for the source
+        // loc on `principal_ty` and the other for the source loc on `action`
+        impl_diagnostic_from_method_on_field!(principal_ty, loc);
+    }
+
+    fn invalid_principal_type_help(
+        valid_principal_tys: &[ast::EntityType],
+        action: &ast::EntityUID,
+    ) -> String {
+        if valid_principal_tys.is_empty() {
+            format!("no principal types are valid for `{action}`")
+        } else {
+            format!(
+                "valid principal types for `{action}`: {}",
+                valid_principal_tys
+                    .iter()
+                    .sorted_unstable()
+                    .map(|et| format!("`{et}`"))
+                    .join(", ")
+            )
+        }
     }
 
     impl InvalidPrincipalTypeError {
@@ -367,17 +474,55 @@ pub mod request_validation_errors {
         pub fn action(&self) -> &ast::EntityUID {
             &self.action
         }
+
+        /// Principal types which actually are valid for that action
+        pub fn valid_principal_tys(&self) -> impl Iterator<Item = &ast::EntityType> {
+            self.valid_principal_tys.iter()
+        }
     }
 
     /// Request resource is of a type that is declared in the schema, but is
     /// not valid for the request action
-    #[derive(Debug, Error, Diagnostic)]
+    #[derive(Debug, Error)]
     #[error("resource type `{resource_ty}` is not valid for `{action}`")]
     pub struct InvalidResourceTypeError {
         /// Resource type which is not valid
         pub(super) resource_ty: ast::EntityType,
         /// Action which it is not valid for
         pub(super) action: Arc<ast::EntityUID>,
+        /// Resource types which actually are valid for that `action`
+        pub(super) valid_resource_tys: Vec<ast::EntityType>,
+    }
+
+    impl Diagnostic for InvalidResourceTypeError {
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            Some(Box::new(invalid_resource_type_help(
+                &self.valid_resource_tys,
+                &self.action,
+            )))
+        }
+
+        // possible future improvement: provide two labels, one for the source
+        // loc on `resource_ty` and the other for the source loc on `action`
+        impl_diagnostic_from_method_on_field!(resource_ty, loc);
+    }
+
+    fn invalid_resource_type_help(
+        valid_resource_tys: &[ast::EntityType],
+        action: &ast::EntityUID,
+    ) -> String {
+        if valid_resource_tys.is_empty() {
+            format!("no resource types are valid for `{action}`")
+        } else {
+            format!(
+                "valid resource types for `{action}`: {}",
+                valid_resource_tys
+                    .iter()
+                    .sorted_unstable()
+                    .map(|et| format!("`{et}`"))
+                    .join(", ")
+            )
+        }
     }
 
     impl InvalidResourceTypeError {
@@ -390,17 +535,24 @@ pub mod request_validation_errors {
         pub fn action(&self) -> &ast::EntityUID {
             &self.action
         }
+
+        /// Resource types which actually are valid for that action
+        pub fn valid_resource_tys(&self) -> impl Iterator<Item = &ast::EntityType> {
+            self.valid_resource_tys.iter()
+        }
     }
 
     /// Context does not comply with the shape specified for the request action
     #[derive(Debug, Error, Diagnostic)]
-    #[error("context `{context}` is not valid for `{action}`")]
+    #[error("context `{}` is not valid for `{action}`", ast::BoundedToString::to_string_bounded(.context, BOUNDEDDISPLAY_BOUND_FOR_INVALID_CONTEXT_ERROR))]
     pub struct InvalidContextError {
         /// Context which is not valid
         pub(super) context: ast::Context,
         /// Action which it is not valid for
         pub(super) action: Arc<ast::EntityUID>,
     }
+
+    const BOUNDEDDISPLAY_BOUND_FOR_INVALID_CONTEXT_ERROR: usize = 5;
 
     impl InvalidContextError {
         /// The context which is not valid
@@ -417,7 +569,7 @@ pub mod request_validation_errors {
 
 /// Struct which carries enough information that it can impl Core's
 /// `ContextSchema`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextSchema(
     // INVARIANT: The `Type` stored in this struct must be representable as a
     // `SchemaType` to avoid panicking in `context_type`.
@@ -456,9 +608,28 @@ pub fn context_schema_for_action(
 #[cfg(test)]
 mod test {
     use super::*;
+    use ast::{Context, Value};
     use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use cool_asserts::assert_matches;
     use serde_json::json;
+
+    #[track_caller]
+    fn schema_with_enums() -> ValidatorSchema {
+        let src = r#"
+            entity Fruit enum ["🍉", "🍓", "🍒"];
+            entity People;
+            action "eat" appliesTo {
+                principal: [People],
+                resource: [Fruit],
+                context: {
+                  fruit?: Fruit,
+                }
+            };
+        "#;
+        ValidatorSchema::from_cedarschema_str(src, Extensions::none())
+            .expect("should be a valid schema")
+            .0
+    }
 
     fn schema() -> ValidatorSchema {
         let src = json!(
@@ -501,7 +672,7 @@ mod test {
                 }
             }
         }});
-        ValidatorSchema::from_json_value(src, &Extensions::all_available())
+        ValidatorSchema::from_json_value(src, Extensions::all_available())
             .expect("failed to create ValidatorSchema")
     }
 
@@ -564,7 +735,7 @@ mod test {
     fn success_principal_unknown() {
         assert_matches!(
             ast::Request::new_with_unknowns(
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
                 ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                     None,
@@ -590,7 +761,7 @@ mod test {
                     ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(),
                     None,
                 ),
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
                 ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(),
                     None,
@@ -616,7 +787,7 @@ mod test {
                     ast::EntityUID::with_eid_and_type("Action", "view_photo").unwrap(),
                     None,
                 ),
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
                 Some(ast::Context::empty()),
                 Some(&schema()),
                 Extensions::all_available(),
@@ -655,9 +826,9 @@ mod test {
     fn success_everything_unspecified() {
         assert_matches!(
             ast::Request::new_with_unknowns(
-                ast::EntityUIDEntry::Unknown { loc: None },
-                ast::EntityUIDEntry::Unknown { loc: None },
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
+                ast::EntityUIDEntry::unknown(),
+                ast::EntityUIDEntry::unknown(),
                 None,
                 Some(&schema()),
                 Extensions::all_available(),
@@ -677,7 +848,7 @@ mod test {
                     ast::EntityUID::with_eid_and_type("Album", "abc123").unwrap(),
                     None,
                 ),
-                ast::EntityUIDEntry::Unknown { loc: None },
+                ast::EntityUIDEntry::unknown(),
                 ast::EntityUIDEntry::known(
                     ast::EntityUID::with_eid_and_type("User", "alice").unwrap(),
                     None,
@@ -757,7 +928,13 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"principal type `Album` is not valid for `Action::"view_photo"`"#).build());
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"principal type `Album` is not valid for `Action::"view_photo"`"#)
+                        .help(r#"valid principal types for `Action::"view_photo"`: `Group`, `User`"#)
+                        .build(),
+                );
             }
         );
     }
@@ -775,7 +952,13 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"resource type `Group` is not valid for `Action::"view_photo"`"#).build());
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"resource type `Group` is not valid for `Action::"view_photo"`"#)
+                        .help(r#"valid resource types for `Action::"view_photo"`: `Photo`"#)
+                        .build(),
+                );
             }
         );
     }
@@ -793,7 +976,7 @@ mod test {
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `<first-class record with 0 fields>` is not valid for `Action::"edit_photo"`"#).build());
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `{}` is not valid for `Action::"edit_photo"`"#).build());
             }
         );
     }
@@ -814,12 +997,12 @@ mod test {
                 (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
                 (ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(), None),
                 (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
-                context_with_extra_attr.clone(),
+                context_with_extra_attr,
                 Some(&schema()),
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `<first-class record with 2 fields>` is not valid for `Action::"edit_photo"`"#).build());
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `{admin_approval: true, extra: 42}` is not valid for `Action::"edit_photo"`"#).build());
             }
         );
     }
@@ -840,12 +1023,12 @@ mod test {
                 (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
                 (ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(), None),
                 (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
-                context_with_wrong_type_attr.clone(),
+                context_with_wrong_type_attr,
                 Some(&schema()),
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `<first-class record with 1 fields>` is not valid for `Action::"edit_photo"`"#).build());
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `{admin_approval: [true]}` is not valid for `Action::"edit_photo"`"#).build());
             }
         );
     }
@@ -869,12 +1052,114 @@ mod test {
                 (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
                 (ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(), None),
                 (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
-                context_with_heterogeneous_set.clone(),
+                context_with_heterogeneous_set,
                 Some(&schema()),
                 Extensions::all_available(),
             ),
             Err(e) => {
-                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `<first-class record with 1 fields>` is not valid for `Action::"edit_photo"`"#).build());
+                expect_err("", &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(r#"context `{admin_approval: [true, -1001]}` is not valid for `Action::"edit_photo"`"#).build());
+            }
+        );
+    }
+
+    /// request context which is large enough that we don't print the whole thing in the error message
+    #[test]
+    fn context_large() {
+        let large_context_with_extra_attributes = ast::Context::from_pairs(
+            [
+                ("admin_approval".into(), ast::RestrictedExpr::val(true)),
+                ("extra1".into(), ast::RestrictedExpr::val(false)),
+                ("also extra".into(), ast::RestrictedExpr::val("spam")),
+                (
+                    "extra2".into(),
+                    ast::RestrictedExpr::set([ast::RestrictedExpr::val(-100)]),
+                ),
+                (
+                    "extra3".into(),
+                    ast::RestrictedExpr::val(
+                        ast::EntityUID::with_eid_and_type("User", "alice").unwrap(),
+                    ),
+                ),
+                ("extra4".into(), ast::RestrictedExpr::val("foobar")),
+            ],
+            Extensions::all_available(),
+        )
+        .unwrap();
+        assert_matches!(
+            ast::Request::new(
+                (ast::EntityUID::with_eid_and_type("User", "abc123").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "edit_photo").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Photo", "vacationphoto94.jpg").unwrap(), None),
+                large_context_with_extra_attributes,
+                Some(&schema()),
+                Extensions::all_available(),
+            ),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"context `{admin_approval: true, "also extra": "spam", extra1: false, extra2: [-100], extra3: User::"alice", .. }` is not valid for `Action::"edit_photo"`"#).build(),
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn enumerated_entity_type() {
+        assert_matches!(
+            ast::Request::new(
+                (
+                    ast::EntityUID::with_eid_and_type("People", "😋").unwrap(),
+                    None
+                ),
+                (
+                    ast::EntityUID::with_eid_and_type("Action", "eat").unwrap(),
+                    None
+                ),
+                (
+                    ast::EntityUID::with_eid_and_type("Fruit", "🍉").unwrap(),
+                    None
+                ),
+                Context::empty(),
+                Some(&schema_with_enums()),
+                Extensions::none(),
+            ),
+            Ok(_)
+        );
+        assert_matches!(
+            ast::Request::new(
+                (ast::EntityUID::with_eid_and_type("People", "🤔").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "eat").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Fruit", "🥝").unwrap(), None),
+                Context::empty(),
+                Some(&schema_with_enums()),
+                Extensions::none(),
+            ),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"entity `Fruit::"🥝"` is of an enumerated entity type, but `"🥝"` is not declared as a valid eid"#).help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                    .build(),
+                );
+            }
+        );
+        assert_matches!(
+            ast::Request::new(
+                (ast::EntityUID::with_eid_and_type("People", "🤔").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "eat").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Fruit", "🍉").unwrap(), None),
+                Context::from_pairs(std::iter::once(("fruit".into(), (Value::from(ast::EntityUID::with_eid_and_type("Fruit", "🥭").unwrap())).into())), Extensions::none()).expect("should be a valid context"),
+                Some(&schema_with_enums()),
+                Extensions::none(),
+            ),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"entity `Fruit::"🥭"` is of an enumerated entity type, but `"🥭"` is not declared as a valid eid"#).help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                    .build(),
+                );
             }
         );
     }

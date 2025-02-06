@@ -16,18 +16,21 @@
 
 use super::{FromJsonError, LinkingError};
 use crate::ast;
-use crate::entities::json::{err::JsonDeserializationErrorContext, EntityUidJson};
+use crate::ast::EntityUID;
+use crate::entities::json::{
+    err::JsonDeserializationError, err::JsonDeserializationErrorContext, EntityUidJson,
+};
 use crate::parser::err::parse_errors;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
 /// Serde JSON structure for a principal scope constraint in the EST format
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -48,7 +51,7 @@ pub enum PrincipalConstraint {
 }
 
 /// Serde JSON structure for an action scope constraint in the EST format
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -66,7 +69,7 @@ pub enum ActionConstraint {
 }
 
 /// Serde JSON structure for a resource scope constraint in the EST format
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -87,7 +90,7 @@ pub enum ResourceConstraint {
 }
 
 /// Serde JSON structure for a `==` scope constraint in the EST format
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -107,7 +110,7 @@ pub enum EqConstraint {
 
 /// Serde JSON structure for an `in` scope constraint for principal/resource in
 /// the EST format
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -127,7 +130,7 @@ pub enum PrincipalOrResourceInConstraint {
 
 /// Serde JSON structure for an `is` scope constraint for principal/resource in
 /// the EST format
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -141,7 +144,7 @@ pub struct PrincipalOrResourceIsConstraint {
 
 /// Serde JSON structure for an `in` scope constraint for action in the EST
 /// format
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -205,6 +208,63 @@ impl PrincipalConstraint {
             })),
         }
     }
+
+    /// Substitute entity literals
+    pub fn sub_entity_literals(
+        self,
+        mapping: &BTreeMap<EntityUID, EntityUID>,
+    ) -> Result<Self, JsonDeserializationError> {
+        match self.clone() {
+            PrincipalConstraint::All
+            | PrincipalConstraint::Eq(EqConstraint::Slot { .. })
+            | PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot { .. })
+            | PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                in_entity: Some(PrincipalOrResourceInConstraint::Slot { .. }),
+                ..
+            })
+            | PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type: _,
+                in_entity: None,
+            }) => Ok(self),
+            PrincipalConstraint::Eq(EqConstraint::Entity { entity }) => {
+                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                match mapping.get(&euid) {
+                    Some(new_euid) => Ok(PrincipalConstraint::Eq(EqConstraint::Entity {
+                        entity: new_euid.into(),
+                    })),
+                    None => Ok(self),
+                }
+            }
+            PrincipalConstraint::In(PrincipalOrResourceInConstraint::Entity { entity }) => {
+                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                match mapping.get(&euid) {
+                    Some(new_euid) => Ok(PrincipalConstraint::In(
+                        PrincipalOrResourceInConstraint::Entity {
+                            entity: new_euid.into(),
+                        },
+                    )),
+                    None => Ok(self),
+                }
+            }
+            PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type: ety,
+                in_entity: Some(PrincipalOrResourceInConstraint::Entity { entity }),
+            }) => {
+                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                match mapping.get(&euid) {
+                    Some(new_euid) => {
+                        Ok(PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                            entity_type: ety,
+                            in_entity: Some(PrincipalOrResourceInConstraint::Entity {
+                                entity: new_euid.into(),
+                            }),
+                        }))
+                    }
+                    None => Ok(self),
+                }
+            }
+        }
+    }
 }
 
 impl ResourceConstraint {
@@ -254,6 +314,61 @@ impl ResourceConstraint {
             })),
         }
     }
+
+    /// Substitute entity literals
+    pub fn sub_entity_literals(
+        self,
+        mapping: &BTreeMap<EntityUID, EntityUID>,
+    ) -> Result<Self, JsonDeserializationError> {
+        match self.clone() {
+            ResourceConstraint::All
+            | ResourceConstraint::Eq(EqConstraint::Slot { .. })
+            | ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot { .. })
+            | ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                in_entity: Some(PrincipalOrResourceInConstraint::Slot { .. }),
+                ..
+            })
+            | ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type: _,
+                in_entity: None,
+            }) => Ok(self),
+            ResourceConstraint::Eq(EqConstraint::Entity { entity }) => {
+                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                match mapping.get(&euid) {
+                    Some(new_euid) => Ok(ResourceConstraint::Eq(EqConstraint::Entity {
+                        entity: new_euid.into(),
+                    })),
+                    None => Ok(self),
+                }
+            }
+            ResourceConstraint::In(PrincipalOrResourceInConstraint::Entity { entity }) => {
+                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                match mapping.get(&euid) {
+                    Some(new_euid) => Ok(ResourceConstraint::In(
+                        PrincipalOrResourceInConstraint::Entity {
+                            entity: new_euid.into(),
+                        },
+                    )),
+                    None => Ok(self),
+                }
+            }
+            ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type: ety,
+                in_entity: Some(PrincipalOrResourceInConstraint::Entity { entity }),
+            }) => {
+                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                match mapping.get(&euid) {
+                    Some(new_euid) => Ok(ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                        entity_type: ety,
+                        in_entity: Some(PrincipalOrResourceInConstraint::Entity {
+                            entity: new_euid.into(),
+                        }),
+                    })),
+                    None => Ok(self),
+                }
+            }
+        }
+    }
 }
 
 impl ActionConstraint {
@@ -263,6 +378,49 @@ impl ActionConstraint {
     pub fn link(self, _vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
         // currently, slots are not allowed in action constraints
         Ok(self)
+    }
+
+    /// Substitute entity literals
+    pub fn sub_entity_literals(
+        self,
+        mapping: &BTreeMap<EntityUID, EntityUID>,
+    ) -> Result<Self, JsonDeserializationError> {
+        match self.clone() {
+            ActionConstraint::Eq(EqConstraint::Entity { entity }) => {
+                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                match mapping.get(&euid) {
+                    Some(new_euid) => Ok(ActionConstraint::Eq(EqConstraint::Entity {
+                        entity: new_euid.into(),
+                    })),
+                    None => Ok(self),
+                }
+            }
+            ActionConstraint::In(ActionInConstraint::Single { entity }) => {
+                let euid = entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                match mapping.get(&euid) {
+                    Some(new_euid) => Ok(ActionConstraint::In(ActionInConstraint::Single {
+                        entity: new_euid.into(),
+                    })),
+                    None => Ok(self),
+                }
+            }
+            ActionConstraint::In(ActionInConstraint::Set { entities }) => {
+                let mut new_entities: Vec<EntityUidJson> = vec![];
+                for entity in entities {
+                    let euid = entity
+                        .clone()
+                        .into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+                    match mapping.get(&euid) {
+                        Some(new_euid) => new_entities.push(new_euid.clone().into()),
+                        None => new_entities.push(entity),
+                    };
+                }
+                Ok(ActionConstraint::In(ActionInConstraint::Set {
+                    entities: new_entities,
+                }))
+            }
+            ActionConstraint::All | ActionConstraint::Eq(EqConstraint::Slot { .. }) => Ok(self),
+        }
     }
 }
 
@@ -442,7 +600,7 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
                     entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                 })
             }
-            ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::Slot) => {
+            ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::Slot(_)) => {
                 PrincipalConstraint::Eq(EqConstraint::Slot {
                     slot: ast::SlotId::principal(),
                 })
@@ -452,7 +610,7 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
                     entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                 })
             }
-            ast::PrincipalOrResourceConstraint::In(ast::EntityReference::Slot) => {
+            ast::PrincipalOrResourceConstraint::In(ast::EntityReference::Slot(_)) => {
                 PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot {
                     slot: ast::SlotId::principal(),
                 })
@@ -464,7 +622,7 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
                         ast::EntityReference::EUID(e) => PrincipalOrResourceInConstraint::Entity {
                             entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                         },
-                        ast::EntityReference::Slot => PrincipalOrResourceInConstraint::Slot {
+                        ast::EntityReference::Slot(_) => PrincipalOrResourceInConstraint::Slot {
                             slot: ast::SlotId::principal(),
                         },
                     }),
@@ -489,7 +647,7 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
                     entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                 })
             }
-            ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::Slot) => {
+            ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::Slot(_)) => {
                 ResourceConstraint::Eq(EqConstraint::Slot {
                     slot: ast::SlotId::resource(),
                 })
@@ -499,7 +657,7 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
                     entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                 })
             }
-            ast::PrincipalOrResourceConstraint::In(ast::EntityReference::Slot) => {
+            ast::PrincipalOrResourceConstraint::In(ast::EntityReference::Slot(_)) => {
                 ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot {
                     slot: ast::SlotId::resource(),
                 })
@@ -511,7 +669,7 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
                         ast::EntityReference::EUID(e) => PrincipalOrResourceInConstraint::Entity {
                             entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                         },
-                        ast::EntityReference::Slot => PrincipalOrResourceInConstraint::Slot {
+                        ast::EntityReference::Slot(_) => PrincipalOrResourceInConstraint::Slot {
                             slot: ast::SlotId::resource(),
                         },
                     }),
@@ -542,7 +700,7 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
             PrincipalConstraint::Eq(EqConstraint::Slot { slot }) => {
                 if slot == ast::SlotId::principal() {
                     Ok(ast::PrincipalOrResourceConstraint::Eq(
-                        ast::EntityReference::Slot,
+                        ast::EntityReference::Slot(None),
                     ))
                 } else {
                     Err(Self::Error::InvalidSlotName)
@@ -556,7 +714,7 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
             PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot { slot }) => {
                 if slot == ast::SlotId::principal() {
                     Ok(ast::PrincipalOrResourceConstraint::In(
-                        ast::EntityReference::Slot,
+                        ast::EntityReference::Slot(None),
                     ))
                 } else {
                     Err(Self::Error::InvalidSlotName)
@@ -607,7 +765,7 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
             ResourceConstraint::Eq(EqConstraint::Slot { slot }) => {
                 if slot == ast::SlotId::resource() {
                     Ok(ast::PrincipalOrResourceConstraint::Eq(
-                        ast::EntityReference::Slot,
+                        ast::EntityReference::Slot(None),
                     ))
                 } else {
                     Err(Self::Error::InvalidSlotName)
@@ -621,7 +779,7 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
             ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot { slot }) => {
                 if slot == ast::SlotId::resource() {
                     Ok(ast::PrincipalOrResourceConstraint::In(
-                        ast::EntityReference::Slot,
+                        ast::EntityReference::Slot(None),
                     ))
                 } else {
                     Err(Self::Error::InvalidSlotName)
