@@ -174,13 +174,7 @@ impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
                 .iter()
                 .map(ast::proto::EntityType::from)
                 .collect(),
-            attributes: Some(proto::Attributes::from(
-                &Attributes::with_required_attributes(
-                    v.attributes()
-                        .into_iter()
-                        .map(|(attr, ty)| (attr, ty.attr_type)),
-                ),
-            )),
+            attributes: Some(proto::Attributes::from(&v.attributes())),
             open_attributes: proto::OpenTag::from(&v.open_attributes()).into(),
             tags,
             enums,
