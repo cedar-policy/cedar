@@ -13,6 +13,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ## [Unreleased]
 Cedar Language Version: TBD
 
+### Added
+
+- Added ability to remove `Entity`s from an `Entities` struct (resolving #701)
+
 ### Fixed
 
 - Assume sufficient stack space when it cannot be determined (#1446, resolving #1443)
