@@ -154,7 +154,7 @@ impl Entities {
 
     /// Removes the [`Crate::ast::EntityUID`]s in the interator from this [`Entities`]
     /// Fails if any error is encountered in the transitive closure computation.
-    /// 
+    ///
     /// If you pass [`TCComputation::AssumeAlreadyComputed`], then the caller is
     /// responsible for ensuring that TC and DAG hold before calling this method
     pub fn remove_entities(
@@ -2116,17 +2116,14 @@ mod entities_tests {
 
         // Construct original hierarchy
         let entities = Entities::from_entities(
-            vec![a,b,c,d,e,f],
+            vec![a, b, c, d, e, f],
             None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
             Extensions::all_available(),
         )
         .expect("Failed to construct entities")
         // Remove D from hierarchy
-        .remove_entities(
-            vec![EntityUID::with_eid("D")],
-            TCComputation::ComputeNow,
-        )
+        .remove_entities(vec![EntityUID::with_eid("D")], TCComputation::ComputeNow)
         .expect("Failed to remove entities");
         // Post-Removal Hierarchy
         // F -> A
@@ -2134,7 +2131,7 @@ mod entities_tests {
         // B
 
         assert_matches!(
-            entities.entity(&EntityUID::with_eid("D")), 
+            entities.entity(&EntityUID::with_eid("D")),
             Dereference::NoSuchEntity
         );
 
@@ -2188,9 +2185,7 @@ mod schema_based_parsing_tests {
                     [].into_iter().collect(),
                     std::iter::once(r#"Action::"readOnly""#.parse().expect("valid uid")).collect(),
                 ))),
-                r#"Action::"readOnly""# => Some(Arc::new(Entity::with_uid(
-                    action.clone(),
-                ))),
+                r#"Action::"readOnly""# => Some(Arc::new(Entity::with_uid(action.clone()))),
                 _ => None,
             }
         }

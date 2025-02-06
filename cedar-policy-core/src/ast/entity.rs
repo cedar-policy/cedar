@@ -344,7 +344,7 @@ pub struct Entity {
     ancestors: HashSet<EntityUID>,
 
     /// Set of direct ancestors (i.e., parents), as UIDs
-    parents : HashSet<EntityUID>,
+    parents: HashSet<EntityUID>,
 
     /// Tags on this entity (RFC 82)
     ///
@@ -525,7 +525,10 @@ impl Entity {
     /// That is, not only do they have the same UID, but also the same
     /// attributes, attribute values, and ancestors/parents.
     pub(crate) fn deep_eq(&self, other: &Self) -> bool {
-        self.uid == other.uid && self.attrs == other.attrs && (self.ancestors().collect::<HashSet<_>>()) == (other.ancestors().collect::<HashSet<_>>())
+        self.uid == other.uid
+            && self.attrs == other.attrs
+            && (self.ancestors().collect::<HashSet<_>>())
+                == (other.ancestors().collect::<HashSet<_>>())
     }
 
     /// Set the UID to the given value.
@@ -565,7 +568,7 @@ impl Entity {
 
     /// Mark the given `UID` as an ancestor of this `Entity`
     pub fn add_ancestor(&mut self, uid: EntityUID) {
-        if ! self.parents.contains(&uid) {
+        if !self.parents.contains(&uid) {
             self.ancestors.insert(uid);
         }
     }
@@ -586,7 +589,6 @@ impl Entity {
     /// Remove the given `UID` as a parent of this `Entity`
     pub fn remove_parent(&mut self, uid: &EntityUID) {
         self.parents.remove(uid);
-
     }
 
     /// Consume the entity and return the entity's owned Uid, attributes, ancestors, parents, and tags.

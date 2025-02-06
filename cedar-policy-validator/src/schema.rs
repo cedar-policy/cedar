@@ -2691,7 +2691,12 @@ pub(crate) mod test {
         let view_entity = actions.entity(&view_uid);
         assert_eq!(
             view_entity.unwrap(),
-            &Entity::new_with_attr_partial_value(view_uid, [], HashSet::new(), HashSet::from([read_uid.clone()]))
+            &Entity::new_with_attr_partial_value(
+                view_uid,
+                [],
+                HashSet::new(),
+                HashSet::from([read_uid.clone()])
+            )
         );
 
         let read_entity = actions.entity(&read_uid);
