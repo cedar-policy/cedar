@@ -82,8 +82,14 @@ impl From<&cedar_policy_validator::ValidatorActionId> for models::ValidatorActio
         Self {
             name: Some(models::EntityUid::from(v.name())),
             applies_to: Some(models::ValidatorApplySpec {
-                principal_apply_spec: v.applies_to_principals().map(models::EntityType::from).collect(),
-                resource_apply_spec: v.applies_to_resources().map(models::EntityType::from).collect(),
+                principal_apply_spec: v
+                    .applies_to_principals()
+                    .map(models::EntityType::from)
+                    .collect(),
+                resource_apply_spec: v
+                    .applies_to_resources()
+                    .map(models::EntityType::from)
+                    .collect(),
             }),
             descendants: v.descendants().map(models::EntityUid::from).collect(),
             context: Some(models::Type::from(v.context())),
@@ -191,7 +197,8 @@ impl From<&models::ValidatorEntityType> for cedar_policy_validator::ValidatorEnt
                 types::OpenTag::from(
                     &models::OpenTag::try_from(v.open_attributes).expect("decode should succeed"),
                 ),
-                v.tags.as_ref()
+                v.tags
+                    .as_ref()
                     .and_then(|tags| tags.optional_type.as_ref().map(types::Type::from)),
             ),
             Some(enum_choices) => {
