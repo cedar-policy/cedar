@@ -721,12 +721,12 @@ impl LiteralPolicy {
         self.values.get(id)
     }
 
-    /// Get the [`PolicyId`] of this static or template-linked policy.
+    /// Get the [`PolicyID`] of this static or template-linked policy.
     pub fn id(&self) -> &PolicyID {
         self.link_id.as_ref().unwrap_or(&self.template_id)
     }
 
-    /// Get the [`PolicyId`] of the template associated with this policy.
+    /// Get the [`PolicyID`] of the template associated with this policy.
     ///
     /// For static policies, this is just the static policy ID.
     pub fn template_id(&self) -> &PolicyID {
