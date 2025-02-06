@@ -152,7 +152,7 @@ impl Entities {
         Ok(self)
     }
 
-    /// Removes the [`Crate::ast::EntityUID`]s in the interator from this [`Entities`]
+    /// Removes the [`crate::ast::EntityUID`]s in the interator from this [`Entities`]
     /// Fails if any error is encountered in the transitive closure computation.
     ///
     /// If you pass [`TCComputation::AssumeAlreadyComputed`], then the caller is
