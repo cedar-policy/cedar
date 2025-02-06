@@ -197,7 +197,7 @@ impl From<&ValidatorEntityType> for cedar_policy_validator::ValidatorEntityType 
                         .as_ref()
                         .expect("attributes field should exist"),
                 ),
-            types::OpenTag::from(
+                types::OpenTag::from(
                     &OpenTag::try_from(v.open_attributes).expect("decode should succeed"),
                 ),
                 v.tags
@@ -205,10 +205,15 @@ impl From<&ValidatorEntityType> for cedar_policy_validator::ValidatorEntityType 
             ),
             Some(enum_choices) => {
                 if let Some(vec) = &v.attributes {
-                    assert_eq!(vec, &Attributes { attrs: HashMap::new() });
+                    assert_eq!(
+                        vec,
+                        &Attributes {
+                            attrs: HashMap::new()
+                        }
+                    );
                 }
                 Self::new_enum(name, descendants, enum_choices)
-            },
+            }
         }
     }
 }

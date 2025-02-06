@@ -138,7 +138,6 @@ impl ValidatorEntityType {
         self.descendants.contains(ety)
     }
 
-
     /// Return the [`OpenTag`] which indicates whether this entity type may have
     /// additional attributes other than the declared attributes.
     /// This is used for partial schema validation. Attempting to access an
