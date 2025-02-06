@@ -1,11 +1,11 @@
-use super::*;
+use super::models;
 use cedar_policy_core::{ast, entities, extensions};
 use std::sync::Arc;
 
-impl From<&Entities> for entities::Entities {
+impl From<&models::Entities> for entities::Entities {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
-    fn from(v: &Entities) -> Self {
+    fn from(v: &models::Entities) -> Self {
         let entities: Vec<Arc<ast::Entity>> = v
             .entities
             .iter()
@@ -18,7 +18,7 @@ impl From<&Entities> for entities::Entities {
         #[cfg(feature = "partial-eval")]
         let mut result = entities::Entities::new();
         #[cfg(feature = "partial-eval")]
-        if v.mode == Mode::Partial as i32 {
+        if v.mode == models::Mode::Partial as i32 {
             result = result.partial();
         }
 
@@ -33,19 +33,19 @@ impl From<&Entities> for entities::Entities {
     }
 }
 
-impl From<&entities::Entities> for Entities {
+impl From<&entities::Entities> for models::Entities {
     fn from(v: &entities::Entities) -> Self {
-        let entities: Vec<Entity> = v.iter().map(Entity::from).collect();
+        let entities: Vec<models::Entity> = v.iter().map(models::Entity::from).collect();
 
         if cfg!(feature = "partial-eval") && v.is_partial() {
             Self {
                 entities,
-                mode: Mode::Partial.into(),
+                mode: models::Mode::Partial.into(),
             }
         } else {
             Self {
                 entities,
-                mode: Mode::Concrete.into(),
+                mode: models::Mode::Concrete.into(),
             }
         }
     }
@@ -63,7 +63,7 @@ mod test {
         let entities1 = entities::Entities::new();
         assert_eq!(
             entities1,
-            entities::Entities::from(&Entities::from(&entities1))
+            entities::Entities::from(&models::Entities::from(&entities1))
         );
 
         // Single Element Test
@@ -91,7 +91,7 @@ mod test {
             .unwrap();
         assert_eq!(
             entities2,
-            entities::Entities::from(&Entities::from(&entities2))
+            entities::Entities::from(&models::Entities::from(&entities2))
         );
 
         // Two Element Test
@@ -116,7 +116,7 @@ mod test {
             .unwrap();
         assert_eq!(
             entities3,
-            entities::Entities::from(&Entities::from(&entities3))
+            entities::Entities::from(&models::Entities::from(&entities3))
         );
     }
 }
