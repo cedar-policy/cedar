@@ -207,8 +207,8 @@ impl<'a> Typechecker<'a> {
     ) -> impl Iterator<Item = RequestEnv<'_>> + '_ {
         // Gather all of the actions declared in the schema.
         let all_actions = schema
-            .known_action_ids()
-            .filter_map(|a| schema.get_action_id(a));
+            .action_ids()
+            .filter_map(|a| schema.get_action_id(a.name()));
 
         // For every action compute the cross product of the principal and
         // resource applies_to sets.
@@ -306,8 +306,8 @@ impl<'a> Typechecker<'a> {
                 PrincipalOrResourceConstraint::IsIn(_, _)
                 | PrincipalOrResourceConstraint::In(_) => Box::new(
                     all_entity_types
-                        .filter(|(_, ety)| ety.has_descendant_entity_type(var))
-                        .map(|(name, _)| Some(name.clone()))
+                        .filter(|ety| ety.has_descendant_entity_type(var))
+                        .map(|ety| Some(ety.name().clone()))
                         .chain(std::iter::once(Some(var.clone()))),
                 ),
                 // The template uses the slot, but without a scope constraint.
@@ -316,7 +316,7 @@ impl<'a> Typechecker<'a> {
                 // only correct way to proceed is by returning all entity types
                 // as possible links.
                 PrincipalOrResourceConstraint::Is(_) | PrincipalOrResourceConstraint::Any => {
-                    Box::new(all_entity_types.map(|(name, _)| Some(name.clone())))
+                    Box::new(all_entity_types.map(|ety| Some(ety.name().clone())))
                 }
             }
         } else {
@@ -1816,7 +1816,7 @@ impl<'a> SingleEnvTypechecker<'a> {
             EntityRecordKind::AnyEntity => Ok(self
                 .schema
                 .entity_types()
-                .filter_map(|(_, vety)| vety.tag_type())
+                .filter_map(ValidatorEntityType::tag_type)
                 .collect()),
             EntityRecordKind::ActionEntity { .. } => Ok(HashSet::new()), // currently, action entities cannot be declared with tags in the schema
             EntityRecordKind::Record { .. } => Err(()),

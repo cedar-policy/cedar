@@ -170,7 +170,7 @@ impl Entity {
         Self::new_with_tags(uid, attrs, parents, [])
     }
 
-    /// Create a new `Entity` with no attributes.
+    /// Create a new `Entity` with no attributes or tags.
     ///
     /// Unlike [`Entity::new()`], this constructor cannot error.
     /// (The only source of errors in `Entity::new()` are attributes.)
@@ -181,6 +181,7 @@ impl Entity {
             uid.into(),
             [],
             parents.into_iter().map(EntityUid::into).collect(),
+            [],
         ))
     }
 
@@ -390,10 +391,10 @@ impl std::fmt::Display for Entity {
 #[cfg(feature = "protobufs")]
 impl Protobuf for Entity {
     fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<ast::proto::Entity>(&self.0)
+        proto::encode_to_vec::<crate::proto::Entity>(&self.0)
     }
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<ast::proto::Entity, _>(buf).map(Self)
+        proto::decode::<crate::proto::Entity, _>(buf).map(Self)
     }
 }
 
@@ -849,10 +850,10 @@ impl IntoIterator for Entities {
 #[cfg(feature = "protobufs")]
 impl Protobuf for Entities {
     fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<ast::proto::Entities>(&self.0)
+        proto::encode_to_vec::<crate::proto::Entities>(&self.0)
     }
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<ast::proto::Entities, _>(buf).map(Self)
+        proto::decode::<crate::proto::Entities, _>(buf).map(Self)
     }
 }
 
@@ -1901,7 +1902,7 @@ impl Schema {
     pub fn entity_types(&self) -> impl Iterator<Item = &EntityTypeName> {
         self.0
             .entity_types()
-            .map(|(name, _)| RefCast::ref_cast(name))
+            .map(|ety| RefCast::ref_cast(ety.name()))
     }
 
     /// Returns an iterator over all actions defined in this schema
@@ -1913,10 +1914,10 @@ impl Schema {
 #[cfg(feature = "protobufs")]
 impl Protobuf for Schema {
     fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<cedar_policy_validator::proto::ValidatorSchema>(&self.0)
+        proto::encode_to_vec::<crate::proto::ValidatorSchema>(&self.0)
     }
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<cedar_policy_validator::proto::ValidatorSchema, _>(buf).map(Self)
+        proto::decode::<crate::proto::ValidatorSchema, _>(buf).map(Self)
     }
 }
 
@@ -2117,10 +2118,10 @@ impl std::fmt::Display for EntityNamespace {
 #[cfg(feature = "protobufs")]
 impl Protobuf for EntityNamespace {
     fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<ast::proto::Name>(&self.0)
+        proto::encode_to_vec::<crate::proto::Name>(&self.0)
     }
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<ast::proto::Name, _>(buf).map(Self)
+        proto::decode::<crate::proto::Name, _>(buf).map(Self)
     }
 }
 
@@ -2575,12 +2576,12 @@ impl std::fmt::Display for PolicySet {
 #[cfg(feature = "protobufs")]
 impl Protobuf for PolicySet {
     fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<ast::proto::LiteralPolicySet>(&self.ast)
+        proto::encode_to_vec::<crate::proto::LiteralPolicySet>(&self.ast)
     }
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        let ast = proto::try_decode::<ast::proto::LiteralPolicySet, _, _>(buf)?
+        let ast = proto::try_decode::<crate::proto::LiteralPolicySet, _, _>(buf)?
             .expect("proto-encoded policy set should be a valid policy set");
         Ok(Self::from_ast(ast).expect("proto-encoded policy set should be a valid policy set"))
     }
@@ -2925,10 +2926,10 @@ impl FromStr for Template {
 #[cfg(feature = "protobufs")]
 impl Protobuf for Template {
     fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<ast::proto::TemplateBody>(&self.ast)
+        proto::encode_to_vec::<crate::proto::TemplateBody>(&self.ast)
     }
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<ast::proto::TemplateBody, _>(buf).map(Self::from_ast)
+        proto::decode::<crate::proto::TemplateBody, _>(buf).map(Self::from_ast)
     }
 }
 
@@ -3444,13 +3445,13 @@ impl FromStr for Policy {
 #[cfg(feature = "protobufs")]
 impl Protobuf for Policy {
     fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<ast::proto::LiteralPolicy>(&self.ast)
+        proto::encode_to_vec::<crate::proto::LiteralPolicy>(&self.ast)
     }
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
         // PANIC SAFETY: experimental feature
         #[allow(clippy::expect_used)]
         Ok(Self::from_ast(
-            proto::try_decode::<ast::proto::LiteralPolicy, _, ast::Policy>(buf)?
+            proto::try_decode::<crate::proto::LiteralPolicy, _, ast::Policy>(buf)?
                 .expect("protobuf-encoded policy should be a valid policy"),
         ))
     }
@@ -3628,10 +3629,10 @@ impl FromStr for Expression {
 #[cfg(feature = "protobufs")]
 impl Protobuf for Expression {
     fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<ast::proto::Expr>(&self.0)
+        proto::encode_to_vec::<crate::proto::Expr>(&self.0)
     }
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<ast::proto::Expr, _>(buf).map(Self)
+        proto::decode::<crate::proto::Expr, _>(buf).map(Self)
     }
 }
 
@@ -3983,10 +3984,10 @@ impl Request {
 #[cfg(feature = "protobufs")]
 impl Protobuf for Request {
     fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<ast::proto::Request>(&self.0)
+        proto::encode_to_vec::<crate::proto::Request>(&self.0)
     }
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<ast::proto::Request, _>(buf).map(Self)
+        proto::decode::<crate::proto::Request, _>(buf).map(Self)
     }
 }
 
