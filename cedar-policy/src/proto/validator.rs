@@ -218,7 +218,7 @@ impl From<&models::ValidatorEntityType> for cedar_policy_validator::ValidatorEnt
                 if let Some(tag) = &v.tags {
                     // enumerated entity types must have no tags
                     assert_eq!(
-                        vec,
+                        tag,
                         &models::Tag {
                             optional_type: None
                         }
