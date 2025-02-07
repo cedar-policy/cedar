@@ -475,7 +475,7 @@ impl Entity {
         self.parents.iter().chain(self.ancestors.iter())
     }
 
-    /// Iterate over this entity's parents
+    /// Iterate over this entity's direct parents
     pub fn parents(&self) -> impl Iterator<Item = &EntityUID> {
         self.parents.iter()
     }
@@ -524,6 +524,8 @@ impl Entity {
     /// Test if two `Entity` objects are deep/structurally equal.
     /// That is, not only do they have the same UID, but also the same
     /// attributes, attribute values, and ancestors/parents.
+    ///
+    /// Does not test that they have the same _direct_ parents, only that they have the same overall ancestor set.
     pub(crate) fn deep_eq(&self, other: &Self) -> bool {
         self.uid == other.uid
             && self.attrs == other.attrs
@@ -566,27 +568,31 @@ impl Entity {
         Ok(())
     }
 
-    /// Mark the given `UID` as an ancestor of this `Entity`
+    /// Mark the given `UID` as an (indirect) ancestor of this `Entity`
     pub fn add_ancestor(&mut self, uid: EntityUID) {
         if !self.parents.contains(&uid) {
             self.ancestors.insert(uid);
         }
     }
 
-    /// Mark the given `UID` as a parent of this `Entity`
-    /// remove the UID from ancestors (indirect parents)
+    /// Mark the given `UID` as a (direct) parent of this `Entity`, and
+    /// remove the UID from (indirect) ancestors
     /// if it was previously added as an ancestor
     pub fn add_parent(&mut self, uid: EntityUID) {
         self.ancestors.remove(&uid);
         self.parents.insert(uid);
     }
 
-    /// Remove the given `UID` as an ancestory of this `Entity`
+    /// Remove the given `UID` as an ancestor of this `Entity`.
+    /// 
+    /// No effect if the `UID` was a direct parent.
     pub fn remove_ancestor(&mut self, uid: &EntityUID) {
         self.ancestors.remove(uid);
     }
 
-    /// Remove the given `UID` as a parent of this `Entity`
+    /// Remove the given `UID` as a (direct) parent of this `Entity`.
+    ///
+    /// No effect on the `Entity`'s (indirect) ancestors.
     pub fn remove_parent(&mut self, uid: &EntityUID) {
         self.parents.remove(uid);
     }
