@@ -197,7 +197,7 @@ impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
             name,
             descendants,
             // We use emptiness of the `enums` field as an indictor to tell if `v` represents an enumerated entity type or not
-            // In other words, we essentially ignore other fields like `attributes` when `enums` is empty
+            // In other words, we essentially ignore other fields like `attributes` when `enums` is not empty
             kind: match &v.enums[..] {
                 [] => {
                     let tags = match &v.tags {
