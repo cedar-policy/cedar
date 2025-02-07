@@ -19,7 +19,7 @@
 use crate::ast::*;
 use crate::extensions::Extensions;
 use crate::transitive_closure::{compute_tc, enforce_tc_and_dag};
-use std::collections::{hash_map, HashMap, HashSet};
+use std::collections::{hash_map, HashMap};
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -173,7 +173,7 @@ impl Entities {
                             Arc::make_mut(entity).remove_parent(&uid_to_remove);
                             // remove any indirect link between `entity` and the ancestors of `entity_to_remove`
                             for ancestor_uid in entity_to_remove.ancestors() {
-                                Arc::make_mut(entity).remove_ancestor(&ancestor_uid);
+                                Arc::make_mut(entity).remove_ancestor(ancestor_uid);
                             }
                         }
                     }
@@ -3742,7 +3742,7 @@ mod schema_based_parsing_tests {
 mod protobuf_tests {
     use super::*;
     use smol_str::SmolStr;
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, HashSet};
     use std::iter;
 
     #[test]

@@ -584,7 +584,7 @@ impl Entity {
     }
 
     /// Remove the given `UID` as an ancestor of this `Entity`.
-    /// 
+    ///
     /// No effect if the `UID` was a direct parent.
     pub fn remove_ancestor(&mut self, uid: &EntityUID) {
         self.ancestors.remove(uid);
