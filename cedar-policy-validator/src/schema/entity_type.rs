@@ -174,13 +174,7 @@ impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
                 .iter()
                 .map(ast::proto::EntityType::from)
                 .collect(),
-            attributes: Some(proto::Attributes::from(
-                &Attributes::with_required_attributes(
-                    v.attributes()
-                        .into_iter()
-                        .map(|(attr, ty)| (attr, ty.attr_type)),
-                ),
-            )),
+            attributes: Some(proto::Attributes::from(&v.attributes())),
             open_attributes: proto::OpenTag::from(&v.open_attributes()).into(),
             tags,
             enums,
@@ -193,28 +187,41 @@ impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &proto::ValidatorEntityType) -> Self {
-        let tags = match &v.tags {
-            Some(tags) => tags.optional_type.as_ref().map(Type::from),
-            None => None,
-        };
+        let name = ast::EntityType::from(
+            v.name
+                .as_ref()
+                .expect("`as_ref()` for field that should exist"),
+        );
+        let descendants = v.descendants.iter().map(ast::EntityType::from).collect();
         Self {
-            name: ast::EntityType::from(
-                v.name
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-            descendants: v.descendants.iter().map(ast::EntityType::from).collect(),
-            kind: ValidatorEntityTypeKind::Standard(StandardValidatorEntityType {
-                attributes: Attributes::from(
-                    v.attributes
-                        .as_ref()
-                        .expect("`as_ref()` for field that should exist"),
+            name,
+            descendants,
+            // We use emptiness of the `enums` field as an indictor to tell if `v` represents an enumerated entity type or not
+            // In other words, we essentially ignore other fields like `attributes` when `enums` is not empty
+            kind: match &v.enums[..] {
+                [] => {
+                    let tags = match &v.tags {
+                        Some(tags) => tags.optional_type.as_ref().map(Type::from),
+                        None => None,
+                    };
+                    ValidatorEntityTypeKind::Standard(StandardValidatorEntityType {
+                        attributes: Attributes::from(
+                            v.attributes
+                                .as_ref()
+                                .expect("`as_ref()` for field that should exist"),
+                        ),
+                        open_attributes: OpenTag::from(
+                            &proto::OpenTag::try_from(v.open_attributes)
+                                .expect("decode should succeed"),
+                        ),
+                        tags,
+                    })
+                }
+                enums => ValidatorEntityTypeKind::Enum(
+                    NonEmpty::collect(enums.iter().map(SmolStr::new))
+                        .expect("enums should be nonempty"),
                 ),
-                open_attributes: OpenTag::from(
-                    &proto::OpenTag::try_from(v.open_attributes).expect("decode should succeed"),
-                ),
-                tags,
-            }),
+            },
         }
     }
 }
