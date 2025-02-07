@@ -188,6 +188,7 @@ impl From<&models::ValidatorEntityType> for cedar_policy_validator::ValidatorEnt
         let name = ast::EntityType::from(v.name.as_ref().expect("name field should exist"));
         let descendants = v.descendants.iter().map(ast::EntityType::from);
         match NonEmpty::collect(v.enum_choices.iter().map(SmolStr::from)) {
+            // `enum_choices` is empty, so `v` represents a standard entity type
             None => Self::new_standard(
                 name,
                 descendants,
@@ -204,11 +205,22 @@ impl From<&models::ValidatorEntityType> for cedar_policy_validator::ValidatorEnt
                     .and_then(|tags| tags.optional_type.as_ref().map(types::Type::from)),
             ),
             Some(enum_choices) => {
+                // `enum_choices` is not empty, so `v` represents an enumerated entity type.
                 if let Some(vec) = &v.attributes {
+                    // enumerated entity types must have no attributes
                     assert_eq!(
                         vec,
                         &models::Attributes {
                             attrs: HashMap::new()
+                        }
+                    );
+                }
+                if let Some(tag) = &v.tags {
+                    // enumerated entity types must have no tags
+                    assert_eq!(
+                        vec,
+                        &models::Tag {
+                            optional_type: None
                         }
                     );
                 }

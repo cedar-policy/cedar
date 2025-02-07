@@ -112,7 +112,7 @@ impl<N: Display> Display for json_schema::EntityType<N> {
             json_schema::EntityTypeKind::Standard(ty) => ty.fmt(f),
             json_schema::EntityTypeKind::Enum { choices } => write!(
                 f,
-                "[{}]",
+                " enum [{}]",
                 choices
                     .iter()
                     .map(|e| format!("\"{}\"", e.escape_debug()))
