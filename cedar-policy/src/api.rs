@@ -506,7 +506,7 @@ impl Entities {
         ))
     }
 
-    /// Removes each of the [`EntityUid`]s in the interator
+    /// Removes each of the [`EntityUid`]s in the iterator
     /// from this [`Entities`] structure, re-computing the transitive
     /// closure after removing all edges to/from the removed entities.
     ///
