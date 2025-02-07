@@ -26,23 +26,6 @@ use std::{
     sync::Arc,
 };
 
-impl From<&models::Annotation> for ast::Annotation {
-    fn from(v: &models::Annotation) -> Self {
-        Self {
-            val: v.val.clone().into(),
-            loc: None,
-        }
-    }
-}
-
-impl From<&ast::Annotation> for models::Annotation {
-    fn from(v: &ast::Annotation) -> Self {
-        Self {
-            val: v.val.to_string(),
-        }
-    }
-}
-
 // PANIC SAFETY: experimental feature
 #[allow(clippy::fallible_impl_from)]
 impl From<&models::Name> for ast::InternalName {
@@ -98,28 +81,6 @@ impl From<&ast::EntityType> for models::Name {
     }
 }
 
-impl From<&models::EntityType> for ast::Name {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used, clippy::fallible_impl_from)]
-    fn from(v: &models::EntityType) -> Self {
-        Self::from(v.name.as_ref().expect("name field should exist"))
-    }
-}
-
-impl From<&models::EntityType> for ast::EntityType {
-    fn from(v: &models::EntityType) -> Self {
-        Self::from(ast::Name::from(v))
-    }
-}
-
-impl From<&ast::EntityType> for models::EntityType {
-    fn from(v: &ast::EntityType) -> Self {
-        Self {
-            name: Some(models::Name::from(v.name())),
-        }
-    }
-}
-
 impl From<&models::EntityUid> for ast::EntityUID {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
@@ -135,24 +96,24 @@ impl From<&models::EntityUid> for ast::EntityUID {
 impl From<&ast::EntityUID> for models::EntityUid {
     fn from(v: &ast::EntityUID) -> Self {
         Self {
-            ty: Some(models::EntityType::from(v.entity_type())),
+            ty: Some(models::Name::from(v.entity_type())),
             eid: <ast::Eid as AsRef<str>>::as_ref(v.eid()).into(),
         }
     }
 }
 
-impl From<&models::EntityUidEntry> for ast::EntityUIDEntry {
-    fn from(v: &models::EntityUidEntry) -> Self {
+impl From<&models::EntityUid> for ast::EntityUIDEntry {
+    fn from(v: &models::EntityUid) -> Self {
         // PANIC SAFETY: experimental feature
         #[allow(clippy::expect_used)]
         ast::EntityUIDEntry::known(
-            ast::EntityUID::from(v.euid.as_ref().expect("euid field should exist")),
+            ast::EntityUID::from(v),
             None,
         )
     }
 }
 
-impl From<&ast::EntityUIDEntry> for models::EntityUidEntry {
+impl From<&ast::EntityUIDEntry> for models::EntityUid {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::unimplemented)]
     fn from(v: &ast::EntityUIDEntry) -> Self {
@@ -162,9 +123,7 @@ impl From<&ast::EntityUIDEntry> for models::EntityUidEntry {
                     "Unknown EntityUID is not currently supported by the Protobuf interface"
                 );
             }
-            ast::EntityUIDEntry::Known { euid, .. } => Self {
-                euid: Some(models::EntityUid::from(euid.as_ref())),
-            },
+            ast::EntityUIDEntry::Known { euid, .. } => models::EntityUid::from(euid.as_ref()),
         }
     }
 }
@@ -466,7 +425,7 @@ impl From<&ast::Expr> for models::Expr {
             ast::ExprKind::Is { expr, entity_type } => {
                 models::expr::expr_kind::Data::Is(Box::new(models::expr::Is {
                     expr: Some(Box::new(models::Expr::from(expr.as_ref()))),
-                    entity_type: Some(models::EntityType::from(entity_type)),
+                    entity_type: Some(models::Name::from(entity_type)),
                 }))
             }
             ast::ExprKind::Set(args) => {
@@ -645,11 +604,11 @@ impl From<&models::expr::like::PatternElem> for ast::PatternElem {
                 ast::PatternElem::Char(c.chars().next().expect("c is non-empty"))
             }
 
-            models::expr::like::pattern_elem::Data::Ty(ty) => {
-                match models::expr::like::pattern_elem::Ty::try_from(ty.to_owned())
+            models::expr::like::pattern_elem::Data::Wildcard(x) => {
+                match models::expr::like::pattern_elem::Wildcard::try_from(*x)
                     .expect("decode should succeed")
                 {
-                    models::expr::like::pattern_elem::Ty::Wildcard => ast::PatternElem::Wildcard,
+                    models::expr::like::pattern_elem::Wildcard::X => ast::PatternElem::Wildcard,
                 }
             }
         }
@@ -663,8 +622,8 @@ impl From<&ast::PatternElem> for models::expr::like::PatternElem {
                 data: Some(models::expr::like::pattern_elem::Data::C(c.to_string())),
             },
             ast::PatternElem::Wildcard => Self {
-                data: Some(models::expr::like::pattern_elem::Data::Ty(
-                    models::expr::like::pattern_elem::Ty::Wildcard.into(),
+                data: Some(models::expr::like::pattern_elem::Data::Wildcard(
+                    models::expr::like::pattern_elem::Wildcard::X.into(),
                 )),
             },
         }
@@ -687,36 +646,32 @@ impl From<&models::Request> for ast::Request {
 impl From<&ast::Request> for models::Request {
     fn from(v: &ast::Request) -> Self {
         Self {
-            principal: Some(models::EntityUidEntry::from(v.principal())),
-            action: Some(models::EntityUidEntry::from(v.action())),
-            resource: Some(models::EntityUidEntry::from(v.resource())),
-            context: v.context().map(models::Context::from),
+            principal: Some(models::EntityUid::from(v.principal())),
+            action: Some(models::EntityUid::from(v.action())),
+            resource: Some(models::EntityUid::from(v.resource())),
+            context: v.context().map(models::Expr::from),
         }
     }
 }
 
-impl From<&models::Context> for ast::Context {
-    fn from(v: &models::Context) -> Self {
+impl From<&models::Expr> for ast::Context {
+    fn from(v: &models::Expr) -> Self {
         // PANIC SAFETY: experimental feature
         #[allow(clippy::expect_used)]
         ast::Context::from_expr(
-            ast::BorrowedRestrictedExpr::new(&ast::Expr::from(
-                v.context.as_ref().expect("context.as_ref()"),
-            ))
-            .expect("Expr::from"),
+            ast::BorrowedRestrictedExpr::new(&ast::Expr::from(v))
+                .expect("context should be valid restricted expr"),
             Extensions::none(),
         )
         .expect("Context::from_expr")
     }
 }
 
-impl From<&ast::Context> for models::Context {
+impl From<&ast::Context> for models::Expr {
     fn from(v: &ast::Context) -> Self {
-        Self {
-            context: Some(models::Expr::from(&ast::Expr::from(
-                ast::PartialValue::from(v.to_owned()),
-            ))),
-        }
+        models::Expr::from(&ast::Expr::from(
+            ast::PartialValue::from(v.to_owned()),
+        ))
     }
 }
 
@@ -732,7 +687,7 @@ mod test {
         let ety_specified = ast::EntityType::from(name);
         assert_eq!(
             ety_specified,
-            ast::EntityType::from(&models::EntityType::from(&ety_specified))
+            ast::EntityType::from(&models::Name::from(&ety_specified))
         );
 
         let euid1 = ast::EntityUID::with_eid_and_type("A", "foo").unwrap();
@@ -900,7 +855,7 @@ mod test {
         let request_rt = ast::Request::from(&models::Request::from(&request));
         assert_eq!(
             context,
-            ast::Context::from(&models::Context::from(&context))
+            ast::Context::from(&models::Expr::from(&context))
         );
         assert_eq!(request.principal().uid(), request_rt.principal().uid());
         assert_eq!(request.action().uid(), request_rt.action().uid());

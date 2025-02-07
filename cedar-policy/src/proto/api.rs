@@ -40,7 +40,7 @@ macro_rules! standard_conversions {
 
 standard_conversions!(api::Entity, api::Entity, models::Entity);
 standard_conversions!(api::Entities, api::Entities, models::Entities);
-standard_conversions!(api::Schema, api::Schema, models::ValidatorSchema);
+standard_conversions!(api::Schema, api::Schema, models::Schema);
 standard_conversions!(api::EntityTypeName, api::EntityTypeName, models::Name);
 standard_conversions!(api::EntityNamespace, api::EntityNamespace, models::Name);
 standard_conversions!(api::Expression, api::Expression, models::Expr);
@@ -60,29 +60,29 @@ impl From<&models::TemplateBody> for api::Template {
     }
 }
 
-impl From<&api::Policy> for models::LiteralPolicy {
+impl From<&api::Policy> for models::Policy {
     fn from(v: &api::Policy) -> Self {
         Self::from(&v.ast)
     }
 }
 
-impl TryFrom<&models::LiteralPolicy> for api::Policy {
+impl TryFrom<&models::Policy> for api::Policy {
     type Error = cedar_policy_core::ast::ReificationError;
-    fn try_from(v: &models::LiteralPolicy) -> Result<Self, Self::Error> {
+    fn try_from(v: &models::Policy) -> Result<Self, Self::Error> {
         let p = cedar_policy_core::ast::Policy::try_from(v)?;
         Ok(Self::from_ast(p))
     }
 }
 
-impl From<&api::PolicySet> for models::LiteralPolicySet {
+impl From<&api::PolicySet> for models::PolicySet {
     fn from(v: &api::PolicySet) -> Self {
         Self::from(&v.ast)
     }
 }
 
-impl TryFrom<&models::LiteralPolicySet> for api::PolicySet {
+impl TryFrom<&models::PolicySet> for api::PolicySet {
     type Error = api::PolicySetError;
-    fn try_from(v: &models::LiteralPolicySet) -> Result<Self, Self::Error> {
+    fn try_from(v: &models::PolicySet) -> Result<Self, Self::Error> {
         // PANIC SAFETY: experimental feature
         #[allow(clippy::expect_used)]
         Self::from_ast(
@@ -111,7 +111,7 @@ macro_rules! standard_protobuf_impl {
 
 standard_protobuf_impl!(api::Entity, models::Entity);
 standard_protobuf_impl!(api::Entities, models::Entities);
-standard_protobuf_impl!(api::Schema, models::ValidatorSchema);
+standard_protobuf_impl!(api::Schema, models::Schema);
 standard_protobuf_impl!(api::EntityTypeName, models::Name);
 standard_protobuf_impl!(api::EntityNamespace, models::Name);
 standard_protobuf_impl!(api::Template, models::TemplateBody);
@@ -122,13 +122,13 @@ standard_protobuf_impl!(api::Request, models::Request);
 
 impl traits::Protobuf for api::PolicySet {
     fn encode(&self) -> Vec<u8> {
-        traits::encode_to_vec::<models::LiteralPolicySet>(self)
+        traits::encode_to_vec::<models::PolicySet>(self)
     }
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
         // PANIC SAFETY: experimental feature
         #[allow(clippy::expect_used)]
         Ok(
-            traits::try_decode::<models::LiteralPolicySet, _, Self>(buf)?
+            traits::try_decode::<models::PolicySet, _, Self>(buf)?
                 .expect("protobuf-encoded policy set should be a valid policy set"),
         )
     }
@@ -136,12 +136,12 @@ impl traits::Protobuf for api::PolicySet {
 
 impl traits::Protobuf for api::Policy {
     fn encode(&self) -> Vec<u8> {
-        traits::encode_to_vec::<models::LiteralPolicy>(self)
+        traits::encode_to_vec::<models::Policy>(self)
     }
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
         // PANIC SAFETY: experimental feature
         #[allow(clippy::expect_used)]
-        Ok(traits::try_decode::<models::LiteralPolicy, _, Self>(buf)?
+        Ok(traits::try_decode::<models::Policy, _, Self>(buf)?
             .expect("protobuf-encoded policy should be a valid policy"))
     }
 }
