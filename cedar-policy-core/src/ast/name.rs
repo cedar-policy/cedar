@@ -19,14 +19,16 @@ use educe::Educe;
 use itertools::Itertools;
 use miette::Diagnostic;
 use ref_cast::RefCast;
+use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::ToSmolStr;
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
 use thiserror::Error;
 
-use crate::parser::err::{ParseError, ParseErrors, ToASTError};
+use crate::parser::err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::Loc;
 use crate::FromNormalizedStr;
 
@@ -437,7 +439,68 @@ impl FromStr for Name {
     }
 }
 
+lazy_static::lazy_static! {
+    // PANIC SAFETY: this is a valid regex
+    static ref ID_REGEX: Regex = Regex::new(r"^[_a-zA-Z][_a-zA-Z0-9]*(?:::[_a-zA-Z][_a-zA-Z0-9]*)*$").unwrap();
+    // All reserved keywords
+    static ref RESERVED: HashSet<&'static str> =
+        vec![
+            "true",
+            "false",
+            "if",
+            "permit",
+            "forbid",
+            "when",
+            "unless",
+            "in",
+            "has",
+            "like",
+            "is",
+            "then",
+            "else",
+            "principal",
+            "action",
+            "resource",
+            "context",
+            "__cedar"
+        ]
+        .into_iter()
+        .collect();
+}
+
 impl FromNormalizedStr for Name {
+    fn from_normalized_str(s: &str) -> Result<Self, ParseErrors> {
+        if ID_REGEX.is_match(s) && !s.split("::").into_iter().any(|s| RESERVED.contains(s)) {
+            let path_parts: Vec<&str> = s.rsplit("::").collect();
+            let split = path_parts.split_first();
+            if let Some((first, rest)) = split {
+                return Ok(Self(InternalName::new(
+                    Id::new_unchecked(*first),
+                    rest.iter().map(|chunk| Id::new_unchecked(*chunk)),
+                    None,
+                )));
+            }
+        }
+        let parsed = Self::from_str(s)?;
+        let normalized_src = parsed.to_string();
+        let diff_byte = s
+            .bytes()
+            .zip(normalized_src.bytes())
+            .enumerate()
+            .find(|(_, (b0, b1))| b0 != b1)
+            .map(|(idx, _)| idx)
+            .unwrap_or_else(|| s.len().min(normalized_src.len()));
+
+        Err(ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
+            ToASTErrorKind::NonNormalizedString {
+                kind: Self::describe_self(),
+                src: s.to_string(),
+                normalized_src,
+            },
+            Loc::new(diff_byte, s.into()),
+        ))))
+    }
+
     fn describe_self() -> &'static str {
         "Name"
     }
