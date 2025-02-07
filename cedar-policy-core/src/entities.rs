@@ -91,9 +91,13 @@ impl Entities {
     }
 
     /// Is this a partial store (created with `.partial()`)
-    #[cfg(feature = "partial-eval")]
     pub fn is_partial(&self) -> bool {
-        self.mode == Mode::Partial
+        #[cfg(feature = "partial-eval")]
+        let ret = self.mode == Mode::Partial;
+        #[cfg(not(feature = "partial-eval"))]
+        let ret = false;
+
+        ret
     }
 
     /// Get the `Entity` with the given UID, if any
