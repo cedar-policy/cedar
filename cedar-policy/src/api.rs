@@ -873,11 +873,11 @@ impl Authorizer {
     /// The authorizer uses the `stacker` crate to manage stack size and tries to use a sane default.
     /// If the default is not right for you, you can try wrapping the authorizer or individual calls
     /// to `is_authorized` in `stacker::grow`.
-    /// Note that on platforms not supported by `stacker` (e.g., `wasm32`, Android),
+    /// Note that on platforms not supported by `stacker` (e.g., Wasm, Android),
     /// the authorizer will simply assume that the stack size is sufficient. As a result, large inputs
     /// may result in stack overflows and crashing the process.
-    /// But on all platforms supported by `stacker` (Linux, macOS, Windows, iOS, ...), Cedar will
-    /// return the graceful error `RecursionLimit` instead of crashing.
+    /// But on all platforms supported by `stacker` (Linux, macOS, ...), Cedar will return the
+    /// graceful error `RecursionLimit` instead of crashing.
     /// ```
     /// # use cedar_policy::{Authorizer, Context, Entities, EntityId, EntityTypeName,
     /// # EntityUid, Request,PolicySet};
