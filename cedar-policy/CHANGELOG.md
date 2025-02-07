@@ -20,7 +20,11 @@ Cedar Language Version: TBD
 
 ### Fixed
 
-- Assume sufficient stack space when it cannot be determined (#1446, resolving #1443)
+- Assume sufficient stack space when it cannot be determined (#1446, resolving #1443).
+  Note that on platforms not supported by `stacker` (e.g., Wasm, Android), this means
+  that large inputs may result in stack overflows and crashing the process.
+  On all platforms supported by `stacker` (Linux, macOS, ...), Cedar will
+  continue to return the graceful error `RecursionLimit` instead of crashing.
 
 ## [4.3.1] - Coming soon
 Cedar Language Version: 4.2
