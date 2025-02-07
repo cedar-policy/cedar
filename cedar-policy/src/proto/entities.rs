@@ -1,3 +1,5 @@
+#![allow(clippy::use_self)]
+
 use super::models;
 use cedar_policy_core::{ast, entities, extensions};
 use std::sync::Arc;

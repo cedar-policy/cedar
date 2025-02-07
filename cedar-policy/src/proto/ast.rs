@@ -1,3 +1,5 @@
+#![allow(clippy::use_self)]
+
 use super::models;
 use cedar_policy_core::{
     ast, evaluator::RestrictedEvaluator, extensions::Extensions, FromNormalizedStr,
@@ -25,7 +27,11 @@ impl From<&ast::Annotation> for models::Annotation {
     }
 }
 
+// PANIC SAFETY: experimental feature
+#[allow(clippy::fallible_impl_from)]
 impl From<&models::Name> for ast::InternalName {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::unwrap_used)]
     fn from(v: &models::Name) -> Self {
         let basename = ast::Id::from_normalized_str(&v.id).unwrap();
         let path = v
@@ -36,7 +42,11 @@ impl From<&models::Name> for ast::InternalName {
     }
 }
 
+// PANIC SAFETY: experimental feature
+#[allow(clippy::fallible_impl_from)]
 impl From<&models::Name> for ast::Name {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::unwrap_used)]
     fn from(v: &models::Name) -> Self {
         ast::Name::try_from(ast::InternalName::from(v)).unwrap()
     }
@@ -56,14 +66,14 @@ impl From<&ast::Name> for models::Name {
 }
 
 impl From<&models::EntityType> for ast::Name {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used, clippy::fallible_impl_from)]
     fn from(v: &models::EntityType) -> Self {
         Self::from(v.name.as_ref().expect("name field should exist"))
     }
 }
 
 impl From<&models::EntityType> for ast::EntityType {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
     fn from(v: &models::EntityType) -> Self {
         Self::from(ast::Name::from(v))
     }
@@ -128,7 +138,7 @@ impl From<&ast::EntityUIDEntry> for models::EntityUidEntry {
 
 impl From<&models::Entity> for ast::Entity {
     // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[allow(clippy::expect_used, clippy::unwrap_used)]
     fn from(v: &models::Entity) -> Self {
         let eval = RestrictedEvaluator::new(Extensions::none());
 
@@ -190,9 +200,7 @@ impl From<&ast::Entity> for models::Entity {
                 .map(|(key, value)| {
                     (
                         key.to_string(),
-                        models::Expr::from(&ast::Expr::from(ast::PartialValue::from(
-                            value.clone(),
-                        ))),
+                        models::Expr::from(&ast::Expr::from(value.clone())),
                     )
                 })
                 .collect(),
@@ -208,7 +216,7 @@ impl From<&Arc<ast::Entity>> for models::Entity {
 
 impl From<&models::Expr> for ast::Expr {
     // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[allow(clippy::expect_used, clippy::too_many_lines)]
     fn from(v: &models::Expr) -> Self {
         let pdata = v.expr_kind.as_ref().expect("expr_kind field should exist");
         let ety = pdata.data.as_ref().expect("data field should exist");
@@ -341,6 +349,7 @@ impl From<&models::Expr> for ast::Expr {
 
 impl From<&ast::Expr> for models::Expr {
     // PANIC SAFETY: experimental feature
+    #[allow(clippy::unimplemented, clippy::too_many_lines)]
     fn from(v: &ast::Expr) -> Self {
         let expr_kind = match v.expr_kind() {
             ast::ExprKind::Lit(l) => {
@@ -517,7 +526,11 @@ impl From<&models::SlotId> for ast::SlotId {
     }
 }
 
+// PANIC SAFETY: experimental feature
+#[allow(clippy::fallible_impl_from)]
 impl From<&ast::SlotId> for models::SlotId {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::panic)]
     fn from(v: &ast::SlotId) -> Self {
         if v.is_principal() {
             models::SlotId::Principal

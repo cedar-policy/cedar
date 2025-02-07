@@ -1,3 +1,5 @@
+#![allow(clippy::use_self)]
+
 use super::models;
 use cedar_policy_core::{ast, evaluator, extensions};
 use cedar_policy_validator::types;
@@ -173,7 +175,7 @@ impl From<&cedar_policy_validator::ValidatorEntityType> for models::ValidatorEnt
                 attributes,
                 open_attributes,
                 tags,
-                enum_choices: enum_choices.into_iter().map(|s| s.to_string()).collect(),
+                enum_choices: enum_choices.into_iter().map(ToString::to_string).collect(),
             },
         }
     }

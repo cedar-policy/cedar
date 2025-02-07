@@ -1,4 +1,6 @@
-use super::*;
+#![allow(clippy::use_self)]
+
+use super::models;
 use cedar_policy_core::{ast, FromNormalizedStr};
 use std::collections::HashMap;
 
@@ -100,20 +102,20 @@ impl From<&models::TemplateBody> for ast::Template {
 
 impl From<&models::TemplateBody> for ast::TemplateBody {
     // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[allow(clippy::expect_used, clippy::unwrap_used)]
     fn from(v: &models::TemplateBody) -> Self {
-        let annotations: ast::Annotations =
-            ast::Annotations::from_iter(v.annotations.iter().map(|(key, value)| {
-                (
-                    ast::AnyId::from_normalized_str(key).unwrap(),
-                    ast::Annotation::from(value),
-                )
-            }));
-
         ast::TemplateBody::new(
             ast::PolicyID::from_string(v.id.clone()),
             None,
-            annotations,
+            v.annotations
+                .iter()
+                .map(|(key, value)| {
+                    (
+                        ast::AnyId::from_normalized_str(key).unwrap(),
+                        ast::Annotation::from(value),
+                    )
+                })
+                .collect(),
             ast::Effect::from(&models::Effect::try_from(v.effect).expect("decode should succeed")),
             ast::PrincipalConstraint::from(
                 v.principal_constraint
