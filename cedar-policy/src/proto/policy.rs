@@ -626,122 +626,64 @@ mod test {
 
     #[test]
     fn policyset_roundtrip() {
-        let annotation1 = ast::Annotation {
-            val: "".into(),
-            loc: None,
-        };
-        let pc = ast::PrincipalConstraint::is_eq(
-            ast::EntityUID::with_eid_and_type("A", "friend")
-                .unwrap()
-                .into(),
-        );
-        let ac = ast::ActionConstraint::Eq(
-            ast::EntityUID::with_eid_and_type("Action", "read")
-                .unwrap()
-                .into(),
-        );
-        let rc = ast::ResourceConstraint::is_entity_type(
-            ast::EntityType::from(ast::Name::from_normalized_str("photo").unwrap()).into(),
-        );
-
         let tb = ast::TemplateBody::new(
             ast::PolicyID::from_string("template"),
             None,
             ast::Annotations::from_iter(vec![(
                 ast::AnyId::from_normalized_str("read").unwrap(),
-                annotation1,
+                ast::Annotation {
+                    val: "".into(),
+                    loc: None,
+                },
             )]),
             ast::Effect::Permit,
-            pc,
-            ac,
-            rc,
+            ast::PrincipalConstraint::is_eq_slot(),
+            ast::ActionConstraint::Eq(
+                ast::EntityUID::with_eid_and_type("Action", "read")
+                    .unwrap()
+                    .into(),
+            ),
+            ast::ResourceConstraint::is_entity_type(
+                ast::EntityType::from(ast::Name::from_normalized_str("photo").unwrap()).into(),
+            ),
             ast::Expr::val(true),
         );
 
-        let policy = ast::Policy::from_when_clause(
+        let policy1 = ast::Policy::from_when_clause(
             ast::Effect::Permit,
             ast::Expr::val(true),
-            ast::PolicyID::from_string("alice"),
+            ast::PolicyID::from_string("permit-true-trivial"),
+            None,
+        );
+        let policy2 = ast::Policy::from_when_clause(
+            ast::Effect::Forbid,
+            ast::Expr::is_eq(
+                ast::Expr::var(ast::Var::Principal),
+                ast::Expr::val(ast::EntityUID::with_eid_and_type("A", "dog").unwrap()),
+            ),
+            ast::PolicyID::from_string("forbid-dog"),
             None,
         );
 
         let mut ps = ast::PolicySet::new();
         ps.add_template(ast::Template::from(tb))
             .expect("Failed to add template to policy set.");
-        ps.add(policy).expect("Failed to add policy to policy set.");
-        let lps = models::LiteralPolicySet::from(&ps);
-        let lps_roundtrip = models::LiteralPolicySet::from(&ast::LiteralPolicySet::from(&lps));
-
-        // Can't compare LiteralPolicySets directly, so we compare their fields
-        assert_eq!(lps.templates, lps_roundtrip.templates);
-        assert_eq!(lps.links, lps_roundtrip.links);
-    }
-
-    #[test]
-    fn policyset_roundtrip_forbids() {
-        let annotation1 = ast::Annotation {
-            val: "".into(),
-            loc: None,
-        };
-        let pc = ast::PrincipalConstraint::is_eq(
-            ast::EntityUID::with_eid_and_type("A", "friend")
-                .unwrap()
-                .into(),
-        );
-        let ac = ast::ActionConstraint::Eq(
-            ast::EntityUID::with_eid_and_type("Action", "read")
-                .unwrap()
-                .into(),
-        );
-        let rc = ast::ResourceConstraint::is_entity_type(
-            ast::EntityType::from(ast::Name::from_normalized_str("photo").unwrap()).into(),
-        );
-
-        let tb = ast::TemplateBody::new(
+        ps.add(policy1).expect("Failed to add policy to policy set");
+        ps.add(policy2).expect("Failed to add policy to policy set");
+        ps.link(
             ast::PolicyID::from_string("template"),
-            None,
-            ast::Annotations::from_iter([(
-                ast::AnyId::from_normalized_str("read").unwrap(),
-                annotation1,
+            ast::PolicyID::from_string("link"),
+            HashMap::from_iter([(
+                ast::SlotId::principal(),
+                ast::EntityUID::with_eid_and_type("A", "friend").unwrap(),
             )]),
-            ast::Effect::Forbid,
-            pc,
-            ac,
-            rc,
-            ast::Expr::val(true),
-        );
-
-        let policy = ast::Policy::from_when_clause(
-            ast::Effect::Permit,
-            ast::Expr::val(true),
-            ast::PolicyID::from_string("alice"),
-            None,
-        );
-
-        let mut ps = ast::PolicySet::new();
-        ps.add_template(ast::Template::from(tb))
-            .expect("Failed to add template to policy set.");
-        ps.add(policy.clone())
-            .expect("Failed to add policy to policy set.");
+        )
+        .unwrap();
         let lps = models::LiteralPolicySet::from(&ps);
         let lps_roundtrip = models::LiteralPolicySet::from(&ast::LiteralPolicySet::from(&lps));
 
         // Can't compare LiteralPolicySets directly, so we compare their fields
         assert_eq!(lps.templates, lps_roundtrip.templates);
-        assert_eq!(lps.links, lps_roundtrip.links);
-
-        ps.remove_static(policy.id()).unwrap();
-        let policy = ast::Policy::from_when_clause(
-            ast::Effect::Forbid,
-            ast::Expr::val(true),
-            ast::PolicyID::from_string("alice"),
-            None,
-        );
-        ps.add(policy).expect("Failed to add policy to policy set.");
-        let lps = models::LiteralPolicySet::from(&ps);
-        // Static policies have templates, so not equal
-        assert_ne!(lps.templates, lps_roundtrip.templates);
-        // The static policies are identical except for the template, so links are equal
         assert_eq!(lps.links, lps_roundtrip.links);
     }
 }
