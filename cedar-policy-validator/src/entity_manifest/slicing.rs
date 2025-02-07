@@ -206,6 +206,7 @@ impl AccessTrie {
             entity.uid().clone(),
             new_entity,
             Default::default(),
+            Default::default(),
         ))
     }
 

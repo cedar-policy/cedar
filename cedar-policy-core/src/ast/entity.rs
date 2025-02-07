@@ -938,6 +938,7 @@ mod test {
             r#"Foo::"bar""#.parse().unwrap(),
             attrs,
             HashSet::new(),
+            HashSet::new(),
             BTreeMap::new(),
             Extensions::none(),
         )

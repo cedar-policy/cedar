@@ -876,7 +876,7 @@ impl ValidatorSchema {
             Entity::new_with_attr_partial_value_serialized_as_expr(
                 action_id.clone(),
                 action.attributes.clone(),
-                [].into_iter().collect(),
+                HashSet::new(),
                 action_ancestors.remove(action_id).unwrap_or_default(),
             )
         })

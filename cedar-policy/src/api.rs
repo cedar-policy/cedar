@@ -427,7 +427,7 @@ impl Entities {
     }
 
     /// Transform the store into a partial store, where
-    /// attempting to dereference a non-existent `EntityUID` results in
+    /// attempting to dereference a non-existent `EntityUid` results in
     /// a residual instead of an error.
     #[doc = include_str!("../experimental_warning.md")]
     #[must_use]
@@ -506,7 +506,7 @@ impl Entities {
         ))
     }
 
-    /// Removes each of the [`EntityUID`]s in the interator
+    /// Removes each of the [`EntityUid`]s in the interator
     /// from this [`Entities`] structure, re-computing the transitive
     /// closure after removing all edges to/from the removed entities.
     ///

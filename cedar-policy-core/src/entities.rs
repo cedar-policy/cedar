@@ -19,7 +19,7 @@
 use crate::ast::*;
 use crate::extensions::Extensions;
 use crate::transitive_closure::{compute_tc, enforce_tc_and_dag};
-use std::collections::{hash_map, HashMap};
+use std::collections::{hash_map, HashMap, HashSet};
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -2338,7 +2338,7 @@ mod schema_based_parsing_tests {
         }
 
         fn allowed_parent_types(&self) -> Arc<HashSet<EntityType>> {
-            Arc::new([].into_iter().collect())
+            Arc::new(HashSet::new())
         }
 
         fn open_attributes(&self) -> bool {
@@ -3532,7 +3532,7 @@ mod schema_based_parsing_tests {
             }
 
             fn allowed_parent_types(&self) -> Arc<HashSet<EntityType>> {
-                Arc::new([].into_iter().collect())
+                Arc::new(HashSet::new())
             }
 
             fn open_attributes(&self) -> bool {
@@ -3742,7 +3742,7 @@ mod schema_based_parsing_tests {
 mod protobuf_tests {
     use super::*;
     use smol_str::SmolStr;
-    use std::collections::{BTreeMap, HashSet};
+    use std::collections::BTreeMap;
     use std::iter;
 
     #[test]
@@ -3762,8 +3762,8 @@ mod protobuf_tests {
             Entity::new(
                 r#"Foo::"bar""#.parse().unwrap(),
                 attrs.clone(),
-                [].into_iter().collect(),
-                [].into_iter().collect(),
+                HashSet::new(),
+                HashSet::new(),
                 BTreeMap::new(),
                 Extensions::none(),
             )
@@ -3788,8 +3788,8 @@ mod protobuf_tests {
             Entity::new(
                 r#"Bar::"foo""#.parse().unwrap(),
                 attrs,
-                [].into_iter().collect(),
-                [].into_iter().collect(),
+                HashSet::new(),
+                HashSet::new(),
                 BTreeMap::new(),
                 Extensions::none(),
             )
