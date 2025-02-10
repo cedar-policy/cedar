@@ -442,7 +442,7 @@ impl FromStr for Name {
 lazy_static::lazy_static! {
     // PANIC SAFETY: this is a valid regex
     static ref ID_REGEX: Regex = Regex::new(r"^[_a-zA-Z][_a-zA-Z0-9]*(?:::[_a-zA-Z][_a-zA-Z0-9]*)*$").unwrap();
-    // All reserved keywords
+    // All Cedar's reserved keywords
     static ref RESERVED: HashSet<&'static str> =
         vec![
             "true",
@@ -471,11 +471,11 @@ lazy_static::lazy_static! {
 impl FromNormalizedStr for Name {
     fn from_normalized_str(s: &str) -> Result<Self, ParseErrors> {
         if ID_REGEX.is_match(s) && !s.split("::").into_iter().any(|s| RESERVED.contains(s)) {
-            let path_parts: Vec<&str> = s.rsplit("::").collect();
-            let split = path_parts.split_first();
-            if let Some((first, rest)) = split {
+            let path_parts: Vec<&str> = s.split("::").collect();
+            let split = path_parts.split_last();
+            if let Some((last, rest)) = split {
                 return Ok(Self(InternalName::new(
-                    Id::new_unchecked(*first),
+                    Id::new_unchecked(*last),
                     rest.iter().map(|chunk| Id::new_unchecked(*chunk)),
                     None,
                 )));
