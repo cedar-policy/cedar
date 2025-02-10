@@ -86,59 +86,10 @@ pub(crate) mod version {
     }
 }
 
-/// Private functions to support implementing the `Protobuf` trait on various types
-#[cfg(feature = "protobufs")]
-mod proto {
-    use std::default::Default;
-
-    /// Encode `thing` into `buf` using the protobuf format `M`
-    ///
-    /// `Err` is only returned if `buf` has insufficient space.
-    #[allow(dead_code)] // experimental feature, we might have use for this one in the future
-    pub(super) fn encode<M: prost::Message>(
-        thing: impl Into<M>,
-        buf: &mut impl prost::bytes::BufMut,
-    ) -> Result<(), prost::EncodeError> {
-        thing.into().encode(buf)
-    }
-
-    /// Encode `thing` into a freshly-allocated buffer using the protobuf format `M`
-    pub(super) fn encode_to_vec<M: prost::Message>(thing: impl Into<M>) -> Vec<u8> {
-        thing.into().encode_to_vec()
-    }
-
-    /// Decode something of type `T` from `buf` using the protobuf format `M`
-    pub(super) fn decode<M: prost::Message + Default, T: for<'a> From<&'a M>>(
-        buf: impl prost::bytes::Buf,
-    ) -> Result<T, prost::DecodeError> {
-        M::decode(buf).map(|m| T::from(&m))
-    }
-
-    /// Decode something of type `T` from `buf` using the protobuf format `M`
-    pub(super) fn try_decode<
-        M: prost::Message + Default,
-        E,
-        T: for<'a> TryFrom<&'a M, Error = E>,
-    >(
-        buf: impl prost::bytes::Buf,
-    ) -> Result<Result<T, E>, prost::DecodeError> {
-        M::decode(buf).map(|m| T::try_from(&m))
-    }
-}
-
-/// Trait allowing serializing and deserializing in protobuf format
-#[cfg(feature = "protobufs")]
-pub trait Protobuf: Sized {
-    /// Encode into protobuf format. Returns a freshly-allocated buffer containing binary data.
-    fn encode(&self) -> Vec<u8>;
-    /// Decode the binary data in `buf`, producing something of type `Self`
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError>;
-}
-
 /// Entity datatype
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, RefCast, Hash)]
-pub struct Entity(ast::Entity);
+pub struct Entity(pub(crate) ast::Entity);
 
 impl Entity {
     /// Create a new `Entity` with this Uid, attributes, and parents (and no tags).
@@ -385,16 +336,6 @@ impl Entity {
 impl std::fmt::Display for Entity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl Protobuf for Entity {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<crate::proto::models::Entity>(&self.0)
-    }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<crate::proto::models::Entity, _>(buf).map(Self)
     }
 }
 
@@ -844,16 +785,6 @@ impl IntoIterator for Entities {
         Self::IntoIter {
             inner: self.0.into_iter(),
         }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl Protobuf for Entities {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<crate::proto::models::Entities>(&self.0)
-    }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<crate::proto::models::Entities, _>(buf).map(Self)
     }
 }
 
@@ -1914,16 +1845,6 @@ impl Schema {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl Protobuf for Schema {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<crate::proto::models::ValidatorSchema>(&self.0)
-    }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<crate::proto::models::ValidatorSchema, _>(buf).map(Self)
-    }
-}
-
 /// Contains the result of policy validation.
 ///
 /// The result includes the list of issues found by validation and whether validation succeeds or fails.
@@ -2098,7 +2019,7 @@ pub fn confusable_string_checker<'a>(
 /// # assert_eq!(id.unwrap().to_string(), "My::Name::Space".to_string());
 /// ```
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct EntityNamespace(ast::Name);
+pub struct EntityNamespace(pub(crate) ast::Name);
 
 /// This `FromStr` implementation requires the _normalized_ representation of the
 /// namespace. See <https://github.com/cedar-policy/rfcs/pull/9/>.
@@ -2115,16 +2036,6 @@ impl FromStr for EntityNamespace {
 impl std::fmt::Display for EntityNamespace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl Protobuf for EntityNamespace {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<crate::proto::models::Name>(&self.0)
-    }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<crate::proto::models::Name, _>(buf).map(Self)
     }
 }
 
@@ -2228,7 +2139,7 @@ impl PolicySet {
 
     /// Build the [`PolicySet`] from just the AST information
     #[cfg_attr(not(feature = "protobufs"), allow(dead_code))]
-    fn from_ast(ast: ast::PolicySet) -> Result<Self, PolicySetError> {
+    pub(crate) fn from_ast(ast: ast::PolicySet) -> Result<Self, PolicySetError> {
         Self::from_policies(ast.into_policies().map(Policy::from_ast))
     }
 
@@ -2576,20 +2487,6 @@ impl std::fmt::Display for PolicySet {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl Protobuf for PolicySet {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<crate::proto::models::LiteralPolicySet>(&self.ast)
-    }
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        let ast = proto::try_decode::<crate::proto::models::LiteralPolicySet, _, _>(buf)?
-            .expect("proto-encoded policy set should be a valid policy set");
-        Ok(Self::from_ast(ast).expect("proto-encoded policy set should be a valid policy set"))
-    }
-}
-
 /// Given a [`PolicyId`] and a [`Policy`], determine if the policy represents a static policy or a
 /// link
 fn is_static_or_link(
@@ -2713,7 +2610,7 @@ fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item
 pub struct Template {
     /// AST representation of the template, used for most operations.
     /// In particular, the `ast` contains the authoritative `PolicyId` for the template.
-    ast: ast::Template,
+    pub(crate) ast: ast::Template,
 
     /// Some "lossless" representation of the template, whichever is most
     /// convenient to provide (and can be provided with the least overhead).
@@ -2725,7 +2622,7 @@ pub struct Template {
     ///
     /// This is a `LosslessPolicy` (rather than something like `LosslessTemplate`)
     /// because the EST doesn't distinguish between static policies and templates.
-    lossless: LosslessPolicy,
+    pub(crate) lossless: LosslessPolicy,
 }
 
 impl PartialEq for Template {
@@ -2890,7 +2787,7 @@ impl Template {
     }
 
     #[cfg_attr(not(feature = "protobufs"), allow(dead_code))]
-    fn from_ast(ast: ast::Template) -> Self {
+    pub(crate) fn from_ast(ast: ast::Template) -> Self {
         Self {
             lossless: LosslessPolicy::Est(ast.clone().into()),
             ast,
@@ -2923,16 +2820,6 @@ impl FromStr for Template {
 
     fn from_str(src: &str) -> Result<Self, Self::Err> {
         Self::parse(None, src)
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl Protobuf for Template {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<crate::proto::models::TemplateBody>(&self.ast)
-    }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<crate::proto::models::TemplateBody, _>(buf).map(Self::from_ast)
     }
 }
 
@@ -3038,7 +2925,7 @@ impl TemplateResourceConstraint {
 pub struct Policy {
     /// AST representation of the policy, used for most operations.
     /// In particular, the `ast` contains the authoritative `PolicyId` for the policy.
-    ast: ast::Policy,
+    pub(crate) ast: ast::Policy,
     /// Some "lossless" representation of the policy, whichever is most
     /// convenient to provide (and can be provided with the least overhead).
     /// This is used just for `to_json()`.
@@ -3046,7 +2933,7 @@ pub struct Policy {
     /// we can't reconstruct an accurate CST/EST/policy-text from the AST, but
     /// we can from the EST (modulo whitespace and a few other things like the
     /// order of annotations).
-    lossless: LosslessPolicy,
+    pub(crate) lossless: LosslessPolicy,
 }
 
 impl PartialEq for Policy {
@@ -3445,21 +3332,6 @@ impl FromStr for Policy {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl Protobuf for Policy {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<crate::proto::models::LiteralPolicy>(&self.ast)
-    }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        // PANIC SAFETY: experimental feature
-        #[allow(clippy::expect_used)]
-        Ok(Self::from_ast(
-            proto::try_decode::<crate::proto::models::LiteralPolicy, _, ast::Policy>(buf)?
-                .expect("protobuf-encoded policy should be a valid policy"),
-        ))
-    }
-}
-
 /// See comments on `Policy` and `Template`.
 ///
 /// This structure can be used for static policies, linked policies, and templates.
@@ -3554,7 +3426,7 @@ impl std::fmt::Display for LosslessPolicy {
 /// Expressions to be evaluated
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
-pub struct Expression(ast::Expr);
+pub struct Expression(pub(crate) ast::Expr);
 
 impl Expression {
     /// Create an expression representing a literal string.
@@ -3626,16 +3498,6 @@ impl FromStr for Expression {
         ast::Expr::from_str(expression)
             .map(Expression)
             .map_err(Into::into)
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl Protobuf for Expression {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<crate::proto::models::Expr>(&self.0)
-    }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<crate::proto::models::Expr, _>(buf).map(Self)
     }
 }
 
@@ -3981,16 +3843,6 @@ impl Request {
             ast::EntityUIDEntry::Known { euid, .. } => Some(EntityUid::ref_cast(euid.as_ref())),
             ast::EntityUIDEntry::Unknown { .. } => None,
         }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl Protobuf for Request {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<crate::proto::models::Request>(&self.0)
-    }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<crate::proto::models::Request, _>(buf).map(Self)
     }
 }
 

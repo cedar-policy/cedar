@@ -47,3 +47,9 @@ mod entities;
 
 /// Conversions between proto types and `cedar_policy_validator` types
 mod validator;
+
+/// Conversions between proto types and `cedar_policy::api` types
+mod api;
+
+/// `Protobuf` trait and associated utilities
+pub mod traits;
