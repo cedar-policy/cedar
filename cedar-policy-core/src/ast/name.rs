@@ -470,7 +470,7 @@ lazy_static::lazy_static! {
 
 impl FromNormalizedStr for Name {
     fn from_normalized_str(s: &str) -> Result<Self, ParseErrors> {
-        if ID_REGEX.is_match(s) && !s.split("::").into_iter().any(|s| RESERVED.contains(s)) {
+        if ID_REGEX.is_match(s) && !s.split("::").any(|s| RESERVED.contains(s)) {
             let path_parts: Vec<&str> = s.split("::").collect();
             let split = path_parts.split_last();
             if let Some((last, rest)) = split {
