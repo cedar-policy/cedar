@@ -477,7 +477,7 @@ impl FromNormalizedStr for Name {
                 return Ok(Self(InternalName::new(
                     Id::new_unchecked(*last),
                     rest.iter().map(|chunk| Id::new_unchecked(*chunk)),
-                    None,
+                    Some(Loc::new(0..(s.len()), s.into())),
                 )));
             }
         }
