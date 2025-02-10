@@ -569,6 +569,8 @@ impl Entity {
     }
 
     /// Mark the given `UID` as an (indirect) ancestor of this `Entity`
+    /// The caller of this code is responsible for maintaining
+    /// transitive closure of hierarchy.
     pub fn add_ancestor(&mut self, uid: EntityUID) {
         if !self.parents.contains(&uid) {
             self.ancestors.insert(uid);
@@ -578,6 +580,8 @@ impl Entity {
     /// Mark the given `UID` as a (direct) parent of this `Entity`, and
     /// remove the UID from (indirect) ancestors
     /// if it was previously added as an ancestor
+    /// The caller of this code is responsible for maintaining
+    /// transitive closure of hierarchy.
     pub fn add_parent(&mut self, uid: EntityUID) {
         self.ancestors.remove(&uid);
         self.parents.insert(uid);
@@ -586,6 +590,8 @@ impl Entity {
     /// Remove the given `UID` as an ancestor of this `Entity`.
     ///
     /// No effect if the `UID` was a direct parent.
+    /// The caller of this code is responsible for maintaining
+    /// transitive closure of hierarchy.
     pub fn remove_ancestor(&mut self, uid: &EntityUID) {
         self.ancestors.remove(uid);
     }
@@ -593,6 +599,8 @@ impl Entity {
     /// Remove the given `UID` as a (direct) parent of this `Entity`.
     ///
     /// No effect on the `Entity`'s (indirect) ancestors.
+    /// The caller of this code is responsible for maintaining
+    /// transitive closure of hierarchy.
     pub fn remove_parent(&mut self, uid: &EntityUID) {
         self.parents.remove(uid);
     }
