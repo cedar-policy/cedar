@@ -88,6 +88,11 @@ name = "entity_attr_errors"
 harness = false
 
 [[bench]]
+name = "entity_parsing"
+harness = false
+
+
+[[bench]]
 name = "extension_fn_validation"
 harness = false
 
