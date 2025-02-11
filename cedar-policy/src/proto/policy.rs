@@ -459,7 +459,7 @@ impl From<&ast::LiteralPolicySet> for models::LiteralPolicySet {
 impl From<&ast::PolicySet> for models::LiteralPolicySet {
     fn from(v: &ast::PolicySet) -> Self {
         let templates: HashMap<String, models::TemplateBody> = v
-            .templates()
+            .all_templates()
             .map(|t| (String::from(t.id().as_ref()), models::TemplateBody::from(t)))
             .collect();
         let links: HashMap<String, models::LiteralPolicy> = v
