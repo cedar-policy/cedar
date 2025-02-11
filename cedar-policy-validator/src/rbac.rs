@@ -46,7 +46,7 @@ impl Validator {
         // suggestion when an entity type is not found.
         let known_entity_types = self
             .schema
-            .known_entity_types()
+            .entity_type_names()
             .map(ToString::to_string)
             .collect::<Vec<_>>();
 
@@ -104,7 +104,7 @@ impl Validator {
         // suggestion when an entity type is not found.
         let known_entity_types = self
             .schema
-            .known_entity_types()
+            .entity_type_names()
             .map(ToString::to_string)
             .collect::<Vec<_>>();
 
@@ -313,7 +313,9 @@ impl Validator {
     ) -> Box<dyn Iterator<Item = &'a EntityUID> + 'a> {
         match action_constraint {
             // <var>
-            ActionConstraint::Any => Box::new(self.schema.known_action_ids()),
+            ActionConstraint::Any => {
+                Box::new(self.schema.action_ids().map(ValidatorActionId::name))
+            }
             // <var> == <literal euid>
             ActionConstraint::Eq(euid) => Box::new(std::iter::once(euid.as_ref())),
             // <var> in [<literal euid>...]
@@ -352,7 +354,7 @@ impl Validator {
     ) -> Box<dyn Iterator<Item = &'a ast::EntityType> + 'a> {
         match scope_constraint {
             // <var>
-            PrincipalOrResourceConstraint::Any => Box::new(self.schema.known_entity_types()),
+            PrincipalOrResourceConstraint::Any => Box::new(self.schema.entity_type_names()),
             // <var> == <literal euid>
             PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)) => {
                 Box::new(std::iter::once(euid.entity_type()))
@@ -363,7 +365,7 @@ impl Validator {
             }
             PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_))
             | PrincipalOrResourceConstraint::In(EntityReference::Slot(_)) => {
-                Box::new(self.schema.known_entity_types())
+                Box::new(self.schema.entity_type_names())
             }
             PrincipalOrResourceConstraint::Is(entity_type)
             | PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot(_)) => {

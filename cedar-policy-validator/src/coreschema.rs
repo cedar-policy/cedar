@@ -55,17 +55,13 @@ impl<'a> entities::Schema for CoreSchema<'a> {
         &'b self,
         basename: &'b ast::UnreservedId,
     ) -> Box<dyn Iterator<Item = ast::EntityType> + 'b> {
-        Box::new(
-            self.schema
-                .entity_types()
-                .filter_map(move |(entity_type, _)| {
-                    if &entity_type.name().basename() == basename {
-                        Some(entity_type.clone())
-                    } else {
-                        None
-                    }
-                }),
-        )
+        Box::new(self.schema.entity_types().filter_map(move |entity_type| {
+            if &entity_type.name().as_ref().basename() == basename {
+                Some(entity_type.name().clone())
+            } else {
+                None
+            }
+        }))
     }
 
     fn action_entities(&self) -> Self::ActionEntityIterator {
@@ -94,9 +90,9 @@ impl EntityTypeDescription {
             validator_type: schema.get_entity_type(type_name).cloned()?,
             allowed_parent_types: {
                 let mut set = HashSet::new();
-                for (possible_parent_typename, possible_parent_et) in schema.entity_types() {
+                for possible_parent_et in schema.entity_types() {
                     if possible_parent_et.descendants.contains(type_name) {
-                        set.insert(possible_parent_typename.clone());
+                        set.insert(possible_parent_et.name().clone());
                     }
                 }
                 Arc::new(set)
@@ -143,7 +139,7 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
     fn required_attrs<'s>(&'s self) -> Box<dyn Iterator<Item = SmolStr> + 's> {
         Box::new(
             self.validator_type
-                .attributes
+                .attributes()
                 .iter()
                 .filter(|(_, ty)| ty.is_required)
                 .map(|(attr, _)| attr.clone()),
