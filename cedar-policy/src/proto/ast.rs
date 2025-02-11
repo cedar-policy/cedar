@@ -119,7 +119,7 @@ impl From<&ast::EntityUID> for models::EntityUid {
     fn from(v: &ast::EntityUID) -> Self {
         Self {
             ty: Some(models::EntityType::from(v.entity_type())),
-            eid: v.eid().escaped().into(),
+            eid: <ast::Eid as AsRef<str>>::as_ref(v.eid()).into(),
         }
     }
 }
@@ -725,6 +725,16 @@ mod test {
         assert_eq!(
             euid2,
             ast::EntityUID::from(&models::EntityUid::from(&euid2))
+        );
+
+        let euid3 = ast::EntityUID::from_components(
+            ast::EntityType::from_normalized_str("A").unwrap(),
+            ast::Eid::new("\0\n \' \"+-$^!"),
+            None,
+        );
+        assert_eq!(
+            euid3,
+            ast::EntityUID::from(&models::EntityUid::from(&euid3))
         );
 
         let attrs = (1..=7)
