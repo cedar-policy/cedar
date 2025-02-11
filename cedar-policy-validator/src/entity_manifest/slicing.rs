@@ -975,6 +975,65 @@ action BeSad appliesTo {
     }
 
     #[test]
+    fn test_slice_in_const_true_guard() {
+        let schema = ValidatorSchema::from_cedarschema_str(
+            "
+entity User = {
+  foo: String,
+  bar: String,
+  baz: String,
+};
+
+entity Document;
+
+action Read appliesTo {
+  principal: [User],
+  resource: [Document]
+};",
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0;
+
+        let pset = parser::parse_policyset(
+            r#"permit(principal, action, resource) when {
+                if (principal.foo == "foo") || true then
+                    principal.bar == "bar"
+                else
+                    principal.baz == "baz"
+            };"#,
+        )
+        .unwrap();
+        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        let entities_json = serde_json::json!([{
+            "uid" : { "type" : "User", "id" : "oliver"},
+            "parents": [],
+            "attrs": {
+                "foo": "foo",
+                "bar": "bar",
+                "baz": "baz",
+            }
+        }]);
+        // We need `foo` to evaluate the guard even though we know it's always
+        // `true`. We need `bar` to evaluate the `then` branch. We don't need
+        // `baz` because we'll never evaluate the `else` branch.
+        let expected_json = serde_json::json!([{
+            "uid" : { "type" : "User", "id" : "oliver"},
+            "parents": [],
+            "attrs": {
+                "foo": "foo",
+                "bar": "bar",
+            }
+        }]);
+        expect_entity_slice_to(
+            entities_json.clone(),
+            expected_json.clone(),
+            &schema,
+            &manifest,
+        );
+    }
+
+    #[test]
     fn test_slice_with_entity_alias_with_two_attrs() {
         let schema = ValidatorSchema::from_cedarschema_str(
             "
