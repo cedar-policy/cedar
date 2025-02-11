@@ -90,6 +90,16 @@ impl Entities {
         }
     }
 
+    /// Is this a partial store (created with `.partial()`)
+    pub fn is_partial(&self) -> bool {
+        #[cfg(feature = "partial-eval")]
+        let ret = self.mode == Mode::Partial;
+        #[cfg(not(feature = "partial-eval"))]
+        let ret = false;
+
+        ret
+    }
+
     /// Get the `Entity` with the given UID, if any
     pub fn entity(&self, uid: &EntityUID) -> Dereference<'_, Entity> {
         match self.entities.get(uid) {
@@ -360,61 +370,6 @@ impl std::fmt::Display for Entities {
                 writeln!(f, "{e}")?;
             }
             Ok(())
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&proto::Entities> for Entities {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::Entities) -> Self {
-        let entities: Vec<Arc<Entity>> = v
-            .entities
-            .iter()
-            .map(|e| Arc::new(Entity::from(e)))
-            .collect();
-
-        #[cfg(not(feature = "partial-eval"))]
-        let result = Entities::new();
-
-        #[cfg(feature = "partial-eval")]
-        let mut result = Entities::new();
-        #[cfg(feature = "partial-eval")]
-        if v.mode == crate::entities::proto::Mode::Partial as i32 {
-            result = result.partial();
-        }
-
-        result
-            .add_entities(
-                entities,
-                None::<&NoEntitiesSchema>,
-                TCComputation::AssumeAlreadyComputed,
-                Extensions::none(),
-            )
-            .expect("Should be able to add entities")
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&Entities> for proto::Entities {
-    fn from(v: &Entities) -> Self {
-        let mut entities: Vec<proto::Entity> = Vec::with_capacity(v.entities.len());
-        for entity in v.entities.values() {
-            entities.push(proto::Entity::from(entity));
-        }
-
-        #[cfg(feature = "partial-eval")]
-        if v.mode == Mode::Partial {
-            return Self {
-                entities,
-                mode: crate::entities::proto::Mode::Partial.into(),
-            };
-        }
-
-        Self {
-            entities,
-            mode: proto::Mode::Concrete.into(),
         }
     }
 }
@@ -2083,6 +2038,7 @@ mod schema_based_parsing_tests {
                     action.clone(),
                     [(SmolStr::from("foo"), PartialValue::from(34))],
                     std::iter::once(r#"Action::"readOnly""#.parse().expect("valid uid")).collect(),
+                    [],
                 ))),
                 r#"Action::"readOnly""# => Some(Arc::new(Entity::with_uid(
                     r#"Action::"readOnly""#.parse().expect("valid uid"),
@@ -3635,77 +3591,5 @@ mod schema_based_parsing_tests {
                     .build()
             );
         });
-    }
-}
-
-#[cfg(feature = "protobufs")]
-#[cfg(test)]
-mod protobuf_tests {
-    use super::*;
-    use smol_str::SmolStr;
-    use std::collections::{BTreeMap, HashSet};
-    use std::iter;
-
-    #[test]
-    fn roundtrip() {
-        // Empty Test
-        let entities1: Entities = Entities::new();
-        assert_eq!(
-            entities1,
-            Entities::from(&proto::Entities::from(&entities1))
-        );
-
-        // Single Element Test
-        let attrs = (1..=7)
-            .map(|id| (format!("{id}").into(), RestrictedExpr::val(true)))
-            .collect::<HashMap<SmolStr, _>>();
-        let entity: Arc<Entity> = Arc::new(
-            Entity::new(
-                r#"Foo::"bar""#.parse().unwrap(),
-                attrs.clone(),
-                HashSet::new(),
-                BTreeMap::new(),
-                Extensions::none(),
-            )
-            .unwrap(),
-        );
-        let mut entities2: Entities = Entities::new();
-        entities2 = entities2
-            .add_entities(
-                iter::once(entity.clone()),
-                None::<&NoEntitiesSchema>,
-                TCComputation::AssumeAlreadyComputed,
-                Extensions::none(),
-            )
-            .unwrap();
-        assert_eq!(
-            entities2,
-            Entities::from(&proto::Entities::from(&entities2))
-        );
-
-        // Two Element Test
-        let entity2: Arc<Entity> = Arc::new(
-            Entity::new(
-                r#"Bar::"foo""#.parse().unwrap(),
-                attrs,
-                HashSet::new(),
-                BTreeMap::new(),
-                Extensions::none(),
-            )
-            .unwrap(),
-        );
-        let mut entities3: Entities = Entities::new();
-        entities3 = entities3
-            .add_entities(
-                iter::once(entity).chain(iter::once(entity2)),
-                None::<&NoEntitiesSchema>,
-                TCComputation::AssumeAlreadyComputed,
-                Extensions::none(),
-            )
-            .unwrap();
-        assert_eq!(
-            entities3,
-            Entities::from(&proto::Entities::from(&entities3))
-        );
     }
 }
