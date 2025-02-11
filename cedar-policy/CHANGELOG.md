@@ -24,7 +24,7 @@ Cedar Language Version: TBD
   that large inputs may result in stack overflows and crashing the process.
   On all platforms supported by `stacker` (Linux, macOS, ...), Cedar will
   continue to return the graceful error `RecursionLimit` instead of crashing.
-- Fixed a bug in the experimental `entity-manifest`. If an entity appears as
+- Fixed a bug in the experimental `entity-manifest` feature. If an entity appears as
   both a possible value for a scope variable and an entity literal, slicing
   using entity manifests will now correctly capture all necessary attributes.
 - Fixed a bug in the experimental `entity-manifest` and `level-validate`
