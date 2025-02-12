@@ -760,7 +760,7 @@ impl<'e> Evaluator<'e> {
                     }
                 }
             }
-            ExprKind::Error { error_kind, sub_expression } => todo!(),
+            ExprKind::Error { .. } => panic!("We cannot evaluate an error node - this should never happen"),
         }
     }
 
