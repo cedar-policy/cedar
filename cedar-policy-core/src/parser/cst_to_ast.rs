@@ -45,7 +45,7 @@ use crate::ast::{
     self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
     PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
 };
-use crate::expr_builder::ExprBuilder;
+use crate::expr_builder::{self, ExprBuilder};
 use crate::fuzzy_match::fuzzy_search_limited;
 use itertools::{Either, Itertools};
 use nonempty::nonempty;
@@ -169,7 +169,7 @@ impl Node<Option<cst::Policy>> {
         self.to_policy_template(id)
     }
 
-    /// Convert `cst::Policy` to an AST `StaticPolicy` or `Template`
+    /// Convert `cst::Policy` to an AST `InlinePolicy` or `Template`
     pub fn to_policy_or_template(
         &self,
         id: ast::PolicyID,
@@ -239,6 +239,7 @@ impl Node<Option<cst::Policy>> {
         // convert conditions
         let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
             let (e, is_when) = c.to_expr::<ast::ExprBuilder<()>>()?;
+
             let slot_errs = e.slots().map(|slot| {
                 ToASTError::new(
                     ToASTErrorKind::slots_in_condition_clause(
@@ -835,6 +836,14 @@ impl Node<Option<cst::VariableDef>> {
         } else {
             Ok(ActionConstraint::Any)
         }
+    }
+}
+
+fn convert_error<Build: ExprBuilder>(error: ParseErrors) -> Result<Build::Expr> {
+    let res = Build::new().error(error.clone());
+    match res {
+        Ok(r) => Ok(r),
+        Err(_) => Err(error),
     }
 }
 
@@ -2166,6 +2175,17 @@ mod tests {
             })
     }
 
+
+    #[track_caller]
+    fn assert_parse_policy_allows_errors(text: &str) -> ast::StaticPolicy {
+        text_to_cst::parse_policy(text)
+            .expect("failed parser")
+            .to_policy_with_errors(ast::PolicyID::from_string("id"))
+            .unwrap_or_else(|errs| {
+                panic!("failed conversion to AST:\n{:?}", miette::Report::new(errs))
+            })
+    }
+
     #[track_caller]
     fn assert_parse_policy_fails(text: &str) -> ParseErrors {
         let result = text_to_cst::parse_policy(text)
@@ -2178,6 +2198,15 @@ mod tests {
             Err(errs) => errs,
         }
     }
+
+    #[test]
+    fn parsing_with_errors_succeeds_with_empty_when() {
+        let src = r#"
+            permit(principal, action, resource) when {};
+        "#;
+        assert_parse_policy_allows_errors(src);
+    }
+
 
     #[test]
     fn show_expr1() {

@@ -35,6 +35,8 @@ use std::{
 };
 use thiserror::Error;
 
+use super::expr_allows_errors::AstExprErrorKind;
+
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
