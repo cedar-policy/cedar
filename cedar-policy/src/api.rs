@@ -3336,7 +3336,7 @@ impl FromStr for Policy {
 ///
 /// This structure can be used for static policies, linked policies, and templates.
 #[derive(Debug, Clone)]
-enum LosslessPolicy {
+pub(crate) enum LosslessPolicy {
     /// EST representation
     Est(est::Policy),
     /// Text representation
