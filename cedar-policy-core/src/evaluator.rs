@@ -1245,15 +1245,15 @@ pub(crate) mod test {
         let grandparent = Entity::with_uid(EntityUID::with_eid("grandparent"));
         let mut sibling = Entity::with_uid(EntityUID::with_eid("sibling"));
         let unrelated = Entity::with_uid(EntityUID::with_eid("unrelated"));
-        child.add_ancestor(parent.uid().clone());
-        sibling.add_ancestor(parent.uid().clone());
-        parent.add_ancestor(grandparent.uid().clone());
+        child.add_indirect_ancestor(parent.uid().clone());
+        sibling.add_indirect_ancestor(parent.uid().clone());
+        parent.add_indirect_ancestor(grandparent.uid().clone());
         let mut child_diff_type = Entity::with_uid(
             EntityUID::with_eid_and_type("other_type", "other_child")
                 .expect("should be a valid identifier"),
         );
-        child_diff_type.add_ancestor(parent.uid().clone());
-        child_diff_type.add_ancestor(grandparent.uid().clone());
+        child_diff_type.add_indirect_ancestor(parent.uid().clone());
+        child_diff_type.add_indirect_ancestor(grandparent.uid().clone());
 
         Entities::from_entities(
             vec![
@@ -4084,7 +4084,7 @@ pub(crate) mod test {
         //Alice has parent "Friends" but we don't add "Friends" to the slice
         let mut alice = Entity::with_uid(EntityUID::with_eid("Alice"));
         let parent = Entity::with_uid(EntityUID::with_eid("Friends"));
-        alice.add_ancestor(parent.uid().clone());
+        alice.add_indirect_ancestor(parent.uid().clone());
         let entities = Entities::from_entities(
             vec![alice],
             None::<&NoEntitiesSchema>,

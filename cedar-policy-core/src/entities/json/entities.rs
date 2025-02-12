@@ -458,7 +458,7 @@ impl EntityJson {
                 .map(serialize_kpvalue)
                 .collect::<Result<_, JsonSerializationError>>()?,
             parents: entity
-                .parents()
+                .ancestors()
                 .map(|euid| EntityUidJson::ImplicitEntityEscape(TypeAndId::from(euid.clone())))
                 .collect(),
             tags: entity

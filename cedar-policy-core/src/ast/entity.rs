@@ -339,11 +339,14 @@ pub struct Entity {
     /// `RestrictedExpr`s, for mostly historical reasons.
     attrs: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
 
-    /// Set of (indirect) ancestors of this `Entity` (e.g., grandparents,
-    /// etc.), as UIDs
-    ancestors: HashSet<EntityUID>,
+    /// Set of indirect ancestors of this `Entity` as UIDs
+    indirect_ancestors: HashSet<EntityUID>,
 
-    /// Set of direct ancestors (i.e., parents), as UIDs
+    /// Set of direct ancestors (i.e., parents) as UIDs
+    ///
+    /// indirect_ancestors and parents should be disjoint
+    /// even if a parent is also an indirect parent through
+    /// a different parent
     parents: HashSet<EntityUID>,
 
     /// Tags on this entity (RFC 82)
@@ -370,7 +373,7 @@ impl Entity {
     pub fn new(
         uid: EntityUID,
         attrs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
-        ancestors: HashSet<EntityUID>,
+        indirect_ancestors: HashSet<EntityUID>,
         parents: HashSet<EntityUID>,
         tags: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
         extensions: &Extensions<'_>,
@@ -398,7 +401,7 @@ impl Entity {
         Ok(Entity {
             uid,
             attrs: evaluated_attrs,
-            ancestors,
+            indirect_ancestors,
             parents,
             tags: evaluated_tags,
         })
@@ -415,13 +418,13 @@ impl Entity {
     pub fn new_with_attr_partial_value(
         uid: EntityUID,
         attrs: impl IntoIterator<Item = (SmolStr, PartialValue)>,
-        ancestors: HashSet<EntityUID>,
+        indirect_ancestors: HashSet<EntityUID>,
         parents: HashSet<EntityUID>,
     ) -> Self {
         Self::new_with_attr_partial_value_serialized_as_expr(
             uid,
             attrs.into_iter().map(|(k, v)| (k, v.into())).collect(),
-            ancestors,
+            indirect_ancestors,
             parents,
         )
     }
@@ -433,13 +436,13 @@ impl Entity {
     pub fn new_with_attr_partial_value_serialized_as_expr(
         uid: EntityUID,
         attrs: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
-        ancestors: HashSet<EntityUID>,
+        indirect_ancestors: HashSet<EntityUID>,
         parents: HashSet<EntityUID>,
     ) -> Self {
         Entity {
             uid,
             attrs,
-            ancestors,
+            indirect_ancestors,
             parents,
             tags: BTreeMap::new(),
         }
@@ -460,22 +463,32 @@ impl Entity {
         self.tags.get(tag).map(|v| v.as_ref())
     }
 
-    /// Is this `Entity` a descendant of `e` in the entity hierarchy?
+    /// Is this `Entity` a (direct or indirect) descendant of `e` in the entity hierarchy?
     pub fn is_descendant_of(&self, e: &EntityUID) -> bool {
-        self.parents.contains(e) || self.ancestors.contains(e)
+        self.parents.contains(e) || self.indirect_ancestors.contains(e)
     }
 
-    /// Is this `Entity` a (direct) child of `e` in the entity hierarchy?
+    /// Is this `Entity` a an indirect descendant of `e` in the entity hierarchy?
+    pub fn is_indirect_descendant_of(&self, e: &EntityUID) -> bool {
+        self.indirect_ancestors.contains(e)
+    }
+
+    /// Is this `Entity` a direct decendant (child) of `e` in the entity hierarchy?
     pub fn is_child_of(&self, e: &EntityUID) -> bool {
         self.parents.contains(e)
     }
 
-    /// Iterate over this entity's ancestors
+    /// Iterate over this entity's (direct or indirect) ancestors
     pub fn ancestors(&self) -> impl Iterator<Item = &EntityUID> {
-        self.parents.iter().chain(self.ancestors.iter())
+        self.parents.iter().chain(self.indirect_ancestors.iter())
     }
 
-    /// Iterate over this entity's direct parents
+    /// Iterate over this entity's indirect ancestors
+    pub fn indirect_ancestors(&self) -> impl Iterator<Item = &EntityUID> {
+        self.indirect_ancestors.iter()
+    }
+
+    /// Iterate over this entity's direct ancestors (parents)
     pub fn parents(&self) -> impl Iterator<Item = &EntityUID> {
         self.parents.iter()
     }
@@ -515,7 +528,7 @@ impl Entity {
         Self {
             uid,
             attrs: BTreeMap::new(),
-            ancestors: HashSet::new(),
+            indirect_ancestors: HashSet::new(),
             parents: HashSet::new(),
             tags: BTreeMap::new(),
         }
@@ -568,37 +581,40 @@ impl Entity {
         Ok(())
     }
 
-    /// Mark the given `UID` as an (indirect) ancestor of this `Entity`
+    /// Mark the given `UID` as an indirect ancestor of this `Entity`
+    ///
+    /// The given `UID` will not be added as an indirecty ancestor if
+    /// it is already a direct ancestor (parent) of this `Entity`
     /// The caller of this code is responsible for maintaining
     /// transitive closure of hierarchy.
-    pub fn add_ancestor(&mut self, uid: EntityUID) {
+    pub fn add_indirect_ancestor(&mut self, uid: EntityUID) {
         if !self.parents.contains(&uid) {
-            self.ancestors.insert(uid);
+            self.indirect_ancestors.insert(uid);
         }
     }
 
     /// Mark the given `UID` as a (direct) parent of this `Entity`, and
-    /// remove the UID from (indirect) ancestors
-    /// if it was previously added as an ancestor
+    /// remove the UID from indirect ancestors
+    /// if it was previously added as an indirect ancestor
     /// The caller of this code is responsible for maintaining
     /// transitive closure of hierarchy.
     pub fn add_parent(&mut self, uid: EntityUID) {
-        self.ancestors.remove(&uid);
+        self.indirect_ancestors.remove(&uid);
         self.parents.insert(uid);
     }
 
-    /// Remove the given `UID` as an ancestor of this `Entity`.
+    /// Remove the given `UID` as an indirect ancestor of this `Entity`.
     ///
-    /// No effect if the `UID` was a direct parent.
+    /// No effect if the `UID` is a direct parent.
     /// The caller of this code is responsible for maintaining
     /// transitive closure of hierarchy.
-    pub fn remove_ancestor(&mut self, uid: &EntityUID) {
-        self.ancestors.remove(uid);
+    pub fn remove_indirect_ancestor(&mut self, uid: &EntityUID) {
+        self.indirect_ancestors.remove(uid);
     }
 
     /// Remove the given `UID` as a (direct) parent of this `Entity`.
     ///
-    /// No effect on the `Entity`'s (indirect) ancestors.
+    /// No effect on the `Entity`'s indirect ancestors.
     /// The caller of this code is responsible for maintaining
     /// transitive closure of hierarchy.
     pub fn remove_parent(&mut self, uid: &EntityUID) {
@@ -618,14 +634,14 @@ impl Entity {
         let Self {
             uid,
             attrs,
-            ancestors,
+            indirect_ancestors,
             parents,
             tags,
         } = self;
         (
             uid,
             attrs.into_iter().map(|(k, v)| (k, v.0)).collect(),
-            ancestors,
+            indirect_ancestors,
             parents,
             tags.into_iter().map(|(k, v)| (k, v.0)).collect(),
         )
@@ -674,7 +690,7 @@ impl TCNode<EntityUID> for Entity {
     }
 
     fn add_edge_to(&mut self, k: EntityUID) {
-        self.add_ancestor(k);
+        self.add_indirect_ancestor(k);
     }
 
     fn out_edges(&self) -> Box<dyn Iterator<Item = &EntityUID> + '_> {
@@ -693,7 +709,7 @@ impl TCNode<EntityUID> for Arc<Entity> {
 
     fn add_edge_to(&mut self, k: EntityUID) {
         // Use Arc::make_mut to get a mutable reference to the inner value
-        Arc::make_mut(self).add_ancestor(k)
+        Arc::make_mut(self).add_indirect_ancestor(k)
     }
 
     fn out_edges(&self) -> Box<dyn Iterator<Item = &EntityUID> + '_> {
@@ -741,7 +757,6 @@ impl From<&proto::Entity> for Entity {
             .collect();
 
         let ancestors: HashSet<EntityUID> = v.ancestors.iter().map(EntityUID::from).collect();
-        let parents: HashSet<EntityUID> = v.parents.iter().map(EntityUID::from).collect();
 
         let tags: BTreeMap<SmolStr, PartialValueSerializedAsExpr> = v
             .tags
@@ -763,8 +778,8 @@ impl From<&proto::Entity> for Entity {
                     .expect("`as_ref()` for field that should exist"),
             ),
             attrs,
-            ancestors,
-            parents,
+            indirect_ancestors: ancestors,
+            parents: HashSet::new(),
             tags,
         }
     }
@@ -781,14 +796,10 @@ impl From<&Entity> for proto::Entity {
             );
         }
 
-        let mut ancestors: Vec<proto::EntityUid> = Vec::with_capacity(v.ancestors.len());
-        for ancestor in &v.ancestors {
+        let mut ancestors: Vec<proto::EntityUid> =
+            Vec::with_capacity(v.ancestors().collect::<Vec<_>>().len());
+        for ancestor in v.ancestors() {
             ancestors.push(proto::EntityUid::from(ancestor));
-        }
-
-        let mut parents: Vec<proto::EntityUid> = Vec::with_capacity(v.parents.len());
-        for parent in &v.parents {
-            parents.push(proto::EntityUid::from(parent));
         }
 
         let mut tags: HashMap<String, proto::Expr> = HashMap::with_capacity(v.tags.len());
@@ -803,7 +814,6 @@ impl From<&Entity> for proto::Entity {
             uid: Some(proto::EntityUid::from(&v.uid)),
             attrs,
             ancestors,
-            parents,
             tags,
         }
     }

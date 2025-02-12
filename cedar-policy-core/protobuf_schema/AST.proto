@@ -317,7 +317,6 @@ message Entity {
     map<string, Expr> attrs = 2;
     repeated EntityUid ancestors = 3;
     map<string, Expr> tags = 4;
-    repeated EntityUid parents = 5;
 }
 
 // END ENTITIES MESSAGES

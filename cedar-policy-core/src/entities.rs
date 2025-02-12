@@ -55,7 +55,7 @@ pub struct Entities {
     /// `serde_as` annotation are used to serialize the data as associative
     /// lists instead.
     ///
-    /// Important internal invariant: for any `Entities` object that exists, the
+    /// Important internal invariant: for any `Entities` object that exists,
     /// the `ancestor` relation is transitively closed.
     #[serde_as(as = "Vec<(_, _)>")]
     entities: HashMap<EntityUID, Arc<Entity>>,
@@ -169,11 +169,11 @@ impl Entities {
                     for entity in self.entities.values_mut() {
                         if entity.is_descendant_of(&uid_to_remove) {
                             // remove any direct or indirect link between `entity` and `entity_to_remove`
-                            Arc::make_mut(entity).remove_ancestor(&uid_to_remove);
+                            Arc::make_mut(entity).remove_indirect_ancestor(&uid_to_remove);
                             Arc::make_mut(entity).remove_parent(&uid_to_remove);
                             // remove any indirect link between `entity` and the ancestors of `entity_to_remove`
                             for ancestor_uid in entity_to_remove.ancestors() {
-                                Arc::make_mut(entity).remove_ancestor(ancestor_uid);
+                                Arc::make_mut(entity).remove_indirect_ancestor(ancestor_uid);
                             }
                         }
                     }
@@ -2050,8 +2050,8 @@ mod entities_tests {
         let mut e1 = Entity::with_uid(EntityUID::with_eid("a"));
         let mut e2 = Entity::with_uid(EntityUID::with_eid("b"));
         let e3 = Entity::with_uid(EntityUID::with_eid("c"));
-        e1.add_ancestor(EntityUID::with_eid("b"));
-        e2.add_ancestor(EntityUID::with_eid("c"));
+        e1.add_indirect_ancestor(EntityUID::with_eid("b"));
+        e2.add_indirect_ancestor(EntityUID::with_eid("c"));
 
         let es = Entities::from_entities(
             vec![e1, e2, e3],
@@ -2075,9 +2075,9 @@ mod entities_tests {
         let mut e1 = Entity::with_uid(EntityUID::with_eid("a"));
         let mut e2 = Entity::with_uid(EntityUID::with_eid("b"));
         let e3 = Entity::with_uid(EntityUID::with_eid("c"));
-        e1.add_ancestor(EntityUID::with_eid("b"));
-        e1.add_ancestor(EntityUID::with_eid("c"));
-        e2.add_ancestor(EntityUID::with_eid("c"));
+        e1.add_indirect_ancestor(EntityUID::with_eid("b"));
+        e1.add_indirect_ancestor(EntityUID::with_eid("c"));
+        e2.add_indirect_ancestor(EntityUID::with_eid("c"));
 
         Entities::from_entities(
             vec![e1, e2, e3],
@@ -2131,22 +2131,22 @@ mod entities_tests {
         // B
 
         assert_matches!(
-            entities.entity(&EntityUID::with_eid("D")),
+            entities.entity(&did),
             Dereference::NoSuchEntity
         );
 
-        let e = entities.entity(&EntityUID::with_eid("E")).unwrap();
-        let f = entities.entity(&EntityUID::with_eid("F")).unwrap();
+        let e = entities.entity(&eid).unwrap();
+        let f = entities.entity(&fid).unwrap();
 
         // Assert the existence of these edges in the hierarchy
-        assert!(f.is_descendant_of(&aid.clone()));
-        assert!(f.is_descendant_of(&eid.clone()));
-        assert!(f.is_descendant_of(&cid.clone()));
-        assert!(e.is_descendant_of(&cid.clone()));
+        assert!(f.is_descendant_of(&aid));
+        assert!(f.is_descendant_of(&eid));
+        assert!(f.is_descendant_of(&cid));
+        assert!(e.is_descendant_of(&cid));
 
         // Assert that there is no longer an edge from F to B
         // as the only link was through D
-        assert!(!f.is_descendant_of(&bid.clone()));
+        assert!(!f.is_descendant_of(&bid));
     }
 }
 
