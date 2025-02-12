@@ -27,7 +27,6 @@ use cedar_policy_core::{
     parser::Loc,
     transitive_closure::compute_tc,
 };
-use entity_type::StandardValidatorEntityType;
 use itertools::Itertools;
 use namespace_def::EntityTypeFragment;
 use nonempty::NonEmpty;
@@ -43,12 +42,6 @@ use crate::{
     json_schema,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
 };
-
-#[cfg(feature = "protobufs")]
-use crate::proto;
-
-#[cfg(feature = "protobufs")]
-use cedar_policy_core::ast;
 
 mod action;
 pub use action::ValidatorActionId;
@@ -175,10 +168,10 @@ pub struct ValidatorSchema {
     action_ids: HashMap<EntityUID, ValidatorActionId>,
 
     /// For easy lookup, this is a map from action name to `Entity` object
-    /// for each action in the schema. This information is contained in the
-    /// `ValidatorSchema`, but not efficient to extract -- getting the `Entity`
-    /// from the `ValidatorSchema` is O(N) as of this writing, but with this
-    /// cache it's O(1).
+    /// for each action in the schema. This information is contained elsewhere
+    /// in the `ValidatorSchema`, but not efficient to extract -- getting the
+    /// `Entity` from the `ValidatorSchema` is O(N) as of this writing, but with
+    /// this cache it's O(1).
     #[serde_as(as = "Vec<(_, _)>")]
     pub(crate) actions: HashMap<EntityUID, Arc<Entity>>,
 }
@@ -213,6 +206,39 @@ impl TryFrom<json_schema::Fragment<RawName>> for ValidatorSchema {
 }
 
 impl ValidatorSchema {
+    /// Construct a new `ValidatorSchema` from a set of `ValidatorEntityType`s and `ValidatorActionId`s
+    pub fn new(
+        entity_types: impl IntoIterator<Item = ValidatorEntityType>,
+        action_ids: impl IntoIterator<Item = ValidatorActionId>,
+    ) -> Self {
+        let entity_types = entity_types
+            .into_iter()
+            .map(|ety| (ety.name().clone(), ety))
+            .collect();
+        let action_ids = action_ids
+            .into_iter()
+            .map(|id| (id.name().clone(), id))
+            .collect();
+        Self::new_from_maps(entity_types, action_ids)
+    }
+
+    /// for internal use: version of `new()` which takes the maps directly, rather than constructing them.
+    ///
+    /// This function constructs the `actions` cache.
+    fn new_from_maps(
+        entity_types: HashMap<EntityType, ValidatorEntityType>,
+        action_ids: HashMap<EntityUID, ValidatorActionId>,
+    ) -> Self {
+        let actions = Self::action_entities_iter(&action_ids)
+            .map(|e| (e.uid().clone(), Arc::new(e)))
+            .collect();
+        Self {
+            entity_types,
+            action_ids,
+            actions,
+        }
+    }
+
     /// Returns an iterator over every entity type that can be a principal for any action in this schema
     pub fn principals(&self) -> impl Iterator<Item = &EntityType> {
         self.action_ids
@@ -519,11 +545,7 @@ impl ValidatorSchema {
                 match entity_type {
                     EntityTypeFragment::Enum(choices) => Ok((
                         name.clone(),
-                        ValidatorEntityType {
-                            name,
-                            descendants,
-                            kind: ValidatorEntityTypeKind::Enum(choices),
-                        },
+                        ValidatorEntityType::new_enum(name, descendants, choices),
                     )),
                     EntityTypeFragment::Standard {
                         attributes,
@@ -549,17 +571,13 @@ impl ValidatorSchema {
                             .transpose()?;
                         Ok((
                             name.clone(),
-                            ValidatorEntityType {
+                            ValidatorEntityType::new_standard(
                                 name,
                                 descendants,
-                                kind: ValidatorEntityTypeKind::Standard(
-                                    StandardValidatorEntityType {
-                                        attributes,
-                                        open_attributes,
-                                        tags,
-                                    },
-                                ),
-                            },
+                                attributes,
+                                open_attributes,
+                                tags,
+                            ),
                         ))
                     }
                 }
@@ -595,10 +613,7 @@ impl ValidatorSchema {
                         name,
                         applies_to: action.applies_to,
                         descendants,
-                        context: Type::record_with_attributes(
-                            context.attrs,
-                            open_context_attributes,
-                        ),
+                        context: Type::record_with_attributes(context, open_context_attributes),
                         attribute_types: action.attribute_types,
                         attributes: action.attributes,
                     },
@@ -628,15 +643,7 @@ impl ValidatorSchema {
             common_types.into_values(),
         )?;
 
-        let actions = Self::action_entities_iter(&action_ids)
-            .map(|e| (e.uid().clone(), Arc::new(e)))
-            .collect();
-
-        Ok(ValidatorSchema {
-            entity_types,
-            action_ids,
-            actions,
-        })
+        Ok(ValidatorSchema::new_from_maps(entity_types, action_ids))
     }
 
     /// Check that all entity types and actions referenced in the schema are in
@@ -663,7 +670,7 @@ impl ValidatorSchema {
         // inverting the `memberOf` relationship which mapped declared entity
         // types to their parent entity types.
         for entity_type in entity_types.values() {
-            for (_, attr_typ) in entity_type.attributes() {
+            for (_, attr_typ) in entity_type.attributes().iter() {
                 Self::check_undeclared_in_type(
                     &attr_typ.attr_type,
                     entity_types,
@@ -782,19 +789,19 @@ impl ValidatorSchema {
         self.is_known_entity_type(euid.entity_type())
     }
 
-    /// An iterator over the action ids in the schema.
-    pub(crate) fn known_action_ids(&self) -> impl Iterator<Item = &EntityUID> {
-        self.action_ids.keys()
+    /// An iterator over the `ValidatorActionId`s in the schema.
+    pub fn action_ids(&self) -> impl Iterator<Item = &ValidatorActionId> {
+        self.action_ids.values()
     }
 
     /// An iterator over the entity type names in the schema.
-    pub(crate) fn known_entity_types(&self) -> impl Iterator<Item = &EntityType> {
+    pub fn entity_type_names(&self) -> impl Iterator<Item = &EntityType> {
         self.entity_types.keys()
     }
 
-    /// An iterator matching the entity Types to their Validator Types
-    pub fn entity_types(&self) -> impl Iterator<Item = (&EntityType, &ValidatorEntityType)> {
-        self.entity_types.iter()
+    /// An iterator over the `ValidatorEntityType`s in the schema.
+    pub fn entity_types(&self) -> impl Iterator<Item = &ValidatorEntityType> {
+        self.entity_types.values()
     }
 
     /// Get all entity types in the schema where an `{entity0} in {entity}` can
@@ -878,6 +885,7 @@ impl ValidatorSchema {
                 action.attributes.clone(),
                 HashSet::new(),
                 action_ancestors.remove(action_id).unwrap_or_default(),
+                BTreeMap::new(), // actions cannot have entity tags
             )
         })
     }
@@ -892,81 +900,6 @@ impl ValidatorSchema {
             extensions,
         )
         .map_err(Into::into)
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&ValidatorSchema> for proto::ValidatorSchema {
-    fn from(v: &ValidatorSchema) -> Self {
-        Self {
-            entity_types: v
-                .entity_types
-                .iter()
-                .map(|(k, v)| proto::EntityTypeWithTypesMap {
-                    key: Some(ast::proto::EntityType::from(k)),
-                    value: Some(proto::ValidatorEntityType::from(v)),
-                })
-                .collect(),
-            action_ids: v
-                .action_ids
-                .iter()
-                .map(|(k, v)| proto::EntityUidWithActionIdsMap {
-                    key: Some(ast::proto::EntityUid::from(k)),
-                    value: Some(proto::ValidatorActionId::from(v)),
-                })
-                .collect(),
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&proto::ValidatorSchema> for ValidatorSchema {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::ValidatorSchema) -> Self {
-        let action_ids = v
-            .action_ids
-            .iter()
-            .map(|kvp| {
-                let k = ast::EntityUID::from(
-                    kvp.key
-                        .as_ref()
-                        .expect("`as_ref()` for field that should exist"),
-                );
-                let v = ValidatorActionId::from(
-                    kvp.value
-                        .as_ref()
-                        .expect("`as_ref()` for field that should exist"),
-                );
-                (k, v)
-            })
-            .collect();
-
-        let actions = Self::action_entities_iter(&action_ids)
-            .map(|e| (e.uid().clone(), Arc::new(e)))
-            .collect();
-
-        Self {
-            entity_types: v
-                .entity_types
-                .iter()
-                .map(|kvp| {
-                    let k = ast::EntityType::from(
-                        kvp.key
-                            .as_ref()
-                            .expect("`as_ref()` for field that should exist"),
-                    );
-                    let v = ValidatorEntityType::from(
-                        kvp.value
-                            .as_ref()
-                            .expect("`as_ref()` for field that should exist"),
-                    );
-                    (k, v)
-                })
-                .collect(),
-            action_ids,
-            actions,
-        }
     }
 }
 
@@ -2376,7 +2309,7 @@ pub(crate) mod test {
         let schema: ValidatorSchema = fragment.try_into().unwrap();
         assert_eq!(
             schema.entity_types.iter().next().unwrap().1.attributes(),
-            Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
+            &Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
         );
     }
 
@@ -2402,7 +2335,7 @@ pub(crate) mod test {
         let schema: ValidatorSchema = fragment.try_into().unwrap();
         assert_eq!(
             schema.entity_types.iter().next().unwrap().1.attributes(),
-            Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
+            &Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
         );
     }
 
@@ -2434,7 +2367,7 @@ pub(crate) mod test {
         let schema: ValidatorSchema = fragment.try_into().unwrap();
         assert_eq!(
             schema.entity_types.iter().next().unwrap().1.attributes(),
-            Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
+            &Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
         );
     }
 
@@ -2480,7 +2413,7 @@ pub(crate) mod test {
 
         assert_eq!(
             schema.entity_types.iter().next().unwrap().1.attributes(),
-            Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
+            &Attributes::with_required_attributes([("a".into(), Type::primitive_long())])
         );
     }
 
@@ -2648,7 +2581,7 @@ pub(crate) mod test {
         let view_photo = actions.entity(&action_uid);
         assert_eq!(
             view_photo.unwrap(),
-            &Entity::new_with_attr_partial_value(action_uid, [], HashSet::new(), HashSet::new())
+            &Entity::new_with_attr_partial_value(action_uid, [], HashSet::new(), HashSet::new(), [])
         );
     }
 
@@ -2684,25 +2617,15 @@ pub(crate) mod test {
                 view_photo_uid,
                 [],
                 HashSet::new(),
-                HashSet::from([view_uid.clone(), read_uid.clone()])
-            )
-        );
-
-        let view_entity = actions.entity(&view_uid);
-        assert_eq!(
-            view_entity.unwrap(),
-            &Entity::new_with_attr_partial_value(
-                view_uid,
+                HashSet::from([view_uid.clone(), read_uid.clone()]),
                 [],
-                HashSet::new(),
-                HashSet::from([read_uid.clone()])
             )
         );
 
         let read_entity = actions.entity(&read_uid);
         assert_eq!(
             read_entity.unwrap(),
-            &Entity::new_with_attr_partial_value(read_uid, [], HashSet::new(), HashSet::new())
+            &Entity::new_with_attr_partial_value(read_uid, [], HashSet::new(), HashSet::new(), [])
         );
     }
 
@@ -2870,7 +2793,7 @@ pub(crate) mod test {
         let schema = ValidatorSchema::from_json_value(src, Extensions::all_available()).unwrap();
         let mut attributes = assert_entity_type_exists(&schema, "Demo::User")
             .attributes()
-            .into_iter();
+            .iter();
         let (attr_name, attr_ty) = attributes.next().unwrap();
         assert_eq!(attr_name, "id");
         assert_eq!(&attr_ty.attr_type, &Type::primitive_string());
@@ -5356,7 +5279,7 @@ action CreateList in Create appliesTo {
         let schema = schema();
         let entities = schema
             .entity_types()
-            .map(|(ty, _)| ty)
+            .map(ValidatorEntityType::name)
             .cloned()
             .collect::<HashSet<_>>();
         let expected = ["List", "Application", "User", "CoolList", "Team"]
@@ -5576,7 +5499,7 @@ action CreateList in Create appliesTo {
         let schema = schema();
         let entities = schema
             .entity_types()
-            .map(|(ty, _)| ty)
+            .map(ValidatorEntityType::name)
             .cloned()
             .collect::<HashSet<_>>();
         let expected = [

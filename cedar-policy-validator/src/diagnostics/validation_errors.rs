@@ -108,20 +108,20 @@ pub fn unrecognized_action_id_help(
     let eid_str: &str = euid.eid().as_ref();
     let eid_with_type = format!("Action::{}", eid_str);
     let eid_with_type_and_quotes = format!("Action::\"{}\"", eid_str);
-    let maybe_id_with_type = schema.known_action_ids().find(|euid| {
-        let eid = <Eid as AsRef<str>>::as_ref(euid.eid());
+    let maybe_id_with_type = schema.action_ids().find(|action_id| {
+        let eid = <Eid as AsRef<str>>::as_ref(action_id.name().eid());
         eid.contains(&eid_with_type) || eid.contains(&eid_with_type_and_quotes)
     });
     if let Some(id) = maybe_id_with_type {
         // In that case, let the user know about it
         Some(UnrecognizedActionIdHelp::AvoidActionTypeInActionId(
-            id.to_string(),
+            id.name().to_string(),
         ))
     } else {
         // Otherwise, suggest using another id
         let euids_strs = schema
-            .known_action_ids()
-            .map(ToString::to_string)
+            .action_ids()
+            .map(|id| id.name().to_string())
             .collect::<Vec<_>>();
         fuzzy_search(euid.eid().as_ref(), &euids_strs)
             .map(UnrecognizedActionIdHelp::SuggestAlternative)

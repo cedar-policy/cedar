@@ -75,8 +75,8 @@ impl Schema for NoEntitiesSchema {
 }
 
 /// Simple type that implements `Schema` by allowing entities of all types to
-/// exist, and allowing all actions to exist, but expecting no attributes or
-/// parents on any entity (action or otherwise).
+/// exist, and allowing all actions to exist, but expecting no attributes, tags,
+/// or parents on any entity (action or otherwise).
 ///
 /// This type returns an empty iterator for `action_entities()`, which is kind
 /// of inconsistent with its behavior on `action()`. But it works out -- the
@@ -99,6 +99,7 @@ impl Schema for AllEntitiesNoAttrsSchema {
             [],
             HashSet::new(),
             HashSet::new(),
+            [],
         )))
     }
     fn entity_types_with_basename<'a>(
