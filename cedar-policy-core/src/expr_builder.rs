@@ -17,6 +17,8 @@
 //! Contains the trait [`ExprBuilder`], defining a generic interface for
 //! building different expression data structures (e.g., AST and EST).
 
+use std::sync::Arc;
+
 use smol_str::SmolStr;
 
 use crate::{
@@ -24,7 +26,7 @@ use crate::{
         BinaryOp, EntityType, ExpressionConstructionError, Literal, Name, Pattern, SlotId, UnaryOp,
         Unknown, Var,
     },
-    parser::{cst, Loc},
+    parser::{cst, Loc, err::ParseErrors},
 };
 
 /// Defines a generic interface for building different expression data
@@ -38,6 +40,8 @@ pub trait ExprBuilder: Clone {
     /// can be `()` if no data is stored.
     type Data: Default;
 
+    type ErrorType;
+
     /// Construct a new expression builder for an expression that will not carry any data.
     fn new() -> Self
     where
@@ -45,6 +49,8 @@ pub trait ExprBuilder: Clone {
     {
         Self::with_data(Self::Data::default())
     }
+
+    fn error(self, parse_errors: ParseErrors, sub_expression: Option<Arc<Self::Expr>>) -> Result<Self::Expr, Self::ErrorType>;
 
     /// Build an expression storing this information
     fn with_data(data: Self::Data) -> Self;

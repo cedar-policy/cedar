@@ -33,6 +33,8 @@ use std::{
 };
 use thiserror::Error;
 
+use super::expr_allows_errors::AstExprErrorKind;
+
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
@@ -155,6 +157,12 @@ pub enum ExprKind<T = ()> {
     Set(Arc<Vec<Expr<T>>>),
     /// Anonymous record (whose elements may be arbitrary expressions)
     Record(Arc<BTreeMap<SmolStr, Expr<T>>>),
+
+    // Error expression - allows us to continue parsing even when we have errors
+    Error {
+        error_kind: AstExprErrorKind, 
+        sub_expression: Option<Arc<Expr<T>>>
+    },
 }
 
 impl From<Value> for Expr {
@@ -191,7 +199,7 @@ impl From<PartialValue> for Expr {
 }
 
 impl<T> Expr<T> {
-    fn new(expr_kind: ExprKind<T>, source_loc: Option<Loc>, data: T) -> Self {
+    pub(crate) fn new(expr_kind: ExprKind<T>, source_loc: Option<Loc>, data: T) -> Self {
         Self {
             expr_kind,
             source_loc,
@@ -385,6 +393,7 @@ impl<T> Expr<T> {
             ExprKind::Is { .. } => Some(Type::Bool),
             ExprKind::Set(_) => Some(Type::Set),
             ExprKind::Record(_) => Some(Type::Record),
+            ExprKind::Error { .. } => None
         }
     }
 }
@@ -717,6 +726,7 @@ impl Expr {
                 expr.substitute_general::<T>(definitions)?,
                 entity_type.clone(),
             )),
+            ExprKind::Error { .. } => Ok(self.clone()),
         }
     }
 }
@@ -856,6 +866,8 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     type Expr = Expr<T>;
 
     type Data = T;
+
+    type ErrorType = ParseErrors;
 
     fn loc(&self) -> Option<&Loc> {
         self.source_loc.as_ref()
@@ -1167,6 +1179,10 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
             expr: Arc::new(expr),
             entity_type,
         })
+    }
+        
+    fn error(self, parse_errors: ParseErrors, sub_expression: Option<Arc<Self::Expr>>) -> Result<Self::Expr, Self::ErrorType> {
+        Err(parse_errors)
     }
 }
 
@@ -1482,6 +1498,7 @@ impl<T> Expr<T> {
                 expr.hash_shape(state);
                 entity_type.hash(state);
             }
+            ExprKind::Error { error_kind, sub_expression } => error_kind.hash(state),
         }
     }
 }

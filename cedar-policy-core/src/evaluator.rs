@@ -760,6 +760,7 @@ impl<'e> Evaluator<'e> {
                     }
                 }
             }
+            ExprKind::Error { error_kind, sub_expression } => todo!(),
         }
     }
 

@@ -17,6 +17,7 @@
 //! This module contains the AST datatypes.
 
 mod expr;
+pub(crate) mod expr_allows_errors;
 pub use expr::*;
 mod entity;
 pub use entity::*;

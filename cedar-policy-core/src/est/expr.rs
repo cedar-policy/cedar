@@ -413,6 +413,7 @@ impl ExprBuilder for Builder {
     type Expr = Expr;
 
     type Data = ();
+    type ErrorType = ParseErrors;
 
     fn with_data(_data: Self::Data) -> Self {
         Self
@@ -689,6 +690,10 @@ impl ExprBuilder for Builder {
         Expr::ExtFuncCall(ExtFuncCall {
             call: HashMap::from([(fn_name.to_smolstr(), args.into_iter().collect())]),
         })
+    }
+    
+    fn error(self, parse_errors: ParseErrors, _sub_expression: Option<Arc<Self::Expr>>) -> Result<Self::Expr, Self::ErrorType> {
+        Err(parse_errors)
     }
 }
 
@@ -1113,6 +1118,9 @@ impl<T: Clone> From<ast::Expr<T>> for Expr {
                         .map(|(k, v)| (k, v.into())),
                 )
                 .unwrap(),
+            ast::ExprKind::Error { .. } => {
+                panic!("We do not support converting an AST Error node into an EST");
+            }
         }
     }
 }

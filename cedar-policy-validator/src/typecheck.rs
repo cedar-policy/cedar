@@ -1174,6 +1174,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                     },
                 )
             }
+            ExprKind::Error { .. } => panic!("Cannot type check an Error Expression node - this should never happen") ,
         }
     }
 
