@@ -358,21 +358,18 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
             entity_type,
         })
     }
-
     fn new() -> Self
     where
         Self: Sized,
     {
         Self::with_data(Self::Data::default())
     }
-
     fn with_source_loc(self, l: &Loc) -> Self
     where
         Self: Sized,
     {
         self.with_maybe_source_loc(Some(l))
     }
-
     fn is_in_entity_type(
         self,
         e1: Self::Expr,
@@ -387,14 +384,12 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
             self.is_in(e1, e2),
         )
     }
-
     fn noteq(self, e1: Self::Expr, e2: Self::Expr) -> Self::Expr
     where
         Self: Sized,
     {
         self.clone().not(self.is_eq(e1, e2))
     }
-
     fn greater(self, e1: Self::Expr, e2: Self::Expr) -> Self::Expr
     where
         Self: Sized,
@@ -402,7 +397,6 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
         // e1 > e2 is defined as !(e1 <= e2)
         self.clone().not(self.lesseq(e1, e2))
     }
-
     fn greatereq(self, e1: Self::Expr, e2: Self::Expr) -> Self::Expr
     where
         Self: Sized,
@@ -410,7 +404,6 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
         // e1 >= e2 is defined as !(e1 < e2)
         self.clone().not(self.less(e1, e2))
     }
-
     fn and_nary(self, first: Self::Expr, others: impl IntoIterator<Item = Self::Expr>) -> Self::Expr
     where
         Self: Sized,
@@ -419,7 +412,6 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
             .into_iter()
             .fold(first, |acc, next| self.clone().and(acc, next))
     }
-
     fn or_nary(self, first: Self::Expr, others: impl IntoIterator<Item = Self::Expr>) -> Self::Expr
     where
         Self: Sized,
@@ -428,7 +420,6 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
             .into_iter()
             .fold(first, |acc, next| self.clone().or(acc, next))
     }
-
     fn add_nary(
         self,
         first: Self::Expr,
@@ -442,7 +433,6 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
             crate::parser::cst::AddOp::Minus => self.clone().sub(acc, next),
         })
     }
-
     fn mul_nary(self, first: Self::Expr, other: impl IntoIterator<Item = Self::Expr>) -> Self::Expr
     where
         Self: Sized,
