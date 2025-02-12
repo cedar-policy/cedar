@@ -2085,10 +2085,7 @@ mod entities_tests {
         // F -> E -> C
         // B
 
-        assert_matches!(
-            entities.entity(&did),
-            Dereference::NoSuchEntity
-        );
+        assert_matches!(entities.entity(&did), Dereference::NoSuchEntity);
 
         let e = entities.entity(&eid).unwrap();
         let f = entities.entity(&fid).unwrap();

@@ -2581,7 +2581,13 @@ pub(crate) mod test {
         let view_photo = actions.entity(&action_uid);
         assert_eq!(
             view_photo.unwrap(),
-            &Entity::new_with_attr_partial_value(action_uid, [], HashSet::new(), HashSet::new(), [])
+            &Entity::new_with_attr_partial_value(
+                action_uid,
+                [],
+                HashSet::new(),
+                HashSet::new(),
+                []
+            )
         );
     }
 
