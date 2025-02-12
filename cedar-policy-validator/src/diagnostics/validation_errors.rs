@@ -16,6 +16,7 @@
 
 //! Defines errors returned by the validator.
 
+use cedar_policy_core::entities::conformance::err::InvalidEnumEntityError;
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -107,20 +108,20 @@ pub fn unrecognized_action_id_help(
     let eid_str: &str = euid.eid().as_ref();
     let eid_with_type = format!("Action::{}", eid_str);
     let eid_with_type_and_quotes = format!("Action::\"{}\"", eid_str);
-    let maybe_id_with_type = schema.known_action_ids().find(|euid| {
-        let eid = <Eid as AsRef<str>>::as_ref(euid.eid());
+    let maybe_id_with_type = schema.action_ids().find(|action_id| {
+        let eid = <Eid as AsRef<str>>::as_ref(action_id.name().eid());
         eid.contains(&eid_with_type) || eid.contains(&eid_with_type_and_quotes)
     });
     if let Some(id) = maybe_id_with_type {
         // In that case, let the user know about it
         Some(UnrecognizedActionIdHelp::AvoidActionTypeInActionId(
-            id.to_string(),
+            id.name().to_string(),
         ))
     } else {
         // Otherwise, suggest using another id
         let euids_strs = schema
-            .known_action_ids()
-            .map(ToString::to_string)
+            .action_ids()
+            .map(|id| id.name().to_string())
             .collect::<Vec<_>>();
         fuzzy_search(euid.eid().as_ref(), &euids_strs)
             .map(UnrecognizedActionIdHelp::SuggestAlternative)
@@ -705,6 +706,27 @@ impl Display for AttributeAccess {
             }
             AttributeAccess::Other(_) => write!(f, "`{attrs_str}`"),
         }
+    }
+}
+
+/// Returned when an entity literal is of an enumerated entity type but has
+/// undeclared UID
+#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
+#[error("for policy `{policy_id}`: {err}")]
+pub struct InvalidEnumEntity {
+    /// Source location
+    pub source_loc: Option<Loc>,
+    /// Policy ID where the error occurred
+    pub policy_id: PolicyID,
+    /// The error
+    pub err: InvalidEnumEntityError,
+}
+
+impl Diagnostic for InvalidEnumEntity {
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.err.help()
     }
 }
 

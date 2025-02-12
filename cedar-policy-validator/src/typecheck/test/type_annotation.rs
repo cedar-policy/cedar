@@ -16,6 +16,7 @@
 
 use cool_asserts::assert_matches;
 use serde_json::json;
+use similar_asserts::assert_eq;
 use std::collections::HashSet;
 
 use cedar_policy_core::{
@@ -69,6 +70,14 @@ fn expr_typechecks_with_correct_annotation() {
         ),
     );
     assert_expr_has_annotated_ast(
+        &Expr::and(Expr::val(false), Expr::val(1)),
+        &ExprBuilder::with_data(Some(Type::singleton_boolean(false))).and(
+            ExprBuilder::with_data(Some(Type::singleton_boolean(false))).val(false),
+            // Doesn't contain `1` because we didn't typecheck this side
+            ExprBuilder::new().val(true),
+        ),
+    );
+    assert_expr_has_annotated_ast(
         &Expr::or(Expr::greater(Expr::val(1), Expr::val(1)), Expr::val(true)),
         &ExprBuilder::with_data(Some(Type::singleton_boolean(true))).or(
             ExprBuilder::with_data(Some(Type::primitive_boolean())).greater(
@@ -76,6 +85,14 @@ fn expr_typechecks_with_correct_annotation() {
                 ExprBuilder::with_data(Some(Type::primitive_long())).val(1),
             ),
             ExprBuilder::with_data(Some(Type::singleton_boolean(true))).val(true),
+        ),
+    );
+    assert_expr_has_annotated_ast(
+        &Expr::or(Expr::val(true), Expr::val(1)),
+        &ExprBuilder::with_data(Some(Type::singleton_boolean(true))).or(
+            ExprBuilder::with_data(Some(Type::singleton_boolean(true))).val(true),
+            // Doesn't contain `1` because we didn't typecheck this side
+            ExprBuilder::new().val(true),
         ),
     );
     assert_expr_has_annotated_ast(
@@ -90,6 +107,24 @@ fn expr_typechecks_with_correct_annotation() {
                 ExprBuilder::with_data(Some(Type::primitive_long())).val(0),
             ),
             ExprBuilder::with_data(Some(Type::primitive_string())).val("bar"),
+            ExprBuilder::with_data(Some(Type::primitive_string())).val("foo"),
+        ),
+    );
+    assert_expr_has_annotated_ast(
+        &Expr::ite(Expr::val(true), Expr::val("bar"), Expr::val("foo")),
+        &ExprBuilder::with_data(Some(Type::primitive_string())).ite(
+            ExprBuilder::with_data(Some(Type::True)).val(true),
+            ExprBuilder::with_data(Some(Type::primitive_string())).val("bar"),
+            // Contains `bar` instead of `foo` because we didn't typecheck the `else` branch
+            ExprBuilder::with_data(Some(Type::primitive_string())).val("bar"),
+        ),
+    );
+    assert_expr_has_annotated_ast(
+        &Expr::ite(Expr::val(false), Expr::val("bar"), Expr::val("foo")),
+        &ExprBuilder::with_data(Some(Type::primitive_string())).ite(
+            ExprBuilder::with_data(Some(Type::False)).val(false),
+            // Contains `foo` instead of `bar` because we didn't typecheck the `else` branch
+            ExprBuilder::with_data(Some(Type::primitive_string())).val("foo"),
             ExprBuilder::with_data(Some(Type::primitive_string())).val("foo"),
         ),
     );

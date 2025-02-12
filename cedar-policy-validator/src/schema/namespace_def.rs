@@ -36,7 +36,7 @@ use smol_str::{SmolStr, ToSmolStr};
 use super::{internal_name_to_entity_type, AllDefs, ValidatorApplySpec};
 use crate::{
     err::{schema_errors::*, SchemaError},
-    json_schema::{self, CommonTypeId},
+    json_schema::{self, CommonTypeId, EntityTypeKind},
     types::{AttributeType, Attributes, OpenTag, Type},
     ActionBehavior, ConditionalName, RawName, ReferenceType,
 };
@@ -449,29 +449,41 @@ impl EntityTypesDef<ConditionalName> {
 /// references in `parents`, `attributes`, and `tags` may or may not be fully
 /// qualified yet, depending on `N`.
 #[derive(Debug, Clone)]
-pub struct EntityTypeFragment<N> {
-    /// Description of the attribute types for this entity type.
-    ///
-    /// This may contain references to common types which have not yet been
-    /// resolved/inlined (e.g., because they are not defined in this schema
-    /// fragment).
-    /// In the extreme case, this may itself be just a common type pointing to a
-    /// `Record` type defined in another fragment.
-    pub(super) attributes: json_schema::AttributesOrContext<N>,
-    /// Direct parent entity types for this entity type.
-    /// These entity types may be declared in a different namespace or schema
-    /// fragment.
-    ///
-    /// We will check for undeclared parent types when combining fragments into
-    /// a [`crate::ValidatorSchema`].
-    pub(super) parents: HashSet<N>,
-    /// Tag type for this entity type. `None` means no tags are allowed on this
-    /// entity type.
-    ///
-    /// This may contain references to common types which have not yet been
-    /// resolved/inlined (e.g., because they are not defined in this schema
-    /// fragment).
-    pub(super) tags: Option<json_schema::Type<N>>,
+pub enum EntityTypeFragment<N> {
+    Standard {
+        /// Description of the attribute types for this entity type.
+        ///
+        /// This may contain references to common types which have not yet been
+        /// resolved/inlined (e.g., because they are not defined in this schema
+        /// fragment).
+        /// In the extreme case, this may itself be just a common type pointing to a
+        /// `Record` type defined in another fragment.
+        attributes: json_schema::AttributesOrContext<N>,
+        /// Direct parent entity types for this entity type.
+        /// These entity types may be declared in a different namespace or schema
+        /// fragment.
+        ///
+        /// We will check for undeclared parent types when combining fragments into
+        /// a [`crate::ValidatorSchema`].
+        parents: HashSet<N>,
+        /// Tag type for this entity type. `None` means no tags are allowed on this
+        /// entity type.
+        ///
+        /// This may contain references to common types which have not yet been
+        /// resolved/inlined (e.g., because they are not defined in this schema
+        /// fragment).
+        tags: Option<json_schema::Type<N>>,
+    },
+    Enum(NonEmpty<SmolStr>),
+}
+
+impl<N> EntityTypeFragment<N> {
+    pub(crate) fn parents(&self) -> Box<dyn Iterator<Item = &N> + '_> {
+        match self {
+            Self::Standard { parents, .. } => Box::new(parents.iter()),
+            Self::Enum(_) => Box::new(std::iter::empty()),
+        }
+    }
 }
 
 impl EntityTypeFragment<ConditionalName> {
@@ -482,21 +494,24 @@ impl EntityTypeFragment<ConditionalName> {
         schema_file_type: json_schema::EntityType<RawName>,
         schema_namespace: Option<&InternalName>,
     ) -> Self {
-        Self {
-            attributes: schema_file_type
-                .shape
-                .conditionally_qualify_type_references(schema_namespace),
-            parents: schema_file_type
-                .member_of_types
-                .into_iter()
-                .map(|raw_name| {
-                    // Only entity, not common, here for now; see #1064
-                    raw_name.conditionally_qualify_with(schema_namespace, ReferenceType::Entity)
-                })
-                .collect(),
-            tags: schema_file_type
-                .tags
-                .map(|tags| tags.conditionally_qualify_type_references(schema_namespace)),
+        match schema_file_type.kind {
+            EntityTypeKind::Enum { choices } => Self::Enum(choices),
+            EntityTypeKind::Standard(ty) => Self::Standard {
+                attributes: ty
+                    .shape
+                    .conditionally_qualify_type_references(schema_namespace),
+                parents: ty
+                    .member_of_types
+                    .into_iter()
+                    .map(|raw_name| {
+                        // Only entity, not common, here for now; see #1064
+                        raw_name.conditionally_qualify_with(schema_namespace, ReferenceType::Entity)
+                    })
+                    .collect(),
+                tags: ty
+                    .tags
+                    .map(|tags| tags.conditionally_qualify_type_references(schema_namespace)),
+            },
         }
     }
 
@@ -510,51 +525,63 @@ impl EntityTypeFragment<ConditionalName> {
         self,
         all_defs: &AllDefs,
     ) -> Result<EntityTypeFragment<InternalName>, TypeNotDefinedError> {
-        // Fully qualify typenames appearing in `attributes`
-        let fully_qual_attributes = self.attributes.fully_qualify_type_references(all_defs);
-        // Fully qualify typenames appearing in `parents`
-        let parents: HashSet<InternalName> = self
-            .parents
-            .into_iter()
-            .map(|parent| parent.resolve(all_defs))
-            .collect::<Result<_, TypeNotDefinedError>>()?;
-        // Fully qualify typenames appearing in `tags`
-        let fully_qual_tags = self
-            .tags
-            .map(|tags| tags.fully_qualify_type_references(all_defs))
-            .transpose();
-        // Now is the time to check whether any parents are dangling, i.e.,
-        // refer to entity types that are not declared in any fragment (since we
-        // now have the set of typenames that are declared in all fragments).
-        let undeclared_parents: Option<NonEmpty<ConditionalName>> = NonEmpty::collect(
-            parents
-                .iter()
-                .filter(|ety| !all_defs.is_defined_as_entity(ety))
-                .map(|ety| ConditionalName::unconditional(ety.clone(), ReferenceType::Entity)),
-        );
-        match (fully_qual_attributes, fully_qual_tags, undeclared_parents) {
-            (Ok(attributes), Ok(tags), None) => Ok(EntityTypeFragment {
+        match self {
+            Self::Enum(choices) => Ok(EntityTypeFragment::Enum(choices)),
+            Self::Standard {
                 attributes,
                 parents,
                 tags,
-            }),
-            (Ok(_), Ok(_), Some(undeclared_parents)) => Err(TypeNotDefinedError {
-                undefined_types: undeclared_parents,
-            }),
-            (Err(e), Ok(_), None) | (Ok(_), Err(e), None) => Err(e),
-            (Err(e1), Err(e2), None) => Err(TypeNotDefinedError::join_nonempty(nonempty![e1, e2])),
-            (Err(e), Ok(_), Some(mut undeclared)) | (Ok(_), Err(e), Some(mut undeclared)) => {
-                undeclared.extend(e.undefined_types);
-                Err(TypeNotDefinedError {
-                    undefined_types: undeclared,
-                })
-            }
-            (Err(e1), Err(e2), Some(mut undeclared)) => {
-                undeclared.extend(e1.undefined_types);
-                undeclared.extend(e2.undefined_types);
-                Err(TypeNotDefinedError {
-                    undefined_types: undeclared,
-                })
+            } => {
+                // Fully qualify typenames appearing in `attributes`
+                let fully_qual_attributes = attributes.fully_qualify_type_references(all_defs);
+                // Fully qualify typenames appearing in `parents`
+                let parents: HashSet<InternalName> = parents
+                    .into_iter()
+                    .map(|parent| parent.resolve(all_defs))
+                    .collect::<Result<_, TypeNotDefinedError>>()?;
+                // Fully qualify typenames appearing in `tags`
+                let fully_qual_tags = tags
+                    .map(|tags| tags.fully_qualify_type_references(all_defs))
+                    .transpose();
+                // Now is the time to check whether any parents are dangling, i.e.,
+                // refer to entity types that are not declared in any fragment (since we
+                // now have the set of typenames that are declared in all fragments).
+                let undeclared_parents: Option<NonEmpty<ConditionalName>> = NonEmpty::collect(
+                    parents
+                        .iter()
+                        .filter(|ety| !all_defs.is_defined_as_entity(ety))
+                        .map(|ety| {
+                            ConditionalName::unconditional(ety.clone(), ReferenceType::Entity)
+                        }),
+                );
+                match (fully_qual_attributes, fully_qual_tags, undeclared_parents) {
+                    (Ok(attributes), Ok(tags), None) => Ok(EntityTypeFragment::Standard {
+                        attributes,
+                        parents,
+                        tags,
+                    }),
+                    (Ok(_), Ok(_), Some(undeclared_parents)) => Err(TypeNotDefinedError {
+                        undefined_types: undeclared_parents,
+                    }),
+                    (Err(e), Ok(_), None) | (Ok(_), Err(e), None) => Err(e),
+                    (Err(e1), Err(e2), None) => {
+                        Err(TypeNotDefinedError::join_nonempty(nonempty![e1, e2]))
+                    }
+                    (Err(e), Ok(_), Some(mut undeclared))
+                    | (Ok(_), Err(e), Some(mut undeclared)) => {
+                        undeclared.extend(e.undefined_types);
+                        Err(TypeNotDefinedError {
+                            undefined_types: undeclared,
+                        })
+                    }
+                    (Err(e1), Err(e2), Some(mut undeclared)) => {
+                        undeclared.extend(e1.undefined_types);
+                        undeclared.extend(e2.undefined_types);
+                        Err(TypeNotDefinedError {
+                            undefined_types: undeclared,
+                        })
+                    }
+                }
             }
         }
     }

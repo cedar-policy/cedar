@@ -496,7 +496,7 @@ enum DateTimeParseError {
     #[help("A valid datetime should end with Z|.SSSZ|(+|-)hhmm|.SSS(+|-)hhmm")]
     InvalidMSOffsetPattern,
     #[error("invalid offset range: {}{}", ._0.0, ._0.1)]
-    #[help("A valid offset hour range should be [0,12) and minute range should be [0, 60)")]
+    #[help("A valid offset hour range should be [0,24) and minute range should be [0, 60)")]
     InvalidOffset((u32, u32)),
 }
 
@@ -508,16 +508,9 @@ struct UTCOffset {
 }
 
 impl UTCOffset {
-    const MIN: Self = Self {
-        positive: false,
-        hh: 12,
-        mm: 0,
-    };
-    const MAX: Self = Self {
-        positive: true,
-        hh: 14,
-        mm: 0,
-    };
+    const MAX_HH: u32 = 24;
+    const MAX_MM: u32 = 60;
+
     fn to_seconds(&self) -> i64 {
         let offset_in_seconds_unsigned = (self.hh * 3600 + self.mm * 60) as i64;
         if self.positive {
@@ -527,9 +520,8 @@ impl UTCOffset {
         }
     }
 
-    // Reference: https://en.wikipedia.org/wiki/List_of_UTC_offsets
     fn is_valid(&self) -> bool {
-        self.mm < 60 && self >= &Self::MIN && self <= &Self::MAX
+        self.hh < Self::MAX_HH && self.mm < Self::MAX_MM
     }
 }
 
@@ -790,6 +782,16 @@ mod tests {
             parse_datetime(s).unwrap(),
             NaiveDateTime::from_str("2024-10-15T23:12:02").unwrap()
         );
+        let s = "2024-10-15T23:59:00+2359";
+        assert_eq!(
+            parse_datetime(s).unwrap(),
+            NaiveDateTime::from_str("2024-10-15T00:00:00").unwrap()
+        );
+        let s = "2024-10-15T00:00:00-2359";
+        assert_eq!(
+            parse_datetime(s).unwrap(),
+            NaiveDateTime::from_str("2024-10-15T23:59:00").unwrap()
+        );
     }
 
     #[test]
@@ -923,6 +925,10 @@ mod tests {
         assert_matches!(
             parse_datetime("2016-12-31T00:00:00+1199"),
             Err(DateTimeParseError::InvalidOffset((11, 99)))
+        );
+        assert_matches!(
+            parse_datetime("2016-12-31T00:00:00+2400"),
+            Err(DateTimeParseError::InvalidOffset((24, 0)))
         );
     }
 

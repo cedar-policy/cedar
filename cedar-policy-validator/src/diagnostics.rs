@@ -17,6 +17,7 @@
 //! This module contains the diagnostics (i.e., errors and warnings) that are
 //! returned by the validator.
 
+use cedar_policy_core::entities::conformance::err::InvalidEnumEntityError;
 use miette::Diagnostic;
 use thiserror::Error;
 use validation_errors::UnrecognizedActionIdHelp;
@@ -160,6 +161,11 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InternalInvariantViolation(#[from] validation_errors::InternalInvariantViolation),
+    /// Returned when an entity literal is of an enumerated entity type but has
+    /// undeclared UID
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidEnumEntity(#[from] validation_errors::InvalidEnumEntity),
     #[cfg(feature = "level-validate")]
     /// If a entity dereference level was provided, the policies cannot deref
     /// more than `level` hops away from PARX
@@ -374,6 +380,19 @@ impl ValidationError {
         validation_errors::InternalInvariantViolation {
             source_loc,
             policy_id,
+        }
+        .into()
+    }
+
+    pub(crate) fn invalid_enum_entity(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        err: InvalidEnumEntityError,
+    ) -> Self {
+        validation_errors::InvalidEnumEntity {
+            source_loc,
+            policy_id,
+            err,
         }
         .into()
     }

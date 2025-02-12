@@ -47,7 +47,6 @@ use cedar_policy_core::{
     expr_builder::ExprBuilder as _,
 };
 
-#[cfg(not(target_arch = "wasm32"))]
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 
 /// Basic result for typechecking
@@ -193,13 +192,12 @@ impl<'a> Typechecker<'a> {
         // for the corresponding action.
         self.unlinked_envs
             .iter()
-            .map(|unlinked_e| {
+            .flat_map(|unlinked_e| {
                 self.link_request_env(unlinked_e, t).map(|linked_e| {
                     let check = typecheck_fn(&linked_e, t.id(), &cond);
                     (linked_e, check)
                 })
             })
-            .flatten()
             .collect()
     }
 
@@ -209,8 +207,8 @@ impl<'a> Typechecker<'a> {
     ) -> impl Iterator<Item = RequestEnv<'_>> + '_ {
         // Gather all of the actions declared in the schema.
         let all_actions = schema
-            .known_action_ids()
-            .filter_map(|a| schema.get_action_id(a));
+            .action_ids()
+            .filter_map(|a| schema.get_action_id(a.name()));
 
         // For every action compute the cross product of the principal and
         // resource applies_to sets.
@@ -308,8 +306,8 @@ impl<'a> Typechecker<'a> {
                 PrincipalOrResourceConstraint::IsIn(_, _)
                 | PrincipalOrResourceConstraint::In(_) => Box::new(
                     all_entity_types
-                        .filter(|(_, ety)| ety.has_descendant_entity_type(var))
-                        .map(|(name, _)| Some(name.clone()))
+                        .filter(|ety| ety.has_descendant_entity_type(var))
+                        .map(|ety| Some(ety.name().clone()))
                         .chain(std::iter::once(Some(var.clone()))),
                 ),
                 // The template uses the slot, but without a scope constraint.
@@ -318,7 +316,7 @@ impl<'a> Typechecker<'a> {
                 // only correct way to proceed is by returning all entity types
                 // as possible links.
                 PrincipalOrResourceConstraint::Is(_) | PrincipalOrResourceConstraint::Any => {
-                    Box::new(all_entity_types.map(|(name, _)| Some(name.clone())))
+                    Box::new(all_entity_types.map(|ety| Some(ety.name().clone())))
                 }
             }
         } else {
@@ -353,8 +351,8 @@ impl<'a> SingleEnvTypechecker<'a> {
         e: &'b Expr,
         type_errors: &mut Vec<ValidationError>,
     ) -> TypecheckAnswer<'b> {
-        #[cfg(not(target_arch = "wasm32"))]
-        if stacker::remaining_stack().unwrap_or(0) < REQUIRED_STACK_SPACE {
+        // We assume there's enough space if we cannot determine it with `remaining_stack`
+        if stacker::remaining_stack().unwrap_or(REQUIRED_STACK_SPACE) < REQUIRED_STACK_SPACE {
             return TypecheckAnswer::RecursionLimit;
         }
 
@@ -499,7 +497,16 @@ impl<'a> SingleEnvTypechecker<'a> {
 
                         ans_then.then_typecheck(|typ_then, then_capability| {
                             TypecheckAnswer::success_with_capability(
-                                typ_then,
+                                ExprBuilder::with_data(typ_then.data().clone())
+                                    .with_same_source_loc(e)
+                                    .ite(
+                                        typ_test,
+                                        typ_then.clone(),
+                                        // The type of the test expression is `True`, so we know the `else` branch
+                                        // will never be evaluated. We still need to put something here, so we use
+                                        // a copy of the `then` branch.
+                                        typ_then,
+                                    ),
                                 // The output capability of the whole `if` expression also
                                 // needs to contain the capability of the condition.
                                 then_capability.union(&test_capability),
@@ -513,7 +520,19 @@ impl<'a> SingleEnvTypechecker<'a> {
                         let ans_else = self.typecheck(prior_capability, else_expr, type_errors);
 
                         ans_else.then_typecheck(|typ_else, else_capability| {
-                            TypecheckAnswer::success_with_capability(typ_else, else_capability)
+                            TypecheckAnswer::success_with_capability(
+                                ExprBuilder::with_data(typ_else.data().clone())
+                                    .with_same_source_loc(e)
+                                    .ite(
+                                        typ_test,
+                                        // The type of the test expression is `False`, so we know the `then` branch
+                                        // will never be evaluated. We still need to put something here, so we use
+                                        // a copy of the `else` branch.
+                                        typ_else.clone(),
+                                        typ_else,
+                                    ),
+                                else_capability,
+                            )
                         })
                     } else {
                         // When we don't short circuit, the `then` and `else`
@@ -577,15 +596,15 @@ impl<'a> SingleEnvTypechecker<'a> {
                 );
                 ans_left.then_typecheck(|typ_left, capability_left| {
                     match typ_left.data() {
-                        // First argument is false, so short circuit the `&&` to
-                        // false _without_ typechecking the second argument.
-                        // Since the type of the `&&` is `false`, it is known to
-                        // always evaluate to `false` at run time. The `&&`
-                        // expression typechecks with an empty capability rather
-                        // than the capability of the lhs.
-                        // The right operand is not typechecked, so it is not
-                        // included in the type annotated AST.
-                        Some(Type::False) => TypecheckAnswer::success(typ_left),
+                        // LHS argument is false, so short circuit the `&&` to `False` _without_
+                        // typechecking the RHS.  We still need to build an annotated `&&` with
+                        // some RHS, so we use a literal `true`. The `&&` expression typechecks
+                        // with an empty capability rather than the capability of the lhs.
+                        Some(Type::False) => TypecheckAnswer::success(
+                            ExprBuilder::with_data(Some(Type::False))
+                                .with_same_source_loc(e)
+                                .and(typ_left, ExprBuilder::new().val(true)),
+                        ),
                         _ => {
                             // Similar to the `then` branch of an `if`
                             // expression, the rhs of an `&&` is typechecked
@@ -672,14 +691,18 @@ impl<'a> SingleEnvTypechecker<'a> {
                     |_| None,
                 );
                 ans_left.then_typecheck(|ty_expr_left, capability_left| match ty_expr_left.data() {
-                    // Contrary to `&&` where short circuiting did not permit
-                    // any capability, a capability can be maintained when short
-                    // circuiting `||`. We know the left operand is `true`, so
-                    // its capability is maintained. The right operand is not
-                    // evaluated, so its capability does not need to be considered.
-                    // The right operand is not typechecked, so it is not
-                    // included in the type annotated AST.
-                    Some(Type::True) => TypecheckAnswer::success(ty_expr_left),
+                    // LHS argument is true, so short circuit the `|| to `True` _without_
+                    // typechecking the RHS. We still need to build an annotated `||` with
+                    // some RHS, so we use a literal `true`.  Contrary to `&&`, we keep a
+                    // capability  when short circuiting `||`. The left operand is `true`,
+                    // so its capability is maintained. The right operand is not evaluated,
+                    // so its capability is not considered.
+                    Some(Type::True) => TypecheckAnswer::success_with_capability(
+                        ExprBuilder::with_data(Some(Type::True))
+                            .with_same_source_loc(e)
+                            .or(ty_expr_left, ExprBuilder::new().val(true)),
+                        capability_left,
+                    ),
                     _ => {
                         // The right operand of an `||` cannot be typechecked
                         // using the capability learned from the left because the
@@ -1720,12 +1743,7 @@ impl<'a> SingleEnvTypechecker<'a> {
         context: LubContext,
     ) -> TypecheckAnswer<'b> {
         match annotated_expr.data() {
-            Some(Type::False) => {
-                TypecheckAnswer::success(ExprBuilder::with_data(Some(Type::False)).val(false))
-            }
-            Some(Type::True) => {
-                TypecheckAnswer::success(ExprBuilder::with_data(Some(Type::True)).val(true))
-            }
+            Some(Type::True | Type::False) => TypecheckAnswer::success(annotated_expr),
             _ => match (lhs_ty, rhs_ty) {
                 (Some(lhs_ty), Some(rhs_ty)) => {
                     if let Err(lub_hint) =
@@ -1818,7 +1836,7 @@ impl<'a> SingleEnvTypechecker<'a> {
             EntityRecordKind::AnyEntity => Ok(self
                 .schema
                 .entity_types()
-                .filter_map(|(_, vety)| vety.tag_type())
+                .filter_map(ValidatorEntityType::tag_type)
                 .collect()),
             EntityRecordKind::ActionEntity { .. } => Ok(HashSet::new()), // currently, action entities cannot be declared with tags in the schema
             EntityRecordKind::Record { .. } => Err(()),
@@ -1949,18 +1967,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                             .is_in(lhs_expr, rhs_expr),
                     ),
                 }
-                .then_typecheck(|type_of_in, _| {
-                    if self.mode.is_strict() && matches!(type_of_in.data(), Some(Type::False)) {
-                        TypecheckAnswer::success(
-                            ExprBuilder::with_data(Some(Type::False)).val(false),
-                        )
-                    } else if self.mode.is_strict() && matches!(type_of_in.data(), Some(Type::True))
-                    {
-                        TypecheckAnswer::success(ExprBuilder::with_data(Some(Type::True)).val(true))
-                    } else {
-                        TypecheckAnswer::success(type_of_in)
-                    }
-                })
+                .then_typecheck(|type_of_in, _| TypecheckAnswer::success(type_of_in))
             })
         })
     }
@@ -2154,10 +2161,10 @@ impl<'a> SingleEnvTypechecker<'a> {
     // based on the precise EUIDs when they're not actions, so we only look at
     // entity types. The type will be `False` is none of the entities on the rhs
     // have a type which may be an ancestor of the rhs entity type.
-    fn type_of_non_action_in_entities<'b, 'c>(
+    fn type_of_non_action_in_entities<'b>(
         &self,
         lhs: &EntityUID,
-        rhs: &'c [EntityUID],
+        rhs: &[EntityUID],
         in_expr: &Expr,
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
@@ -2183,7 +2190,7 @@ impl<'a> SingleEnvTypechecker<'a> {
 
     /// Check if the entity is in the list of descendants. Return the singleton
     /// type false if it is not, and boolean otherwise.
-    fn entity_in_descendants<'b, 'c, K: 'c>(
+    fn entity_in_descendants<'b, 'c, K>(
         lhs_entity: &K,
         rhs_descendants: impl IntoIterator<Item = &'c K>,
         in_expr: &Expr,
@@ -2191,7 +2198,7 @@ impl<'a> SingleEnvTypechecker<'a> {
         rhs_expr: Expr<Option<Type>>,
     ) -> TypecheckAnswer<'b>
     where
-        K: PartialEq + 'a,
+        K: PartialEq + 'c,
     {
         let is_var_in_descendants = rhs_descendants.into_iter().any(|e| e == lhs_entity);
         TypecheckAnswer::success(

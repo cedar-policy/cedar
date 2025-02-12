@@ -90,6 +90,16 @@ impl Entities {
         }
     }
 
+    /// Is this a partial store (created with `.partial()`)
+    pub fn is_partial(&self) -> bool {
+        #[cfg(feature = "partial-eval")]
+        let ret = self.mode == Mode::Partial;
+        #[cfg(not(feature = "partial-eval"))]
+        let ret = false;
+
+        ret
+    }
+
     /// Get the `Entity` with the given UID, if any
     pub fn entity(&self, uid: &EntityUID) -> Dereference<'_, Entity> {
         match self.entities.get(uid) {
@@ -360,61 +370,6 @@ impl std::fmt::Display for Entities {
                 writeln!(f, "{e}")?;
             }
             Ok(())
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&proto::Entities> for Entities {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::Entities) -> Self {
-        let entities: Vec<Arc<Entity>> = v
-            .entities
-            .iter()
-            .map(|e| Arc::new(Entity::from(e)))
-            .collect();
-
-        #[cfg(not(feature = "partial-eval"))]
-        let result = Entities::new();
-
-        #[cfg(feature = "partial-eval")]
-        let mut result = Entities::new();
-        #[cfg(feature = "partial-eval")]
-        if v.mode == crate::entities::proto::Mode::Partial as i32 {
-            result = result.partial();
-        }
-
-        result
-            .add_entities(
-                entities,
-                None::<&NoEntitiesSchema>,
-                TCComputation::AssumeAlreadyComputed,
-                Extensions::none(),
-            )
-            .expect("Should be able to add entities")
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&Entities> for proto::Entities {
-    fn from(v: &Entities) -> Self {
-        let mut entities: Vec<proto::Entity> = Vec::with_capacity(v.entities.len());
-        for entity in v.entities.values() {
-            entities.push(proto::Entity::from(entity));
-        }
-
-        #[cfg(feature = "partial-eval")]
-        if v.mode == Mode::Partial {
-            return Self {
-                entities,
-                mode: crate::entities::proto::Mode::Partial.into(),
-            };
-        }
-
-        Self {
-            entities,
-            mode: proto::Mode::Concrete.into(),
         }
     }
 }
@@ -2060,6 +2015,7 @@ mod schema_based_parsing_tests {
     use crate::extensions::Extensions;
     use crate::test_utils::*;
     use cool_asserts::assert_matches;
+    use nonempty::NonEmpty;
     use serde_json::json;
     use smol_str::SmolStr;
     use std::collections::HashSet;
@@ -2082,6 +2038,7 @@ mod schema_based_parsing_tests {
                     action.clone(),
                     [(SmolStr::from("foo"), PartialValue::from(34))],
                     std::iter::once(r#"Action::"readOnly""#.parse().expect("valid uid")).collect(),
+                    [],
                 ))),
                 r#"Action::"readOnly""# => Some(Arc::new(Entity::with_uid(
                     r#"Action::"readOnly""#.parse().expect("valid uid"),
@@ -2149,6 +2106,9 @@ mod schema_based_parsing_tests {
     /// Mock schema impl for the `Employee` type used in most of these tests
     struct MockEmployeeDescription;
     impl EntityTypeDescription for MockEmployeeDescription {
+        fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
+            None
+        }
         fn entity_type(&self) -> EntityType {
             EntityType::from(Name::parse_unqualified_name("Employee").expect("valid"))
         }
@@ -3398,6 +3358,9 @@ mod schema_based_parsing_tests {
 
         struct MockEmployeeDescription;
         impl EntityTypeDescription for MockEmployeeDescription {
+            fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
+                None
+            }
             fn entity_type(&self) -> EntityType {
                 "XYZCorp::Employee".parse().expect("valid")
             }
@@ -3526,76 +3489,107 @@ mod schema_based_parsing_tests {
             );
         });
     }
-}
-
-#[cfg(feature = "protobufs")]
-#[cfg(test)]
-mod protobuf_tests {
-    use super::*;
-    use smol_str::SmolStr;
-    use std::collections::{BTreeMap, HashSet};
-    use std::iter;
 
     #[test]
-    fn roundtrip() {
-        // Empty Test
-        let entities1: Entities = Entities::new();
-        assert_eq!(
-            entities1,
-            Entities::from(&proto::Entities::from(&entities1))
+    fn enumerated_entities() {
+        struct MockSchema;
+        struct StarTypeDescription;
+        impl EntityTypeDescription for StarTypeDescription {
+            fn entity_type(&self) -> EntityType {
+                "Star".parse().unwrap()
+            }
+
+            fn attr_type(&self, _attr: &str) -> Option<SchemaType> {
+                None
+            }
+
+            fn tag_type(&self) -> Option<SchemaType> {
+                None
+            }
+
+            fn required_attrs<'s>(&'s self) -> Box<dyn Iterator<Item = SmolStr> + 's> {
+                Box::new(std::iter::empty())
+            }
+
+            fn allowed_parent_types(&self) -> Arc<HashSet<EntityType>> {
+                Arc::new(HashSet::new())
+            }
+
+            fn open_attributes(&self) -> bool {
+                false
+            }
+
+            fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
+                Some(nonempty::nonempty![Eid::new("🌎"), Eid::new("🌕"),])
+            }
+        }
+        impl Schema for MockSchema {
+            type EntityTypeDescription = StarTypeDescription;
+
+            type ActionEntityIterator = std::iter::Empty<Arc<Entity>>;
+
+            fn entity_type(&self, entity_type: &EntityType) -> Option<Self::EntityTypeDescription> {
+                if entity_type == &"Star".parse::<EntityType>().unwrap() {
+                    Some(StarTypeDescription)
+                } else {
+                    None
+                }
+            }
+
+            fn action(&self, _action: &EntityUID) -> Option<Arc<Entity>> {
+                None
+            }
+
+            fn entity_types_with_basename<'a>(
+                &'a self,
+                basename: &'a UnreservedId,
+            ) -> Box<dyn Iterator<Item = EntityType> + 'a> {
+                if basename == &"Star".parse::<UnreservedId>().unwrap() {
+                    Box::new(std::iter::once("Star".parse::<EntityType>().unwrap()))
+                } else {
+                    Box::new(std::iter::empty())
+                }
+            }
+
+            fn action_entities(&self) -> Self::ActionEntityIterator {
+                std::iter::empty()
+            }
+        }
+
+        let eparser = EntityJsonParser::new(
+            Some(&MockSchema),
+            Extensions::none(),
+            TCComputation::ComputeNow,
         );
 
-        // Single Element Test
-        let attrs = (1..=7)
-            .map(|id| (format!("{id}").into(), RestrictedExpr::val(true)))
-            .collect::<HashMap<SmolStr, _>>();
-        let entity: Arc<Entity> = Arc::new(
-            Entity::new(
-                r#"Foo::"bar""#.parse().unwrap(),
-                attrs.clone(),
-                HashSet::new(),
-                BTreeMap::new(),
-                Extensions::none(),
-            )
-            .unwrap(),
-        );
-        let mut entities2: Entities = Entities::new();
-        entities2 = entities2
-            .add_entities(
-                iter::once(entity.clone()),
-                None::<&NoEntitiesSchema>,
-                TCComputation::AssumeAlreadyComputed,
-                Extensions::none(),
-            )
-            .unwrap();
-        assert_eq!(
-            entities2,
-            Entities::from(&proto::Entities::from(&entities2))
+        assert_matches!(
+            eparser.from_json_value(serde_json::json!([
+                {
+                    "uid": { "type": "Star", "id": "🌎" },
+                    "attrs": {},
+                    "parents": [],
+                }
+            ])),
+            Ok(_)
         );
 
-        // Two Element Test
-        let entity2: Arc<Entity> = Arc::new(
-            Entity::new(
-                r#"Bar::"foo""#.parse().unwrap(),
-                attrs,
-                HashSet::new(),
-                BTreeMap::new(),
-                Extensions::none(),
-            )
-            .unwrap(),
-        );
-        let mut entities3: Entities = Entities::new();
-        entities3 = entities3
-            .add_entities(
-                iter::once(entity).chain(iter::once(entity2)),
-                None::<&NoEntitiesSchema>,
-                TCComputation::AssumeAlreadyComputed,
-                Extensions::none(),
-            )
-            .unwrap();
-        assert_eq!(
-            entities3,
-            Entities::from(&proto::Entities::from(&entities3))
-        );
+        let entitiesjson = serde_json::json!([
+            {
+                "uid": { "type": "Star", "id": "🪐" },
+                "attrs": {},
+                "parents": [],
+            }
+        ]);
+        assert_matches!(eparser.from_json_value(entitiesjson.clone()),
+        Err(e) => {
+            expect_err(
+                &entitiesjson,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                    .source(r#"entity `Star::"🪐"` is of an enumerated entity type, but `"🪐"` is not declared as a valid eid"#)
+                    .help(r#"valid entity eids: "🌎", "🌕""#)
+                    .build()
+            );
+        });
     }
 }

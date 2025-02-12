@@ -184,7 +184,7 @@ pub fn parse_entities_from_test(test: &JsonTest, schema: &ValidatorSchema) -> En
 
 // PANIC SAFETY this is testing code
 #[allow(clippy::panic)]
-fn parse_entity_uid(json: JsonValueWithNoDuplicateKeys, error_string: String) -> EntityUID {
+fn parse_entity_uid(json: JsonValueWithNoDuplicateKeys, error_string: &str) -> EntityUID {
     let parsed: entities::EntityUidJson =
         serde_json::from_value(json.into()).unwrap_or_else(|e| panic!("{}: {e}", error_string));
     parsed
@@ -206,17 +206,17 @@ pub fn parse_request_from_test(
         "Failed to parse principal for request \"{}\" in {}",
         json_request.description, test_name
     );
-    let principal = parse_entity_uid(json_request.principal.clone(), error_string);
+    let principal = parse_entity_uid(json_request.principal.clone(), &error_string);
     let error_string = format!(
         "Failed to parse action for request \"{}\" in {}",
         json_request.description, test_name
     );
-    let action = parse_entity_uid(json_request.action.clone(), error_string);
+    let action = parse_entity_uid(json_request.action.clone(), &error_string);
     let error_string = format!(
         "Failed to parse resource for request \"{}\" in {}",
         json_request.description, test_name
     );
-    let resource = parse_entity_uid(json_request.resource.clone(), error_string);
+    let resource = parse_entity_uid(json_request.resource.clone(), &error_string);
 
     let context_schema = cedar_policy_validator::context_schema_for_action(schema, &action)
         .unwrap_or_else(|| {
@@ -257,9 +257,9 @@ pub fn parse_request_from_test(
 /// Asserts that the test response matches the json request,
 /// including errors when the error comparison mode is enabled.
 fn check_matches_json(
-    response: TestResponse,
+    response: &TestResponse,
     json_request: &JsonRequest,
-    error_comparison_mode: ErrorComparisonMode,
+    error_comparison_mode: &ErrorComparisonMode,
     test_name: &str,
 ) {
     // check decision
@@ -303,16 +303,16 @@ fn check_matches_json(
 // PANIC SAFETY this is testing code
 #[allow(clippy::panic)]
 pub fn perform_integration_test(
-    policies: PolicySet,
-    entities: Entities,
-    schema: ValidatorSchema,
+    policies: &PolicySet,
+    entities: &Entities,
+    schema: &ValidatorSchema,
     should_validate: bool,
     requests: Vec<JsonRequest>,
     test_name: &str,
     test_impl: &impl CedarTestImplementation,
 ) {
     let validation_result = test_impl
-        .validate(&schema, &policies, ValidationMode::default().into())
+        .validate(schema, policies, ValidationMode::default().into())
         .expect("Validation failed");
     if should_validate {
         assert!(
@@ -333,14 +333,14 @@ pub fn perform_integration_test(
     }
 
     for json_request in requests {
-        let request = parse_request_from_test(&json_request, &schema, test_name);
+        let request = parse_request_from_test(&json_request, schema, test_name);
         let response = test_impl
-            .is_authorized(&request, &policies, &entities)
+            .is_authorized(&request, policies, entities)
             .expect("Authorization failed");
         check_matches_json(
-            response,
+            &response,
             &json_request,
-            test_impl.error_comparison_mode(),
+            &test_impl.error_comparison_mode(),
             test_name,
         );
 
@@ -355,9 +355,9 @@ pub fn perform_integration_test(
                 .is_authorized(&request, &policies, &entity_slice)
                 .expect("Authorization failed");
             check_matches_json(
-                slice_response,
+                &slice_response,
                 &json_request,
-                test_impl.error_comparison_mode(),
+                &test_impl.error_comparison_mode(),
                 test_name,
             );
         }
@@ -390,9 +390,9 @@ pub fn perform_integration_test_from_json_custom(
     let schema = parse_schema_from_test(&test);
     let entities = parse_entities_from_test(&test, &schema);
     perform_integration_test(
-        policies,
-        entities,
-        schema,
+        &policies,
+        &entities,
+        &schema,
         test.should_validate,
         test.requests,
         test_name.as_ref(),

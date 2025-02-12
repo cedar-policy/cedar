@@ -43,12 +43,6 @@ use cedar_policy_core::{
 
 use crate::{validation_errors::LubHelp, ValidationMode};
 
-#[cfg(feature = "protobufs")]
-use crate::proto;
-
-#[cfg(feature = "protobufs")]
-use cedar_policy_core::ast;
-
 use super::schema::{ValidatorActionId, ValidatorEntityType, ValidatorSchema};
 
 /// The main type structure.
@@ -91,7 +85,8 @@ pub enum Type {
 }
 
 impl Type {
-    pub(crate) fn singleton_boolean(val: bool) -> Type {
+    /// Construct a singleton type, either `True` or `False` depending on `val`
+    pub fn singleton_boolean(val: bool) -> Type {
         if val {
             Type::True
         } else {
@@ -99,19 +94,22 @@ impl Type {
         }
     }
 
-    pub(crate) fn primitive_boolean() -> Type {
+    /// The Boolean type
+    pub fn primitive_boolean() -> Type {
         Type::Primitive {
             primitive_type: Primitive::Bool,
         }
     }
 
-    pub(crate) fn primitive_long() -> Type {
+    /// The Long (integer) type
+    pub fn primitive_long() -> Type {
         Type::Primitive {
             primitive_type: Primitive::Long,
         }
     }
 
-    pub(crate) fn primitive_string() -> Type {
+    /// The String type
+    pub fn primitive_string() -> Type {
         Type::Primitive {
             primitive_type: Primitive::String,
         }
@@ -135,7 +133,8 @@ impl Type {
         Type::Set { element_type: None }
     }
 
-    pub(crate) fn set(ety: Type) -> Type {
+    /// The Set type, with the element type `ety`
+    pub fn set(ety: Type) -> Type {
         Type::Set {
             element_type: Some(Box::new(ety)),
         }
@@ -147,7 +146,8 @@ impl Type {
         Type::record_with_attributes(None, OpenTag::OpenAttributes)
     }
 
-    pub(crate) fn record_with_required_attributes(
+    /// Record type with given attribute types, all required
+    pub fn record_with_required_attributes(
         required_attrs: impl IntoIterator<Item = (SmolStr, Type)>,
         open_attributes: OpenTag,
     ) -> Type {
@@ -157,7 +157,8 @@ impl Type {
         })
     }
 
-    pub(crate) fn record_with_attributes(
+    /// Record type with given attribute types
+    pub fn record_with_attributes(
         attrs: impl IntoIterator<Item = (SmolStr, AttributeType)>,
         open_attributes: OpenTag,
     ) -> Type {
@@ -387,7 +388,7 @@ impl Type {
                 entity_lub.lub_elements.iter().any(|entity| {
                     schema
                         .get_entity_type(entity)
-                        .map_or(false, |entity_type| entity_type.attr(attr).is_some())
+                        .is_some_and(|entity_type| entity_type.attr(attr).is_some())
                 })
             }
             // UBs of ActionEntities are AnyEntity. So if we have an ActionEntity here its attrs are known.
@@ -734,93 +735,6 @@ impl Display for Type {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl From<&proto::Type> for Type {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::Type) -> Self {
-        match v
-            .data
-            .as_ref()
-            .expect("`as_ref()` for field that should exist")
-        {
-            proto::r#type::Data::Ty(vt) => {
-                match proto::r#type::Ty::try_from(vt.to_owned()).expect("decode should succeed") {
-                    proto::r#type::Ty::Never => Type::Never,
-                    proto::r#type::Ty::True => Type::True,
-                    proto::r#type::Ty::False => Type::False,
-                    proto::r#type::Ty::EmptySetType => Type::Set { element_type: None },
-                    proto::r#type::Ty::Bool => Type::Primitive {
-                        primitive_type: Primitive::Bool,
-                    },
-                    proto::r#type::Ty::String => Type::Primitive {
-                        primitive_type: Primitive::String,
-                    },
-                    proto::r#type::Ty::Long => Type::Primitive {
-                        primitive_type: Primitive::Long,
-                    },
-                }
-            }
-            proto::r#type::Data::SetType(tt) => Type::Set {
-                element_type: Some(Box::new(Type::from(tt.as_ref()))),
-            },
-            proto::r#type::Data::EntityOrRecord(er) => {
-                Type::EntityOrRecord(EntityRecordKind::from(er))
-            }
-            proto::r#type::Data::Name(name) => Type::ExtensionType {
-                name: ast::Name::from(name),
-            },
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&Type> for proto::Type {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &Type) -> Self {
-        match v {
-            Type::Never => Self {
-                data: Some(proto::r#type::Data::Ty(proto::r#type::Ty::Never.into())),
-            },
-            Type::True => Self {
-                data: Some(proto::r#type::Data::Ty(proto::r#type::Ty::True.into())),
-            },
-
-            Type::False => Self {
-                data: Some(proto::r#type::Data::Ty(proto::r#type::Ty::False.into())),
-            },
-            Type::Primitive { primitive_type } => match primitive_type {
-                Primitive::Bool => Self {
-                    data: Some(proto::r#type::Data::Ty(proto::r#type::Ty::Bool.into())),
-                },
-                Primitive::Long => Self {
-                    data: Some(proto::r#type::Data::Ty(proto::r#type::Ty::Long.into())),
-                },
-                Primitive::String => Self {
-                    data: Some(proto::r#type::Data::Ty(proto::r#type::Ty::String.into())),
-                },
-            },
-            Type::Set { element_type } => Self {
-                data: Some(proto::r#type::Data::SetType(Box::new(proto::Type::from(
-                    element_type
-                        .as_ref()
-                        .expect("`as_ref()` for field that should exist")
-                        .as_ref(),
-                )))),
-            },
-            Type::EntityOrRecord(er) => Self {
-                data: Some(proto::r#type::Data::EntityOrRecord(
-                    proto::EntityRecordKind::from(er),
-                )),
-            },
-            Type::ExtensionType { name } => Self {
-                data: Some(proto::r#type::Data::Name(ast::proto::Name::from(name))),
-            },
-        }
-    }
-}
-
 impl TryFrom<Type> for CoreSchemaType {
     type Error = String;
     fn try_from(ty: Type) -> Result<CoreSchemaType, String> {
@@ -901,7 +815,7 @@ pub struct EntityLUB {
 impl EntityLUB {
     /// Create a least upper bound of a single entity type. This is the same as
     /// just that entity type.
-    pub(crate) fn single_entity(entity_type_name: EntityType) -> Self {
+    pub fn single_entity(entity_type_name: EntityType) -> Self {
         Self {
             lub_elements: BTreeSet::from([entity_type_name]),
         }
@@ -949,7 +863,8 @@ impl EntityLUB {
         let mut lub_element_attributes = self.lub_elements.iter().map(|name| {
             schema
                 .get_entity_type(name)
-                .map(|entity_type| entity_type.attributes.clone())
+                .map(ValidatorEntityType::attributes)
+                .cloned()
                 .unwrap_or_else(|| Attributes::with_attributes(None))
         });
 
@@ -1023,12 +938,12 @@ impl EntityLUB {
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize, Default)]
 pub struct Attributes {
     /// Attributes map
-    pub attrs: BTreeMap<SmolStr, AttributeType>,
+    attrs: BTreeMap<SmolStr, AttributeType>,
 }
 
 impl Attributes {
     /// Construct an [`Attributes`] with some required attributes.
-    pub(crate) fn with_required_attributes(
+    pub fn with_required_attributes(
         required_attrs: impl IntoIterator<Item = (SmolStr, Type)>,
     ) -> Self {
         Self::with_attributes(
@@ -1040,9 +955,7 @@ impl Attributes {
 
     /// Construct a [`Attributes`] with some attributes that may be required or
     /// optional.
-    pub(crate) fn with_attributes(
-        attrs: impl IntoIterator<Item = (SmolStr, AttributeType)>,
-    ) -> Self {
+    pub fn with_attributes(attrs: impl IntoIterator<Item = (SmolStr, AttributeType)>) -> Self {
         Self {
             attrs: attrs.into_iter().collect(),
         }
@@ -1058,10 +971,9 @@ impl Attributes {
         self.attrs.keys()
     }
 
-    /// Get a tuple containing a boolean flag specifying if a attribute is
-    /// required and the type of the attribute.
-    /// Returns `None` when the attribute is not in the record or entity.
-    pub(crate) fn get_attr(&self, attr: &str) -> Option<&AttributeType> {
+    /// Get the `AttributeType` of the given attribute, or `None` if the
+    /// attribute is not in the record or entity
+    pub fn get_attr(&self, attr: &str) -> Option<&AttributeType> {
         self.attrs.get(attr)
     }
 
@@ -1161,29 +1073,6 @@ impl IntoIterator for Attributes {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl From<&proto::Attributes> for Attributes {
-    fn from(v: &proto::Attributes) -> Self {
-        Self::with_attributes(
-            v.attrs
-                .iter()
-                .map(|(k, v)| (k.into(), AttributeType::from(v))),
-        )
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&Attributes> for proto::Attributes {
-    fn from(v: &Attributes) -> Self {
-        Self {
-            attrs: v
-                .iter()
-                .map(|(k, v)| (k.to_string(), proto::AttributeType::from(v)))
-                .collect(),
-        }
-    }
-}
-
 /// Used to tag record types to indicate if their attributes record is open or
 /// closed.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone, Serialize)]
@@ -1201,26 +1090,6 @@ impl OpenTag {
         match self {
             OpenTag::OpenAttributes => true,
             OpenTag::ClosedAttributes => false,
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&proto::OpenTag> for OpenTag {
-    fn from(v: &proto::OpenTag) -> Self {
-        match v {
-            proto::OpenTag::OpenAttributes => OpenTag::OpenAttributes,
-            proto::OpenTag::ClosedAttributes => OpenTag::ClosedAttributes,
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&OpenTag> for proto::OpenTag {
-    fn from(v: &OpenTag) -> Self {
-        match v {
-            OpenTag::OpenAttributes => proto::OpenTag::OpenAttributes,
-            OpenTag::ClosedAttributes => proto::OpenTag::ClosedAttributes,
         }
     }
 }
@@ -1295,7 +1164,7 @@ impl EntityRecordKind {
             EntityRecordKind::Entity(lub) => lub.iter().any(|e_name| {
                 schema
                     .get_entity_type(e_name)
-                    .map(|e_type| e_type.open_attributes)
+                    .map(|e_type| e_type.open_attributes())
                     // The entity type was not found in the schema, so we know
                     // nothing about it and must assume that it may have
                     // additional attributes.
@@ -1528,99 +1397,6 @@ impl EntityRecordKind {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl From<&proto::EntityRecordKind> for EntityRecordKind {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::EntityRecordKind) -> Self {
-        match v
-            .data
-            .as_ref()
-            .expect("`as_ref()` for field that should exist")
-        {
-            proto::entity_record_kind::Data::Ty(ty) => {
-                match proto::entity_record_kind::Ty::try_from(ty.to_owned())
-                    .expect("decode should succeed")
-                {
-                    proto::entity_record_kind::Ty::AnyEntity => Self::AnyEntity,
-                }
-            }
-            proto::entity_record_kind::Data::Record(p_record) => Self::Record {
-                attrs: Attributes::from(
-                    p_record
-                        .attrs
-                        .as_ref()
-                        .expect("`as_ref()` for field that should exist"),
-                ),
-                open_attributes: OpenTag::from(
-                    &proto::OpenTag::try_from(p_record.open_attributes)
-                        .expect("decode should succeed"),
-                ),
-            },
-            proto::entity_record_kind::Data::Entity(p_entity) => {
-                Self::Entity(EntityLUB::single_entity(ast::EntityType::from(
-                    p_entity
-                        .e
-                        .as_ref()
-                        .expect("`as_ref()` for field that should exist"),
-                )))
-            }
-            proto::entity_record_kind::Data::ActionEntity(p_action_entity) => Self::ActionEntity {
-                name: ast::EntityType::from(
-                    p_action_entity
-                        .name
-                        .as_ref()
-                        .expect("`as_ref()` for field that should exist"),
-                ),
-                attrs: Attributes::from(
-                    p_action_entity
-                        .attrs
-                        .as_ref()
-                        .expect("`as_ref()` for field that should exist"),
-                ),
-            },
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&EntityRecordKind> for proto::EntityRecordKind {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &EntityRecordKind) -> Self {
-        let data = match v {
-            EntityRecordKind::Record {
-                attrs,
-                open_attributes,
-            } => proto::entity_record_kind::Data::Record(proto::entity_record_kind::Record {
-                attrs: Some(proto::Attributes::from(attrs)),
-                open_attributes: proto::OpenTag::from(open_attributes).into(),
-            }),
-            EntityRecordKind::AnyEntity => {
-                proto::entity_record_kind::Data::Ty(proto::entity_record_kind::Ty::AnyEntity.into())
-            }
-            EntityRecordKind::Entity(e) => {
-                proto::entity_record_kind::Data::Entity(proto::entity_record_kind::Entity {
-                    e: Some(ast::proto::EntityType::from(
-                        &e.clone()
-                            .into_single_entity()
-                            .expect("will be single EntityType"),
-                    )),
-                })
-            }
-            EntityRecordKind::ActionEntity { name, attrs } => {
-                proto::entity_record_kind::Data::ActionEntity(
-                    proto::entity_record_kind::ActionEntity {
-                        name: Some(ast::proto::EntityType::from(name)),
-                        attrs: Some(proto::Attributes::from(attrs)),
-                    },
-                )
-            }
-        };
-        Self { data: Some(data) }
-    }
-}
-
 /// Contains the type of a record attribute and if the attribute is required.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1694,32 +1470,6 @@ impl AttributeType {
             ty0.is_required() || !ty1.is_required()
         };
         qualifier_subtype && Type::is_subtype(schema, &ty0.attr_type, &ty1.attr_type, mode)
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&proto::AttributeType> for AttributeType {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::AttributeType) -> Self {
-        Self {
-            attr_type: Type::from(
-                v.attr_type
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-            is_required: v.is_required,
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&AttributeType> for proto::AttributeType {
-    fn from(v: &AttributeType) -> Self {
-        Self {
-            attr_type: Some(proto::Type::from(&v.attr_type)),
-            is_required: v.is_required,
-        }
     }
 }
 
@@ -2870,7 +2620,7 @@ mod test {
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_type_display_roundtrip(ty: Type) {
+    fn assert_type_display_roundtrip(ty: &Type) {
         // test that a common type declaration using this type roundtrips properly
         let type_str = format!("type T = {ty}; entity E {{ foo: T }};");
         println!("{type_str}");
@@ -2883,24 +2633,24 @@ mod test {
                 .attr("foo")
                 .unwrap()
                 .attr_type,
-            &ty,
+            ty,
         );
     }
 
     #[test]
     fn type_display_roundtrip() {
-        assert_type_display_roundtrip(Type::primitive_boolean());
-        assert_type_display_roundtrip(Type::primitive_long());
-        assert_type_display_roundtrip(Type::primitive_string());
-        assert_type_display_roundtrip(Type::set(Type::primitive_boolean()));
-        assert_type_display_roundtrip(Type::set(Type::primitive_string()));
-        assert_type_display_roundtrip(Type::set(Type::primitive_long()));
-        assert_type_display_roundtrip(Type::closed_record_with_attributes(None));
-        assert_type_display_roundtrip(Type::closed_record_with_attributes([(
+        assert_type_display_roundtrip(&Type::primitive_boolean());
+        assert_type_display_roundtrip(&Type::primitive_long());
+        assert_type_display_roundtrip(&Type::primitive_string());
+        assert_type_display_roundtrip(&Type::set(Type::primitive_boolean()));
+        assert_type_display_roundtrip(&Type::set(Type::primitive_string()));
+        assert_type_display_roundtrip(&Type::set(Type::primitive_long()));
+        assert_type_display_roundtrip(&Type::closed_record_with_attributes(None));
+        assert_type_display_roundtrip(&Type::closed_record_with_attributes([(
             "a".into(),
             AttributeType::required_attribute(Type::primitive_boolean()),
         )]));
-        assert_type_display_roundtrip(Type::closed_record_with_attributes([
+        assert_type_display_roundtrip(&Type::closed_record_with_attributes([
             (
                 "a".into(),
                 AttributeType::required_attribute(Type::primitive_boolean()),
@@ -2913,7 +2663,7 @@ mod test {
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_displays_as(ty: Type, repr: &str) {
+    fn assert_displays_as(ty: &Type, repr: &str) {
         assert_eq!(
             ty.to_string(),
             repr,
@@ -2929,24 +2679,27 @@ mod test {
         // checks that they are defined already, so we'd need to provide a
         // complete schema. TODO: the final stage of schema parsing already does
         // this. Can we remove duplicated checks from Cedar schema parsing?
-        assert_displays_as(Type::named_entity_reference_from_str("Foo"), "Foo");
+        assert_displays_as(&Type::named_entity_reference_from_str("Foo"), "Foo");
         assert_displays_as(
-            Type::named_entity_reference_from_str("Foo::Bar"),
+            &Type::named_entity_reference_from_str("Foo::Bar"),
             "Foo::Bar",
         );
         assert_displays_as(
-            Type::named_entity_reference_from_str("Foo::Bar::Baz"),
+            &Type::named_entity_reference_from_str("Foo::Bar::Baz"),
             "Foo::Bar::Baz",
         );
 
         // These type aren't representable in a schema.
-        assert_displays_as(Type::Never, "__cedar::internal::Never");
-        assert_displays_as(Type::True, "__cedar::internal::True");
-        assert_displays_as(Type::False, "__cedar::internal::False");
-        assert_displays_as(Type::any_set(), "Set<__cedar::internal::Any>");
-        assert_displays_as(Type::any_entity_reference(), "__cedar::internal::AnyEntity");
+        assert_displays_as(&Type::Never, "__cedar::internal::Never");
+        assert_displays_as(&Type::True, "__cedar::internal::True");
+        assert_displays_as(&Type::False, "__cedar::internal::False");
+        assert_displays_as(&Type::any_set(), "Set<__cedar::internal::Any>");
         assert_displays_as(
-            Type::least_upper_bound(
+            &Type::any_entity_reference(),
+            "__cedar::internal::AnyEntity",
+        );
+        assert_displays_as(
+            &Type::least_upper_bound(
                 &ValidatorSchema::empty(),
                 &Type::named_entity_reference_from_str("Foo"),
                 &Type::named_entity_reference_from_str("Bar"),
@@ -2961,6 +2714,6 @@ mod test {
     #[cfg(feature = "ipaddr")]
     fn test_extension_type_display() {
         let ipaddr = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
-        assert_type_display_roundtrip(Type::extension(ipaddr));
+        assert_type_display_roundtrip(&Type::extension(ipaddr));
     }
 }

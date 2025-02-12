@@ -108,6 +108,22 @@ fn fmt_non_empty_slice<T: Display>(
 
 impl<N: Display> Display for json_schema::EntityType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            json_schema::EntityTypeKind::Standard(ty) => ty.fmt(f),
+            json_schema::EntityTypeKind::Enum { choices } => write!(
+                f,
+                " enum [{}]",
+                choices
+                    .iter()
+                    .map(|e| format!("\"{}\"", e.escape_debug()))
+                    .join(", ")
+            ),
+        }
+    }
+}
+
+impl<N: Display> Display for json_schema::StandardEntityType<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(non_empty) = self.member_of_types.split_first() {
             write!(f, " in ")?;
             fmt_non_empty_slice(f, non_empty)?;

@@ -362,25 +362,33 @@ fn convert_entity_decl(
     impl Iterator<Item = (UnreservedId, json_schema::EntityType<RawName>)>,
     ToJsonSchemaErrors,
 > {
-    // First build up the defined entity type
+    let names: Vec<Node<Id>> = e.data.node.names().cloned().collect();
     let etype = json_schema::EntityType {
-        member_of_types: e
-            .data
-            .node
-            .member_of_types
-            .into_iter()
-            .map(RawName::from)
-            .collect(),
-        shape: convert_attr_decls(e.data.node.attrs),
-        tags: e.data.node.tags.map(cedar_type_to_json_type),
+        kind: match e.data.node {
+            EntityDecl::Enum(d) => json_schema::EntityTypeKind::Enum {
+                choices: d.choices.map(|n| n.node),
+            },
+            EntityDecl::Standard(d) => {
+                // First build up the defined entity type
+                json_schema::EntityTypeKind::Standard(json_schema::StandardEntityType {
+                    member_of_types: d.member_of_types.into_iter().map(RawName::from).collect(),
+                    shape: convert_attr_decls(d.attrs),
+                    tags: d.tags.map(cedar_type_to_json_type),
+                })
+            }
+        },
         annotations: e.annotations.into(),
-        loc: Some(e.data.loc),
+        loc: Some(e.data.loc.clone()),
     };
 
     // Then map over all of the bound names
-    collect_all_errors(e.data.node.names.into_iter().map(
-        move |name| -> Result<_, ToJsonSchemaErrors> { Ok((convert_id(name)?, etype.clone())) },
-    ))
+    collect_all_errors(
+        names
+            .into_iter()
+            .map(move |name| -> Result<_, ToJsonSchemaErrors> {
+                Ok((convert_id(name)?, etype.clone()))
+            }),
+    )
 }
 
 /// Create a [`json_schema::AttributesOrContext`] from a series of `AttrDecl`s
@@ -480,7 +488,7 @@ impl NamespaceRecord {
         let entities = collect_decls(
             entities
                 .into_iter()
-                .flat_map(|decl| decl.names.clone())
+                .flat_map(|decl| decl.names().cloned())
                 .map(extract_name),
         )?;
         // Ensure no duplicate actions
@@ -673,6 +681,7 @@ fn into_partition_decls(
 mod preserves_source_locations {
     use super::*;
     use cool_asserts::assert_matches;
+    use json_schema::{EntityType, EntityTypeKind};
 
     #[test]
     fn entity_action_and_common_type_decls() {
@@ -700,7 +709,7 @@ mod preserves_source_locations {
             };
         }
         "#,
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .unwrap();
         let ns = schema
@@ -784,7 +793,7 @@ mod preserves_source_locations {
             };
         }
         "#,
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .unwrap();
         let ns = schema
@@ -792,10 +801,10 @@ mod preserves_source_locations {
             .get(&Some(Name::parse_unqualified_name("NS").unwrap()))
             .expect("couldn't find namespace NS");
 
-        let entityC = ns
+        assert_matches!(ns
             .entity_types
             .get(&"C".parse().unwrap())
-            .expect("couldn't find entity C");
+            .expect("couldn't find entity C"), EntityType { kind: EntityTypeKind::Standard(entityC), ..} => { 
         assert_matches!(entityC.member_of_types.first().unwrap().loc(), Some(loc) => {
             assert_matches!(loc.snippet(), Some("A"));
         });
@@ -830,7 +839,7 @@ mod preserves_source_locations {
                     assert_matches!(loc.snippet(), Some("B"));
                 });
             });
-        });
+        });});
 
         let ctypeAA = ns
             .common_types

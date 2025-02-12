@@ -100,28 +100,6 @@ impl FromStr for EntityType {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl From<&proto::EntityType> for EntityType {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::EntityType) -> Self {
-        Self(Name::from(
-            v.name
-                .as_ref()
-                .expect("`as_ref()` for field that should exist"),
-        ))
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&EntityType> for proto::EntityType {
-    fn from(v: &EntityType) -> Self {
-        Self {
-            name: Some(proto::Name::from(v.name())),
-        }
-    }
-}
-
 impl std::fmt::Display for EntityType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -255,33 +233,6 @@ impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl From<&proto::EntityUid> for EntityUID {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::EntityUid) -> Self {
-        Self {
-            ty: EntityType::from(
-                v.ty.as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-            eid: Eid::new(v.eid.clone()),
-            loc: None,
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&EntityUID> for proto::EntityUid {
-    fn from(v: &EntityUID) -> Self {
-        let eid_ref: &str = v.eid.as_ref();
-        Self {
-            ty: Some(proto::EntityType::from(&v.ty)),
-            eid: eid_ref.to_owned(),
-        }
-    }
-}
-
 /// The `Eid` type represents the id of an `Entity`, without the typename.
 /// Together with the typename it comprises an `EntityUID`.
 /// For example, in `User::"alice"`, the `Eid` is `alice`.
@@ -332,7 +283,7 @@ pub struct Entity {
     /// UID
     uid: EntityUID,
 
-    /// Internal BTreMap of attributes.
+    /// Internal BTreeMap of attributes.
     /// We use a btreemap so that the keys have a deterministic order.
     ///
     /// In the serialized form of `Entity`, attribute values appear as
@@ -399,10 +350,10 @@ impl Entity {
         })
     }
 
-    /// Create a new `Entity` with this UID, attributes, and ancestors (and no tags)
+    /// Create a new `Entity` with this UID, attributes, ancestors, and tags
     ///
-    /// Unlike in `Entity::new()`, in this constructor, attributes are expressed
-    /// as `PartialValue`.
+    /// Unlike in `Entity::new()`, in this constructor, attributes and tags are
+    /// expressed as `PartialValue`.
     ///
     /// Callers should consider directly using [`Entity::new_with_attr_partial_value_serialized_as_expr`]
     /// if they would call this method by first building a map, as it will
@@ -411,28 +362,31 @@ impl Entity {
         uid: EntityUID,
         attrs: impl IntoIterator<Item = (SmolStr, PartialValue)>,
         ancestors: HashSet<EntityUID>,
+        tags: impl IntoIterator<Item = (SmolStr, PartialValue)>,
     ) -> Self {
         Self::new_with_attr_partial_value_serialized_as_expr(
             uid,
             attrs.into_iter().map(|(k, v)| (k, v.into())).collect(),
             ancestors,
+            tags.into_iter().map(|(k, v)| (k, v.into())).collect(),
         )
     }
 
-    /// Create a new `Entity` with this UID, attributes, and ancestors (and no tags)
+    /// Create a new `Entity` with this UID, attributes, ancestors, and tags
     ///
-    /// Unlike in `Entity::new()`, in this constructor, attributes are expressed
-    /// as `PartialValueSerializedAsExpr`.
+    /// Unlike in `Entity::new()`, in this constructor, attributes and tags are
+    /// expressed as `PartialValueSerializedAsExpr`.
     pub fn new_with_attr_partial_value_serialized_as_expr(
         uid: EntityUID,
         attrs: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
         ancestors: HashSet<EntityUID>,
+        tags: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
     ) -> Self {
         Entity {
             uid,
             attrs,
             ancestors,
-            tags: BTreeMap::new(),
+            tags,
         }
     }
 
@@ -521,10 +475,10 @@ impl Entity {
     pub fn set_attr(
         &mut self,
         attr: SmolStr,
-        val: RestrictedExpr,
+        val: BorrowedRestrictedExpr<'_>,
         extensions: &Extensions<'_>,
     ) -> Result<(), EvaluationError> {
-        let val = RestrictedEvaluator::new(extensions).partial_interpret(val.as_borrowed())?;
+        let val = RestrictedEvaluator::new(extensions).partial_interpret(val)?;
         self.attrs.insert(attr, val.into());
         Ok(())
     }
@@ -535,10 +489,10 @@ impl Entity {
     pub fn set_tag(
         &mut self,
         tag: SmolStr,
-        val: RestrictedExpr,
+        val: BorrowedRestrictedExpr<'_>,
         extensions: &Extensions<'_>,
     ) -> Result<(), EvaluationError> {
-        let val = RestrictedEvaluator::new(extensions).partial_interpret(val.as_borrowed())?;
+        let val = RestrictedEvaluator::new(extensions).partial_interpret(val)?;
         self.tags.insert(tag, val.into());
         Ok(())
     }
@@ -660,94 +614,6 @@ impl std::fmt::Display for Entity {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl From<&proto::Entity> for Entity {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::Entity) -> Self {
-        let eval = RestrictedEvaluator::new(Extensions::none());
-
-        let attrs: BTreeMap<SmolStr, PartialValueSerializedAsExpr> = v
-            .attrs
-            .iter()
-            .map(|(key, value)| {
-                let pval = eval
-                    .partial_interpret(
-                        BorrowedRestrictedExpr::new(&Expr::from(value)).expect("RestrictedExpr"),
-                    )
-                    .expect("interpret on RestrictedExpr");
-                (key.into(), pval.into())
-            })
-            .collect();
-
-        let ancestors: HashSet<EntityUID> = v.ancestors.iter().map(EntityUID::from).collect();
-
-        let tags: BTreeMap<SmolStr, PartialValueSerializedAsExpr> = v
-            .tags
-            .iter()
-            .map(|(key, value)| {
-                let pval = eval
-                    .partial_interpret(
-                        BorrowedRestrictedExpr::new(&Expr::from(value)).expect("RestrictedExpr"),
-                    )
-                    .expect("interpret on RestrictedExpr");
-                (key.into(), pval.into())
-            })
-            .collect();
-
-        Self {
-            uid: EntityUID::from(
-                v.uid
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-            attrs,
-            ancestors,
-            tags,
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&Entity> for proto::Entity {
-    fn from(v: &Entity) -> Self {
-        let mut attrs: HashMap<String, proto::Expr> = HashMap::with_capacity(v.attrs.len());
-        for (key, value) in &v.attrs {
-            attrs.insert(
-                key.to_string(),
-                proto::Expr::from(&Expr::from(PartialValue::from(value.to_owned()))),
-            );
-        }
-
-        let mut ancestors: Vec<proto::EntityUid> = Vec::with_capacity(v.ancestors.len());
-        for ancestor in &v.ancestors {
-            ancestors.push(proto::EntityUid::from(ancestor));
-        }
-
-        let mut tags: HashMap<String, proto::Expr> = HashMap::with_capacity(v.tags.len());
-        for (key, value) in &v.tags {
-            tags.insert(
-                key.to_string(),
-                proto::Expr::from(&Expr::from(PartialValue::from(value.to_owned()))),
-            );
-        }
-
-        Self {
-            uid: Some(proto::EntityUid::from(&v.uid)),
-            attrs,
-            ancestors,
-            tags,
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&Arc<Entity>> for proto::Entity {
-    fn from(v: &Arc<Entity>) -> Self {
-        Self::from(v.as_ref())
-    }
-}
-
 /// `PartialValue`, but serialized as a `RestrictedExpr`.
 ///
 /// (Extension values can't be directly serialized, but can be serialized as
@@ -859,36 +725,6 @@ mod test {
         assert!(!euid.is_action());
         let euid = EntityUID::from_str("Action::Foo::\"view\"").unwrap();
         assert!(!euid.is_action());
-    }
-
-    #[cfg(feature = "protobufs")]
-    #[test]
-    fn round_trip_protobuf() {
-        let name = Name::from_normalized_str("B::C::D").unwrap();
-        let ety_specified = EntityType(name);
-        assert_eq!(
-            ety_specified,
-            EntityType::from(&proto::EntityType::from(&ety_specified))
-        );
-
-        let euid1 = EntityUID::with_eid("foo");
-        assert_eq!(euid1, EntityUID::from(&proto::EntityUid::from(&euid1)));
-
-        let euid2 = EntityUID::from_str("Foo::Action::\"view\"").unwrap();
-        assert_eq!(euid2, EntityUID::from(&proto::EntityUid::from(&euid2)));
-
-        let attrs = (1..=7)
-            .map(|id| (format!("{id}").into(), RestrictedExpr::val(true)))
-            .collect::<HashMap<SmolStr, _>>();
-        let entity = Entity::new(
-            r#"Foo::"bar""#.parse().unwrap(),
-            attrs,
-            HashSet::new(),
-            BTreeMap::new(),
-            Extensions::none(),
-        )
-        .unwrap();
-        assert_eq!(entity, Entity::from(&proto::Entity::from(&entity)));
     }
 
     #[test]

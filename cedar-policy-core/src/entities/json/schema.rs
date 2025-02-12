@@ -15,8 +15,9 @@
  */
 
 use super::SchemaType;
-use crate::ast::{Entity, EntityType, EntityUID};
+use crate::ast::{Eid, Entity, EntityType, EntityUID};
 use crate::entities::{Name, UnreservedId};
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -74,8 +75,8 @@ impl Schema for NoEntitiesSchema {
 }
 
 /// Simple type that implements `Schema` by allowing entities of all types to
-/// exist, and allowing all actions to exist, but expecting no attributes or
-/// parents on any entity (action or otherwise).
+/// exist, and allowing all actions to exist, but expecting no attributes, tags,
+/// or parents on any entity (action or otherwise).
 ///
 /// This type returns an empty iterator for `action_entities()`, which is kind
 /// of inconsistent with its behavior on `action()`. But it works out -- the
@@ -97,6 +98,7 @@ impl Schema for AllEntitiesNoAttrsSchema {
             action.clone(),
             [],
             HashSet::new(),
+            [],
         )))
     }
     fn entity_types_with_basename<'a>(
@@ -136,6 +138,10 @@ pub trait EntityTypeDescription {
     /// May entities with this type have attributes other than those specified
     /// in the schema
     fn open_attributes(&self) -> bool;
+
+    /// Return valid EID choices if the entity type is enumerated otherwise
+    /// return `None`
+    fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>>;
 }
 
 /// Simple type that implements `EntityTypeDescription` by expecting no
@@ -163,6 +169,9 @@ impl EntityTypeDescription for NullEntityTypeDescription {
     }
     fn open_attributes(&self) -> bool {
         false
+    }
+    fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
+        None
     }
 }
 impl NullEntityTypeDescription {

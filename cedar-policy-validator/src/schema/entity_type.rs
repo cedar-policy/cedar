@@ -16,6 +16,7 @@
 
 //! This module contains the definition of `ValidatorEntityType`
 
+use nonempty::NonEmpty;
 use serde::Serialize;
 use smol_str::SmolStr;
 use std::collections::HashSet;
@@ -23,12 +24,6 @@ use std::collections::HashSet;
 use cedar_policy_core::{ast::EntityType, transitive_closure::TCNode};
 
 use crate::types::{AttributeType, Attributes, OpenTag, Type};
-
-#[cfg(feature = "protobufs")]
-use crate::proto;
-
-#[cfg(feature = "protobufs")]
-use cedar_policy_core::ast;
 
 /// Contains entity type information for use by the validator. The contents of
 /// the struct are the same as the schema entity type structure, but the
@@ -44,9 +39,29 @@ pub struct ValidatorEntityType {
     /// descendants before it is used in any validation.
     pub descendants: HashSet<EntityType>,
 
-    /// The attributes associated with this entity.
-    pub(crate) attributes: Attributes,
+    /// The kind of entity type: enumerated and standard
+    pub kind: ValidatorEntityTypeKind,
 
+    /// The attributes associated with this entity.
+    ///
+    /// For enumerated entities, this is always empty.
+    pub(crate) attributes: Attributes,
+}
+
+/// The kind of validator entity types.
+///
+/// It can either be a standard (non-enum) entity type, or
+/// an enumerated entity type
+#[derive(Clone, Debug, Serialize)]
+pub enum ValidatorEntityTypeKind {
+    /// Standard, aka non-enum
+    Standard(StandardValidatorEntityType),
+    /// Enumerated
+    Enum(NonEmpty<SmolStr>),
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct StandardValidatorEntityType {
     /// Indicates that this entity type may have additional attributes
     /// other than the declared attributes that may be accessed under partial
     /// schema validation. We do not know if they are present, and do not know
@@ -61,14 +76,60 @@ pub struct ValidatorEntityType {
 }
 
 impl ValidatorEntityType {
+    /// Construct a new standard `ValidatorEntityType`.
+    ///
+    /// This constructor assumes that `descendants` has TC already computed.
+    /// That is, caller is responsible for TC.
+    pub fn new_standard(
+        name: EntityType,
+        descendants: impl IntoIterator<Item = EntityType>,
+        attributes: Attributes,
+        open_attributes: OpenTag,
+        tags: Option<Type>,
+    ) -> Self {
+        Self {
+            name,
+            descendants: descendants.into_iter().collect(),
+            attributes,
+            kind: ValidatorEntityTypeKind::Standard(StandardValidatorEntityType {
+                open_attributes,
+                tags,
+            }),
+        }
+    }
+
+    /// Construct a new enumerated `ValidatorEntityType`.
+    ///
+    /// This constructor assumes that `descendants` has TC already computed.
+    /// That is, caller is responsible for TC.
+    pub fn new_enum(
+        name: EntityType,
+        descendants: impl IntoIterator<Item = EntityType>,
+        values: NonEmpty<SmolStr>,
+    ) -> Self {
+        Self {
+            name,
+            descendants: descendants.into_iter().collect(),
+            attributes: Attributes::with_attributes([]),
+            kind: ValidatorEntityTypeKind::Enum(values),
+        }
+    }
+
+    /// The name of the entity type
+    pub fn name(&self) -> &EntityType {
+        &self.name
+    }
+
+    /// Attribute types for this entity.
+    ///
+    /// For enumerated entity types, this will always be empty.
+    pub fn attributes(&self) -> &Attributes {
+        &self.attributes
+    }
+
     /// Get the type of the attribute with the given name, if it exists
     pub fn attr(&self, attr: &str) -> Option<&AttributeType> {
         self.attributes.get_attr(attr)
-    }
-
-    /// An iterator over the attributes of this entity
-    pub fn attributes(&self) -> impl Iterator<Item = (&SmolStr, &AttributeType)> {
-        self.attributes.iter()
     }
 
     /// Return `true` if this entity type has an [`EntityType`] declared as a
@@ -77,6 +138,29 @@ impl ValidatorEntityType {
         self.descendants.contains(ety)
     }
 
+    /// Return the [`OpenTag`] which indicates whether this entity type may have
+    /// additional attributes other than the declared attributes.
+    /// This is used for partial schema validation. Attempting to access an
+    /// undeclared attribute under standard validation is an error regardless of
+    /// the [`OpenTag`] here.
+    pub fn open_attributes(&self) -> OpenTag {
+        match &self.kind {
+            ValidatorEntityTypeKind::Enum(_) => OpenTag::ClosedAttributes,
+            ValidatorEntityTypeKind::Standard(ty) => ty.open_attributes,
+        }
+    }
+
+    /// Get the type of tags on this entity. `None` indicates that entities of
+    /// this type are not allowed to have tags.
+    pub fn tag_type(&self) -> Option<&Type> {
+        match &self.kind {
+            ValidatorEntityTypeKind::Enum(_) => None,
+            ValidatorEntityTypeKind::Standard(ty) => ty.tag_type(),
+        }
+    }
+}
+
+impl StandardValidatorEntityType {
     /// Get the type of tags on this entity. `None` indicates that entities of
     /// this type are not allowed to have tags.
     pub fn tag_type(&self) -> Option<&Type> {
@@ -99,54 +183,5 @@ impl TCNode<EntityType> for ValidatorEntityType {
 
     fn has_edge_to(&self, e: &EntityType) -> bool {
         self.descendants.contains(e)
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&ValidatorEntityType> for proto::ValidatorEntityType {
-    fn from(v: &ValidatorEntityType) -> Self {
-        let tags = v.tags.as_ref().map(|tags| proto::Tag {
-            optional_type: Some(proto::Type::from(tags)),
-        });
-        Self {
-            name: Some(ast::proto::EntityType::from(&v.name)),
-            descendants: v
-                .descendants
-                .iter()
-                .map(ast::proto::EntityType::from)
-                .collect(),
-            attributes: Some(proto::Attributes::from(&v.attributes)),
-            open_attributes: proto::OpenTag::from(&v.open_attributes).into(),
-            tags,
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&proto::ValidatorEntityType> for ValidatorEntityType {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::ValidatorEntityType) -> Self {
-        let tags = match &v.tags {
-            Some(tags) => tags.optional_type.as_ref().map(Type::from),
-            None => None,
-        };
-        Self {
-            name: ast::EntityType::from(
-                v.name
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-            descendants: v.descendants.iter().map(ast::EntityType::from).collect(),
-            attributes: Attributes::from(
-                v.attributes
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-            open_attributes: OpenTag::from(
-                &proto::OpenTag::try_from(v.open_attributes).expect("decode should succeed"),
-            ),
-            tags,
-        }
     }
 }

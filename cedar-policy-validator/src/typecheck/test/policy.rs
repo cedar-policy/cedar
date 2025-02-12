@@ -117,11 +117,11 @@ fn assert_policy_typechecks_permissive_simple_schema(p: impl Into<Arc<Template>>
 fn entity_literal_typechecks() {
     assert_typechecks(
         simple_schema_file(),
-        Expr::val(
+        &Expr::val(
             EntityUID::with_eid_and_type("Group", "friends")
                 .expect("EUID component failed to parse."),
         ),
-        Type::named_entity_reference_from_str("Group"),
+        &Type::named_entity_reference_from_str("Group"),
     )
 }
 

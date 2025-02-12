@@ -13,11 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-use crate::{ValidatorActionId, ValidatorEntityType, ValidatorSchema};
-use cedar_policy_core::ast::{EntityType, EntityUID};
+use crate::{ValidatorActionId, ValidatorEntityType, ValidatorEntityTypeKind, ValidatorSchema};
+use cedar_policy_core::ast::{Eid, EntityType, EntityUID};
+use cedar_policy_core::entities::conformance::err::InvalidEnumEntityError;
+use cedar_policy_core::entities::conformance::{
+    is_valid_enumerated_entity, validate_euids_in_partial_value,
+};
 use cedar_policy_core::extensions::{ExtensionFunctionLookupError, Extensions};
 use cedar_policy_core::{ast, entities};
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use std::collections::hash_map::Values;
 use std::collections::HashSet;
@@ -55,17 +60,13 @@ impl<'a> entities::Schema for CoreSchema<'a> {
         &'b self,
         basename: &'b ast::UnreservedId,
     ) -> Box<dyn Iterator<Item = ast::EntityType> + 'b> {
-        Box::new(
-            self.schema
-                .entity_types()
-                .filter_map(move |(entity_type, _)| {
-                    if &entity_type.name().basename() == basename {
-                        Some(entity_type.clone())
-                    } else {
-                        None
-                    }
-                }),
-        )
+        Box::new(self.schema.entity_types().filter_map(move |entity_type| {
+            if &entity_type.name().as_ref().basename() == basename {
+                Some(entity_type.name().clone())
+            } else {
+                None
+            }
+        }))
     }
 
     fn action_entities(&self) -> Self::ActionEntityIterator {
@@ -94,9 +95,9 @@ impl EntityTypeDescription {
             validator_type: schema.get_entity_type(type_name).cloned()?,
             allowed_parent_types: {
                 let mut set = HashSet::new();
-                for (possible_parent_typename, possible_parent_et) in schema.entity_types() {
+                for possible_parent_et in schema.entity_types() {
                     if possible_parent_et.descendants.contains(type_name) {
-                        set.insert(possible_parent_typename.clone());
+                        set.insert(possible_parent_et.name().clone());
                     }
                 }
                 Arc::new(set)
@@ -106,6 +107,13 @@ impl EntityTypeDescription {
 }
 
 impl entities::EntityTypeDescription for EntityTypeDescription {
+    fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
+        match &self.validator_type.kind {
+            ValidatorEntityTypeKind::Enum(choices) => Some(choices.clone().map(|s| Eid::new(s))),
+            _ => None,
+        }
+    }
+
     fn entity_type(&self) -> ast::EntityType {
         self.core_type.clone()
     }
@@ -143,7 +151,7 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
     fn required_attrs<'s>(&'s self) -> Box<dyn Iterator<Item = SmolStr> + 's> {
         Box::new(
             self.validator_type
-                .attributes
+                .attributes()
                 .iter()
                 .filter(|(_, ty)| ty.is_required)
                 .map(|(attr, _)| attr.clone()),
@@ -155,7 +163,7 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
     }
 
     fn open_attributes(&self) -> bool {
-        self.validator_type.open_attributes.is_open()
+        self.validator_type.open_attributes().is_open()
     }
 }
 
@@ -170,7 +178,18 @@ impl ast::RequestSchema for ValidatorSchema {
         // first check that principal and resource are of types that exist in
         // the schema, we can do this check even if action is unknown.
         if let Some(principal_type) = request.principal().get_type() {
-            if self.get_entity_type(principal_type).is_none() {
+            if let Some(et) = self.get_entity_type(principal_type) {
+                if let Some(euid) = request.principal().uid() {
+                    if let ValidatorEntityType {
+                        kind: ValidatorEntityTypeKind::Enum(choices),
+                        ..
+                    } = et
+                    {
+                        is_valid_enumerated_entity(&Vec::from(choices.clone().map(Eid::new)), euid)
+                            .map_err(Self::Error::from)?;
+                    }
+                }
+            } else {
                 return Err(request_validation_errors::UndeclaredPrincipalTypeError {
                     principal_ty: principal_type.clone(),
                 }
@@ -178,7 +197,18 @@ impl ast::RequestSchema for ValidatorSchema {
             }
         }
         if let Some(resource_type) = request.resource().get_type() {
-            if self.get_entity_type(resource_type).is_none() {
+            if let Some(et) = self.get_entity_type(resource_type) {
+                if let Some(euid) = request.resource().uid() {
+                    if let ValidatorEntityType {
+                        kind: ValidatorEntityTypeKind::Enum(choices),
+                        ..
+                    } = et
+                    {
+                        is_valid_enumerated_entity(&Vec::from(choices.clone().map(Eid::new)), euid)
+                            .map_err(Self::Error::from)?;
+                    }
+                }
+            } else {
                 return Err(request_validation_errors::UndeclaredResourceTypeError {
                     resource_ty: resource_type.clone(),
                 }
@@ -201,6 +231,11 @@ impl ast::RequestSchema for ValidatorSchema {
                     validator_action_id.check_resource_type(principal_type, action)?;
                 }
                 if let Some(context) = request.context() {
+                    validate_euids_in_partial_value(
+                        &CoreSchema::new(&self),
+                        &context.clone().into(),
+                    )
+                    .map_err(|err| RequestValidationError::InvalidEnumEntity(err))?;
                     let expected_context_ty = validator_action_id.context_type();
                     if !expected_context_ty
                         .typecheck_partial_value(&context.clone().into(), extensions)
@@ -308,6 +343,11 @@ pub enum RequestValidationError {
     #[error("context is not valid: {0}")]
     #[diagnostic(transparent)]
     TypeOfContext(ExtensionFunctionLookupError),
+    /// Error when a principal or resource entity is of an enumerated entity
+    /// type but has an invalid EID
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidEnumEntity(#[from] InvalidEnumEntityError),
 }
 
 /// Errors related to validation
@@ -564,9 +604,28 @@ pub fn context_schema_for_action(
 #[cfg(test)]
 mod test {
     use super::*;
+    use ast::{Context, Value};
     use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use cool_asserts::assert_matches;
     use serde_json::json;
+
+    #[track_caller]
+    fn schema_with_enums() -> ValidatorSchema {
+        let src = r#"
+            entity Fruit enum ["🍉", "🍓", "🍒"];
+            entity People;
+            action "eat" appliesTo {
+                principal: [People],
+                resource: [Fruit],
+                context: {
+                  fruit?: Fruit,
+                }
+            };
+        "#;
+        ValidatorSchema::from_cedarschema_str(src, Extensions::none())
+            .expect("should be a valid schema")
+            .0
+    }
 
     fn schema() -> ValidatorSchema {
         let src = json!(
@@ -1036,6 +1095,66 @@ mod test {
                     "",
                     &miette::Report::new(e),
                     &ExpectedErrorMessageBuilder::error(r#"context `{admin_approval: true, "also extra": "spam", extra1: false, extra2: [-100], extra3: User::"alice", .. }` is not valid for `Action::"edit_photo"`"#).build(),
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn enumerated_entity_type() {
+        assert_matches!(
+            ast::Request::new(
+                (
+                    ast::EntityUID::with_eid_and_type("People", "😋").unwrap(),
+                    None
+                ),
+                (
+                    ast::EntityUID::with_eid_and_type("Action", "eat").unwrap(),
+                    None
+                ),
+                (
+                    ast::EntityUID::with_eid_and_type("Fruit", "🍉").unwrap(),
+                    None
+                ),
+                Context::empty(),
+                Some(&schema_with_enums()),
+                Extensions::none(),
+            ),
+            Ok(_)
+        );
+        assert_matches!(
+            ast::Request::new(
+                (ast::EntityUID::with_eid_and_type("People", "🤔").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "eat").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Fruit", "🥝").unwrap(), None),
+                Context::empty(),
+                Some(&schema_with_enums()),
+                Extensions::none(),
+            ),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"entity `Fruit::"🥝"` is of an enumerated entity type, but `"🥝"` is not declared as a valid eid"#).help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                    .build(),
+                );
+            }
+        );
+        assert_matches!(
+            ast::Request::new(
+                (ast::EntityUID::with_eid_and_type("People", "🤔").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "eat").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Fruit", "🍉").unwrap(), None),
+                Context::from_pairs(std::iter::once(("fruit".into(), (Value::from(ast::EntityUID::with_eid_and_type("Fruit", "🥭").unwrap())).into())), Extensions::none()).expect("should be a valid context"),
+                Some(&schema_with_enums()),
+                Extensions::none(),
+            ),
+            Err(e) => {
+                expect_err(
+                    "",
+                    &miette::Report::new(e),
+                    &ExpectedErrorMessageBuilder::error(r#"entity `Fruit::"🥭"` is of an enumerated entity type, but `"🥭"` is not declared as a valid eid"#).help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                    .build(),
                 );
             }
         );

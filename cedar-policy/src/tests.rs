@@ -3825,6 +3825,255 @@ mod schema_based_parsing_tests {
             Err(EntitiesError::TransitiveClosureError(_))
         ));
     }
+
+    #[test]
+    fn enumerated_entity_types() {
+        let schema = Schema::from_str(
+            r#"
+                    entity Fruit enum ["🍉", "🍓", "🍒"];
+                    entity People {
+                        fruit?: Fruit,
+                        fruit_rec?: {name: Fruit},
+                    };
+                    entity DeliciousFruit in Fruit tags Fruit;
+                    action "eat" appliesTo {
+                        principal: [People],
+                        resource: [Fruit],
+                    };
+                "#,
+        )
+        .expect("should be a valid schema");
+        // invalid eid
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "Fruit",
+                    "id" : "🥝"
+                },
+                "attrs" : {},
+                "parents": []
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {},
+                "parents": []
+            }
+        ]);
+        assert_matches!(Entities::from_json_value(json.clone(), Some(&schema)), Err(EntitiesError::InvalidEntity(err)) => {
+            expect_err(
+                &json,
+                &Report::new(err),
+                &ExpectedErrorMessageBuilder::error(
+                    r#"entity `Fruit::"🥝"` is of an enumerated entity type, but `"🥝"` is not declared as a valid eid"#,
+                )
+                .help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                .build(),
+            );
+        });
+        // no attributes are allowed
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "Fruit",
+                    "id" : "🍉"
+                },
+                "attrs" : {
+                    "sweetness": "high",
+                },
+                "parents": []
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {},
+                "parents": []
+            }
+        ]);
+        assert_matches!(Entities::from_json_value(json.clone(), Some(&schema)), Err(EntitiesError::Deserialization(err)) => {
+            expect_err(
+                &json,
+                &Report::new(err),
+                &ExpectedErrorMessageBuilder::error(
+                    r#"attribute `sweetness` on `Fruit::"🍉"` should not exist according to the schema"#,
+                )
+                .build(),
+            );
+        });
+        // no parents are allowed
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "Fruit",
+                    "id" : "🍉"
+                },
+                "attrs" : {
+                },
+                "parents": [{"type": "Fruit", "id": "🍓"}]
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {},
+                "parents": []
+            }
+        ]);
+        assert_matches!(Entities::from_json_value(json.clone(), Some(&schema)), Err(EntitiesError::InvalidEntity(err)) => {
+            expect_err(
+                &json,
+                &Report::new(err),
+                &ExpectedErrorMessageBuilder::error(
+                    r#"`Fruit::"🍉"` is not allowed to have an ancestor of type `Fruit` according to the schema"#,
+                )
+                .build(),
+            );
+        });
+
+        // Reference to invalid eid in the `parents` field
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "DeliciousFruit",
+                    "id" : "🍉"
+                },
+                "attrs" : {
+                },
+                "parents": [{"type": "Fruit", "id": "🥝"}]
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {},
+                "parents": []
+            }
+        ]);
+        assert_matches!(
+            Entities::from_json_value(json.clone(), Some(&schema)),
+            Err(EntitiesError::InvalidEntity(err)) => {
+                expect_err(
+                    &json,
+                    &Report::new(err),
+                    &ExpectedErrorMessageBuilder::error(
+                        r#"entity `Fruit::"🥝"` is of an enumerated entity type, but `"🥝"` is not declared as a valid eid"#,
+                    ).help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                    .build(),
+                );}
+        );
+
+        // Reference to invalid eid in the `attrs` field
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "DeliciousFruit",
+                    "id" : "🍍"
+                },
+                "attrs" : {
+                },
+                "parents": [{"type": "Fruit", "id": "🍉"}]
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {
+                    "fruit": {"type": "Fruit", "id": "🍍"},
+                },
+                "parents": []
+            }
+        ]);
+        assert_matches!(
+            Entities::from_json_value(json.clone(), Some(&schema)),
+            Err(EntitiesError::InvalidEntity(err)) => {
+                expect_err(
+                    &json,
+                    &Report::new(err),
+                    &ExpectedErrorMessageBuilder::error(
+                        r#"entity `Fruit::"🍍"` is of an enumerated entity type, but `"🍍"` is not declared as a valid eid"#,
+                    ).help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                    .build(),
+                );}
+        );
+        // Reference to invalid eid in the `attrs` field
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "DeliciousFruit",
+                    "id" : "🍍"
+                },
+                "attrs" : {
+                },
+                "parents": [{"type": "Fruit", "id": "🍉"}]
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {
+                    "fruit_rec": {"name": {"type": "Fruit", "id": "🥭"}},
+                },
+                "parents": []
+            }
+        ]);
+        assert_matches!(
+            Entities::from_json_value(json.clone(), Some(&schema)),
+            Err(EntitiesError::InvalidEntity(err)) => {
+                expect_err(
+                    &json,
+                    &Report::new(err),
+                    &ExpectedErrorMessageBuilder::error(
+                        r#"entity `Fruit::"🥭"` is of an enumerated entity type, but `"🥭"` is not declared as a valid eid"#,
+                    ).help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                    .build(),
+                );}
+        );
+        // Reference to invalid eid in the `tags` field
+        let json = serde_json::json!([
+            {
+                "uid" : {
+                    "type" : "DeliciousFruit",
+                    "id" : "🍍"
+                },
+                "attrs" : {
+                },
+                "parents": [{"type": "Fruit", "id": "🍉"}],
+                "tags": {
+                    "mango": {"type": "Fruit", "id": "🥭"},
+                }
+            },
+            {
+                "uid" : {
+                    "type" : "People",
+                    "id" : "😋"
+                },
+                "attrs" : {
+                    "fruit_rec": {"name": {"type": "Fruit", "id": "🍉"}},
+                },
+                "parents": []
+            }
+        ]);
+        assert_matches!(
+            Entities::from_json_value(json.clone(), Some(&schema)),
+            Err(EntitiesError::InvalidEntity(err)) => {
+                expect_err(
+                    &json,
+                    &Report::new(err),
+                    &ExpectedErrorMessageBuilder::error(
+                        r#"entity `Fruit::"🥭"` is of an enumerated entity type, but `"🥭"` is not declared as a valid eid"#,
+                    ).help(r#"valid entity eids: "🍉", "🍓", "🍒""#)
+                    .build(),
+                );}
+        );
+    }
 }
 
 #[cfg(not(feature = "partial-validate"))]
@@ -4432,18 +4681,18 @@ mod issue_604 {
     #[track_caller]
     fn make_policy_with_get_attr(attr: &str) -> String {
         format!(
-            r#"
+            r"
         permit(principal, action, resource) when {{ principal == resource.{attr} }};
-        "#
+        "
         )
     }
 
     #[track_caller]
     fn make_policy_with_has_attr(attr: &str) -> String {
         format!(
-            r#"
+            r"
         permit(principal, action, resource) when {{ resource has {attr} }};
-        "#
+        "
         )
     }
 
@@ -4593,7 +4842,7 @@ mod issue_596 {
 
     fn test_single_int_with_dashes(x: i64, num_dashes: usize) {
         let dashes = vec!['-'; num_dashes].into_iter().collect::<String>();
-        let src = format!(r#"permit(principal, action, resource) when {{ {dashes}{x} }};"#);
+        let src = format!(r"permit(principal, action, resource) when {{ {dashes}{x} }};");
         let p: Policy = src.parse().unwrap();
         let json = p.to_json().unwrap();
         let round_trip = Policy::from_json(None, json).unwrap();
@@ -6571,11 +6820,10 @@ mod schema_annotations {
     fn namespace_annotations() {
         let schema = example_schema();
         let namespace: EntityNamespace = "N".parse().expect("should be a valid name");
-        let annotations = BTreeMap::from_iter(
-            schema
-                .namespace_annotations(namespace.clone())
-                .expect("should get annotations"),
-        );
+        let annotations = schema
+            .namespace_annotations(namespace.clone())
+            .expect("should get annotations")
+            .collect::<BTreeMap<_, _>>();
         assert_eq!(annotations, BTreeMap::from_iter([("m", "m"), ("n", "")]));
         assert_matches!(
             schema
@@ -6592,7 +6840,7 @@ mod schema_annotations {
             schema.namespace_annotation(namespace.clone(), "n"),
             Some("")
         );
-        assert_matches!(schema.namespace_annotation(namespace.clone(), "x"), None);
+        assert_matches!(schema.namespace_annotation(namespace, "x"), None);
         assert_matches!(
             schema.namespace_annotation("NM".parse().unwrap(), "n"),
             None
@@ -6605,41 +6853,31 @@ mod schema_annotations {
         let annotations = BTreeMap::from_iter([("a", "a"), ("b", "")]);
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .entity_type_annotations(None, "A1")
-                    .expect("should get annotations")
-            )
+            schema
+                .entity_type_annotations(None, "A1")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .entity_type_annotations(None, "A2")
-                    .expect("should get annotations")
-            )
+            schema
+                .entity_type_annotations(None, "A2")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .entity_type_annotations(
-                        Some("N".parse().expect("should be a valid name")),
-                        "A1"
-                    )
-                    .expect("should get annotations")
-            )
+            schema
+                .entity_type_annotations(Some("N".parse().expect("should be a valid name")), "A1")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .entity_type_annotations(
-                        Some("N".parse().expect("should be a valid name")),
-                        "A2"
-                    )
-                    .expect("should get annotations")
-            )
+            schema
+                .entity_type_annotations(Some("N".parse().expect("should be a valid name")), "A2")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
 
         assert_matches!(schema.entity_type_annotation(None, "A1", "b",), Some(""));
@@ -6694,22 +6932,17 @@ mod schema_annotations {
         let annotations = BTreeMap::from_iter([("c", "c"), ("d", "")]);
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .common_type_annotations(None, "T")
-                    .expect("should get annotations")
-            )
+            schema
+                .common_type_annotations(None, "T")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .common_type_annotations(
-                        Some("N".parse().expect("should be a valid name")),
-                        "T"
-                    )
-                    .expect("should get annotations")
-            )
+            schema
+                .common_type_annotations(Some("N".parse().expect("should be a valid name")), "T")
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
         assert_matches!(schema.common_type_annotation(None, "T", "c",), Some("c"));
         assert_matches!(schema.common_type_annotation(None, "T", "d",), Some(""));
@@ -6764,64 +6997,60 @@ mod schema_annotations {
         let annotations = BTreeMap::from_iter([("e", "e"), ("f", "")]);
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .action_annotations(None, "a1".parse().unwrap(),)
-                    .expect("should get annotations")
-            )
+            schema
+                .action_annotations(None, &"a1".parse().unwrap(),)
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .action_annotations(None, "a2".parse().unwrap(),)
-                    .expect("should get annotations")
-            )
+            schema
+                .action_annotations(None, &"a2".parse().unwrap(),)
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .action_annotations(
-                        Some("N".parse().expect("should be a valid name")),
-                        "a1".parse().unwrap(),
-                    )
-                    .expect("should get annotations")
-            )
+            schema
+                .action_annotations(
+                    Some("N".parse().expect("should be a valid name")),
+                    &"a1".parse().unwrap(),
+                )
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
         assert_eq!(
             annotations,
-            BTreeMap::from_iter(
-                schema
-                    .action_annotations(
-                        Some("N".parse().expect("should be a valid name")),
-                        "a2".parse().unwrap(),
-                    )
-                    .expect("should get annotations")
-            )
+            schema
+                .action_annotations(
+                    Some("N".parse().expect("should be a valid name")),
+                    &"a2".parse().unwrap(),
+                )
+                .expect("should get annotations")
+                .collect::<BTreeMap<_, _>>()
         );
 
         assert_matches!(
-            schema.action_annotation(None, "a1".parse().unwrap(), "e",),
+            schema.action_annotation(None, &"a1".parse().unwrap(), "e",),
             Some("e")
         );
         assert_matches!(
-            schema.action_annotation(None, "a2".parse().unwrap(), "f",),
+            schema.action_annotation(None, &"a2".parse().unwrap(), "f",),
             Some("")
         );
         assert_matches!(
-            schema.action_annotation(None, "a3".parse().unwrap(), "e",),
+            schema.action_annotation(None, &"a3".parse().unwrap(), "e",),
             None
         );
         assert_matches!(
-            schema.action_annotation(None, "a2".parse().unwrap(), "x",),
+            schema.action_annotation(None, &"a2".parse().unwrap(), "x",),
             None
         );
 
         assert_matches!(
             schema.action_annotation(
                 Some("N".parse().expect("should be a valid name")),
-                "a1".parse().unwrap(),
+                &"a1".parse().unwrap(),
                 "e",
             ),
             Some("e")
@@ -6829,7 +7058,7 @@ mod schema_annotations {
         assert_matches!(
             schema.action_annotation(
                 Some("N".parse().expect("should be a valid name")),
-                "a2".parse().unwrap(),
+                &"a2".parse().unwrap(),
                 "f",
             ),
             Some("")
@@ -6837,7 +7066,7 @@ mod schema_annotations {
         assert_matches!(
             schema.action_annotation(
                 Some("N".parse().expect("should be a valid name")),
-                "a3".parse().unwrap(),
+                &"a3".parse().unwrap(),
                 "e",
             ),
             None
@@ -6845,7 +7074,7 @@ mod schema_annotations {
         assert_matches!(
             schema.action_annotation(
                 Some("N".parse().expect("should be a valid name")),
-                "a2".parse().unwrap(),
+                &"a2".parse().unwrap(),
                 "x",
             ),
             None
@@ -6853,7 +7082,7 @@ mod schema_annotations {
         assert_matches!(
             schema.action_annotation(
                 Some("NM".parse().expect("should be a valid name")),
-                "a1".parse().unwrap(),
+                &"a1".parse().unwrap(),
                 "e",
             ),
             None

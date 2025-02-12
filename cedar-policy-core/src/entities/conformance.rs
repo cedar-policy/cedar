@@ -17,6 +17,7 @@
 use std::collections::BTreeMap;
 
 use super::{json::err::TypeMismatchError, EntityTypeDescription, Schema, SchemaType};
+use super::{Eid, EntityUID, Literal};
 use crate::ast::{
     BorrowedRestrictedExpr, Entity, PartialValue, PartialValueToRestrictedExprError, RestrictedExpr,
 };
@@ -27,7 +28,7 @@ use smol_str::SmolStr;
 use thiserror::Error;
 pub mod err;
 
-use err::{EntitySchemaConformanceError, UnexpectedEntityTypeError};
+use err::{EntitySchemaConformanceError, InvalidEnumEntityError, UnexpectedEntityTypeError};
 
 /// Struct used to check whether entities conform to a schema
 #[derive(Debug, Clone)]
@@ -61,6 +62,8 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                 ));
             }
         } else {
+            validate_euid(self.schema, uid)
+                .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
             let schema_etype = self.schema.entity_type(etype).ok_or_else(|| {
                 let suggested_types = self
                     .schema
@@ -120,10 +123,14 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                         }
                     }
                 }
+                validate_euids_in_partial_value(self.schema, val)
+                    .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
             }
             // For each ancestor that actually appears in `entity`, ensure the
             // ancestor type is allowed by the schema
             for ancestor_euid in entity.ancestors() {
+                validate_euid(self.schema, ancestor_euid)
+                    .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
                 let ancestor_type = ancestor_euid.entity_type();
                 if schema_etype.allowed_parent_types().contains(ancestor_type) {
                     // note that `allowed_parent_types()` was transitively
@@ -137,8 +144,67 @@ impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
                     ));
                 }
             }
+
+            for (_, val) in entity.tags() {
+                validate_euids_in_partial_value(self.schema, val)
+                    .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
+            }
         }
         Ok(())
+    }
+}
+
+/// Return an [`InvalidEnumEntityError`] if `uid`'s eid is not among valid `choices`
+pub fn is_valid_enumerated_entity(
+    choices: &[Eid],
+    uid: &EntityUID,
+) -> Result<(), InvalidEnumEntityError> {
+    choices
+        .iter()
+        .find(|id| uid.eid() == *id)
+        .ok_or(InvalidEnumEntityError {
+            uid: uid.clone(),
+            choices: choices.to_vec(),
+        })
+        .map(|_| ())
+}
+
+/// Validate if `euid` is valid, provided that it's of an enumerated type
+pub(crate) fn validate_euid(
+    schema: &impl Schema,
+    euid: &EntityUID,
+) -> Result<(), InvalidEnumEntityError> {
+    if let Some(desc) = schema.entity_type(euid.entity_type()) {
+        if let Some(choices) = desc.enum_entity_eids() {
+            is_valid_enumerated_entity(&Vec::from(choices), euid)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_euids_in_subexpressions<'a>(
+    exprs: impl Iterator<Item = &'a crate::ast::Expr>,
+    schema: &impl Schema,
+) -> std::result::Result<(), InvalidEnumEntityError> {
+    exprs
+        .map(|e| match e.expr_kind() {
+            ExprKind::Lit(Literal::EntityUID(euid)) => validate_euid(schema, &euid),
+            _ => Ok(()),
+        })
+        .collect::<std::result::Result<(), _>>()
+}
+
+/// Validate if enumerated entities in `val` are valid
+pub fn validate_euids_in_partial_value(
+    schema: &impl Schema,
+    val: &PartialValue,
+) -> Result<(), InvalidEnumEntityError> {
+    match val {
+        PartialValue::Value(val) => validate_euids_in_subexpressions(
+            RestrictedExpr::from(val.clone()).subexpressions(),
+            schema,
+        ),
+        PartialValue::Residual(e) => validate_euids_in_subexpressions(e.subexpressions(), schema),
     }
 }
 
