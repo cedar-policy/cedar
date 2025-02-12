@@ -55,7 +55,7 @@ impl From<&api::Template> for models::TemplateBody {
 
 impl From<&models::TemplateBody> for api::Template {
     fn from(v: &models::TemplateBody) -> Self {
-        api::Template::from_ast(v.into())
+        Self::from_ast(v.into())
     }
 }
 
@@ -69,7 +69,7 @@ impl TryFrom<&models::LiteralPolicy> for api::Policy {
     type Error = cedar_policy_core::ast::ReificationError;
     fn try_from(v: &models::LiteralPolicy) -> Result<Self, Self::Error> {
         let p = cedar_policy_core::ast::Policy::try_from(v)?;
-        Ok(api::Policy::from_ast(p))
+        Ok(Self::from_ast(p))
     }
 }
 
@@ -82,7 +82,9 @@ impl From<&api::PolicySet> for models::LiteralPolicySet {
 impl TryFrom<&models::LiteralPolicySet> for api::PolicySet {
     type Error = api::PolicySetError;
     fn try_from(v: &models::LiteralPolicySet) -> Result<Self, Self::Error> {
-        api::PolicySet::from_ast(
+        // PANIC SAFETY: experimental feature
+        #[allow(clippy::expect_used)]
+        Self::from_ast(
             v.try_into()
                 .expect("proto-encoded policy set should be a valid policy set"),
         )
@@ -124,7 +126,7 @@ impl traits::Protobuf for api::PolicySet {
         // PANIC SAFETY: experimental feature
         #[allow(clippy::expect_used)]
         Ok(
-            traits::try_decode::<models::LiteralPolicySet, _, api::PolicySet>(buf)?
+            traits::try_decode::<models::LiteralPolicySet, _, Self>(buf)?
                 .expect("protobuf-encoded policy set should be a valid policy set"),
         )
     }
@@ -138,7 +140,7 @@ impl traits::Protobuf for api::Policy {
         // PANIC SAFETY: experimental feature
         #[allow(clippy::expect_used)]
         Ok(
-            traits::try_decode::<models::LiteralPolicy, _, api::Policy>(buf)?
+            traits::try_decode::<models::LiteralPolicy, _, Self>(buf)?
                 .expect("protobuf-encoded policy should be a valid policy"),
         )
     }
