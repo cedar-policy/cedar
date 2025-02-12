@@ -17,6 +17,8 @@
 //! Contains the trait [`ExprBuilder`], defining a generic interface for
 //! building different expression data structures (e.g., AST and EST).
 
+use std::sync::Arc;
+
 use smol_str::SmolStr;
 
 use crate::{
@@ -24,7 +26,7 @@ use crate::{
         BinaryOp, EntityType, ExpressionConstructionError, Literal, Name, Pattern, SlotId, UnaryOp,
         Unknown, Var,
     },
-    parser::{cst, Loc},
+    parser::{cst, Loc, err::ParseErrors},
 };
 
 #[cfg(feature = "tolerant-ast")]
