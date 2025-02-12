@@ -139,9 +139,7 @@ impl traits::Protobuf for api::Policy {
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
         // PANIC SAFETY: experimental feature
         #[allow(clippy::expect_used)]
-        Ok(
-            traits::try_decode::<models::LiteralPolicy, _, Self>(buf)?
-                .expect("protobuf-encoded policy should be a valid policy"),
-        )
+        Ok(traits::try_decode::<models::LiteralPolicy, _, Self>(buf)?
+            .expect("protobuf-encoded policy should be a valid policy"))
     }
 }
