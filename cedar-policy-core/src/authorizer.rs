@@ -26,6 +26,8 @@ use crate::evaluator::Evaluator;
 use crate::extensions::Extensions;
 use itertools::{Either, Itertools};
 use serde::{Deserialize, Serialize};
+use smol_str::SmolStr;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -91,6 +93,15 @@ impl Authorizer {
         pset: &PolicySet,
         entities: &Entities,
     ) -> PartialResponse {
+        self.is_authorized_core_with_mappings(q, pset, entities, None)
+    }
+    pub(crate) fn is_authorized_core_with_mappings(
+        &self,
+        q: Request,
+        pset: &PolicySet,
+        entities: &Entities,
+        mappings: Option<&HashMap<SmolStr, Value>>,
+    ) -> PartialResponse {
         let eval = Evaluator::new(q.clone(), entities, self.extensions);
         let mut true_permits = vec![];
         let mut true_forbids = vec![];
@@ -102,7 +113,7 @@ impl Authorizer {
 
         for p in pset.policies() {
             let (id, annotations) = (p.id().clone(), p.annotations_arc().clone());
-            match eval.partial_evaluate(p) {
+            match eval.partial_evaluate_with_mappings(p, mappings) {
                 Ok(Either::Left(satisfied)) => match (satisfied, p.effect()) {
                     (true, Effect::Permit) => true_permits.push((id, annotations)),
                     (true, Effect::Forbid) => true_forbids.push((id, annotations)),
