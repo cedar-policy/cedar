@@ -192,6 +192,7 @@ impl From<&models::Entity> for ast::Entity {
             ast::EntityUID::from(v.uid.as_ref().expect("uid field should exist")),
             attrs,
             ancestors,
+            HashSet::new(),
             tags,
         )
     }
@@ -743,6 +744,7 @@ mod test {
         let entity = ast::Entity::new(
             r#"Foo::"bar""#.parse().unwrap(),
             attrs,
+            HashSet::new(),
             HashSet::new(),
             BTreeMap::new(),
             Extensions::none(),

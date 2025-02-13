@@ -93,6 +93,7 @@ mod test {
                 r#"Foo::"bar""#.parse().unwrap(),
                 attrs.clone(),
                 HashSet::new(),
+                HashSet::new(),
                 BTreeMap::new(),
                 extensions::Extensions::none(),
             )
@@ -117,6 +118,7 @@ mod test {
             ast::Entity::new(
                 r#"Bar::"foo""#.parse().unwrap(),
                 attrs,
+                HashSet::new(),
                 HashSet::new(),
                 BTreeMap::new(),
                 extensions::Extensions::none(),

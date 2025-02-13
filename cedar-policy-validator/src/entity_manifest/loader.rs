@@ -296,7 +296,7 @@ pub(crate) fn load_entities(
         if let Some(entity) = entities.get_mut(&request.entity_id) {
             ancestors
                 .into_iter()
-                .for_each(|ancestor| entity.add_ancestor(ancestor));
+                .for_each(|ancestor| entity.add_parent(ancestor));
         }
     }
 
@@ -323,8 +323,8 @@ pub(crate) fn load_entities(
 // attributes may differ only if they are records, and then only in what nested
 // attributes they contain.
 fn merge_entities(e1: Entity, e2: Entity) -> Entity {
-    let (uid1, mut attrs1, ancestors1, tags1) = e1.into_inner();
-    let (uid2, attrs2, ancestors2, tags2) = e2.into_inner();
+    let (uid1, mut attrs1, ancestors1, parents1, tags1) = e1.into_inner();
+    let (uid2, attrs2, ancestors2, parents2, tags2) = e2.into_inner();
 
     assert_eq!(
         uid1, uid2,
@@ -333,6 +333,10 @@ fn merge_entities(e1: Entity, e2: Entity) -> Entity {
     assert_eq!(
         ancestors1, ancestors2,
         "attempting to merge entities with different ancestors!"
+    );
+    assert_eq!(
+        parents1, parents2,
+        "attempting to merge entities with different parents!"
     );
     assert!(
         tags1.is_empty() && tags2.is_empty(),
@@ -366,7 +370,7 @@ fn merge_entities(e1: Entity, e2: Entity) -> Entity {
         }
     }
 
-    Entity::new_with_attr_partial_value(uid1, attrs1, ancestors1, [])
+    Entity::new_with_attr_partial_value(uid1, attrs1, ancestors1, parents1, [])
 }
 
 /// Merge two value for corresponding attributes in the slice.

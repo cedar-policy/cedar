@@ -15,6 +15,7 @@ Cedar Language Version: TBD
 
 ### Added
 
+- Added `Entities::remove_entities()` to remove `Entity`s from an `Entities` struct (resolving #701)
 - Implemented [RFC 53 (enumerated entity types)](https://github.com/cedar-policy/rfcs/blob/main/text/0053-enum-entities.md)  (#1377)
 
 ### Fixed

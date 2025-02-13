@@ -55,7 +55,7 @@ pub struct Entities {
     /// `serde_as` annotation are used to serialize the data as associative
     /// lists instead.
     ///
-    /// Important internal invariant: for any `Entities` object that exists, the
+    /// Important internal invariant: for any `Entities` object that exists,
     /// the `ancestor` relation is transitively closed.
     #[serde_as(as = "Vec<(_, _)>")]
     entities: HashMap<EntityUID, Arc<Entity>>,
@@ -159,6 +159,42 @@ impl Entities {
             TCComputation::EnforceAlreadyComputed => enforce_tc_and_dag(&self.entities)?,
             TCComputation::ComputeNow => compute_tc(&mut self.entities, true)?,
         };
+        Ok(self)
+    }
+
+    /// Removes the [`crate::ast::EntityUID`]s in the interator from this [`Entities`]
+    /// Fails if any error is encountered in the transitive closure computation.
+    ///
+    /// If you pass [`TCComputation::AssumeAlreadyComputed`], then the caller is
+    /// responsible for ensuring that TC and DAG hold before calling this method
+    pub fn remove_entities(
+        mut self,
+        collection: impl IntoIterator<Item = EntityUID>,
+        tc_computation: TCComputation,
+    ) -> Result<Self> {
+        for uid_to_remove in collection.into_iter() {
+            match self.entities.remove(&uid_to_remove) {
+                None => (),
+                Some(entity_to_remove) => {
+                    for entity in self.entities.values_mut() {
+                        if entity.is_descendant_of(&uid_to_remove) {
+                            // remove any direct or indirect link between `entity` and `entity_to_remove`
+                            Arc::make_mut(entity).remove_indirect_ancestor(&uid_to_remove);
+                            Arc::make_mut(entity).remove_parent(&uid_to_remove);
+                            // remove any indirect link between `entity` and the ancestors of `entity_to_remove`
+                            for ancestor_uid in entity_to_remove.ancestors() {
+                                Arc::make_mut(entity).remove_indirect_ancestor(ancestor_uid);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        match tc_computation {
+            TCComputation::AssumeAlreadyComputed => (),
+            TCComputation::EnforceAlreadyComputed => enforce_tc_and_dag(&self.entities)?,
+            TCComputation::ComputeNow => compute_tc(&mut self.entities, true)?,
+        }
         Ok(self)
     }
 
@@ -1755,6 +1791,7 @@ mod json_parsing_tests {
                     ),
                 ),
             ],
+            [].into_iter().collect(),
             [
                 EntityUID::with_eid("parent1"),
                 EntityUID::with_eid("parent2"),
@@ -1799,6 +1836,7 @@ mod json_parsing_tests {
                 "oops".into(),
                 RestrictedExpr::record([("__entity".into(), RestrictedExpr::val("hi"))]).unwrap(),
             )],
+            [].into_iter().collect(),
             [
                 EntityUID::with_eid("parent1"),
                 EntityUID::with_eid("parent2"),
@@ -1919,6 +1957,7 @@ mod json_parsing_tests {
 #[cfg(test)]
 mod entities_tests {
     use super::*;
+    use cool_asserts::assert_matches;
 
     #[test]
     fn empty_entities() {
@@ -1966,8 +2005,8 @@ mod entities_tests {
         let mut e1 = Entity::with_uid(EntityUID::with_eid("a"));
         let mut e2 = Entity::with_uid(EntityUID::with_eid("b"));
         let e3 = Entity::with_uid(EntityUID::with_eid("c"));
-        e1.add_ancestor(EntityUID::with_eid("b"));
-        e2.add_ancestor(EntityUID::with_eid("c"));
+        e1.add_indirect_ancestor(EntityUID::with_eid("b"));
+        e2.add_indirect_ancestor(EntityUID::with_eid("c"));
 
         let es = Entities::from_entities(
             vec![e1, e2, e3],
@@ -1991,9 +2030,9 @@ mod entities_tests {
         let mut e1 = Entity::with_uid(EntityUID::with_eid("a"));
         let mut e2 = Entity::with_uid(EntityUID::with_eid("b"));
         let e3 = Entity::with_uid(EntityUID::with_eid("c"));
-        e1.add_ancestor(EntityUID::with_eid("b"));
-        e1.add_ancestor(EntityUID::with_eid("c"));
-        e2.add_ancestor(EntityUID::with_eid("c"));
+        e1.add_indirect_ancestor(EntityUID::with_eid("b"));
+        e1.add_indirect_ancestor(EntityUID::with_eid("c"));
+        e2.add_indirect_ancestor(EntityUID::with_eid("c"));
 
         Entities::from_entities(
             vec![e1, e2, e3],
@@ -2002,6 +2041,64 @@ mod entities_tests {
             Extensions::all_available(),
         )
         .expect("Should have succeeded");
+    }
+
+    #[test]
+    fn test_remove_entities() {
+        // Original Hierarchy
+        // F -> A
+        // F -> D -> A, D -> B, D -> C
+        // F -> E -> C
+        let aid = EntityUID::with_eid("A");
+        let a = Entity::with_uid(aid.clone());
+        let bid = EntityUID::with_eid("B");
+        let b = Entity::with_uid(bid.clone());
+        let cid = EntityUID::with_eid("C");
+        let c = Entity::with_uid(cid.clone());
+        let did = EntityUID::with_eid("D");
+        let mut d = Entity::with_uid(did.clone());
+        let eid = EntityUID::with_eid("E");
+        let mut e = Entity::with_uid(eid.clone());
+        let fid = EntityUID::with_eid("F");
+        let mut f = Entity::with_uid(fid.clone());
+        f.add_parent(aid.clone());
+        f.add_parent(did.clone());
+        f.add_parent(eid.clone());
+        d.add_parent(aid.clone());
+        d.add_parent(bid.clone());
+        d.add_parent(cid.clone());
+        e.add_parent(cid.clone());
+
+        // Construct original hierarchy
+        let entities = Entities::from_entities(
+            vec![a, b, c, d, e, f],
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        )
+        .expect("Failed to construct entities")
+        // Remove D from hierarchy
+        .remove_entities(vec![EntityUID::with_eid("D")], TCComputation::ComputeNow)
+        .expect("Failed to remove entities");
+        // Post-Removal Hierarchy
+        // F -> A
+        // F -> E -> C
+        // B
+
+        assert_matches!(entities.entity(&did), Dereference::NoSuchEntity);
+
+        let e = entities.entity(&eid).unwrap();
+        let f = entities.entity(&fid).unwrap();
+
+        // Assert the existence of these edges in the hierarchy
+        assert!(f.is_descendant_of(&aid));
+        assert!(f.is_descendant_of(&eid));
+        assert!(f.is_descendant_of(&cid));
+        assert!(e.is_descendant_of(&cid));
+
+        // Assert that there is no longer an edge from F to B
+        // as the only link was through D
+        assert!(!f.is_descendant_of(&bid));
     }
 }
 
@@ -2037,12 +2134,11 @@ mod schema_based_parsing_tests {
                 r#"Action::"view""# => Some(Arc::new(Entity::new_with_attr_partial_value(
                     action.clone(),
                     [(SmolStr::from("foo"), PartialValue::from(34))],
+                    [].into_iter().collect(),
                     std::iter::once(r#"Action::"readOnly""#.parse().expect("valid uid")).collect(),
                     [],
                 ))),
-                r#"Action::"readOnly""# => Some(Arc::new(Entity::with_uid(
-                    r#"Action::"readOnly""#.parse().expect("valid uid"),
-                ))),
+                r#"Action::"readOnly""# => Some(Arc::new(Entity::with_uid(action.clone()))),
                 _ => None,
             }
         }
