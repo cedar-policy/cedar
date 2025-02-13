@@ -1122,9 +1122,9 @@ impl<T: Clone> From<ast::Expr<T>> for Expr {
                         .map(|(k, v)| (k, v.into())),
                 )
                 .unwrap(),
+            // PANIC SAFETY: There is no reason to support having deliberate Errors in EST - This should never happen
             #[allow(clippy::panic)]
             ast::ExprKind::Error { .. } => {
-                // PANIC SAFETY There is no reason to support having deliberate Errors in EST - This should never happen
                 panic!("We do not support converting an AST Error node into an EST");
             }
         }

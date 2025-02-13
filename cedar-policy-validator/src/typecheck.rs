@@ -1174,10 +1174,9 @@ impl<'a> SingleEnvTypechecker<'a> {
                     },
                 )
             }
+            // PANIC SAFETY: We should never be trying to type check or evaluate code that allows errors - This is avoided by using the default cst-to-ast parsing which fails on parse errors
             #[allow(clippy::panic)]
             ExprKind::Error { .. } => {
-                // PANIC SAFETY: We should never be trying to type check or evaluate code that allows errors
-                //       This is avoided by using the default cst-to-ast parsing which fails on parse errors
                 panic!("Cannot type check an Error Expression node - this should never happen")
             }
         }

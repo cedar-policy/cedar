@@ -1,6 +1,6 @@
 use crate::{
     ast::*,
-    expr_builder::{self, ExprBuilder as _},
+    expr_builder::{self},
     parser::{
         err::{ParseErrors, ToASTErrorKind},
         Loc,
@@ -461,40 +461,5 @@ impl<T> ExprWithErrsBuilder<T> {
     /// `ExprBuilder` and the given `ExprKind`.
     pub fn with_expr_kind(self, expr_kind: ExprKind<T>) -> Expr<T> {
         Expr::new(expr_kind, self.source_loc, self.data)
-    }
-
-    /// Create a ternary (if-then-else) `Expr`.
-    /// Takes `Arc`s instead of owned `Expr`s.
-    /// `test_expr` must evaluate to a Bool type
-    pub fn ite_arc(
-        self,
-        test_expr: Arc<Expr<T>>,
-        then_expr: Arc<Expr<T>>,
-        else_expr: Arc<Expr<T>>,
-    ) -> Expr<T> {
-        self.with_expr_kind(ExprKind::If {
-            test_expr,
-            then_expr,
-            else_expr,
-        })
-    }
-
-    /// Create an `Expr` which evaluates to a Record with the given key-value mapping.
-    ///
-    /// If you have an iterator of pairs, generally prefer calling `.record()`
-    /// instead of `.collect()`-ing yourself and calling this, potentially for
-    /// efficiency reasons but also because `.record()` will properly handle
-    /// duplicate keys but your own `.collect()` will not (by default).
-    pub fn record_arc(self, map: Arc<BTreeMap<SmolStr, Expr<T>>>) -> Expr<T> {
-        self.with_expr_kind(ExprKind::Record(map))
-    }
-}
-
-impl<T: Clone + Default> ExprWithErrsBuilder<T> {
-    /// Utility used the validator to get an expression with the same source
-    /// location as an existing expression. This is done when reconstructing the
-    /// `Expr` with type information.
-    pub fn with_same_source_loc<U>(self, expr: &Expr<U>) -> Self {
-        self.with_maybe_source_loc(expr.source_loc())
     }
 }

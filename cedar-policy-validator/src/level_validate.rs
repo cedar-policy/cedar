@@ -238,6 +238,11 @@ impl Validator {
                     .collect();
                 Self::min(v)
             }
+            // PANIC SAFETY: We do not allow validation of AST's with error nodes
+            #[allow(clippy::panic)]
+            ExprKind::Error { .. } => {
+                panic!(" We do not allow validation of AST's with error nodes - this should never happen");
+            }
         }
     }
 }
