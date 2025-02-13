@@ -1,31 +1,19 @@
-
 use crate::{
     ast::*,
     expr_builder::{self, ExprBuilder as _},
-    extensions::Extensions,
-    parser::{err::{ParseErrors, ToASTErrorKind}, Loc},
+    parser::{Loc, err::{ToASTErrorKind, ParseErrors}},
 };
-use educe::Educe;
-use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
-use std::{
-    borrow::Cow,
-    collections::{btree_map, BTreeMap, HashMap},
-    hash::{Hash, Hasher},
-    mem,
-    sync::Arc,
-};
+use std::{collections::{btree_map, BTreeMap}, sync::Arc};
 use thiserror::Error;
 
-
-
 #[derive(Error, Debug, Serialize, Deserialize, Hash, Clone, PartialEq, Eq)]
-pub enum  AstExprErrorKind {
+pub enum AstExprErrorKind {
     #[error("Invalid expression node: {0}")]
     InvalidExpr(String),
 }
- 
+
 impl From<ToASTErrorKind> for AstExprErrorKind {
     fn from(value: ToASTErrorKind) -> Self {
         AstExprErrorKind::InvalidExpr(value.to_string())
@@ -82,7 +70,11 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
         self.with_expr_kind(ExprKind::Var(v))
     }
 
-    fn error(self, parse_errors: ParseErrors, sub_expression: Option<Arc<Expr<T>>>) -> Result<Expr<T>, Self::ErrorType> {
+    fn error(
+        self,
+        parse_errors: ParseErrors,
+        sub_expression: Option<Arc<Expr<T>>>,
+    ) -> Result<Expr<T>, Self::ErrorType> {
         Ok(self.with_expr_kind(ExprKind::Error {
             error_kind: AstExprErrorKind::InvalidExpr(parse_errors.to_string()),
             sub_expression,
@@ -363,21 +355,21 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
             entity_type,
         })
     }
-    
+
     fn new() -> Self
     where
         Self: Sized,
     {
         Self::with_data(Self::Data::default())
     }
-    
+
     fn with_source_loc(self, l: &Loc) -> Self
     where
         Self: Sized,
     {
         self.with_maybe_source_loc(Some(l))
     }
-    
+
     fn is_in_entity_type(
         self,
         e1: Self::Expr,
@@ -392,14 +384,14 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
             self.is_in(e1, e2),
         )
     }
-    
+
     fn noteq(self, e1: Self::Expr, e2: Self::Expr) -> Self::Expr
     where
         Self: Sized,
     {
         self.clone().not(self.is_eq(e1, e2))
     }
-    
+
     fn greater(self, e1: Self::Expr, e2: Self::Expr) -> Self::Expr
     where
         Self: Sized,
@@ -407,7 +399,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
         // e1 > e2 is defined as !(e1 <= e2)
         self.clone().not(self.lesseq(e1, e2))
     }
-    
+
     fn greatereq(self, e1: Self::Expr, e2: Self::Expr) -> Self::Expr
     where
         Self: Sized,
@@ -415,7 +407,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
         // e1 >= e2 is defined as !(e1 < e2)
         self.clone().not(self.less(e1, e2))
     }
-    
+
     fn and_nary(self, first: Self::Expr, others: impl IntoIterator<Item = Self::Expr>) -> Self::Expr
     where
         Self: Sized,
@@ -424,7 +416,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
             .into_iter()
             .fold(first, |acc, next| self.clone().and(acc, next))
     }
-    
+
     fn or_nary(self, first: Self::Expr, others: impl IntoIterator<Item = Self::Expr>) -> Self::Expr
     where
         Self: Sized,
@@ -433,7 +425,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
             .into_iter()
             .fold(first, |acc, next| self.clone().or(acc, next))
     }
-    
+
     fn add_nary(
         self,
         first: Self::Expr,
@@ -447,7 +439,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
             crate::parser::cst::AddOp::Minus => self.clone().sub(acc, next),
         })
     }
-    
+
     fn mul_nary(self, first: Self::Expr, other: impl IntoIterator<Item = Self::Expr>) -> Self::Expr
     where
         Self: Sized,

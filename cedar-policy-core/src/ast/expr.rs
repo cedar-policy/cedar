@@ -158,10 +158,12 @@ pub enum ExprKind<T = ()> {
     /// Anonymous record (whose elements may be arbitrary expressions)
     Record(Arc<BTreeMap<SmolStr, Expr<T>>>),
 
-    // Error expression - allows us to continue parsing even when we have errors
+    /// Error expression - allows us to continue parsing even when we have errors
     Error {
-        error_kind: AstExprErrorKind, 
-        sub_expression: Option<Arc<Expr<T>>>
+        /// Type of error that led to the failure
+        error_kind: AstExprErrorKind,
+        /// Any subexpressions that were successfully parsed - useful for nested errors 
+        sub_expression: Option<Arc<Expr<T>>>,
     },
 }
 
@@ -393,7 +395,7 @@ impl<T> Expr<T> {
             ExprKind::Is { .. } => Some(Type::Bool),
             ExprKind::Set(_) => Some(Type::Set),
             ExprKind::Record(_) => Some(Type::Record),
-            ExprKind::Error { .. } => None
+            ExprKind::Error { .. } => None,
         }
     }
 }
@@ -1180,8 +1182,13 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
             entity_type,
         })
     }
-        
-    fn error(self, parse_errors: ParseErrors, sub_expression: Option<Arc<Self::Expr>>) -> Result<Self::Expr, Self::ErrorType> {
+
+    /// Don't support AST Error nodes - return the error right back
+    fn error(
+        self,
+        parse_errors: ParseErrors,
+        _sub_expression: Option<Arc<Self::Expr>>,
+    ) -> Result<Self::Expr, Self::ErrorType> {
         Err(parse_errors)
     }
 }
@@ -1498,7 +1505,10 @@ impl<T> Expr<T> {
                 expr.hash_shape(state);
                 entity_type.hash(state);
             }
-            ExprKind::Error { error_kind, sub_expression } => error_kind.hash(state),
+            ExprKind::Error {
+                error_kind,
+                ..
+            } => error_kind.hash(state),
         }
     }
 }

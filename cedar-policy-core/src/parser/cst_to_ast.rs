@@ -43,7 +43,7 @@ use crate::ast::{
     self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
     PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
 };
-use crate::expr_builder::{self, ExprBuilder};
+use crate::expr_builder::ExprBuilder;
 use crate::fuzzy_match::fuzzy_search_limited;
 use itertools::{Either, Itertools};
 use nonempty::nonempty;
@@ -161,7 +161,6 @@ impl Node<Option<cst::Policies>> {
 }
 
 impl Node<Option<cst::Policy>> {
-
     /// Convert `cst::Policy` to an AST `InlinePolicy` or `Template`
     pub fn to_policy_or_template(
         &self,
@@ -190,7 +189,7 @@ impl Node<Option<cst::Policy>> {
     pub fn to_policy_or_template_helper(
         &self,
         id: ast::PolicyID,
-        allow_errors: bool
+        allow_errors: bool,
     ) -> Result<Either<ast::StaticPolicy, ast::Template>> {
         let t = self.to_policy_template_helper(id, allow_errors)?;
         if t.slots().count() == 0 {
@@ -204,7 +203,11 @@ impl Node<Option<cst::Policy>> {
     }
 
     /// Convert `cst::Policy` to an AST `InlinePolicy`. (Will fail if the CST is for a template)
-    pub fn to_policy_helper(&self, id: ast::PolicyID, allow_errors: bool) -> Result<ast::StaticPolicy> {
+    pub fn to_policy_helper(
+        &self,
+        id: ast::PolicyID,
+        allow_errors: bool,
+    ) -> Result<ast::StaticPolicy> {
         let maybe_template = self.to_policy_template_helper(id, allow_errors);
         let maybe_policy = maybe_template.map(ast::StaticPolicy::try_from);
         match maybe_policy {
@@ -240,7 +243,11 @@ impl Node<Option<cst::Policy>> {
 
     /// Convert `cst::Policy` to `ast::Template`. Works for inline policies as
     /// well, which will become templates with 0 slots
-    pub fn to_policy_template_helper(&self, id: ast::PolicyID, allow_errors: bool) -> Result<ast::Template> {
+    pub fn to_policy_template_helper(
+        &self,
+        id: ast::PolicyID,
+        allow_errors: bool,
+    ) -> Result<ast::Template> {
         let policy = self.try_as_inner()?;
 
         // convert effect
@@ -256,9 +263,11 @@ impl Node<Option<cst::Policy>> {
 
         // convert conditions
         let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
-            let (e, is_when) = if allow_errors 
-                { c.to_expr::<ast::expr_allows_errors::ExprWithErrsBuilder<()>>()? } 
-                else {c.to_expr::<ast::ExprBuilder<()>>()?};
+            let (e, is_when) = if allow_errors {
+                c.to_expr::<ast::expr_allows_errors::ExprWithErrsBuilder<()>>()?
+            } else {
+                c.to_expr::<ast::ExprBuilder<()>>()?
+            };
             let slot_errs = e.slots().map(|slot| {
                 ToASTError::new(
                     ToASTErrorKind::slots_in_condition_clause(
@@ -799,9 +808,10 @@ impl Node<Option<cst::Cond>> {
                         }
                     }
                 };
-                convert_error::<Build>(self
-                    .to_ast_err(ToASTErrorKind::EmptyClause(Some(ident)))
-                    .into())
+                convert_error::<Build>(
+                    self.to_ast_err(ToASTErrorKind::EmptyClause(Some(ident)))
+                        .into(),
+                )
             }
         };
 
@@ -2082,7 +2092,6 @@ mod tests {
             })
     }
 
-
     #[track_caller]
     fn assert_parse_policy_allows_errors(text: &str) -> ast::StaticPolicy {
         text_to_cst::parse_policy(text)
@@ -2113,7 +2122,6 @@ mod tests {
         "#;
         assert_parse_policy_allows_errors(src);
     }
-
 
     #[test]
     fn show_expr1() {

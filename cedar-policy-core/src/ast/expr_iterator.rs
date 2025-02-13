@@ -82,7 +82,7 @@ impl<'a, T> Iterator for ExprIterator<'a, T> {
             ExprKind::Record(map) => {
                 self.expression_stack.extend(map.values());
             }
-            ExprKind::Error { error_kind, sub_expression } => (),
+            ExprKind::Error { .. } => (),
         }
         Some(next_expr)
     }

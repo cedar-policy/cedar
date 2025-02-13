@@ -760,7 +760,12 @@ impl<'e> Evaluator<'e> {
                     }
                 }
             }
-            ExprKind::Error { .. } => panic!("We cannot evaluate an error node - this should never happen"),
+            #[allow(clippy::panic)]
+            ExprKind::Error { .. } => {
+                // PANIC SAFETY We should never be evaluating an error node - Will never happen because we do not use error-enabled 
+                //              parsing for evaluation
+                panic!("We cannot evaluate an error node - this should never happen")
+            }
         }
     }
 

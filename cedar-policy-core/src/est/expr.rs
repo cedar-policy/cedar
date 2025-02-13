@@ -691,8 +691,12 @@ impl ExprBuilder for Builder {
             call: HashMap::from([(fn_name.to_smolstr(), args.into_iter().collect())]),
         })
     }
-    
-    fn error(self, parse_errors: ParseErrors, _sub_expression: Option<Arc<Self::Expr>>) -> Result<Self::Expr, Self::ErrorType> {
+
+    fn error(
+        self,
+        parse_errors: ParseErrors,
+        _sub_expression: Option<Arc<Self::Expr>>,
+    ) -> Result<Self::Expr, Self::ErrorType> {
         Err(parse_errors)
     }
 }
@@ -1118,7 +1122,9 @@ impl<T: Clone> From<ast::Expr<T>> for Expr {
                         .map(|(k, v)| (k, v.into())),
                 )
                 .unwrap(),
+            #[allow(clippy::panic)]
             ast::ExprKind::Error { .. } => {
+                // PANIC SAFETY There is no reason to support having deliberate Errors in EST - This should never happen
                 panic!("We do not support converting an AST Error node into an EST");
             }
         }

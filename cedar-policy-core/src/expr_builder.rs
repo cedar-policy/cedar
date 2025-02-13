@@ -26,7 +26,7 @@ use crate::{
         BinaryOp, EntityType, ExpressionConstructionError, Literal, Name, Pattern, SlotId, UnaryOp,
         Unknown, Var,
     },
-    parser::{cst, Loc, err::ParseErrors},
+    parser::{cst, err::ParseErrors, Loc},
 };
 
 /// Defines a generic interface for building different expression data
@@ -40,6 +40,9 @@ pub trait ExprBuilder: Clone {
     /// can be `()` if no data is stored.
     type Data: Default;
 
+    /// Type for what error we return if we cannot construct an error node 
+    ///  By default we fail on errors and this should be a ParseErrors
+    ///  But when we run with error parsing enabled, can be Infallible
     type ErrorType;
 
     /// Construct a new expression builder for an expression that will not carry any data.
@@ -50,7 +53,12 @@ pub trait ExprBuilder: Clone {
         Self::with_data(Self::Data::default())
     }
 
-    fn error(self, parse_errors: ParseErrors, sub_expression: Option<Arc<Self::Expr>>) -> Result<Self::Expr, Self::ErrorType>;
+    /// Build an expression that failed to parse - can optionally include subexpressions that parsed successfully 
+    fn error(
+        self,
+        parse_errors: ParseErrors,
+        sub_expression: Option<Arc<Self::Expr>>,
+    ) -> Result<Self::Expr, Self::ErrorType>;
 
     /// Build an expression storing this information
     fn with_data(data: Self::Data) -> Self;
