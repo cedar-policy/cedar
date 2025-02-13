@@ -139,7 +139,7 @@ impl fmt::Display for VariableDef {
         if let Some((op, expr)) = &self.ineq {
             write!(f, " {} {}", op, View(expr))?;
         }
-        Ok(())
+        Ok(())    
     }
 }
 impl fmt::Display for Cond {
