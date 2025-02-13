@@ -1,11 +1,17 @@
 use crate::{
     ast::*,
     expr_builder::{self, ExprBuilder as _},
-    parser::{Loc, err::{ToASTErrorKind, ParseErrors}},
+    parser::{
+        err::{ParseErrors, ToASTErrorKind},
+        Loc,
+    },
 };
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
-use std::{collections::{btree_map, BTreeMap}, sync::Arc};
+use std::{
+    collections::{btree_map, BTreeMap},
+    sync::Arc,
+};
 use thiserror::Error;
 
 #[derive(Error, Debug, Serialize, Deserialize, Hash, Clone, PartialEq, Eq)]

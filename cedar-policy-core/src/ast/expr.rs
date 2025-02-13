@@ -162,7 +162,7 @@ pub enum ExprKind<T = ()> {
     Error {
         /// Type of error that led to the failure
         error_kind: AstExprErrorKind,
-        /// Any subexpressions that were successfully parsed - useful for nested errors 
+        /// Any subexpressions that were successfully parsed - useful for nested errors
         sub_expression: Option<Arc<Expr<T>>>,
     },
 }
@@ -1505,10 +1505,7 @@ impl<T> Expr<T> {
                 expr.hash_shape(state);
                 entity_type.hash(state);
             }
-            ExprKind::Error {
-                error_kind,
-                ..
-            } => error_kind.hash(state),
+            ExprKind::Error { error_kind, .. } => error_kind.hash(state),
         }
     }
 }

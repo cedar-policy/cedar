@@ -40,7 +40,7 @@ pub trait ExprBuilder: Clone {
     /// can be `()` if no data is stored.
     type Data: Default;
 
-    /// Type for what error we return if we cannot construct an error node 
+    /// Type for what error we return if we cannot construct an error node
     ///  By default we fail on errors and this should be a ParseErrors
     ///  But when we run with error parsing enabled, can be Infallible
     type ErrorType;
@@ -53,7 +53,7 @@ pub trait ExprBuilder: Clone {
         Self::with_data(Self::Data::default())
     }
 
-    /// Build an expression that failed to parse - can optionally include subexpressions that parsed successfully 
+    /// Build an expression that failed to parse - can optionally include subexpressions that parsed successfully
     fn error(
         self,
         parse_errors: ParseErrors,
