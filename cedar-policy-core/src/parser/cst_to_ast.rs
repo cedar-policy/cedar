@@ -954,7 +954,6 @@ impl Node<Option<cst::VariableDef>> {
         tolerant_setting: TolerantAstSetting,
     ) -> Result<ast::ActionConstraint> {
         let vardef = self.try_as_inner()?;
-
         match vardef.variable.to_var() {
             Ok(ast::Var::Action) => Ok(()),
             Ok(got) => Err(self
@@ -2397,6 +2396,7 @@ mod tests {
             Err(errs) => errs,
         }
     }
+
 
     #[test]
     fn show_expr1() {
@@ -5732,6 +5732,16 @@ mod tests {
             permit(principal, action, resource) when { ip(principal.ip).i() };
         "#;
         assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "error-ast")]
+    #[test]
+    fn parsing_with_errors_succeeds_with_missing_second_operand() {
+        let src = r#"
+            permit(principal ==, action, resource);
+        "#;
+        let parsed = assert_parse_policy_allows_errors(src);
+        println!("Parsed policy: {:?}", parsed);
     }
 
     #[cfg(feature = "error-ast")]
