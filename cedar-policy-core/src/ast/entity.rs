@@ -109,7 +109,7 @@ impl std::fmt::Display for EntityType {
 /// Unique ID for an entity. These represent entities in the AST.
 #[derive(Educe, Serialize, Deserialize, Debug, Clone)]
 #[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct EntityUID {
+pub struct EntityUIDImpl {
     /// Typename of the entity
     ty: EntityType,
     /// EID of the entity
@@ -122,11 +122,25 @@ pub struct EntityUID {
     loc: Option<Loc>,
 }
 
+/// Unique ID for an entity. These represent entities in the AST.
+#[derive(Educe, Serialize, Deserialize, Debug, Clone)]
+#[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum EntityUID {
+    EntityUID(EntityUIDImpl),
+    Error(EntityType)
+}
+
 impl StaticallyTyped for EntityUID {
     fn type_of(&self) -> Type {
-        Type::Entity {
-            ty: self.ty.clone(),
+        match self {
+            EntityUID::EntityUID(entity_uid) => Type::Entity {
+                ty: entity_uid.ty.clone(),
+            },
+            EntityUID::Error(ty) =>Type::Entity {
+                ty: ty.clone()
+            },
         }
+
     }
 }
 
@@ -135,11 +149,12 @@ impl EntityUID {
     /// Useful for testing.
     #[cfg(test)]
     pub(crate) fn with_eid(eid: &str) -> Self {
-        Self {
+        
+        Self::EntityUID(EntityUIDImpl {
             ty: Self::test_entity_type(),
             eid: Eid(eid.into()),
             loc: None,
-        }
+        })
     }
     // by default, Coverlay does not track coverage for lines after a line
     // containing #[cfg(test)].
@@ -162,37 +177,54 @@ impl EntityUID {
 
     /// Create an `EntityUID` with the given (unqualified) typename, and the given string as its EID.
     pub fn with_eid_and_type(typename: &str, eid: &str) -> Result<Self, ParseErrors> {
-        Ok(Self {
+        Ok(Self::EntityUID( EntityUIDImpl {
             ty: EntityType(Name::parse_unqualified_name(typename)?),
             eid: Eid(eid.into()),
             loc: None,
-        })
+        }))
+    }
+
+    pub fn error() -> Result<Self, ParseErrors> {
+        Ok(Self::Error(EntityType::from_str("ERRORTYPE")?))
     }
 
     /// Split into the `EntityType` representing the entity type, and the `Eid`
     /// representing its name
     pub fn components(self) -> (EntityType, Eid) {
-        (self.ty, self.eid)
+        match self {
+            EntityUID::EntityUID(entity_uidimpl) =>  (entity_uidimpl.ty, entity_uidimpl.eid),
+            EntityUID::Error(ty) => todo!(),
+        }  
     }
 
     /// Get the source location for this `EntityUID`.
     pub fn loc(&self) -> Option<&Loc> {
-        self.loc.as_ref()
+        match self {
+            EntityUID::EntityUID(entity_uidimpl) => entity_uidimpl.loc.as_ref(),
+            EntityUID::Error(ty) => todo!(),
+        }   
     }
 
     /// Create an [`EntityUID`] with the given typename and [`Eid`]
     pub fn from_components(ty: EntityType, eid: Eid, loc: Option<Loc>) -> Self {
-        Self { ty, eid, loc }
+        Self::EntityUID(EntityUIDImpl { ty, eid, loc })
     }
 
     /// Get the type component.
     pub fn entity_type(&self) -> &EntityType {
-        &self.ty
+        match self {
+            EntityUID::EntityUID(entity_uidimpl) => &entity_uidimpl.ty,
+            EntityUID::Error(ty) => &ty,
+        }
+        
     }
 
     /// Get the Eid component.
     pub fn eid(&self) -> &Eid {
-        &self.eid
+        match self {
+            EntityUID::EntityUID(entity_uidimpl) => &entity_uidimpl.eid,
+            EntityUID::Error(ty) => todo!(),
+        }
     }
 
     /// Does this EntityUID refer to an action entity?
@@ -203,7 +235,10 @@ impl EntityUID {
 
 impl std::fmt::Display for EntityUID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}::\"{}\"", self.entity_type(), self.eid.escaped())
+        match self {
+            EntityUID::EntityUID(entity_uidimpl) =>write!(f, "{}::\"{}\"", self.entity_type(), entity_uidimpl.eid.escaped()),
+            EntityUID::Error(ty) => todo!(),
+        }
     }
 }
 
@@ -225,11 +260,11 @@ impl FromNormalizedStr for EntityUID {
 #[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(Self {
+        Ok(Self::EntityUID(EntityUIDImpl {
             ty: u.arbitrary()?,
             eid: u.arbitrary()?,
             loc: None,
-        })
+        }))
     }
 }
 

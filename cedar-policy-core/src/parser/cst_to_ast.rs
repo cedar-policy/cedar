@@ -716,7 +716,6 @@ impl Node<Option<cst::VariableDef>> {
         expected: ast::Var,
     ) -> Result<PrincipalOrResource> {
         let vardef = self.try_as_inner()?;
-
         let var = vardef.variable.to_var()?;
 
         if let Some(unused_typename) = vardef.unused_type_name.as_ref() {
@@ -779,7 +778,6 @@ impl Node<Option<cst::VariableDef>> {
 
     fn to_action_constraint(&self) -> Result<ast::ActionConstraint> {
         let vardef = self.try_as_inner()?;
-
         match vardef.variable.to_var() {
             Ok(ast::Var::Action) => Ok(()),
             Ok(got) => Err(self
@@ -1069,7 +1067,18 @@ impl Node<Option<cst::Expr>> {
     pub(crate) fn to_expr_or_special<Build: ExprBuilder>(
         &self,
     ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
-        let expr = self.try_as_inner()?;
+        let expr_opt = self.try_as_inner()?;
+        
+        let expr = match expr_opt {
+            cst::Expr::Expr(expr_impl) => expr_impl,
+            cst::Expr::Error => {
+                let e = ToASTError::new(ToASTErrorKind::InvalidEntityLiteral("PARSE_ERROR".to_string()), self.loc.clone());
+                return Ok(ExprOrSpecial::Expr { 
+                    expr: convert_expr_error_to_parse_error::<Build>(e.into())?,
+                    loc: self.loc.clone()
+                })
+            }
+        };
 
         match &*expr.expr {
             cst::ExprData::Or(or) => or.to_expr_or_special::<Build>(),
@@ -2180,6 +2189,7 @@ mod tests {
             Err(errs) => errs,
         }
     }
+
 
     #[test]
     fn show_expr1() {
@@ -5316,6 +5326,16 @@ mod tests {
             permit(principal, action, resource) when { ip(principal.ip).i() };
         "#;
         assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "error-ast")]
+    #[test]
+    fn parsing_with_errors_succeeds_with_missing_second_operand() {
+        let src = r#"
+            permit(principal ==, action, resource);
+        "#;
+        let parsed = assert_parse_policy_allows_errors(src);
+        println!("Parsed policy: {:?}", parsed);
     }
 
     #[cfg(feature = "error-ast")]

@@ -75,6 +75,17 @@ pub struct VariableDef {
     pub ineq: Option<(RelOp, Node<Expr>)>,
 }
 
+// #[derive(Debug, Clone, PartialEq, Eq)]
+// pub struct ErrorNode {
+//     pub err: String
+// }
+
+// #[derive(Debug, Clone, PartialEq, Eq)]
+// pub enum VariableDef {
+//     VariableDef(VariableDefImpl),
+//     Error(ErrorNode)
+// }
+
 /// Any identifier, including special ones
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[allow(unused)] // definitional, or for later improvements
@@ -140,10 +151,17 @@ pub struct Cond {
 
 /// The main computation aspect of a policy, outer
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Expr {
+pub struct ExprImpl {
     /// expression content
     pub expr: Box<ExprData>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Expr {
+    Expr(ExprImpl),
+    Error
+}
+
 /// The main computation aspect of a policy, inner
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprData {

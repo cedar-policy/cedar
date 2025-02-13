@@ -126,12 +126,12 @@ impl fmt::Display for VariableDef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", View(&self.variable))?;
         if let Some(name) = &self.unused_type_name {
-            write!(f, ": {}", View(name))?;
+            write!(f, ": {}", View(&name))?;
         }
         if let Some((op, expr)) = &self.ineq {
-            write!(f, " {} {}", op, View(expr))?;
+            write!(f, " {} {}", op, View(&expr))?;
         }
-        Ok(())
+        Ok(())    
     }
 }
 impl fmt::Display for Cond {
@@ -150,7 +150,11 @@ impl fmt::Display for Cond {
 }
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let expr = &*self.expr;
+        // let expr_opt: &_ = &*self.expr;
+        let expr = match  self {
+            Expr::Expr(expr_impl) => &*expr_impl.expr,
+            Expr::Error => todo!(),
+        };
         match expr {
             ExprData::Or(or) => write!(f, "{}", View(or)),
             ExprData::If(ex1, ex2, ex3) => {

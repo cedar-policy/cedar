@@ -157,7 +157,12 @@ impl Node<Option<cst::Expr>> {
     }
 
     fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let expr = self.try_as_inner()?;
+        let expr_opt = self.try_as_inner()?;
+
+        let expr = match expr_opt {
+            cst::Expr::Expr(expr_impl) => expr_impl,
+            cst::Expr::Error => return T::create_single_ref(EntityUID::error()?),
+        };
 
         match &*expr.expr {
             cst::ExprData::Or(o) => o.to_ref_or_refs::<T>(var),
