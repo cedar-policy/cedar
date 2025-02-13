@@ -45,7 +45,7 @@ use crate::ast::{
     self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
     PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
 };
-use crate::expr_builder::{self, ExprBuilder};
+use crate::expr_builder::ExprBuilder;
 use crate::fuzzy_match::fuzzy_search_limited;
 use itertools::{Either, Itertools};
 use nonempty::nonempty;
@@ -836,14 +836,6 @@ impl Node<Option<cst::VariableDef>> {
         } else {
             Ok(ActionConstraint::Any)
         }
-    }
-}
-
-fn convert_error<Build: ExprBuilder>(error: ParseErrors) -> Result<Build::Expr> {
-    let res = Build::new().error(error.clone());
-    match res {
-        Ok(r) => Ok(r),
-        Err(_) => Err(error),
     }
 }
 
@@ -2175,7 +2167,6 @@ mod tests {
             })
     }
 
-
     #[track_caller]
     fn assert_parse_policy_allows_errors(text: &str) -> ast::StaticPolicy {
         text_to_cst::parse_policy(text)
@@ -2206,7 +2197,6 @@ mod tests {
         "#;
         assert_parse_policy_allows_errors(src);
     }
-
 
     #[test]
     fn show_expr1() {
