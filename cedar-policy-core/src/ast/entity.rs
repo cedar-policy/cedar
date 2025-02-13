@@ -253,6 +253,7 @@ impl StaticallyTyped for EntityUID {
                 ty: EntityType::ErrorEntityType,
             },
         }
+
     }
 }
 
