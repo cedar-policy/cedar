@@ -85,6 +85,17 @@ pub struct VariableDef {
     pub ineq: Option<(RelOp, Node<Expr>)>,
 }
 
+// #[derive(Debug, Clone, PartialEq, Eq)]
+// pub struct ErrorNode {
+//     pub err: String
+// }
+
+// #[derive(Debug, Clone, PartialEq, Eq)]
+// pub enum VariableDef {
+//     VariableDef(VariableDefImpl),
+//     Error(ErrorNode)
+// }
+
 /// Any identifier, including special ones
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[allow(unused)] // definitional, or for later improvements
