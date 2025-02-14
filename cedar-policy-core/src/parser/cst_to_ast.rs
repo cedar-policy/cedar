@@ -181,7 +181,7 @@ impl Node<Option<cst::Policy>> {
 
     /// Convert `cst::Policy` to `ast::Template`. Works for inline policies as
     /// well, which will become templates with 0 slots
-    pub fn to_policy_template(&self, id: ast::PolicyID) -> Result<ast::Template> {
+    pub fn to_template(&self, id: ast::PolicyID) -> Result<ast::Template> {
         self.to_policy_template_helper(id, false)
     }
 
