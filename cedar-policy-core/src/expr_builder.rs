@@ -17,8 +17,6 @@
 //! Contains the trait [`ExprBuilder`], defining a generic interface for
 //! building different expression data structures (e.g., AST and EST).
 
-use std::sync::Arc;
-
 use smol_str::SmolStr;
 
 use crate::{
