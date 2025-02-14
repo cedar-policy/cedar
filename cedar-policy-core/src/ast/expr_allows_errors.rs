@@ -76,14 +76,9 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
         self.with_expr_kind(ExprKind::Var(v))
     }
 
-    fn error(
-        self,
-        parse_errors: ParseErrors,
-        sub_expression: Option<Arc<Expr<T>>>,
-    ) -> Result<Expr<T>, Self::ErrorType> {
+    fn error(self, parse_errors: ParseErrors) -> Result<Expr<T>, Self::ErrorType> {
         Ok(self.with_expr_kind(ExprKind::Error {
             error_kind: AstExprErrorKind::InvalidExpr(parse_errors.to_string()),
-            sub_expression,
         }))
     }
 

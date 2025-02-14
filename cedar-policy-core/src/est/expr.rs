@@ -692,11 +692,7 @@ impl ExprBuilder for Builder {
         })
     }
 
-    fn error(
-        self,
-        parse_errors: ParseErrors,
-        _sub_expression: Option<Arc<Self::Expr>>,
-    ) -> Result<Self::Expr, Self::ErrorType> {
+    fn error(self, parse_errors: ParseErrors) -> Result<Self::Expr, Self::ErrorType> {
         Err(parse_errors)
     }
 }

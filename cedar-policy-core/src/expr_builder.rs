@@ -17,8 +17,6 @@
 //! Contains the trait [`ExprBuilder`], defining a generic interface for
 //! building different expression data structures (e.g., AST and EST).
 
-use std::sync::Arc;
-
 use smol_str::SmolStr;
 
 use crate::{
@@ -54,11 +52,7 @@ pub trait ExprBuilder: Clone {
     }
 
     /// Build an expression that failed to parse - can optionally include subexpressions that parsed successfully
-    fn error(
-        self,
-        parse_errors: ParseErrors,
-        sub_expression: Option<Arc<Self::Expr>>,
-    ) -> Result<Self::Expr, Self::ErrorType>;
+    fn error(self, parse_errors: ParseErrors) -> Result<Self::Expr, Self::ErrorType>;
 
     /// Build an expression storing this information
     fn with_data(data: Self::Data) -> Self;

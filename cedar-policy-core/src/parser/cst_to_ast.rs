@@ -775,14 +775,6 @@ impl Node<Option<cst::VariableDef>> {
     }
 }
 
-fn convert_error<Build: ExprBuilder>(error: ParseErrors) -> Result<Build::Expr> {
-    let res = Build::new().error(error.clone(), None); // TODO: Get rid of clone?
-    match res {
-        Ok(r) => Ok(r),
-        Err(_) => Err(error),
-    }
-}
-
 impl Node<Option<cst::Cond>> {
     /// to expr. Also returns, for informational purposes, a `bool` which is
     /// `true` if the cond is a `when` clause, `false` if it is an `unless`
@@ -808,7 +800,7 @@ impl Node<Option<cst::Cond>> {
                         }
                     }
                 };
-                convert_error::<Build>(
+                convert_expr_error_to_parse_error::<Build>(
                     self.to_ast_err(ToASTErrorKind::EmptyClause(Some(ident)))
                         .into(),
                 )
@@ -836,6 +828,17 @@ impl Node<Option<cst::Str>> {
                 .to_ast_err(ToASTErrorKind::InvalidString(s.to_string()))
                 .into()),
         }
+    }
+}
+
+/// Since ExprBuilder ErrorType can be Infallible or ParseErrors, if we get an error from building the node pass the ParseErrors along
+fn convert_expr_error_to_parse_error<Build: ExprBuilder>(
+    error: ParseErrors,
+) -> Result<Build::Expr> {
+    let res = Build::new().error(error.clone());
+    match res {
+        Ok(r) => Ok(r),
+        Err(_) => Err(error),
     }
 }
 

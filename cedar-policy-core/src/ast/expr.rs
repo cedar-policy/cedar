@@ -162,8 +162,6 @@ pub enum ExprKind<T = ()> {
     Error {
         /// Type of error that led to the failure
         error_kind: AstExprErrorKind,
-        /// Any subexpressions that were successfully parsed - useful for nested errors
-        sub_expression: Option<Arc<Expr<T>>>,
     },
 }
 
@@ -1184,11 +1182,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     }
 
     /// Don't support AST Error nodes - return the error right back
-    fn error(
-        self,
-        parse_errors: ParseErrors,
-        _sub_expression: Option<Arc<Self::Expr>>,
-    ) -> Result<Self::Expr, Self::ErrorType> {
+    fn error(self, parse_errors: ParseErrors) -> Result<Self::Expr, Self::ErrorType> {
         Err(parse_errors)
     }
 }
