@@ -71,11 +71,11 @@ impl TryFrom<&models::LiteralPolicy> for ast::Policy {
 impl From<&ast::LiteralPolicy> for models::LiteralPolicy {
     fn from(v: &ast::LiteralPolicy) -> Self {
         Self {
-            template_id: v.template_id().to_string(),
+            template_id: v.template_id().as_ref().to_string(),
             link_id: if v.is_static() {
                 String::new()
             } else {
-                v.id().to_string()
+                v.id().as_ref().to_string()
             },
             link_id_specified: !v.is_static(),
             principal_euid: v
@@ -91,11 +91,11 @@ impl From<&ast::LiteralPolicy> for models::LiteralPolicy {
 impl From<&ast::Policy> for models::LiteralPolicy {
     fn from(v: &ast::Policy) -> Self {
         Self {
-            template_id: v.template().id().to_string(),
+            template_id: v.template().id().as_ref().to_string(),
             link_id: if v.is_static() {
                 String::new()
             } else {
-                v.id().to_string()
+                v.id().as_ref().to_string()
             },
             link_id_specified: !v.is_static(),
             principal_euid: v
@@ -165,7 +165,7 @@ impl From<&ast::TemplateBody> for models::TemplateBody {
             .collect();
 
         Self {
-            id: v.id().to_string(),
+            id: v.id().as_ref().to_string(),
             annotations,
             effect: models::Effect::from(&v.effect()).into(),
             principal_constraint: Some(models::PrincipalConstraint::from(v.principal_constraint())),
@@ -618,6 +618,34 @@ mod test {
                 annotation1,
             )]),
             ast::Effect::Permit,
+            pc.clone(),
+            ac1.clone(),
+            rc.clone(),
+            ast::Expr::val(true),
+        );
+        assert_eq!(
+            tb,
+            ast::TemplateBody::from(&models::TemplateBody::from(&tb))
+        );
+
+        let policy = ast::LiteralPolicy::template_linked_policy(
+            ast::PolicyID::from_string("template"),
+            ast::PolicyID::from_string("id"),
+            HashMap::from_iter([(
+                ast::SlotId::principal(),
+                ast::EntityUID::with_eid_and_type("A", "eid").unwrap(),
+            )]),
+        );
+        assert_eq!(
+            policy,
+            ast::LiteralPolicy::from(&models::LiteralPolicy::from(&policy))
+        );
+
+        let tb = ast::TemplateBody::new(
+            ast::PolicyID::from_string("\0\n \' \"+-$^!"),
+            None,
+            ast::Annotations::from_iter([]),
+            ast::Effect::Permit,
             pc,
             ac1,
             rc,
@@ -629,8 +657,8 @@ mod test {
         );
 
         let policy = ast::LiteralPolicy::template_linked_policy(
-            ast::PolicyID::from_string("template"),
-            ast::PolicyID::from_string("id"),
+            ast::PolicyID::from_string("template\0\n \' \"+-$^!"),
+            ast::PolicyID::from_string("link\0\n \' \"+-$^!"),
             HashMap::from_iter([(
                 ast::SlotId::principal(),
                 ast::EntityUID::with_eid_and_type("A", "eid").unwrap(),
@@ -691,6 +719,69 @@ mod test {
         ps.link(
             ast::PolicyID::from_string("template"),
             ast::PolicyID::from_string("link"),
+            HashMap::from_iter([(
+                ast::SlotId::principal(),
+                ast::EntityUID::with_eid_and_type("A", "friend").unwrap(),
+            )]),
+        )
+        .unwrap();
+        let lps = models::LiteralPolicySet::from(&ps);
+        let lps_roundtrip = models::LiteralPolicySet::from(&ast::LiteralPolicySet::from(&lps));
+
+        // Can't compare LiteralPolicySets directly, so we compare their fields
+        assert_eq!(lps.templates, lps_roundtrip.templates);
+        assert_eq!(lps.links, lps_roundtrip.links);
+    }
+
+    #[test]
+    fn policyset_roundtrip_escapes() {
+        let tb = ast::TemplateBody::new(
+            ast::PolicyID::from_string("template\0\n \' \"+-$^!"),
+            None,
+            ast::Annotations::from_iter(vec![(
+                ast::AnyId::from_normalized_str("read").unwrap(),
+                ast::Annotation {
+                    val: "".into(),
+                    loc: None,
+                },
+            )]),
+            ast::Effect::Permit,
+            ast::PrincipalConstraint::is_eq_slot(),
+            ast::ActionConstraint::Eq(
+                ast::EntityUID::with_eid_and_type("Action", "read")
+                    .unwrap()
+                    .into(),
+            ),
+            ast::ResourceConstraint::is_entity_type(
+                ast::EntityType::from(ast::Name::from_normalized_str("photo").unwrap()).into(),
+            ),
+            ast::Expr::val(true),
+        );
+
+        let policy1 = ast::Policy::from_when_clause(
+            ast::Effect::Permit,
+            ast::Expr::val(true),
+            ast::PolicyID::from_string("permit-true-trivial\0\n \' \"+-$^!"),
+            None,
+        );
+        let policy2 = ast::Policy::from_when_clause(
+            ast::Effect::Forbid,
+            ast::Expr::is_eq(
+                ast::Expr::var(ast::Var::Principal),
+                ast::Expr::val(ast::EntityUID::with_eid_and_type("A", "dog").unwrap()),
+            ),
+            ast::PolicyID::from_string("forbid-dog\0\n \' \"+-$^!"),
+            None,
+        );
+
+        let mut ps = ast::PolicySet::new();
+        ps.add_template(ast::Template::from(tb))
+            .expect("Failed to add template to policy set.");
+        ps.add(policy1).expect("Failed to add policy to policy set");
+        ps.add(policy2).expect("Failed to add policy to policy set");
+        ps.link(
+            ast::PolicyID::from_string("template\0\n \' \"+-$^!"),
+            ast::PolicyID::from_string("link\0\n \' \"+-$^!"),
             HashMap::from_iter([(
                 ast::SlotId::principal(),
                 ast::EntityUID::with_eid_and_type("A", "friend").unwrap(),
