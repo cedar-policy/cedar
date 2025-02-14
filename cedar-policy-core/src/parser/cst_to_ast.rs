@@ -174,7 +174,7 @@ impl Node<Option<cst::Policy>> {
         self.to_policy_helper(id, false)
     }
 
-    /// Convert `cst::Policy` to an AST `InlinePolicy`. (Will fail if the CST is for a template)
+    /// Convert `cst::Policy` to an AST `StaticPolicy`. (Will fail if the CST is for a template)
     pub fn to_policy_with_errors(&self, id: ast::PolicyID) -> Result<ast::StaticPolicy> {
         self.to_policy_helper(id, true)
     }
