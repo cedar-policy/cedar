@@ -467,6 +467,7 @@ impl From<&ast::Expr> for models::Expr {
                     .collect();
                 models::expr::expr_kind::Data::Record(models::expr::Record { items: precord })
             }
+            ast::ExprKind::Error { error_kind } => unimplemented!("Protobufs feature not compatible with ASTs that contain error nodes - this should never happen"),
         };
         Self {
             expr_kind: Some(Box::new(models::expr::ExprKind {
