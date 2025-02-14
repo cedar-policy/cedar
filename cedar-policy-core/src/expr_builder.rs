@@ -39,6 +39,7 @@ pub trait ExprBuilder: Clone {
     type Data: Default;
 
     /// Type for what error we return if we cannot construct an error node
+    ///
     ///  By default we fail on errors and this should be a ParseErrors
     ///  But when we run with error parsing enabled, can be Infallible
     type ErrorType;
