@@ -123,8 +123,10 @@ impl Entities {
     }
 
     /// Adds the [`crate::ast::Entity`]s in the iterator to this [`Entities`].
-    /// Fails if the passed iterator contains any duplicate entities with this structure,
-    /// or if any error is encountered in the transitive closure computation.
+    /// Fails if there is a pair of non-identical entities in the passed iterator
+    /// with the same Entity UID, or there is an entity in the passed iterator
+    /// with the same Entity UID as a non-identical entity in this structure.
+    /// Fails if any error is encountered in the transitive closure computation.
     ///
     /// If `schema` is present, then the added entities will be validated
     /// against the `schema`, returning an error if they do not conform to the
@@ -145,14 +147,7 @@ impl Entities {
             if let Some(checker) = checker.as_ref() {
                 checker.validate_entity(&entity)?;
             }
-            match self.entities.entry(entity.uid().clone()) {
-                hash_map::Entry::Occupied(_) => {
-                    return Err(EntitiesError::duplicate(entity.uid().clone()))
-                }
-                hash_map::Entry::Vacant(vacant_entry) => {
-                    vacant_entry.insert(entity);
-                }
-            }
+            update_entity_map(&mut self.entities, entity)?;
         }
         match tc_computation {
             TCComputation::AssumeAlreadyComputed => (),
@@ -209,7 +204,9 @@ impl Entities {
     /// responsible for ensuring that TC and DAG hold before calling this method.
     ///
     /// # Errors
-    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::Duplicate`] if there is a pair of non-identical entities in
+    ///   `entities` with the same Entity UID, or there is an entity in `entities` with the same
+    ///   Entity UID as a non-identical entity in this structure
     /// - [`EntitiesError::TransitiveClosureError`] if `tc_computation ==
     ///   TCComputation::EnforceAlreadyComputed` and the entities are not transitivly closed
     /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
@@ -368,20 +365,37 @@ impl Entities {
     }
 }
 
-/// Create a map from EntityUids to Entities, erroring if there are any duplicates
+/// Creates a map from EntityUIDs to Entities, erroring if there is a pair of Entity
+/// instances with the same EntityUID that are not structurally equal.
 fn create_entity_map(
     es: impl Iterator<Item = Arc<Entity>>,
 ) -> Result<HashMap<EntityUID, Arc<Entity>>> {
-    let mut map = HashMap::new();
+    let mut map: HashMap<EntityUID, Arc<Entity>> = HashMap::new();
     for e in es {
-        match map.entry(e.uid().clone()) {
-            hash_map::Entry::Occupied(_) => return Err(EntitiesError::duplicate(e.uid().clone())),
-            hash_map::Entry::Vacant(v) => {
-                v.insert(e);
-            }
-        };
+        update_entity_map(&mut map, e)?;
     }
     Ok(map)
+}
+
+/// Adds an entry to the specified map associating the EntityUID of the specified entity
+/// to the specified entity. Checks whether there is an entity already in the map
+/// with the same EntityUID as the specified entity. If such an entity is found and is
+/// not structurally equal to the specified entity produces an error. Otherwise,
+/// if a structurally equal entity is found, the state of the map is unchanged.
+fn update_entity_map(map: &mut HashMap<EntityUID, Arc<Entity>>, entity: Arc<Entity>) -> Result<()> {
+    match map.entry(entity.uid().clone()) {
+        hash_map::Entry::Occupied(entry) => {
+            // Check whether the occupying entity is structurally equal to the
+            // entity being processed
+            if !entity.deep_eq(entry.get()) {
+                return Err(EntitiesError::duplicate(entity.uid().clone()));
+            }
+        }
+        hash_map::Entry::Vacant(v) => {
+            v.insert(entity);
+        }
+    }
+    Ok(())
 }
 
 impl IntoIterator for Entities {
@@ -817,18 +831,58 @@ mod json_parsing_tests {
     }
 
     #[test]
-    fn add_duplicates_fail2() {
+    fn add_consistent_duplicates_in_iterator() {
         let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        // Create the entities to be added
         let new = serde_json::json!([
+            {"uid":{ "type" : "Test", "id" : "ruby" }, "attrs" : {}, "parents" : []},
             {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : []},
+            {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : []}]);
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
+        // Create an initial structure
+        let original = simple_entities(&parser);
+        let original_size = original.entities.len();
+        // Add the new entities to an existing structure
+        let es = original
+            .add_entities(
+                addl_entities,
+                None::<&NoEntitiesSchema>,
+                TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )
+            .unwrap();
+        // Check that the original conditions of the structure still hold
+        simple_entities_still_sane(&es);
+        // Check that jeff has been added
+        es.entity(&r#"Test::"jeff""#.parse().unwrap()).unwrap();
+        // Check that ruby has been added
+        es.entity(&r#"Test::"ruby""#.parse().unwrap()).unwrap();
+        // Check that the size of the structure increased by exactly two
+        assert_eq!(es.entities.len(), 2 + original_size);
+    }
+
+    #[test]
+    fn add_inconsistent_duplicates_in_iterator() {
+        let parser: EntityJsonParser<'_, '_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        // Create the entities to be added
+        let new = serde_json::json!([
+            {"uid":{ "type" : "Test", "id" : "ruby" }, "attrs" : {"location": "France"}, "parents" : []},
+            {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {"location": "France"}, "parents" : []},
             {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : []}]);
 
         let addl_entities = parser
             .iter_from_json_value(new)
             .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
             .map(Arc::new);
-        let err = simple_entities(&parser)
+        // Create an initial structure
+        let original = simple_entities(&parser);
+        // Add the new entities to an existing structure
+        let err = original
             .add_entities(
                 addl_entities,
                 None::<&NoEntitiesSchema>,
@@ -837,27 +891,81 @@ mod json_parsing_tests {
             )
             .err()
             .unwrap();
+        // Check that an error occurs indicating that an inconsistent duplicate was found
         let expected = r#"Test::"jeff""#.parse().unwrap();
         assert_matches!(err, EntitiesError::Duplicate(d) => assert_eq!(d.euid(), &expected));
     }
 
     #[test]
-    fn add_duplicates_fail1() {
+    fn add_consistent_duplicate() {
         let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let new = serde_json::json!([{"uid":{ "type": "Test", "id": "alice" }, "attrs" : {}, "parents" : []}]);
+        // Create the entities to be added
+        let new = serde_json::json!([
+            {"uid":{ "type" : "Test", "id" : "ruby" }, "attrs" : {}, "parents" : []},
+            {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : []}]);
         let addl_entities = parser
             .iter_from_json_value(new)
             .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
             .map(Arc::new);
-        let err = simple_entities(&parser).add_entities(
-            addl_entities,
-            None::<&NoEntitiesSchema>,
-            TCComputation::ComputeNow,
-            Extensions::all_available(),
-        );
-        let expected = r#"Test::"alice""#.parse().unwrap();
-        assert_matches!(err, Err(EntitiesError::Duplicate(d)) => assert_eq!(d.euid(), &expected));
+        // Create an initial structure
+        let json = serde_json::json!([
+            {"uid":{ "type" : "Test", "id" : "amy" }, "attrs" : {}, "parents" : []},
+            {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : []}]);
+        let original = parser
+            .from_json_value(json)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+        let original_size = original.entities.len();
+        // Add the new entities to an existing structure
+        let es = original
+            .add_entities(
+                addl_entities,
+                None::<&NoEntitiesSchema>,
+                TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )
+            .unwrap();
+        // Check that jeff is still in the structure
+        es.entity(&r#"Test::"jeff""#.parse().unwrap()).unwrap();
+        // Check that amy is still in the structure
+        es.entity(&r#"Test::"amy""#.parse().unwrap()).unwrap();
+        // Check that ruby has been added
+        es.entity(&r#"Test::"ruby""#.parse().unwrap()).unwrap();
+        // Check that the size of the structure increased by exactly one
+        assert_eq!(es.entities.len(), 1 + original_size);
+    }
+
+    #[test]
+    fn add_inconsistent_duplicate() {
+        let parser: EntityJsonParser<'_, '_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        // Create the entities to be added
+        let new = serde_json::json!([
+            {"uid":{ "type" : "Test", "id" : "ruby" }, "attrs" : {}, "parents" : []},
+            {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {"location": "England"}, "parents" : []}]);
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
+        // Create an initial structure
+        let json = serde_json::json!([
+            {"uid":{ "type" : "Test", "id" : "amy" }, "attrs" : {}, "parents" : []},
+            {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {"location": "London"}, "parents" : []}]);
+        let original = parser
+            .from_json_value(json)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+        let err = original
+            .add_entities(
+                addl_entities,
+                None::<&NoEntitiesSchema>,
+                TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )
+            .err()
+            .unwrap();
+        // Check that an error occurs indicating that an inconsistent duplicate was found
+        let expected = r#"Test::"jeff""#.parse().unwrap();
+        assert_matches!(err, EntitiesError::Duplicate(d) => assert_eq!(d.euid(), &expected));
     }
 
     #[test]
