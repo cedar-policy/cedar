@@ -241,7 +241,7 @@ impl Node<Option<cst::Policy>> {
         }
     }
 
-    /// Convert `cst::Policy` to `ast::Template`. Works for inline policies as
+    /// Convert `cst::Policy` to `ast::Template`. Works for static policies as
     /// well, which will become templates with 0 slots
     pub fn to_policy_template_helper(
         &self,
