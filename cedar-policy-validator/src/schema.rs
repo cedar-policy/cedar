@@ -1594,7 +1594,7 @@ pub(crate) mod test {
                 "actions": {
                     "doTests": {
                         "memberOf": [
-                            { "type": "Action", "id": "test1" }, 
+                            { "type": "Action", "id": "test1" },
                             { "type": "Action", "id": "test2" }
                         ]
                     }
@@ -1604,8 +1604,34 @@ pub(crate) mod test {
         match ValidatorSchema::from_json_value(src, Extensions::all_available()) {
             Err(SchemaError::ActionNotDefined(missing)) => {
                 assert_eq!(missing.0.len(), 2);
-            },
+            }
             _ => panic!("Expected ActionNotDefined due to unknown actions in memberOf."),
+        }
+    }
+
+    #[test]
+    fn test_from_schema_file_undefined_types_in_common() {
+        let src = json!({
+            "": {
+                "commonTypes": {
+                    "My1": {"type": "What"},
+                    "My2": {"type": "ev"},
+                    "My3": {"type": "er"}
+                },
+                "entityTypes": {
+                    "Test": {}
+                },
+                "actions": {},
+            }
+        });
+        match ValidatorSchema::from_json_value(src, Extensions::all_available()) {
+            Err(SchemaError::TypeNotDefined(missing)) => {
+                assert_eq!(missing.undefined_types.len(), 3);
+            }
+            x => panic!(
+                "Expected TypeNotDefined due to unknown types in commonTypes, found: {:?}",
+                x
+            ),
         }
     }
 
@@ -1629,8 +1655,11 @@ pub(crate) mod test {
         match ValidatorSchema::from_json_value(src, Extensions::all_available()) {
             Err(SchemaError::TypeNotDefined(missing)) => {
                 assert_eq!(missing.undefined_types.len(), 3);
-            },
-            x  => panic!("Expected TypeNotDefined due to unknown entities in appliesTo, found: {:?}", x),
+            }
+            x => panic!(
+                "Expected TypeNotDefined due to unknown entities in appliesTo, found: {:?}",
+                x
+            ),
         }
     }
 
