@@ -361,7 +361,7 @@ impl CommonTypeDefs<ConditionalName> {
                 .defs
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<Result<_, TypeNotDefinedError>>()?,
+                .partition_nonempty()?,
         })
     }
 }
@@ -660,8 +660,10 @@ impl ActionsDef<ConditionalName, ConditionalName> {
             actions: self
                 .actions
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<Result<_, SchemaError>>()?,
+                .map(|(k, v)| -> Result<_, SchemaError> {
+                    Ok((k, v.fully_qualify_type_references(all_defs)?))
+                })
+                .partition_nonempty()?,
         })
     }
 }

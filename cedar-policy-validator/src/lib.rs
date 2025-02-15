@@ -52,8 +52,8 @@ pub use str_checks::confusable_string_checks;
 pub mod cedar_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
-pub mod types;
 mod parition_nonempty;
+pub mod types;
 
 /// Used to select how a policy will be validated.
 #[derive(Default, Eq, PartialEq, Copy, Clone, Debug, Serialize)]

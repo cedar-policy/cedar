@@ -1615,8 +1615,8 @@ pub(crate) mod test {
             "": {
                 "commonTypes": {
                     "My1": {"type": "What"},
-                    "My2": {"type": "ev"},
-                    "My3": {"type": "er"}
+                    "My2": {"type": "Ev"},
+                    "My3": {"type": "Er"}
                 },
                 "entityTypes": {
                     "Test": {}
