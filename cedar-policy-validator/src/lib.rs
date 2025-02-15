@@ -53,6 +53,7 @@ pub mod cedar_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
 pub mod types;
+mod parition_nonempty;
 
 /// Used to select how a policy will be validated.
 #[derive(Default, Eq, PartialEq, Copy, Clone, Debug, Serialize)]
