@@ -20,14 +20,13 @@ use cedar_policy_core::{
     ast::{self, EntityType, EntityUID, PartialValueSerializedAsExpr},
     transitive_closure::TCNode,
 };
-use itertools::Itertools;
-use nonempty::NonEmpty;
 use serde::Serialize;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashSet};
 
 use super::internal_name_to_entity_type;
 use crate::{
+    parition_nonempty::PartitionNonEmpty,
     schema::{AllDefs, SchemaError},
     types::{Attributes, Type},
     ConditionalName,
@@ -239,33 +238,31 @@ impl ValidatorApplySpec<ConditionalName> {
         self,
         all_defs: &AllDefs,
     ) -> Result<ValidatorApplySpec<ast::EntityType>, crate::schema::SchemaError> {
-        let (principal_apply_spec, principal_errs) = self
+        let principal_apply_spec = self
             .principal_apply_spec
             .into_iter()
             .map(|cname| {
                 let internal_name = cname.resolve(all_defs)?;
                 internal_name_to_entity_type(internal_name).map_err(Into::into)
             })
-            .partition_result::<_, Vec<SchemaError>, _, _>();
-        let (resource_apply_spec, resource_errs) = self
+            .partition_nonempty();
+        let resource_apply_spec = self
             .resource_apply_spec
             .into_iter()
             .map(|cname| {
                 let internal_name = cname.resolve(all_defs)?;
                 internal_name_to_entity_type(internal_name).map_err(Into::into)
             })
-            .partition_result::<_, Vec<SchemaError>, _, _>();
-        match (
-            NonEmpty::from_vec(principal_errs),
-            NonEmpty::from_vec(resource_errs),
-        ) {
-            (None, None) => Ok(ValidatorApplySpec {
+            .partition_nonempty();
+
+        match (principal_apply_spec, resource_apply_spec) {
+            (Ok(principal_apply_spec), Ok(resource_apply_spec)) => Ok(ValidatorApplySpec {
                 principal_apply_spec,
                 resource_apply_spec,
             }),
-            (Some(principal_errs), None) => Err(SchemaError::join_nonempty(principal_errs)),
-            (None, Some(resource_errs)) => Err(SchemaError::join_nonempty(resource_errs)),
-            (Some(principal_errs), Some(resource_errs)) => {
+            (Ok(_), Err(errs)) => Err(SchemaError::join_nonempty(errs)),
+            (Err(resource_errs), Ok(_)) => Err(SchemaError::join_nonempty(resource_errs)),
+            (Err(principal_errs), Err(resource_errs)) => {
                 let mut errs = principal_errs;
                 errs.extend(resource_errs);
                 Err(SchemaError::join_nonempty(errs))

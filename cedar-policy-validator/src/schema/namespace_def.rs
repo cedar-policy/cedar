@@ -660,9 +660,7 @@ impl ActionsDef<ConditionalName, ConditionalName> {
             actions: self
                 .actions
                 .into_iter()
-                .map(|(k, v)| -> Result<_, SchemaError> {
-                    Ok((k, v.fully_qualify_type_references(all_defs)?))
-                })
+                .map(|(k, v)| v.fully_qualify_type_references(all_defs).map(|v| (k, v)))
                 .partition_nonempty()?,
         })
     }
@@ -769,10 +767,7 @@ impl ActionFragment<ConditionalName, ConditionalName> {
                 .parents
                 .into_iter()
                 .map(|parent| parent.fully_qualify_type_references(all_defs))
-                .partition_nonempty()
-                .map_err(|errs| {
-                    SchemaError::ActionNotDefined(ActionNotDefinedError::join_nonempty(errs))
-                })?,
+                .partition_nonempty()?,
             attribute_types: self.attribute_types,
             attributes: self.attributes,
         })

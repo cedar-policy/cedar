@@ -27,7 +27,6 @@ use cedar_policy_core::{
     parser::Loc,
     transitive_closure::compute_tc,
 };
-use itertools::Itertools;
 use namespace_def::EntityTypeFragment;
 use nonempty::NonEmpty;
 use serde::{Deserialize, Serialize};
@@ -139,16 +138,12 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
         self,
         all_defs: &AllDefs,
     ) -> Result<ValidatorSchemaFragment<InternalName, EntityType>> {
-        let (nsdefs, errs) = self
-            .0
+        self.0
             .into_iter()
             .map(|ns_def| ns_def.fully_qualify_type_references(all_defs))
-            .partition_result::<Vec<ValidatorNamespaceDef<InternalName, EntityType>>, Vec<SchemaError>, _, _>();
-        if let Some(errs) = NonEmpty::from_vec(errs) {
-            Err(SchemaError::join_nonempty(errs))
-        } else {
-            Ok(ValidatorSchemaFragment(nsdefs))
-        }
+            .partition_nonempty()
+            .map(ValidatorSchemaFragment)
+            .map_err(SchemaError::join_nonempty)
     }
 }
 
@@ -464,13 +459,10 @@ impl ValidatorSchema {
         // come later.)
         // This produces an intermediate form of schema fragment,
         // `ValidatorSchemaFragment<InternalName, EntityType>`.
-        let (fragments, errs) = fragments
+        let fragments: Vec<_> = fragments
             .into_iter()
             .map(|frag| frag.fully_qualify_type_references(&all_defs))
-            .partition_result::<Vec<ValidatorSchemaFragment<InternalName, EntityType>>, Vec<SchemaError>, _, _>();
-        if let Some(errs) = NonEmpty::from_vec(errs) {
-            return Err(SchemaError::join_nonempty(errs));
-        }
+            .partition_nonempty()?;
 
         // Now that all references are fully-qualified, we can build the aggregate
         // maps for common types, entity types, and actions, checking that nothing
@@ -529,7 +521,6 @@ impl ValidatorSchema {
                     .insert(name.clone());
             }
         }
-
         let mut entity_types = entity_type_fragments
             .into_iter()
             .map(|(name, entity_type)| -> Result<_> {
