@@ -37,6 +37,7 @@ use super::{internal_name_to_entity_type, AllDefs, ValidatorApplySpec};
 use crate::{
     err::{schema_errors::*, SchemaError},
     json_schema::{self, CommonTypeId, EntityTypeKind},
+    parition_nonempty::PartitionNonEmpty,
     types::{AttributeType, Attributes, OpenTag, Type},
     ActionBehavior, ConditionalName, RawName, ReferenceType,
 };
@@ -765,12 +766,11 @@ impl ActionFragment<ConditionalName, ConditionalName> {
             parents: self
                 .parents
                 .into_iter()
-                .map(|parent| {
-                    parent
-                        .fully_qualify_type_references(all_defs)
-                        .map_err(Into::into)
-                })
-                .collect::<Result<_, SchemaError>>()?,
+                .map(|parent| parent.fully_qualify_type_references(all_defs))
+                .partition_nonempty()
+                .map_err(|errs| {
+                    SchemaError::ActionNotDefined(ActionNotDefinedError::join_nonempty(errs))
+                })?,
             attribute_types: self.attribute_types,
             attributes: self.attributes,
         })
