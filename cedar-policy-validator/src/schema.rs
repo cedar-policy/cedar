@@ -1584,6 +1584,31 @@ pub(crate) mod test {
         }
     }
 
+    #[test]
+    fn test_from_schema_file_missing_parent_action() {
+        let src = json!({
+            "": {
+                "entityTypes": {
+                    "Test": {}
+                },
+                "actions": {
+                    "doTests": {
+                        "memberOf": [
+                            { "type": "Action", "id": "test1" }, 
+                            { "type": "Action", "id": "test2" }
+                        ]
+                    }
+                }
+            }
+        });
+        match ValidatorSchema::from_json_value(src, Extensions::all_available()) {
+            Err(SchemaError::ActionNotDefined(missing)) => {
+                assert_eq!(missing.0.len(), 2);
+            },
+            _ => panic!("Expected ActionNotDefined due to unknown actions in memberOf."),
+        }
+    }
+
     // Undefined entity types "Grop", "Usr", "Phoot"
     #[test]
     fn test_from_schema_file_undefined_entities() {
