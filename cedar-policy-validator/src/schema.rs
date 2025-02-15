@@ -40,6 +40,7 @@ use std::sync::Arc;
 use crate::{
     cedar_schema::SchemaWarning,
     json_schema,
+    parition_nonempty::PartitionNonEmpty,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
 };
 
@@ -124,7 +125,7 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
                         extensions,
                     )
                 })
-                .collect::<Result<Vec<_>>>()?,
+                .partition_nonempty()?,
         ))
     }
 
@@ -582,7 +583,7 @@ impl ValidatorSchema {
                     }
                 }
             })
-            .collect::<Result<HashMap<_, _>>>()?;
+            .partition_nonempty()?;
 
         let mut action_children = HashMap::new();
         for (euid, action) in action_fragments.iter() {
@@ -619,7 +620,7 @@ impl ValidatorSchema {
                     },
                 ))
             })
-            .collect::<Result<HashMap<_, _>>>()?;
+            .partition_nonempty()?;
 
         // We constructed entity types and actions with child maps, but we need
         // transitively closed descendants.
@@ -1345,7 +1346,7 @@ impl<'a> CommonTypeResolver<'a> {
                     attributes: BTreeMap::from_iter(
                         attributes
                             .into_iter()
-                            .map(|(attr, attr_ty)| {
+                            .map(|(attr, attr_ty)| -> Result<_> {
                                 Ok((
                                     attr,
                                     json_schema::TypeOfAttribute {
@@ -1355,7 +1356,7 @@ impl<'a> CommonTypeResolver<'a> {
                                     },
                                 ))
                             })
-                            .collect::<Result<Vec<(_, _)>>>()?,
+                            .partition_nonempty::<Vec<_>>()?,
                     ),
                     additional_attributes,
                 }),
@@ -2702,7 +2703,7 @@ pub(crate) mod test {
                 view_photo_uid,
                 [],
                 HashSet::new(),
-                HashSet::from([view_uid.clone(), read_uid.clone()]),
+                HashSet::from([view_uid, read_uid.clone()]),
                 [],
             )
         );

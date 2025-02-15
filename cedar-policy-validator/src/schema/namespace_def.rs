@@ -437,7 +437,7 @@ impl EntityTypesDef<ConditionalName> {
                 .defs
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<Result<_, TypeNotDefinedError>>()?,
+                .partition_nonempty()?,
         })
     }
 }
@@ -539,7 +539,7 @@ impl EntityTypeFragment<ConditionalName> {
                 let parents: HashSet<InternalName> = parents
                     .into_iter()
                     .map(|parent| parent.resolve(all_defs))
-                    .collect::<Result<_, TypeNotDefinedError>>()?;
+                    .partition_nonempty()?;
                 // Fully qualify typenames appearing in `tags`
                 let fully_qual_tags = tags
                     .map(|tags| tags.fully_qualify_type_references(all_defs))
