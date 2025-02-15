@@ -1609,6 +1609,31 @@ pub(crate) mod test {
         }
     }
 
+    #[test]
+    fn test_from_schema_file_undefined_entities_in_one_action() {
+        let src = json!({
+            "": {
+                "entityTypes": {
+                    "Test": {}
+                },
+                "actions": {
+                    "doTests": {
+                        "appliesTo": {
+                            "principalTypes": ["Usr", "Group"],
+                            "resourceTypes": ["Phoot"]
+                        }
+                    }
+                }
+            }
+        });
+        match ValidatorSchema::from_json_value(src, Extensions::all_available()) {
+            Err(SchemaError::TypeNotDefined(missing)) => {
+                assert_eq!(missing.undefined_types.len(), 3);
+            },
+            x  => panic!("Expected TypeNotDefined due to unknown entities in appliesTo, found: {:?}", x),
+        }
+    }
+
     // Undefined entity types "Grop", "Usr", "Phoot"
     #[test]
     fn test_from_schema_file_undefined_entities() {
