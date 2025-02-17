@@ -384,11 +384,12 @@ fn create_entity_map(
 /// if a structurally equal entity is found, the state of the map is unchanged.
 fn update_entity_map(map: &mut HashMap<EntityUID, Arc<Entity>>, entity: Arc<Entity>) -> Result<()> {
     match map.entry(entity.uid().clone()) {
-        hash_map::Entry::Occupied(entry) => {
+        hash_map::Entry::Occupied(occupied_entry) => {
             // Check whether the occupying entity is structurally equal to the
             // entity being processed
-            if !entity.deep_eq(entry.get()) {
-                return Err(EntitiesError::duplicate(entity.uid().clone()));
+            if !entity.deep_eq(occupied_entry.get()) {
+                let entry = occupied_entry.remove_entry();
+                return Err(EntitiesError::duplicate(entry.0));
             }
         }
         hash_map::Entry::Vacant(v) => {
