@@ -276,6 +276,34 @@ impl PolicySet {
         }
     }
 
+    /// Helper function for merge_policyset to construct a renaming
+    /// that would resolve any conflicting `PolicyID`s. We use the type parameter `T`
+    /// to allow this code to be applied to both Templates and Policies.
+    fn update_renaming<T>(
+        &self,
+        this_contents: &HashMap<PolicyID, T>,
+        other: &Self,
+        other_contents: &HashMap<PolicyID, T>,
+        renaming: &mut HashMap<PolicyID, PolicyID>,
+        start_ind: &mut u32,
+    ) where
+        T: PartialEq + Clone,
+    {
+        for (pid, ot) in other_contents {
+            if let Some(tt) = this_contents.get(pid) {
+                if tt != ot {
+                    let mut new_pid = PolicyID::from_string(format!("policy{}", start_ind));
+                    *start_ind += 1;
+                    while self.policy_id_is_bound(&new_pid) || other.policy_id_is_bound(&new_pid) {
+                        new_pid = PolicyID::from_string(format!("policy{}", start_ind));
+                        *start_ind += 1;
+                    }
+                    renaming.insert(pid.clone(), new_pid);
+                }
+            }
+        }
+    }
+
     /// Merges this `PolicySet` with another `PolicySet`.
     /// This `PolicySet` is modified while the other `PolicySet`
     /// remains unchanged.
@@ -296,51 +324,22 @@ impl PolicySet {
         rename_duplicates: bool,
     ) -> Result<HashMap<PolicyID, PolicyID>, PolicySetError> {
         // Check for conflicting policy ids. If there is a conflict either
-        // Throw an error or consturct a renaming (if rename_duplicates is true)
+        // throw an error or construct a renaming (if `rename_duplicates` is true)
         let mut min_id = 0;
         let mut renaming = HashMap::new();
-        for (pid, other_template) in &other.templates {
-            match self.templates.get(pid) {
-                Some(this_template) => {
-                    if this_template != other_template {
-                        if rename_duplicates {
-                            let mut new_pid = PolicyID::from_string(format!("policy{}", min_id));
-                            min_id += 1;
-                            // Search for first pid that is not used in this or other `PolicySet`
-                            while self.policy_id_is_bound(&new_pid)
-                                || other.policy_id_is_bound(&new_pid)
-                            {
-                                new_pid = PolicyID::from_string(format!("policy{}", min_id));
-                                min_id += 1;
-                            }
-                            renaming.insert(pid.clone(), new_pid);
-                        } else {
-                            return Err(PolicySetError::Occupied { id: pid.clone() });
-                        }
-                    }
-                }
-                None => (),
-            }
-        }
-        for (pid, other_policy) in &other.links {
-            match self.links.get(pid) {
-                Some(this_policy) => {
-                    if this_policy != other_policy {
-                        if rename_duplicates {
-                            let mut new_pid = PolicyID::from_string(format!("policy{}", min_id));
-                            min_id += 1;
-                            // Search for first pid of the form "policy{i}" that is not used in this or other `PolicySet`
-                            while self.policy_id_is_bound(&new_pid)
-                                || other.policy_id_is_bound(&new_pid)
-                            {
-                                new_pid = PolicyID::from_string(format!("policy{}", min_id));
-                                min_id += 1;
-                            }
-                            renaming.insert(pid.clone(), new_pid);
-                        } else {
-                            return Err(PolicySetError::Occupied { id: pid.clone() });
-                        }
-                    }
+        self.update_renaming(
+            &self.templates,
+            other,
+            &other.templates,
+            &mut renaming,
+            &mut min_id,
+        );
+        self.update_renaming(&self.links, other, &other.links, &mut renaming, &mut min_id);
+        // If `rename_dupilicates` is false, then throw an error if any renaming should happen
+        if !rename_duplicates {
+            match renaming.keys().next() {
+                Some(pid) => {
+                    return Err(PolicySetError::Occupied { id: pid.clone() });
                 }
                 None => (),
             }

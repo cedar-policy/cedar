@@ -2237,6 +2237,31 @@ impl PolicySet {
         Ok(set)
     }
 
+    /// Helper function for merge_policyset
+    /// Merges two sets and avoids name clashes by using the provided
+    /// renaming. The type parameter `T` allows this code to be used for
+    /// both Templates and Policies.
+    fn merge_sets<T>(
+        this: &mut HashMap<PolicyId, T>,
+        other: &HashMap<PolicyId, T>,
+        renaming: &HashMap<PolicyId, PolicyId>,
+    ) where
+        T: PartialEq + Clone,
+    {
+        for (pid, ot) in other {
+            match renaming.get(&pid) {
+                Some(new_pid) => {
+                    this.insert(new_pid.clone(), ot.clone());
+                }
+                None => {
+                    if this.get(pid).is_none() {
+                        this.insert(pid.clone(), ot.clone());
+                    }
+                }
+            }
+        }
+    }
+
     /// Merges this `PolicySet` with another `PolicySet`.
     /// This `PolicySet` is modified while the other `PolicySet`
     /// remains unchanged.
@@ -2262,32 +2287,8 @@ impl PolicySet {
                     .into_iter()
                     .map(|(old_pid, new_pid)| (PolicyId::new(old_pid), PolicyId::new(new_pid)))
                     .collect();
-                for (pid, policy) in &other.policies {
-                    match renaming.get(&pid) {
-                        Some(new_pid) => {
-                            self.policies.insert(new_pid.clone(), policy.clone());
-                        }
-                        None => match self.policies.get(&pid) {
-                            Some(_) => (),
-                            None => {
-                                self.policies.insert(pid.clone(), policy.clone());
-                            }
-                        },
-                    }
-                }
-                for (pid, template) in &other.templates {
-                    match renaming.get(&pid) {
-                        Some(new_pid) => {
-                            self.templates.insert(new_pid.clone(), template.clone());
-                        }
-                        None => match self.templates.get(&pid) {
-                            Some(_) => (),
-                            None => {
-                                self.templates.insert(pid.clone(), template.clone());
-                            }
-                        },
-                    }
-                }
+                Self::merge_sets(&mut self.templates, &other.templates, &renaming);
+                Self::merge_sets(&mut self.policies, &other.policies, &renaming);
                 Ok(renaming)
             }
             Err(ast::PolicySetError::Occupied { id }) => Err(PolicySetError::AlreadyDefined(
