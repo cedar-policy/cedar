@@ -30,7 +30,8 @@ pub enum EntitiesError {
     #[error("error during entity deserialization")]
     #[diagnostic(transparent)]
     Deserialization(#[from] crate::entities::json::err::JsonDeserializationError),
-    /// Error constructing the Entities collection as there is a duplicate Entity UID
+    /// Error constructing the Entities collection due to encountering two different entities
+    /// with the same Entity UID
     #[error(transparent)]
     #[diagnostic(transparent)]
     Duplicate(Duplicate),

@@ -477,7 +477,7 @@ mod test {
     use cool_asserts::assert_matches;
 
     #[test]
-    fn reject_duplicates() {
+    fn reject_inconsistent_duplicates() {
         let json = serde_json::json!([
             {
                 "uid" : {
@@ -492,7 +492,7 @@ mod test {
                     "type" : "User",
                     "id" : "alice"
                 },
-                "attrs" : {},
+                "attrs" : {"location": "Greenland"},
                 "parents": []
             }
         ]);
