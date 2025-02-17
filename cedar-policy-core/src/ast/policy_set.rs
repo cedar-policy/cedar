@@ -832,21 +832,15 @@ mod test {
         let pid0 = PolicyID::from_string("policy0");
         let pid1 = PolicyID::from_string("policy1");
         let pid2 = PolicyID::from_string("policy2");
-        let p1 = parser::parse_policy(
-            Some(pid0.clone()),
-            "permit(principal,action,resource);",
-        )
-        .expect("Failed to parse");
+        let p1 = parser::parse_policy(Some(pid0.clone()), "permit(principal,action,resource);")
+            .expect("Failed to parse");
         let p2 = parser::parse_policy(
             Some(pid1.clone()),
             "permit(principal,action,resource) when { false };",
         )
         .expect("Failed to parse");
-        let p3 = parser::parse_policy(
-            Some(pid1.clone()),
-            "permit(principal,action,resource);",
-        )
-        .expect("Failed to parse");
+        let p3 = parser::parse_policy(Some(pid1.clone()), "permit(principal,action,resource);")
+            .expect("Failed to parse");
         let p4 = parser::parse_policy(
             Some(pid2.clone()),
             "permit(principal,action,resource) when { true };",
@@ -891,7 +885,6 @@ mod test {
                     Some(new_p4) => assert_eq!(Policy::from(p4), new_p4.clone()),
                     None => (),
                 }
-
             }
             Err(PolicySetError::Occupied { id }) => panic!(
                 "There should not have been an error! Unexpected conflict for id {}",
