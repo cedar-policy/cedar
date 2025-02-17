@@ -264,6 +264,110 @@ impl PolicySet {
         Ok(())
     }
 
+    fn policy_id_is_bound(&self, pid: &PolicyID) -> bool {
+        match self.templates.get(pid) {
+            Some(_) => true,
+            None => match self.links.get(pid) {
+                Some(_) => true,
+                None => false,
+            },
+        }
+    }
+
+    ///
+    pub fn merge_policyset(
+        &mut self,
+        other: &PolicySet,
+        rename_duplicates: bool,
+    ) -> Result<HashMap<PolicyID, PolicyID>, PolicySetError> {
+        // Check for conflicting policy ids. If there is a conflict either
+        // Throw an error or consturct a renaming (if rename_duplicates is true)
+        let mut min_id = 0;
+        let mut renaming = HashMap::new();
+        for (pid, other_template) in &other.templates {
+            match self.templates.get(pid) {
+                Some(this_template) => {
+                    if this_template != other_template {
+                        if rename_duplicates {
+                            let mut new_pid = PolicyID::from_string(format!("policy{}", min_id));
+                            min_id += 1;
+                            // Search for first pid that is not used in this or other `PolicySet`
+                            while self.policy_id_is_bound(&new_pid)
+                                || other.policy_id_is_bound(&new_pid)
+                            {
+                                new_pid = PolicyID::from_string(format!("policy{}", min_id));
+                                min_id += 1;
+                            }
+                            renaming.insert(pid.clone(), new_pid);
+                        } else {
+                            return Err(PolicySetError::Occupied { id: pid.clone() });
+                        }
+                    }
+                }
+                None => (),
+            }
+        }
+        for (pid, other_policy) in &other.links {
+            match self.links.get(pid) {
+                Some(this_policy) => {
+                    if this_policy != other_policy {
+                        if rename_duplicates {
+                            let mut new_pid = PolicyID::from_string(format!("policy{}", min_id));
+                            min_id += 1;
+                            // Search for first pid of the form "policy{i}" that is not used in this or other `PolicySet`
+                            while self.policy_id_is_bound(&new_pid)
+                                || other.policy_id_is_bound(&new_pid)
+                            {
+                                new_pid = PolicyID::from_string(format!("policy{}", min_id));
+                                min_id += 1;
+                            }
+                            renaming.insert(pid.clone(), new_pid);
+                        } else {
+                            return Err(PolicySetError::Occupied { id: pid.clone() });
+                        }
+                    }
+                }
+                None => (),
+            }
+        }
+        // either there are no conflicting policy ids
+        // or we should rename conflicting policy ids (using renaming) to avoid conflicting policy ids
+        for (pid, other_template) in &other.templates {
+            let pid = match renaming.get(pid) {
+                Some(new_pid) => new_pid,
+                None => pid,
+            };
+            self.templates.insert(pid.clone(), other_template.clone());
+        }
+        for (pid, other_policy) in &other.links {
+            let pid = match renaming.get(pid) {
+                Some(new_pid) => new_pid,
+                None => pid,
+            };
+            self.links.insert(pid.clone(), other_policy.clone());
+        }
+        for (tid, other_template_link_set) in &other.template_to_links_map {
+            let tid = match renaming.get(tid) {
+                Some(new_tid) => new_tid,
+                None => tid,
+            };
+            let mut this_template_link_set = match self.template_to_links_map.entry(tid.clone()) {
+                Entry::Occupied(entry) => entry.remove(),
+                Entry::Vacant(_) => HashSet::new(),
+            };
+            for pid in other_template_link_set {
+                let pid = match renaming.get(pid) {
+                    Some(new_pid) => new_pid,
+                    None => pid,
+                };
+                this_template_link_set.insert(pid.clone());
+            }
+            self.template_to_links_map
+                .insert(tid.clone(), this_template_link_set);
+        }
+        Ok(renaming)
+    }
+
     /// Remove a static `Policy`` from the `PolicySet`.
     pub fn remove_static(
         &mut self,

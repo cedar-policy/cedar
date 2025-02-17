@@ -2230,6 +2230,68 @@ impl PolicySet {
         Ok(set)
     }
 
+    /// Merges this `PolicySet` with another `PolicySet`.
+    /// This `PolicySet` is modified while the other `PolicySet`
+    /// remains unchanged.
+    ///
+    /// If this `PolicySet` and the other provided `PolicySet` have
+    /// policies with conflicting `PolicyId`s the following will happen:
+    ///
+    /// 1.) If the two policies associated with the `PolicyId` are equal
+    /// then the policy from the other `PolicySet` will not be added.
+    /// 2.) If the two policies associated wit the `PolicyId` are not equal, and
+    /// 2a.) rename_duplicates is false, then this function will raise a `PolicySetError`.
+    /// 2b.) rename_duplicates is true, then this funtion will rename the policy
+    /// originating from the other `PolicySet`.
+    ///
+    /// The renaming of policies in the other `PolicySet` is returned upon succes.
+    pub fn merge_policyset(
+        &mut self,
+        other: &PolicySet,
+        rename_duplicates: bool,
+    ) -> Result<HashMap<PolicyId, PolicyId>, PolicySetError> {
+        match self.ast.merge_policyset(&other.ast, rename_duplicates) {
+            Ok(renaming) => {
+                let renaming: HashMap<PolicyId, PolicyId> = renaming
+                    .into_iter()
+                    .map(|(old_pid, new_pid)| (PolicyId::new(old_pid), PolicyId::new(new_pid)))
+                    .collect();
+                for (pid, policy) in &other.policies {
+                    match renaming.get(&pid) {
+                        Some(new_pid) => {
+                            self.policies.insert(new_pid.clone(), policy.clone());
+                        }
+                        None => match self.policies.get(&pid) {
+                            Some(_) => (),
+                            None => {
+                                self.policies.insert(pid.clone(), policy.clone());
+                            }
+                        },
+                    }
+                }
+                for (pid, template) in &other.templates {
+                    match renaming.get(&pid) {
+                        Some(new_pid) => {
+                            self.templates.insert(new_pid.clone(), template.clone());
+                        }
+                        None => match self.templates.get(&pid) {
+                            Some(_) => (),
+                            None => {
+                                self.templates.insert(pid.clone(), template.clone());
+                            }
+                        },
+                    }
+                }
+                Ok(renaming)
+            }
+            Err(ast::PolicySetError::Occupied { id }) => Err(PolicySetError::AlreadyDefined(
+                policy_set_errors::AlreadyDefined {
+                    id: PolicyId::new(id),
+                },
+            )),
+        }
+    }
+
     /// Add an static policy to the `PolicySet`. To add a template instance, use
     /// `link` instead. This function will return an error (and not modify
     /// the `PolicySet`) if a template-linked policy is passed in.
