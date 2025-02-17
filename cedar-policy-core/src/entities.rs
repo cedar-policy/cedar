@@ -123,10 +123,10 @@ impl Entities {
     }
 
     /// Adds the [`crate::ast::Entity`]s in the iterator to this [`Entities`].
-    /// Fails if there is a pair of non-identical entities in the passed iterator
-    /// with the same Entity UID, or there is an entity in the passed iterator
-    /// with the same Entity UID as a non-identical entity in this structure.
-    /// Fails if any error is encountered in the transitive closure computation.
+    /// Fails if
+    ///  - there is a pair of non-identical entities in the passed iterator with the same Entity UID, or
+    ///  - there is an entity in the passed iterator with the same Entity UID as a non-identical entity in this structure, or
+    ///  - any error is encountered in the transitive closure computation.
     ///
     /// If `schema` is present, then the added entities will be validated
     /// against the `schema`, returning an error if they do not conform to the
