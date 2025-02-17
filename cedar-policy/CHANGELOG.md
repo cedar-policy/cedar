@@ -13,7 +13,8 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ## [Unreleased]
 Cedar Language Version: TBD
 
-### Changed 
+### Changed
+
 - Changed `Entities::add_entities` and `Entities::from_entities` to ignore structurally equal entities with the same Entity UID.
 
 ### Added
