@@ -3530,14 +3530,14 @@ mod schema_based_parsing_tests {
     }
 
     #[test]
-    fn entities_duplicates_fail() {
+    fn entities_inconsistent_duplicates_fail() {
         let json = serde_json::json!([
             {
                 "uid" : {
                     "type" : "User",
                     "id" : "alice"
                 },
-                "attrs" : {},
+                "attrs" : {"location": "Greenland"},
                 "parents": []
             },
             {

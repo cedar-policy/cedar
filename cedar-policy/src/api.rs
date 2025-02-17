@@ -428,7 +428,8 @@ impl Entities {
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
     /// ## Errors
-    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::Duplicate`] if there is a pair of non-identical entities in `entities` with the same Entity UID,
+    ///   or there is an entity in `entities` with the same Entity UID as a non-identical entity in this structure
     /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
     ///   to the schema
     pub fn add_entities(
@@ -478,7 +479,9 @@ impl Entities {
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
     /// ## Errors
-    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::Duplicate`] if there is a pair of non-identical entities in
+    ///   `entities` with the same Entity UID, or there is an entity in `entities` with the
+    ///   same Entity UID as a non-identical entity in this structure
     /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
     ///   to the schema
     /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
@@ -516,7 +519,9 @@ impl Entities {
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
     /// ## Errors
-    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::Duplicate`] if there is a pair of non-identical entities in
+    ///   `entities` with the same Entity UID, or there is an entity in `entities` with the same
+    ///   Entity UID as a non-identical entity in this structure
     /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
     ///   to the schema
     /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
@@ -555,7 +560,9 @@ impl Entities {
     /// to not call this method in a loop.
     ///
     /// ## Errors
-    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::Duplicate`] if there is a pair of non-identical entities in `entities`
+    ///   with the same Entity UID, or there is an entity in `entities` with the same Entity UID as a
+    ///   non-identical entity in this structure
     /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
     ///   to the schema
     /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
