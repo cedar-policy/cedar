@@ -2241,17 +2241,16 @@ impl PolicySet {
     /// This `PolicySet` is modified while the other `PolicySet`
     /// remains unchanged.
     ///
-    /// If this `PolicySet` and the other provided `PolicySet` have
-    /// policies with conflicting `PolicyId`s the following will happen:
+    /// The flag `rename_duplicates` controls the expected behavior
+    /// when a `PolicyId` in this and the other `PolicySet` conflict.
     ///
-    /// 1.) If the two policies associated with the `PolicyId` are equal
-    /// then the policy from the other `PolicySet` will not be added.
-    /// 2.) If the two policies associated wit the `PolicyId` are not equal, and
-    /// 2a.) rename_duplicates is false, then this function will raise a `PolicySetError`.
-    /// 2b.) rename_duplicates is true, then this funtion will rename the policy
-    /// originating from the other `PolicySet`.
+    /// When `rename_duplicates` is false, conflicting `PolicyId`s result
+    /// in a AlreadyDefined `PolicySetError`.
     ///
-    /// The renaming of policies in the other `PolicySet` is returned upon succes.
+    /// Otherwise, when `rename_duplicates` is true, conflicting `PolicyId`s from
+    /// the other `PolicySet` are automatically renamed to avoid conflict.
+    /// This renaming is returned as a Hashmap from the old `PolicyId` to the
+    /// renamed `PolicyId`.
     pub fn merge_policyset(
         &mut self,
         other: &PolicySet,
