@@ -2245,7 +2245,7 @@ impl PolicySet {
     /// when a `PolicyId` in this and the other `PolicySet` conflict.
     ///
     /// When `rename_duplicates` is false, conflicting `PolicyId`s result
-    /// in a AlreadyDefined `PolicySetError`.
+    /// in a `PolicySetError::AlreadyDefined` error.
     ///
     /// Otherwise, when `rename_duplicates` is true, conflicting `PolicyId`s from
     /// the other `PolicySet` are automatically renamed to avoid conflict.
