@@ -32,7 +32,6 @@ pub struct ExprWithErrsBuilder<T = ()> {
     data: T,
 }
 
-#[cfg(feature = "error-ast")]
 impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
     type Expr = Expr<T>;
 
@@ -444,7 +443,6 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
     }
 }
 
-#[cfg(feature = "error-ast")]
 impl<T> ExprWithErrsBuilder<T> {
     /// Construct an `Expr` containing the `data` and `source_loc` in this
     /// `ExprBuilder` and the given `ExprKind`.
