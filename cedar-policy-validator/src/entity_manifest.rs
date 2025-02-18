@@ -667,11 +667,11 @@ fn entity_manifest_from_expr(
             .get_or_has_attr(attr)
             .empty_paths()),
         #[cfg(feature = "error-ast")]
-        ExprKind::Error { .. } => {
-          Err(EntityManifestError::UnsupportedCedarFeature(UnsupportedCedarFeatureError {
-            feature: "No support for AST error nodes".into()
-          }) )
-        }
+        ExprKind::Error { .. } => Err(EntityManifestError::UnsupportedCedarFeature(
+            UnsupportedCedarFeatureError {
+                feature: "No support for AST error nodes".into(),
+            },
+        )),
     }
 }
 
