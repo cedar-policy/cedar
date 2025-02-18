@@ -80,8 +80,9 @@ pub enum FromJsonError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidActionType(#[from] parse_errors::InvalidActionType),
+    /// Returned when we have an error node in an AST - this is not supported
     #[error("AST error node")]
-    ErrorNode,
+    ASTErrorNode,
 }
 
 /// Errors arising while converting a policy set from its JSON representation (aka EST) into an AST

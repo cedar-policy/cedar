@@ -53,6 +53,7 @@ pub trait ExprBuilder: Clone {
     }
 
     /// Build an expression that failed to parse - can optionally include subexpressions that parsed successfully
+    #[cfg(feature = "error-ast")]
     fn error(self, parse_errors: ParseErrors) -> Result<Self::Expr, Self::ErrorType>;
 
     /// Build an expression storing this information

@@ -67,7 +67,7 @@ impl Validator {
                 PolicyCheck::Success(e) | PolicyCheck::Irrelevant(_, e) => {
                     let res = Self::check_entity_deref_level_helper(&e, max_allowed_level, t.id());
                     if let Some(e) = res.1 {
-                        errs.push(ValidationError::EntityDerefLevelViolation(e))
+                        errs.push(e)
                     }
                 }
                 // PANIC SAFETY: We only validate the level after validation passed
@@ -140,12 +140,15 @@ impl Validator {
                 if new_level.level < 0 {
                     (
                         new_level,
-                        Some(EntityDerefLevelViolation {
-                            source_loc: e.source_loc().cloned(),
-                            policy_id: policy_id.clone(),
-                            actual_level: new_level,
-                            allowed_level: *max_allowed_level,
-                        }.into()),
+                        Some(
+                            EntityDerefLevelViolation {
+                                source_loc: e.source_loc().cloned(),
+                                policy_id: policy_id.clone(),
+                                actual_level: new_level,
+                                allowed_level: *max_allowed_level,
+                            }
+                            .into(),
+                        ),
                     )
                 } else {
                     (new_level, None)
@@ -199,12 +202,15 @@ impl Validator {
                             if new_level.level < 0 {
                                 (
                                     new_level,
-                                    Some(EntityDerefLevelViolation {
-                                        source_loc: e.source_loc().cloned(),
-                                        policy_id: policy_id.clone(),
-                                        actual_level: new_level,
-                                        allowed_level: *max_allowed_level,
-                                    }.into()),
+                                    Some(
+                                        EntityDerefLevelViolation {
+                                            source_loc: e.source_loc().cloned(),
+                                            policy_id: policy_id.clone(),
+                                            actual_level: new_level,
+                                            allowed_level: *max_allowed_level,
+                                        }
+                                        .into(),
+                                    ),
                                 )
                             } else {
                                 (new_level, None)
@@ -241,7 +247,15 @@ impl Validator {
                 Self::min(v)
             }
             #[cfg(feature = "error-ast")]
-            ExprKind::Error { .. } => ValidationError::InternalInvariantViolation(InternalInvariantViolation(source_loc: None, todo!()))
+            ExprKind::Error { .. } => (
+                EntityDerefLevel { level: 0 },
+                Some(ValidationError::InternalInvariantViolation(
+                    InternalInvariantViolation {
+                        source_loc: None,
+                        policy_id: policy_id.clone(),
+                    },
+                )),
+            ),
         }
     }
 }

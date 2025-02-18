@@ -696,6 +696,7 @@ impl ExprBuilder for Builder {
         })
     }
 
+    #[cfg(feature = "error-ast")]
     fn error(self, parse_errors: ParseErrors) -> Result<Self::Expr, Self::ErrorType> {
         Ok(Expr::ExprNoExt(ExprNoExt::Error(
             AstExprErrorKind::InvalidExpr(parse_errors.to_string()),
@@ -864,7 +865,8 @@ impl Expr {
                     }
                     Ok(Expr::ExprNoExt(ExprNoExt::Record(new_m)))
                 }
-                ExprNoExt::Error(_) => Err(JsonDeserializationError::ErrorNode),
+                #[cfg(feature = "error-ast")]
+                ExprNoExt::Error(_) => Err(JsonDeserializationError::ASTErrorNode),
             },
             Expr::ExtFuncCall(e_fn_call) => {
                 let mut new_m = HashMap::new();
@@ -1058,7 +1060,8 @@ impl Expr {
                     }),
                 }
             }
-            Expr::ExprNoExt(ExprNoExt::Error(_)) => Err(FromJsonError::ErrorNode),
+            #[cfg(feature = "error-ast")]
+            Expr::ExprNoExt(ExprNoExt::Error(_)) => Err(FromJsonError::ASTErrorNode),
         }
     }
 }
@@ -1126,8 +1129,8 @@ impl<T: Clone> From<ast::Expr<T>> for Expr {
                         .map(|(k, v)| (k, v.into())),
                 )
                 .unwrap(),
-            // PANIC SAFETY: error type is Infallible so can never happen
             #[cfg(feature = "error-ast")]
+            // PANIC SAFETY: error type is Infallible so can never happen
             #[allow(clippy::unwrap_used)]
             ast::ExprKind::Error { .. } => Builder::new()
                 .error(ParseErrors::singleton(ToASTError::new(
@@ -1580,8 +1583,14 @@ fn maybe_with_parens(
         Expr::ExprNoExt(ExprNoExt::Like { .. }) |
         Expr::ExprNoExt(ExprNoExt::Is { .. }) |
         Expr::ExprNoExt(ExprNoExt::If { .. }) |
-        Expr::ExprNoExt(ExprNoExt::Error { .. }) |
         Expr::ExtFuncCall { .. } => {
+            write!(f, "(")?;
+            BoundedDisplay::fmt(expr, f, n)?;
+            write!(f, ")")?;
+            Ok(())
+        },
+        #[cfg(feature = "error-ast")]
+        Expr::ExprNoExt(ExprNoExt::Error { .. }) => {
             write!(f, "(")?;
             BoundedDisplay::fmt(expr, f, n)?;
             write!(f, ")")?;

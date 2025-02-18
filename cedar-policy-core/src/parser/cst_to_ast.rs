@@ -888,15 +888,23 @@ impl Node<Option<cst::Str>> {
     }
 }
 
+#[cfg(feature = "error-ast")]
+fn error_ast_conversion<Build: ExprBuilder>(error: ParseErrors) -> Result<Build::Expr> {
+    let res = Build::new().error(error.clone());
+    return match res {
+        Ok(r) => Ok(r),
+        Err(_) => Err(error),
+    };
+}
+
 /// Since ExprBuilder ErrorType can be Infallible or ParseErrors, if we get an error from building the node pass the ParseErrors along
 fn convert_expr_error_to_parse_error<Build: ExprBuilder>(
     error: ParseErrors,
 ) -> Result<Build::Expr> {
-    let res = Build::new().error(error.clone());
-    match res {
-        Ok(r) => Ok(r),
-        Err(_) => Err(error),
-    }
+    #[cfg(feature = "error-ast")]
+    return error_ast_conversion::<Build>(error);
+    #[allow(unreachable_code)]
+    Err(error)
 }
 
 /// Result type of conversion when we expect an Expr, Var, Name, or String.

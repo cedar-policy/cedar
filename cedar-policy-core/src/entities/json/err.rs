@@ -123,7 +123,7 @@ pub enum JsonDeserializationError {
     /// When trying to deserialize an AST with an error in it - this should fail
     #[cfg(feature = "error-ast")]
     #[error("Unable to deserialize an AST Error node")]
-    ErrorNode,
+    ASTErrorNode,
     /// Raised when a JsonValue contains the no longer supported `__expr` escape
     #[error("{0}, the `__expr` escape is no longer supported")]
     #[diagnostic(help("to create an entity reference, use `__entity`; to create an extension value, use `__extn`; and for all other values, use JSON directly"))]

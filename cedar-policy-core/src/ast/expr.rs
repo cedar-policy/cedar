@@ -1184,6 +1184,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     }
 
     /// Don't support AST Error nodes - return the error right back
+    #[cfg(feature = "error-ast")]
     fn error(self, parse_errors: ParseErrors) -> Result<Self::Expr, Self::ErrorType> {
         Err(parse_errors)
     }
