@@ -211,6 +211,8 @@ impl<'a> TypecheckAnswer<'a> {
         let ans = f(unwrapped);
         if recusion_limit_reached {
             TypecheckAnswer::RecursionLimit
+        } else if ast_has_errors {
+            TypecheckAnswer::ErrorAstNode
         } else if any_failed {
             ans.into_fail()
         } else {
