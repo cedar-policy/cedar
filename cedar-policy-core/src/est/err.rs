@@ -81,6 +81,7 @@ pub enum FromJsonError {
     #[diagnostic(transparent)]
     InvalidActionType(#[from] parse_errors::InvalidActionType),
     /// Returned when we have an error node in an AST - this is not supported
+    #[cfg(feature = "error-ast")]
     #[error("AST error node")]
     ASTErrorNode,
 }

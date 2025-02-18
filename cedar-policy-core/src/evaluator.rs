@@ -26,7 +26,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 mod err;
-use crate::evaluator::EvaluationError::ErrorExpr;
+#[cfg(feature = "error-ast")]
+use crate::evaluator::EvaluationError::ASTErrorExpr;
 pub use err::evaluation_errors;
 pub use err::EvaluationError;
 pub(crate) use err::*;
@@ -762,7 +763,7 @@ impl<'e> Evaluator<'e> {
                 }
             }
             #[cfg(feature = "error-ast")]
-            ExprKind::Error { .. } => Err(ErrorExpr(ErrorExprError {
+            ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError {
                 source_loc: loc.cloned(),
             })),
         }

@@ -137,8 +137,8 @@ impl Node<Option<cst::Policies>> {
                         };
                     }
                 }
-                Ok(Either::Left(inline_policy)) => {
-                    if let Err(e) = pset.add_static(inline_policy) {
+                Ok(Either::Left(static_policy)) => {
+                    if let Err(e) = pset.add_static(static_policy) {
                         match e {
                             PolicySetError::Occupied { id } => all_errs.push(
                                 self.to_ast_err(ToASTErrorKind::DuplicatePolicyId(id))
@@ -163,99 +163,13 @@ impl Node<Option<cst::Policies>> {
 }
 
 impl Node<Option<cst::Policy>> {
-    /// Convert `cst::Policy` to an AST `StaticPolicy`. (Will fail if the CST is for a template)
-    #[cfg(feature = "error-ast")]
-    pub fn to_policy_with_errors(&self, id: ast::PolicyID) -> Result<ast::StaticPolicy> {
-        let maybe_template = self.to_policy_template_with_errors(id);
-        let maybe_policy = maybe_template.map(ast::StaticPolicy::try_from);
-        match maybe_policy {
-            // Successfully parsed a static policy
-            Ok(Ok(p)) => Ok(p),
-            // The source parsed as a template, but not a static policy
-            Ok(Err(ast::UnexpectedSlotError::FoundSlot(slot))) => Err(ToASTError::new(
-                ToASTErrorKind::expected_static_policy(slot.clone()),
-                slot.loc.unwrap_or_else(|| self.loc.clone()),
-            )
-            .into()),
-            // The source failed to parse completely. If the parse errors include
-            // `SlotsInConditionClause` also add an `ExpectedStaticPolicy` error.
-            Err(mut errs) => {
-                let new_errs = errs
-                    .iter()
-                    .filter_map(|err| match err {
-                        ParseError::ToAST(err) => match err.kind() {
-                            ToASTErrorKind::SlotsInConditionClause(inner) => Some(ToASTError::new(
-                                ToASTErrorKind::expected_static_policy(inner.slot.clone()),
-                                err.source_loc().clone(),
-                            )),
-                            _ => None,
-                        },
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-                errs.extend(new_errs);
-                Err(errs)
-            }
-        }
-    }
-
     /// Convert `cst::Policy` to `ast::Template`. Works for static policies as
-    /// well, which will become templates with 0 slots
-    #[cfg(feature = "error-ast")]
-    pub fn to_policy_template_with_errors(&self, id: ast::PolicyID) -> Result<ast::Template> {
-        let policy = self.try_as_inner()?;
-
-        // convert effect
-        let maybe_effect = policy.effect.to_effect();
-
-        // convert annotations
-        let maybe_annotations = policy.get_ast_annotations(|value, loc| {
-            ast::Annotation::with_optional_value(value, Some(loc.clone()))
-        });
-
-        // convert scope
-        let maybe_scope = policy.extract_scope();
-
-        // convert conditions
-        let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
-            let (e, is_when) = c.to_expr::<ExprWithErrsBuilder<()>>()?;
-            let slot_errs = e.slots().map(|slot| {
-                ToASTError::new(
-                    ToASTErrorKind::slots_in_condition_clause(
-                        slot.clone(),
-                        if is_when { "when" } else { "unless" },
-                    ),
-                    slot.loc.unwrap_or_else(|| c.loc.clone()),
-                )
-                .into()
-            });
-            match ParseErrors::from_iter(slot_errs) {
-                Some(errs) => Err(errs),
-                None => Ok(e),
-            }
-        }));
-
-        let (effect, annotations, (principal, action, resource), conds) =
-            flatten_tuple_4(maybe_effect, maybe_annotations, maybe_scope, maybe_conds)?;
-        Ok(construct_template_policy(
-            id,
-            annotations.into(),
-            effect,
-            principal,
-            action,
-            resource,
-            conds,
-            &self.loc,
-        ))
-    }
-
-    /// Convert `cst::Policy` to `ast::Template`. Works for inline policies as
     /// well, which will become templates with 0 slots
     pub fn to_template(&self, id: ast::PolicyID) -> Result<ast::Template> {
         self.to_policy_template(id)
     }
 
-    /// Convert `cst::Policy` to an AST `InlinePolicy` or `Template`
+    /// Convert `cst::Policy` to an AST `StaticPolicy` or `Template`
     pub fn to_policy_or_template(
         &self,
         id: ast::PolicyID,
@@ -271,7 +185,7 @@ impl Node<Option<cst::Policy>> {
         }
     }
 
-    /// Convert `cst::Policy` to an AST `InlinePolicy`. (Will fail if the CST is for a template)
+    /// Convert `cst::Policy` to an AST `StaticPolicy`. (Will fail if the CST is for a template)
     pub fn to_policy(&self, id: ast::PolicyID) -> Result<ast::StaticPolicy> {
         let maybe_template = self.to_policy_template(id);
         let maybe_policy = maybe_template.map(ast::StaticPolicy::try_from);
@@ -325,6 +239,98 @@ impl Node<Option<cst::Policy>> {
         // convert conditions
         let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
             let (e, is_when) = c.to_expr::<ast::ExprBuilder<()>>()?;
+            let slot_errs = e.slots().map(|slot| {
+                ToASTError::new(
+                    ToASTErrorKind::slots_in_condition_clause(
+                        slot.clone(),
+                        if is_when { "when" } else { "unless" },
+                    ),
+                    slot.loc.unwrap_or_else(|| c.loc.clone()),
+                )
+                .into()
+            });
+            match ParseErrors::from_iter(slot_errs) {
+                Some(errs) => Err(errs),
+                None => Ok(e),
+            }
+        }));
+
+        let (effect, annotations, (principal, action, resource), conds) =
+            flatten_tuple_4(maybe_effect, maybe_annotations, maybe_scope, maybe_conds)?;
+        Ok(construct_template_policy(
+            id,
+            annotations.into(),
+            effect,
+            principal,
+            action,
+            resource,
+            conds,
+            &self.loc,
+        ))
+    }
+
+    /// Convert `cst::Policy` to an AST `StaticPolicy`. (Will fail if the CST is for a template)
+    /// NOTE: This function allows partial parsing and can produce AST Error nodes
+    /// These cannot be evaluated
+    /// Should ONLY be used to examine a partially constructed AST from invalid Cedar
+    #[cfg(feature = "error-ast")]
+    pub fn to_policy_with_errors(&self, id: ast::PolicyID) -> Result<ast::StaticPolicy> {
+        let maybe_template = self.to_policy_template_with_errors(id);
+        let maybe_policy = maybe_template.map(ast::StaticPolicy::try_from);
+        match maybe_policy {
+            // Successfully parsed a static policy
+            Ok(Ok(p)) => Ok(p),
+            // The source parsed as a template, but not a static policy
+            Ok(Err(ast::UnexpectedSlotError::FoundSlot(slot))) => Err(ToASTError::new(
+                ToASTErrorKind::expected_static_policy(slot.clone()),
+                slot.loc.unwrap_or_else(|| self.loc.clone()),
+            )
+            .into()),
+            // The source failed to parse completely. If the parse errors include
+            // `SlotsInConditionClause` also add an `ExpectedStaticPolicy` error.
+            Err(mut errs) => {
+                let new_errs = errs
+                    .iter()
+                    .filter_map(|err| match err {
+                        ParseError::ToAST(err) => match err.kind() {
+                            ToASTErrorKind::SlotsInConditionClause(inner) => Some(ToASTError::new(
+                                ToASTErrorKind::expected_static_policy(inner.slot.clone()),
+                                err.source_loc().clone(),
+                            )),
+                            _ => None,
+                        },
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                errs.extend(new_errs);
+                Err(errs)
+            }
+        }
+    }
+
+    /// Convert `cst::Policy` to `ast::Template`. Works for static policies as
+    /// well, which will become templates with 0 slots
+    /// NOTE: This function allows partial parsing and can produce AST Error nodes
+    /// These cannot be evaluated
+    /// Should ONLY be used to examine a partially constructed AST from invalid Cedar
+    #[cfg(feature = "error-ast")]
+    pub fn to_policy_template_with_errors(&self, id: ast::PolicyID) -> Result<ast::Template> {
+        let policy = self.try_as_inner()?;
+
+        // convert effect
+        let maybe_effect = policy.effect.to_effect();
+
+        // convert annotations
+        let maybe_annotations = policy.get_ast_annotations(|value, loc| {
+            ast::Annotation::with_optional_value(value, Some(loc.clone()))
+        });
+
+        // convert scope
+        let maybe_scope = policy.extract_scope();
+
+        // convert conditions
+        let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
+            let (e, is_when) = c.to_expr::<ExprWithErrsBuilder<()>>()?;
             let slot_errs = e.slots().map(|slot| {
                 ToASTError::new(
                     ToASTErrorKind::slots_in_condition_clause(
@@ -889,12 +895,12 @@ impl Node<Option<cst::Str>> {
 }
 
 #[cfg(feature = "error-ast")]
-fn error_ast_conversion<Build: ExprBuilder>(error: ParseErrors) -> Result<Build::Expr> {
+fn build_ast_error_node_if_possible<Build: ExprBuilder>(error: ParseErrors) -> Result<Build::Expr> {
     let res = Build::new().error(error.clone());
-    return match res {
+    match res {
         Ok(r) => Ok(r),
         Err(_) => Err(error),
-    };
+    }
 }
 
 /// Since ExprBuilder ErrorType can be Infallible or ParseErrors, if we get an error from building the node pass the ParseErrors along
@@ -902,7 +908,7 @@ fn convert_expr_error_to_parse_error<Build: ExprBuilder>(
     error: ParseErrors,
 ) -> Result<Build::Expr> {
     #[cfg(feature = "error-ast")]
-    return error_ast_conversion::<Build>(error);
+    return build_ast_error_node_if_possible::<Build>(error);
     #[allow(unreachable_code)]
     Err(error)
 }
@@ -5359,6 +5365,7 @@ mod tests {
         assert_parse_policy_allows_errors(src);
     }
 
+    #[cfg(feature = "error-ast")]
     #[test]
     fn show_policy3_errors_enabled() {
         let src = r#"
@@ -5367,6 +5374,7 @@ mod tests {
         assert_parse_policy_allows_errors(src);
     }
 
+    #[cfg(feature = "error-ast")]
     #[test]
     fn show_policy4_errors_enabled() {
         let src = r#"

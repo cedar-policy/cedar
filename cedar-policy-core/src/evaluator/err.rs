@@ -89,10 +89,11 @@ pub enum EvaluationError {
     #[diagnostic(transparent)]
     NonValue(#[from] evaluation_errors::NonValueError),
 
-    /// TODO
+    /// This is an expression AST node that gets generated when parsing fails
+    #[cfg(feature = "error-ast")]
     #[error(transparent)]
     #[diagnostic(transparent)]
-    ErrorExpr(#[from] evaluation_errors::ErrorExprError),
+    ASTErrorExpr(#[from] evaluation_errors::ASTErrorExprError),
 
     /// Maximum recursion limit reached for expression evaluation
     #[error(transparent)]
@@ -115,7 +116,8 @@ impl EvaluationError {
             Self::FailedExtensionFunctionExecution(e) => e.source_loc.as_ref(),
             Self::NonValue(e) => e.source_loc.as_ref(),
             Self::RecursionLimit(e) => e.source_loc.as_ref(),
-            Self::ErrorExpr(e) => e.source_loc.as_ref(),
+            #[cfg(feature = "error-ast")]
+            Self::ASTErrorExpr(e) => e.source_loc.as_ref(),
         }
     }
 
@@ -163,7 +165,10 @@ impl EvaluationError {
             Self::RecursionLimit(_) => {
                 Self::RecursionLimit(evaluation_errors::RecursionLimitError { source_loc })
             }
-            Self::ErrorExpr(_) => Self::ErrorExpr(evaluation_errors::ErrorExprError { source_loc }),
+            #[cfg(feature = "error-ast")]
+            Self::ASTErrorExpr(_) => {
+                Self::ASTErrorExpr(evaluation_errors::ASTErrorExprError { source_loc })
+            }
         }
     }
 
@@ -702,23 +707,25 @@ pub mod evaluation_errors {
         }
     }
 
-    /// TODO
+    /// Represents an AST node that failed to parse - cannot be evaluated
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
+    #[cfg(feature = "error-ast")]
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("the expression contains an error")]
-    pub struct ErrorExprError {
+    pub struct ASTErrorExprError {
         /// Source location
         pub(crate) source_loc: Option<Loc>,
     }
 
-    impl Diagnostic for ErrorExprError {
+    #[cfg(feature = "error-ast")]
+    impl Diagnostic for ASTErrorExprError {
         impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
         fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-            Some(Box::new("consider using the partial evaluation APIs"))
+            Some(Box::new("Represents an AST node that failed to parse"))
         }
     }
 

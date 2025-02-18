@@ -15,6 +15,7 @@
  */
 
 use super::FromJsonError;
+#[cfg(feature = "error-ast")]
 use crate::ast::expr_allows_errors::AstExprErrorKind;
 use crate::ast::{self, BoundedDisplay, EntityUID, Infallible};
 use crate::entities::json::{
@@ -25,7 +26,9 @@ use crate::expr_builder::ExprBuilder;
 use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
 use crate::parser::cst_to_ast;
-use crate::parser::err::{ParseErrors, ToASTError, ToASTErrorKind};
+use crate::parser::err::ParseErrors;
+#[cfg(feature = "error-ast")]
+use crate::parser::err::{ToASTError, ToASTErrorKind};
 use crate::parser::Node;
 use crate::parser::{cst, Loc};
 use itertools::Itertools;

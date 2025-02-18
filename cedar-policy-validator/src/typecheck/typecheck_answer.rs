@@ -179,6 +179,7 @@ impl<'a> TypecheckAnswer<'a> {
         let mut unwrapped = Vec::new();
         let mut any_failed = false;
         let mut recusion_limit_reached = false;
+        #[cfg(feature = "error-ast")]
         let mut ast_has_errors = false;
         for ans in answers {
             any_failed |= !ans.typechecked();

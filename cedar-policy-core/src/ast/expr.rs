@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#[cfg(feature = "error-ast")]
+use super::expr_allows_errors::AstExprErrorKind;
 use crate::{
     ast::*,
     expr_builder::{self, ExprBuilder as _},
@@ -32,8 +34,6 @@ use std::{
     sync::Arc,
 };
 use thiserror::Error;
-
-use super::expr_allows_errors::AstExprErrorKind;
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
