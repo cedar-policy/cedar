@@ -1589,7 +1589,6 @@ fn maybe_with_parens(
         Expr::ExprNoExt(ExprNoExt::Like { .. }) |
         Expr::ExprNoExt(ExprNoExt::Is { .. }) |
         Expr::ExprNoExt(ExprNoExt::If { .. }) |
-        Expr::ExprNoExt(ExprNoExt::Error { .. }) |
         Expr::ExtFuncCall { .. } => {
             write!(f, "(")?;
             BoundedDisplay::fmt(expr, f, n)?;
