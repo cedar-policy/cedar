@@ -2386,16 +2386,6 @@ mod tests {
     }
 
     #[track_caller]
-    fn assert_parse_policy_allows_errors(text: &str) -> ast::StaticPolicy {
-        text_to_cst::parse_policy(text)
-            .expect("failed parser")
-            .to_policy_with_errors(ast::PolicyID::from_string("id"))
-            .unwrap_or_else(|errs| {
-                panic!("failed conversion to AST:\n{:?}", miette::Report::new(errs))
-            })
-    }
-
-    #[track_caller]
     fn assert_parse_policy_fails(text: &str) -> ParseErrors {
         let result = text_to_cst::parse_policy(text)
             .expect("failed parser")
@@ -2406,14 +2396,6 @@ mod tests {
             }
             Err(errs) => errs,
         }
-    }
-
-    #[test]
-    fn parsing_with_errors_succeeds_with_empty_when() {
-        let src = r#"
-            permit(principal, action, resource) when {};
-        "#;
-        assert_parse_policy_allows_errors(src);
     }
 
     #[test]
