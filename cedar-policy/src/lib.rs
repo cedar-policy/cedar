@@ -47,5 +47,9 @@ pub use api::*;
 /// FFI utilities, see comments in the module itself
 pub mod ffi;
 
+/// Protobuf models of cedar-policy types
+#[cfg(feature = "protobufs")]
+pub mod proto;
+
 mod prop_test_policy_set;
 mod tests;

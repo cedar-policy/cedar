@@ -17,7 +17,7 @@
 syntax = "proto3";
 package cedar_policy_validator;
 
-import "AST.proto";
+import "core.proto";
 
 message ValidatorSchema {
     repeated EntityTypeWithTypesMap entity_types = 1;
@@ -102,8 +102,8 @@ message EntityRecordKind {
 }
 
 enum OpenTag {
-        OpenAttributes = 0;
-        ClosedAttributes = 1;
+    OpenAttributes = 0;
+    ClosedAttributes = 1;
 }
 
 message Attributes {

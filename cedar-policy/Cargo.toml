@@ -34,6 +34,9 @@ wasm-bindgen = { version = "0.2.97", optional = true }
 semver = "1.0.24"
 lazy_static = "1.5.0"
 
+[build-dependencies]
+prost-build = { version = "0.13", optional = true }
+
 [features]
 # by default, enable all Cedar extensions, but not other crate features
 default = ["ipaddr", "decimal"]
@@ -54,7 +57,7 @@ entity-manifest = ["cedar-policy-validator/entity-manifest"]
 partial-eval = ["cedar-policy-core/partial-eval", "cedar-policy-validator/partial-eval"]
 permissive-validate = []
 partial-validate = ["cedar-policy-validator/partial-validate"]
-protobufs = ["dep:prost", "cedar-policy-validator/protobufs", "cedar-policy-core/protobufs"]
+protobufs = ["dep:prost", "dep:prost-build"]
 level-validate = ["cedar-policy-validator/level-validate"]
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
@@ -96,7 +99,7 @@ name = "deeply_nested_est"
 harness = false
 
 [package.metadata.docs.rs]
-features = ["partial-eval", "permissive-validate", "partial-validate", "level-validate", "entity-manifest", "datetime"]
+features = ["experimental"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [lints]

@@ -145,7 +145,7 @@ impl AccessTrie {
                                     .ok_or(MismatchedNotStrictSchemaError {})?,
                             )
                             .ok_or(MismatchedNotStrictSchemaError {})?;
-                        &entity_ty.attributes
+                        entity_ty.attributes()
                     }
                     EntityRecordKind::ActionEntity { name: _, attrs } => attrs,
                 };
@@ -156,7 +156,7 @@ impl AccessTrie {
                     // it's safe to drop it.
                     // this can come up with the `has` operator
                     // on a type that doesn't have the attribute
-                    if let Some(ty) = attributes.attrs.get(field) {
+                    if let Some(ty) = attributes.get_attr(field) {
                         new_children.insert(
                             field.clone(),
                             Box::new(child.to_typed(request_type, &ty.attr_type, schema)?),
