@@ -50,7 +50,7 @@ partial-validate = []
 level-validate = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 entity-manifest = []
-error-ast = []
+error-ast = ["cedar-policy-core/error-ast"]
 
 [dev-dependencies]
 similar-asserts = "1.6.1"

@@ -666,10 +666,11 @@ fn entity_manifest_from_expr(
         ExprKind::HasAttr { expr, attr } => Ok(entity_manifest_from_expr(expr)?
             .get_or_has_attr(attr)
             .empty_paths()),
-        // PANIC SAFETY: We should never allow parse errors when constructing entity manifest
-        #[allow(clippy::panic)]
+        #[cfg(feature = "error-ast")]
         ExprKind::Error { .. } => {
-            panic!("We should never have parse errors in our AST when constructing entity manifest - this should never happen");
+          Err(EntityManifestError::UnsupportedCedarFeature(UnsupportedCedarFeatureError {
+            feature: "No support for AST error nodes".into()
+          }) )
         }
     }
 }
