@@ -16,6 +16,8 @@
 
 //! Implementation of level validation (RFC 76)
 
+use crate::validation_errors::InternalInvariantViolation;
+
 use super::*;
 use cedar_policy_core::ast::{BinaryOp, PolicyID};
 use typecheck::PolicyCheck;
@@ -77,8 +79,8 @@ impl Validator {
     }
 
     fn min(
-        v: impl IntoIterator<Item = (EntityDerefLevel, Option<EntityDerefLevelViolation>)>,
-    ) -> (EntityDerefLevel, Option<EntityDerefLevelViolation>) {
+        v: impl IntoIterator<Item = (EntityDerefLevel, Option<ValidationError>)>,
+    ) -> (EntityDerefLevel, Option<ValidationError>) {
         let p = v.into_iter().min_by(|(l1, _), (l2, _)| l1.cmp(l2));
         match p {
             Some(p) => p,
@@ -92,7 +94,7 @@ impl Validator {
         e: &cedar_policy_core::ast::Expr<Option<crate::types::Type>>,
         max_allowed_level: &EntityDerefLevel,
         policy_id: &PolicyID,
-    ) -> (EntityDerefLevel, Option<EntityDerefLevelViolation>) {
+    ) -> (EntityDerefLevel, Option<ValidationError>) {
         use crate::types::{EntityRecordKind, Type};
         use cedar_policy_core::ast::ExprKind;
         match e.expr_kind() {
@@ -143,7 +145,7 @@ impl Validator {
                             policy_id: policy_id.clone(),
                             actual_level: new_level,
                             allowed_level: *max_allowed_level,
-                        }),
+                        }.into()),
                     )
                 } else {
                     (new_level, None)
@@ -202,7 +204,7 @@ impl Validator {
                                         policy_id: policy_id.clone(),
                                         actual_level: new_level,
                                         allowed_level: *max_allowed_level,
-                                    }),
+                                    }.into()),
                                 )
                             } else {
                                 (new_level, None)
@@ -238,11 +240,8 @@ impl Validator {
                     .collect();
                 Self::min(v)
             }
-            // PANIC SAFETY: We do not allow validation of AST's with error nodes
-            #[allow(clippy::panic)]
-            ExprKind::Error { .. } => {
-                panic!(" We do not allow validation of AST's with error nodes - this should never happen");
-            }
+            #[cfg(feature = "error-ast")]
+            ExprKind::Error { .. } => ValidationError::InternalInvariantViolation(InternalInvariantViolation(source_loc: None, todo!()))
         }
     }
 }
