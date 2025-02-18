@@ -264,7 +264,7 @@ impl PolicySet {
         Ok(())
     }
 
-    /// Helper function for merge_policyset to check if the `PolicyID` pid
+    /// Helper function for `merge_policyset` to check if the `PolicyID` pid
     /// appears in this `PolicySet`'s links or templates.
     fn policy_id_is_bound(&self, pid: &PolicyID) -> bool {
         match self.templates.get(pid) {
@@ -276,7 +276,7 @@ impl PolicySet {
         }
     }
 
-    /// Helper function for merge_policyset to construct a renaming
+    /// Helper function for `merge_policyset` to construct a renaming
     /// that would resolve any conflicting `PolicyID`s. We use the type parameter `T`
     /// to allow this code to be applied to both Templates and Policies.
     fn update_renaming<T>(
@@ -861,10 +861,10 @@ mod test {
         // should not conflict because of auto-renaming of conflicting policies
         match pset1.merge_policyset(&pset2, true) {
             Ok(renaming) => {
-                // ensure `policy1`` was renamed
+                // ensure `policy1` was renamed
                 let new_pid1 = match renaming.get(&pid1) {
                     Some(new_pid1) => new_pid1,
-                    None => panic!("Error: policy1 is a conflict and should be renamed"),
+                    None => panic!("Error: `policy1` is a conflict and should be renamed"),
                 };
                 // ensure no other policy was renamed
                 assert_eq!(renaming.keys().len(), 1);
