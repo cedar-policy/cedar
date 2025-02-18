@@ -26,6 +26,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 mod err;
+use crate::evaluator::EvaluationError::ErrorExpr;
 pub use err::evaluation_errors;
 pub use err::EvaluationError;
 pub(crate) use err::*;
@@ -760,11 +761,10 @@ impl<'e> Evaluator<'e> {
                     }
                 }
             }
-            // PANIC SAFETY: We should never be evaluating an error node - Will never happen because we do not use error-enabled parsing for evaluation
-            #[allow(clippy::panic)]
-            ExprKind::Error { .. } => {
-                panic!("We cannot evaluate an error node - this should never happen")
-            }
+            #[cfg(feature = "error-ast")]
+            ExprKind::Error { .. } => Err(ErrorExpr(ErrorExprError {
+                source_loc: loc.cloned(),
+            })),
         }
     }
 

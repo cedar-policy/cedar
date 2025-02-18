@@ -25,13 +25,15 @@ impl From<ToASTErrorKind> for AstExprErrorKind {
         AstExprErrorKind::InvalidExpr(value.to_string())
     }
 }
-#[derive(Clone, Debug)]
 
+#[cfg(feature = "error-ast")]
+#[derive(Clone, Debug)]
 pub struct ExprWithErrsBuilder<T = ()> {
     source_loc: Option<Loc>,
     data: T,
 }
 
+#[cfg(feature = "error-ast")]
 impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
     type Expr = Expr<T>;
 
@@ -76,6 +78,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
         self.with_expr_kind(ExprKind::Var(v))
     }
 
+    #[cfg(feature = "error-ast")]
     fn error(self, parse_errors: ParseErrors) -> Result<Expr<T>, Self::ErrorType> {
         Ok(self.with_expr_kind(ExprKind::Error {
             error_kind: AstExprErrorKind::InvalidExpr(parse_errors.to_string()),
@@ -451,6 +454,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
     }
 }
 
+#[cfg(feature = "error-ast")]
 impl<T> ExprWithErrsBuilder<T> {
     /// Construct an `Expr` containing the `data` and `source_loc` in this
     /// `ExprBuilder` and the given `ExprKind`.

@@ -39,6 +39,8 @@ use super::loc::Loc;
 use super::node::Node;
 use super::unescape::{to_pattern, to_unescaped_string};
 use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
+#[cfg(feature = "error-ast")]
+use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
 use crate::ast::{
     self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
     PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
@@ -161,54 +163,10 @@ impl Node<Option<cst::Policies>> {
 }
 
 impl Node<Option<cst::Policy>> {
-    /// Convert `cst::Policy` to an AST `InlinePolicy` or `Template`
-    pub fn to_policy_or_template(
-        &self,
-        id: ast::PolicyID,
-    ) -> Result<Either<ast::StaticPolicy, ast::Template>> {
-        self.to_policy_or_template_helper(id, false)
-    }
-
     /// Convert `cst::Policy` to an AST `StaticPolicy`. (Will fail if the CST is for a template)
-    pub fn to_policy(&self, id: ast::PolicyID) -> Result<ast::StaticPolicy> {
-        self.to_policy_helper(id, false)
-    }
-
-    /// Convert `cst::Policy` to an AST `StaticPolicy`. (Will fail if the CST is for a template)
+    #[cfg(feature = "error-ast")]
     pub fn to_policy_with_errors(&self, id: ast::PolicyID) -> Result<ast::StaticPolicy> {
-        self.to_policy_helper(id, true)
-    }
-
-    /// Convert `cst::Policy` to `ast::Template`. Works for inline policies as
-    /// well, which will become templates with 0 slots
-    pub fn to_template(&self, id: ast::PolicyID) -> Result<ast::Template> {
-        self.to_policy_template_helper(id, false)
-    }
-
-    /// Convert `cst::Policy` to an AST `InlinePolicy` or `Template`
-    pub fn to_policy_or_template_helper(
-        &self,
-        id: ast::PolicyID,
-        allow_errors: bool,
-    ) -> Result<Either<ast::StaticPolicy, ast::Template>> {
-        let t = self.to_policy_template_helper(id, allow_errors)?;
-        if t.slots().count() == 0 {
-            // PANIC SAFETY: A `Template` with no slots will successfully convert to a `StaticPolicy`
-            #[allow(clippy::expect_used)]
-            let p = ast::StaticPolicy::try_from(t).expect("internal invariant violation: a template with no slots should be a valid static policy");
-            Ok(Either::Left(p))
-        } else {
-            Ok(Either::Right(t))
-        }
-    }
-
-    /// Convert `cst::Policy` to an AST `InlinePolicy`. (Will fail if the CST is for a template)
-    pub fn to_policy_helper(
-        &self,
-        id: ast::PolicyID,
-        allow_errors: bool,
-    ) -> Result<ast::StaticPolicy> {
-        let maybe_template = self.to_policy_template_helper(id, allow_errors);
+        let maybe_template = self.to_policy_template_with_errors(id);
         let maybe_policy = maybe_template.map(ast::StaticPolicy::try_from);
         match maybe_policy {
             // Successfully parsed a static policy
@@ -243,11 +201,8 @@ impl Node<Option<cst::Policy>> {
 
     /// Convert `cst::Policy` to `ast::Template`. Works for static policies as
     /// well, which will become templates with 0 slots
-    pub fn to_policy_template_helper(
-        &self,
-        id: ast::PolicyID,
-        allow_errors: bool,
-    ) -> Result<ast::Template> {
+    #[cfg(feature = "error-ast")]
+    pub fn to_policy_template_with_errors(&self, id: ast::PolicyID) -> Result<ast::Template> {
         let policy = self.try_as_inner()?;
 
         // convert effect
@@ -263,11 +218,113 @@ impl Node<Option<cst::Policy>> {
 
         // convert conditions
         let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
-            let (e, is_when) = if allow_errors {
-                c.to_expr::<ast::expr_allows_errors::ExprWithErrsBuilder<()>>()?
-            } else {
-                c.to_expr::<ast::ExprBuilder<()>>()?
-            };
+            let (e, is_when) = c.to_expr::<ExprWithErrsBuilder<()>>()?;
+            let slot_errs = e.slots().map(|slot| {
+                ToASTError::new(
+                    ToASTErrorKind::slots_in_condition_clause(
+                        slot.clone(),
+                        if is_when { "when" } else { "unless" },
+                    ),
+                    slot.loc.unwrap_or_else(|| c.loc.clone()),
+                )
+                .into()
+            });
+            match ParseErrors::from_iter(slot_errs) {
+                Some(errs) => Err(errs),
+                None => Ok(e),
+            }
+        }));
+
+        let (effect, annotations, (principal, action, resource), conds) =
+            flatten_tuple_4(maybe_effect, maybe_annotations, maybe_scope, maybe_conds)?;
+        Ok(construct_template_policy(
+            id,
+            annotations.into(),
+            effect,
+            principal,
+            action,
+            resource,
+            conds,
+            &self.loc,
+        ))
+    }
+
+    /// Convert `cst::Policy` to `ast::Template`. Works for inline policies as
+    /// well, which will become templates with 0 slots
+    pub fn to_template(&self, id: ast::PolicyID) -> Result<ast::Template> {
+        self.to_policy_template(id)
+    }
+
+    /// Convert `cst::Policy` to an AST `InlinePolicy` or `Template`
+    pub fn to_policy_or_template(
+        &self,
+        id: ast::PolicyID,
+    ) -> Result<Either<ast::StaticPolicy, ast::Template>> {
+        let t = self.to_policy_template(id)?;
+        if t.slots().count() == 0 {
+            // PANIC SAFETY: A `Template` with no slots will successfully convert to a `StaticPolicy`
+            #[allow(clippy::expect_used)]
+            let p = ast::StaticPolicy::try_from(t).expect("internal invariant violation: a template with no slots should be a valid static policy");
+            Ok(Either::Left(p))
+        } else {
+            Ok(Either::Right(t))
+        }
+    }
+
+    /// Convert `cst::Policy` to an AST `InlinePolicy`. (Will fail if the CST is for a template)
+    pub fn to_policy(&self, id: ast::PolicyID) -> Result<ast::StaticPolicy> {
+        let maybe_template = self.to_policy_template(id);
+        let maybe_policy = maybe_template.map(ast::StaticPolicy::try_from);
+        match maybe_policy {
+            // Successfully parsed a static policy
+            Ok(Ok(p)) => Ok(p),
+            // The source parsed as a template, but not a static policy
+            Ok(Err(ast::UnexpectedSlotError::FoundSlot(slot))) => Err(ToASTError::new(
+                ToASTErrorKind::expected_static_policy(slot.clone()),
+                slot.loc.unwrap_or_else(|| self.loc.clone()),
+            )
+            .into()),
+            // The source failed to parse completely. If the parse errors include
+            // `SlotsInConditionClause` also add an `ExpectedStaticPolicy` error.
+            Err(mut errs) => {
+                let new_errs = errs
+                    .iter()
+                    .filter_map(|err| match err {
+                        ParseError::ToAST(err) => match err.kind() {
+                            ToASTErrorKind::SlotsInConditionClause(inner) => Some(ToASTError::new(
+                                ToASTErrorKind::expected_static_policy(inner.slot.clone()),
+                                err.source_loc().clone(),
+                            )),
+                            _ => None,
+                        },
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                errs.extend(new_errs);
+                Err(errs)
+            }
+        }
+    }
+
+    /// Convert `cst::Policy` to `ast::Template`. Works for static policies as
+    /// well, which will become templates with 0 slots
+    pub fn to_policy_template(&self, id: ast::PolicyID) -> Result<ast::Template> {
+        let policy = self.try_as_inner()?;
+
+        // convert effect
+        let maybe_effect = policy.effect.to_effect();
+
+        // convert annotations
+        let maybe_annotations = policy.get_ast_annotations(|value, loc| {
+            ast::Annotation::with_optional_value(value, Some(loc.clone()))
+        });
+
+        // convert scope
+        let maybe_scope = policy.extract_scope();
+
+        // convert conditions
+        let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
+            let (e, is_when) = c.to_expr::<ast::ExprBuilder<()>>()?;
             let slot_errs = e.slots().map(|slot| {
                 ToASTError::new(
                     ToASTErrorKind::slots_in_condition_clause(
@@ -2096,16 +2153,6 @@ mod tests {
     }
 
     #[track_caller]
-    fn assert_parse_policy_allows_errors(text: &str) -> ast::StaticPolicy {
-        text_to_cst::parse_policy(text)
-            .expect("failed parser")
-            .to_policy_with_errors(ast::PolicyID::from_string("id"))
-            .unwrap_or_else(|errs| {
-                panic!("failed conversion to AST:\n{:?}", miette::Report::new(errs))
-            })
-    }
-
-    #[track_caller]
     fn assert_parse_policy_fails(text: &str) -> ParseErrors {
         let result = text_to_cst::parse_policy(text)
             .expect("failed parser")
@@ -2116,14 +2163,6 @@ mod tests {
             }
             Err(errs) => errs,
         }
-    }
-
-    #[test]
-    fn parsing_with_errors_succeeds_with_empty_when() {
-        let src = r#"
-            permit(principal, action, resource) when {};
-        "#;
-        assert_parse_policy_allows_errors(src);
     }
 
     #[test]
@@ -3261,7 +3300,7 @@ mod tests {
         for src in CORRECT_TEMPLATES {
             text_to_cst::parse_policy(src)
                 .expect("parse_error")
-                .to_policy_template(ast::PolicyID::from_string("i0"))
+                .to_template(ast::PolicyID::from_string("i0"))
                 .unwrap_or_else(|errs| {
                     panic!(
                         "Failed to create a policy template: {:?}",
@@ -5207,6 +5246,163 @@ mod tests {
                     "invalid RHS of a `has` operation: {b: 1}.a",
                 ).help(help_msg).exactly_one_underline(r#"{b:1}"#).build());
             }
+        );
+    }
+
+    #[cfg(feature = "error-ast")]
+    #[track_caller]
+    fn assert_parse_policy_allows_errors(text: &str) -> ast::StaticPolicy {
+        text_to_cst::parse_policy(text)
+            .expect("failed parser")
+            .to_policy_with_errors(ast::PolicyID::from_string("id"))
+            .unwrap_or_else(|errs| {
+                panic!("failed conversion to AST:\n{:?}", miette::Report::new(errs))
+            })
+    }
+
+    #[cfg(feature = "error-ast")]
+    #[track_caller]
+    fn assert_parse_policy_allows_errors_fails(text: &str) -> ParseErrors {
+        let result = text_to_cst::parse_policy(text)
+            .expect("failed parser")
+            .to_policy_with_errors(ast::PolicyID::from_string("id"));
+        match result {
+            Ok(policy) => {
+                panic!("conversion to AST should have failed, but succeeded with:\n{policy}")
+            }
+            Err(errs) => errs,
+        }
+    }
+
+    // Test parsing AST that allows Error nodes
+    #[cfg(feature = "error-ast")]
+    #[test]
+    fn parsing_with_errors_succeeds_with_empty_when() {
+        let src = r#"
+            permit(principal, action, resource) when {};
+        "#;
+        assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "error-ast")]
+    #[test]
+    fn show_policy1_errors_enabled() {
+        let src = r#"
+            permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
+        "#;
+        let errs = assert_parse_policy_allows_errors_fails(src);
+        expect_n_errors(src, &errs, 6);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("type constraints using `:` are not supported")
+                .help("try using `is` instead")
+                .exactly_one_underline("p")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("type constraints using `:` are not supported")
+                .help("try using `is` instead")
+                .exactly_one_underline("a")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("type constraints using `:` are not supported")
+                .help("try using `is` instead")
+                .exactly_one_underline("r")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid variable: w")
+                .help("the valid Cedar variables are `principal`, `action`, `resource`, and `context`; did you mean to enclose `w` in quotes to make a string?")
+                .exactly_one_underline("w")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid variable: u")
+                .help("the valid Cedar variables are `principal`, `action`, `resource`, and `context`; did you mean to enclose `u` in quotes to make a string?")
+                .exactly_one_underline("u")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid policy condition: advice")
+                .help("condition must be either `when` or `unless`")
+                .exactly_one_underline("advice")
+                .build(),
+        );
+    }
+
+    #[cfg(feature = "error-ast")]
+    #[test]
+    fn show_policy2_errors_enabled() {
+        let src = r#"
+            permit(principal,action,resource)when{true};
+        "#;
+        assert_parse_policy_allows_errors(src);
+    }
+
+    #[test]
+    fn show_policy3_errors_enabled() {
+        let src = r#"
+            permit(principal in User::"jane",action,resource);
+        "#;
+        assert_parse_policy_allows_errors(src);
+    }
+
+    #[test]
+    fn show_policy4_errors_enabled() {
+        let src = r#"
+            forbid(principal in User::"jane",action,resource)unless{
+                context.group != "friends"
+            };
+        "#;
+        assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "error-ast")]
+    #[test]
+    fn single_annotation_errors_enabled() {
+        // common use-case
+        let policy = assert_parse_policy_allows_errors(
+            r#"
+            @anno("good annotation")permit(principal,action,resource);
+        "#,
+        );
+        assert_matches!(
+            policy.annotation(&ast::AnyId::new_unchecked("anno")),
+            Some(annotation) => assert_eq!(annotation.as_ref(), "good annotation")
+        );
+    }
+
+    #[cfg(feature = "error-ast")]
+    #[test]
+    fn duplicate_annotations_error_errors_enabled() {
+        // duplication is error
+        let src = r#"
+            @anno("good annotation")
+            @anno2("good annotation")
+            @anno("oops, duplicate")
+            permit(principal,action,resource);
+        "#;
+        let errs = assert_parse_policy_fails(src);
+        // annotation duplication (anno)
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("duplicate annotation: @anno")
+                .exactly_one_underline("@anno(\"oops, duplicate\")")
+                .build(),
         );
     }
 }

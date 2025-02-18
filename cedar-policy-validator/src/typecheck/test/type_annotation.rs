@@ -182,17 +182,21 @@ fn expr_typechecks_with_correct_annotation() {
     let euid = EntityUID::with_eid_and_type("Foo", "bar").unwrap();
     match tc.typecheck_expr(&Expr::val(euid.clone()), &expr_id_placeholder(), &mut errs) {
         crate::typecheck::TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
-            assert_eq!(
-                &expr_type,
-                &ExprBuilder::with_data(Some(Type::named_entity_reference_from_str("Foo")))
-                    .val(euid)
-            )
-        }
+                        assert_eq!(
+                            &expr_type,
+                            &ExprBuilder::with_data(Some(Type::named_entity_reference_from_str("Foo")))
+                                .val(euid)
+                        )
+            }
         crate::typecheck::TypecheckAnswer::TypecheckFail { .. } => {
-            panic!("Typechecking should succeed.")
-        }
+                panic!("Typechecking should succeed.")
+            }
         crate::typecheck::TypecheckAnswer::RecursionLimit => {
-            panic!("Should not have hit recursion limit")
-        }
+                panic!("Should not have hit recursion limit")
+            }
+        #[cfg(feature="error-ast")]
+        crate::typecheck::TypecheckAnswer::ErrorAstNode => {
+            panic!("Should not type check an AST with an error node")
+        },
     }
 }
