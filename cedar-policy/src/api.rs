@@ -2257,6 +2257,11 @@ impl PolicySet {
                     if this.get(pid).is_none() {
                         this.insert(pid.clone(), ot.clone());
                     }
+                    // If pid is not in the renaming but is in both
+                    // this and other, then by assumption
+                    // the element at pid in this and other are equal
+                    // i.e., the renaming is expected to track all
+                    // conflicting pids.
                 }
             }
         }

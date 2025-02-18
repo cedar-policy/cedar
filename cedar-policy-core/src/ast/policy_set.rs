@@ -267,13 +267,7 @@ impl PolicySet {
     /// Helper function for `merge_policyset` to check if the `PolicyID` pid
     /// appears in this `PolicySet`'s links or templates.
     fn policy_id_is_bound(&self, pid: &PolicyID) -> bool {
-        match self.templates.get(pid) {
-            Some(_) => true,
-            None => match self.links.get(pid) {
-                Some(_) => true,
-                None => false,
-            },
-        }
+        self.templates.contains_key(pid) || self.links.contains_key(pid)
     }
 
     /// Helper function for `merge_policyset` to construct a renaming
@@ -337,43 +331,28 @@ impl PolicySet {
         self.update_renaming(&self.links, other, &other.links, &mut renaming, &mut min_id);
         // If `rename_dupilicates` is false, then throw an error if any renaming should happen
         if !rename_duplicates {
-            match renaming.keys().next() {
-                Some(pid) => {
-                    return Err(PolicySetError::Occupied { id: pid.clone() });
-                }
-                None => (),
+            if let Some(pid) = renaming.keys().next() {
+                return Err(PolicySetError::Occupied { id: pid.clone() });
             }
         }
         // either there are no conflicting policy ids
         // or we should rename conflicting policy ids (using renaming) to avoid conflicting policy ids
         for (pid, other_template) in &other.templates {
-            let pid = match renaming.get(pid) {
-                Some(new_pid) => new_pid,
-                None => pid,
-            };
+            let pid = renaming.get(pid).unwrap_or(pid);
             self.templates.insert(pid.clone(), other_template.clone());
         }
         for (pid, other_policy) in &other.links {
-            let pid = match renaming.get(pid) {
-                Some(new_pid) => new_pid,
-                None => pid,
-            };
+            let pid = renaming.get(pid).unwrap_or(pid);
             self.links.insert(pid.clone(), other_policy.clone());
         }
         for (tid, other_template_link_set) in &other.template_to_links_map {
-            let tid = match renaming.get(tid) {
-                Some(new_tid) => new_tid,
-                None => tid,
-            };
-            let mut this_template_link_set = match self.template_to_links_map.entry(tid.clone()) {
-                Entry::Occupied(entry) => entry.remove(),
-                Entry::Vacant(_) => HashSet::new(),
-            };
+            let tid = renaming.get(tid).unwrap_or(tid);
+            let mut this_template_link_set = self
+                .template_to_links_map
+                .remove(tid)
+                .unwrap_or(HashSet::new());
             for pid in other_template_link_set {
-                let pid = match renaming.get(pid) {
-                    Some(new_pid) => new_pid,
-                    None => pid,
-                };
+                let pid = renaming.get(pid).unwrap_or(pid);
                 this_template_link_set.insert(pid.clone());
             }
             self.template_to_links_map
