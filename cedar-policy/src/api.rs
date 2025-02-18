@@ -2237,7 +2237,7 @@ impl PolicySet {
         Ok(set)
     }
 
-    /// Helper function for merge_policyset
+    /// Helper function for `merge_policyset`
     /// Merges two sets and avoids name clashes by using the provided
     /// renaming. The type parameter `T` allows this code to be used for
     /// both Templates and Policies.
