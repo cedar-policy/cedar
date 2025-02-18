@@ -26,7 +26,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use super::internal_name_to_entity_type;
 use crate::{
-    parition_nonempty::PartitionNonEmpty,
+    partition_nonempty::PartitionNonEmpty,
     schema::{AllDefs, SchemaError},
     types::{Attributes, Type},
     ConditionalName,

@@ -52,7 +52,7 @@ pub use str_checks::confusable_string_checks;
 pub mod cedar_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
-mod parition_nonempty;
+mod partition_nonempty;
 pub mod types;
 
 /// Used to select how a policy will be validated.

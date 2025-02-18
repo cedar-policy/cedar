@@ -39,7 +39,7 @@ use std::sync::Arc;
 use crate::{
     cedar_schema::SchemaWarning,
     json_schema,
-    parition_nonempty::PartitionNonEmpty,
+    partition_nonempty::PartitionNonEmpty,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
 };
 
