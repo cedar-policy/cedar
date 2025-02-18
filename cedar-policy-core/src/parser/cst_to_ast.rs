@@ -1042,15 +1042,6 @@ impl Node<Option<cst::Str>> {
     }
 }
 
-#[cfg(feature = "error-ast")]
-fn error_ast_conversion<Build: ExprBuilder>(error: ParseErrors) -> Result<Build::Expr> {
-    let res = Build::new().error(error.clone());
-    return match res {
-        Ok(r) => Ok(r),
-        Err(_) => Err(error),
-    };
-}
-
 #[cfg(feature = "tolerant-ast")]
 fn build_ast_error_node_if_possible<Build: ExprBuilder>(
     error: ParseErrors,
