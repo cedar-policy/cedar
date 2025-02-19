@@ -366,7 +366,7 @@ fn merge_entities(e1: Entity, e2: Entity) -> Entity {
         }
     }
 
-    Entity::new_with_attr_partial_value(uid1, attrs1, ancestors1)
+    Entity::new_with_attr_partial_value(uid1, attrs1, ancestors1, [])
 }
 
 /// Merge two value for corresponding attributes in the slice.
