@@ -27,7 +27,6 @@ use cedar_policy_core::{
     parser::Loc,
     transitive_closure::compute_tc,
 };
-use itertools::Itertools;
 use namespace_def::EntityTypeFragment;
 use nonempty::NonEmpty;
 use serde::{Deserialize, Serialize};
@@ -40,6 +39,7 @@ use std::sync::Arc;
 use crate::{
     cedar_schema::SchemaWarning,
     json_schema,
+    partition_nonempty::PartitionNonEmpty,
     types::{Attributes, EntityRecordKind, OpenTag, Type},
 };
 
@@ -124,7 +124,7 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
                         extensions,
                     )
                 })
-                .collect::<Result<Vec<_>>>()?,
+                .partition_nonempty()?,
         ))
     }
 
@@ -138,16 +138,12 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
         self,
         all_defs: &AllDefs,
     ) -> Result<ValidatorSchemaFragment<InternalName, EntityType>> {
-        let (nsdefs, errs) = self
-            .0
+        self.0
             .into_iter()
             .map(|ns_def| ns_def.fully_qualify_type_references(all_defs))
-            .partition_result::<Vec<ValidatorNamespaceDef<InternalName, EntityType>>, Vec<SchemaError>, _, _>();
-        if let Some(errs) = NonEmpty::from_vec(errs) {
-            Err(SchemaError::join_nonempty(errs))
-        } else {
-            Ok(ValidatorSchemaFragment(nsdefs))
-        }
+            .partition_nonempty()
+            .map(ValidatorSchemaFragment)
+            .map_err(SchemaError::join_nonempty)
     }
 }
 
@@ -463,13 +459,10 @@ impl ValidatorSchema {
         // come later.)
         // This produces an intermediate form of schema fragment,
         // `ValidatorSchemaFragment<InternalName, EntityType>`.
-        let (fragments, errs) = fragments
+        let fragments: Vec<_> = fragments
             .into_iter()
             .map(|frag| frag.fully_qualify_type_references(&all_defs))
-            .partition_result::<Vec<ValidatorSchemaFragment<InternalName, EntityType>>, Vec<SchemaError>, _, _>();
-        if let Some(errs) = NonEmpty::from_vec(errs) {
-            return Err(SchemaError::join_nonempty(errs));
-        }
+            .partition_nonempty()?;
 
         // Now that all references are fully-qualified, we can build the aggregate
         // maps for common types, entity types, and actions, checking that nothing
@@ -528,7 +521,6 @@ impl ValidatorSchema {
                     .insert(name.clone());
             }
         }
-
         let mut entity_types = entity_type_fragments
             .into_iter()
             .map(|(name, entity_type)| -> Result<_> {
@@ -582,7 +574,7 @@ impl ValidatorSchema {
                     }
                 }
             })
-            .collect::<Result<HashMap<_, _>>>()?;
+            .partition_nonempty()?;
 
         let mut action_children = HashMap::new();
         for (euid, action) in action_fragments.iter() {
@@ -619,7 +611,7 @@ impl ValidatorSchema {
                     },
                 ))
             })
-            .collect::<Result<HashMap<_, _>>>()?;
+            .partition_nonempty()?;
 
         // We constructed entity types and actions with child maps, but we need
         // transitively closed descendants.
@@ -1345,7 +1337,7 @@ impl<'a> CommonTypeResolver<'a> {
                     attributes: BTreeMap::from_iter(
                         attributes
                             .into_iter()
-                            .map(|(attr, attr_ty)| {
+                            .map(|(attr, attr_ty)| -> Result<_> {
                                 Ok((
                                     attr,
                                     json_schema::TypeOfAttribute {
@@ -1355,7 +1347,7 @@ impl<'a> CommonTypeResolver<'a> {
                                     },
                                 ))
                             })
-                            .collect::<Result<Vec<(_, _)>>>()?,
+                            .partition_nonempty::<Vec<_>>()?,
                     ),
                     additional_attributes,
                 }),
@@ -1581,6 +1573,85 @@ pub(crate) mod test {
         match ValidatorSchema::from_json_str(src, Extensions::all_available()) {
             Err(SchemaError::JsonDeserialization(_)) => (),
             _ => panic!("Expected JSON deserialization error due to duplicate action type."),
+        }
+    }
+
+    #[test]
+    fn test_from_schema_file_missing_parent_action() {
+        let src = json!({
+            "": {
+                "entityTypes": {
+                    "Test": {}
+                },
+                "actions": {
+                    "doTests": {
+                        "memberOf": [
+                            { "type": "Action", "id": "test1" },
+                            { "type": "Action", "id": "test2" }
+                        ]
+                    }
+                }
+            }
+        });
+        match ValidatorSchema::from_json_value(src, Extensions::all_available()) {
+            Err(SchemaError::ActionNotDefined(missing)) => {
+                assert_eq!(missing.0.len(), 2);
+            }
+            _ => panic!("Expected ActionNotDefined due to unknown actions in memberOf."),
+        }
+    }
+
+    #[test]
+    fn test_from_schema_file_undefined_types_in_common() {
+        let src = json!({
+            "": {
+                "commonTypes": {
+                    "My1": {"type": "What"},
+                    "My2": {"type": "Ev"},
+                    "My3": {"type": "Er"}
+                },
+                "entityTypes": {
+                    "Test": {}
+                },
+                "actions": {},
+            }
+        });
+        match ValidatorSchema::from_json_value(src, Extensions::all_available()) {
+            Err(SchemaError::TypeNotDefined(missing)) => {
+                assert_eq!(missing.undefined_types.len(), 3);
+            }
+            x => panic!(
+                "Expected TypeNotDefined due to unknown types in commonTypes, found: {:?}",
+                x
+            ),
+        }
+    }
+
+    #[test]
+    fn test_from_schema_file_undefined_entities_in_one_action() {
+        let src = json!({
+            "": {
+                "entityTypes": {
+                    "Test": {}
+                },
+                "actions": {
+                    "doTests": {
+                        "appliesTo": {
+                            "principalTypes": ["Usr", "Group"],
+                            "resourceTypes": ["Phoot"]
+                        }
+                    }
+                }
+            }
+        });
+        match ValidatorSchema::from_json_value(src, Extensions::all_available()) {
+            Err(SchemaError::TypeNotDefined(missing)) => {
+                assert_eq!(missing.undefined_types.len(), 3);
+            }
+            x => panic!(
+                "Expected TypeNotDefined due to unknown entities in appliesTo, found: {:?}",
+                x
+            ),
         }
     }
 
@@ -2623,7 +2694,7 @@ pub(crate) mod test {
                 view_photo_uid,
                 [],
                 HashSet::new(),
-                HashSet::from([view_uid.clone(), read_uid.clone()]),
+                HashSet::from([view_uid, read_uid.clone()]),
                 [],
             )
         );

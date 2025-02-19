@@ -2237,6 +2237,73 @@ impl PolicySet {
         Ok(set)
     }
 
+    /// Helper function for `merge_policyset`
+    /// Merges two sets and avoids name clashes by using the provided
+    /// renaming. The type parameter `T` allows this code to be used for
+    /// both Templates and Policies.
+    fn merge_sets<T>(
+        this: &mut HashMap<PolicyId, T>,
+        other: &HashMap<PolicyId, T>,
+        renaming: &HashMap<PolicyId, PolicyId>,
+    ) where
+        T: PartialEq + Clone,
+    {
+        for (pid, ot) in other {
+            match renaming.get(&pid) {
+                Some(new_pid) => {
+                    this.insert(new_pid.clone(), ot.clone());
+                }
+                None => {
+                    if this.get(pid).is_none() {
+                        this.insert(pid.clone(), ot.clone());
+                    }
+                    // If pid is not in the renaming but is in both
+                    // this and other, then by assumption
+                    // the element at pid in this and other are equal
+                    // i.e., the renaming is expected to track all
+                    // conflicting pids.
+                }
+            }
+        }
+    }
+
+    /// Merges this `PolicySet` with another `PolicySet`.
+    /// This `PolicySet` is modified while the other `PolicySet`
+    /// remains unchanged.
+    ///
+    /// The flag `rename_duplicates` controls the expected behavior
+    /// when a `PolicyId` in this and the other `PolicySet` conflict.
+    ///
+    /// When `rename_duplicates` is false, conflicting `PolicyId`s result
+    /// in a `PolicySetError::AlreadyDefined` error.
+    ///
+    /// Otherwise, when `rename_duplicates` is true, conflicting `PolicyId`s from
+    /// the other `PolicySet` are automatically renamed to avoid conflict.
+    /// This renaming is returned as a Hashmap from the old `PolicyId` to the
+    /// renamed `PolicyId`.
+    pub fn merge_policyset(
+        &mut self,
+        other: &PolicySet,
+        rename_duplicates: bool,
+    ) -> Result<HashMap<PolicyId, PolicyId>, PolicySetError> {
+        match self.ast.merge_policyset(&other.ast, rename_duplicates) {
+            Ok(renaming) => {
+                let renaming: HashMap<PolicyId, PolicyId> = renaming
+                    .into_iter()
+                    .map(|(old_pid, new_pid)| (PolicyId::new(old_pid), PolicyId::new(new_pid)))
+                    .collect();
+                Self::merge_sets(&mut self.templates, &other.templates, &renaming);
+                Self::merge_sets(&mut self.policies, &other.policies, &renaming);
+                Ok(renaming)
+            }
+            Err(ast::PolicySetError::Occupied { id }) => Err(PolicySetError::AlreadyDefined(
+                policy_set_errors::AlreadyDefined {
+                    id: PolicyId::new(id),
+                },
+            )),
+        }
+    }
+
     /// Add an static policy to the `PolicySet`. To add a template instance, use
     /// `link` instead. This function will return an error (and not modify
     /// the `PolicySet`) if a template-linked policy is passed in.

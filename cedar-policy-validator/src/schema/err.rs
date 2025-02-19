@@ -310,6 +310,24 @@ impl SchemaError {
     }
 }
 
+impl From<NonEmpty<SchemaError>> for SchemaError {
+    fn from(errs: NonEmpty<SchemaError>) -> Self {
+        Self::join_nonempty(errs)
+    }
+}
+
+impl From<NonEmpty<schema_errors::ActionNotDefinedError>> for SchemaError {
+    fn from(errs: NonEmpty<schema_errors::ActionNotDefinedError>) -> Self {
+        Self::ActionNotDefined(schema_errors::ActionNotDefinedError::join_nonempty(errs))
+    }
+}
+
+impl From<NonEmpty<schema_errors::TypeNotDefinedError>> for SchemaError {
+    fn from(errs: NonEmpty<schema_errors::TypeNotDefinedError>) -> Self {
+        Self::TypeNotDefined(schema_errors::TypeNotDefinedError::join_nonempty(errs))
+    }
+}
+
 /// Convenience alias
 pub type Result<T> = std::result::Result<T, SchemaError>;
 
@@ -431,6 +449,12 @@ pub mod schema_errors {
         }
     }
 
+    impl From<NonEmpty<TypeNotDefinedError>> for TypeNotDefinedError {
+        fn from(value: NonEmpty<TypeNotDefinedError>) -> Self {
+            Self::join_nonempty(value)
+        }
+    }
+
     /// Action resolution error
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
@@ -449,6 +473,12 @@ pub mod schema_errors {
         /// one error to join.
         pub(crate) fn join_nonempty(errs: NonEmpty<ActionNotDefinedError>) -> Self {
             Self(errs.flat_map(|err| err.0))
+        }
+    }
+
+    impl From<NonEmpty<ActionNotDefinedError>> for ActionNotDefinedError {
+        fn from(value: NonEmpty<ActionNotDefinedError>) -> Self {
+            Self::join_nonempty(value)
         }
     }
 
