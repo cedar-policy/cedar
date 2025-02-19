@@ -333,6 +333,7 @@ impl EntityUID {
     pub fn is_action(&self) -> bool {
         self.entity_type().is_action()
     }
+    
 }
 
 impl std::fmt::Display for EntityUID {
