@@ -37,6 +37,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
 
     type Data = T;
 
+    #[cfg(feature = "tolerant-ast")]
     type ErrorType = Infallible;
 
     fn loc(&self) -> Option<&Loc> {

@@ -420,6 +420,7 @@ impl ExprBuilder for Builder {
     type Expr = Expr;
 
     type Data = ();
+    #[cfg(feature = "tolerant-ast")]
     type ErrorType = Infallible;
 
     fn with_data(_data: Self::Data) -> Self {
