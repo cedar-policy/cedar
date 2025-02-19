@@ -46,9 +46,11 @@ runs:
       run: |
         echo 'Full coverage report available at:  ${{ steps.upload-artifact.outputs.artifact-url }}'
     - name: Add comment to PR
-      uses: thollander/actions-comment-pull-request@v3
-      with:
-        file-path: target/coverage/markdown.md
+      shell: bash
+      run: gh pr comment $PR --body-file target/coverage/markdown.md
+      env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pr.html_url }}
 
     - name: Check threshold
       if: ${{ inputs.threshold != '-1' }}
