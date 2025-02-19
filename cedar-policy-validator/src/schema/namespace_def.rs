@@ -37,6 +37,7 @@ use super::{internal_name_to_entity_type, AllDefs, ValidatorApplySpec};
 use crate::{
     err::{schema_errors::*, SchemaError},
     json_schema::{self, CommonTypeId, EntityTypeKind},
+    partition_nonempty::PartitionNonEmpty,
     types::{AttributeType, Attributes, OpenTag, Type},
     ActionBehavior, ConditionalName, RawName, ReferenceType,
 };
@@ -360,7 +361,7 @@ impl CommonTypeDefs<ConditionalName> {
                 .defs
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<Result<_, TypeNotDefinedError>>()?,
+                .partition_nonempty()?,
         })
     }
 }
@@ -436,7 +437,7 @@ impl EntityTypesDef<ConditionalName> {
                 .defs
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<Result<_, TypeNotDefinedError>>()?,
+                .partition_nonempty()?,
         })
     }
 }
@@ -538,7 +539,7 @@ impl EntityTypeFragment<ConditionalName> {
                 let parents: HashSet<InternalName> = parents
                     .into_iter()
                     .map(|parent| parent.resolve(all_defs))
-                    .collect::<Result<_, TypeNotDefinedError>>()?;
+                    .partition_nonempty()?;
                 // Fully qualify typenames appearing in `tags`
                 let fully_qual_tags = tags
                     .map(|tags| tags.fully_qualify_type_references(all_defs))
@@ -659,8 +660,8 @@ impl ActionsDef<ConditionalName, ConditionalName> {
             actions: self
                 .actions
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<Result<_, SchemaError>>()?,
+                .map(|(k, v)| v.fully_qualify_type_references(all_defs).map(|v| (k, v)))
+                .partition_nonempty()?,
         })
     }
 }
@@ -765,12 +766,8 @@ impl ActionFragment<ConditionalName, ConditionalName> {
             parents: self
                 .parents
                 .into_iter()
-                .map(|parent| {
-                    parent
-                        .fully_qualify_type_references(all_defs)
-                        .map_err(Into::into)
-                })
-                .collect::<Result<_, SchemaError>>()?,
+                .map(|parent| parent.fully_qualify_type_references(all_defs))
+                .partition_nonempty()?,
             attribute_types: self.attribute_types,
             attributes: self.attributes,
         })
