@@ -246,7 +246,7 @@ impl Validator {
                     .collect();
                 Self::min(v)
             }
-            #[cfg(feature = "error-ast")]
+            #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => (
                 EntityDerefLevel { level: 0 },
                 Some(ValidationError::InternalInvariantViolation(

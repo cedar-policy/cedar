@@ -82,7 +82,7 @@ impl<'a, T> Iterator for ExprIterator<'a, T> {
             ExprKind::Record(map) => {
                 self.expression_stack.extend(map.values());
             }
-            #[cfg(feature = "error-ast")]
+            #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => (),
         }
         Some(next_expr)

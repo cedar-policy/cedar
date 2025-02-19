@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#[cfg(feature = "error-ast")]
+#[cfg(feature = "tolerant-ast")]
 use super::expr_allows_errors::AstExprErrorKind;
 use crate::{
     ast::*,
@@ -157,7 +157,7 @@ pub enum ExprKind<T = ()> {
     Set(Arc<Vec<Expr<T>>>),
     /// Anonymous record (whose elements may be arbitrary expressions)
     Record(Arc<BTreeMap<SmolStr, Expr<T>>>),
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     /// Error expression - allows us to continue parsing even when we have errors
     Error {
         /// Type of error that led to the failure
@@ -393,7 +393,7 @@ impl<T> Expr<T> {
             ExprKind::Is { .. } => Some(Type::Bool),
             ExprKind::Set(_) => Some(Type::Set),
             ExprKind::Record(_) => Some(Type::Record),
-            #[cfg(feature = "error-ast")]
+            #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => None,
         }
     }
@@ -727,7 +727,7 @@ impl Expr {
                 expr.substitute_general::<T>(definitions)?,
                 entity_type.clone(),
             )),
-            #[cfg(feature = "error-ast")]
+            #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => Ok(self.clone()),
         }
     }
@@ -869,6 +869,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
 
     type Data = T;
 
+    #[cfg(feature = "tolerant-ast")]
     type ErrorType = ParseErrors;
 
     fn loc(&self) -> Option<&Loc> {
@@ -1184,7 +1185,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     }
 
     /// Don't support AST Error nodes - return the error right back
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     fn error(self, parse_errors: ParseErrors) -> Result<Self::Expr, Self::ErrorType> {
         Err(parse_errors)
     }
@@ -1502,7 +1503,7 @@ impl<T> Expr<T> {
                 expr.hash_shape(state);
                 entity_type.hash(state);
             }
-            #[cfg(feature = "error-ast")]
+            #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { error_kind, .. } => error_kind.hash(state),
         }
     }

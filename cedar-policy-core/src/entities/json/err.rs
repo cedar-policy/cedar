@@ -121,7 +121,7 @@ pub enum JsonDeserializationError {
     #[diagnostic(transparent)]
     TypeMismatch(TypeMismatch),
     /// When trying to deserialize an AST with an error in it - this should fail
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     #[error("Unable to deserialize an AST Error node")]
     #[diagnostic(help("AST error node indicates that the expression has failed to parse"))]
     ASTErrorNode,
@@ -258,6 +258,7 @@ pub struct MissingRequiredRecordAttr {
     record_attr: SmolStr,
 }
 
+#[cfg(feature = "tolerant-ast")]
 #[derive(Debug, Error, Diagnostic)]
 #[error("AST Error node")]
 /// Error type for a record missing a required attr

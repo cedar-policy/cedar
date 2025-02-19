@@ -15,7 +15,7 @@
  */
 
 use super::FromJsonError;
-#[cfg(feature = "error-ast")]
+#[cfg(feature = "tolerant-ast")]
 use crate::ast::expr_allows_errors::AstExprErrorKind;
 use crate::ast::{self, BoundedDisplay, EntityUID, Infallible};
 use crate::entities::json::{
@@ -27,7 +27,7 @@ use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
 use crate::parser::cst_to_ast;
 use crate::parser::err::ParseErrors;
-#[cfg(feature = "error-ast")]
+#[cfg(feature = "tolerant-ast")]
 use crate::parser::err::{ToASTError, ToASTErrorKind};
 use crate::parser::Node;
 use crate::parser::{cst, Loc};
@@ -388,7 +388,7 @@ pub enum ExprNoExt {
         BTreeMap<SmolStr, Expr>,
     ),
     /// AST Error node - this represents a parsing error in a partially generated AST
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     Error(AstExprErrorKind),
 }
 
@@ -699,7 +699,7 @@ impl ExprBuilder for Builder {
         })
     }
 
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     fn error(self, parse_errors: ParseErrors) -> Result<Self::Expr, Self::ErrorType> {
         Ok(Expr::ExprNoExt(ExprNoExt::Error(
             AstExprErrorKind::InvalidExpr(parse_errors.to_string()),
@@ -868,7 +868,7 @@ impl Expr {
                     }
                     Ok(Expr::ExprNoExt(ExprNoExt::Record(new_m)))
                 }
-                #[cfg(feature = "error-ast")]
+                #[cfg(feature = "tolerant-ast")]
                 ExprNoExt::Error(_) => Err(JsonDeserializationError::ASTErrorNode),
             },
             Expr::ExtFuncCall(e_fn_call) => {
@@ -1063,7 +1063,7 @@ impl Expr {
                     }),
                 }
             }
-            #[cfg(feature = "error-ast")]
+            #[cfg(feature = "tolerant-ast")]
             Expr::ExprNoExt(ExprNoExt::Error(_)) => Err(FromJsonError::ASTErrorNode),
         }
     }
@@ -1132,7 +1132,7 @@ impl<T: Clone> From<ast::Expr<T>> for Expr {
                         .map(|(k, v)| (k, v.into())),
                 )
                 .unwrap(),
-            #[cfg(feature = "error-ast")]
+            #[cfg(feature = "tolerant-ast")]
             // PANIC SAFETY: error type is Infallible so can never happen
             #[allow(clippy::unwrap_used)]
             ast::ExprKind::Error { .. } => Builder::new()
@@ -1498,7 +1498,7 @@ impl BoundedDisplay for ExprNoExt {
                     }
                 }
             }
-            #[cfg(feature = "error-ast")]
+            #[cfg(feature = "tolerant-ast")]
             ExprNoExt::Error(e) => {
                 write!(f, "{e}")?;
                 Ok(())
@@ -1592,7 +1592,7 @@ fn maybe_with_parens(
             write!(f, ")")?;
             Ok(())
         },
-        #[cfg(feature = "error-ast")]
+        #[cfg(feature = "tolerant-ast")]
         Expr::ExprNoExt(ExprNoExt::Error { .. }) => {
             write!(f, "(")?;
             BoundedDisplay::fmt(expr, f, n)?;

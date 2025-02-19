@@ -27,7 +27,7 @@ use crate::{
     parser::{cst, Loc},
 };
 
-#[cfg(feature = "error-ast")]
+#[cfg(feature = "tolerant-ast")]
 use crate::parser::err::ParseErrors;
 
 /// Defines a generic interface for building different expression data
@@ -56,7 +56,7 @@ pub trait ExprBuilder: Clone {
     }
 
     /// Build an expression that failed to parse - can optionally include subexpressions that parsed successfully
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     fn error(self, parse_errors: ParseErrors) -> Result<Self::Expr, Self::ErrorType>;
 
     /// Build an expression storing this information

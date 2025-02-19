@@ -41,7 +41,7 @@ pub(crate) enum TypecheckAnswer<'a> {
     RecursionLimit,
 
     /// Trying to typescheck an error node
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     ErrorAstNode,
 }
 
@@ -81,7 +81,7 @@ impl<'a> TypecheckAnswer<'a> {
             TypecheckAnswer::TypecheckSuccess { expr_type, .. } => Some(expr_type),
             TypecheckAnswer::TypecheckFail { expr_recovery_type } => Some(expr_recovery_type),
             TypecheckAnswer::RecursionLimit => None,
-            #[cfg(feature = "error-ast")]
+            #[cfg(feature = "tolerant-ast")]
             TypecheckAnswer::ErrorAstNode => None,
         }
         .and_then(|e| e.data().as_ref())
@@ -93,7 +93,7 @@ impl<'a> TypecheckAnswer<'a> {
             TypecheckAnswer::TypecheckSuccess { expr_type, .. } => Some(expr_type),
             TypecheckAnswer::TypecheckFail { expr_recovery_type } => Some(expr_recovery_type),
             TypecheckAnswer::RecursionLimit => None,
-            #[cfg(feature = "error-ast")]
+            #[cfg(feature = "tolerant-ast")]
             TypecheckAnswer::ErrorAstNode => None,
         }
     }
@@ -104,7 +104,7 @@ impl<'a> TypecheckAnswer<'a> {
             TypecheckAnswer::TypecheckSuccess { .. } => true,
             TypecheckAnswer::TypecheckFail { .. } => false,
             TypecheckAnswer::RecursionLimit => false,
-            #[cfg(feature = "error-ast")]
+            #[cfg(feature = "tolerant-ast")]
             TypecheckAnswer::ErrorAstNode => false,
         }
     }
@@ -125,7 +125,7 @@ impl<'a> TypecheckAnswer<'a> {
             },
             TypecheckAnswer::TypecheckFail { .. } => self,
             TypecheckAnswer::RecursionLimit => self,
-            #[cfg(feature = "error-ast")]
+            #[cfg(feature = "tolerant-ast")]
             TypecheckAnswer::ErrorAstNode => self,
         }
     }
@@ -139,7 +139,7 @@ impl<'a> TypecheckAnswer<'a> {
             TypecheckAnswer::TypecheckSuccess { expr_type, .. } => TypecheckAnswer::fail(expr_type),
             TypecheckAnswer::TypecheckFail { .. } => self,
             TypecheckAnswer::RecursionLimit => self,
-            #[cfg(feature = "error-ast")]
+            #[cfg(feature = "tolerant-ast")]
             TypecheckAnswer::ErrorAstNode => self,
         }
     }
@@ -160,7 +160,7 @@ impl<'a> TypecheckAnswer<'a> {
                 f(expr_recovery_type, CapabilitySet::new()).into_fail()
             }
             TypecheckAnswer::RecursionLimit => self,
-            #[cfg(feature = "error-ast")]
+            #[cfg(feature = "tolerant-ast")]
             TypecheckAnswer::ErrorAstNode => self,
         }
     }
@@ -179,7 +179,7 @@ impl<'a> TypecheckAnswer<'a> {
         let mut unwrapped = Vec::new();
         let mut any_failed = false;
         let mut recusion_limit_reached = false;
-        #[cfg(feature = "error-ast")]
+        #[cfg(feature = "tolerant-ast")]
         let mut ast_has_errors = false;
         for ans in answers {
             any_failed |= !ans.typechecked();
@@ -195,7 +195,7 @@ impl<'a> TypecheckAnswer<'a> {
                     recusion_limit_reached = true;
                     break;
                 }
-                #[cfg(feature = "error-ast")]
+                #[cfg(feature = "tolerant-ast")]
                 TypecheckAnswer::ErrorAstNode => {
                     ast_has_errors = true;
                     break;
@@ -203,7 +203,7 @@ impl<'a> TypecheckAnswer<'a> {
             });
         }
 
-        #[cfg(feature = "error-ast")]
+        #[cfg(feature = "tolerant-ast")]
         if ast_has_errors {
             return TypecheckAnswer::ErrorAstNode;
         }

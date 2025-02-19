@@ -90,7 +90,7 @@ pub enum EvaluationError {
     NonValue(#[from] evaluation_errors::NonValueError),
 
     /// This is an expression AST node that gets generated when parsing fails
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     #[error(transparent)]
     #[diagnostic(transparent)]
     ASTErrorExpr(#[from] evaluation_errors::ASTErrorExprError),
@@ -116,7 +116,7 @@ impl EvaluationError {
             Self::FailedExtensionFunctionExecution(e) => e.source_loc.as_ref(),
             Self::NonValue(e) => e.source_loc.as_ref(),
             Self::RecursionLimit(e) => e.source_loc.as_ref(),
-            #[cfg(feature = "error-ast")]
+            #[cfg(feature = "tolerant-ast")]
             Self::ASTErrorExpr(e) => e.source_loc.as_ref(),
         }
     }
@@ -165,7 +165,7 @@ impl EvaluationError {
             Self::RecursionLimit(_) => {
                 Self::RecursionLimit(evaluation_errors::RecursionLimitError { source_loc })
             }
-            #[cfg(feature = "error-ast")]
+            #[cfg(feature = "tolerant-ast")]
             Self::ASTErrorExpr(_) => {
                 Self::ASTErrorExpr(evaluation_errors::ASTErrorExprError { source_loc })
             }
@@ -712,7 +712,7 @@ pub mod evaluation_errors {
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("the expression contains an error")]
     pub struct ASTErrorExprError {
@@ -720,7 +720,7 @@ pub mod evaluation_errors {
         pub(crate) source_loc: Option<Loc>,
     }
 
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     impl Diagnostic for ASTErrorExprError {
         impl_diagnostic_from_source_loc_opt_field!(source_loc);
 

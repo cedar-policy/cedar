@@ -56,7 +56,7 @@ test-util = []
 
 # Experimental features.
 partial-eval = []
-error-ast = []
+tolerant-ast = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
 [build-dependencies]

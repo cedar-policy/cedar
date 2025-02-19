@@ -194,7 +194,7 @@ fn expr_typechecks_with_correct_annotation() {
         crate::typecheck::TypecheckAnswer::RecursionLimit => {
             panic!("Should not have hit recursion limit")
         }
-        #[cfg(feature = "error-ast")]
+        #[cfg(feature = "tolerant-ast")]
         crate::typecheck::TypecheckAnswer::ErrorAstNode => {
             panic!("Should not type check an AST with an error node")
         }

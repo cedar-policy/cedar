@@ -1174,7 +1174,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                     },
                 )
             }
-            #[cfg(feature = "error-ast")]
+            #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => TypecheckAnswer::ErrorAstNode,
         }
     }

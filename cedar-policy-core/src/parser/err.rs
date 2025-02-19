@@ -407,7 +407,7 @@ pub enum ToASTErrorKind {
     #[diagnostic(help("try `_ is _ in _`"))]
     InvertedIsIn,
     /// Represents a parsing error in a partially generated AST
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     #[error("Trying to convert AST error node")]
     ErrorNode,
 }

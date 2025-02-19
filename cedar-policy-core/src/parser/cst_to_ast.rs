@@ -39,7 +39,7 @@ use super::loc::Loc;
 use super::node::Node;
 use super::unescape::{to_pattern, to_unescaped_string};
 use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
-#[cfg(feature = "error-ast")]
+#[cfg(feature = "tolerant-ast")]
 use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
 use crate::ast::{
     self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
@@ -273,7 +273,7 @@ impl Node<Option<cst::Policy>> {
     /// NOTE: This function allows partial parsing and can produce AST Error nodes
     /// These cannot be evaluated
     /// Should ONLY be used to examine a partially constructed AST from invalid Cedar
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     pub fn to_policy_with_errors(&self, id: ast::PolicyID) -> Result<ast::StaticPolicy> {
         let maybe_template = self.to_policy_template_with_errors(id);
         let maybe_policy = maybe_template.map(ast::StaticPolicy::try_from);
@@ -313,7 +313,7 @@ impl Node<Option<cst::Policy>> {
     /// NOTE: This function allows partial parsing and can produce AST Error nodes
     /// These cannot be evaluated
     /// Should ONLY be used to examine a partially constructed AST from invalid Cedar
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     pub fn to_policy_template_with_errors(&self, id: ast::PolicyID) -> Result<ast::Template> {
         let policy = self.try_as_inner()?;
 
@@ -894,7 +894,7 @@ impl Node<Option<cst::Str>> {
     }
 }
 
-#[cfg(feature = "error-ast")]
+#[cfg(feature = "tolerant-ast")]
 fn build_ast_error_node_if_possible<Build: ExprBuilder>(error: ParseErrors) -> Result<Build::Expr> {
     let res = Build::new().error(error.clone());
     match res {
@@ -907,7 +907,7 @@ fn build_ast_error_node_if_possible<Build: ExprBuilder>(error: ParseErrors) -> R
 fn convert_expr_error_to_parse_error<Build: ExprBuilder>(
     error: ParseErrors,
 ) -> Result<Build::Expr> {
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     return build_ast_error_node_if_possible::<Build>(error);
     #[allow(unreachable_code)]
     Err(error)
@@ -5263,7 +5263,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     #[track_caller]
     fn assert_parse_policy_allows_errors(text: &str) -> ast::StaticPolicy {
         text_to_cst::parse_policy(text)
@@ -5274,7 +5274,7 @@ mod tests {
             })
     }
 
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     #[track_caller]
     fn assert_parse_policy_allows_errors_fails(text: &str) -> ParseErrors {
         let result = text_to_cst::parse_policy(text)
@@ -5289,7 +5289,7 @@ mod tests {
     }
 
     // Test parsing AST that allows Error nodes
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     #[test]
     fn parsing_with_errors_succeeds_with_empty_when() {
         let src = r#"
@@ -5298,7 +5298,7 @@ mod tests {
         assert_parse_policy_allows_errors(src);
     }
 
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     #[test]
     fn show_policy1_errors_enabled() {
         let src = r#"
@@ -5356,7 +5356,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     #[test]
     fn show_policy2_errors_enabled() {
         let src = r#"
@@ -5365,7 +5365,7 @@ mod tests {
         assert_parse_policy_allows_errors(src);
     }
 
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     #[test]
     fn show_policy3_errors_enabled() {
         let src = r#"
@@ -5374,7 +5374,7 @@ mod tests {
         assert_parse_policy_allows_errors(src);
     }
 
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     #[test]
     fn show_policy4_errors_enabled() {
         let src = r#"
@@ -5385,7 +5385,7 @@ mod tests {
         assert_parse_policy_allows_errors(src);
     }
 
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     #[test]
     fn single_annotation_errors_enabled() {
         // common use-case
@@ -5400,7 +5400,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     #[test]
     fn duplicate_annotations_error_errors_enabled() {
         // duplication is error
