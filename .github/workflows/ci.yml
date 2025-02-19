@@ -8,6 +8,7 @@ env:
 jobs:
   build_and_test:
     uses: ./.github/workflows/build_and_test.yml
+    secrets: inherit
     with:
       report_coverage: true
 

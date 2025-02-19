@@ -38,7 +38,7 @@ jobs:
       - run: cargo doc --all-features --no-deps
 
       # All targets are run with the same `RUSTFLAGS
-      - run: cargo build --verbose
+      # - run: cargo build --verbose
       - run: cargo test --verbose -p cedar-policy
       # - run: cargo test --verbose --benches
       # - run: cargo test --verbose --no-default-features
@@ -51,6 +51,7 @@ jobs:
         uses: ./.github/actions/report_coverage
         with:
           threshold: .8
+        
 
   # # Clippy in its own job so that the `RUSTFLAGS` set for `build_and_test`
   # # don't effect it. As a side effect, this will run in parallel, saving some
