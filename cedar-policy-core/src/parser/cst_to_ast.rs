@@ -5410,7 +5410,7 @@ mod tests {
             @anno("oops, duplicate")
             permit(principal,action,resource);
         "#;
-        let errs = assert_parse_policy_fails(src);
+        let errs = assert_parse_policy_allows_errors_fails(src);
         // annotation duplication (anno)
         expect_n_errors(src, &errs, 1);
         expect_some_error_matches(
