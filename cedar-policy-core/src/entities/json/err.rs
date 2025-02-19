@@ -258,6 +258,7 @@ pub struct MissingRequiredRecordAttr {
     record_attr: SmolStr,
 }
 
+#[cfg(feature = "tolerant-ast")]
 #[derive(Debug, Error, Diagnostic)]
 #[error("AST Error node")]
 /// Error type for a record missing a required attr
