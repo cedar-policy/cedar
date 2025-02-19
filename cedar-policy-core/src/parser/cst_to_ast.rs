@@ -822,15 +822,18 @@ impl Node<Option<cst::VariableDef>> {
                 }
                 op => Err(self.to_ast_err(ToASTErrorKind::InvalidActionScopeOperator(*op))),
             }?;
-            action_constraint
-                .contains_only_action_types()
-                .map_err(|non_action_euids| {
-                    rel_expr
-                        .to_ast_err(parse_errors::InvalidActionType {
-                            euids: non_action_euids,
-                        })
-                        .into()
-                })
+            let action_constraint_res = action_constraint.contains_only_action_types();
+            #[cfg(feature = "tolerant-ast")]
+            return Ok(action_constraint_res.unwrap_or(ActionConstraint::ErrorConstraint));
+
+            #[allow(unreachable_code)]
+            action_constraint_res.map_err(|non_action_euids| {
+                rel_expr
+                    .to_ast_err(parse_errors::InvalidActionType {
+                        euids: non_action_euids,
+                    })
+                    .into()
+            })
         } else {
             Ok(ActionConstraint::Any)
         }
@@ -1071,6 +1074,7 @@ impl Node<Option<cst::Expr>> {
         
         let expr = match expr_opt {
             cst::Expr::Expr(expr_impl) => expr_impl,
+            #[cfg(feature = "tolerant-ast")]
             cst::Expr::Error => {
                 let e = ToASTError::new(ToASTErrorKind::InvalidEntityLiteral("PARSE_ERROR".to_string()), self.loc.clone());
                 return Ok(ExprOrSpecial::Expr { 
@@ -5319,7 +5323,7 @@ mod tests {
         assert_parse_policy_allows_errors(src);
     }
 
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     #[test]
     fn parsing_with_errors_succeeds_with_invalid_method() {
         let src = r#"
@@ -5328,17 +5332,113 @@ mod tests {
         assert_parse_policy_allows_errors(src);
     }
 
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     #[test]
-    fn parsing_with_errors_succeeds_with_missing_second_operand() {
+    fn parsing_with_errors_succeeds_with_missing_second_operand_eq_and_in() {
+        // Test for == operator
+        let src_eq_cases = [
+            r#"permit(principal ==, action, resource);"#,
+            r#"permit(principal, action ==, resource);"#,
+            r#"permit(principal, action, resource ==);"#,
+            r#"permit(principal ==, action ==, resource);"#,
+            r#"permit(principal, action ==, resource ==);"#,
+            r#"permit(principal ==, action, resource ==);"#,
+            r#"permit(principal ==, action ==, resource ==);"#,
+        ];
+    
+        for src in src_eq_cases.iter() {
+            assert_parse_policy_allows_errors(src);
+        }
+    
+        // Test for in operator
+        let src_in_cases = [
+            r#"permit(principal in, action, resource);"#,
+            r#"permit(principal, action in, resource);"#,
+            r#"permit(principal, action, resource in);"#,
+            r#"permit(principal in, action in, resource);"#,
+            r#"permit(principal, action in, resource in);"#,
+            r#"permit(principal in, action, resource in);"#,
+            r#"permit(principal in, action in, resource in);"#,
+        ];
+    
+        for src in src_in_cases.iter() {
+            assert_parse_policy_allows_errors(src);
+        }
+
+                    // Cases with "is" and missing operands
+        let src_in_cases = [
+                    r#"permit(principal is something in, action, resource);"#,
+                    r#"permit(principal, action, resource is something in);"#,
+        ];
+        for src in src_in_cases.iter() {
+            assert_parse_policy_allows_errors(src);
+        }
+
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn parsing_with_errors_succeeds_with_complex_missing_operand_eq_and_in() {
+        // == operator test cases
+        let src_eq_complex_cases = [
+            // Basic missing operand cases
+            r#"permit(principal ==, action, resource);"#,
+            r#"permit(principal, action ==, resource);"#,
+            r#"permit(principal, action, resource ==);"#,
+
+            // Cases with existing values and missing operands
+            r#"permit(principal == Test::User::"blah", action, resource);"#,
+            r#"permit(principal, action == Action::"read", resource);"#,
+            r#"permit(principal, action, resource == Test::"data");"#,
+        ];
+
+        for src in src_eq_complex_cases.iter() {
+            let parsed = assert_parse_policy_allows_errors(src);
+            println!("Parsed == complex policy: {:?}", parsed);
+        }
+
+        // in operator test cases
+        let src_in_complex_cases = [
+            // Basic missing operand cases
+            r#"permit(principal in, action, resource);"#,
+            r#"permit(principal, action in, resource);"#,
+            r#"permit(principal, action, resource in);"#,
+
+            // Cases with existing collections
+            r#"permit(principal in ["admin", "user"], action, resource);"#,
+            r#"permit(principal, action in ["read", "write"], resource);"#,
+            r#"permit(principal, action, resource in ["sensitive", "public"]);"#,
+
+
+
+            // Cases with "is" and existing collections
+            r#"permit(principal is Group in ["admins", "editors"], action, resource);"#,
+            r#"permit(principal, action is Request in ["GET", "POST"], resource);"#,
+            r#"permit(principal, action, resource is Data in ["private", "public"]);"#,
+
+            // Mixed cases with multiple potential missing operands
+            r#"permit(principal is something in, action in, resource);"#,
+            r#"permit(principal, action is something in, resource in);"#,
+            r#"permit(principal is something in, action, resource in);"#,
+        ];
+
+        for src in src_in_complex_cases.iter() {
+            let parsed = assert_parse_policy_allows_errors(src);
+            println!("Parsed in complex policy: {:?}", parsed);
+        }
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn parsing_with_errors_succeeds_with_missing_second_operand_is() {
         let src = r#"
-            permit(principal ==, action, resource);
+            permit(principal is something in, action, resource);
         "#;
         let parsed = assert_parse_policy_allows_errors(src);
         println!("Parsed policy: {:?}", parsed);
     }
 
-    #[cfg(feature = "error-ast")]
+    #[cfg(feature = "tolerant-ast")]
     #[test]
     fn show_policy1_errors_enabled() {
         let src = r#"

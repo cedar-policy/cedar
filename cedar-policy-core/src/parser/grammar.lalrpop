@@ -199,7 +199,7 @@ pub Expr: Node<Option<cst::Expr>> = {
         => Node::with_source_loc(Some(cst::Expr::Expr(cst::ExprImpl { expr: Box::new(cst::ExprData::If(i,t,e)) })), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <err:!> <r:@R> => { 
         println!("Expression error");
-        #[cfg(feature = "error-ast")]
+        #[cfg(feature = "tolerant-ast")]
         return Node::with_source_loc(Some(cst::Expr::Error), Loc::new(l..r, Arc::clone(src)));
 
         println!("Keeping error");
@@ -269,7 +269,7 @@ MultOp: cst::MultOp = {
 Add: Node<Option<cst::Add>> = {
     <l:@L> <i:Mult> <e:(AddOp Mult)*> <r:@R>
         => Node::with_source_loc(Some(cst::Add{initial:i, extended: e}), Loc::new(l..r, Arc::clone(src))),
-}
+} 
 // Mult := Unary {('*' | '/' | '%') Unary}
 Mult: Node<Option<cst::Mult>> = {
     <l:@L> <i:Unary>  <e:(MultOp Unary)*> <r:@R>

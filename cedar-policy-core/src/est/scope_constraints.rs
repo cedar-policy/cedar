@@ -820,19 +820,21 @@ impl From<ast::ActionConstraint> for ActionConstraint {
         match constraint {
             ast::ActionConstraint::Any => ActionConstraint::All,
             ast::ActionConstraint::Eq(e) => ActionConstraint::Eq(EqConstraint::Entity {
-                entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
-            }),
+                        entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
+                    }),
             ast::ActionConstraint::In(es) => match &es[..] {
-                [e] => ActionConstraint::In(ActionInConstraint::Single {
-                    entity: EntityUidJson::ImplicitEntityEscape((&**e).into()),
-                }),
-                es => ActionConstraint::In(ActionInConstraint::Set {
-                    entities: es
-                        .iter()
-                        .map(|e| EntityUidJson::ImplicitEntityEscape((&**e).into()))
-                        .collect(),
-                }),
-            },
+                        [e] => ActionConstraint::In(ActionInConstraint::Single {
+                            entity: EntityUidJson::ImplicitEntityEscape((&**e).into()),
+                        }),
+                        es => ActionConstraint::In(ActionInConstraint::Set {
+                            entities: es
+                                .iter()
+                                .map(|e| EntityUidJson::ImplicitEntityEscape((&**e).into()))
+                                .collect(),
+                        }),
+                    },
+            #[cfg(feature="tolerant-ast")]
+            ast::ActionConstraint::ErrorConstraint => todo!(),
         }
     }
 }

@@ -153,7 +153,8 @@ impl fmt::Display for Expr {
         // let expr_opt: &_ = &*self.expr;
         let expr = match  self {
             Expr::Expr(expr_impl) => &*expr_impl.expr,
-            Expr::Error => todo!(),
+            #[cfg(feature = "tolerant-ast")]
+            Expr::Error => return write!(f, "Expr::Error"),
         };
         match expr {
             ExprData::Or(or) => write!(f, "{}", View(or)),

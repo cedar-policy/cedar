@@ -188,7 +188,8 @@ impl Doc for Node<Option<Expr>> {
                 ExprData::Or(e) => e.to_doc(context),
             
             },
-            Expr::Error => todo!(),
+            #[cfg(feature = "tolerant-ast")]
+            Expr::Error => None,
         }
     }
 }

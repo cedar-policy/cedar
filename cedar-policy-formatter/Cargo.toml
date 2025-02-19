@@ -25,3 +25,6 @@ insta = { version = "1.42.1", features = ["glob"] }
 
 [lints]
 workspace = true
+
+[features]
+tolerant-ast = ["cedar-policy-core/tolerant-ast"]

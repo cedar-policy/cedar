@@ -159,6 +159,7 @@ pub struct ExprImpl {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
     Expr(ExprImpl),
+    #[cfg(feature = "tolerant-ast")]
     Error
 }
 

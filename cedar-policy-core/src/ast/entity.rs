@@ -127,7 +127,8 @@ pub struct EntityUIDImpl {
 #[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum EntityUID {
     EntityUID(EntityUIDImpl),
-    Error(EntityType)
+    #[cfg(feature = "tolerant-ast")]
+    Error(Eid, EntityType)
 }
 
 impl StaticallyTyped for EntityUID {
@@ -136,7 +137,8 @@ impl StaticallyTyped for EntityUID {
             EntityUID::EntityUID(entity_uid) => Type::Entity {
                 ty: entity_uid.ty.clone(),
             },
-            EntityUID::Error(ty) =>Type::Entity {
+            #[cfg(feature = "tolerant-ast")]
+            EntityUID::Error(_eid, ty) =>Type::Entity {
                 ty: ty.clone()
             },
         }
@@ -184,24 +186,27 @@ impl EntityUID {
         }))
     }
 
+    #[cfg(feature = "tolerant-ast")]
     pub fn error() -> Result<Self, ParseErrors> {
-        Ok(Self::Error(EntityType::from_str("ERRORTYPE")?))
+        Ok(Self::Error(Eid::new("ERROR_EID"), EntityType::from_str("ERRORTYPE")?))
     }
 
     /// Split into the `EntityType` representing the entity type, and the `Eid`
     /// representing its name
     pub fn components(self) -> (EntityType, Eid) {
         match self {
-            EntityUID::EntityUID(entity_uidimpl) =>  (entity_uidimpl.ty, entity_uidimpl.eid),
-            EntityUID::Error(ty) => todo!(),
+            EntityUID::EntityUID(entity_uid) =>  (entity_uid.ty, entity_uid.eid),
+            #[cfg(feature = "tolerant-ast")]
+            EntityUID::Error(eid, ty) => (ty, eid),
         }  
     }
 
     /// Get the source location for this `EntityUID`.
     pub fn loc(&self) -> Option<&Loc> {
         match self {
-            EntityUID::EntityUID(entity_uidimpl) => entity_uidimpl.loc.as_ref(),
-            EntityUID::Error(ty) => todo!(),
+            EntityUID::EntityUID(entity_uid) => entity_uid.loc.as_ref(),
+            #[cfg(feature = "tolerant-ast")]
+            EntityUID::Error(_, _) => None,
         }   
     }
 
@@ -213,8 +218,9 @@ impl EntityUID {
     /// Get the type component.
     pub fn entity_type(&self) -> &EntityType {
         match self {
-            EntityUID::EntityUID(entity_uidimpl) => &entity_uidimpl.ty,
-            EntityUID::Error(ty) => &ty,
+            EntityUID::EntityUID(entity_uid) => &entity_uid.ty,
+            #[cfg(feature = "tolerant-ast")]
+            EntityUID::Error(eid, ty) => &ty,
         }
         
     }
@@ -222,8 +228,9 @@ impl EntityUID {
     /// Get the Eid component.
     pub fn eid(&self) -> &Eid {
         match self {
-            EntityUID::EntityUID(entity_uidimpl) => &entity_uidimpl.eid,
-            EntityUID::Error(ty) => todo!(),
+            EntityUID::EntityUID(entity_uid) => &entity_uid.eid,
+            #[cfg(feature = "tolerant-ast")]
+            EntityUID::Error(eid, ty) => &eid,
         }
     }
 
@@ -231,13 +238,15 @@ impl EntityUID {
     pub fn is_action(&self) -> bool {
         self.entity_type().is_action()
     }
+    
 }
 
 impl std::fmt::Display for EntityUID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            EntityUID::EntityUID(entity_uidimpl) =>write!(f, "{}::\"{}\"", self.entity_type(), entity_uidimpl.eid.escaped()),
-            EntityUID::Error(ty) => todo!(),
+            EntityUID::EntityUID(entity_uid) =>write!(f, "{}::\"{}\"", self.entity_type(), entity_uid.eid.escaped()),
+            #[cfg(feature = "tolerant-ast")]
+            EntityUID::Error(eid, ty) => write!(f, "{}::\"{}\"", self.entity_type(), eid.escaped()),
         }
     }
 }
