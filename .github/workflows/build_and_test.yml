@@ -23,19 +23,19 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - name: Set environment variables for coverage collect
-        if: ${{ inputs.report_coverage }} && ${{ matrix.toolchain }} == 'stable'
-        shell: bash
-        run: |
-          echo "RUSTFLAGS=\"${RUSTFLAGS} -C instrument-coverage\"" >> $GITHUB_ENV
-          echo 'LLVM_PROFILE_FILE="cedar_%m_%p.profraw"' >> $GITHUB_ENV
-      - run: echo $RUSTFLAGS
       - run: sudo apt-get install protobuf-compiler
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: cargo install cargo-audit --locked
       - run: ./panic_safety.sh
       - run: cargo doc --all-features --no-deps
 
+      - name: Set environment variables for coverage collect
+        if: ${{ inputs.report_coverage }} && ${{ matrix.toolchain }} == 'stable'
+        shell: bash
+        run: |
+          echo "RUSTFLAGS=${RUSTFLAGS} -C instrument-coverage" >> $GITHUB_ENV
+          echo 'LLVM_PROFILE_FILE="cedar_%m_%p.profraw"' >> $GITHUB_ENV
+      - run: echo $LLVM_PROFILE_FILE $RUSTFLAGS
       # All targets are run with the same `RUSTFLAGS
       - run: cargo build --verbose
       - run: cargo test --verbose
