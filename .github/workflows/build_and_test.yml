@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           echo "RUSTFLAGS=${RUSTFLAGS} -C instrument-coverage" >> $GITHUB_ENV
-          echo 'LLVM_PROFILE_FILE="cedar_%m_%p.profraw"' >> $GITHUB_ENV
+          echo "LLVM_PROFILE_FILE=cedar_%m_%p.profraw" >> $GITHUB_ENV
 
       - run: echo $LLVM_PROFILE_FILE $RUSTFLAGS
       - uses: actions/checkout@v4
