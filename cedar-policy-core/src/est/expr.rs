@@ -17,7 +17,9 @@
 use super::FromJsonError;
 #[cfg(feature = "tolerant-ast")]
 use crate::ast::expr_allows_errors::AstExprErrorKind;
-use crate::ast::{self, BoundedDisplay, EntityUID, Infallible};
+use crate::ast::{self, BoundedDisplay, EntityUID};
+#[cfg(feature = "tolerant-ast")]
+use crate::ast::Infallible;
 use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
     CedarValueJson, FnAndArg,
