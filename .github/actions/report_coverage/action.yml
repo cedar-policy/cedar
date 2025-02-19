@@ -39,23 +39,17 @@ runs:
       id: upload-artifact
       with:
         name: report
-        path: target/coverage/
+        path: target/coverage/html/
         retention-days: 30
     - name: Print report location
       shell: bash
       run: |
         echo 'Full coverage report available at:  ${{ steps.upload-artifact.outputs.artifact-url }}'
-    - name: Create comment
-      uses: actions/github-script@v7
+    - name: Add comment to PR
+      uses: thollander/actions-comment-pull-request@v3
       with:
-        github-token: ${{secrets.GITHUB_TOKEN}}
-        script: |
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: "$(cat target/coverage/markdown.md)"
-          })
+        file-path: target/coverage/markdown.md
+
     - name: Check threshold
       if: ${{ inputs.threshold != '-1' }}
       shell: bash

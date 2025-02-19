@@ -46,9 +46,6 @@ jobs:
       - run: cargo test --verbose --features "experimental"
       - run: cargo audit --deny warnings # For some reason this hangs if you don't cargo build first
 
-      - name: Check for coverage files
-        shell: bash
-        run: find -name '*.profraw'
       - name: Create a coverage report
         if: ${{ inputs.report_coverage }} && ${{ matrix.toolchain }} == 'stable'
         uses: ./.github/actions/report_coverage
