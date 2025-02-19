@@ -8,6 +8,8 @@ env:
 jobs:
   build_and_test:
     uses: ./.github/workflows/build_and_test.yml
+    with:
+      report_coverage: true
 
   cargo_semver_checks:
     name: Cargo SemVer Checks

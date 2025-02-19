@@ -1,6 +1,11 @@
 name: Build and Test
 on:
-    workflow_call:
+  workflow_call:
+    inputs:
+      report_coverage:
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build_and_test:
@@ -14,10 +19,17 @@ jobs:
     # Set `RUSTFLAGS` once for all cargo commands so that changing these flags
     # doesn't trigger a fresh build.
     env:
-      RUSTFLAGS: '-D warnings -F unsafe-code'
+      RUSTFLAGS: "-D warnings -F unsafe-code"
 
     steps:
       - uses: actions/checkout@v4
+      - name: Set environment variables for coverage collect
+        if: ${{ inputs.report_coverage }} && ${{ matrix.toolchain }} == 'stable'
+        shell: bash
+        run: |
+          echo "RUSTFLAGS='${RUSTFLAGS} -C instrument-coverage'" >> $GITHUB_ENV
+          echo 'LLVM_PROFILE_FILE="cedar_%m_%p.profraw"' >> $GITHUB_ENV
+
       - run: sudo apt-get install protobuf-compiler
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: cargo install cargo-audit --locked
@@ -32,6 +44,11 @@ jobs:
       - run: cargo build --verbose --features "experimental"
       - run: cargo test --verbose --features "experimental"
       - run: cargo audit --deny warnings # For some reason this hangs if you don't cargo build first
+
+      - name: Create a coverage report
+        uses: ./.github/actions/report_coverage
+        with:
+          threshold: .8
 
   # Clippy in its own job so that the `RUSTFLAGS` set for `build_and_test`
   # don't effect it. As a side effect, this will run in parallel, saving some
@@ -77,9 +94,9 @@ jobs:
   msrv:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: taiki-e/install-action@cargo-hack
-    - run: cargo hack check --rust-version --workspace --all-targets --ignore-private
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@cargo-hack
+      - run: cargo hack check --rust-version --workspace --all-targets --ignore-private
 
   wasm-build:
     name: run wasm build script
@@ -89,7 +106,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     env:
-      RUSTFLAGS: '-D warnings -F unsafe-code'
+      RUSTFLAGS: "-D warnings -F unsafe-code"
 
     steps:
       - uses: actions/checkout@v4
