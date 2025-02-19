@@ -45,6 +45,7 @@ pub trait ExprBuilder: Clone {
     ///
     ///  By default we fail on errors and this should be a ParseErrors
     ///  But when we run with error parsing enabled, can be Infallible
+    #[cfg(feature = "tolerant-ast")]
     type ErrorType;
 
     /// Construct a new expression builder for an expression that will not carry any data.
