@@ -635,7 +635,7 @@ impl ast::UnreservedId {
                             suggested_method.map(|m| format!("did you mean `{m}`?"))
                         }
                         let hint = suggest_method(self, &EXTENSION_STYLES.methods);
-                        Err(ToASTError::new(
+                        convert_expr_error_to_parse_error::<Build>(ToASTError::new(
                             ToASTErrorKind::UnknownMethod {
                                 id: self.clone(),
                                 hint,
@@ -956,11 +956,12 @@ where
         match self {
             Self::Expr { expr, .. } => Ok(expr),
             Self::Var { var, loc } => Ok(Build::new().with_source_loc(&loc).var(var)),
-            Self::Name { name, loc } => Err(ToASTError::new(
-                ToASTErrorKind::ArbitraryVariable(name.to_string().into()),
-                loc,
-            )
-            .into()),
+            Self::Name { name, loc } => {
+                convert_expr_error_to_parse_error::<Build>(
+                    ToASTError::new(ToASTErrorKind::ArbitraryVariable(name.to_string().into()), loc.clone())
+                        .into(),
+                )
+            },
             Self::StrLit { lit, loc } => {
                 match to_unescaped_string(lit) {
                     Ok(s) => Ok(Build::new().with_source_loc(&loc).val(s)),
@@ -5301,12 +5302,30 @@ mod tests {
 
     #[cfg(feature = "tolerant-ast")]
     #[test]
+    fn parsing_with_errors_succeeds_with_invalid_variable_in_when() {
+        let src = r#"
+            permit(principal, action, resource) when { pri };
+        "#;
+        assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "error-ast")]
+    #[test]
+    fn parsing_with_errors_succeeds_with_invalid_method() {
+        let src = r#"
+            permit(principal, action, resource) when { ip(principal.ip).i() };
+        "#;
+        assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "error-ast")]
+    #[test]
     fn show_policy1_errors_enabled() {
         let src = r#"
             permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
         "#;
         let errs = assert_parse_policy_allows_errors_fails(src);
-        expect_n_errors(src, &errs, 6);
+        expect_n_errors(src, &errs, 4);
         expect_some_error_matches(
             src,
             &errs,
@@ -5329,22 +5348,6 @@ mod tests {
             &ExpectedErrorMessageBuilder::error("type constraints using `:` are not supported")
                 .help("try using `is` instead")
                 .exactly_one_underline("r")
-                .build(),
-        );
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("invalid variable: w")
-                .help("the valid Cedar variables are `principal`, `action`, `resource`, and `context`; did you mean to enclose `w` in quotes to make a string?")
-                .exactly_one_underline("w")
-                .build(),
-        );
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("invalid variable: u")
-                .help("the valid Cedar variables are `principal`, `action`, `resource`, and `context`; did you mean to enclose `u` in quotes to make a string?")
-                .exactly_one_underline("u")
                 .build(),
         );
         expect_some_error_matches(
