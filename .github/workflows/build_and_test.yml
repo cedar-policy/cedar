@@ -27,9 +27,9 @@ jobs:
         if: ${{ inputs.report_coverage }} && ${{ matrix.toolchain }} == 'stable'
         shell: bash
         run: |
-          echo "RUSTFLAGS='${RUSTFLAGS} -C instrument-coverage'" >> $GITHUB_ENV
+          echo "RUSTFLAGS=\"${RUSTFLAGS} -C instrument-coverage\"" >> $GITHUB_ENV
           echo 'LLVM_PROFILE_FILE="cedar_%m_%p.profraw"' >> $GITHUB_ENV
-
+      - run: echo $RUSTFLAGS
       - run: sudo apt-get install protobuf-compiler
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: cargo install cargo-audit --locked
