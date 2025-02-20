@@ -39,7 +39,7 @@ jobs:
 
       # All targets are run with the same `RUSTFLAGS
       # - run: cargo build --verbose
-      - run: cargo test --verbose -p cedar-policy
+      - run: cargo test --verbose -p cedar-policy-formatter
       # - run: cargo test --verbose --benches
       # - run: cargo test --verbose --no-default-features
       # - run: cargo build --verbose --features "experimental"

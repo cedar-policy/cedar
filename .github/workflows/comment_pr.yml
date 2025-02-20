@@ -2,7 +2,7 @@ name: Comment on the pull request
 
 on:
   workflow_run:
-    workflows: ["Cargo Build & Test"]
+    workflows: [Cargo Build & Test]
     types:
       - completed
 
