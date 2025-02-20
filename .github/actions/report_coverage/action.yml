@@ -34,26 +34,25 @@ runs:
             --ignore "/*" \
             --ignore-not-existing \
             -o ./target/coverage/
-    - name: Upload HTML report
+    - name: Upload HTML coverage report
       uses: actions/upload-artifact@v4
       id: upload-artifact
       with:
-        name: report
+        name: coverage_report
         path: target/coverage/html/
         retention-days: 30
+    - name: Upload markdown summary
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage_summary
+        path: target/coverage/markdown.md
+        retention-days: 2
     - name: Print report location
       shell: bash
       run: |
         echo 'Full coverage report available at:  ${{ steps.upload-artifact.outputs.artifact-url }}'
-    # - name: Add comment to PR
-    #   shell: bash
-    #   run: gh pr comment $PR --body-file target/coverage/markdown.md
-    #   env:
-    #       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    #       PR: ${{ github.event.pr.html_url }}
-
     - name: Check threshold
       if: ${{ inputs.threshold != '-1' }}
       shell: bash
       run: |
-        echo 'TODO Checking coverage theshold ${{ inputs.threshold }}'
+        echo 'TODO: Checking coverage theshold ${{ inputs.threshold }}'
