@@ -2,7 +2,7 @@ name: "Report Coverage"
 description: "Creates a coverage report"
 inputs:
   threshold:
-    description: "TODO"
+    description: "Minimum proportion of modified lines that need to be covered for acceptance or -1 if there is no minimum."
     required: false
     default: "-1"
 
