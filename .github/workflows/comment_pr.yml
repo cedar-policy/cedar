@@ -1,0 +1,27 @@
+name: Comment on the pull request
+
+on:
+  workflow_run:
+    workflows: [Cargo Build & Test]
+    types:
+      - completed
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request'
+    steps:
+      - name: Download artifact
+        shell: bash
+        run: gh run download $RUN_ID -n $NAME
+        env:
+          RUN_ID: ${{github.event.workflow_run.id }}
+          NAME: "coverage_summary"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: echo  ${{ github.event.workflow_run.html_url }}
+      - name: Add comment to PR
+        shell: bash
+        run: gh pr comment $PR --body-file markdown.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.workflow_run.html_url }}

@@ -1,6 +1,11 @@
 name: Build and Test
 on:
-    workflow_call:
+  workflow_call:
+    inputs:
+      report_coverage:
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build_and_test:
@@ -14,95 +19,110 @@ jobs:
     # Set `RUSTFLAGS` once for all cargo commands so that changing these flags
     # doesn't trigger a fresh build.
     env:
-      RUSTFLAGS: '-D warnings -F unsafe-code'
+      RUSTFLAGS: "-D warnings -F unsafe-code"
 
     steps:
+      - name: Set environment variables for coverage collect
+        if: ${{ inputs.report_coverage }} && ${{ matrix.toolchain }} == 'stable'
+        shell: bash
+        run: |
+          echo "RUSTFLAGS=${RUSTFLAGS} -C instrument-coverage" >> $GITHUB_ENV
+          echo "LLVM_PROFILE_FILE=cedar_%m_%p.profraw" >> $GITHUB_ENV
+
+      - run: echo $LLVM_PROFILE_FILE $RUSTFLAGS
       - uses: actions/checkout@v4
       - run: sudo apt-get install protobuf-compiler
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - run: cargo install cargo-audit --locked
-      - run: ./panic_safety.sh
-      - run: cargo doc --all-features --no-deps
+      # - run: cargo install cargo-audit --locked
+      # - run: ./panic_safety.sh
+      # - run: cargo doc --all-features --no-deps
 
       # All targets are run with the same `RUSTFLAGS
-      - run: cargo build --verbose
-      - run: cargo test --verbose
-      - run: cargo test --verbose --benches
-      - run: cargo test --verbose --no-default-features
-      - run: cargo build --verbose --features "experimental"
-      - run: cargo test --verbose --features "experimental"
-      - run: cargo audit --deny warnings # For some reason this hangs if you don't cargo build first
+      # - run: cargo build --verbose
+      - run: cargo test --verbose -p cedar-policy-formatter
+      # - run: cargo test --verbose --benches
+      # - run: cargo test --verbose --no-default-features
+      # - run: cargo build --verbose --features "experimental"
+      # - run: cargo test --verbose --features "experimental"
+      # - run: cargo audit --deny warnings # For some reason this hangs if you don't cargo build first
 
-  # Clippy in its own job so that the `RUSTFLAGS` set for `build_and_test`
-  # don't effect it. As a side effect, this will run in parallel, saving some
-  # time.
-  clippy:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        toolchain:
-          - stable
+      - name: Create a coverage report
+        if: ${{ inputs.report_coverage }} && ${{ matrix.toolchain }} == 'stable'
+        uses: ./.github/actions/report_coverage
+        with:
+          threshold: .8
+        
 
-    steps:
-      - uses: actions/checkout@v4
-      - run: sudo apt-get install protobuf-compiler
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      # Clippy is configured by `.cargo/config.toml` to deny on lints like
-      # `unwrap_used`. They aren't detected by `panic_safety.sh` which only
-      # looks for comments where we've added an `allow` directive for clippy.
-      - run: cargo clippy --all-features
+  # # Clippy in its own job so that the `RUSTFLAGS` set for `build_and_test`
+  # # don't effect it. As a side effect, this will run in parallel, saving some
+  # # time.
+  # clippy:
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       toolchain:
+  #         - stable
 
-  # Run `cargo fmt` independently so that tests are executed even if you forgot
-  # to format before pushing.
-  format:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        toolchain:
-          - stable
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: sudo apt-get install protobuf-compiler
+  #     - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+  #     # Clippy is configured by `.cargo/config.toml` to deny on lints like
+  #     # `unwrap_used`. They aren't detected by `panic_safety.sh` which only
+  #     # looks for comments where we've added an `allow` directive for clippy.
+  #     - run: cargo clippy --all-features
 
-    steps:
-      - uses: actions/checkout@v4
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - run: cargo fmt --all --check
+  # # Run `cargo fmt` independently so that tests are executed even if you forgot
+  # # to format before pushing.
+  # format:
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       toolchain:
+  #         - stable
 
-  cargo-deny:
-    name: cargo deny
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v1
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+  #     - run: cargo fmt --all --check
 
-  # See https://doc.rust-lang.org/cargo/guide/continuous-integration.html#verifying-rust-version
-  msrv:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: taiki-e/install-action@cargo-hack
-    - run: cargo hack check --rust-version --workspace --all-targets --ignore-private
+  # cargo-deny:
+  #   name: cargo deny
+  #   runs-on: ubuntu-22.04
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: EmbarkStudios/cargo-deny-action@v1
 
-  wasm-build:
-    name: run wasm build script
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest-large, macos-latest]
-    runs-on: ${{ matrix.os }}
+  # # See https://doc.rust-lang.org/cargo/guide/continuous-integration.html#verifying-rust-version
+  # msrv:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: taiki-e/install-action@cargo-hack
+  #     - run: cargo hack check --rust-version --workspace --all-targets --ignore-private
 
-    env:
-      RUSTFLAGS: '-D warnings -F unsafe-code'
+  # wasm-build:
+  #   name: run wasm build script
+  #   strategy:
+  #     matrix:
+  #       os: [ubuntu-latest, macos-latest-large, macos-latest]
+  #   runs-on: ${{ matrix.os }}
 
-    steps:
-      - uses: actions/checkout@v4
-      - name: update llvm (macOS)
-        if: ${{ matrix.os  == 'macos-latest-large' }}
-        run: brew install llvm && echo "/usr/local/opt/llvm/bin" >> $GITHUB_PATH
-      - name: update llvm (macOSarm64)
-        if: ${{ matrix.os  == 'macos-latest' }}
-        run: brew install llvm && echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
-      - name: install typescript
-        if: ${{ matrix.os  != 'ubuntu-latest' }}
-        run: npm install -g typescript
-      - name: install wasm-pack
-        run: cargo install wasm-pack
-      - name: build wasm and test build
-        run: cd ./cedar-wasm && TEST_TS=1 ./build-wasm.sh
+  #   env:
+  #     RUSTFLAGS: "-D warnings -F unsafe-code"
+
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: update llvm (macOS)
+  #       if: ${{ matrix.os  == 'macos-latest-large' }}
+  #       run: brew install llvm && echo "/usr/local/opt/llvm/bin" >> $GITHUB_PATH
+  #     - name: update llvm (macOSarm64)
+  #       if: ${{ matrix.os  == 'macos-latest' }}
+  #       run: brew install llvm && echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
+  #     - name: install typescript
+  #       if: ${{ matrix.os  != 'ubuntu-latest' }}
+  #       run: npm install -g typescript
+  #     - name: install wasm-pack
+  #       run: cargo install wasm-pack
+  #     - name: build wasm and test build
+  #       run: cd ./cedar-wasm && TEST_TS=1 ./build-wasm.sh

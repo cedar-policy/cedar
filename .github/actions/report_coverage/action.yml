@@ -1,0 +1,58 @@
+name: "Report Coverage"
+description: "Creates a coverage report"
+inputs:
+  threshold:
+    description: "TODO"
+    required: false
+    default: "-1"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install LLVM tools
+      shell: bash
+      run: rustup component add llvm-tools-preview
+    - name: Install grcov
+      shell: bash
+      run: cargo install grcov
+    - name: Collect coverage profiles
+      shell: bash
+      run: |
+        zip -0 raw_cov.zip $(find . -name "*.profraw") -q
+        rm $(find -name '*.profraw')
+    # Note: source-based branch coverage is not supported for Rust
+    # (see http://github.com/rust-lang/rust/issues/79649)
+    - name: Build coverage report
+      shell: bash
+      run: |
+        mkdir -p ./target/coverage
+        grcov raw_cov.zip \
+            --source-dir . \
+            --binary-path ./target/debug/ \
+            -t markdown,html,cobertura \
+            --ignore 'target/debug/*' \
+            --ignore "/*" \
+            --ignore-not-existing \
+            -o ./target/coverage/
+    - name: Upload HTML coverage report
+      uses: actions/upload-artifact@v4
+      id: upload-artifact
+      with:
+        name: coverage_report
+        path: target/coverage/html/
+        retention-days: 30
+    - name: Upload markdown summary
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage_summary
+        path: target/coverage/markdown.md
+        retention-days: 2
+    - name: Print report location
+      shell: bash
+      run: |
+        echo 'Full coverage report available at:  ${{ steps.upload-artifact.outputs.artifact-url }}'
+    - name: Check threshold
+      if: ${{ inputs.threshold != '-1' }}
+      shell: bash
+      run: |
+        echo 'TODO: Checking coverage theshold ${{ inputs.threshold }}'

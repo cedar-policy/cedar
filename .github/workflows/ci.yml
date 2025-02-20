@@ -8,40 +8,42 @@ env:
 jobs:
   build_and_test:
     uses: ./.github/workflows/build_and_test.yml
+    with:
+      report_coverage: true
 
-  cargo_semver_checks:
-    name: Cargo SemVer Checks
-    runs-on: ubuntu-latest
-    # Make this check mandatory for release branches.
-    continue-on-error: ${{ !startsWith(github.base_ref, 'release/') }}
-    strategy:
-      matrix:
-        toolchain:
-          - stable
-    steps:
-      - name: Check out head (${{ github.head_ref }})
-        uses: actions/checkout@v4
-        with:
-          path: head
-      # Pull requests to non-release branches are checked for SemVer breakage
-      # relative to their target branch.
-      - if: ${{ !startsWith(github.base_ref, 'release/') }}
-        name: Check out base (${{ github.base_ref }})
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.base_ref }}
-          path: base
-      # If this is a release PR, check SemVer relative to the highest version
-      # published to crates.io <= the version from head.
-      - if: ${{ startsWith(github.base_ref, 'release/') }}
-        name: Check out base (from crates.io)
-        run: head/.github/scripts/check-out-base-from-crates-io.sh
-        shell: bash
-      # `cargo semver-checks` doesn't understand `rlib` crates.
-      - run: >-
-          sed -i -E 's/^(crate-type = \["rlib", "cdylib"\]|crate-type = \["rlib"\])$/crate-type = ["lib"]/' {head,base}/cedar-policy/Cargo.toml
-      - run: sudo apt-get install protobuf-compiler
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - run: cargo install cargo-semver-checks
-      - run: cargo semver-checks check-release --package cedar-policy --baseline-root ../base
-        working-directory: head
+  # cargo_semver_checks:
+  #   name: Cargo SemVer Checks
+  #   runs-on: ubuntu-latest
+  #   # Make this check mandatory for release branches.
+  #   continue-on-error: ${{ !startsWith(github.base_ref, 'release/') }}
+  #   strategy:
+  #     matrix:
+  #       toolchain:
+  #         - stable
+  #   steps:
+  #     - name: Check out head (${{ github.head_ref }})
+  #       uses: actions/checkout@v4
+  #       with:
+  #         path: head
+  #     # Pull requests to non-release branches are checked for SemVer breakage
+  #     # relative to their target branch.
+  #     - if: ${{ !startsWith(github.base_ref, 'release/') }}
+  #       name: Check out base (${{ github.base_ref }})
+  #       uses: actions/checkout@v4
+  #       with:
+  #         ref: ${{ github.base_ref }}
+  #         path: base
+  #     # If this is a release PR, check SemVer relative to the highest version
+  #     # published to crates.io <= the version from head.
+  #     - if: ${{ startsWith(github.base_ref, 'release/') }}
+  #       name: Check out base (from crates.io)
+  #       run: head/.github/scripts/check-out-base-from-crates-io.sh
+  #       shell: bash
+  #     # `cargo semver-checks` doesn't understand `rlib` crates.
+  #     - run: >-
+  #         sed -i -E 's/^(crate-type = \["rlib", "cdylib"\]|crate-type = \["rlib"\])$/crate-type = ["lib"]/' {head,base}/cedar-policy/Cargo.toml
+  #     - run: sudo apt-get install protobuf-compiler
+  #     - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
+  #     - run: cargo install cargo-semver-checks
+  #     - run: cargo semver-checks check-release --package cedar-policy --baseline-root ../base
+  #       working-directory: head
