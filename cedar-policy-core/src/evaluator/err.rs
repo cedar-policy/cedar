@@ -89,7 +89,7 @@ pub enum EvaluationError {
     #[diagnostic(transparent)]
     NonValue(#[from] evaluation_errors::NonValueError),
 
-    /// This is an expression AST node that gets generated when parsing fails
+    /// Trying to evaluate an expression AST node that gets generated when parsing fails
     #[cfg(feature = "tolerant-ast")]
     #[error(transparent)]
     #[diagnostic(transparent)]
