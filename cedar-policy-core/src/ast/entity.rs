@@ -355,6 +355,8 @@ impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
     }
 }
 
+
+
 /// The `Eid` type represents the id of an `Entity`, without the typename.
 /// Together with the typename it comprises an `EntityUID`.
 /// For example, in `User::"alice"`, the `Eid` is `alice`.
