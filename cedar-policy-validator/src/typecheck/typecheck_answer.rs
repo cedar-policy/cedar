@@ -40,7 +40,7 @@ pub(crate) enum TypecheckAnswer<'a> {
     /// Recursion limit reached
     RecursionLimit,
 
-    /// Trying to typescheck an error node
+    /// Trying to typecheck an error node
     #[cfg(feature = "tolerant-ast")]
     ErrorAstNode,
 }
