@@ -83,7 +83,6 @@ impl From<&ast::InternalName> for models::Name {
                 .map(|id| String::from(id.as_ref()))
                 .collect(),
         }
-
     }
 }
 
