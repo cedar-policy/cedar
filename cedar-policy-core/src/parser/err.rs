@@ -406,6 +406,10 @@ pub enum ToASTErrorKind {
     #[error("when `is` and `in` are used together, `is` must come first")]
     #[diagnostic(help("try `_ is _ in _`"))]
     InvertedIsIn,
+    /// Represents a parsing error in a partially generated AST
+    #[cfg(feature = "tolerant-ast")]
+    #[error("Trying to convert AST error node")]
+    ErrorNode,
 }
 
 fn invalid_is_help(lhs: &str, rhs: &str) -> String {

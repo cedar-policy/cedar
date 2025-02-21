@@ -26,6 +26,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 mod err;
+#[cfg(feature = "tolerant-ast")]
+use crate::evaluator::EvaluationError::ASTErrorExpr;
 pub use err::evaluation_errors;
 pub use err::EvaluationError;
 pub(crate) use err::*;
@@ -760,6 +762,10 @@ impl<'e> Evaluator<'e> {
                     }
                 }
             }
+            #[cfg(feature = "tolerant-ast")]
+            ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError {
+                source_loc: loc.cloned(),
+            })),
         }
     }
 

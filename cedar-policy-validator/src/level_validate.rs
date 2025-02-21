@@ -16,6 +16,8 @@
 
 //! Implementation of level validation (RFC 76)
 
+use crate::validation_errors::InternalInvariantViolation;
+
 use super::*;
 use cedar_policy_core::ast::{BinaryOp, PolicyID};
 use typecheck::PolicyCheck;
@@ -65,7 +67,7 @@ impl Validator {
                 PolicyCheck::Success(e) | PolicyCheck::Irrelevant(_, e) => {
                     let res = Self::check_entity_deref_level_helper(&e, max_allowed_level, t.id());
                     if let Some(e) = res.1 {
-                        errs.push(ValidationError::EntityDerefLevelViolation(e))
+                        errs.push(e)
                     }
                 }
                 // PANIC SAFETY: We only validate the level after validation passed
@@ -77,8 +79,8 @@ impl Validator {
     }
 
     fn min(
-        v: impl IntoIterator<Item = (EntityDerefLevel, Option<EntityDerefLevelViolation>)>,
-    ) -> (EntityDerefLevel, Option<EntityDerefLevelViolation>) {
+        v: impl IntoIterator<Item = (EntityDerefLevel, Option<ValidationError>)>,
+    ) -> (EntityDerefLevel, Option<ValidationError>) {
         let p = v.into_iter().min_by(|(l1, _), (l2, _)| l1.cmp(l2));
         match p {
             Some(p) => p,
@@ -92,7 +94,7 @@ impl Validator {
         e: &cedar_policy_core::ast::Expr<Option<crate::types::Type>>,
         max_allowed_level: &EntityDerefLevel,
         policy_id: &PolicyID,
-    ) -> (EntityDerefLevel, Option<EntityDerefLevelViolation>) {
+    ) -> (EntityDerefLevel, Option<ValidationError>) {
         use crate::types::{EntityRecordKind, Type};
         use cedar_policy_core::ast::ExprKind;
         match e.expr_kind() {
@@ -138,12 +140,15 @@ impl Validator {
                 if new_level.level < 0 {
                     (
                         new_level,
-                        Some(EntityDerefLevelViolation {
-                            source_loc: e.source_loc().cloned(),
-                            policy_id: policy_id.clone(),
-                            actual_level: new_level,
-                            allowed_level: *max_allowed_level,
-                        }),
+                        Some(
+                            EntityDerefLevelViolation {
+                                source_loc: e.source_loc().cloned(),
+                                policy_id: policy_id.clone(),
+                                actual_level: new_level,
+                                allowed_level: *max_allowed_level,
+                            }
+                            .into(),
+                        ),
                     )
                 } else {
                     (new_level, None)
@@ -197,12 +202,15 @@ impl Validator {
                             if new_level.level < 0 {
                                 (
                                     new_level,
-                                    Some(EntityDerefLevelViolation {
-                                        source_loc: e.source_loc().cloned(),
-                                        policy_id: policy_id.clone(),
-                                        actual_level: new_level,
-                                        allowed_level: *max_allowed_level,
-                                    }),
+                                    Some(
+                                        EntityDerefLevelViolation {
+                                            source_loc: e.source_loc().cloned(),
+                                            policy_id: policy_id.clone(),
+                                            actual_level: new_level,
+                                            allowed_level: *max_allowed_level,
+                                        }
+                                        .into(),
+                                    ),
                                 )
                             } else {
                                 (new_level, None)
@@ -238,6 +246,16 @@ impl Validator {
                     .collect();
                 Self::min(v)
             }
+            #[cfg(feature = "tolerant-ast")]
+            ExprKind::Error { .. } => (
+                EntityDerefLevel { level: 0 },
+                Some(ValidationError::InternalInvariantViolation(
+                    InternalInvariantViolation {
+                        source_loc: None,
+                        policy_id: policy_id.clone(),
+                    },
+                )),
+            ),
         }
     }
 }

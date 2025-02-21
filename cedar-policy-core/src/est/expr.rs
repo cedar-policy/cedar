@@ -15,6 +15,10 @@
  */
 
 use super::FromJsonError;
+#[cfg(feature = "tolerant-ast")]
+use crate::ast::expr_allows_errors::AstExprErrorKind;
+#[cfg(feature = "tolerant-ast")]
+use crate::ast::Infallible;
 use crate::ast::{self, BoundedDisplay, EntityUID};
 use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
@@ -25,6 +29,8 @@ use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
 use crate::parser::cst_to_ast;
 use crate::parser::err::ParseErrors;
+#[cfg(feature = "tolerant-ast")]
+use crate::parser::err::{ToASTError, ToASTErrorKind};
 use crate::parser::Node;
 use crate::parser::{cst, Loc};
 use itertools::Itertools;
@@ -383,6 +389,9 @@ pub enum ExprNoExt {
         #[cfg_attr(feature = "wasm", tsify(type = "Record<string, Expr>"))]
         BTreeMap<SmolStr, Expr>,
     ),
+    /// AST Error node - this represents a parsing error in a partially generated AST
+    #[cfg(feature = "tolerant-ast")]
+    Error(AstExprErrorKind),
 }
 
 /// Serde JSON structure for an extension function call in the EST format
@@ -413,6 +422,8 @@ impl ExprBuilder for Builder {
     type Expr = Expr;
 
     type Data = ();
+    #[cfg(feature = "tolerant-ast")]
+    type ErrorType = Infallible;
 
     fn with_data(_data: Self::Data) -> Self {
         Self
@@ -690,6 +701,13 @@ impl ExprBuilder for Builder {
             call: HashMap::from([(fn_name.to_smolstr(), args.into_iter().collect())]),
         })
     }
+
+    #[cfg(feature = "tolerant-ast")]
+    fn error(self, parse_errors: ParseErrors) -> Result<Self::Expr, Self::ErrorType> {
+        Ok(Expr::ExprNoExt(ExprNoExt::Error(
+            AstExprErrorKind::InvalidExpr(parse_errors.to_string()),
+        )))
+    }
 }
 
 impl Expr {
@@ -853,6 +871,8 @@ impl Expr {
                     }
                     Ok(Expr::ExprNoExt(ExprNoExt::Record(new_m)))
                 }
+                #[cfg(feature = "tolerant-ast")]
+                ExprNoExt::Error(_) => Err(JsonDeserializationError::ASTErrorNode),
             },
             Expr::ExtFuncCall(e_fn_call) => {
                 let mut new_m = HashMap::new();
@@ -1046,6 +1066,8 @@ impl Expr {
                     }),
                 }
             }
+            #[cfg(feature = "tolerant-ast")]
+            Expr::ExprNoExt(ExprNoExt::Error(_)) => Err(FromJsonError::ASTErrorNode),
         }
     }
 }
@@ -1112,6 +1134,15 @@ impl<T: Clone> From<ast::Expr<T>> for Expr {
                         .into_iter()
                         .map(|(k, v)| (k, v.into())),
                 )
+                .unwrap(),
+            #[cfg(feature = "tolerant-ast")]
+            // PANIC SAFETY: error type is Infallible so can never happen
+            #[allow(clippy::unwrap_used)]
+            ast::ExprKind::Error { .. } => Builder::new()
+                .error(ParseErrors::singleton(ToASTError::new(
+                    ToASTErrorKind::ErrorNode,
+                    Loc::new(0..1, "AST_ERROR_NODE".into()),
+                )))
                 .unwrap(),
         }
     }
@@ -1470,6 +1501,11 @@ impl BoundedDisplay for ExprNoExt {
                     }
                 }
             }
+            #[cfg(feature = "tolerant-ast")]
+            ExprNoExt::Error(e) => {
+                write!(f, "{e}")?;
+                Ok(())
+            }
         }
     }
 }
@@ -1554,6 +1590,13 @@ fn maybe_with_parens(
         Expr::ExprNoExt(ExprNoExt::Is { .. }) |
         Expr::ExprNoExt(ExprNoExt::If { .. }) |
         Expr::ExtFuncCall { .. } => {
+            write!(f, "(")?;
+            BoundedDisplay::fmt(expr, f, n)?;
+            write!(f, ")")?;
+            Ok(())
+        },
+        #[cfg(feature = "tolerant-ast")]
+        Expr::ExprNoExt(ExprNoExt::Error { .. }) => {
             write!(f, "(")?;
             BoundedDisplay::fmt(expr, f, n)?;
             write!(f, ")")?;

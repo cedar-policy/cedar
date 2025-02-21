@@ -27,6 +27,9 @@ use crate::{
     parser::{cst, Loc},
 };
 
+#[cfg(feature = "tolerant-ast")]
+use crate::parser::err::ParseErrors;
+
 /// Defines a generic interface for building different expression data
 /// structures.
 #[allow(clippy::wrong_self_convention)]
@@ -38,6 +41,13 @@ pub trait ExprBuilder: Clone {
     /// can be `()` if no data is stored.
     type Data: Default;
 
+    /// Type for what error we return if we cannot construct an error node
+    ///
+    ///  By default we fail on errors and this should be a ParseErrors
+    ///  But when we run with error parsing enabled, can be Infallible
+    #[cfg(feature = "tolerant-ast")]
+    type ErrorType;
+
     /// Construct a new expression builder for an expression that will not carry any data.
     fn new() -> Self
     where
@@ -45,6 +55,10 @@ pub trait ExprBuilder: Clone {
     {
         Self::with_data(Self::Data::default())
     }
+
+    /// Build an expression that failed to parse - can optionally include subexpressions that parsed successfully
+    #[cfg(feature = "tolerant-ast")]
+    fn error(self, parse_errors: ParseErrors) -> Result<Self::Expr, Self::ErrorType>;
 
     /// Build an expression storing this information
     fn with_data(data: Self::Data) -> Self;
