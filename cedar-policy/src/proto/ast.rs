@@ -68,16 +68,34 @@ impl From<&models::Name> for ast::Name {
     }
 }
 
-impl From<&ast::Name> for models::Name {
-    fn from(v: &ast::Name) -> Self {
+impl From<&models::Name> for ast::EntityType {
+    fn from(v: &models::Name) -> Self {
+        ast::EntityType::from(ast::Name::from(v))
+    }
+}
+
+impl From<&ast::InternalName> for models::Name {
+    fn from(v: &ast::InternalName) -> Self {
         Self {
             id: v.basename().to_string(),
             path: v
-                .as_ref()
                 .namespace_components()
                 .map(|id| String::from(id.as_ref()))
                 .collect(),
         }
+
+    }
+}
+
+impl From<&ast::Name> for models::Name {
+    fn from(v: &ast::Name) -> Self {
+        Self::from(v.as_ref())
+    }
+}
+
+impl From<&ast::EntityType> for models::Name {
+    fn from(v: &ast::EntityType) -> Self {
+        Self::from(v.as_ref())
     }
 }
 
