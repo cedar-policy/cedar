@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use lalrpop_util::ParseError;
 use smol_str::SmolStr;
 
 // shortcut because we need CST nodes to potentially be empty,
