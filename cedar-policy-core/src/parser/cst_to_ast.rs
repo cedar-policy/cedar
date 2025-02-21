@@ -5599,17 +5599,16 @@ mod tests {
         // Test for == operator
         let src_eq_cases = [
             r#"permit(principal ==, action, resource);"#,
-            // r#"permit(principal, action ==, resource);"#,
-            // r#"permit(principal, action, resource ==);"#,
-            // r#"permit(principal ==, action ==, resource);"#,
-            // r#"permit(principal, action ==, resource ==);"#,
-            // r#"permit(principal ==, action, resource ==);"#,
-            // r#"permit(principal ==, action ==, resource ==);"#,
+            r#"permit(principal, action ==, resource);"#,
+            r#"permit(principal, action, resource ==);"#,
+            r#"permit(principal ==, action ==, resource);"#,
+            r#"permit(principal, action ==, resource ==);"#,
+            r#"permit(principal ==, action, resource ==);"#,
+            r#"permit(principal ==, action ==, resource ==);"#,
         ];
 
         for src in src_eq_cases.iter() {
-            let e = assert_parse_policy_allows_errors(src);
-            println!("{:?}", e.principal_constraint());
+            assert_parse_policy_allows_errors(src);
         }
 
         // Test for in operator
@@ -6055,7 +6054,7 @@ mod tests {
             assert_parse_policy_allows_errors(src);
         }
 
-                    // Cases with "is" and missing operands
+        // Cases with "is" and missing operands
         let src_in_cases = [
                     r#"permit(principal is something in, action, resource);"#,
                     r#"permit(principal, action, resource is something in);"#,
@@ -6072,8 +6071,7 @@ mod tests {
         let src = r#"
             permit(principal, action, resource) when { principal == };
         "#;
-        let e = assert_parse_policy_allows_errors(src);
-        println!("{:?}", e);
+        assert_parse_policy_allows_errors(src);
 
         let src = r#"
         permit(principal, action, resource) when { resource == };
