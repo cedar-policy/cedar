@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use lalrpop_util::ParseError;
 use smol_str::SmolStr;
 
 // shortcut because we need CST nodes to potentially be empty,
@@ -158,9 +159,11 @@ pub struct ExprImpl {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
+    /// Expression that has been successfully parsed
     Expr(ExprImpl),
+    /// To create a tolerant-ast, we keep a node to represented nodes that failed to parse
     #[cfg(feature = "tolerant-ast")]
-    Error
+    ErrorExpr
 }
 
 /// The main computation aspect of a policy, inner

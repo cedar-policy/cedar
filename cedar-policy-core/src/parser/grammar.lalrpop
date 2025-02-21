@@ -112,9 +112,8 @@ pub Policy: Node<Option<cst::Policy>> = {
     <r:@R>
     => Node::with_source_loc(Some(cst::Policy{ annotations,effect,variables,conds }), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <err:!> ";" <r:@R> => { 
-        println!("Adding policy error");
         errors.push(err); Node::with_source_loc(None, Loc::new(l..r, Arc::clone(src))) 
-        },
+    },
 }
 
 // VariableDef := Variable [':' Name] ['is' Add] [('in' | '==') Expr]
@@ -198,11 +197,11 @@ pub Expr: Node<Option<cst::Expr>> = {
     <l:@L> IF <i:Expr> THEN <t:Expr> ELSE <e:Expr> <r:@R>
         => Node::with_source_loc(Some(cst::Expr::Expr(cst::ExprImpl { expr: Box::new(cst::ExprData::If(i,t,e)) })), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <err:!> <r:@R> => { 
-        println!("Expression error");
+        // Tolerant AST creates a valid CST node representing the unparsable expression
         #[cfg(feature = "tolerant-ast")]
-        return Node::with_source_loc(Some(cst::Expr::Error), Loc::new(l..r, Arc::clone(src)));
+        return Node::with_source_loc(Some(cst::Expr::ErrorExpr), Loc::new(l..r, Arc::clone(src)));
 
-        println!("Keeping error");
+        // Otherwise we record this as an error
         errors.push(err); 
         Node::with_source_loc(None, Loc::new(l..r, Arc::clone(src))) 
     },

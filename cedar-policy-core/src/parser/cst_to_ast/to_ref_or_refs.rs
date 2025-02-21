@@ -162,7 +162,7 @@ impl Node<Option<cst::Expr>> {
         let expr = match expr_opt {
             cst::Expr::Expr(expr_impl) => expr_impl,
             #[cfg(feature = "tolerant-ast")]
-            cst::Expr::Error => return T::create_single_ref(EntityUID::error()?),
+            cst::Expr::ErrorExpr => return T::create_single_ref(EntityUID::error()?),
         };
 
         match &*expr.expr {

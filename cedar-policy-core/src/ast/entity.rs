@@ -128,7 +128,10 @@ pub struct EntityUIDImpl {
 pub enum EntityUID {
     EntityUID(EntityUIDImpl),
     #[cfg(feature = "tolerant-ast")]
-    Error(Eid, EntityType)
+    Error{
+        eid: Eid,
+        ty: EntityType,
+    }
 }
 
 impl StaticallyTyped for EntityUID {
@@ -138,7 +141,10 @@ impl StaticallyTyped for EntityUID {
                 ty: entity_uid.ty.clone(),
             },
             #[cfg(feature = "tolerant-ast")]
-            EntityUID::Error(_eid, ty) =>Type::Entity {
+            EntityUID::Error{
+                ty,
+                ..
+            } =>Type::Entity {
                 ty: ty.clone()
             },
         }
@@ -188,7 +194,10 @@ impl EntityUID {
 
     #[cfg(feature = "tolerant-ast")]
     pub fn error() -> Result<Self, ParseErrors> {
-        Ok(Self::Error(Eid::new("ERROR_EID"), EntityType::from_str("ERRORTYPE")?))
+        Ok(Self::Error {
+            eid: Eid::new("ERROR_EID"), 
+            ty: EntityType::from_str("ERRORTYPE")?,
+        })
     }
 
     /// Split into the `EntityType` representing the entity type, and the `Eid`
@@ -197,7 +206,7 @@ impl EntityUID {
         match self {
             EntityUID::EntityUID(entity_uid) =>  (entity_uid.ty, entity_uid.eid),
             #[cfg(feature = "tolerant-ast")]
-            EntityUID::Error(eid, ty) => (ty, eid),
+            EntityUID::Error {eid, ty} => (ty, eid),
         }  
     }
 
@@ -206,7 +215,7 @@ impl EntityUID {
         match self {
             EntityUID::EntityUID(entity_uid) => entity_uid.loc.as_ref(),
             #[cfg(feature = "tolerant-ast")]
-            EntityUID::Error(_, _) => None,
+            EntityUID::Error { .. } => None,
         }   
     }
 
@@ -220,7 +229,7 @@ impl EntityUID {
         match self {
             EntityUID::EntityUID(entity_uid) => &entity_uid.ty,
             #[cfg(feature = "tolerant-ast")]
-            EntityUID::Error(eid, ty) => &ty,
+            EntityUID::Error { ty , ..} => &ty,
         }
         
     }
@@ -230,7 +239,7 @@ impl EntityUID {
         match self {
             EntityUID::EntityUID(entity_uid) => &entity_uid.eid,
             #[cfg(feature = "tolerant-ast")]
-            EntityUID::Error(eid, ty) => &eid,
+            EntityUID::Error {eid, .. } => &eid,
         }
     }
 
@@ -246,7 +255,7 @@ impl std::fmt::Display for EntityUID {
         match self {
             EntityUID::EntityUID(entity_uid) =>write!(f, "{}::\"{}\"", self.entity_type(), entity_uid.eid.escaped()),
             #[cfg(feature = "tolerant-ast")]
-            EntityUID::Error(eid, ty) => write!(f, "{}::\"{}\"", self.entity_type(), eid.escaped()),
+            EntityUID::Error { .. } => write!(f, "Expr::ExprError"),
         }
     }
 }

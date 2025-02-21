@@ -408,8 +408,8 @@ pub enum ToASTErrorKind {
     InvertedIsIn,
     /// Represents a parsing error in a partially generated AST
     #[cfg(feature = "tolerant-ast")]
-    #[error("Trying to convert AST error node")]
-    ErrorNode,
+    #[error("Trying to convert CST error node")]
+    CSTErrorNode,
 }
 
 fn invalid_is_help(lhs: &str, rhs: &str) -> String {
