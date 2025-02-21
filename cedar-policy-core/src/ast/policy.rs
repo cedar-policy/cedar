@@ -1652,7 +1652,7 @@ impl ActionConstraint {
                     }
             ActionConstraint::Eq(euid) => EntityIterator::One(euid),
             #[cfg(feature="tolerant-ast")]
-            ActionConstraint::ErrorConstraint => todo!(),
+            ActionConstraint::ErrorConstraint => EntityIterator::None,
         }
     }
 
@@ -1683,7 +1683,7 @@ impl ActionConstraint {
                         }
                     }
             #[cfg(feature="tolerant-ast")]
-            ActionConstraint::ErrorConstraint => todo!(),
+            ActionConstraint::ErrorConstraint => Ok(self),
         }
     }
 }

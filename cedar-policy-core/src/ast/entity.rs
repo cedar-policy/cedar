@@ -160,7 +160,7 @@ impl EntityUID {
         
         Self::EntityUID(EntityUIDImpl {
             ty: Self::test_entity_type(),
-            eid: Eid(eid.into()),
+            eid: Eid::EidImpl(eid.into()),
             loc: None,
         })
     }
@@ -187,7 +187,7 @@ impl EntityUID {
     pub fn with_eid_and_type(typename: &str, eid: &str) -> Result<Self, ParseErrors> {
         Ok(Self::EntityUID( EntityUIDImpl {
             ty: EntityType(Name::parse_unqualified_name(typename)?),
-            eid: Eid(eid.into()),
+            eid: Eid::EidImpl(eid.into()),
             loc: None,
         }))
     }
@@ -286,6 +286,8 @@ impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
     }
 }
 
+
+
 /// The `Eid` type represents the id of an `Entity`, without the typename.
 /// Together with the typename it comprises an `EntityUID`.
 /// For example, in `User::"alice"`, the `Eid` is `alice`.
@@ -296,29 +298,45 @@ impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
 /// To get an escaped representation, use `.escaped()`.
 /// To get an unescaped representation, use `.as_ref()`.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
-pub struct Eid(SmolStr);
+pub enum Eid {
+    EidImpl(SmolStr),
+    #[cfg(feature = "tolerant-ast")]
+    ErrorEid
+}
 
 impl Eid {
     /// Construct an Eid
     pub fn new(eid: impl Into<SmolStr>) -> Self {
-        Eid(eid.into())
+        Eid::EidImpl(eid.into())
     }
 
     /// Get the contents of the `Eid` as an escaped string
     pub fn escaped(&self) -> SmolStr {
-        self.0.escape_debug().collect()
+        match self {
+            Eid::EidImpl(smol_str) => smol_str.escape_debug().collect(),
+            #[cfg(feature = "tolerant-ast")]
+            Eid::ErrorEid => todo!(),
+        }
     }
 }
 
 impl AsRef<SmolStr> for Eid {
     fn as_ref(&self) -> &SmolStr {
-        &self.0
+        match self {
+            Eid::EidImpl(smol_str) => &smol_str,
+            #[cfg(feature = "tolerant-ast")]
+            Eid::ErrorEid => todo!(),
+        }
     }
 }
 
 impl AsRef<str> for Eid {
     fn as_ref(&self) -> &str {
-        &self.0
+        match self {
+            Eid::EidImpl(smol_str) => smol_str,
+            #[cfg(feature = "tolerant-ast")]
+            Eid::ErrorEid => todo!(),
+        }
     }
 }
 
@@ -326,7 +344,7 @@ impl AsRef<str> for Eid {
 impl<'a> arbitrary::Arbitrary<'a> for Eid {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         let x: String = u.arbitrary()?;
-        Ok(Self(x.into()))
+        Ok(Self::EidImpl(x.into()))
     }
 }
 
@@ -822,14 +840,14 @@ mod test {
             Name::parse_unqualified_name("test_entity_type")
                 .expect("should be a valid identifier")
                 .into(),
-            Eid("foo".into()),
+            Eid::EidImpl("foo".into()),
             None,
         );
         let e3 = EntityUID::from_components(
             Name::parse_unqualified_name("Unspecified")
                 .expect("should be a valid identifier")
                 .into(),
-            Eid("foo".into()),
+            Eid::EidImpl("foo".into()),
             None,
         );
 

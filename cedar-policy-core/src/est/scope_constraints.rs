@@ -66,6 +66,9 @@ pub enum ActionConstraint {
     /// `in` constraint
     #[serde(rename = "in")]
     In(ActionInConstraint),
+    #[cfg(feature = "tolerant-ast")]
+    #[serde(alias = "error")]
+    ErrorConstraint
 }
 
 /// Serde JSON structure for a resource scope constraint in the EST format
@@ -420,6 +423,8 @@ impl ActionConstraint {
                 }))
             }
             ActionConstraint::All | ActionConstraint::Eq(EqConstraint::Slot { .. }) => Ok(self),
+            #[cfg(feature = "tolerant-ast")]
+            ActionConstraint::ErrorConstraint => Ok(self),
         }
     }
 }
@@ -461,6 +466,8 @@ impl std::fmt::Display for ActionConstraint {
                 std::fmt::Display::fmt(aic, f)?;
                 Ok(())
             }
+            #[cfg(feature = "tolerant-ast")]
+            Self::ErrorConstraint => write!(f, "action"),
         }
     }
 }
@@ -834,7 +841,7 @@ impl From<ast::ActionConstraint> for ActionConstraint {
                         }),
                     },
             #[cfg(feature="tolerant-ast")]
-            ast::ActionConstraint::ErrorConstraint => todo!(),
+            ast::ActionConstraint::ErrorConstraint => ActionConstraint::ErrorConstraint,
         }
     }
 }
@@ -845,25 +852,27 @@ impl TryFrom<ActionConstraint> for ast::ActionConstraint {
         let ast_action_constraint = match constraint {
             ActionConstraint::All => Ok(ast::ActionConstraint::Any),
             ActionConstraint::Eq(EqConstraint::Entity { entity }) => Ok(ast::ActionConstraint::Eq(
-                Arc::new(entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?),
-            )),
+                        Arc::new(entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?),
+                    )),
             ActionConstraint::Eq(EqConstraint::Slot { .. }) => Err(Self::Error::ActionSlot),
             ActionConstraint::In(ActionInConstraint::Single { entity }) => {
-                Ok(ast::ActionConstraint::In(vec![Arc::new(
-                    entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
-                )]))
-            }
+                        Ok(ast::ActionConstraint::In(vec![Arc::new(
+                            entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
+                        )]))
+                    }
             ActionConstraint::In(ActionInConstraint::Set { entities }) => {
-                Ok(ast::ActionConstraint::In(
-                    entities
-                        .into_iter()
-                        .map(|e| {
-                            e.into_euid(|| JsonDeserializationErrorContext::EntityUid)
-                                .map(Arc::new)
-                        })
-                        .collect::<Result<Vec<_>, _>>()?,
-                ))
-            }
+                        Ok(ast::ActionConstraint::In(
+                            entities
+                                .into_iter()
+                                .map(|e| {
+                                    e.into_euid(|| JsonDeserializationErrorContext::EntityUid)
+                                        .map(Arc::new)
+                                })
+                                .collect::<Result<Vec<_>, _>>()?,
+                        ))
+                    }
+            #[cfg(feature = "tolerant-ast")]
+            ActionConstraint::ErrorConstraint =>  Ok(ast::ActionConstraint::ErrorConstraint),
         }?;
 
         ast_action_constraint
