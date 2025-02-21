@@ -258,15 +258,6 @@ pub struct MissingRequiredRecordAttr {
     record_attr: SmolStr,
 }
 
-#[cfg(feature = "tolerant-ast")]
-#[derive(Debug, Error, Diagnostic)]
-#[error("AST Error node")]
-/// Error type for a record missing a required attr
-pub struct ErrorNode {
-    /// Context of this error
-    ctx: Box<JsonDeserializationErrorContext>,
-}
-
 #[derive(Debug, Diagnostic, Error)]
 #[error("{}, record attribute `{}` should not exist according to the schema", .ctx, .record_attr)]
 /// Error type for record attributes that should not exist
