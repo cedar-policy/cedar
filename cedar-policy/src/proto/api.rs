@@ -41,6 +41,7 @@ macro_rules! standard_conversions {
 standard_conversions!(api::Entity, api::Entity, models::Entity);
 standard_conversions!(api::Entities, api::Entities, models::Entities);
 standard_conversions!(api::Schema, api::Schema, models::ValidatorSchema);
+standard_conversions!(api::EntityTypeName, api::EntityTypeName, models::Name);
 standard_conversions!(api::EntityNamespace, api::EntityNamespace, models::Name);
 standard_conversions!(api::Expression, api::Expression, models::Expr);
 standard_conversions!(api::Request, api::Request, models::Request);
@@ -111,6 +112,7 @@ macro_rules! standard_protobuf_impl {
 standard_protobuf_impl!(api::Entity, models::Entity);
 standard_protobuf_impl!(api::Entities, models::Entities);
 standard_protobuf_impl!(api::Schema, models::ValidatorSchema);
+standard_protobuf_impl!(api::EntityTypeName, models::Name);
 standard_protobuf_impl!(api::EntityNamespace, models::Name);
 standard_protobuf_impl!(api::Template, models::TemplateBody);
 standard_protobuf_impl!(api::Expression, models::Expr);
