@@ -449,11 +449,10 @@ impl FromNormalizedStr for Name {
     fn from_normalized_str(s: &str) -> Result<Self, ParseErrors> {
         if ID_REGEX.is_match(s) && !s.split("::").any(|s| RESERVED.contains(s)) {
             let path_parts: Vec<&str> = s.split("::").collect();
-            let split = path_parts.split_last();
-            if let Some((last, rest)) = split {
+            if let Some((last, prefix)) = path_parts.split_last() {
                 return Ok(Self(InternalName::new(
                     Id::new_unchecked(*last),
-                    rest.iter().map(|chunk| Id::new_unchecked(*chunk)),
+                    prefix.iter().map(|part| Id::new_unchecked(*part)),
                     Some(Loc::new(0..(s.len()), s.into())),
                 )));
             }
