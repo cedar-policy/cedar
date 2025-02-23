@@ -27,13 +27,6 @@
 )]
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
 
-#[cfg(feature = "protobufs")]
-pub mod proto {
-    #![allow(missing_docs)]
-    #![allow(clippy::doc_markdown)]
-    include!(concat!(env!("OUT_DIR"), "/cedar_policy_validator.rs"));
-}
-
 use cedar_policy_core::ast::{Policy, PolicySet, Template};
 use serde::Serialize;
 use std::collections::HashSet;
@@ -59,6 +52,7 @@ pub use str_checks::confusable_string_checks;
 pub mod cedar_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
+mod partition_nonempty;
 pub mod types;
 
 /// Used to select how a policy will be validated.
@@ -93,30 +87,6 @@ impl ValidationMode {
             ValidationMode::Permissive => false,
             #[cfg(feature = "partial-validate")]
             ValidationMode::Partial => false,
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&ValidationMode> for proto::ValidationMode {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::unimplemented)]
-    fn from(v: &ValidationMode) -> Self {
-        match v {
-            ValidationMode::Strict => proto::ValidationMode::Strict,
-            ValidationMode::Permissive => proto::ValidationMode::Permissive,
-            #[cfg(feature = "partial-validate")]
-            ValidationMode::Partial => unimplemented!(),
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&proto::ValidationMode> for ValidationMode {
-    fn from(v: &proto::ValidationMode) -> Self {
-        match v {
-            proto::ValidationMode::Strict => ValidationMode::Strict,
-            proto::ValidationMode::Permissive => ValidationMode::Permissive,
         }
     }
 }

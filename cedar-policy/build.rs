@@ -15,14 +15,21 @@
  */
 
 fn main() {
-    generate_parsers();
+    #[cfg(feature = "protobufs")]
+    generate_schemas();
 }
 
-/// Reads parser grammar files (.lalrpop) and generates Rust modules
-fn generate_parsers() {
-    // PANIC SAFETY: panicking inside our build script on a build dependency error is acceptable
+#[cfg(feature = "protobufs")]
+/// Reads protobuf schema files (.proto) and generates Rust modules
+fn generate_schemas() {
+    // PANIC SAFETY: panics in build.rs are acceptable, they just fail the build
     #[allow(clippy::expect_used)]
-    lalrpop::Configuration::new()
-        .process_dir("src/cedar_schema/")
-        .expect("parser synth");
+    prost_build::compile_protos(
+        &[
+            "./protobuf_schema/core.proto",
+            "./protobuf_schema/validator.proto",
+        ],
+        &["./protobuf_schema"],
+    )
+    .expect("failed to compile `.proto` schema files");
 }

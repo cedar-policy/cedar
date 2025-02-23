@@ -5,6 +5,14 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## Unreleased
 
+## 4.3.2
+
+## 4.3.1
+
+## 4.3.0
+
+### Added
+
 - Add schema options `schema` and `schema-format` for the `partially-authorize`
   command (#1416, resolving #1332)
 

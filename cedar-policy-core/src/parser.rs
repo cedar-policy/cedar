@@ -110,7 +110,7 @@ pub fn parse_policy_or_template(
 ) -> Result<ast::Template, err::ParseErrors> {
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
-    cst.to_policy_template(id)
+    cst.to_template(id)
 }
 
 /// Like `parse_policy_or_template()`, but also returns the (lossless) EST -- that
@@ -122,7 +122,7 @@ pub fn parse_policy_or_template_to_est_and_ast(
 ) -> Result<(est::Policy, ast::Template), err::ParseErrors> {
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
-    let ast = cst.to_policy_template(id)?;
+    let ast = cst.to_template(id)?;
     let est = cst.try_into_inner()?.try_into()?;
     Ok((est, ast))
 }
@@ -137,7 +137,7 @@ pub fn parse_template(
 ) -> Result<ast::Template, err::ParseErrors> {
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
-    let template = cst.to_policy_template(id)?;
+    let template = cst.to_template(id)?;
     if template.slots().count() == 0 {
         Err(err::ToASTError::new(err::ToASTErrorKind::expected_template(), cst.loc).into())
     } else {

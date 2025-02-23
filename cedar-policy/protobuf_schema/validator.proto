@@ -17,7 +17,7 @@
 syntax = "proto3";
 package cedar_policy_validator;
 
-import "AST.proto";
+import "core.proto";
 
 message ValidatorSchema {
     repeated EntityTypeWithTypesMap entity_types = 1;
@@ -41,7 +41,7 @@ message ValidatorEntityType {
     Attributes attributes = 3;
     OpenTag open_attributes = 4;
     Tag tags = 5;
-    repeated string enums = 6;
+    repeated string enum_choices = 6;
 }
 
 message ValidatorActionId {

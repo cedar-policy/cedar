@@ -86,59 +86,10 @@ pub(crate) mod version {
     }
 }
 
-/// Private functions to support implementing the `Protobuf` trait on various types
-#[cfg(feature = "protobufs")]
-mod proto {
-    use std::default::Default;
-
-    /// Encode `thing` into `buf` using the protobuf format `M`
-    ///
-    /// `Err` is only returned if `buf` has insufficient space.
-    #[allow(dead_code)] // experimental feature, we might have use for this one in the future
-    pub(super) fn encode<M: prost::Message>(
-        thing: impl Into<M>,
-        buf: &mut impl prost::bytes::BufMut,
-    ) -> Result<(), prost::EncodeError> {
-        thing.into().encode(buf)
-    }
-
-    /// Encode `thing` into a freshly-allocated buffer using the protobuf format `M`
-    pub(super) fn encode_to_vec<M: prost::Message>(thing: impl Into<M>) -> Vec<u8> {
-        thing.into().encode_to_vec()
-    }
-
-    /// Decode something of type `T` from `buf` using the protobuf format `M`
-    pub(super) fn decode<M: prost::Message + Default, T: for<'a> From<&'a M>>(
-        buf: impl prost::bytes::Buf,
-    ) -> Result<T, prost::DecodeError> {
-        M::decode(buf).map(|m| T::from(&m))
-    }
-
-    /// Decode something of type `T` from `buf` using the protobuf format `M`
-    pub(super) fn try_decode<
-        M: prost::Message + Default,
-        E,
-        T: for<'a> TryFrom<&'a M, Error = E>,
-    >(
-        buf: impl prost::bytes::Buf,
-    ) -> Result<Result<T, E>, prost::DecodeError> {
-        M::decode(buf).map(|m| T::try_from(&m))
-    }
-}
-
-/// Trait allowing serializing and deserializing in protobuf format
-#[cfg(feature = "protobufs")]
-pub trait Protobuf: Sized {
-    /// Encode into protobuf format. Returns a freshly-allocated buffer containing binary data.
-    fn encode(&self) -> Vec<u8>;
-    /// Decode the binary data in `buf`, producing something of type `Self`
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError>;
-}
-
 /// Entity datatype
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq, RefCast, Hash)]
-pub struct Entity(ast::Entity);
+pub struct Entity(pub(crate) ast::Entity);
 
 impl Entity {
     /// Create a new `Entity` with this Uid, attributes, and parents (and no tags).
@@ -170,7 +121,7 @@ impl Entity {
         Self::new_with_tags(uid, attrs, parents, [])
     }
 
-    /// Create a new `Entity` with no attributes.
+    /// Create a new `Entity` with no attributes or tags.
     ///
     /// Unlike [`Entity::new()`], this constructor cannot error.
     /// (The only source of errors in `Entity::new()` are attributes.)
@@ -180,7 +131,9 @@ impl Entity {
         Self(ast::Entity::new_with_attr_partial_value(
             uid.into(),
             [],
+            [].into_iter().collect(),
             parents.into_iter().map(EntityUid::into).collect(),
+            [],
         ))
     }
 
@@ -199,6 +152,7 @@ impl Entity {
         Ok(Self(ast::Entity::new(
             uid.into(),
             attrs.into_iter().map(|(k, v)| (k.into(), v.0)),
+            [].into_iter().collect(),
             parents.into_iter().map(EntityUid::into).collect(),
             tags.into_iter().map(|(k, v)| (k.into(), v.0)),
             Extensions::all_available(),
@@ -279,7 +233,8 @@ impl Entity {
         HashMap<String, RestrictedExpression>,
         HashSet<EntityUid>,
     ) {
-        let (uid, attrs, ancestors, _) = self.0.into_inner();
+        let (uid, attrs, ancestors, mut parents, _) = self.0.into_inner();
+        parents.extend(ancestors);
 
         let attrs = attrs
             .into_iter()
@@ -301,7 +256,7 @@ impl Entity {
         (
             uid.into(),
             attrs,
-            ancestors.into_iter().map(Into::into).collect(),
+            parents.into_iter().map(Into::into).collect(),
         )
     }
 
@@ -387,16 +342,6 @@ impl std::fmt::Display for Entity {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl Protobuf for Entity {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<ast::proto::Entity>(&self.0)
-    }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<ast::proto::Entity, _>(buf).map(Self)
-    }
-}
-
 /// Represents an entity hierarchy, and allows looking up `Entity` objects by
 /// Uid.
 #[repr(transparent)]
@@ -424,7 +369,7 @@ impl Entities {
     }
 
     /// Transform the store into a partial store, where
-    /// attempting to dereference a non-existent `EntityUID` results in
+    /// attempting to dereference a non-existent `EntityUid` results in
     /// a residual instead of an error.
     #[doc = include_str!("../experimental_warning.md")]
     #[must_use]
@@ -483,7 +428,8 @@ impl Entities {
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
     /// ## Errors
-    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::Duplicate`] if there is a pair of non-identical entities in `entities` with the same Entity UID,
+    ///   or there is an entity in `entities` with the same Entity UID as a non-identical entity in this structure
     /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
     ///   to the schema
     pub fn add_entities(
@@ -503,6 +449,22 @@ impl Entities {
         ))
     }
 
+    /// Removes each of the [`EntityUid`]s in the iterator
+    /// from this [`Entities`] structure, re-computing the transitive
+    /// closure after removing all edges to/from the removed entities.
+    ///
+    /// Re-computing the transitive closure can be expensive, so it is
+    /// advised to not call this method in a loop.
+    pub fn remove_entities(
+        self,
+        entity_ids: impl IntoIterator<Item = EntityUid>,
+    ) -> Result<Self, EntitiesError> {
+        Ok(Self(self.0.remove_entities(
+            entity_ids.into_iter().map(|euid| euid.0),
+            cedar_policy_core::entities::TCComputation::ComputeNow,
+        )?))
+    }
+
     /// Parse an entities JSON file (in [&str] form) and add them into this
     /// [`Entities`] structure, re-computing the transitive closure
     ///
@@ -517,7 +479,9 @@ impl Entities {
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
     /// ## Errors
-    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::Duplicate`] if there is a pair of non-identical entities in
+    ///   `entities` with the same Entity UID, or there is an entity in `entities` with the
+    ///   same Entity UID as a non-identical entity in this structure
     /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
     ///   to the schema
     /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
@@ -555,7 +519,9 @@ impl Entities {
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
     /// ## Errors
-    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::Duplicate`] if there is a pair of non-identical entities in
+    ///   `entities` with the same Entity UID, or there is an entity in `entities` with the same
+    ///   Entity UID as a non-identical entity in this structure
     /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
     ///   to the schema
     /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
@@ -594,7 +560,9 @@ impl Entities {
     /// to not call this method in a loop.
     ///
     /// ## Errors
-    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::Duplicate`] if there is a pair of non-identical entities in `entities`
+    ///   with the same Entity UID, or there is an entity in `entities` with the same Entity UID as a
+    ///   non-identical entity in this structure
     /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
     ///   to the schema
     /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
@@ -843,16 +811,6 @@ impl IntoIterator for Entities {
         Self::IntoIter {
             inner: self.0.into_iter(),
         }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl Protobuf for Entities {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<ast::proto::Entities>(&self.0)
-    }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<ast::proto::Entities, _>(buf).map(Self)
     }
 }
 
@@ -1904,22 +1862,12 @@ impl Schema {
     pub fn entity_types(&self) -> impl Iterator<Item = &EntityTypeName> {
         self.0
             .entity_types()
-            .map(|(name, _)| RefCast::ref_cast(name))
+            .map(|ety| RefCast::ref_cast(ety.name()))
     }
 
     /// Returns an iterator over all actions defined in this schema
     pub fn actions(&self) -> impl Iterator<Item = &EntityUid> {
         self.0.actions().map(RefCast::ref_cast)
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl Protobuf for Schema {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<cedar_policy_validator::proto::ValidatorSchema>(&self.0)
-    }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<cedar_policy_validator::proto::ValidatorSchema, _>(buf).map(Self)
     }
 }
 
@@ -2097,7 +2045,7 @@ pub fn confusable_string_checker<'a>(
 /// # assert_eq!(id.unwrap().to_string(), "My::Name::Space".to_string());
 /// ```
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct EntityNamespace(ast::Name);
+pub struct EntityNamespace(pub(crate) ast::Name);
 
 /// This `FromStr` implementation requires the _normalized_ representation of the
 /// namespace. See <https://github.com/cedar-policy/rfcs/pull/9/>.
@@ -2114,16 +2062,6 @@ impl FromStr for EntityNamespace {
 impl std::fmt::Display for EntityNamespace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl Protobuf for EntityNamespace {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<ast::proto::Name>(&self.0)
-    }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<ast::proto::Name, _>(buf).map(Self)
     }
 }
 
@@ -2227,7 +2165,7 @@ impl PolicySet {
 
     /// Build the [`PolicySet`] from just the AST information
     #[cfg_attr(not(feature = "protobufs"), allow(dead_code))]
-    fn from_ast(ast: ast::PolicySet) -> Result<Self, PolicySetError> {
+    pub(crate) fn from_ast(ast: ast::PolicySet) -> Result<Self, PolicySetError> {
         Self::from_policies(ast.into_policies().map(Policy::from_ast))
     }
 
@@ -2297,6 +2235,73 @@ impl PolicySet {
             set.add(policy)?;
         }
         Ok(set)
+    }
+
+    /// Helper function for `merge_policyset`
+    /// Merges two sets and avoids name clashes by using the provided
+    /// renaming. The type parameter `T` allows this code to be used for
+    /// both Templates and Policies.
+    fn merge_sets<T>(
+        this: &mut HashMap<PolicyId, T>,
+        other: &HashMap<PolicyId, T>,
+        renaming: &HashMap<PolicyId, PolicyId>,
+    ) where
+        T: PartialEq + Clone,
+    {
+        for (pid, ot) in other {
+            match renaming.get(&pid) {
+                Some(new_pid) => {
+                    this.insert(new_pid.clone(), ot.clone());
+                }
+                None => {
+                    if this.get(pid).is_none() {
+                        this.insert(pid.clone(), ot.clone());
+                    }
+                    // If pid is not in the renaming but is in both
+                    // this and other, then by assumption
+                    // the element at pid in this and other are equal
+                    // i.e., the renaming is expected to track all
+                    // conflicting pids.
+                }
+            }
+        }
+    }
+
+    /// Merges this `PolicySet` with another `PolicySet`.
+    /// This `PolicySet` is modified while the other `PolicySet`
+    /// remains unchanged.
+    ///
+    /// The flag `rename_duplicates` controls the expected behavior
+    /// when a `PolicyId` in this and the other `PolicySet` conflict.
+    ///
+    /// When `rename_duplicates` is false, conflicting `PolicyId`s result
+    /// in a `PolicySetError::AlreadyDefined` error.
+    ///
+    /// Otherwise, when `rename_duplicates` is true, conflicting `PolicyId`s from
+    /// the other `PolicySet` are automatically renamed to avoid conflict.
+    /// This renaming is returned as a Hashmap from the old `PolicyId` to the
+    /// renamed `PolicyId`.
+    pub fn merge_policyset(
+        &mut self,
+        other: &PolicySet,
+        rename_duplicates: bool,
+    ) -> Result<HashMap<PolicyId, PolicyId>, PolicySetError> {
+        match self.ast.merge_policyset(&other.ast, rename_duplicates) {
+            Ok(renaming) => {
+                let renaming: HashMap<PolicyId, PolicyId> = renaming
+                    .into_iter()
+                    .map(|(old_pid, new_pid)| (PolicyId::new(old_pid), PolicyId::new(new_pid)))
+                    .collect();
+                Self::merge_sets(&mut self.templates, &other.templates, &renaming);
+                Self::merge_sets(&mut self.policies, &other.policies, &renaming);
+                Ok(renaming)
+            }
+            Err(ast::PolicySetError::Occupied { id }) => Err(PolicySetError::AlreadyDefined(
+                policy_set_errors::AlreadyDefined {
+                    id: PolicyId::new(id),
+                },
+            )),
+        }
     }
 
     /// Add an static policy to the `PolicySet`. To add a template instance, use
@@ -2575,20 +2580,6 @@ impl std::fmt::Display for PolicySet {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl Protobuf for PolicySet {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<ast::proto::LiteralPolicySet>(&self.ast)
-    }
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        let ast = proto::try_decode::<ast::proto::LiteralPolicySet, _, _>(buf)?
-            .expect("proto-encoded policy set should be a valid policy set");
-        Ok(Self::from_ast(ast).expect("proto-encoded policy set should be a valid policy set"))
-    }
-}
-
 /// Given a [`PolicyId`] and a [`Policy`], determine if the policy represents a static policy or a
 /// link
 fn is_static_or_link(
@@ -2712,7 +2703,7 @@ fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item
 pub struct Template {
     /// AST representation of the template, used for most operations.
     /// In particular, the `ast` contains the authoritative `PolicyId` for the template.
-    ast: ast::Template,
+    pub(crate) ast: ast::Template,
 
     /// Some "lossless" representation of the template, whichever is most
     /// convenient to provide (and can be provided with the least overhead).
@@ -2724,7 +2715,7 @@ pub struct Template {
     ///
     /// This is a `LosslessPolicy` (rather than something like `LosslessTemplate`)
     /// because the EST doesn't distinguish between static policies and templates.
-    lossless: LosslessPolicy,
+    pub(crate) lossless: LosslessPolicy,
 }
 
 impl PartialEq for Template {
@@ -2889,7 +2880,7 @@ impl Template {
     }
 
     #[cfg_attr(not(feature = "protobufs"), allow(dead_code))]
-    fn from_ast(ast: ast::Template) -> Self {
+    pub(crate) fn from_ast(ast: ast::Template) -> Self {
         Self {
             lossless: LosslessPolicy::Est(ast.clone().into()),
             ast,
@@ -2922,16 +2913,6 @@ impl FromStr for Template {
 
     fn from_str(src: &str) -> Result<Self, Self::Err> {
         Self::parse(None, src)
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl Protobuf for Template {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<ast::proto::TemplateBody>(&self.ast)
-    }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<ast::proto::TemplateBody, _>(buf).map(Self::from_ast)
     }
 }
 
@@ -3037,7 +3018,7 @@ impl TemplateResourceConstraint {
 pub struct Policy {
     /// AST representation of the policy, used for most operations.
     /// In particular, the `ast` contains the authoritative `PolicyId` for the policy.
-    ast: ast::Policy,
+    pub(crate) ast: ast::Policy,
     /// Some "lossless" representation of the policy, whichever is most
     /// convenient to provide (and can be provided with the least overhead).
     /// This is used just for `to_json()`.
@@ -3045,7 +3026,7 @@ pub struct Policy {
     /// we can't reconstruct an accurate CST/EST/policy-text from the AST, but
     /// we can from the EST (modulo whitespace and a few other things like the
     /// order of annotations).
-    lossless: LosslessPolicy,
+    pub(crate) lossless: LosslessPolicy,
 }
 
 impl PartialEq for Policy {
@@ -3444,26 +3425,11 @@ impl FromStr for Policy {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl Protobuf for Policy {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<ast::proto::LiteralPolicy>(&self.ast)
-    }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        // PANIC SAFETY: experimental feature
-        #[allow(clippy::expect_used)]
-        Ok(Self::from_ast(
-            proto::try_decode::<ast::proto::LiteralPolicy, _, ast::Policy>(buf)?
-                .expect("protobuf-encoded policy should be a valid policy"),
-        ))
-    }
-}
-
 /// See comments on `Policy` and `Template`.
 ///
 /// This structure can be used for static policies, linked policies, and templates.
 #[derive(Debug, Clone)]
-enum LosslessPolicy {
+pub(crate) enum LosslessPolicy {
     /// EST representation
     Est(est::Policy),
     /// Text representation
@@ -3553,7 +3519,7 @@ impl std::fmt::Display for LosslessPolicy {
 /// Expressions to be evaluated
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
-pub struct Expression(ast::Expr);
+pub struct Expression(pub(crate) ast::Expr);
 
 impl Expression {
     /// Create an expression representing a literal string.
@@ -3625,16 +3591,6 @@ impl FromStr for Expression {
         ast::Expr::from_str(expression)
             .map(Expression)
             .map_err(Into::into)
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl Protobuf for Expression {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<ast::proto::Expr>(&self.0)
-    }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<ast::proto::Expr, _>(buf).map(Self)
     }
 }
 
@@ -3980,16 +3936,6 @@ impl Request {
             ast::EntityUIDEntry::Known { euid, .. } => Some(EntityUid::ref_cast(euid.as_ref())),
             ast::EntityUIDEntry::Unknown { .. } => None,
         }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl Protobuf for Request {
-    fn encode(&self) -> Vec<u8> {
-        proto::encode_to_vec::<ast::proto::Request>(&self.0)
-    }
-    fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError> {
-        proto::decode::<ast::proto::Request, _>(buf).map(Self)
     }
 }
 

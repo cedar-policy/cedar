@@ -39,7 +39,7 @@ extern crate tsify;
 pub struct Template {
     body: TemplateBody,
     /// INVARIANT (slot cache correctness): This Vec must contain _all_ of the open slots in `body`
-    /// This is maintained by the only two public constructors, `new` and `link_inline_policy`
+    /// This is maintained by the only public constructors: `new()`, `new_shared()`, and `link_static_policy()`
     ///
     /// Note that `slots` may be empty, in which case this `Template` represents a static policy
     slots: Vec<Slot>,
@@ -562,130 +562,18 @@ impl std::fmt::Display for Policy {
 pub type SlotEnv = HashMap<SlotId, EntityUID>;
 
 /// Represents either an static policy or a template linked policy
-/// This is the serializable version because it simply refers to the Template by its Id;
+/// This is the serializable version because it simply refers to the `Template` by its Id
+/// and does not contain a reference to the `Template` itself
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LiteralPolicy {
     /// ID of the template this policy is an instance of
     template_id: PolicyID,
-    /// ID of this link
-    /// This is `None` for Static Policies,
-    /// and the link's ID is defined as the Static Policy's ID
+    /// ID of this link.
+    /// This is `None` for static policies, and the static policy ID is defined
+    /// as the `template_id`
     link_id: Option<PolicyID>,
     /// Values of the slots
     values: SlotEnv,
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&proto::LiteralPolicy> for LiteralPolicy {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::LiteralPolicy) -> Self {
-        let link_id: &str = v.link_id.as_ref();
-        let link: Option<PolicyID> = if v.link_id_specified {
-            Some(PolicyID::from_string(link_id))
-        } else {
-            None
-        };
-
-        let mut values: SlotEnv = HashMap::new();
-        if v.principal_euid.is_some() {
-            values.insert(
-                SlotId::principal(),
-                EntityUID::from(
-                    v.principal_euid
-                        .as_ref()
-                        .expect("`as_ref()` for field that should exist"),
-                ),
-            );
-        }
-        if v.resource_euid.is_some() {
-            values.insert(
-                SlotId::resource(),
-                EntityUID::from(
-                    v.resource_euid
-                        .as_ref()
-                        .expect("`as_ref()` for field that should exist"),
-                ),
-            );
-        }
-
-        let template_id: &str = v.template_id.as_ref();
-
-        Self {
-            template_id: PolicyID::from_string(template_id),
-            link_id: link,
-            values,
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl TryFrom<&proto::LiteralPolicy> for Policy {
-    type Error = ReificationError;
-    fn try_from(policy: &proto::LiteralPolicy) -> Result<Self, Self::Error> {
-        // TODO: do we need to provide a nonempty `templates` argument to `.reify()`
-        LiteralPolicy::from(policy).reify(&HashMap::new())
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&LiteralPolicy> for proto::LiteralPolicy {
-    fn from(v: &LiteralPolicy) -> Self {
-        let template_id_str: &str = v.template_id.as_ref();
-        let link_id_str: &str = match v.link_id {
-            Some(ref pid) => pid.as_ref(),
-            None => "",
-        };
-
-        // Are both principal and resource ids necessary
-        let principal_euid: Option<proto::EntityUid> = v
-            .values
-            .get(&SlotId::principal())
-            .map(proto::EntityUid::from);
-
-        let resource_euid: Option<proto::EntityUid> = v
-            .values
-            .get(&SlotId::resource())
-            .map(proto::EntityUid::from);
-
-        Self {
-            template_id: String::from(template_id_str),
-            link_id: String::from(link_id_str),
-            link_id_specified: v.link_id.is_some(),
-            principal_euid,
-            resource_euid,
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&Policy> for proto::LiteralPolicy {
-    fn from(v: &Policy) -> Self {
-        let template_id_str: &str = v.template.id().as_ref();
-        let link_id_str: &str = match v.link {
-            Some(ref pid) => pid.as_ref(),
-            None => "",
-        };
-
-        // Are both principal and resource ids necessary
-        let principal_euid: Option<proto::EntityUid> = v
-            .values
-            .get(&SlotId::principal())
-            .map(proto::EntityUid::from);
-
-        let resource_euid: Option<proto::EntityUid> = v
-            .values
-            .get(&SlotId::resource())
-            .map(proto::EntityUid::from);
-
-        Self {
-            template_id: String::from(template_id_str),
-            link_id: String::from(link_id_str),
-            link_id_specified: v.link.is_some(),
-            principal_euid,
-            resource_euid,
-        }
-    }
 }
 
 /// A borrowed version of LiteralPolicy exclusively for serialization
@@ -693,9 +581,9 @@ impl From<&Policy> for proto::LiteralPolicy {
 pub struct BorrowedLiteralPolicy<'a> {
     /// ID of the template this policy is an instance of
     template_id: &'a PolicyID,
-    /// ID of this link
-    /// This is `None` for Static Policies,
-    /// and the link's ID is defined as the Static Policy's ID
+    /// ID of this link.
+    /// This is `None` for static policies, and the static policy ID is defined
+    /// as the `template_id`
     link_id: Option<&'a PolicyID>,
     /// Values of the slots
     values: &'a SlotEnv,
@@ -708,6 +596,39 @@ impl<'a> From<&'a Policy> for BorrowedLiteralPolicy<'a> {
             link_id: p.link.as_ref(),
             values: &p.values,
         }
+    }
+}
+
+impl LiteralPolicy {
+    /// Create a `LiteralPolicy` representing a static policy with the given ID.
+    ///
+    /// The policy set should also contain a (zero-slot) `Template` with the given ID.
+    pub fn static_policy(template_id: PolicyID) -> Self {
+        Self {
+            template_id,
+            link_id: None,
+            values: SlotEnv::new(),
+        }
+    }
+
+    /// Create a `LiteralPolicy` representing a template-linked policy.
+    ///
+    /// The policy set should also contain the associated `Template`.
+    pub fn template_linked_policy(
+        template_id: PolicyID,
+        link_id: PolicyID,
+        values: SlotEnv,
+    ) -> Self {
+        Self {
+            template_id,
+            link_id: Some(link_id),
+            values,
+        }
+    }
+
+    /// Get the `EntityUID` associated with the given `SlotId`, if it exists
+    pub fn value(&self, slot: &SlotId) -> Option<&EntityUID> {
+        self.values.get(slot)
     }
 }
 
@@ -800,13 +721,14 @@ impl LiteralPolicy {
         self.values.get(id)
     }
 
-    /// Get the `PolicyId` of this instance
-    /// If this is an inline policy, returns the ID of the inline policy
+    /// Get the [`PolicyID`] of this static or template-linked policy.
     pub fn id(&self) -> &PolicyID {
         self.link_id.as_ref().unwrap_or(&self.template_id)
     }
 
-    /// Return the `PolicyId` of the template or inline policy that defines this policy
+    /// Get the [`PolicyID`] of the template associated with this policy.
+    ///
+    /// For static policies, this is just the static policy ID.
     pub fn template_id(&self) -> &PolicyID {
         &self.template_id
     }
@@ -961,7 +883,7 @@ impl StaticPolicy {
             non_scope_constraints,
         );
         let first_slot = body.condition().slots().next();
-        // INVARIANT (inline policy correctness), checks that no slots exists
+        // INVARIANT (static policy correctness), checks that no slots exists
         match first_slot {
             Some(slot) => Err(UnexpectedSlotError::FoundSlot(slot))?,
             None => Ok(Self(body)),
@@ -983,8 +905,8 @@ impl TryFrom<Template> for StaticPolicy {
 }
 
 impl From<StaticPolicy> for Policy {
-    fn from(inline: StaticPolicy) -> Policy {
-        let (_, policy) = Template::link_static_policy(inline);
+    fn from(p: StaticPolicy) -> Policy {
+        let (_, policy) = Template::link_static_policy(p);
         policy
     }
 }
@@ -1210,90 +1132,6 @@ impl std::fmt::Display for TemplateBody {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl From<&proto::TemplateBody> for Template {
-    fn from(v: &proto::TemplateBody) -> Self {
-        Template::from(TemplateBody::from(v))
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&proto::TemplateBody> for TemplateBody {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::TemplateBody) -> Self {
-        let annotations: Annotations = Annotations::from_iter(
-            v.annotations
-                .iter()
-                .map(|(key, value)| (AnyId::new_unchecked(key), Annotation::from(value))),
-        );
-        let effect =
-            Effect::from(&proto::Effect::try_from(v.effect).expect("decode should succeed"));
-        let policy_id: &str = v.id.as_ref();
-
-        let body: TemplateBody = TemplateBody::new(
-            PolicyID::from_string(policy_id),
-            None,
-            annotations,
-            effect,
-            PrincipalConstraint::from(
-                v.principal_constraint
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-            ActionConstraint::from(
-                v.action_constraint
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-            ResourceConstraint::from(
-                v.resource_constraint
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-            Expr::from(
-                v.non_scope_constraints
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-        );
-        body
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&TemplateBody> for proto::TemplateBody {
-    fn from(v: &TemplateBody) -> Self {
-        let id_str: &str = v.id.as_ref();
-        let annotations: HashMap<String, proto::Annotation> = v
-            .annotations
-            .as_ref()
-            .iter()
-            .map(|(key, value)| {
-                let id_str: &str = key.as_ref();
-                (String::from(id_str), proto::Annotation::from(value))
-            })
-            .collect();
-
-        Self {
-            id: String::from(id_str),
-            annotations,
-            effect: proto::Effect::from(&v.effect).into(),
-            principal_constraint: Some(proto::PrincipalConstraint::from(&v.principal_constraint)),
-            action_constraint: Some(proto::ActionConstraint::from(&v.action_constraint)),
-            resource_constraint: Some(proto::ResourceConstraint::from(&v.resource_constraint)),
-            non_scope_constraints: Some(proto::Expr::from(v.non_scope_constraints.as_ref())),
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&Template> for proto::TemplateBody {
-    fn from(v: &Template) -> Self {
-        proto::TemplateBody::from(&v.body)
-    }
-}
-
 /// Template constraint on principal scope variables
 #[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct PrincipalConstraint {
@@ -1398,30 +1236,6 @@ impl std::fmt::Display for PrincipalConstraint {
             "{}",
             self.constraint.display(PrincipalOrResource::Principal)
         )
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&proto::PrincipalConstraint> for PrincipalConstraint {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::PrincipalConstraint) -> Self {
-        Self {
-            constraint: PrincipalOrResourceConstraint::from(
-                v.constraint
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&PrincipalConstraint> for proto::PrincipalConstraint {
-    fn from(v: &PrincipalConstraint) -> Self {
-        Self {
-            constraint: Some(proto::PrincipalOrResourceConstraint::from(&v.constraint)),
-        }
     }
 }
 
@@ -1532,30 +1346,6 @@ impl std::fmt::Display for ResourceConstraint {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl From<&proto::ResourceConstraint> for ResourceConstraint {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::ResourceConstraint) -> Self {
-        Self {
-            constraint: PrincipalOrResourceConstraint::from(
-                v.constraint
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&ResourceConstraint> for proto::ResourceConstraint {
-    fn from(v: &ResourceConstraint) -> Self {
-        Self {
-            constraint: Some(proto::PrincipalOrResourceConstraint::from(&v.constraint)),
-        }
-    }
-}
-
 /// A reference to an EntityUID that may be a Slot
 #[derive(Educe, Serialize, Deserialize, Clone, Debug, Eq)]
 #[educe(Hash, PartialEq, PartialOrd, Ord)]
@@ -1589,48 +1379,6 @@ impl EntityReference {
             EntityReference::Slot(loc) => {
                 Expr::slot(slot).with_maybe_source_loc(loc.as_ref().cloned())
             }
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&proto::EntityReference> for EntityReference {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::EntityReference) -> Self {
-        match v
-            .data
-            .as_ref()
-            .expect("`as_ref()` for field that should exist")
-        {
-            proto::entity_reference::Data::Ty(ty) => {
-                match proto::entity_reference::Ty::try_from(ty.to_owned())
-                    .expect("decode should succeed")
-                {
-                    proto::entity_reference::Ty::Slot => EntityReference::Slot(None),
-                }
-            }
-            proto::entity_reference::Data::Euid(euid) => {
-                EntityReference::euid(EntityUID::from(euid).into())
-            }
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&EntityReference> for proto::EntityReference {
-    fn from(v: &EntityReference) -> Self {
-        match v {
-            EntityReference::EUID(euid) => Self {
-                data: Some(proto::entity_reference::Data::Euid(proto::EntityUid::from(
-                    euid.as_ref(),
-                ))),
-            },
-            EntityReference::Slot(_) => Self {
-                data: Some(proto::entity_reference::Data::Ty(
-                    proto::entity_reference::Ty::Slot.into(),
-                )),
-            },
         }
     }
 }
@@ -1823,110 +1571,6 @@ impl PrincipalOrResourceConstraint {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl From<&proto::PrincipalOrResourceConstraint> for PrincipalOrResourceConstraint {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::PrincipalOrResourceConstraint) -> Self {
-        match v
-            .data
-            .as_ref()
-            .expect("`as_ref()` for field that should exist")
-        {
-            proto::principal_or_resource_constraint::Data::Ty(ty) => {
-                match proto::principal_or_resource_constraint::Ty::try_from(ty.to_owned())
-                    .expect("decode should succeed")
-                {
-                    proto::principal_or_resource_constraint::Ty::Any => {
-                        PrincipalOrResourceConstraint::Any
-                    }
-                }
-            }
-            proto::principal_or_resource_constraint::Data::In(msg) => {
-                PrincipalOrResourceConstraint::In(EntityReference::from(
-                    msg.er
-                        .as_ref()
-                        .expect("`as_ref()` for field that should exist"),
-                ))
-            }
-            proto::principal_or_resource_constraint::Data::Eq(msg) => {
-                PrincipalOrResourceConstraint::Eq(EntityReference::from(
-                    msg.er
-                        .as_ref()
-                        .expect("`as_ref()` for field that should exist"),
-                ))
-            }
-            proto::principal_or_resource_constraint::Data::Is(msg) => {
-                PrincipalOrResourceConstraint::Is(
-                    EntityType::from(
-                        msg.et
-                            .as_ref()
-                            .expect("`as_ref()` for field that should exist"),
-                    )
-                    .into(),
-                )
-            }
-            proto::principal_or_resource_constraint::Data::IsIn(msg) => {
-                PrincipalOrResourceConstraint::IsIn(
-                    EntityType::from(
-                        msg.et
-                            .as_ref()
-                            .expect("`as_ref()` for field that should exist"),
-                    )
-                    .into(),
-                    EntityReference::from(
-                        msg.er
-                            .as_ref()
-                            .expect("`as_ref()` for field that should exist"),
-                    ),
-                )
-            }
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&PrincipalOrResourceConstraint> for proto::PrincipalOrResourceConstraint {
-    fn from(v: &PrincipalOrResourceConstraint) -> Self {
-        match v {
-            PrincipalOrResourceConstraint::Any => Self {
-                data: Some(proto::principal_or_resource_constraint::Data::Ty(
-                    proto::principal_or_resource_constraint::Ty::Any.into(),
-                )),
-            },
-            PrincipalOrResourceConstraint::In(er) => Self {
-                data: Some(proto::principal_or_resource_constraint::Data::In(
-                    proto::principal_or_resource_constraint::InMessage {
-                        er: Some(proto::EntityReference::from(er)),
-                    },
-                )),
-            },
-            PrincipalOrResourceConstraint::Eq(er) => Self {
-                data: Some(proto::principal_or_resource_constraint::Data::Eq(
-                    proto::principal_or_resource_constraint::EqMessage {
-                        er: Some(proto::EntityReference::from(er)),
-                    },
-                )),
-            },
-            PrincipalOrResourceConstraint::Is(na) => Self {
-                data: Some(proto::principal_or_resource_constraint::Data::Is(
-                    proto::principal_or_resource_constraint::IsMessage {
-                        et: Some(proto::EntityType::from(na.as_ref())),
-                    },
-                )),
-            },
-            PrincipalOrResourceConstraint::IsIn(na, er) => Self {
-                data: Some(proto::principal_or_resource_constraint::Data::IsIn(
-                    proto::principal_or_resource_constraint::IsInMessage {
-                        er: Some(proto::EntityReference::from(er)),
-                        et: Some(proto::EntityType::from(na.as_ref())),
-                    },
-                )),
-            },
-        }
-    }
-}
-
 /// Constraint for action scope variables.
 /// Action variables can be constrained to be in any variable in a list.
 #[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
@@ -2028,63 +1672,6 @@ impl ActionConstraint {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl From<&proto::ActionConstraint> for ActionConstraint {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::ActionConstraint) -> Self {
-        match v.data.as_ref().expect("data.as_ref()") {
-            proto::action_constraint::Data::Ty(ty) => {
-                match proto::action_constraint::Ty::try_from(ty.to_owned())
-                    .expect("decode should succeed")
-                {
-                    proto::action_constraint::Ty::Any => ActionConstraint::Any,
-                }
-            }
-            proto::action_constraint::Data::In(msg) => ActionConstraint::In(
-                msg.euids
-                    .iter()
-                    .map(|value| EntityUID::from(value).into())
-                    .collect(),
-            ),
-            proto::action_constraint::Data::Eq(msg) => ActionConstraint::Eq(
-                EntityUID::from(msg.euid.as_ref().expect("euid.as_ref()")).into(),
-            ),
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&ActionConstraint> for proto::ActionConstraint {
-    fn from(v: &ActionConstraint) -> Self {
-        match v {
-            ActionConstraint::Any => Self {
-                data: Some(proto::action_constraint::Data::Ty(
-                    proto::action_constraint::Ty::Any.into(),
-                )),
-            },
-            ActionConstraint::In(euids) => {
-                let mut peuids: Vec<proto::EntityUid> = Vec::with_capacity(euids.len());
-                for value in euids {
-                    peuids.push(proto::EntityUid::from(value.as_ref()));
-                }
-                Self {
-                    data: Some(proto::action_constraint::Data::In(
-                        proto::action_constraint::InMessage { euids: peuids },
-                    )),
-                }
-            }
-            ActionConstraint::Eq(euid) => Self {
-                data: Some(proto::action_constraint::Data::Eq(
-                    proto::action_constraint::EqMessage {
-                        euid: Some(proto::EntityUid::from(euid.as_ref())),
-                    },
-                )),
-            },
-        }
-    }
-}
-
 impl std::fmt::Display for StaticPolicy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (k, v) in self.0.annotations.iter() {
@@ -2159,26 +1746,6 @@ impl std::fmt::Display for Effect {
         match self {
             Self::Permit => write!(f, "permit"),
             Self::Forbid => write!(f, "forbid"),
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&proto::Effect> for Effect {
-    fn from(v: &proto::Effect) -> Self {
-        match v {
-            proto::Effect::Forbid => Effect::Forbid,
-            proto::Effect::Permit => Effect::Permit,
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&Effect> for proto::Effect {
-    fn from(v: &Effect) -> Self {
-        match v {
-            Effect::Permit => proto::Effect::Permit,
-            Effect::Forbid => proto::Effect::Forbid,
         }
     }
 }
@@ -2299,9 +1866,6 @@ mod test {
         test_utils::ExpectedErrorMessageBuilder,
     };
 
-    #[cfg(feature = "protobufs")]
-    use crate::from_normalized_str::FromNormalizedStr;
-
     #[test]
     fn literal_and_borrowed() {
         for template in all_templates() {
@@ -2348,7 +1912,7 @@ mod test {
     }
 
     #[test]
-    fn test_inline_policy_rebuild() {
+    fn test_static_policy_rebuild() {
         for template in all_templates() {
             if let Ok(ip) = StaticPolicy::try_from(template.clone()) {
                 let id = ip.id().clone();
@@ -2637,145 +2201,5 @@ mod test {
             );
             assert_eq!(e.len(), 2);
         });
-    }
-
-    #[cfg(feature = "protobufs")]
-    #[test]
-    fn protobuf_roundtrip() {
-        let annotation1: Annotation = Annotation {
-            val: "".into(),
-            loc: None,
-        };
-        assert_eq!(
-            annotation1,
-            Annotation::from(&proto::Annotation::from(&annotation1))
-        );
-
-        let annotation2: Annotation = Annotation {
-            val: "Hello World".into(),
-            loc: None,
-        };
-        assert_eq!(
-            annotation2,
-            Annotation::from(&proto::Annotation::from(&annotation2))
-        );
-
-        assert_eq!(
-            Effect::Permit,
-            Effect::from(&proto::Effect::from(&Effect::Permit))
-        );
-        assert_eq!(
-            Effect::Forbid,
-            Effect::from(&proto::Effect::from(&Effect::Forbid))
-        );
-
-        let er1: EntityReference = EntityReference::euid(Arc::new(EntityUID::with_eid("foo")));
-        assert_eq!(
-            er1,
-            EntityReference::from(&proto::EntityReference::from(&er1))
-        );
-        assert_eq!(
-            EntityReference::Slot(None),
-            EntityReference::from(&proto::EntityReference::from(&EntityReference::Slot(None)))
-        );
-
-        let read_euid: Arc<EntityUID> = Arc::new(EntityUID::with_eid("read"));
-        let write_euid: Arc<EntityUID> = Arc::new(EntityUID::with_eid("write"));
-        let ac1: ActionConstraint = ActionConstraint::Eq(read_euid.clone());
-        let ac2: ActionConstraint = ActionConstraint::In(vec![read_euid, write_euid]);
-        assert_eq!(
-            ActionConstraint::Any,
-            ActionConstraint::from(&proto::ActionConstraint::from(&ActionConstraint::Any))
-        );
-        assert_eq!(
-            ac1,
-            ActionConstraint::from(&proto::ActionConstraint::from(&ac1))
-        );
-        assert_eq!(
-            ac2,
-            ActionConstraint::from(&proto::ActionConstraint::from(&ac2))
-        );
-
-        let euid1: Arc<EntityUID> = Arc::new(EntityUID::with_eid("friend"));
-        let name1: Arc<EntityType> = Arc::new(EntityType::from(
-            Name::from_normalized_str("B::C::D").unwrap(),
-        ));
-        let prc1: PrincipalOrResourceConstraint =
-            PrincipalOrResourceConstraint::is_eq(euid1.to_owned());
-        let prc2: PrincipalOrResourceConstraint =
-            PrincipalOrResourceConstraint::is_in(euid1.to_owned());
-        let prc3: PrincipalOrResourceConstraint =
-            PrincipalOrResourceConstraint::is_entity_type(name1.to_owned());
-        let prc4: PrincipalOrResourceConstraint =
-            PrincipalOrResourceConstraint::is_entity_type_in(name1, euid1);
-        assert_eq!(
-            PrincipalOrResourceConstraint::any(),
-            PrincipalOrResourceConstraint::from(&proto::PrincipalOrResourceConstraint::from(
-                &PrincipalOrResourceConstraint::any()
-            ))
-        );
-        assert_eq!(
-            prc1,
-            PrincipalOrResourceConstraint::from(&proto::PrincipalOrResourceConstraint::from(&prc1))
-        );
-        assert_eq!(
-            prc2,
-            PrincipalOrResourceConstraint::from(&proto::PrincipalOrResourceConstraint::from(&prc2))
-        );
-        assert_eq!(
-            prc3,
-            PrincipalOrResourceConstraint::from(&proto::PrincipalOrResourceConstraint::from(&prc3))
-        );
-        assert_eq!(
-            prc4,
-            PrincipalOrResourceConstraint::from(&proto::PrincipalOrResourceConstraint::from(&prc4))
-        );
-
-        let pc: PrincipalConstraint = PrincipalConstraint { constraint: prc1 };
-        let rc: ResourceConstraint = ResourceConstraint { constraint: prc3 };
-        assert_eq!(
-            pc,
-            PrincipalConstraint::from(&proto::PrincipalConstraint::from(&pc))
-        );
-        assert_eq!(
-            rc,
-            ResourceConstraint::from(&proto::ResourceConstraint::from(&rc))
-        );
-
-        assert_eq!(
-            Effect::Permit,
-            Effect::from(&proto::Effect::from(&Effect::Permit))
-        );
-        assert_eq!(
-            Effect::Forbid,
-            Effect::from(&proto::Effect::from(&Effect::Forbid))
-        );
-
-        let tb: TemplateBody = TemplateBody {
-            id: PolicyID::from_string("template"),
-            annotations: Arc::new(Annotations::from_iter(vec![(
-                AnyId::new_unchecked("read"),
-                annotation1,
-            )])),
-            effect: Effect::Permit,
-            principal_constraint: pc,
-            action_constraint: ac1,
-            resource_constraint: rc,
-            loc: None,
-            non_scope_constraints: Arc::new(Expr::val(true)),
-        };
-        assert_eq!(tb, TemplateBody::from(&proto::TemplateBody::from(&tb)));
-
-        let mut v: HashMap<SlotId, EntityUID> = HashMap::new();
-        v.insert(SlotId::principal(), EntityUID::with_eid("eid"));
-        let policy: LiteralPolicy = LiteralPolicy {
-            template_id: PolicyID::from_string("template"),
-            link_id: Some(PolicyID::from_string("id")),
-            values: v,
-        };
-        assert_eq!(
-            policy,
-            LiteralPolicy::from(&proto::LiteralPolicy::from(&policy))
-        );
     }
 }

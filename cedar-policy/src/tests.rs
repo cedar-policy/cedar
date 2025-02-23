@@ -3530,14 +3530,14 @@ mod schema_based_parsing_tests {
     }
 
     #[test]
-    fn entities_duplicates_fail() {
+    fn entities_inconsistent_duplicates_fail() {
         let json = serde_json::json!([
             {
                 "uid" : {
                     "type" : "User",
                     "id" : "alice"
                 },
-                "attrs" : {},
+                "attrs" : {"location": "Greenland"},
                 "parents": []
             },
             {
@@ -3768,7 +3768,7 @@ mod schema_based_parsing_tests {
 
         // Both entity jsons are ok (the default TC setting is `ComputeNow`)
         assert!(Entities::from_json_value(entitiesjson_tc, Some(&schema)).is_ok());
-        assert!(Entities::from_json_value(entitiesjson_no_tc.clone(), Some(&schema)).is_ok());
+        Entities::from_json_value(entitiesjson_no_tc.clone(), Some(&schema)).unwrap();
 
         // Parsing will fail if the TC doesn't match
         let entitiesjson_bad = json!(

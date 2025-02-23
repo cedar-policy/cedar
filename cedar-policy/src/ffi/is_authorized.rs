@@ -1446,7 +1446,7 @@ mod test {
     }
 
     #[test]
-    fn test_authorized_fails_duplicate_entity_uid() {
+    fn test_authorized_fails_inconsistent_duplicate_entity_uid() {
         let call = json!({
             "principal" : {
                 "type" : "User",
@@ -1468,7 +1468,7 @@ mod test {
                         "type" : "User",
                         "id" : "alice"
                     },
-                    "attrs": {},
+                    "attrs": {"location": "Greenland"},
                     "parents": []
                 },
                 {

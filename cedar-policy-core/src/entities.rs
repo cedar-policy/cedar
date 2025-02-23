@@ -55,7 +55,7 @@ pub struct Entities {
     /// `serde_as` annotation are used to serialize the data as associative
     /// lists instead.
     ///
-    /// Important internal invariant: for any `Entities` object that exists, the
+    /// Important internal invariant: for any `Entities` object that exists,
     /// the `ancestor` relation is transitively closed.
     #[serde_as(as = "Vec<(_, _)>")]
     entities: HashMap<EntityUID, Arc<Entity>>,
@@ -90,6 +90,16 @@ impl Entities {
         }
     }
 
+    /// Is this a partial store (created with `.partial()`)
+    pub fn is_partial(&self) -> bool {
+        #[cfg(feature = "partial-eval")]
+        let ret = self.mode == Mode::Partial;
+        #[cfg(not(feature = "partial-eval"))]
+        let ret = false;
+
+        ret
+    }
+
     /// Get the `Entity` with the given UID, if any
     pub fn entity(&self, uid: &EntityUID) -> Dereference<'_, Entity> {
         match self.entities.get(uid) {
@@ -113,8 +123,10 @@ impl Entities {
     }
 
     /// Adds the [`crate::ast::Entity`]s in the iterator to this [`Entities`].
-    /// Fails if the passed iterator contains any duplicate entities with this structure,
-    /// or if any error is encountered in the transitive closure computation.
+    /// Fails if
+    ///  - there is a pair of non-identical entities in the passed iterator with the same Entity UID, or
+    ///  - there is an entity in the passed iterator with the same Entity UID as a non-identical entity in this structure, or
+    ///  - any error is encountered in the transitive closure computation.
     ///
     /// If `schema` is present, then the added entities will be validated
     /// against the `schema`, returning an error if they do not conform to the
@@ -135,12 +147,41 @@ impl Entities {
             if let Some(checker) = checker.as_ref() {
                 checker.validate_entity(&entity)?;
             }
-            match self.entities.entry(entity.uid().clone()) {
-                hash_map::Entry::Occupied(_) => {
-                    return Err(EntitiesError::duplicate(entity.uid().clone()))
-                }
-                hash_map::Entry::Vacant(vacant_entry) => {
-                    vacant_entry.insert(entity);
+            update_entity_map(&mut self.entities, entity)?;
+        }
+        match tc_computation {
+            TCComputation::AssumeAlreadyComputed => (),
+            TCComputation::EnforceAlreadyComputed => enforce_tc_and_dag(&self.entities)?,
+            TCComputation::ComputeNow => compute_tc(&mut self.entities, true)?,
+        };
+        Ok(self)
+    }
+
+    /// Removes the [`crate::ast::EntityUID`]s in the interator from this [`Entities`]
+    /// Fails if any error is encountered in the transitive closure computation.
+    ///
+    /// If you pass [`TCComputation::AssumeAlreadyComputed`], then the caller is
+    /// responsible for ensuring that TC and DAG hold before calling this method
+    pub fn remove_entities(
+        mut self,
+        collection: impl IntoIterator<Item = EntityUID>,
+        tc_computation: TCComputation,
+    ) -> Result<Self> {
+        for uid_to_remove in collection.into_iter() {
+            match self.entities.remove(&uid_to_remove) {
+                None => (),
+                Some(entity_to_remove) => {
+                    for entity in self.entities.values_mut() {
+                        if entity.is_descendant_of(&uid_to_remove) {
+                            // remove any direct or indirect link between `entity` and `entity_to_remove`
+                            Arc::make_mut(entity).remove_indirect_ancestor(&uid_to_remove);
+                            Arc::make_mut(entity).remove_parent(&uid_to_remove);
+                            // remove any indirect link between `entity` and the ancestors of `entity_to_remove`
+                            for ancestor_uid in entity_to_remove.ancestors() {
+                                Arc::make_mut(entity).remove_indirect_ancestor(ancestor_uid);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -148,7 +189,7 @@ impl Entities {
             TCComputation::AssumeAlreadyComputed => (),
             TCComputation::EnforceAlreadyComputed => enforce_tc_and_dag(&self.entities)?,
             TCComputation::ComputeNow => compute_tc(&mut self.entities, true)?,
-        };
+        }
         Ok(self)
     }
 
@@ -163,7 +204,9 @@ impl Entities {
     /// responsible for ensuring that TC and DAG hold before calling this method.
     ///
     /// # Errors
-    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::Duplicate`] if there is a pair of non-identical entities in
+    ///   `entities` with the same Entity UID, or there is an entity in `entities` with the same
+    ///   Entity UID as a non-identical entity in this structure
     /// - [`EntitiesError::TransitiveClosureError`] if `tc_computation ==
     ///   TCComputation::EnforceAlreadyComputed` and the entities are not transitivly closed
     /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
@@ -322,20 +365,38 @@ impl Entities {
     }
 }
 
-/// Create a map from EntityUids to Entities, erroring if there are any duplicates
+/// Creates a map from EntityUIDs to Entities, erroring if there is a pair of Entity
+/// instances with the same EntityUID that are not structurally equal.
 fn create_entity_map(
     es: impl Iterator<Item = Arc<Entity>>,
 ) -> Result<HashMap<EntityUID, Arc<Entity>>> {
-    let mut map = HashMap::new();
+    let mut map: HashMap<EntityUID, Arc<Entity>> = HashMap::new();
     for e in es {
-        match map.entry(e.uid().clone()) {
-            hash_map::Entry::Occupied(_) => return Err(EntitiesError::duplicate(e.uid().clone())),
-            hash_map::Entry::Vacant(v) => {
-                v.insert(e);
-            }
-        };
+        update_entity_map(&mut map, e)?;
     }
     Ok(map)
+}
+
+/// Adds an entry to the specified map associating the EntityUID of the specified entity
+/// to the specified entity. Checks whether there is an entity already in the map
+/// with the same EntityUID as the specified entity. If such an entity is found and is
+/// not structurally equal to the specified entity produces an error. Otherwise,
+/// if a structurally equal entity is found, the state of the map is unchanged.
+fn update_entity_map(map: &mut HashMap<EntityUID, Arc<Entity>>, entity: Arc<Entity>) -> Result<()> {
+    match map.entry(entity.uid().clone()) {
+        hash_map::Entry::Occupied(occupied_entry) => {
+            // Check whether the occupying entity is structurally equal to the
+            // entity being processed
+            if !entity.deep_eq(occupied_entry.get()) {
+                let entry = occupied_entry.remove_entry();
+                return Err(EntitiesError::duplicate(entry.0));
+            }
+        }
+        hash_map::Entry::Vacant(v) => {
+            v.insert(entity);
+        }
+    }
+    Ok(())
 }
 
 impl IntoIterator for Entities {
@@ -360,61 +421,6 @@ impl std::fmt::Display for Entities {
                 writeln!(f, "{e}")?;
             }
             Ok(())
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&proto::Entities> for Entities {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::Entities) -> Self {
-        let entities: Vec<Arc<Entity>> = v
-            .entities
-            .iter()
-            .map(|e| Arc::new(Entity::from(e)))
-            .collect();
-
-        #[cfg(not(feature = "partial-eval"))]
-        let result = Entities::new();
-
-        #[cfg(feature = "partial-eval")]
-        let mut result = Entities::new();
-        #[cfg(feature = "partial-eval")]
-        if v.mode == crate::entities::proto::Mode::Partial as i32 {
-            result = result.partial();
-        }
-
-        result
-            .add_entities(
-                entities,
-                None::<&NoEntitiesSchema>,
-                TCComputation::AssumeAlreadyComputed,
-                Extensions::none(),
-            )
-            .expect("Should be able to add entities")
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&Entities> for proto::Entities {
-    fn from(v: &Entities) -> Self {
-        let mut entities: Vec<proto::Entity> = Vec::with_capacity(v.entities.len());
-        for entity in v.entities.values() {
-            entities.push(proto::Entity::from(entity));
-        }
-
-        #[cfg(feature = "partial-eval")]
-        if v.mode == Mode::Partial {
-            return Self {
-                entities,
-                mode: crate::entities::proto::Mode::Partial.into(),
-            };
-        }
-
-        Self {
-            entities,
-            mode: proto::Mode::Concrete.into(),
         }
     }
 }
@@ -826,18 +832,58 @@ mod json_parsing_tests {
     }
 
     #[test]
-    fn add_duplicates_fail2() {
+    fn add_consistent_duplicates_in_iterator() {
         let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        // Create the entities to be added
         let new = serde_json::json!([
+            {"uid":{ "type" : "Test", "id" : "ruby" }, "attrs" : {}, "parents" : []},
             {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : []},
+            {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : []}]);
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
+        // Create an initial structure
+        let original = simple_entities(&parser);
+        let original_size = original.entities.len();
+        // Add the new entities to an existing structure
+        let es = original
+            .add_entities(
+                addl_entities,
+                None::<&NoEntitiesSchema>,
+                TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )
+            .unwrap();
+        // Check that the original conditions of the structure still hold
+        simple_entities_still_sane(&es);
+        // Check that jeff has been added
+        es.entity(&r#"Test::"jeff""#.parse().unwrap()).unwrap();
+        // Check that ruby has been added
+        es.entity(&r#"Test::"ruby""#.parse().unwrap()).unwrap();
+        // Check that the size of the structure increased by exactly two
+        assert_eq!(es.entities.len(), 2 + original_size);
+    }
+
+    #[test]
+    fn add_inconsistent_duplicates_in_iterator() {
+        let parser: EntityJsonParser<'_, '_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        // Create the entities to be added
+        let new = serde_json::json!([
+            {"uid":{ "type" : "Test", "id" : "ruby" }, "attrs" : {"location": "France"}, "parents" : []},
+            {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {"location": "France"}, "parents" : []},
             {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : []}]);
 
         let addl_entities = parser
             .iter_from_json_value(new)
             .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
             .map(Arc::new);
-        let err = simple_entities(&parser)
+        // Create an initial structure
+        let original = simple_entities(&parser);
+        // Add the new entities to an existing structure
+        let err = original
             .add_entities(
                 addl_entities,
                 None::<&NoEntitiesSchema>,
@@ -846,27 +892,81 @@ mod json_parsing_tests {
             )
             .err()
             .unwrap();
+        // Check that an error occurs indicating that an inconsistent duplicate was found
         let expected = r#"Test::"jeff""#.parse().unwrap();
         assert_matches!(err, EntitiesError::Duplicate(d) => assert_eq!(d.euid(), &expected));
     }
 
     #[test]
-    fn add_duplicates_fail1() {
+    fn add_consistent_duplicate() {
         let parser: EntityJsonParser<'_, '_> =
             EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
-        let new = serde_json::json!([{"uid":{ "type": "Test", "id": "alice" }, "attrs" : {}, "parents" : []}]);
+        // Create the entities to be added
+        let new = serde_json::json!([
+            {"uid":{ "type" : "Test", "id" : "ruby" }, "attrs" : {}, "parents" : []},
+            {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : []}]);
         let addl_entities = parser
             .iter_from_json_value(new)
             .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
             .map(Arc::new);
-        let err = simple_entities(&parser).add_entities(
-            addl_entities,
-            None::<&NoEntitiesSchema>,
-            TCComputation::ComputeNow,
-            Extensions::all_available(),
-        );
-        let expected = r#"Test::"alice""#.parse().unwrap();
-        assert_matches!(err, Err(EntitiesError::Duplicate(d)) => assert_eq!(d.euid(), &expected));
+        // Create an initial structure
+        let json = serde_json::json!([
+            {"uid":{ "type" : "Test", "id" : "amy" }, "attrs" : {}, "parents" : []},
+            {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : []}]);
+        let original = parser
+            .from_json_value(json)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+        let original_size = original.entities.len();
+        // Add the new entities to an existing structure
+        let es = original
+            .add_entities(
+                addl_entities,
+                None::<&NoEntitiesSchema>,
+                TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )
+            .unwrap();
+        // Check that jeff is still in the structure
+        es.entity(&r#"Test::"jeff""#.parse().unwrap()).unwrap();
+        // Check that amy is still in the structure
+        es.entity(&r#"Test::"amy""#.parse().unwrap()).unwrap();
+        // Check that ruby has been added
+        es.entity(&r#"Test::"ruby""#.parse().unwrap()).unwrap();
+        // Check that the size of the structure increased by exactly one
+        assert_eq!(es.entities.len(), 1 + original_size);
+    }
+
+    #[test]
+    fn add_inconsistent_duplicate() {
+        let parser: EntityJsonParser<'_, '_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        // Create the entities to be added
+        let new = serde_json::json!([
+            {"uid":{ "type" : "Test", "id" : "ruby" }, "attrs" : {}, "parents" : []},
+            {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {"location": "England"}, "parents" : []}]);
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
+        // Create an initial structure
+        let json = serde_json::json!([
+            {"uid":{ "type" : "Test", "id" : "amy" }, "attrs" : {}, "parents" : []},
+            {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {"location": "London"}, "parents" : []}]);
+        let original = parser
+            .from_json_value(json)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)));
+        let err = original
+            .add_entities(
+                addl_entities,
+                None::<&NoEntitiesSchema>,
+                TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )
+            .err()
+            .unwrap();
+        // Check that an error occurs indicating that an inconsistent duplicate was found
+        let expected = r#"Test::"jeff""#.parse().unwrap();
+        assert_matches!(err, EntitiesError::Duplicate(d) => assert_eq!(d.euid(), &expected));
     }
 
     #[test]
@@ -1800,6 +1900,7 @@ mod json_parsing_tests {
                     ),
                 ),
             ],
+            [].into_iter().collect(),
             [
                 EntityUID::with_eid("parent1"),
                 EntityUID::with_eid("parent2"),
@@ -1844,6 +1945,7 @@ mod json_parsing_tests {
                 "oops".into(),
                 RestrictedExpr::record([("__entity".into(), RestrictedExpr::val("hi"))]).unwrap(),
             )],
+            [].into_iter().collect(),
             [
                 EntityUID::with_eid("parent1"),
                 EntityUID::with_eid("parent2"),
@@ -1964,6 +2066,7 @@ mod json_parsing_tests {
 #[cfg(test)]
 mod entities_tests {
     use super::*;
+    use cool_asserts::assert_matches;
 
     #[test]
     fn empty_entities() {
@@ -2011,8 +2114,8 @@ mod entities_tests {
         let mut e1 = Entity::with_uid(EntityUID::with_eid("a"));
         let mut e2 = Entity::with_uid(EntityUID::with_eid("b"));
         let e3 = Entity::with_uid(EntityUID::with_eid("c"));
-        e1.add_ancestor(EntityUID::with_eid("b"));
-        e2.add_ancestor(EntityUID::with_eid("c"));
+        e1.add_indirect_ancestor(EntityUID::with_eid("b"));
+        e2.add_indirect_ancestor(EntityUID::with_eid("c"));
 
         let es = Entities::from_entities(
             vec![e1, e2, e3],
@@ -2036,9 +2139,9 @@ mod entities_tests {
         let mut e1 = Entity::with_uid(EntityUID::with_eid("a"));
         let mut e2 = Entity::with_uid(EntityUID::with_eid("b"));
         let e3 = Entity::with_uid(EntityUID::with_eid("c"));
-        e1.add_ancestor(EntityUID::with_eid("b"));
-        e1.add_ancestor(EntityUID::with_eid("c"));
-        e2.add_ancestor(EntityUID::with_eid("c"));
+        e1.add_indirect_ancestor(EntityUID::with_eid("b"));
+        e1.add_indirect_ancestor(EntityUID::with_eid("c"));
+        e2.add_indirect_ancestor(EntityUID::with_eid("c"));
 
         Entities::from_entities(
             vec![e1, e2, e3],
@@ -2047,6 +2150,64 @@ mod entities_tests {
             Extensions::all_available(),
         )
         .expect("Should have succeeded");
+    }
+
+    #[test]
+    fn test_remove_entities() {
+        // Original Hierarchy
+        // F -> A
+        // F -> D -> A, D -> B, D -> C
+        // F -> E -> C
+        let aid = EntityUID::with_eid("A");
+        let a = Entity::with_uid(aid.clone());
+        let bid = EntityUID::with_eid("B");
+        let b = Entity::with_uid(bid.clone());
+        let cid = EntityUID::with_eid("C");
+        let c = Entity::with_uid(cid.clone());
+        let did = EntityUID::with_eid("D");
+        let mut d = Entity::with_uid(did.clone());
+        let eid = EntityUID::with_eid("E");
+        let mut e = Entity::with_uid(eid.clone());
+        let fid = EntityUID::with_eid("F");
+        let mut f = Entity::with_uid(fid.clone());
+        f.add_parent(aid.clone());
+        f.add_parent(did.clone());
+        f.add_parent(eid.clone());
+        d.add_parent(aid.clone());
+        d.add_parent(bid.clone());
+        d.add_parent(cid.clone());
+        e.add_parent(cid.clone());
+
+        // Construct original hierarchy
+        let entities = Entities::from_entities(
+            vec![a, b, c, d, e, f],
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        )
+        .expect("Failed to construct entities")
+        // Remove D from hierarchy
+        .remove_entities(vec![EntityUID::with_eid("D")], TCComputation::ComputeNow)
+        .expect("Failed to remove entities");
+        // Post-Removal Hierarchy
+        // F -> A
+        // F -> E -> C
+        // B
+
+        assert_matches!(entities.entity(&did), Dereference::NoSuchEntity);
+
+        let e = entities.entity(&eid).unwrap();
+        let f = entities.entity(&fid).unwrap();
+
+        // Assert the existence of these edges in the hierarchy
+        assert!(f.is_descendant_of(&aid));
+        assert!(f.is_descendant_of(&eid));
+        assert!(f.is_descendant_of(&cid));
+        assert!(e.is_descendant_of(&cid));
+
+        // Assert that there is no longer an edge from F to B
+        // as the only link was through D
+        assert!(!f.is_descendant_of(&bid));
     }
 }
 
@@ -2082,11 +2243,11 @@ mod schema_based_parsing_tests {
                 r#"Action::"view""# => Some(Arc::new(Entity::new_with_attr_partial_value(
                     action.clone(),
                     [(SmolStr::from("foo"), PartialValue::from(34))],
+                    [].into_iter().collect(),
                     std::iter::once(r#"Action::"readOnly""#.parse().expect("valid uid")).collect(),
+                    [],
                 ))),
-                r#"Action::"readOnly""# => Some(Arc::new(Entity::with_uid(
-                    r#"Action::"readOnly""#.parse().expect("valid uid"),
-                ))),
+                r#"Action::"readOnly""# => Some(Arc::new(Entity::with_uid(action.clone()))),
                 _ => None,
             }
         }
@@ -3635,77 +3796,5 @@ mod schema_based_parsing_tests {
                     .build()
             );
         });
-    }
-}
-
-#[cfg(feature = "protobufs")]
-#[cfg(test)]
-mod protobuf_tests {
-    use super::*;
-    use smol_str::SmolStr;
-    use std::collections::{BTreeMap, HashSet};
-    use std::iter;
-
-    #[test]
-    fn roundtrip() {
-        // Empty Test
-        let entities1: Entities = Entities::new();
-        assert_eq!(
-            entities1,
-            Entities::from(&proto::Entities::from(&entities1))
-        );
-
-        // Single Element Test
-        let attrs = (1..=7)
-            .map(|id| (format!("{id}").into(), RestrictedExpr::val(true)))
-            .collect::<HashMap<SmolStr, _>>();
-        let entity: Arc<Entity> = Arc::new(
-            Entity::new(
-                r#"Foo::"bar""#.parse().unwrap(),
-                attrs.clone(),
-                HashSet::new(),
-                BTreeMap::new(),
-                Extensions::none(),
-            )
-            .unwrap(),
-        );
-        let mut entities2: Entities = Entities::new();
-        entities2 = entities2
-            .add_entities(
-                iter::once(entity.clone()),
-                None::<&NoEntitiesSchema>,
-                TCComputation::AssumeAlreadyComputed,
-                Extensions::none(),
-            )
-            .unwrap();
-        assert_eq!(
-            entities2,
-            Entities::from(&proto::Entities::from(&entities2))
-        );
-
-        // Two Element Test
-        let entity2: Arc<Entity> = Arc::new(
-            Entity::new(
-                r#"Bar::"foo""#.parse().unwrap(),
-                attrs,
-                HashSet::new(),
-                BTreeMap::new(),
-                Extensions::none(),
-            )
-            .unwrap(),
-        );
-        let mut entities3: Entities = Entities::new();
-        entities3 = entities3
-            .add_entities(
-                iter::once(entity).chain(iter::once(entity2)),
-                None::<&NoEntitiesSchema>,
-                TCComputation::AssumeAlreadyComputed,
-                Extensions::none(),
-            )
-            .unwrap();
-        assert_eq!(
-            entities3,
-            Entities::from(&proto::Entities::from(&entities3))
-        );
     }
 }

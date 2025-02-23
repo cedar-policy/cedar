@@ -100,28 +100,6 @@ impl FromStr for EntityType {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl From<&proto::EntityType> for EntityType {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::EntityType) -> Self {
-        Self(Name::from(
-            v.name
-                .as_ref()
-                .expect("`as_ref()` for field that should exist"),
-        ))
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&EntityType> for proto::EntityType {
-    fn from(v: &EntityType) -> Self {
-        Self {
-            name: Some(proto::Name::from(v.name())),
-        }
-    }
-}
-
 impl std::fmt::Display for EntityType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -255,33 +233,6 @@ impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl From<&proto::EntityUid> for EntityUID {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::EntityUid) -> Self {
-        Self {
-            ty: EntityType::from(
-                v.ty.as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-            eid: Eid::new(v.eid.clone()),
-            loc: None,
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&EntityUID> for proto::EntityUid {
-    fn from(v: &EntityUID) -> Self {
-        let eid_ref: &str = v.eid.as_ref();
-        Self {
-            ty: Some(proto::EntityType::from(&v.ty)),
-            eid: eid_ref.to_owned(),
-        }
-    }
-}
-
 /// The `Eid` type represents the id of an `Entity`, without the typename.
 /// Together with the typename it comprises an `EntityUID`.
 /// For example, in `User::"alice"`, the `Eid` is `alice`.
@@ -332,16 +283,22 @@ pub struct Entity {
     /// UID
     uid: EntityUID,
 
-    /// Internal BTreMap of attributes.
+    /// Internal BTreeMap of attributes.
     /// We use a btreemap so that the keys have a deterministic order.
     ///
     /// In the serialized form of `Entity`, attribute values appear as
     /// `RestrictedExpr`s, for mostly historical reasons.
     attrs: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
 
-    /// Set of ancestors of this `Entity` (i.e., all direct and transitive
-    /// parents), as UIDs
-    ancestors: HashSet<EntityUID>,
+    /// Set of indirect ancestors of this `Entity` as UIDs
+    indirect_ancestors: HashSet<EntityUID>,
+
+    /// Set of direct ancestors (i.e., parents) as UIDs
+    ///
+    /// indirect_ancestors and parents should be disjoint
+    /// even if a parent is also an indirect parent through
+    /// a different parent
+    parents: HashSet<EntityUID>,
 
     /// Tags on this entity (RFC 82)
     ///
@@ -367,7 +324,8 @@ impl Entity {
     pub fn new(
         uid: EntityUID,
         attrs: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
-        ancestors: HashSet<EntityUID>,
+        indirect_ancestors: HashSet<EntityUID>,
+        parents: HashSet<EntityUID>,
         tags: impl IntoIterator<Item = (SmolStr, RestrictedExpr)>,
         extensions: &Extensions<'_>,
     ) -> Result<Self, EntityAttrEvaluationError> {
@@ -394,15 +352,16 @@ impl Entity {
         Ok(Entity {
             uid,
             attrs: evaluated_attrs,
-            ancestors,
+            indirect_ancestors,
+            parents,
             tags: evaluated_tags,
         })
     }
 
-    /// Create a new `Entity` with this UID, attributes, and ancestors (and no tags)
+    /// Create a new `Entity` with this UID, attributes, ancestors, and tags
     ///
-    /// Unlike in `Entity::new()`, in this constructor, attributes are expressed
-    /// as `PartialValue`.
+    /// Unlike in `Entity::new()`, in this constructor, attributes and tags are
+    /// expressed as `PartialValue`.
     ///
     /// Callers should consider directly using [`Entity::new_with_attr_partial_value_serialized_as_expr`]
     /// if they would call this method by first building a map, as it will
@@ -410,29 +369,36 @@ impl Entity {
     pub fn new_with_attr_partial_value(
         uid: EntityUID,
         attrs: impl IntoIterator<Item = (SmolStr, PartialValue)>,
-        ancestors: HashSet<EntityUID>,
+        indirect_ancestors: HashSet<EntityUID>,
+        parents: HashSet<EntityUID>,
+        tags: impl IntoIterator<Item = (SmolStr, PartialValue)>,
     ) -> Self {
         Self::new_with_attr_partial_value_serialized_as_expr(
             uid,
             attrs.into_iter().map(|(k, v)| (k, v.into())).collect(),
-            ancestors,
+            indirect_ancestors,
+            parents,
+            tags.into_iter().map(|(k, v)| (k, v.into())).collect(),
         )
     }
 
-    /// Create a new `Entity` with this UID, attributes, and ancestors (and no tags)
+    /// Create a new `Entity` with this UID, attributes, ancestors, and tags
     ///
-    /// Unlike in `Entity::new()`, in this constructor, attributes are expressed
-    /// as `PartialValueSerializedAsExpr`.
+    /// Unlike in `Entity::new()`, in this constructor, attributes and tags are
+    /// expressed as `PartialValueSerializedAsExpr`.
     pub fn new_with_attr_partial_value_serialized_as_expr(
         uid: EntityUID,
         attrs: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
-        ancestors: HashSet<EntityUID>,
+        indirect_ancestors: HashSet<EntityUID>,
+        parents: HashSet<EntityUID>,
+        tags: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
     ) -> Self {
         Entity {
             uid,
             attrs,
-            ancestors,
-            tags: BTreeMap::new(),
+            indirect_ancestors,
+            parents,
+            tags,
         }
     }
 
@@ -451,14 +417,34 @@ impl Entity {
         self.tags.get(tag).map(|v| v.as_ref())
     }
 
-    /// Is this `Entity` a descendant of `e` in the entity hierarchy?
+    /// Is this `Entity` a (direct or indirect) descendant of `e` in the entity hierarchy?
     pub fn is_descendant_of(&self, e: &EntityUID) -> bool {
-        self.ancestors.contains(e)
+        self.parents.contains(e) || self.indirect_ancestors.contains(e)
     }
 
-    /// Iterate over this entity's ancestors
+    /// Is this `Entity` a an indirect descendant of `e` in the entity hierarchy?
+    pub fn is_indirect_descendant_of(&self, e: &EntityUID) -> bool {
+        self.indirect_ancestors.contains(e)
+    }
+
+    /// Is this `Entity` a direct decendant (child) of `e` in the entity hierarchy?
+    pub fn is_child_of(&self, e: &EntityUID) -> bool {
+        self.parents.contains(e)
+    }
+
+    /// Iterate over this entity's (direct or indirect) ancestors
     pub fn ancestors(&self) -> impl Iterator<Item = &EntityUID> {
-        self.ancestors.iter()
+        self.parents.iter().chain(self.indirect_ancestors.iter())
+    }
+
+    /// Iterate over this entity's indirect ancestors
+    pub fn indirect_ancestors(&self) -> impl Iterator<Item = &EntityUID> {
+        self.indirect_ancestors.iter()
+    }
+
+    /// Iterate over this entity's direct ancestors (parents)
+    pub fn parents(&self) -> impl Iterator<Item = &EntityUID> {
+        self.parents.iter()
     }
 
     /// Get the number of attributes on this entity
@@ -496,16 +482,22 @@ impl Entity {
         Self {
             uid,
             attrs: BTreeMap::new(),
-            ancestors: HashSet::new(),
+            indirect_ancestors: HashSet::new(),
+            parents: HashSet::new(),
             tags: BTreeMap::new(),
         }
     }
 
     /// Test if two `Entity` objects are deep/structurally equal.
     /// That is, not only do they have the same UID, but also the same
-    /// attributes, attribute values, and ancestors.
+    /// attributes, attribute values, and ancestors/parents.
+    ///
+    /// Does not test that they have the same _direct_ parents, only that they have the same overall ancestor set.
     pub(crate) fn deep_eq(&self, other: &Self) -> bool {
-        self.uid == other.uid && self.attrs == other.attrs && self.ancestors == other.ancestors
+        self.uid == other.uid
+            && self.attrs == other.attrs
+            && (self.ancestors().collect::<HashSet<_>>())
+                == (other.ancestors().collect::<HashSet<_>>())
     }
 
     /// Set the UID to the given value.
@@ -543,30 +535,68 @@ impl Entity {
         Ok(())
     }
 
-    /// Mark the given `UID` as an ancestor of this `Entity`
-    pub fn add_ancestor(&mut self, uid: EntityUID) {
-        self.ancestors.insert(uid);
+    /// Mark the given `UID` as an indirect ancestor of this `Entity`
+    ///
+    /// The given `UID` will not be added as an indirecty ancestor if
+    /// it is already a direct ancestor (parent) of this `Entity`
+    /// The caller of this code is responsible for maintaining
+    /// transitive closure of hierarchy.
+    pub fn add_indirect_ancestor(&mut self, uid: EntityUID) {
+        if !self.parents.contains(&uid) {
+            self.indirect_ancestors.insert(uid);
+        }
     }
 
-    /// Consume the entity and return the entity's owned Uid, attributes, parents, and tags.
+    /// Mark the given `UID` as a (direct) parent of this `Entity`, and
+    /// remove the UID from indirect ancestors
+    /// if it was previously added as an indirect ancestor
+    /// The caller of this code is responsible for maintaining
+    /// transitive closure of hierarchy.
+    pub fn add_parent(&mut self, uid: EntityUID) {
+        self.indirect_ancestors.remove(&uid);
+        self.parents.insert(uid);
+    }
+
+    /// Remove the given `UID` as an indirect ancestor of this `Entity`.
+    ///
+    /// No effect if the `UID` is a direct parent.
+    /// The caller of this code is responsible for maintaining
+    /// transitive closure of hierarchy.
+    pub fn remove_indirect_ancestor(&mut self, uid: &EntityUID) {
+        self.indirect_ancestors.remove(uid);
+    }
+
+    /// Remove the given `UID` as a (direct) parent of this `Entity`.
+    ///
+    /// No effect on the `Entity`'s indirect ancestors.
+    /// The caller of this code is responsible for maintaining
+    /// transitive closure of hierarchy.
+    pub fn remove_parent(&mut self, uid: &EntityUID) {
+        self.parents.remove(uid);
+    }
+
+    /// Consume the entity and return the entity's owned Uid, attributes, ancestors, parents, and tags.
     pub fn into_inner(
         self,
     ) -> (
         EntityUID,
         HashMap<SmolStr, PartialValue>,
         HashSet<EntityUID>,
+        HashSet<EntityUID>,
         HashMap<SmolStr, PartialValue>,
     ) {
         let Self {
             uid,
             attrs,
-            ancestors,
+            indirect_ancestors,
+            parents,
             tags,
         } = self;
         (
             uid,
             attrs.into_iter().map(|(k, v)| (k, v.0)).collect(),
-            ancestors,
+            indirect_ancestors,
+            parents,
             tags.into_iter().map(|(k, v)| (k, v.0)).collect(),
         )
     }
@@ -614,7 +644,7 @@ impl TCNode<EntityUID> for Entity {
     }
 
     fn add_edge_to(&mut self, k: EntityUID) {
-        self.add_ancestor(k)
+        self.add_indirect_ancestor(k);
     }
 
     fn out_edges(&self) -> Box<dyn Iterator<Item = &EntityUID> + '_> {
@@ -633,7 +663,7 @@ impl TCNode<EntityUID> for Arc<Entity> {
 
     fn add_edge_to(&mut self, k: EntityUID) {
         // Use Arc::make_mut to get a mutable reference to the inner value
-        Arc::make_mut(self).add_ancestor(k)
+        Arc::make_mut(self).add_indirect_ancestor(k)
     }
 
     fn out_edges(&self) -> Box<dyn Iterator<Item = &EntityUID> + '_> {
@@ -655,96 +685,8 @@ impl std::fmt::Display for Entity {
                 .iter()
                 .map(|(k, v)| format!("{}: {}", k, v))
                 .join("; "),
-            self.ancestors.iter().join(", ")
+            self.ancestors().join(", ")
         )
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&proto::Entity> for Entity {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::Entity) -> Self {
-        let eval = RestrictedEvaluator::new(Extensions::none());
-
-        let attrs: BTreeMap<SmolStr, PartialValueSerializedAsExpr> = v
-            .attrs
-            .iter()
-            .map(|(key, value)| {
-                let pval = eval
-                    .partial_interpret(
-                        BorrowedRestrictedExpr::new(&Expr::from(value)).expect("RestrictedExpr"),
-                    )
-                    .expect("interpret on RestrictedExpr");
-                (key.into(), pval.into())
-            })
-            .collect();
-
-        let ancestors: HashSet<EntityUID> = v.ancestors.iter().map(EntityUID::from).collect();
-
-        let tags: BTreeMap<SmolStr, PartialValueSerializedAsExpr> = v
-            .tags
-            .iter()
-            .map(|(key, value)| {
-                let pval = eval
-                    .partial_interpret(
-                        BorrowedRestrictedExpr::new(&Expr::from(value)).expect("RestrictedExpr"),
-                    )
-                    .expect("interpret on RestrictedExpr");
-                (key.into(), pval.into())
-            })
-            .collect();
-
-        Self {
-            uid: EntityUID::from(
-                v.uid
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-            attrs,
-            ancestors,
-            tags,
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&Entity> for proto::Entity {
-    fn from(v: &Entity) -> Self {
-        let mut attrs: HashMap<String, proto::Expr> = HashMap::with_capacity(v.attrs.len());
-        for (key, value) in &v.attrs {
-            attrs.insert(
-                key.to_string(),
-                proto::Expr::from(&Expr::from(PartialValue::from(value.to_owned()))),
-            );
-        }
-
-        let mut ancestors: Vec<proto::EntityUid> = Vec::with_capacity(v.ancestors.len());
-        for ancestor in &v.ancestors {
-            ancestors.push(proto::EntityUid::from(ancestor));
-        }
-
-        let mut tags: HashMap<String, proto::Expr> = HashMap::with_capacity(v.tags.len());
-        for (key, value) in &v.tags {
-            tags.insert(
-                key.to_string(),
-                proto::Expr::from(&Expr::from(PartialValue::from(value.to_owned()))),
-            );
-        }
-
-        Self {
-            uid: Some(proto::EntityUid::from(&v.uid)),
-            attrs,
-            ancestors,
-            tags,
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&Arc<Entity>> for proto::Entity {
-    fn from(v: &Arc<Entity>) -> Self {
-        Self::from(v.as_ref())
     }
 }
 
@@ -859,36 +801,6 @@ mod test {
         assert!(!euid.is_action());
         let euid = EntityUID::from_str("Action::Foo::\"view\"").unwrap();
         assert!(!euid.is_action());
-    }
-
-    #[cfg(feature = "protobufs")]
-    #[test]
-    fn round_trip_protobuf() {
-        let name = Name::from_normalized_str("B::C::D").unwrap();
-        let ety_specified = EntityType(name);
-        assert_eq!(
-            ety_specified,
-            EntityType::from(&proto::EntityType::from(&ety_specified))
-        );
-
-        let euid1 = EntityUID::with_eid("foo");
-        assert_eq!(euid1, EntityUID::from(&proto::EntityUid::from(&euid1)));
-
-        let euid2 = EntityUID::from_str("Foo::Action::\"view\"").unwrap();
-        assert_eq!(euid2, EntityUID::from(&proto::EntityUid::from(&euid2)));
-
-        let attrs = (1..=7)
-            .map(|id| (format!("{id}").into(), RestrictedExpr::val(true)))
-            .collect::<HashMap<SmolStr, _>>();
-        let entity = Entity::new(
-            r#"Foo::"bar""#.parse().unwrap(),
-            attrs,
-            HashSet::new(),
-            BTreeMap::new(),
-            Extensions::none(),
-        )
-        .unwrap();
-        assert_eq!(entity, Entity::from(&proto::Entity::from(&entity)));
     }
 
     #[test]

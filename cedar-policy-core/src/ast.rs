@@ -16,13 +16,9 @@
 
 //! This module contains the AST datatypes.
 
-#[cfg(feature = "protobufs")]
-pub mod proto {
-    #![allow(missing_docs)]
-    include!(concat!(env!("OUT_DIR"), "/cedar_policy_core.rs"));
-}
-
 mod expr;
+#[cfg(feature = "tolerant-ast")]
+pub(crate) mod expr_allows_errors;
 pub use expr::*;
 mod entity;
 pub use entity::*;

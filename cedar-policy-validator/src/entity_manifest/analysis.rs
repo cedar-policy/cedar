@@ -166,7 +166,7 @@ impl WrappedAccessPaths {
                     ..
                 }) => {
                     let mut res = RootAccessTrie::new();
-                    for (attr, attr_ty) in &record_attrs.attrs {
+                    for (attr, attr_ty) in record_attrs.iter() {
                         // PANIC SAFETY: Record literals should have attributes that match the type.
                         #[allow(clippy::panic)]
                         let field = literal_fields

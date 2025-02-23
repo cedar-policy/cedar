@@ -13,9 +13,29 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ## [Unreleased]
 Cedar Language Version: TBD
 
+### Changed
+
+- Changed `Entities::add_entities` and `Entities::from_entities` to ignore structurally equal entities with the same Entity UID.
+
 ### Added
 
+- Added `Entities::remove_entities()` to remove `Entity`s from an `Entities` struct (resolving #701)
+- Added `PolicySet::merge_policyset()` to merge a `PolicySet` into another `PolicySet` struct (resolving #610)
 - Implemented [RFC 53 (enumerated entity types)](https://github.com/cedar-policy/rfcs/blob/main/text/0053-enum-entities.md)  (#1377)
+- Added the experimental feature `tolerant-ast` which allows certain errors to be propogated in AST expressions as an `ExprKind::Error` (#1470)
+
+### Fixed
+
+- Fixed a bug in the experimental `entity-manifest` feature. If an entity appears as
+  both a possible value for a scope variable and an entity literal, slicing
+  using entity manifests will now correctly capture all necessary attributes (#1429).
+- Fixed a bug in the experimental `entity-manifest` and `level-validate`
+  features. These features failed to consider any attribute accesses occurring
+  inside the guard of an `if` expression when guard expression had a singleton
+  boolean type (#1462).
+
+## [4.3.2] - 2025-02-12
+Cedar Language Version: 4.2
 
 ### Fixed
 
@@ -25,7 +45,7 @@ Cedar Language Version: TBD
   On all platforms supported by `stacker` (Linux, macOS, ...), Cedar will
   continue to return the graceful error `RecursionLimit` instead of crashing.
 
-## [4.3.1] - Coming soon
+## [4.3.1] - 2025-01-23
 Cedar Language Version: 4.2
 
 ### Fixed
@@ -803,7 +823,10 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.2.2...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.3.2...main
+[4.3.2]: https://github.com/cedar-policy/cedar/compare/v4.3.1...v4.3.2
+[4.3.1]: https://github.com/cedar-policy/cedar/compare/v4.3.0...v4.3.1
+[4.3.0]: https://github.com/cedar-policy/cedar/compare/v4.2.2...v4.3.0
 [4.2.2]: https://github.com/cedar-policy/cedar/compare/v4.2.1...v4.2.2
 [4.2.1]: https://github.com/cedar-policy/cedar/compare/v4.2.0...v4.2.1
 [4.2.0]: https://github.com/cedar-policy/cedar/compare/v4.1.0...v4.2.0

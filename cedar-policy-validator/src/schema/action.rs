@@ -20,24 +20,17 @@ use cedar_policy_core::{
     ast::{self, EntityType, EntityUID, PartialValueSerializedAsExpr},
     transitive_closure::TCNode,
 };
-use itertools::Itertools;
-use nonempty::NonEmpty;
 use serde::Serialize;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashSet};
 
 use super::internal_name_to_entity_type;
 use crate::{
+    partition_nonempty::PartitionNonEmpty,
     schema::{AllDefs, SchemaError},
     types::{Attributes, Type},
     ConditionalName,
 };
-
-#[cfg(feature = "protobufs")]
-use crate::proto;
-
-#[cfg(feature = "protobufs")]
-use cedar_policy_core::{evaluator::RestrictedEvaluator, extensions::Extensions};
 
 /// Contains information about actions used by the validator.  The contents of
 /// the struct are the same as the schema entity type structure, but the
@@ -51,7 +44,7 @@ pub struct ValidatorActionId {
     /// The principals and resources that the action can be applied to.
     pub(crate) applies_to: ValidatorApplySpec<ast::EntityType>,
 
-    /// The set of actions that can be members of this action. When this
+    /// The set of actions that are members of this action. When this
     /// structure is initially constructed, the field will contain direct
     /// children, but it will be updated to contain the closure of all
     /// descendants before it is used in any validation.
@@ -73,6 +66,47 @@ pub struct ValidatorActionId {
 }
 
 impl ValidatorActionId {
+    /// Construct a new `ValidatorActionId`.
+    ///
+    /// This constructor assumes that `descendants` has TC already computed.
+    /// That is, caller is responsible for TC.
+    pub fn new(
+        name: EntityUID,
+        principal_entity_types: impl IntoIterator<Item = ast::EntityType>,
+        resource_entity_types: impl IntoIterator<Item = ast::EntityType>,
+        descendants: impl IntoIterator<Item = EntityUID>,
+        context: Type,
+        attribute_types: Attributes,
+        attributes: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
+    ) -> Self {
+        Self {
+            name,
+            applies_to: ValidatorApplySpec::new(
+                principal_entity_types.into_iter().collect(),
+                resource_entity_types.into_iter().collect(),
+            ),
+            descendants: descendants.into_iter().collect(),
+            context,
+            attribute_types,
+            attributes,
+        }
+    }
+
+    /// The name of the action
+    pub fn name(&self) -> &EntityUID {
+        &self.name
+    }
+
+    /// Iterator over the actions that are members of this action
+    pub fn descendants(&self) -> impl Iterator<Item = &EntityUID> {
+        self.descendants.iter()
+    }
+
+    /// Context type for this action
+    pub fn context(&self) -> &Type {
+        &self.context
+    }
+
     /// Returns an iterator over all the principals that this action applies to
     pub fn principals(&self) -> impl Iterator<Item = &EntityType> {
         self.applies_to.principal_apply_spec.iter()
@@ -109,6 +143,16 @@ impl ValidatorActionId {
     pub fn is_applicable_resource_type(&self, ty: &ast::EntityType) -> bool {
         self.applies_to.is_applicable_resource_type(ty)
     }
+
+    /// Attribute types for this action
+    pub fn attribute_types(&self) -> &Attributes {
+        &self.attribute_types
+    }
+
+    /// Attribute values for this action
+    pub fn attributes(&self) -> impl Iterator<Item = (&SmolStr, &PartialValueSerializedAsExpr)> {
+        self.attributes.iter()
+    }
 }
 
 impl TCNode<EntityUID> for ValidatorActionId {
@@ -126,80 +170,6 @@ impl TCNode<EntityUID> for ValidatorActionId {
 
     fn has_edge_to(&self, e: &EntityUID) -> bool {
         self.descendants.contains(e)
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&ValidatorActionId> for proto::ValidatorActionId {
-    fn from(v: &ValidatorActionId) -> Self {
-        Self {
-            name: Some(ast::proto::EntityUid::from(&v.name)),
-            applies_to: Some(proto::ValidatorApplySpec::from(&v.applies_to)),
-            descendants: v
-                .descendants
-                .iter()
-                .map(ast::proto::EntityUid::from)
-                .collect(),
-            context: Some(proto::Type::from(&v.context)),
-            attribute_types: Some(proto::Attributes::from(&v.attribute_types)),
-            attributes: v
-                .attributes
-                .iter()
-                .map(|(s, v)| {
-                    let key = s.to_string();
-                    let value = ast::proto::Expr::from(&ast::Expr::from(ast::PartialValue::from(
-                        v.to_owned(),
-                    )));
-                    (key, value)
-                })
-                .collect(),
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&proto::ValidatorActionId> for ValidatorActionId {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &proto::ValidatorActionId) -> Self {
-        let extensions_none = Extensions::none();
-        let eval = RestrictedEvaluator::new(extensions_none);
-        Self {
-            name: ast::EntityUID::from(
-                v.name
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-            applies_to: ValidatorApplySpec::from(
-                v.applies_to
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-            descendants: v.descendants.iter().map(ast::EntityUID::from).collect(),
-            context: Type::from(
-                v.context
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-            attribute_types: Attributes::from(
-                v.attribute_types
-                    .as_ref()
-                    .expect("`as_ref()` for field that should exist"),
-            ),
-            attributes: v
-                .attributes
-                .iter()
-                .map(|(k, v)| {
-                    let pval = eval
-                        .partial_interpret(
-                            ast::BorrowedRestrictedExpr::new(&ast::Expr::from(v))
-                                .expect("RestrictedExpr"),
-                        )
-                        .expect("interpret on RestrictedExpr");
-                    (k.into(), pval.into())
-                })
-                .collect(),
-        }
     }
 }
 
@@ -221,42 +191,6 @@ pub(crate) struct ValidatorApplySpec<N> {
 
     /// The resource entity types the action can be applied to.
     resource_apply_spec: HashSet<N>,
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&ValidatorApplySpec<ast::EntityType>> for proto::ValidatorApplySpec {
-    fn from(v: &ValidatorApplySpec<ast::EntityType>) -> Self {
-        Self {
-            principal_apply_spec: v
-                .principal_apply_spec
-                .iter()
-                .map(ast::proto::EntityType::from)
-                .collect(),
-            resource_apply_spec: v
-                .resource_apply_spec
-                .iter()
-                .map(ast::proto::EntityType::from)
-                .collect(),
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&proto::ValidatorApplySpec> for ValidatorApplySpec<ast::EntityType> {
-    fn from(v: &proto::ValidatorApplySpec) -> Self {
-        Self {
-            principal_apply_spec: v
-                .principal_apply_spec
-                .iter()
-                .map(ast::EntityType::from)
-                .collect(),
-            resource_apply_spec: v
-                .resource_apply_spec
-                .iter()
-                .map(ast::EntityType::from)
-                .collect(),
-        }
-    }
 }
 
 impl<N> ValidatorApplySpec<N> {
@@ -304,33 +238,31 @@ impl ValidatorApplySpec<ConditionalName> {
         self,
         all_defs: &AllDefs,
     ) -> Result<ValidatorApplySpec<ast::EntityType>, crate::schema::SchemaError> {
-        let (principal_apply_spec, principal_errs) = self
+        let principal_apply_spec = self
             .principal_apply_spec
             .into_iter()
             .map(|cname| {
                 let internal_name = cname.resolve(all_defs)?;
                 internal_name_to_entity_type(internal_name).map_err(Into::into)
             })
-            .partition_result::<_, Vec<SchemaError>, _, _>();
-        let (resource_apply_spec, resource_errs) = self
+            .partition_nonempty();
+        let resource_apply_spec = self
             .resource_apply_spec
             .into_iter()
             .map(|cname| {
                 let internal_name = cname.resolve(all_defs)?;
                 internal_name_to_entity_type(internal_name).map_err(Into::into)
             })
-            .partition_result::<_, Vec<SchemaError>, _, _>();
-        match (
-            NonEmpty::from_vec(principal_errs),
-            NonEmpty::from_vec(resource_errs),
-        ) {
-            (None, None) => Ok(ValidatorApplySpec {
+            .partition_nonempty();
+
+        match (principal_apply_spec, resource_apply_spec) {
+            (Ok(principal_apply_spec), Ok(resource_apply_spec)) => Ok(ValidatorApplySpec {
                 principal_apply_spec,
                 resource_apply_spec,
             }),
-            (Some(principal_errs), None) => Err(SchemaError::join_nonempty(principal_errs)),
-            (None, Some(resource_errs)) => Err(SchemaError::join_nonempty(resource_errs)),
-            (Some(principal_errs), Some(resource_errs)) => {
+            (Ok(_), Err(errs)) => Err(SchemaError::join_nonempty(errs)),
+            (Err(resource_errs), Ok(_)) => Err(SchemaError::join_nonempty(resource_errs)),
+            (Err(principal_errs), Err(resource_errs)) => {
                 let mut errs = principal_errs;
                 errs.extend(resource_errs);
                 Err(SchemaError::join_nonempty(errs))

@@ -1382,10 +1382,10 @@ mod translator_tests {
         .expect("should be a valid Cedar schema");
         let validator_schema: ValidatorSchema =
             schema.try_into().expect("should be a valid schema");
-        for (name, ety) in validator_schema.entity_types() {
-            match name.to_string().as_ref() {
+        for ety in validator_schema.entity_types() {
+            match ety.name().to_string().as_ref() {
                 "Demo::Host" => {
-                    for (attr_name, attr) in ety.attributes() {
+                    for (attr_name, attr) in ety.attributes().iter() {
                         match attr_name.as_ref() {
                             "ip" => assert_matches!(
                                 &attr.attr_type,
@@ -1402,7 +1402,7 @@ mod translator_tests {
                     }
                 }
                 "Demo::String" => {
-                    for (attr_name, attr) in ety.attributes() {
+                    for (attr_name, attr) in ety.attributes().iter() {
                         match attr_name.as_ref() {
                             "groups" => assert_matches!(
                                 &attr.attr_type,
@@ -1414,7 +1414,7 @@ mod translator_tests {
                         }
                     }
                 }
-                _ => panic!("unexpected entity type: {name}"),
+                name => panic!("unexpected entity type: {name}"),
             }
         }
     }
@@ -1435,8 +1435,8 @@ mod translator_tests {
         .unwrap();
         let validator_schema: ValidatorSchema =
             schema.try_into().expect("should be a valid schema");
-        for (name, et) in validator_schema.entity_types() {
-            if name.to_string() == "A::C" || name.to_string() == "X::Y" {
+        for et in validator_schema.entity_types() {
+            if et.name().to_string() == "A::C" || et.name().to_string() == "X::Y" {
                 assert!(et.descendants.contains(&cedar_ast::EntityType::from(
                     cedar_policy_core::ast::Name::from_normalized_str("A::B").unwrap()
                 )));
@@ -2528,7 +2528,7 @@ mod common_type_references {
                 attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }),
                 is_required: true,
             } => {
-                assert_eq!(attrs.attrs.get("a").unwrap().attr_type, Type::primitive_long());
+                assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::primitive_long());
             }
         );
 
@@ -2555,7 +2555,7 @@ mod common_type_references {
                 attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }),
                 is_required: true,
             } => {
-                assert_eq!(attrs.attrs.get("a").unwrap().attr_type, Type::primitive_long());
+                assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::primitive_long());
             }
         );
 
@@ -2586,7 +2586,7 @@ mod common_type_references {
                 attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }),
                 is_required: true,
             } => {
-                assert_eq!(attrs.attrs.get("a").unwrap().attr_type, Type::set(Type::primitive_long()));
+                assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::set(Type::primitive_long()));
             }
         );
     }

@@ -148,25 +148,6 @@ impl AsRef<str> for Annotation {
     }
 }
 
-#[cfg(feature = "protobufs")]
-impl From<&crate::ast::proto::Annotation> for Annotation {
-    fn from(v: &crate::ast::proto::Annotation) -> Self {
-        Self {
-            val: v.val.clone().into(),
-            loc: None,
-        }
-    }
-}
-
-#[cfg(feature = "protobufs")]
-impl From<&Annotation> for crate::ast::proto::Annotation {
-    fn from(v: &Annotation) -> Self {
-        Self {
-            val: v.val.to_string(),
-        }
-    }
-}
-
 #[cfg(feature = "arbitrary")]
 impl<'a> arbitrary::Arbitrary<'a> for Annotation {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
