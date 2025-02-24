@@ -44,12 +44,6 @@ static ERROR_EID_SMOL_STR: std::sync::LazyLock<SmolStr> =
 /// The entity type that Actions must have
 pub static ACTION_ENTITY_TYPE: &str = "Action";
 
-// #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, RefCast)]
-// #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-// #[serde(transparent)]
-// #[repr(transparent)]
-// pub struct EntityTypeImpl(Name);
-
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 /// Entity type - can be an error type when 'tolerant-ast' feature is enabled
