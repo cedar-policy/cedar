@@ -52,6 +52,12 @@ static ENTITY_UID_ERROR_STR: &str = "EntityUID::Error";
 /// The entity type that Actions must have
 pub static ACTION_ENTITY_TYPE: &str = "Action";
 
+// #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, RefCast)]
+// #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+// #[serde(transparent)]
+// #[repr(transparent)]
+// pub struct EntityTypeImpl(Name);
+
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 /// Entity type - can be an error type when 'tolerant-ast' feature is enabled
@@ -253,7 +259,6 @@ impl StaticallyTyped for EntityUID {
                 ty: EntityType::ErrorEntityType,
             },
         }
-
     }
 }
 
@@ -333,7 +338,6 @@ impl EntityUID {
     pub fn is_action(&self) -> bool {
         self.entity_type().is_action()
     }
-    
 }
 
 impl std::fmt::Display for EntityUID {
@@ -367,8 +371,6 @@ impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
         }))
     }
 }
-
-
 
 /// The `Eid` type represents the id of an `Entity`, without the typename.
 /// Together with the typename it comprises an `EntityUID`.
