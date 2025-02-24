@@ -1726,8 +1726,8 @@ impl std::fmt::Display for ActionConstraint {
         match self {
             ActionConstraint::Any => write!(f, "action"),
             ActionConstraint::In(euids) => {
-                        write!(f, "action in [{}]", render_euids(euids))
-                    }
+                write!(f, "action in [{}]", render_euids(euids))
+            }
             ActionConstraint::Eq(euid) => write!(f, "action == {}", euid),
             #[cfg(feature = "tolerant-ast")]
             ActionConstraint::ErrorConstraint => write!(f, "<invalid_action_constraint>"),
@@ -1760,9 +1760,9 @@ impl ActionConstraint {
         match self {
             ActionConstraint::Any => Expr::val(true),
             ActionConstraint::In(euids) => Expr::is_in(
-                        Expr::var(Var::Action),
-                        ActionConstraint::euids_into_expr(euids.iter().cloned()),
-                    ),
+                Expr::var(Var::Action),
+                ActionConstraint::euids_into_expr(euids.iter().cloned()),
+            ),
             ActionConstraint::Eq(euid) => {
                 Expr::is_eq(Expr::var(Var::Action), Expr::val(euid.clone()))
             }
@@ -1784,8 +1784,8 @@ impl ActionConstraint {
         match self {
             ActionConstraint::Any => EntityIterator::None,
             ActionConstraint::In(euids) => {
-                        EntityIterator::Bunch(euids.iter().map(Arc::as_ref).collect())
-                    }
+                EntityIterator::Bunch(euids.iter().map(Arc::as_ref).collect())
+            }
             ActionConstraint::Eq(euid) => EntityIterator::One(euid),
             #[cfg(feature = "tolerant-ast")]
             ActionConstraint::ErrorConstraint => EntityIterator::None,
@@ -1803,14 +1803,14 @@ impl ActionConstraint {
         match self {
             ActionConstraint::Any => Ok(self),
             ActionConstraint::In(ref euids) => {
-                        if let Some(euids) =
-                            NonEmpty::collect(euids.iter().filter(|euid| !euid.is_action()).cloned())
-                        {
-                            Err(euids)
-                        } else {
-                            Ok(self)
-                        }
-                    }
+                if let Some(euids) =
+                    NonEmpty::collect(euids.iter().filter(|euid| !euid.is_action()).cloned())
+                {
+                    Err(euids)
+                } else {
+                    Ok(self)
+                }
+            }
             ActionConstraint::Eq(ref euid) => {
                 if euid.is_action() {
                     Ok(self)

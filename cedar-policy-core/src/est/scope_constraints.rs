@@ -875,8 +875,8 @@ impl From<ast::ActionConstraint> for ActionConstraint {
         match constraint {
             ast::ActionConstraint::Any => ActionConstraint::All,
             ast::ActionConstraint::Eq(e) => ActionConstraint::Eq(EqConstraint::Entity {
-                        entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
-                    }),
+                entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
+            }),
             ast::ActionConstraint::In(es) => match &es[..] {
                 [e] => ActionConstraint::In(ActionInConstraint::Single {
                     entity: EntityUidJson::ImplicitEntityEscape((&**e).into()),
@@ -900,14 +900,14 @@ impl TryFrom<ActionConstraint> for ast::ActionConstraint {
         let ast_action_constraint = match constraint {
             ActionConstraint::All => Ok(ast::ActionConstraint::Any),
             ActionConstraint::Eq(EqConstraint::Entity { entity }) => Ok(ast::ActionConstraint::Eq(
-                        Arc::new(entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?),
-                    )),
+                Arc::new(entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?),
+            )),
             ActionConstraint::Eq(EqConstraint::Slot { .. }) => Err(Self::Error::ActionSlot),
             ActionConstraint::In(ActionInConstraint::Single { entity }) => {
-                        Ok(ast::ActionConstraint::In(vec![Arc::new(
-                            entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
-                        )]))
-                    }
+                Ok(ast::ActionConstraint::In(vec![Arc::new(
+                    entity.into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
+                )]))
+            }
             ActionConstraint::In(ActionInConstraint::Set { entities }) => {
                 Ok(ast::ActionConstraint::In(
                     entities
