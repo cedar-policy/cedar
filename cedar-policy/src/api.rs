@@ -2823,6 +2823,8 @@ impl Template {
                 ActionConstraint::In(ids.iter().map(|id| id.as_ref().clone().into()).collect())
             }
             ast::ActionConstraint::Eq(id) => ActionConstraint::Eq(id.as_ref().clone().into()),
+            #[cfg(feature = "tolerant-ast")]
+            ast::ActionConstraint::ErrorConstraint => ActionConstraint::ErrorConstraint,
         }
     }
 
@@ -2968,6 +2970,9 @@ pub enum ActionConstraint {
     In(Vec<EntityUid>),
     /// Must be equal to the given [`EntityUid]`
     Eq(EntityUid),
+    #[cfg(feature = "tolerant-ast")]
+    /// Represents an action constraint that failed to parse
+    ErrorConstraint,
 }
 
 /// Scope constraint on policy resources.
@@ -3142,6 +3147,8 @@ impl Policy {
                     .collect(),
             ),
             ast::ActionConstraint::Eq(id) => ActionConstraint::Eq(EntityUid::ref_cast(id).clone()),
+            #[cfg(feature = "tolerant-ast")]
+            ast::ActionConstraint::ErrorConstraint => ActionConstraint::ErrorConstraint,
         }
     }
 

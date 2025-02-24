@@ -131,7 +131,7 @@ impl fmt::Display for VariableDef {
         if let Some((op, expr)) = &self.ineq {
             write!(f, " {} {}", op, View(&expr))?;
         }
-        Ok(())    
+        Ok(())
     }
 }
 impl fmt::Display for Cond {
@@ -151,7 +151,7 @@ impl fmt::Display for Cond {
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // let expr_opt: &_ = &*self.expr;
-        let expr = match  self {
+        let expr = match self {
             Expr::Expr(expr_impl) => &*expr_impl.expr,
             #[cfg(feature = "tolerant-ast")]
             Expr::ErrorExpr => return write!(f, "Expr::Error"),

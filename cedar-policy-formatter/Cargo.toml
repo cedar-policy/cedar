@@ -28,3 +28,4 @@ workspace = true
 
 [features]
 tolerant-ast = ["cedar-policy-core/tolerant-ast"]
+experimental = ["tolerant-ast"]

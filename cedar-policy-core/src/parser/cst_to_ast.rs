@@ -45,7 +45,7 @@ use crate::ast::{
     self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
     PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
 };
-use crate::expr_builder::{self, ExprBuilder};
+use crate::expr_builder::ExprBuilder;
 use crate::fuzzy_match::fuzzy_search_limited;
 use itertools::{Either, Itertools};
 use nonempty::nonempty;
@@ -635,14 +635,16 @@ impl ast::UnreservedId {
                             suggested_method.map(|m| format!("did you mean `{m}`?"))
                         }
                         let hint = suggest_method(self, &EXTENSION_STYLES.methods);
-                        convert_expr_error_to_parse_error::<Build>(ToASTError::new(
-                            ToASTErrorKind::UnknownMethod {
-                                id: self.clone(),
-                                hint,
-                            },
-                            loc.clone(),
+                        convert_expr_error_to_parse_error::<Build>(
+                            ToASTError::new(
+                                ToASTErrorKind::UnknownMethod {
+                                    id: self.clone(),
+                                    hint,
+                                },
+                                loc.clone(),
+                            )
+                            .into(),
                         )
-                        .into())
                     }
                 }
             }
@@ -957,12 +959,13 @@ where
         match self {
             Self::Expr { expr, .. } => Ok(expr),
             Self::Var { var, loc } => Ok(Build::new().with_source_loc(&loc).var(var)),
-            Self::Name { name, loc } => {
-                convert_expr_error_to_parse_error::<Build>(
-                    ToASTError::new(ToASTErrorKind::ArbitraryVariable(name.to_string().into()), loc.clone())
-                        .into(),
+            Self::Name { name, loc } => convert_expr_error_to_parse_error::<Build>(
+                ToASTError::new(
+                    ToASTErrorKind::ArbitraryVariable(name.to_string().into()),
+                    loc,
                 )
-            },
+                .into(),
+            ),
             Self::StrLit { lit, loc } => {
                 match to_unescaped_string(lit) {
                     Ok(s) => Ok(Build::new().with_source_loc(&loc).val(s)),
@@ -1071,16 +1074,16 @@ impl Node<Option<cst::Expr>> {
         &self,
     ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
         let expr_opt = self.try_as_inner()?;
-        
+
         let expr = match expr_opt {
             cst::Expr::Expr(expr_impl) => expr_impl,
             #[cfg(feature = "tolerant-ast")]
             cst::Expr::ErrorExpr => {
                 let e = ToASTError::new(ToASTErrorKind::CSTErrorNode, self.loc.clone());
-                return Ok(ExprOrSpecial::Expr { 
+                return Ok(ExprOrSpecial::Expr {
                     expr: convert_expr_error_to_parse_error::<Build>(e.into())?,
-                    loc: self.loc.clone()
-                })
+                    loc: self.loc.clone(),
+                });
             }
         };
 
@@ -2193,7 +2196,6 @@ mod tests {
             Err(errs) => errs,
         }
     }
-
 
     #[test]
     fn show_expr1() {
@@ -5345,11 +5347,11 @@ mod tests {
             r#"permit(principal ==, action, resource ==);"#,
             r#"permit(principal ==, action ==, resource ==);"#,
         ];
-    
+
         for src in src_eq_cases.iter() {
             assert_parse_policy_allows_errors(src);
         }
-    
+
         // Test for in operator
         let src_in_cases = [
             r#"permit(principal in, action, resource);"#,
@@ -5360,20 +5362,19 @@ mod tests {
             r#"permit(principal in, action, resource in);"#,
             r#"permit(principal in, action in, resource in);"#,
         ];
-    
+
         for src in src_in_cases.iter() {
             assert_parse_policy_allows_errors(src);
         }
 
         // Cases with "is" and missing operands
         let src_in_cases = [
-                    r#"permit(principal is something in, action, resource);"#,
-                    r#"permit(principal, action, resource is something in);"#,
+            r#"permit(principal is something in, action, resource);"#,
+            r#"permit(principal, action, resource is something in);"#,
         ];
         for src in src_in_cases.iter() {
             assert_parse_policy_allows_errors(src);
         }
-
     }
 
     #[cfg(feature = "tolerant-ast")]
@@ -5414,7 +5415,6 @@ mod tests {
             r#"permit(principal ==, action, resource);"#,
             r#"permit(principal, action ==, resource);"#,
             r#"permit(principal, action, resource ==);"#,
-
             // Cases with existing values and missing operands
             r#"permit(principal == Test::User::"blah", action, resource);"#,
             r#"permit(principal, action == Action::"read", resource);"#,
@@ -5432,19 +5432,14 @@ mod tests {
             r#"permit(principal in, action, resource);"#,
             r#"permit(principal, action in, resource);"#,
             r#"permit(principal, action, resource in);"#,
-
             // Cases with existing collections
             r#"permit(principal in ["admin", "user"], action, resource);"#,
             r#"permit(principal, action in ["read", "write"], resource);"#,
             r#"permit(principal, action, resource in ["sensitive", "public"]);"#,
-
-
-
             // Cases with "is" and existing collections
             r#"permit(principal is Group in ["admins", "editors"], action, resource);"#,
             r#"permit(principal, action is Request in ["GET", "POST"], resource);"#,
             r#"permit(principal, action, resource is Data in ["private", "public"]);"#,
-
             // Mixed cases with multiple potential missing operands
             r#"permit(principal is something in, action in, resource);"#,
             r#"permit(principal, action is something in, resource in);"#,

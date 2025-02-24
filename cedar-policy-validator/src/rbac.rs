@@ -341,19 +341,21 @@ impl Validator {
         action_constraint: &'a ActionConstraint,
     ) -> Box<dyn Iterator<Item = &'a EntityUID> + 'a> {
         match action_constraint {
-            // <var>
             ActionConstraint::Any => {
                 Box::new(self.schema.action_ids().map(ValidatorActionId::name))
             }
-            // <var> == <literal euid>
             ActionConstraint::Eq(euid) => Box::new(std::iter::once(euid.as_ref())),
-            // <var> in [<literal euid>...]
             ActionConstraint::In(euids) => Box::new(
                 self.schema
                     .get_actions_in_set(euids.iter().map(Arc::as_ref))
                     .unwrap_or_default()
                     .into_iter(),
             ),
+            #[cfg(feature = "tolerant-ast")]
+            ActionConstraint::ErrorConstraint => {
+                let v = vec![].into_iter();
+                Box::new(v)
+            }
         }
     }
 

@@ -25,8 +25,7 @@ use crate::FromNormalizedStr;
 use educe::Educe;
 use itertools::Itertools;
 use miette::Diagnostic;
-use ref_cast::RefCast;
-use serde::{Deserialize, Serialize};
+use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
 use serde_with::{serde_as, TryFromInto};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -34,15 +33,56 @@ use std::str::FromStr;
 use std::sync::Arc;
 use thiserror::Error;
 
+#[cfg(feature = "tolerant-ast")]
+static ERROR_NAME: std::sync::LazyLock<Name> =
+    std::sync::LazyLock::new(|| Name(InternalName::from(Id::new_unchecked("EntityTypeError"))));
+
+#[cfg(feature = "tolerant-ast")]
+static ERROR_EID_SMOL_STR: std::sync::LazyLock<SmolStr> =
+    std::sync::LazyLock::new(|| SmolStr::from("Eid::ErrorEid"));
+
 /// The entity type that Actions must have
 pub static ACTION_ENTITY_TYPE: &str = "Action";
 
-/// Entity type names are just [`Name`]s, but we have some operations on them specific to entity types.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, RefCast)]
+// #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord, RefCast)]
+// #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+// #[serde(transparent)]
+// #[repr(transparent)]
+// pub struct EntityTypeImpl(Name);
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-#[serde(transparent)]
-#[repr(transparent)]
-pub struct EntityType(Name);
+/// Entity type - can be an error type when 'tolerant-ast' feature is enabled
+pub enum EntityType {
+    /// Entity type names are just [`Name`]s, but we have some operations on them specific to entity types.
+    EntityTypeImpl(Name),
+    #[cfg(feature = "tolerant-ast")]
+    /// Represents an error node of an entity that failed to parse
+    ErrorEntityType,
+}
+
+impl<'de> Deserialize<'de> for EntityType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let name = Name::deserialize(deserializer)?;
+        Ok(EntityType::EntityTypeImpl(name))
+    }
+}
+
+impl Serialize for EntityType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            EntityType::EntityTypeImpl(name) => name.serialize(serializer),
+            #[cfg(feature = "tolerant-ast")]
+            EntityType::ErrorEntityType => serializer.serialize_str("EntityType::Error"),
+        }
+    }
+}
 
 impl EntityType {
     /// Is this an Action entity type?
@@ -50,22 +90,42 @@ impl EntityType {
     /// base name for the type, so this will return true for any entity type named
     /// `Action` regardless of namespaces.
     pub fn is_action(&self) -> bool {
-        self.0.as_ref().basename() == &Id::new_unchecked(ACTION_ENTITY_TYPE)
+        match self {
+            EntityType::EntityTypeImpl(name) => {
+                name.as_ref().basename() == &Id::new_unchecked(ACTION_ENTITY_TYPE)
+            }
+            #[cfg(feature = "tolerant-ast")]
+            EntityType::ErrorEntityType => false,
+        }
     }
 
     /// The name of this entity type
     pub fn name(&self) -> &Name {
-        &self.0
+        match self {
+            EntityType::EntityTypeImpl(name) => &name,
+            #[cfg(feature = "tolerant-ast")]
+            EntityType::ErrorEntityType => &ERROR_NAME,
+        }
     }
 
     /// The source location of this entity type
     pub fn loc(&self) -> Option<&Loc> {
-        self.0.as_ref().loc()
+        match self {
+            EntityType::EntityTypeImpl(name) => name.as_ref().loc(),
+            #[cfg(feature = "tolerant-ast")]
+            EntityType::ErrorEntityType => None,
+        }
     }
 
     /// Calls [`Name::qualify_with_name`] on the underlying [`Name`]
     pub fn qualify_with(&self, namespace: Option<&Name>) -> Self {
-        Self(self.0.qualify_with_name(namespace))
+        match self {
+            EntityType::EntityTypeImpl(name) => {
+                Self::EntityTypeImpl(name.qualify_with_name(namespace))
+            }
+            #[cfg(feature = "tolerant-ast")]
+            EntityType::ErrorEntityType => Self::ErrorEntityType,
+        }
     }
 
     /// Wraps [`Name::from_normalized_str`]
@@ -76,19 +136,27 @@ impl EntityType {
 
 impl From<Name> for EntityType {
     fn from(n: Name) -> Self {
-        Self(n)
+        Self::EntityTypeImpl(n)
     }
 }
 
 impl From<EntityType> for Name {
     fn from(ty: EntityType) -> Name {
-        ty.0
+        match ty {
+            EntityType::EntityTypeImpl(name) => name,
+            #[cfg(feature = "tolerant-ast")]
+            EntityType::ErrorEntityType => ERROR_NAME.clone(),
+        }
     }
 }
 
 impl AsRef<Name> for EntityType {
     fn as_ref(&self) -> &Name {
-        &self.0
+        match self {
+            EntityType::EntityTypeImpl(name) => name,
+            #[cfg(feature = "tolerant-ast")]
+            EntityType::ErrorEntityType => &ERROR_NAME,
+        }
     }
 }
 
@@ -96,13 +164,17 @@ impl FromStr for EntityType {
     type Err = ParseErrors;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.parse().map(Self)
+        s.parse().map(Self::EntityTypeImpl)
     }
 }
 
 impl std::fmt::Display for EntityType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        match self {
+            EntityType::EntityTypeImpl(name) => write!(f, "{}", name),
+            #[cfg(feature = "tolerant-ast")]
+            EntityType::ErrorEntityType => write!(f, "EntityType::Error"),
+        }
     }
 }
 
@@ -126,12 +198,11 @@ pub struct EntityUIDImpl {
 #[derive(Educe, Serialize, Deserialize, Debug, Clone)]
 #[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum EntityUID {
+    /// Unique ID for an entity. These represent entities in the AST
     EntityUID(EntityUIDImpl),
     #[cfg(feature = "tolerant-ast")]
-    Error{
-        eid: Eid,
-        ty: EntityType,
-    }
+    /// Represents the ID of an error that failed to parse
+    Error,
 }
 
 impl StaticallyTyped for EntityUID {
@@ -141,14 +212,10 @@ impl StaticallyTyped for EntityUID {
                 ty: entity_uid.ty.clone(),
             },
             #[cfg(feature = "tolerant-ast")]
-            EntityUID::Error{
-                ty,
-                ..
-            } =>Type::Entity {
-                ty: ty.clone()
+            EntityUID::Error => Type::Entity {
+                ty: EntityType::ErrorEntityType,
             },
         }
-
     }
 }
 
@@ -157,7 +224,6 @@ impl EntityUID {
     /// Useful for testing.
     #[cfg(test)]
     pub(crate) fn with_eid(eid: &str) -> Self {
-        
         Self::EntityUID(EntityUIDImpl {
             ty: Self::test_entity_type(),
             eid: Eid::EidImpl(eid.into()),
@@ -175,7 +241,7 @@ impl EntityUID {
     pub(crate) fn test_entity_type() -> EntityType {
         let name = Name::parse_unqualified_name("test_entity_type")
             .expect("test_entity_type should be a valid identifier");
-        EntityType(name)
+        EntityType::EntityTypeImpl(name)
     }
     // by default, Coverlay does not track coverage for lines after a line
     // containing #[cfg(test)].
@@ -185,29 +251,21 @@ impl EntityUID {
 
     /// Create an `EntityUID` with the given (unqualified) typename, and the given string as its EID.
     pub fn with_eid_and_type(typename: &str, eid: &str) -> Result<Self, ParseErrors> {
-        Ok(Self::EntityUID( EntityUIDImpl {
-            ty: EntityType(Name::parse_unqualified_name(typename)?),
+        Ok(Self::EntityUID(EntityUIDImpl {
+            ty: EntityType::EntityTypeImpl(Name::parse_unqualified_name(typename)?),
             eid: Eid::EidImpl(eid.into()),
             loc: None,
         }))
-    }
-
-    #[cfg(feature = "tolerant-ast")]
-    pub fn error() -> Result<Self, ParseErrors> {
-        Ok(Self::Error {
-            eid: Eid::new("ERROR_EID"), 
-            ty: EntityType::from_str("ERRORTYPE")?,
-        })
     }
 
     /// Split into the `EntityType` representing the entity type, and the `Eid`
     /// representing its name
     pub fn components(self) -> (EntityType, Eid) {
         match self {
-            EntityUID::EntityUID(entity_uid) =>  (entity_uid.ty, entity_uid.eid),
+            EntityUID::EntityUID(entity_uid) => (entity_uid.ty, entity_uid.eid),
             #[cfg(feature = "tolerant-ast")]
-            EntityUID::Error {eid, ty} => (ty, eid),
-        }  
+            EntityUID::Error => (EntityType::ErrorEntityType, Eid::ErrorEid),
+        }
     }
 
     /// Get the source location for this `EntityUID`.
@@ -216,7 +274,7 @@ impl EntityUID {
             EntityUID::EntityUID(entity_uid) => entity_uid.loc.as_ref(),
             #[cfg(feature = "tolerant-ast")]
             EntityUID::Error { .. } => None,
-        }   
+        }
     }
 
     /// Create an [`EntityUID`] with the given typename and [`Eid`]
@@ -229,9 +287,8 @@ impl EntityUID {
         match self {
             EntityUID::EntityUID(entity_uid) => &entity_uid.ty,
             #[cfg(feature = "tolerant-ast")]
-            EntityUID::Error { ty , ..} => &ty,
+            EntityUID::Error => &EntityType::ErrorEntityType,
         }
-        
     }
 
     /// Get the Eid component.
@@ -239,7 +296,7 @@ impl EntityUID {
         match self {
             EntityUID::EntityUID(entity_uid) => &entity_uid.eid,
             #[cfg(feature = "tolerant-ast")]
-            EntityUID::Error {eid, .. } => &eid,
+            EntityUID::Error => &Eid::ErrorEid,
         }
     }
 
@@ -247,13 +304,17 @@ impl EntityUID {
     pub fn is_action(&self) -> bool {
         self.entity_type().is_action()
     }
-    
 }
 
 impl std::fmt::Display for EntityUID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            EntityUID::EntityUID(entity_uid) =>write!(f, "{}::\"{}\"", self.entity_type(), entity_uid.eid.escaped()),
+            EntityUID::EntityUID(entity_uid) => write!(
+                f,
+                "{}::\"{}\"",
+                self.entity_type(),
+                entity_uid.eid.escaped()
+            ),
             #[cfg(feature = "tolerant-ast")]
             EntityUID::Error { .. } => write!(f, "Expr::ExprError"),
         }
@@ -286,8 +347,6 @@ impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
     }
 }
 
-
-
 /// The `Eid` type represents the id of an `Entity`, without the typename.
 /// Together with the typename it comprises an `EntityUID`.
 /// For example, in `User::"alice"`, the `Eid` is `alice`.
@@ -299,9 +358,11 @@ impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
 /// To get an unescaped representation, use `.as_ref()`.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
 pub enum Eid {
+    /// Actual Eid
     EidImpl(SmolStr),
     #[cfg(feature = "tolerant-ast")]
-    ErrorEid
+    /// Represents an Eid of an entity that failed to parse
+    ErrorEid,
 }
 
 impl Eid {
@@ -315,7 +376,7 @@ impl Eid {
         match self {
             Eid::EidImpl(smol_str) => smol_str.escape_debug().collect(),
             #[cfg(feature = "tolerant-ast")]
-            Eid::ErrorEid => todo!(),
+            Eid::ErrorEid => "Eid::Error".into(),
         }
     }
 }
@@ -325,7 +386,7 @@ impl AsRef<SmolStr> for Eid {
         match self {
             Eid::EidImpl(smol_str) => &smol_str,
             #[cfg(feature = "tolerant-ast")]
-            Eid::ErrorEid => todo!(),
+            Eid::ErrorEid => &ERROR_EID_SMOL_STR,
         }
     }
 }
@@ -335,7 +396,7 @@ impl AsRef<str> for Eid {
         match self {
             Eid::EidImpl(smol_str) => smol_str,
             #[cfg(feature = "tolerant-ast")]
-            Eid::ErrorEid => todo!(),
+            Eid::ErrorEid => "Eid::Error",
         }
     }
 }
@@ -877,5 +938,35 @@ mod test {
     #[test]
     fn action_type_is_valid_id() {
         assert!(Id::from_normalized_str(ACTION_ENTITY_TYPE).is_ok());
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn error_entity_type() {
+        let e = EntityUID::Error;
+        assert!(matches!(e.eid(), Eid::ErrorEid));
+        assert!(matches!(e.entity_type(), EntityType::ErrorEntityType));
+        assert!(!e.is_action());
+        assert!(matches!(e.loc(), None));
+    }
+
+    #[test]
+    fn entity_type_deserialization() {
+        let json = r#""some_entity_type""#;
+        let entity_type: EntityType = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            entity_type.name().0.to_string(),
+            "some_entity_type".to_string()
+        )
+    }
+
+    #[test]
+    fn entity_type_serialization() {
+        let entity_type = EntityType::EntityTypeImpl(Name(InternalName::from(Id::new_unchecked(
+            "some_entity_type",
+        ))));
+        let serialized = serde_json::to_string(&entity_type).unwrap();
+
+        assert_eq!(serialized, r#""some_entity_type""#);
     }
 }
