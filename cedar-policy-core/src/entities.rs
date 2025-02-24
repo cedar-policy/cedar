@@ -399,6 +399,26 @@ fn update_entity_map(map: &mut HashMap<EntityUID, Arc<Entity>>, entity: Arc<Enti
     Ok(())
 }
 
+#[allow(dead_code)]
+fn simple_function(i: u32, j: u32) -> u32 {
+    let k = if i == 0 {
+        // CASE 1
+        2
+    } else {
+        // CASE 2
+        i * 2
+    };
+    let l = if j == 0 {
+        // CASE 1
+        3
+    } else {
+        // CASE 2
+        j + 1
+    };
+    let m = l + 1;
+    m + k
+}
+
 impl IntoIterator for Entities {
     type Item = Entity;
 
