@@ -45,7 +45,7 @@ use crate::ast::{
     self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
     PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
 };
-use crate::expr_builder::{self, ExprBuilder};
+use crate::expr_builder::ExprBuilder;
 use crate::fuzzy_match::fuzzy_search_limited;
 use itertools::{Either, Itertools};
 use nonempty::nonempty;
@@ -2345,7 +2345,6 @@ mod tests {
             Err(errs) => errs,
         }
     }
-
 
     #[test]
     fn show_expr1() {
@@ -5997,7 +5996,6 @@ mod tests {
             r#"permit(principal ==, action, resource);"#,
             r#"permit(principal, action ==, resource);"#,
             r#"permit(principal, action, resource ==);"#,
-
             // Cases with existing values and missing operands
             r#"permit(principal == Test::User::"blah", action, resource);"#,
             r#"permit(principal, action == Action::"read", resource);"#,
@@ -6015,19 +6013,14 @@ mod tests {
             r#"permit(principal in, action, resource);"#,
             r#"permit(principal, action in, resource);"#,
             r#"permit(principal, action, resource in);"#,
-
             // Cases with existing collections
             r#"permit(principal in ["admin", "user"], action, resource);"#,
             r#"permit(principal, action in ["read", "write"], resource);"#,
             r#"permit(principal, action, resource in ["sensitive", "public"]);"#,
-
-
-
             // Cases with "is" and existing collections
             r#"permit(principal is Group in ["admins", "editors"], action, resource);"#,
             r#"permit(principal, action is Request in ["GET", "POST"], resource);"#,
             r#"permit(principal, action, resource is Data in ["private", "public"]);"#,
-
             // Mixed cases with multiple potential missing operands
             r#"permit(principal is something in, action in, resource);"#,
             r#"permit(principal, action is something in, resource in);"#,
