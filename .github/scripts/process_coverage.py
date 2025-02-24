@@ -175,7 +175,7 @@ def create_comparison_table(entries, base_entries, required_coverage):
         else:
             row.append("--")
         yield row
-    for name, base_group in base_groups:
+    for name, base_group in base_groups.items():
         if name in groups:
             continue
         row = create_row(name, list(group), required_coverage)[:-1]
