@@ -1,6 +1,18 @@
 name: Build and Test
 on:
-    workflow_call:
+  workflow_call:
+    inputs:
+      collect_coverage:
+        required: false
+        default: false
+        type: boolean
+      retention-days:
+        description: >
+          Duration after which the uploaded coverage artifacts will expire in days, or 0 to use the default setting 
+          for the repository.
+        required: false
+        default: "0"
+        type: string
 
 jobs:
   build_and_test:
@@ -17,6 +29,13 @@ jobs:
       RUSTFLAGS: '-D warnings -F unsafe-code'
 
     steps:
+      - name: Set environment variables for coverage collection
+        if: ${{ inputs.collect_coverage }} && ${{ matrix.toolchain }} == 'stable'
+        shell: bash
+        run: |
+          echo "RUSTFLAGS=${RUSTFLAGS} -C instrument-coverage" >> $GITHUB_ENV
+          echo "LLVM_PROFILE_FILE=cedar_%m_%p.profraw" >> $GITHUB_ENV
+
       - uses: actions/checkout@v4
       - run: sudo apt-get install protobuf-compiler
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
@@ -32,6 +51,12 @@ jobs:
       - run: cargo build --verbose --features "experimental"
       - run: cargo test --verbose --features "experimental"
       - run: cargo audit --deny warnings # For some reason this hangs if you don't cargo build first
+
+      - name: Create a coverage report
+        if: ${{ inputs.collect_coverage }} && ${{ matrix.toolchain }} == 'stable'
+        uses: ./.github/actions/create_coverage_reports
+        with:
+          retention-days: ${{ inputs.retention-days }}
 
   # Clippy in its own job so that the `RUSTFLAGS` set for `build_and_test`
   # don't effect it. As a side effect, this will run in parallel, saving some

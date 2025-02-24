@@ -1,0 +1,98 @@
+name: "Create Coverage PR Comment"
+description: >
+  Build a markdown comment to be posted to a PR by the "comment_pr" workflow.
+  If threshold is set, fails the build if the reported coverage does not meet
+  met expected criteria.
+  Downloads the cobertura coverage report for the current workflow run.
+  TODO
+  Uploads the created markdown comment and the number of the PR that triggered this action as workflow artifacts.
+inputs:
+  threshold:
+    description: >
+      Minimum proportion of modified lines that need to be covered for acceptance or -1 if there is no minimum.
+    required: false
+    default: "-1"
+  report-artifact-prefix:
+    description: "Prefix of the name of the artifact to be downloaded"
+    required: false
+    default: "coverage_report"
+  comment-artifact-name:
+    description: "Name of the artifact to be uploaded"
+    required: false
+    default: "coverage_comment"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Download report artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.report-artifact-prefix }}_cobertura
+    - name: Compute changed lines
+      id: changed_lines
+      uses: hestonhoffman/changed-lines@v1
+      with:
+        file_filter: ".rs"
+    - name: Set up python
+      uses: actions/setup-python@v5
+      with:
+        python-version: 3.13
+    - name: Find last nightly run for BASE
+      shell: bash
+      run: |
+        gh run list \
+          --commit $BASE_SHA \
+          --status "success" \
+          --workflow  "Nightly Build" \
+          --limit 1 \
+          --json "databaseId" \
+          | jq --raw-output '.[0]["databaseId"]' \
+          > base_run_id.txt
+        echo "BASE_RUN_ID=$(cat base_run_id.txt)" >> $GITHUB_ENV
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        GH_TOKEN: ${{ github.token }}
+    - name: Find coverage report for BASE
+      if: ${{ env.BASE_RUN_ID != 'null' }}
+      shell: bash
+      run: |
+        echo TODO
+        mkdir -p base_coverage
+        gh run download $BASE_RUN_ID --name $NAME --dir base_coverage
+      env:
+        NAME: ${{ inputs.report-artifact-prefix }}_cobertura
+        GH_TOKEN: ${{ github.token }}
+    - name: Create result files
+      shell: bash
+      run: |
+        mkdir -p target/coverage/results
+        echo $ISSUE_NUMBER > target/coverage/results/issue_number.txt
+        echo $CHANGED_LINES > target/coverage/results/changed_lines.json
+        python .github/scripts/process_coverage.py \
+          cobertura.xml \
+          target/coverage/results/changed_lines.json \
+          $THRESHOLD \
+          $HEAD_SHA \
+          $BASE_SHA \
+          $(cat report_location.txt) \
+          base_coverage/cobertura.xml \
+          target/coverage/results
+        echo "STATUS=$(cat target/coverage/results/status.txt)" >> $GITHUB_ENV
+      env:
+        CHANGED_LINES: ${{ steps.changed_lines.outputs.changed_lines }}
+        THRESHOLD: ${{ inputs.threshold }}
+        ISSUE_NUMBER: ${{ github.event.number }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+    - name: Upload results
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.comment-artifact-name }}
+        path: target/coverage/results/
+        retention-days: 1
+    - name: Check status
+      if: ${{ env.STATUS == 'FAILED' }}
+      uses: actions/github-script@v3
+      with:
+        script: |
+          core.setFailed('Required coverage criteria were not met.')
