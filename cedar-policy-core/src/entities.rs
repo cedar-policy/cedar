@@ -2229,6 +2229,12 @@ mod entities_tests {
         // as the only link was through D
         assert!(!f.is_descendant_of(&bid));
     }
+
+    #[test]
+    fn test_simplefunction() {
+        let x = simple_function(0, 3);
+        assert_matches!(x, 7);
+    }
 }
 
 // PANIC SAFETY: Unit Test Code
