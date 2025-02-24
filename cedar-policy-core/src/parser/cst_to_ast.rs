@@ -780,6 +780,7 @@ impl Node<Option<cst::VariableDef>> {
 
     fn to_action_constraint(&self) -> Result<ast::ActionConstraint> {
         let vardef = self.try_as_inner()?;
+
         match vardef.variable.to_var() {
             Ok(ast::Var::Action) => Ok(()),
             Ok(got) => Err(self
@@ -826,9 +827,11 @@ impl Node<Option<cst::VariableDef>> {
             }?;
             let action_constraint_res = action_constraint.contains_only_action_types();
             #[cfg(feature = "tolerant-ast")]
+            // With 'tolerant-ast' feature enabled, we store invalid action constraints as an ErrorConstraint
             return Ok(action_constraint_res.unwrap_or(ActionConstraint::ErrorConstraint));
 
             #[allow(unreachable_code)]
+            // Otherwise, propagate the InvalidActionType error
             action_constraint_res.map_err(|non_action_euids| {
                 rel_expr
                     .to_ast_err(parse_errors::InvalidActionType {

@@ -37,7 +37,6 @@ impl Doc for Ident {
 impl Doc for Node<Option<VariableDef>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let vd = self.as_inner()?;
-
         let start_comment = get_comment_at_start(self.loc.span, &mut context.tokens)?;
         let var_doc = vd.variable.as_inner()?.to_doc(context)?;
 

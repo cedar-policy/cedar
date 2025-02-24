@@ -1140,7 +1140,7 @@ impl<T: Clone> From<ast::Expr<T>> for Expr {
             #[allow(clippy::unwrap_used)]
             ast::ExprKind::Error { .. } => Builder::new()
                 .error(ParseErrors::singleton(ToASTError::new(
-                    ToASTErrorKind::CSTErrorNode,
+                    ToASTErrorKind::ASTErrorNode,
                     Loc::new(0..1, "AST_ERROR_NODE".into()),
                 )))
                 .unwrap(),
