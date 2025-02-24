@@ -868,6 +868,7 @@ impl Node<Option<cst::VariableDef>> {
 
     fn to_action_constraint(&self) -> Result<ast::ActionConstraint> {
         let vardef = self.try_as_inner()?;
+
         match vardef.variable.to_var() {
             Ok(ast::Var::Action) => Ok(()),
             Ok(got) => Err(self
