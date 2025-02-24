@@ -278,7 +278,7 @@ MultOp: cst::MultOp = {
 Add: Node<Option<cst::Add>> = {
     <l:@L> <i:Mult> <e:(AddOp Mult)*> <r:@R>
         => Node::with_source_loc(Some(cst::Add{initial:i, extended: e}), Loc::new(l..r, Arc::clone(src))),
-} 
+}
 // Mult := Unary {('*' | '/' | '%') Unary}
 Mult: Node<Option<cst::Mult>> = {
     <l:@L> <i:Unary>  <e:(MultOp Unary)*> <r:@R>
