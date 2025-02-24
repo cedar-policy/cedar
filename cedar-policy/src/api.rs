@@ -3033,6 +3033,9 @@ pub enum ActionConstraint {
     In(Vec<EntityUid>),
     /// Must be equal to the given [`EntityUid]`
     Eq(EntityUid),
+    #[cfg(feature = "tolerant-ast")]
+    /// Represents an action constraint that failed to parse
+    ErrorConstraint,
 }
 
 /// Scope constraint on policy resources.
