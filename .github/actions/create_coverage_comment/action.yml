@@ -3,8 +3,6 @@ description: >
   Build a markdown comment to be posted to a PR by the "comment_pr" workflow.
   If threshold is set, fails the build if the reported coverage does not meet
   met expected criteria.
-  Downloads the cobertura coverage report for the current workflow run.
-  TODO
   Uploads the created markdown comment and the number of the PR that triggered this action as workflow artifacts.
 inputs:
   threshold:

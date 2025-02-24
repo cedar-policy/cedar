@@ -7,9 +7,9 @@ import xml.etree.ElementTree as ET
 
 TEMPLATE = """
 # Coverage Report
-Head Commit: $$HEAD_SHA$$
+Head Commit: ```$$HEAD_SHA$$```
 
-Base Commit: $$BASE_SHA$$
+Base Commit: ```$$BASE_SHA$$```
 
 [Download the full coverage report.]($$REPORT_LOCATION$$)
 
