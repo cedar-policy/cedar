@@ -349,7 +349,9 @@ impl From<&models::ActionConstraint> for ast::ActionConstraint {
     fn from(v: &models::ActionConstraint) -> Self {
         match v.data.as_ref().expect("data.as_ref()") {
             models::action_constraint::Data::Any(unit) => {
-                match models::action_constraint::Any::try_from(*unit).expect("decode should succeed") {
+                match models::action_constraint::Any::try_from(*unit)
+                    .expect("decode should succeed")
+                {
                     models::action_constraint::Any::Unit => ast::ActionConstraint::Any,
                 }
             }
