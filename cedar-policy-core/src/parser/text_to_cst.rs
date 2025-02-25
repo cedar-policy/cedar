@@ -69,8 +69,9 @@ fn parse_collect_errors<'a, P, T>(
     }
 }
 
-/// This helper function calls a generated parser, collects errors that could be
-/// generated multiple ways, and returns a single Result where the error type is
+/// This helper function calls a generated parser. If the given string is unparsable, it will return the relevant errors
+/// If a string is parsable but has errors, it will still return the parse expression
+/// NOTE: This should only be used to construct an AST that includes error nodes and NOT for evaluation
 /// [`err::ParseErrors`].
 #[cfg(feature = "tolerant-ast")]
 fn parse_collect_errors_tolerant<'a, P, T>(

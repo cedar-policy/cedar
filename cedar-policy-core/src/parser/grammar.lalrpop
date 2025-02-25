@@ -111,7 +111,6 @@ pub Policy: Node<Option<cst::Policy>> = {
     ";"
     <r:@R>
     => Node::with_source_loc(Some(cst::Policy::PolicyImpl(cst::PolicyImpl{ annotations,effect,variables,conds })), Loc::new(l..r, Arc::clone(src))),
-    // <l:@L> <err:!> ";" <r:@R> => { errors.push(err); Node::with_source_loc(None, Loc::new(l..r, Arc::clone(src))) },
     <l:@L> <err:!> ";" <r:@R> => {
         // Tolerant AST creates a valid CST node representing the unparsable policy
         #[cfg(feature = "tolerant-ast")]
@@ -119,7 +118,7 @@ pub Policy: Node<Option<cst::Policy>> = {
         #[cfg(feature = "tolerant-ast")]
         return Node::with_source_loc(Some(cst::Policy::PolicyError), Loc::new(l..r, Arc::clone(src)));
 
-        // Otherwise we record this as an error
+        // Otherwise we record this as a None node (unrecoverable error)
         errors.push(err); 
         Node::with_source_loc(None, Loc::new(l..r, Arc::clone(src)))
     }
@@ -212,7 +211,7 @@ pub Expr: Node<Option<cst::Expr>> = {
         #[cfg(feature = "tolerant-ast")]
         return Node::with_source_loc(Some(cst::Expr::ErrorExpr), Loc::new(l..r, Arc::clone(src)));
 
-        // Otherwise we record this as an error
+        // Otherwise we record this as a None node (unrecoverable error)
         errors.push(err); 
         Node::with_source_loc(None, Loc::new(l..r, Arc::clone(src))) 
     },

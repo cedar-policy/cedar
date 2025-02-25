@@ -731,6 +731,7 @@ impl ast::UnreservedId {
                                 loc.clone(),
                             )
                             .into(),
+                            Some(loc.clone()),
                         )
                     }
                 }
@@ -1011,6 +1012,7 @@ impl Node<Option<cst::Cond>> {
                 convert_expr_error_to_parse_error::<Build>(
                     self.to_ast_err(ToASTErrorKind::EmptyClause(Some(ident)))
                         .into(),
+                    Some(self.loc.clone()),
                 )
             }
         };
@@ -1040,8 +1042,13 @@ impl Node<Option<cst::Str>> {
 }
 
 #[cfg(feature = "tolerant-ast")]
-fn build_ast_error_node_if_possible<Build: ExprBuilder>(error: ParseErrors) -> Result<Build::Expr> {
-    let res = Build::new().error(error.clone());
+fn build_ast_error_node_if_possible<Build: ExprBuilder>(
+    error: ParseErrors,
+    loc: Option<Loc>,
+) -> Result<Build::Expr> {
+    let res = Build::new()
+        .with_maybe_source_loc(loc.as_ref())
+        .error(error.clone());
     match res {
         Ok(r) => Ok(r),
         Err(_) => Err(error),
@@ -1051,9 +1058,10 @@ fn build_ast_error_node_if_possible<Build: ExprBuilder>(error: ParseErrors) -> R
 /// Since ExprBuilder ErrorType can be Infallible or ParseErrors, if we get an error from building the node pass the ParseErrors along
 fn convert_expr_error_to_parse_error<Build: ExprBuilder>(
     error: ParseErrors,
+    loc: Option<Loc>,
 ) -> Result<Build::Expr> {
     #[cfg(feature = "tolerant-ast")]
-    return build_ast_error_node_if_possible::<Build>(error);
+    return build_ast_error_node_if_possible::<Build>(error, loc);
     #[allow(unreachable_code)]
     Err(error)
 }
@@ -1103,9 +1111,10 @@ where
             Self::Name { name, loc } => convert_expr_error_to_parse_error::<Build>(
                 ToASTError::new(
                     ToASTErrorKind::ArbitraryVariable(name.to_string().into()),
-                    loc,
+                    loc.clone(),
                 )
                 .into(),
+                Some(loc.clone()),
             ),
             Self::StrLit { lit, loc } => {
                 match to_unescaped_string(lit) {
@@ -1222,7 +1231,10 @@ impl Node<Option<cst::Expr>> {
             cst::Expr::ErrorExpr => {
                 let e = ToASTError::new(ToASTErrorKind::CSTErrorNode, self.loc.clone());
                 return Ok(ExprOrSpecial::Expr {
-                    expr: convert_expr_error_to_parse_error::<Build>(e.into())?,
+                    expr: convert_expr_error_to_parse_error::<Build>(
+                        e.into(),
+                        Some(self.loc.clone()),
+                    )?,
                     loc: self.loc.clone(),
                 });
             }
@@ -5456,6 +5468,17 @@ mod tests {
             permit(principal, action, resource) when {};
         "#;
         assert_parse_policy_allows_errors(src);
+    }
+
+    // Test parsing AST that allows Error nodes
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn repro_coles_bug() {
+        let src = r#"
+            permit(principal, action, resource) when { principal == U};
+        "#;
+        let p = assert_parse_policy_allows_errors(src);
+        println!("{:?}", p);
     }
 
     #[cfg(feature = "tolerant-ast")]

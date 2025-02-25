@@ -157,8 +157,9 @@ impl TryFrom<cst::Policy> for Policy {
             cst::Policy::PolicyError => {
                 return Err(ParseErrors::singleton(ToASTError::new(
                     ToASTErrorKind::CSTErrorNode,
+                    // Since we don't have a loc when doing this transformation, we create an arbitrary one
                     Loc::new(0..1, "CSTErrorNode".into()),
-                )))
+                )));
             }
         };
         let maybe_effect = policy.effect.to_effect();
