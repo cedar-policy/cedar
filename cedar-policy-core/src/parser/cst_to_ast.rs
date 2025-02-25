@@ -731,7 +731,7 @@ impl ast::UnreservedId {
                                 loc.clone(),
                             )
                             .into(),
-                            Some(loc.clone()),
+                            Some(&loc),
                         )
                     }
                 }
@@ -1012,7 +1012,7 @@ impl Node<Option<cst::Cond>> {
                 convert_expr_error_to_parse_error::<Build>(
                     self.to_ast_err(ToASTErrorKind::EmptyClause(Some(ident)))
                         .into(),
-                    Some(self.loc.clone()),
+                    Some(&self.loc),
                 )
             }
         };
@@ -1044,11 +1044,9 @@ impl Node<Option<cst::Str>> {
 #[cfg(feature = "tolerant-ast")]
 fn build_ast_error_node_if_possible<Build: ExprBuilder>(
     error: ParseErrors,
-    loc: Option<Loc>,
+    loc: Option<&Loc>,
 ) -> Result<Build::Expr> {
-    let res = Build::new()
-        .with_maybe_source_loc(loc.as_ref())
-        .error(error.clone());
+    let res = Build::new().with_maybe_source_loc(loc).error(error.clone());
     match res {
         Ok(r) => Ok(r),
         Err(_) => Err(error),
@@ -1058,7 +1056,7 @@ fn build_ast_error_node_if_possible<Build: ExprBuilder>(
 /// Since ExprBuilder ErrorType can be Infallible or ParseErrors, if we get an error from building the node pass the ParseErrors along
 fn convert_expr_error_to_parse_error<Build: ExprBuilder>(
     error: ParseErrors,
-    loc: Option<Loc>,
+    loc: Option<&Loc>,
 ) -> Result<Build::Expr> {
     #[cfg(feature = "tolerant-ast")]
     return build_ast_error_node_if_possible::<Build>(error, loc);
@@ -1114,7 +1112,7 @@ where
                     loc.clone(),
                 )
                 .into(),
-                Some(loc.clone()),
+                Some(&loc),
             ),
             Self::StrLit { lit, loc } => {
                 match to_unescaped_string(lit) {
@@ -1231,10 +1229,7 @@ impl Node<Option<cst::Expr>> {
             cst::Expr::ErrorExpr => {
                 let e = ToASTError::new(ToASTErrorKind::CSTErrorNode, self.loc.clone());
                 return Ok(ExprOrSpecial::Expr {
-                    expr: convert_expr_error_to_parse_error::<Build>(
-                        e.into(),
-                        Some(self.loc.clone()),
-                    )?,
+                    expr: convert_expr_error_to_parse_error::<Build>(e.into(), Some(&self.loc))?,
                     loc: self.loc.clone(),
                 });
             }
