@@ -54,9 +54,8 @@ runs:
       if: ${{ env.BASE_RUN_ID != 'null' }}
       shell: bash
       run: |
-        echo TODO
         mkdir -p base_coverage
-        gh run download $BASE_RUN_ID --name $NAME --dir base_coverage
+        gh run download $BASE_RUN_ID --name $NAME --dir base_coverage || true
       env:
         NAME: ${{ inputs.report-artifact-prefix }}_cobertura
         GH_TOKEN: ${{ github.token }}
