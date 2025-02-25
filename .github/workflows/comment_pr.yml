@@ -28,7 +28,7 @@ jobs:
         if: ${{ env.STATUS == 'SUCCESS' }}
         shell: bash
         run: |
-          ISSUE_NUMBER=$(cat coverage_comment/issue_number.txt)
-          gh pr comment $ISSUE_NUMBER --body-file coverage_comment/markdown.md
+          ISSUE_NUMBER=$(cat issue_number.txt)
+          gh pr comment $ISSUE_NUMBER --body-file markdown.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
