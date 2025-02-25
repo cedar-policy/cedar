@@ -399,8 +399,8 @@ impl From<&ast::ActionConstraint> for models::ActionConstraint {
             // Treat an error constraint as an Any constraint for Protobufs since Protobufs schema model has no Error
             {
                 Self {
-                    data: Some(models::action_constraint::Data::Ty(
-                        models::action_constraint::Ty::Any.into(),
+                    data: Some(models::action_constraint::Data::Any(
+                        models::action_constraint::Any::Unit.into(),
                     )),
                 }
             }
