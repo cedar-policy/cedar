@@ -677,7 +677,7 @@ pub mod test_utils {
     #[track_caller]
     pub fn assert_exactly_one_error(errs: &[DetailedError], msg: &str, help: Option<&str>) {
         assert_length_matches(errs, 1);
-        // assert_error_matches(&errs[0], msg, help);
+        assert_error_matches(&errs[0], msg, help);
     }
 }
 
