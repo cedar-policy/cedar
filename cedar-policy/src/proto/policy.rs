@@ -226,7 +226,7 @@ impl From<&models::EntityReference> for ast::EntityReference {
                 match models::entity_reference::Slot::try_from(*slot)
                     .expect("decode should succeed")
                 {
-                    models::entity_reference::Slot::X => ast::EntityReference::Slot(None),
+                    models::entity_reference::Slot::Unit => ast::EntityReference::Slot(None),
                 }
             }
             models::entity_reference::Data::Euid(euid) => {
@@ -246,7 +246,7 @@ impl From<&ast::EntityReference> for models::EntityReference {
             },
             ast::EntityReference::Slot(_) => Self {
                 data: Some(models::entity_reference::Data::Slot(
-                    models::entity_reference::Slot::X.into(),
+                    models::entity_reference::Slot::Unit.into(),
                 )),
             },
         }
@@ -258,11 +258,11 @@ impl From<&models::PrincipalOrResourceConstraint> for ast::PrincipalOrResourceCo
     #[allow(clippy::expect_used)]
     fn from(v: &models::PrincipalOrResourceConstraint) -> Self {
         match v.data.as_ref().expect("data field should exist") {
-            models::principal_or_resource_constraint::Data::Any(x) => {
-                match models::principal_or_resource_constraint::Any::try_from(*x)
+            models::principal_or_resource_constraint::Data::Any(unit) => {
+                match models::principal_or_resource_constraint::Any::try_from(*unit)
                     .expect("decode should succeed")
                 {
-                    models::principal_or_resource_constraint::Any::X => {
+                    models::principal_or_resource_constraint::Any::Unit => {
                         ast::PrincipalOrResourceConstraint::Any
                     }
                 }
@@ -307,7 +307,7 @@ impl From<&ast::PrincipalOrResourceConstraint> for models::PrincipalOrResourceCo
         match v {
             ast::PrincipalOrResourceConstraint::Any => Self {
                 data: Some(models::principal_or_resource_constraint::Data::Any(
-                    models::principal_or_resource_constraint::Any::X.into(),
+                    models::principal_or_resource_constraint::Any::Unit.into(),
                 )),
             },
             ast::PrincipalOrResourceConstraint::In(er) => Self {
@@ -348,9 +348,9 @@ impl From<&models::ActionConstraint> for ast::ActionConstraint {
     #[allow(clippy::expect_used)]
     fn from(v: &models::ActionConstraint) -> Self {
         match v.data.as_ref().expect("data.as_ref()") {
-            models::action_constraint::Data::Any(x) => {
-                match models::action_constraint::Any::try_from(*x).expect("decode should succeed") {
-                    models::action_constraint::Any::X => ast::ActionConstraint::Any,
+            models::action_constraint::Data::Any(unit) => {
+                match models::action_constraint::Any::try_from(*unit).expect("decode should succeed") {
+                    models::action_constraint::Any::Unit => ast::ActionConstraint::Any,
                 }
             }
             models::action_constraint::Data::In(msg) => ast::ActionConstraint::In(
@@ -371,7 +371,7 @@ impl From<&ast::ActionConstraint> for models::ActionConstraint {
         match v {
             ast::ActionConstraint::Any => Self {
                 data: Some(models::action_constraint::Data::Any(
-                    models::action_constraint::Any::X.into(),
+                    models::action_constraint::Any::Unit.into(),
                 )),
             },
             ast::ActionConstraint::In(euids) => {

@@ -601,11 +601,11 @@ impl From<&models::expr::like::PatternElem> for ast::PatternElem {
                 ast::PatternElem::Char(c.chars().next().expect("c is non-empty"))
             }
 
-            models::expr::like::pattern_elem::Data::Wildcard(x) => {
-                match models::expr::like::pattern_elem::Wildcard::try_from(*x)
+            models::expr::like::pattern_elem::Data::Wildcard(unit) => {
+                match models::expr::like::pattern_elem::Wildcard::try_from(*unit)
                     .expect("decode should succeed")
                 {
-                    models::expr::like::pattern_elem::Wildcard::X => ast::PatternElem::Wildcard,
+                    models::expr::like::pattern_elem::Wildcard::Unit => ast::PatternElem::Wildcard,
                 }
             }
         }
@@ -620,7 +620,7 @@ impl From<&ast::PatternElem> for models::expr::like::PatternElem {
             },
             ast::PatternElem::Wildcard => Self {
                 data: Some(models::expr::like::pattern_elem::Data::Wildcard(
-                    models::expr::like::pattern_elem::Wildcard::X.into(),
+                    models::expr::like::pattern_elem::Wildcard::Unit.into(),
                 )),
             },
         }

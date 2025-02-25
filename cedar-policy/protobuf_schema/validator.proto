@@ -92,7 +92,7 @@ message EntityRecordKind {
     // Zero-arity constructors represented as enums with only one member
     enum AnyEntity {
         // the one option for the enum
-        x = 0;
+        unit = 0;
     }
     message Record {
         map<string, AttributeType> attrs = 1;

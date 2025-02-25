@@ -299,11 +299,11 @@ impl From<&models::EntityRecordKind> for types::EntityRecordKind {
     #[allow(clippy::expect_used)]
     fn from(v: &models::EntityRecordKind) -> Self {
         match v.data.as_ref().expect("data field should exist") {
-            models::entity_record_kind::Data::AnyEntity(x) => {
-                match models::entity_record_kind::AnyEntity::try_from(*x)
+            models::entity_record_kind::Data::AnyEntity(unit) => {
+                match models::entity_record_kind::AnyEntity::try_from(*unit)
                     .expect("decode should succeed")
                 {
-                    models::entity_record_kind::AnyEntity::X => Self::AnyEntity,
+                    models::entity_record_kind::AnyEntity::Unit => Self::AnyEntity,
                 }
             }
             models::entity_record_kind::Data::Record(r) => Self::Record {
@@ -336,7 +336,7 @@ impl From<&types::EntityRecordKind> for models::EntityRecordKind {
                 open_attributes: models::OpenTag::from(open_attributes).into(),
             }),
             types::EntityRecordKind::AnyEntity => models::entity_record_kind::Data::AnyEntity(
-                models::entity_record_kind::AnyEntity::X.into(),
+                models::entity_record_kind::AnyEntity::Unit.into(),
             ),
             types::EntityRecordKind::Entity(e) => {
                 models::entity_record_kind::Data::Entity(models::Name::from(

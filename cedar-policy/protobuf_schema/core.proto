@@ -105,7 +105,7 @@ message EntityReference {
     // so we don't need a `SlotId` and can just use this one-armed enum
     enum Slot {
         // the one option for the enum
-        x = 0;
+        unit = 0;
     }
 }
 
@@ -121,7 +121,7 @@ message PrincipalOrResourceConstraint {
     // Zero-arity constructors represented as enums with only one member
     enum Any {
         // the one option for the enum
-        x = 0;
+        unit = 0;
     }
 
     message InMessage {
@@ -154,7 +154,7 @@ message ActionConstraint {
     // Zero-arity constructors represented as enums with only one member
     enum Any {
         // the one option for the enum
-        x = 0;
+        unit = 0;
     }
 
     message InMessage {
@@ -279,7 +279,7 @@ message Expr {
             // Zero-arity constructors represented as enums with only one member
             enum Wildcard {
                 // the one option for the enum
-                x = 0;
+                unit = 0;
             }
         }
     }
