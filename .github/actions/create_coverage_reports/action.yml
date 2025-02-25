@@ -39,7 +39,11 @@ runs:
             --binary-path ./target/debug/ \
             -t html,cobertura \
             --ignore 'target/debug/*' \
-            --ignore "/*" \
+            --ignore '/*' \
+            --ignore '*/build.rs' \
+            --ignore '*/tests/*' \
+            --excl-start '^\#\[cfg\(test\)\]' \
+            --excl-stop '^}' \
             --ignore-not-existing \
             -o ./target/coverage/
     - name: Upload HTML coverage report
