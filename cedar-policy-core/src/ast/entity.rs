@@ -174,6 +174,7 @@ impl std::fmt::Display for EntityType {
 
 /// Unique ID for an entity. These represent entities in the AST.
 #[derive(Educe, Serialize, Deserialize, Debug, Clone)]
+#[serde(rename = "EntityUID")]
 #[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct EntityUIDImpl {
     /// Typename of the entity
@@ -189,7 +190,7 @@ pub struct EntityUIDImpl {
 }
 
 /// Unique ID for an entity. These represent entities in the AST.
-#[derive(Educe, Serialize, Deserialize, Debug, Clone)]
+#[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum EntityUID {
     /// Unique ID for an entity. These represent entities in the AST
@@ -197,6 +198,29 @@ pub enum EntityUID {
     #[cfg(feature = "tolerant-ast")]
     /// Represents the ID of an error that failed to parse
     Error,
+}
+
+impl<'de> Deserialize<'de> for EntityUID {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let uid_impl = EntityUIDImpl::deserialize(deserializer)?;
+        Ok(EntityUID::EntityUID(uid_impl))
+    }
+}
+
+impl Serialize for EntityUID {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            EntityUID::EntityUID(uid_impl) => uid_impl.serialize(serializer),
+            #[cfg(feature = "tolerant-ast")]
+            EntityUID::Error => serializer.serialize_str("EntityUID::Error"),
+        }
+    }
 }
 
 impl StaticallyTyped for EntityUID {
@@ -350,13 +374,36 @@ impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
 /// (see [#884](https://github.com/cedar-policy/cedar/issues/884)).
 /// To get an escaped representation, use `.escaped()`.
 /// To get an unescaped representation, use `.as_ref()`.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
 pub enum Eid {
     /// Actual Eid
     EidImpl(SmolStr),
     #[cfg(feature = "tolerant-ast")]
     /// Represents an Eid of an entity that failed to parse
     ErrorEid,
+}
+
+impl<'de> Deserialize<'de> for Eid {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(Eid::EidImpl(SmolStr::from(value)))
+    }
+}
+
+impl Serialize for Eid {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Eid::EidImpl(s) => s.serialize(serializer),
+            #[cfg(feature = "tolerant-ast")]
+            Eid::ErrorEid => serializer.serialize_str("Eid::Error"),
+        }
+    }
 }
 
 impl Eid {
