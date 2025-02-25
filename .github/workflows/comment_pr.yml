@@ -1,5 +1,9 @@
 name: Comment on the pull request
- 
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+  statuses: read
 on:
   workflow_run:
     workflows: [Cargo Build & Test]
@@ -9,36 +13,22 @@ on:
 jobs:
   post_comment:
     runs-on: ubuntu-latest
-    if: >
-      github.event.workflow_run.event == 'pull_request' &&
-      (github.event.workflow_run.conclusion == 'success' ||
-      github.event.workflow_run.conclusion == 'failure')
+    if: github.event.workflow_run.event == 'pull_request'
     steps:
       - uses: actions/checkout@v4
-      - name: Check build_and_test status
+      - name: Download artifacts
         shell: bash
         run: |
-          jobs=$(gh run view $RUN_ID --json jobs)
-          job_status=$(jq --raw-output '.[] | map(select(.name=="build_and_test / Build and Test (stable)"))[0] | .status' <<< "$jobs")
-          echo "STATUS=$job_status" >> $GITHUB_ENV
-        env:
-              RUN_ID: ${{github.event.workflow_run.id }}
-              GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Download artifacts
-        if: ${{ env.STATUS == 'completed' }}
-        shell: bash
-        run: gh run download $RUN_ID
+          STATUS=$(gh run download $RUN_ID --name coverage_comment && echo "SUCCESS" || echo "FAILURE")
+          echo "STATUS=$STATUS" >> $GITHUB_ENV
         env:
           RUN_ID: ${{github.event.workflow_run.id }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Read stored values
-        if: ${{ env.STATUS == 'completed' }}
+      - name: Add comment to PR
+        if: ${{ env.STATUS == 'SUCCESS' }}
         shell: bash
         run: |
-          echo "ISSUE_NUMBER=$(cat coverage_comment/issue_number.txt)" >> $GITHUB_ENV
-      - name: Add comment to PR
-        if: ${{ env.STATUS == 'completed' }}
-        shell: bash
-        run: gh pr comment $ISSUE_NUMBER --body-file coverage_comment/markdown.md
+          ISSUE_NUMBER=$(cat coverage_comment/issue_number.txt)
+          gh pr comment $ISSUE_NUMBER --body-file coverage_comment/markdown.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
