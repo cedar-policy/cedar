@@ -128,7 +128,10 @@ impl From<&models::TemplateBody> for ast::TemplateBody {
                 .map(|(key, value)| {
                     (
                         ast::AnyId::from_normalized_str(key).unwrap(),
-                        ast::Annotation { val: value.into(), loc: None },
+                        ast::Annotation {
+                            val: value.into(),
+                            loc: None,
+                        },
                     )
                 })
                 .collect(),
@@ -168,9 +171,13 @@ impl From<&ast::TemplateBody> for models::TemplateBody {
             id: v.id().as_ref().to_string(),
             annotations,
             effect: models::Effect::from(&v.effect()).into(),
-            principal_constraint: Some(models::PrincipalOrResourceConstraint::from(v.principal_constraint())),
+            principal_constraint: Some(models::PrincipalOrResourceConstraint::from(
+                v.principal_constraint(),
+            )),
             action_constraint: Some(models::ActionConstraint::from(v.action_constraint())),
-            resource_constraint: Some(models::PrincipalOrResourceConstraint::from(v.resource_constraint())),
+            resource_constraint: Some(models::PrincipalOrResourceConstraint::from(
+                v.resource_constraint(),
+            )),
             non_scope_constraints: Some(models::Expr::from(v.non_scope_constraints())),
         }
     }
@@ -272,12 +279,22 @@ impl From<&models::PrincipalOrResourceConstraint> for ast::PrincipalOrResourceCo
             }
             models::principal_or_resource_constraint::Data::Is(msg) => {
                 ast::PrincipalOrResourceConstraint::Is(
-                    ast::EntityType::from(msg.entity_type.as_ref().expect("entity_type field should exist")).into(),
+                    ast::EntityType::from(
+                        msg.entity_type
+                            .as_ref()
+                            .expect("entity_type field should exist"),
+                    )
+                    .into(),
                 )
             }
             models::principal_or_resource_constraint::Data::IsIn(msg) => {
                 ast::PrincipalOrResourceConstraint::IsIn(
-                    ast::EntityType::from(msg.entity_type.as_ref().expect("entity_type field should exist")).into(),
+                    ast::EntityType::from(
+                        msg.entity_type
+                            .as_ref()
+                            .expect("entity_type field should exist"),
+                    )
+                    .into(),
                     ast::EntityReference::from(msg.er.as_ref().expect("er field should exist")),
                 )
             }
@@ -332,9 +349,7 @@ impl From<&models::ActionConstraint> for ast::ActionConstraint {
     fn from(v: &models::ActionConstraint) -> Self {
         match v.data.as_ref().expect("data.as_ref()") {
             models::action_constraint::Data::Any(x) => {
-                match models::action_constraint::Any::try_from(*x)
-                    .expect("decode should succeed")
-                {
+                match models::action_constraint::Any::try_from(*x).expect("decode should succeed") {
                     models::action_constraint::Any::X => ast::ActionConstraint::Any,
                 }
             }
@@ -594,8 +609,14 @@ mod test {
             ast::PolicyID::from_string("template"),
             None,
             ast::Annotations::from_iter([
-                (ast::AnyId::from_normalized_str("read").unwrap(), annotation1),
-                (ast::AnyId::from_normalized_str("write").unwrap(), annotation2),
+                (
+                    ast::AnyId::from_normalized_str("read").unwrap(),
+                    annotation1,
+                ),
+                (
+                    ast::AnyId::from_normalized_str("write").unwrap(),
+                    annotation2,
+                ),
             ]),
             ast::Effect::Permit,
             pc.clone(),

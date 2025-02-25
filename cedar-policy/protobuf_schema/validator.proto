@@ -58,8 +58,6 @@ message ActionDecl {
     cedar_policy_core.EntityUid name = 1;
     repeated cedar_policy_core.EntityUid descendants = 3;
     Type context = 4;
-    map<string, AttributeType> attribute_types = 5;
-    map<string, cedar_policy_core.Expr> attributes = 6;
     repeated cedar_policy_core.Name principal_types = 7;
     repeated cedar_policy_core.Name resource_types = 8;
 }

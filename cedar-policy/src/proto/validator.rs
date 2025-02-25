@@ -17,11 +17,11 @@
 #![allow(clippy::use_self)]
 
 use super::models;
-use cedar_policy_core::{ast, evaluator, extensions};
+use cedar_policy_core::ast;
 use cedar_policy_validator::types;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 impl From<&cedar_policy_validator::ValidatorSchema> for models::Schema {
     fn from(v: &cedar_policy_validator::ValidatorSchema) -> Self {
@@ -97,21 +97,22 @@ impl From<&models::ValidationMode> for cedar_policy_validator::ValidationMode {
 
 impl From<&cedar_policy_validator::ValidatorActionId> for models::ActionDecl {
     fn from(v: &cedar_policy_validator::ValidatorActionId) -> Self {
+        debug_assert_eq!(
+            v.attribute_types().keys().collect::<Vec<&SmolStr>>(),
+            Vec::<&SmolStr>::new(),
+            "action attributes are not currently supported in protobuf"
+        );
+        debug_assert_eq!(
+            v.attributes().collect::<Vec<_>>(),
+            vec![],
+            "action attributes are not currently supported in protobuf"
+        );
         Self {
             name: Some(models::EntityUid::from(v.name())),
             principal_types: v.applies_to_principals().map(models::Name::from).collect(),
             resource_types: v.applies_to_resources().map(models::Name::from).collect(),
             descendants: v.descendants().map(models::EntityUid::from).collect(),
             context: Some(models::Type::from(v.context())),
-            attribute_types: attributes_to_model(v.attribute_types()),
-            attributes: v
-                .attributes()
-                .map(|(k, v)| {
-                    let value =
-                        models::Expr::from(&ast::Expr::from(ast::PartialValue::from(v.to_owned())));
-                    (k.to_string(), value)
-                })
-                .collect(),
         }
     }
 }
@@ -120,27 +121,16 @@ impl From<&models::ActionDecl> for cedar_policy_validator::ValidatorActionId {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &models::ActionDecl) -> Self {
-        let extensions_none = extensions::Extensions::none();
-        let eval = evaluator::RestrictedEvaluator::new(extensions_none);
         Self::new(
             ast::EntityUID::from(v.name.as_ref().expect("name field should exist")),
             v.principal_types.iter().map(ast::EntityType::from),
             v.resource_types.iter().map(ast::EntityType::from),
             v.descendants.iter().map(ast::EntityUID::from),
             types::Type::from(v.context.as_ref().expect("context field should exist")),
-            model_to_attributes(&v.attribute_types),
-            v.attributes
-                .iter()
-                .map(|(k, v)| {
-                    let pval = eval
-                        .partial_interpret(
-                            ast::BorrowedRestrictedExpr::new(&ast::Expr::from(v))
-                                .expect("RestrictedExpr"),
-                        )
-                        .expect("interpret on RestrictedExpr");
-                    (k.into(), pval.into())
-                })
-                .collect(),
+            // protobuf formats do not include action attributes, so we
+            // translate into a `ValidatorActionId` with no action attributes
+            types::Attributes::with_attributes([]),
+            BTreeMap::new(),
         )
     }
 }
@@ -277,14 +267,11 @@ impl From<&types::Type> for models::Type {
 }
 
 fn model_to_attributes(v: &HashMap<String, models::AttributeType>) -> types::Attributes {
-    types::Attributes::with_attributes(
-        v.iter().map(|(k, v)| (k.into(), v.into()))
-    )
+    types::Attributes::with_attributes(v.iter().map(|(k, v)| (k.into(), v.into())))
 }
 
 fn attributes_to_model(v: &types::Attributes) -> HashMap<String, models::AttributeType> {
-    v
-        .iter()
+    v.iter()
         .map(|(k, v)| (k.to_string(), models::AttributeType::from(v)))
         .collect()
 }
@@ -322,20 +309,14 @@ impl From<&models::EntityRecordKind> for types::EntityRecordKind {
             models::entity_record_kind::Data::Record(r) => Self::Record {
                 attrs: model_to_attributes(&r.attrs),
                 open_attributes: types::OpenTag::from(
-                    &models::OpenTag::try_from(r.open_attributes)
-                        .expect("decode should succeed"),
+                    &models::OpenTag::try_from(r.open_attributes).expect("decode should succeed"),
                 ),
             },
             models::entity_record_kind::Data::Entity(name) => {
                 Self::Entity(types::EntityLUB::single_entity(ast::EntityType::from(name)))
             }
             models::entity_record_kind::Data::ActionEntity(act) => Self::ActionEntity {
-                name: ast::EntityType::from(
-                    act
-                        .name
-                        .as_ref()
-                        .expect("name field should exist"),
-                ),
+                name: ast::EntityType::from(act.name.as_ref().expect("name field should exist")),
                 attrs: model_to_attributes(&act.attrs),
             },
         }
@@ -358,13 +339,11 @@ impl From<&types::EntityRecordKind> for models::EntityRecordKind {
                 models::entity_record_kind::AnyEntity::X.into(),
             ),
             types::EntityRecordKind::Entity(e) => {
-                models::entity_record_kind::Data::Entity(
-                    models::Name::from(
-                        &e.clone()
-                            .into_single_entity()
-                            .expect("will be single EntityType"),
-                    )
-                )
+                models::entity_record_kind::Data::Entity(models::Name::from(
+                    &e.clone()
+                        .into_single_entity()
+                        .expect("will be single EntityType"),
+                ))
             }
             types::EntityRecordKind::ActionEntity { name, attrs } => {
                 models::entity_record_kind::Data::ActionEntity(

@@ -106,10 +106,7 @@ impl From<&models::EntityUid> for ast::EntityUIDEntry {
     fn from(v: &models::EntityUid) -> Self {
         // PANIC SAFETY: experimental feature
         #[allow(clippy::expect_used)]
-        ast::EntityUIDEntry::known(
-            ast::EntityUID::from(v),
-            None,
-        )
+        ast::EntityUIDEntry::known(ast::EntityUID::from(v), None)
     }
 }
 
@@ -669,9 +666,7 @@ impl From<&models::Expr> for ast::Context {
 
 impl From<&ast::Context> for models::Expr {
     fn from(v: &ast::Context) -> Self {
-        models::Expr::from(&ast::Expr::from(
-            ast::PartialValue::from(v.to_owned()),
-        ))
+        models::Expr::from(&ast::Expr::from(ast::PartialValue::from(v.to_owned())))
     }
 }
 
@@ -853,10 +848,7 @@ mod test {
             Some(context.clone()),
         );
         let request_rt = ast::Request::from(&models::Request::from(&request));
-        assert_eq!(
-            context,
-            ast::Context::from(&models::Expr::from(&context))
-        );
+        assert_eq!(context, ast::Context::from(&models::Expr::from(&context)));
         assert_eq!(request.principal().uid(), request_rt.principal().uid());
         assert_eq!(request.action().uid(), request_rt.action().uid());
         assert_eq!(request.resource().uid(), request_rt.resource().uid());
