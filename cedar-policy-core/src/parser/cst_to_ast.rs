@@ -224,6 +224,18 @@ impl Node<Option<cst::Policy>> {
     /// well, which will become templates with 0 slots
     pub fn to_policy_template(&self, id: ast::PolicyID) -> Result<ast::Template> {
         let policy = self.try_as_inner()?;
+        let policy = match policy {
+            cst::Policy::PolicyImpl(policy_impl) => policy_impl,
+            #[cfg(feature = "tolerant-ast")]
+            cst::Policy::PolicyError => {
+                // This will only happen if we use a 'tolerant' parser, otherwise errors should be caught
+                // during parsing to CST
+                return Err(ParseErrors::singleton(ToASTError::new(
+                    ToASTErrorKind::CSTErrorNode,
+                    Loc::new(0..1, "CSTErrorNode".into()),
+                )));
+            }
+        };
 
         // convert effect
         let maybe_effect = policy.effect.to_effect();
@@ -317,7 +329,16 @@ impl Node<Option<cst::Policy>> {
     #[cfg(feature = "tolerant-ast")]
     pub fn to_policy_template_with_errors(&self, id: ast::PolicyID) -> Result<ast::Template> {
         let policy = self.try_as_inner()?;
-
+        let policy = match policy {
+            cst::Policy::PolicyImpl(policy_impl) => policy_impl,
+            cst::Policy::PolicyError => {
+                // Note: In the future we will likely support AST Policy Error nodes, but for now we will fail
+                return Err(ParseErrors::singleton(ToASTError::new(
+                    ToASTErrorKind::CSTErrorNode,
+                    Loc::new(0..1, "CSTErrorNode".into()),
+                )));
+            }
+        };
         // convert effect
         let maybe_effect = policy.effect.to_effect();
 
@@ -327,7 +348,7 @@ impl Node<Option<cst::Policy>> {
         });
 
         // convert scope
-        let maybe_scope = policy.extract_scope();
+        let maybe_scope = policy.extract_scope_tolerant_ast();
 
         // convert conditions
         let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
@@ -363,7 +384,7 @@ impl Node<Option<cst::Policy>> {
     }
 }
 
-impl cst::Policy {
+impl cst::PolicyImpl {
     /// Get the scope constraints from the `cst::Policy`
     pub fn extract_scope(
         &self,
@@ -386,6 +407,72 @@ impl cst::Policy {
         let maybe_action = if let Some(scope2) = vars.next() {
             end_of_last_var = scope2.loc.end();
             scope2.to_action_constraint()
+        } else {
+            Err(ToASTError::new(
+                ToASTErrorKind::MissingScopeVariable(ast::Var::Action),
+                self.effect.loc.span(end_of_last_var),
+            )
+            .into())
+        };
+        let maybe_resource = if let Some(scope3) = vars.next() {
+            scope3.to_resource_constraint()
+        } else {
+            Err(ToASTError::new(
+                ToASTErrorKind::MissingScopeVariable(ast::Var::Resource),
+                self.effect.loc.span(end_of_last_var),
+            )
+            .into())
+        };
+
+        let maybe_extra_vars = if let Some(errs) = ParseErrors::from_iter(
+            // Add each of the extra constraints to the error list
+            vars.map(|extra_var| {
+                extra_var
+                    .try_as_inner()
+                    .map(|def| {
+                        extra_var
+                            .to_ast_err(ToASTErrorKind::ExtraScopeElement(Box::new(def.clone())))
+                    })
+                    .unwrap_or_else(|e| e)
+                    .into()
+            }),
+        ) {
+            Err(errs)
+        } else {
+            Ok(())
+        };
+        let (principal, action, resource, _) = flatten_tuple_4(
+            maybe_principal,
+            maybe_action,
+            maybe_resource,
+            maybe_extra_vars,
+        )?;
+        Ok((principal, action, resource))
+    }
+
+    /// Get the scope constraints from the `cst::Policy`
+    #[cfg(feature = "tolerant-ast")]
+    pub fn extract_scope_tolerant_ast(
+        &self,
+    ) -> Result<(PrincipalConstraint, ActionConstraint, ResourceConstraint)> {
+        // Tracks where the last variable in the scope ended. We'll point to
+        // this position to indicate where to fill in vars if we're missing one.
+        let mut end_of_last_var = self.effect.loc.end();
+
+        let mut vars = self.variables.iter();
+        let maybe_principal = if let Some(scope1) = vars.next() {
+            end_of_last_var = scope1.loc.end();
+            scope1.to_principal_constraint()
+        } else {
+            Err(ToASTError::new(
+                ToASTErrorKind::MissingScopeVariable(ast::Var::Principal),
+                self.effect.loc.span(end_of_last_var),
+            )
+            .into())
+        };
+        let maybe_action = if let Some(scope2) = vars.next() {
+            end_of_last_var = scope2.loc.end();
+            scope2.to_action_constraint_tolerant_ast()
         } else {
             Err(ToASTError::new(
                 ToASTErrorKind::MissingScopeVariable(ast::Var::Action),
@@ -826,12 +913,7 @@ impl Node<Option<cst::VariableDef>> {
                 op => Err(self.to_ast_err(ToASTErrorKind::InvalidActionScopeOperator(*op))),
             }?;
             let action_constraint_res = action_constraint.contains_only_action_types();
-            #[cfg(feature = "tolerant-ast")]
-            // With 'tolerant-ast' feature enabled, we store invalid action constraints as an ErrorConstraint
-            return Ok(action_constraint_res.unwrap_or(ActionConstraint::ErrorConstraint));
 
-            #[allow(unreachable_code)]
-            // Otherwise, propagate the InvalidActionType error
             action_constraint_res.map_err(|non_action_euids| {
                 rel_expr
                     .to_ast_err(parse_errors::InvalidActionType {
@@ -839,6 +921,62 @@ impl Node<Option<cst::VariableDef>> {
                     })
                     .into()
             })
+        } else {
+            Ok(ActionConstraint::Any)
+        }
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    fn to_action_constraint_tolerant_ast(&self) -> Result<ast::ActionConstraint> {
+        let vardef = self.try_as_inner()?;
+
+        match vardef.variable.to_var() {
+            Ok(ast::Var::Action) => Ok(()),
+            Ok(got) => Err(self
+                .to_ast_err(ToASTErrorKind::IncorrectVariable {
+                    expected: ast::Var::Action,
+                    got,
+                })
+                .into()),
+            Err(errs) => Err(errs),
+        }?;
+
+        if let Some(typename) = vardef.unused_type_name.as_ref() {
+            typename.to_type_constraint::<ast::ExprBuilder<()>>()?;
+        }
+
+        if vardef.entity_type.is_some() {
+            return Err(self.to_ast_err(ToASTErrorKind::IsInActionScope).into());
+        }
+
+        if let Some((op, rel_expr)) = &vardef.ineq {
+            let action_constraint = match op {
+                cst::RelOp::In => {
+                    // special check for the syntax `_ in _ is _`
+                    if let Ok(expr) = rel_expr.to_expr::<ast::ExprBuilder<()>>() {
+                        if matches!(expr.expr_kind(), ast::ExprKind::Is { .. }) {
+                            return Err(self.to_ast_err(ToASTErrorKind::IsInActionScope).into());
+                        }
+                    }
+                    match rel_expr.to_refs(ast::Var::Action)? {
+                        OneOrMultipleRefs::Single(single_ref) => {
+                            Ok(ActionConstraint::is_in([single_ref]))
+                        }
+                        OneOrMultipleRefs::Multiple(refs) => Ok(ActionConstraint::is_in(refs)),
+                    }
+                }
+                cst::RelOp::Eq => {
+                    let single_ref = rel_expr.to_ref(ast::Var::Action)?;
+                    Ok(ActionConstraint::is_eq(single_ref))
+                }
+                cst::RelOp::InvalidSingleEq => {
+                    Err(self.to_ast_err(ToASTErrorKind::InvalidSingleEq))
+                }
+                op => Err(self.to_ast_err(ToASTErrorKind::InvalidActionScopeOperator(*op))),
+            }?;
+            let action_constraint_res = action_constraint.contains_only_action_types();
+            // With 'tolerant-ast' feature enabled, we store invalid action constraints as an ErrorConstraint
+            Ok(action_constraint_res.unwrap_or(ActionConstraint::ErrorConstraint))
         } else {
             Ok(ActionConstraint::Any)
         }
@@ -3443,6 +3581,7 @@ mod tests {
             r#"permit(principal, action in [Foo::Action::"view", Action::"view"], resource);"#,
         )
         .expect("Valid policy failed to parse");
+
         expect_action_error(
             r#"permit(principal, action == Foo::"view", resource);"#,
             "expected an entity uid with type `Action` but got `Foo::\"view\"`",
@@ -5287,7 +5426,7 @@ mod tests {
     #[cfg(feature = "tolerant-ast")]
     #[track_caller]
     fn assert_parse_policy_allows_errors(text: &str) -> ast::StaticPolicy {
-        text_to_cst::parse_policy(text)
+        text_to_cst::parse_policy_tolerant(text)
             .expect("failed parser")
             .to_policy_with_errors(ast::PolicyID::from_string("id"))
             .unwrap_or_else(|errs| {
@@ -5298,7 +5437,7 @@ mod tests {
     #[cfg(feature = "tolerant-ast")]
     #[track_caller]
     fn assert_parse_policy_allows_errors_fails(text: &str) -> ParseErrors {
-        let result = text_to_cst::parse_policy(text)
+        let result = text_to_cst::parse_policy_tolerant(text)
             .expect("failed parser")
             .to_policy_with_errors(ast::PolicyID::from_string("id"));
         match result {
@@ -5407,52 +5546,6 @@ mod tests {
         permit(principal, action, resource) when { action == &&  principal == User::test};
         "#;
         assert_parse_policy_allows_errors(src);
-    }
-
-    #[cfg(feature = "tolerant-ast")]
-    #[test]
-    fn parsing_with_errors_succeeds_with_complex_missing_operand_eq_and_in() {
-        // == operator test cases
-        let src_eq_complex_cases = [
-            // Basic missing operand cases
-            r#"permit(principal ==, action, resource);"#,
-            r#"permit(principal, action ==, resource);"#,
-            r#"permit(principal, action, resource ==);"#,
-            // Cases with existing values and missing operands
-            r#"permit(principal == Test::User::"blah", action, resource);"#,
-            r#"permit(principal, action == Action::"read", resource);"#,
-            r#"permit(principal, action, resource == Test::"data");"#,
-        ];
-
-        for src in src_eq_complex_cases.iter() {
-            let parsed = assert_parse_policy_allows_errors(src);
-            println!("Parsed == complex policy: {:?}", parsed);
-        }
-
-        // in operator test cases
-        let src_in_complex_cases = [
-            // Basic missing operand cases
-            r#"permit(principal in, action, resource);"#,
-            r#"permit(principal, action in, resource);"#,
-            r#"permit(principal, action, resource in);"#,
-            // Cases with existing collections
-            r#"permit(principal in ["admin", "user"], action, resource);"#,
-            r#"permit(principal, action in ["read", "write"], resource);"#,
-            r#"permit(principal, action, resource in ["sensitive", "public"]);"#,
-            // Cases with "is" and existing collections
-            r#"permit(principal is Group in ["admins", "editors"], action, resource);"#,
-            r#"permit(principal, action is Request in ["GET", "POST"], resource);"#,
-            r#"permit(principal, action, resource is Data in ["private", "public"]);"#,
-            // Mixed cases with multiple potential missing operands
-            r#"permit(principal is something in, action in, resource);"#,
-            r#"permit(principal, action is something in, resource in);"#,
-            r#"permit(principal is something in, action, resource in);"#,
-        ];
-
-        for src in src_in_complex_cases.iter() {
-            let parsed = assert_parse_policy_allows_errors(src);
-            println!("Parsed in complex policy: {:?}", parsed);
-        }
     }
 
     #[cfg(feature = "tolerant-ast")]

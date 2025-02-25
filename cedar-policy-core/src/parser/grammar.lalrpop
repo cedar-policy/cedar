@@ -110,8 +110,19 @@ pub Policy: Node<Option<cst::Policy>> = {
     <conds:Cond*>
     ";"
     <r:@R>
-    => Node::with_source_loc(Some(cst::Policy{ annotations,effect,variables,conds }), Loc::new(l..r, Arc::clone(src))),
-    <l:@L> <err:!> ";" <r:@R> => { errors.push(err); Node::with_source_loc(None, Loc::new(l..r, Arc::clone(src))) },
+    => Node::with_source_loc(Some(cst::Policy::PolicyImpl(cst::PolicyImpl{ annotations,effect,variables,conds })), Loc::new(l..r, Arc::clone(src))),
+    // <l:@L> <err:!> ";" <r:@R> => { errors.push(err); Node::with_source_loc(None, Loc::new(l..r, Arc::clone(src))) },
+    <l:@L> <err:!> ";" <r:@R> => {
+        // Tolerant AST creates a valid CST node representing the unparsable policy
+        #[cfg(feature = "tolerant-ast")]
+        errors.push(err); 
+        #[cfg(feature = "tolerant-ast")]
+        return Node::with_source_loc(Some(cst::Policy::PolicyError), Loc::new(l..r, Arc::clone(src)));
+
+        // Otherwise we record this as an error
+        errors.push(err); 
+        Node::with_source_loc(None, Loc::new(l..r, Arc::clone(src)))
+    }
 }
 
 // VariableDef := Variable [':' Name] ['is' Add] [('in' | '==') Expr]
@@ -196,6 +207,8 @@ pub Expr: Node<Option<cst::Expr>> = {
         => Node::with_source_loc(Some(cst::Expr::Expr(cst::ExprImpl { expr: Box::new(cst::ExprData::If(i,t,e)) })), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <err:!> <r:@R> => { 
         // Tolerant AST creates a valid CST node representing the unparsable expression
+        #[cfg(feature = "tolerant-ast")]
+        errors.push(err); 
         #[cfg(feature = "tolerant-ast")]
         return Node::with_source_loc(Some(cst::Expr::ErrorExpr), Loc::new(l..r, Arc::clone(src)));
 

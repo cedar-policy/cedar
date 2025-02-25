@@ -58,8 +58,15 @@ impl fmt::Display for Policies {
 }
 impl fmt::Display for Policy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let policy = match self {
+            Policy::PolicyImpl(p) => p,
+            _ => {
+                writeln!(f, "Policy::PolicyError");
+                return Ok(());
+            }
+        };
         // start with annotations
-        for anno in self.annotations.iter() {
+        for anno in policy.annotations.iter() {
             if f.alternate() {
                 // each annotation on a new line
                 writeln!(f, "{:#}", View(anno))?;
@@ -69,8 +76,8 @@ impl fmt::Display for Policy {
         }
         // main policy body
         if f.alternate() {
-            write!(f, "{:#}(", View(&self.effect))?;
-            let mut vars = self.variables.iter();
+            write!(f, "{:#}(", View(&policy.effect))?;
+            let mut vars = policy.variables.iter();
             // if at least one var ...
             if let Some(v) = vars.next() {
                 // write out the first one ...
@@ -86,13 +93,13 @@ impl fmt::Display for Policy {
                 write!(f, ")")?;
             }
             // include conditions on their own lines
-            for c in self.conds.iter() {
+            for c in policy.conds.iter() {
                 write!(f, "\n{:#}", View(c))?;
             }
             write!(f, ";")?;
         } else {
-            write!(f, "{}(", View(&self.effect))?;
-            let mut vars = self.variables.iter();
+            write!(f, "{}(", View(&policy.effect))?;
+            let mut vars = policy.variables.iter();
             // if at least one var ...
             if let Some(v) = vars.next() {
                 // write out the first one ...
@@ -104,7 +111,7 @@ impl fmt::Display for Policy {
             }
             write!(f, ")")?;
 
-            for c in self.conds.iter() {
+            for c in policy.conds.iter() {
                 write!(f, " {}", View(c))?;
             }
             write!(f, ";")?;

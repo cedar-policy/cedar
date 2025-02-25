@@ -49,7 +49,7 @@ pub enum Str {
 
 /// Policy statement, the main building block of the language
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Policy {
+pub struct PolicyImpl {
     /// Annotations
     pub annotations: Vec<Node<Annotation>>,
     /// policy effect
@@ -58,6 +58,13 @@ pub struct Policy {
     pub variables: Vec<Node<VariableDef>>,
     /// Conditions
     pub conds: Vec<Node<Cond>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Policy {
+    PolicyImpl(PolicyImpl),
+    #[cfg(feature = "tolerant-ast")]
+    PolicyError,
 }
 
 /// The variable part of one of the main item of a policy

@@ -69,6 +69,39 @@ fn parse_collect_errors<'a, P, T>(
     }
 }
 
+/// This helper function calls a generated parser, collects errors that could be
+/// generated multiple ways, and returns a single Result where the error type is
+/// [`err::ParseErrors`].
+#[cfg(feature = "tolerant-ast")]
+fn parse_collect_errors_tolerant<'a, P, T>(
+    parser: &P,
+    parse: impl FnOnce(
+        &P,
+        &mut Vec<err::RawErrorRecovery<'a>>,
+        &Arc<str>,
+        &'a str,
+    ) -> Result<T, err::RawParseError<'a>>,
+    text: &'a str,
+) -> Result<T, err::ParseErrors> {
+    let mut errs = Vec::new();
+    let result = parse(parser, &mut errs, &Arc::from(text), text);
+
+    let errors = errs
+        .into_iter()
+        .map(|rc| err::ToCSTError::from_raw_err_recovery(rc, Arc::from(text)))
+        .map(Into::into);
+    let parsed = match result {
+        Ok(parsed) => parsed,
+        Err(e) => {
+            return Err(err::ParseErrors::new(
+                err::ToCSTError::from_raw_parse_err(e, Arc::from(text)).into(),
+                errors,
+            ));
+        }
+    };
+    Ok(parsed)
+}
+
 // Thread-safe "global" parsers, initialized at first use
 lazy_static::lazy_static! {
     static ref POLICIES_PARSER: grammar::PoliciesParser = grammar::PoliciesParser::new();
@@ -115,6 +148,17 @@ pub fn parse_ident(text: &str) -> Result<Node<Option<cst::Ident>>, err::ParseErr
     parse_collect_errors(&*IDENT_PARSER, grammar::IdentParser::parse, text)
 }
 
+/// Create CST for one policy statement from text - allows CST error nodes on certain parse failures
+#[cfg(feature = "tolerant-ast")]
+pub fn parse_policy_tolerant(text: &str) -> Result<Node<Option<cst::Policy>>, err::ParseErrors> {
+    parse_collect_errors_tolerant(&*POLICY_PARSER, grammar::PolicyParser::parse, text)
+}
+
+/// Create CST for one Expression from text - allows CST error nodes on certain parse failures
+#[cfg(feature = "tolerant-ast")]
+pub fn parse_expr_tolerant(text: &str) -> Result<Node<Option<cst::Expr>>, err::ParseErrors> {
+    parse_collect_errors_tolerant(&*EXPR_PARSER, grammar::ExprParser::parse, text)
+}
 // PANIC SAFETY unit test code
 #[allow(clippy::panic)]
 // PANIC SAFETY unit test code
@@ -1003,6 +1047,22 @@ mod tests {
             .expect("parser error")
             .node
             .expect("no data");
+
+        // In the tolerant AST we store the Policy Error node
+        #[cfg(feature = "tolerant-ast")]
+        assert_eq!(
+            policies
+                .clone()
+                .0
+                .into_iter()
+                .filter_map(|p| p.node)
+                .count(),
+            3
+        );
+        #[cfg(feature = "tolerant-ast")]
+        return ();
+
+        // If the AST is not tolerant, unparsable policy should be None
         assert_eq!(policies.0.into_iter().filter_map(|p| p.node).count(), 2);
     }
 
@@ -1027,6 +1087,10 @@ mod tests {
             parse_policy,
             r#"@foo permit (principal, action, resource);"#,
         );
+        let policy = match policy {
+            cst::Policy::PolicyImpl(p) => p,
+            _ => panic!("Incorrect!"),
+        };
         let annotation = policy.annotations.first().unwrap().as_inner().unwrap();
         assert_eq!(annotation.value, None);
         assert_eq!(
