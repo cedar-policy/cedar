@@ -16,6 +16,9 @@ Cedar Language Version: TBD
 ### Changed
 
 - Changed `Entities::add_entities` and `Entities::from_entities` to ignore structurally equal entities with the same Entity UID.
+- For `protobufs` experimental feature, a number of changes to the interface and
+  the Protobuf format definitions, as we continue to iterate towards making this
+  feature stable.
 
 ### Added
 

@@ -17,49 +17,49 @@
 #![allow(clippy::use_self)]
 
 use super::models;
-use cedar_policy_core::{ast, evaluator, extensions};
+use cedar_policy_core::ast;
 use cedar_policy_validator::types;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
-impl From<&cedar_policy_validator::ValidatorSchema> for models::ValidatorSchema {
+impl From<&cedar_policy_validator::ValidatorSchema> for models::Schema {
     fn from(v: &cedar_policy_validator::ValidatorSchema) -> Self {
         Self {
-            entity_types: v
+            entity_decls: v
                 .entity_types()
-                .map(|ety| models::EntityTypeWithTypesMap {
-                    key: Some(models::EntityType::from(ety.name())),
-                    value: Some(models::ValidatorEntityType::from(ety)),
+                .map(|ety| models::EntityTypeToEntityDeclMap {
+                    key: Some(models::Name::from(ety.name())),
+                    value: Some(models::EntityDecl::from(ety)),
                 })
                 .collect(),
-            action_ids: v
+            action_decls: v
                 .action_ids()
-                .map(|id| models::EntityUidWithActionIdsMap {
+                .map(|id| models::EntityUidToActionDeclMap {
                     key: Some(models::EntityUid::from(id.name())),
-                    value: Some(models::ValidatorActionId::from(id)),
+                    value: Some(models::ActionDecl::from(id)),
                 })
                 .collect(),
         }
     }
 }
 
-impl From<&models::ValidatorSchema> for cedar_policy_validator::ValidatorSchema {
+impl From<&models::Schema> for cedar_policy_validator::ValidatorSchema {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
-    fn from(v: &models::ValidatorSchema) -> Self {
+    fn from(v: &models::Schema) -> Self {
         Self::new(
-            v.entity_types
+            v.entity_decls
                 .iter()
-                .map(|models::EntityTypeWithTypesMap { key, value }| {
+                .map(|models::EntityTypeToEntityDeclMap { key, value }| {
                     let key = key.as_ref().expect("key field should exist");
                     let value = value.as_ref().expect("value field should exist");
                     assert_eq!(key, value.name.as_ref().expect("name field should exist"));
                     cedar_policy_validator::ValidatorEntityType::from(value)
                 }),
-            v.action_ids
+            v.action_decls
                 .iter()
-                .map(|models::EntityUidWithActionIdsMap { key, value }| {
+                .map(|models::EntityUidToActionDeclMap { key, value }| {
                     let key = key.as_ref().expect("key field should exist");
                     let value = value.as_ref().expect("value field should exist");
                     assert_eq!(key, value.name.as_ref().expect("name field should exist"));
@@ -95,87 +95,53 @@ impl From<&models::ValidationMode> for cedar_policy_validator::ValidationMode {
     }
 }
 
-impl From<&cedar_policy_validator::ValidatorActionId> for models::ValidatorActionId {
+impl From<&cedar_policy_validator::ValidatorActionId> for models::ActionDecl {
     fn from(v: &cedar_policy_validator::ValidatorActionId) -> Self {
+        debug_assert_eq!(
+            v.attribute_types().keys().collect::<Vec<&SmolStr>>(),
+            Vec::<&SmolStr>::new(),
+            "action attributes are not currently supported in protobuf"
+        );
+        debug_assert_eq!(
+            v.attributes().collect::<Vec<_>>(),
+            vec![],
+            "action attributes are not currently supported in protobuf"
+        );
         Self {
             name: Some(models::EntityUid::from(v.name())),
-            applies_to: Some(models::ValidatorApplySpec {
-                principal_apply_spec: v
-                    .applies_to_principals()
-                    .map(models::EntityType::from)
-                    .collect(),
-                resource_apply_spec: v
-                    .applies_to_resources()
-                    .map(models::EntityType::from)
-                    .collect(),
-            }),
+            principal_types: v.applies_to_principals().map(models::Name::from).collect(),
+            resource_types: v.applies_to_resources().map(models::Name::from).collect(),
             descendants: v.descendants().map(models::EntityUid::from).collect(),
             context: Some(models::Type::from(v.context())),
-            attribute_types: Some(models::Attributes::from(v.attribute_types())),
-            attributes: v
-                .attributes()
-                .map(|(k, v)| {
-                    let value =
-                        models::Expr::from(&ast::Expr::from(ast::PartialValue::from(v.to_owned())));
-                    (k.to_string(), value)
-                })
-                .collect(),
         }
     }
 }
 
-impl From<&models::ValidatorActionId> for cedar_policy_validator::ValidatorActionId {
+impl From<&models::ActionDecl> for cedar_policy_validator::ValidatorActionId {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
-    fn from(v: &models::ValidatorActionId) -> Self {
-        let extensions_none = extensions::Extensions::none();
-        let eval = evaluator::RestrictedEvaluator::new(extensions_none);
+    fn from(v: &models::ActionDecl) -> Self {
         Self::new(
             ast::EntityUID::from(v.name.as_ref().expect("name field should exist")),
-            v.applies_to
-                .as_ref()
-                .expect("applies_to field should exist")
-                .principal_apply_spec
-                .iter()
-                .map(ast::EntityType::from),
-            v.applies_to
-                .as_ref()
-                .expect("applies_to field should exist")
-                .resource_apply_spec
-                .iter()
-                .map(ast::EntityType::from),
+            v.principal_types.iter().map(ast::EntityType::from),
+            v.resource_types.iter().map(ast::EntityType::from),
             v.descendants.iter().map(ast::EntityUID::from),
             types::Type::from(v.context.as_ref().expect("context field should exist")),
-            types::Attributes::from(
-                v.attribute_types
-                    .as_ref()
-                    .expect("attribute_types field should exist"),
-            ),
-            v.attributes
-                .iter()
-                .map(|(k, v)| {
-                    let pval = eval
-                        .partial_interpret(
-                            ast::BorrowedRestrictedExpr::new(&ast::Expr::from(v))
-                                .expect("RestrictedExpr"),
-                        )
-                        .expect("interpret on RestrictedExpr");
-                    (k.into(), pval.into())
-                })
-                .collect(),
+            // protobuf formats do not include action attributes, so we
+            // translate into a `ValidatorActionId` with no action attributes
+            types::Attributes::with_attributes([]),
+            BTreeMap::new(),
         )
     }
 }
 
-impl From<&cedar_policy_validator::ValidatorEntityType> for models::ValidatorEntityType {
+impl From<&cedar_policy_validator::ValidatorEntityType> for models::EntityDecl {
     fn from(v: &cedar_policy_validator::ValidatorEntityType) -> Self {
-        let name = Some(models::EntityType::from(v.name()));
-        let descendants = v.descendants.iter().map(models::EntityType::from).collect();
-        let attributes = Some(models::Attributes::from(v.attributes()));
+        let name = Some(models::Name::from(v.name()));
+        let descendants = v.descendants.iter().map(models::Name::from).collect();
+        let attributes = attributes_to_model(v.attributes());
         let open_attributes = models::OpenTag::from(&v.open_attributes()).into();
-        let tags = v.tag_type().map(|tags| models::Tag {
-            optional_type: Some(models::Type::from(tags)),
-        });
+        let tags = v.tag_type().map(models::Type::from);
         match &v.kind {
             cedar_policy_validator::ValidatorEntityTypeKind::Standard(_) => Self {
                 name,
@@ -197,10 +163,10 @@ impl From<&cedar_policy_validator::ValidatorEntityType> for models::ValidatorEnt
     }
 }
 
-impl From<&models::ValidatorEntityType> for cedar_policy_validator::ValidatorEntityType {
+impl From<&models::EntityDecl> for cedar_policy_validator::ValidatorEntityType {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
-    fn from(v: &models::ValidatorEntityType) -> Self {
+    fn from(v: &models::EntityDecl) -> Self {
         let name = ast::EntityType::from(v.name.as_ref().expect("name field should exist"));
         let descendants = v.descendants.iter().map(ast::EntityType::from);
         match NonEmpty::collect(v.enum_choices.iter().map(SmolStr::from)) {
@@ -208,38 +174,17 @@ impl From<&models::ValidatorEntityType> for cedar_policy_validator::ValidatorEnt
             None => Self::new_standard(
                 name,
                 descendants,
-                types::Attributes::from(
-                    v.attributes
-                        .as_ref()
-                        .expect("attributes field should exist"),
-                ),
+                model_to_attributes(&v.attributes),
                 types::OpenTag::from(
                     &models::OpenTag::try_from(v.open_attributes).expect("decode should succeed"),
                 ),
-                v.tags
-                    .as_ref()
-                    .and_then(|tags| tags.optional_type.as_ref().map(types::Type::from)),
+                v.tags.as_ref().map(types::Type::from),
             ),
             Some(enum_choices) => {
                 // `enum_choices` is not empty, so `v` represents an enumerated entity type.
-                if let Some(vec) = &v.attributes {
-                    // enumerated entity types must have no attributes
-                    assert_eq!(
-                        vec,
-                        &models::Attributes {
-                            attrs: HashMap::new()
-                        }
-                    );
-                }
-                if let Some(tag) = &v.tags {
-                    // enumerated entity types must have no tags
-                    assert_eq!(
-                        tag,
-                        &models::Tag {
-                            optional_type: None
-                        }
-                    );
-                }
+                // enumerated entity types must have no attributes or tags.
+                assert_eq!(&v.attributes, &HashMap::new());
+                assert_eq!(&v.tags, &None);
                 Self::new_enum(name, descendants, enum_choices)
             }
         }
@@ -321,25 +266,14 @@ impl From<&types::Type> for models::Type {
     }
 }
 
-impl From<&models::Attributes> for types::Attributes {
-    fn from(v: &models::Attributes) -> Self {
-        Self::with_attributes(
-            v.attrs
-                .iter()
-                .map(|(k, v)| (k.into(), types::AttributeType::from(v))),
-        )
-    }
+fn model_to_attributes(v: &HashMap<String, models::AttributeType>) -> types::Attributes {
+    types::Attributes::with_attributes(v.iter().map(|(k, v)| (k.into(), v.into())))
 }
 
-impl From<&types::Attributes> for models::Attributes {
-    fn from(v: &types::Attributes) -> Self {
-        Self {
-            attrs: v
-                .iter()
-                .map(|(k, v)| (k.to_string(), models::AttributeType::from(v)))
-                .collect(),
-        }
-    }
+fn attributes_to_model(v: &types::Attributes) -> HashMap<String, models::AttributeType> {
+    v.iter()
+        .map(|(k, v)| (k.to_string(), models::AttributeType::from(v)))
+        .collect()
 }
 
 impl From<&models::OpenTag> for types::OpenTag {
@@ -365,40 +299,25 @@ impl From<&models::EntityRecordKind> for types::EntityRecordKind {
     #[allow(clippy::expect_used)]
     fn from(v: &models::EntityRecordKind) -> Self {
         match v.data.as_ref().expect("data field should exist") {
-            models::entity_record_kind::Data::Ty(ty) => {
-                match models::entity_record_kind::Ty::try_from(ty.to_owned())
+            models::entity_record_kind::Data::AnyEntity(unit) => {
+                match models::entity_record_kind::AnyEntity::try_from(*unit)
                     .expect("decode should succeed")
                 {
-                    models::entity_record_kind::Ty::AnyEntity => Self::AnyEntity,
+                    models::entity_record_kind::AnyEntity::Unit => Self::AnyEntity,
                 }
             }
-            models::entity_record_kind::Data::Record(p_record) => Self::Record {
-                attrs: types::Attributes::from(
-                    p_record.attrs.as_ref().expect("attrs field should exist"),
-                ),
+            models::entity_record_kind::Data::Record(r) => Self::Record {
+                attrs: model_to_attributes(&r.attrs),
                 open_attributes: types::OpenTag::from(
-                    &models::OpenTag::try_from(p_record.open_attributes)
-                        .expect("decode should succeed"),
+                    &models::OpenTag::try_from(r.open_attributes).expect("decode should succeed"),
                 ),
             },
-            models::entity_record_kind::Data::Entity(p_entity) => {
-                Self::Entity(types::EntityLUB::single_entity(ast::EntityType::from(
-                    p_entity.e.as_ref().expect("e field should exist"),
-                )))
+            models::entity_record_kind::Data::Entity(name) => {
+                Self::Entity(types::EntityLUB::single_entity(ast::EntityType::from(name)))
             }
-            models::entity_record_kind::Data::ActionEntity(p_action_entity) => Self::ActionEntity {
-                name: ast::EntityType::from(
-                    p_action_entity
-                        .name
-                        .as_ref()
-                        .expect("name field should exist"),
-                ),
-                attrs: types::Attributes::from(
-                    p_action_entity
-                        .attrs
-                        .as_ref()
-                        .expect("attrs field should exist"),
-                ),
+            models::entity_record_kind::Data::ActionEntity(act) => Self::ActionEntity {
+                name: ast::EntityType::from(act.name.as_ref().expect("name field should exist")),
+                attrs: model_to_attributes(&act.attrs),
             },
         }
     }
@@ -413,26 +332,24 @@ impl From<&types::EntityRecordKind> for models::EntityRecordKind {
                 attrs,
                 open_attributes,
             } => models::entity_record_kind::Data::Record(models::entity_record_kind::Record {
-                attrs: Some(models::Attributes::from(attrs)),
+                attrs: attributes_to_model(attrs),
                 open_attributes: models::OpenTag::from(open_attributes).into(),
             }),
-            types::EntityRecordKind::AnyEntity => models::entity_record_kind::Data::Ty(
-                models::entity_record_kind::Ty::AnyEntity.into(),
+            types::EntityRecordKind::AnyEntity => models::entity_record_kind::Data::AnyEntity(
+                models::entity_record_kind::AnyEntity::Unit.into(),
             ),
             types::EntityRecordKind::Entity(e) => {
-                models::entity_record_kind::Data::Entity(models::entity_record_kind::Entity {
-                    e: Some(models::EntityType::from(
-                        &e.clone()
-                            .into_single_entity()
-                            .expect("will be single EntityType"),
-                    )),
-                })
+                models::entity_record_kind::Data::Entity(models::Name::from(
+                    &e.clone()
+                        .into_single_entity()
+                        .expect("will be single EntityType"),
+                ))
             }
             types::EntityRecordKind::ActionEntity { name, attrs } => {
                 models::entity_record_kind::Data::ActionEntity(
                     models::entity_record_kind::ActionEntity {
-                        name: Some(models::EntityType::from(name)),
-                        attrs: Some(models::Attributes::from(attrs)),
+                        name: Some(models::Name::from(name)),
+                        attrs: attributes_to_model(attrs),
                     },
                 )
             }

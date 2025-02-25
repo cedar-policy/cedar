@@ -355,9 +355,9 @@ fn describe_arity_error(
 }
 
 /// A Policy that contains:
-///   a pointer to its template
-///   an link ID (unless it's an static policy)
-///   the bound values for slots in the template
+///   - a pointer to its template
+///   - a link ID (unless it's a static policy)
+///   - the bound values for slots in the template
 ///
 /// Policies are not serializable (due to the pointer), and can be serialized
 /// by converting to/from LiteralPolicy
@@ -366,10 +366,12 @@ pub struct Policy {
     /// Reference to the template
     template: Arc<Template>,
     /// Id of this link
+    ///
     /// None in the case that this is an instance of a Static Policy
     link: Option<PolicyID>,
     // INVARIANT (values total map)
     // All of the slots in `template` MUST be bound by `values`
+    //
     /// values the slots are bound to.
     /// The constructor `new` is only visible in this module,
     /// so it is the responsibility of callers to maintain
@@ -561,7 +563,8 @@ impl std::fmt::Display for Policy {
 /// Map from Slot Ids to Entity UIDs which fill the slots
 pub type SlotEnv = HashMap<SlotId, EntityUID>;
 
-/// Represents either an static policy or a template linked policy
+/// Represents either a static policy or a template linked policy.
+///
 /// This is the serializable version because it simply refers to the `Template` by its Id
 /// and does not contain a reference to the `Template` itself
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
