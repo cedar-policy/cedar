@@ -1013,6 +1013,7 @@ impl Node<Option<cst::Cond>> {
                 convert_expr_error_to_parse_error::<Build>(
                     self.to_ast_err(ToASTErrorKind::EmptyClause(Some(ident)))
                         .into(),
+                    #[cfg(feature = "tolerant-ast")]
                     Some(&self.loc),
                 )
             }
@@ -1058,6 +1059,7 @@ fn build_ast_error_node_if_possible<Build: ExprBuilder>(
 #[cfg_attr(not(feature = "tolerant-ast"), allow(unused_variables))]
 fn convert_expr_error_to_parse_error<Build: ExprBuilder>(
     error: ParseErrors,
+    #[cfg(feature = "tolerant-ast")]
     loc: Option<&Loc>,
 ) -> Result<Build::Expr> {
     #[cfg(feature = "tolerant-ast")]
@@ -1114,6 +1116,7 @@ where
                     loc.clone(),
                 )
                 .into(),
+                #[cfg(feature = "tolerant-ast")]
                 Some(&loc),
             ),
             Self::StrLit { lit, loc } => {
@@ -1232,6 +1235,7 @@ impl Node<Option<cst::Expr>> {
                 let e = ToASTError::new(ToASTErrorKind::CSTErrorNode, self.loc.clone());
                 return Ok(ExprOrSpecial::Expr {
                     expr: convert_expr_error_to_parse_error::<Build>(e.into(), Some(&self.loc))?,
+                    #[cfg(feature = "tolerant-ast")]
                     loc: self.loc.clone(),
                 });
             }
