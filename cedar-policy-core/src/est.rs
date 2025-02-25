@@ -31,7 +31,6 @@ use crate::ast::EntityUID;
 use crate::ast::{self, Annotation};
 use crate::entities::json::{err::JsonDeserializationError, EntityUidJson};
 use crate::expr_builder::ExprBuilder;
-use crate::parser::cst;
 use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
 #[cfg(feature = "tolerant-ast")]
