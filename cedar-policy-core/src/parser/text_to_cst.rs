@@ -1033,6 +1033,7 @@ mod tests {
         );
     }
 
+    #[allow(unreachable_code)]
     #[test]
     fn policies6() {
         // test that an error doesn't stop the parser
