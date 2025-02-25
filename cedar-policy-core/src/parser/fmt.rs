@@ -60,7 +60,8 @@ impl fmt::Display for Policy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let policy = match self {
             Policy::PolicyImpl(p) => p,
-            _ => {
+            #[cfg(feature = "tolerant-ast")]
+            Policy::PolicyError => {
                 writeln!(f, "Policy::PolicyError")?;
                 return Ok(());
             }
