@@ -61,9 +61,12 @@ pub struct PolicyImpl {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Policy statement - can be an Error node when 'tolerant-ast' feature is switched on
 pub enum Policy {
+    /// Policy that has been parsed successfully
     PolicyImpl(PolicyImpl),
     #[cfg(feature = "tolerant-ast")]
+    /// Policy that has failed to parse
     PolicyError,
 }
 

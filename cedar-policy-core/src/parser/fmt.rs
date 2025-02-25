@@ -61,7 +61,7 @@ impl fmt::Display for Policy {
         let policy = match self {
             Policy::PolicyImpl(p) => p,
             _ => {
-                writeln!(f, "Policy::PolicyError");
+                writeln!(f, "Policy::PolicyError")?;
                 return Ok(());
             }
         };
