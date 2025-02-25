@@ -291,7 +291,7 @@ impl EntityUID {
         match self {
             EntityUID::EntityUID(entity_uid) => entity_uid.loc.as_ref(),
             #[cfg(feature = "tolerant-ast")]
-            EntityUID::Error { .. } => None,
+            EntityUID::Error => None,
         }
     }
 
@@ -334,7 +334,7 @@ impl std::fmt::Display for EntityUID {
                 entity_uid.eid.escaped()
             ),
             #[cfg(feature = "tolerant-ast")]
-            EntityUID::Error { .. } => write!(f, "Expr::ExprError"),
+            EntityUID::Error => write!(f, "Expr::ExprError"),
         }
     }
 }
@@ -983,12 +983,31 @@ mod test {
 
     #[cfg(feature = "tolerant-ast")]
     #[test]
-    fn error_entity_type() {
+    fn error_entity() {
         let e = EntityUID::Error;
         assert!(matches!(e.eid(), Eid::ErrorEid));
         assert!(matches!(e.entity_type(), EntityType::ErrorEntityType));
         assert!(!e.is_action());
         assert!(matches!(e.loc(), None));
+
+        let error_eid = Eid::ErrorEid;
+        assert_eq!(error_eid.escaped(), "Eid::Error");
+
+        let error_type = EntityType::ErrorEntityType;
+        assert_eq!(error_type.is_action(), false);
+        assert_eq!(error_type.qualify_with(None), EntityType::ErrorEntityType);
+        assert_eq!(
+            error_type.qualify_with(Some(&Name(InternalName::from(Id::new_unchecked(
+                "EntityTypeError"
+            ))))),
+            EntityType::ErrorEntityType
+        );
+
+        assert_eq!(
+            error_type.name(),
+            &Name(InternalName::from(Id::new_unchecked("EntityTypeError")))
+        );
+        assert_eq!(error_type.loc(), None)
     }
 
     #[test]

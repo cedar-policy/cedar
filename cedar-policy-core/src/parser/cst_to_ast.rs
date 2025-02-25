@@ -232,7 +232,7 @@ impl Node<Option<cst::Policy>> {
                 // during parsing to CST
                 return Err(ParseErrors::singleton(ToASTError::new(
                     ToASTErrorKind::CSTErrorNode,
-                    Loc::new(0..1, "CSTErrorNode".into()),
+                    self.loc.clone(),
                 )));
             }
         };
@@ -335,7 +335,7 @@ impl Node<Option<cst::Policy>> {
                 // Note: In the future we will likely support AST Policy Error nodes, but for now we will fail
                 return Err(ParseErrors::singleton(ToASTError::new(
                     ToASTErrorKind::CSTErrorNode,
-                    Loc::new(0..1, "CSTErrorNode".into()),
+                    self.loc.clone(),
                 )));
             }
         };
