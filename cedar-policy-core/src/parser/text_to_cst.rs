@@ -156,7 +156,9 @@ pub fn parse_policy_tolerant(text: &str) -> Result<Node<Option<cst::Policy>>, er
 
 /// Create CST for one policy statement from text - allows CST error nodes on certain parse failures
 #[cfg(feature = "tolerant-ast")]
-pub fn parse_policies_tolerant(text: &str) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
+pub fn parse_policies_tolerant(
+    text: &str,
+) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
     parse_collect_errors_tolerant(&*POLICIES_PARSER, grammar::PoliciesParser::parse, text)
 }
 
