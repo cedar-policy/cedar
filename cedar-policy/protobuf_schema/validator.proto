@@ -21,24 +21,8 @@ import "core.proto";
 
 // the protobuf Schema message describes a complete schema.
 message Schema {
-    // TODO: this need not be a map at all, since `EntityDecl` contains the `name` as well.
-    // It can be just `repeated EntityDecl`.
-    repeated EntityTypeToEntityDeclMap entity_decls = 1;
-    // TODO: this need not be a map at all, since `ActionDecl` contains the `name` as well.
-    // It can be just `repeated ActionDecl`.
-    repeated EntityUidToActionDeclMap action_decls = 2;
-}
-
-// This `message` with `key` and `value`, rather than a `map`, since messages can't be dictionary keys
-message EntityTypeToEntityDeclMap {
-    cedar_policy_core.Name key = 1;
-    EntityDecl value = 2;
-}
-
-// This `message` with `key` and `value`, rather than a `map`, since messages can't be dictionary keys
-message EntityUidToActionDeclMap {
-    cedar_policy_core.EntityUid key = 1;
-    ActionDecl value = 2;
+    repeated EntityDecl entity_decls = 1;
+    repeated ActionDecl action_decls = 2;
 }
 
 // the protobuf EntityDecl message contains all of the schema's
@@ -47,7 +31,6 @@ message EntityDecl {
     cedar_policy_core.Name name = 1;
     repeated cedar_policy_core.Name descendants = 2;
     map<string, AttributeType> attributes = 3;
-    OpenTag open_attributes = 4;
     optional Type tags = 5;
     repeated string enum_choices = 6;
 }
@@ -57,56 +40,35 @@ message EntityDecl {
 message ActionDecl {
     cedar_policy_core.EntityUid name = 1;
     repeated cedar_policy_core.EntityUid descendants = 3;
-    Type context = 4;
-    repeated cedar_policy_core.Name principal_types = 7;
-    repeated cedar_policy_core.Name resource_types = 8;
+    map<string, AttributeType> context = 4;
+    repeated cedar_policy_core.Name principal_types = 5;
+    repeated cedar_policy_core.Name resource_types = 6;
 }
 
 message Type {
     oneof data {
-        Ty ty = 1;
-        Type set_type = 2;
-        EntityRecordKind entityOrRecord = 3;
-        cedar_policy_core.Name name = 4;
-    }
-
-    enum Ty {
-        Never = 0;
-        True = 1;
-        False = 2;
-        EmptySetType = 3;
-        Bool = 4;
-        String = 5;
-        Long = 6;
-    }
-}
-
-message EntityRecordKind {
-    oneof data {
-        AnyEntity any_entity = 1;
-        Record record = 2;
+        // Primitive types
+        Prim prim = 1;
+        // Set with the specified element type
+        Type set_elem = 2;
+        // Entity type
         cedar_policy_core.Name entity = 3;
-        ActionEntity actionEntity = 4;
+        // Record type
+        // Map types are not allowed inside oneof, so we can't inline the map here
+        Record record = 4;
+        // Extension type
+        cedar_policy_core.Name ext = 5;
     }
 
-    // Zero-arity constructors represented as enums with only one member
-    enum AnyEntity {
-        // the one option for the enum
-        unit = 0;
+    enum Prim {
+        String = 0;
+        Bool = 1;
+        Long = 2;
     }
+
     message Record {
         map<string, AttributeType> attrs = 1;
-        OpenTag open_attributes = 2;
     }
-    message ActionEntity {
-        cedar_policy_core.Name name = 1;
-        map<string, AttributeType> attrs = 2;
-    }
-}
-
-enum OpenTag {
-    OpenAttributes = 0;
-    ClosedAttributes = 1;
 }
 
 message AttributeType {
