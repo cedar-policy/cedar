@@ -1089,7 +1089,8 @@ mod tests {
         );
         let policy = match policy {
             cst::Policy::PolicyImpl(p) => p,
-            _ => panic!("Incorrect!"),
+            #[cfg(feature = "tolerant-ast")]
+            cst::Policy::PolicyError => panic!("Should not be an error!"),
         };
         let annotation = policy.annotations.first().unwrap().as_inner().unwrap();
         assert_eq!(annotation.value, None);
