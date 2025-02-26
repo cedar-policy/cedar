@@ -1049,6 +1049,7 @@ impl TemplateBody {
     }
 
 
+    #[cfg(feature = "tolerant-ast")]
     pub fn error(id: PolicyID) -> Self {
         TemplateBody::TemplateBodyError(id)
     }
@@ -1311,6 +1312,7 @@ impl std::fmt::Display for TemplateBody {
                     self.non_scope_constraints()
                 )
             },
+            #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(policy_id) => {
                 write!(f, "TemplateBody::TemplateBodyError({policy_id})")
             }
@@ -1894,6 +1896,7 @@ impl std::fmt::Display for StaticPolicy {
                     self.non_scope_constraints()
                 )
             },
+            #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(policy_id) => {
                 write!(f, "TemplateBody::TemplateBodyError({policy_id})")
             }
