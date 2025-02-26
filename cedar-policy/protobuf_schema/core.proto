@@ -40,14 +40,8 @@ message PolicySet {
     map<string, Policy> links = 2;
 }
 
-enum Mode {
-    Concrete = 0;
-    Partial = 1;
-}
-
 message Entities {
     repeated Entity entities = 1;
-    Mode mode = 2;
 }
 
 message EntityUid {
@@ -166,27 +160,24 @@ message ActionConstraint {
 }
 
 message Expr {
-    ExprKind expr_kind = 1;
-
-    message ExprKind {
-        oneof data {
-            Literal lit = 1;
-            Var var = 2;
-            SlotId slot = 3;
-            If if = 4;
-            And and = 5;
-            Or or = 6;
-            UnaryApp uApp = 7;
-            BinaryApp bApp = 8;
-            ExtensionFunctionApp extApp = 9;
-            GetAttr getAttr = 10;
-            HasAttr hasAttr = 11;
-            Like like = 12;
-            Is is = 13;
-            Set set = 14;
-            Record record = 15;
-        }
+    oneof expr_kind {
+        Literal lit = 1;
+        Var var = 2;
+        SlotId slot = 3;
+        If if = 4;
+        And and = 5;
+        Or or = 6;
+        UnaryApp uApp = 7;
+        BinaryApp bApp = 8;
+        ExtensionFunctionApp extApp = 9;
+        GetAttr getAttr = 10;
+        HasAttr hasAttr = 11;
+        Like like = 12;
+        Is is = 13;
+        Set set = 14;
+        Record record = 15;
     }
+
     message Literal {
         oneof lit {
             bool b = 1;

@@ -208,25 +208,24 @@ impl From<&models::Expr> for ast::Expr {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used, clippy::too_many_lines)]
     fn from(v: &models::Expr) -> Self {
-        let pdata = v.expr_kind.as_ref().expect("expr_kind field should exist");
-        let ety = pdata.data.as_ref().expect("data field should exist");
+        let kind = v.expr_kind.as_ref().expect("expr_kind field should exist");
 
-        match ety {
-            models::expr::expr_kind::Data::Lit(lit) => ast::Expr::val(ast::Literal::from(lit)),
+        match kind {
+            models::expr::ExprKind::Lit(lit) => ast::Expr::val(ast::Literal::from(lit)),
 
-            models::expr::expr_kind::Data::Var(var) => {
+            models::expr::ExprKind::Var(var) => {
                 let pvar =
                     models::expr::Var::try_from(var.to_owned()).expect("decode should succeed");
                 ast::Expr::var(ast::Var::from(&pvar))
             }
 
-            models::expr::expr_kind::Data::Slot(slot) => {
+            models::expr::ExprKind::Slot(slot) => {
                 let pslot =
                     models::SlotId::try_from(slot.to_owned()).expect("decode should succeed");
                 ast::Expr::slot(ast::SlotId::from(&pslot))
             }
 
-            models::expr::expr_kind::Data::If(msg) => {
+            models::expr::ExprKind::If(msg) => {
                 let test_expr = msg
                     .test_expr
                     .as_ref()
@@ -249,7 +248,7 @@ impl From<&models::Expr> for ast::Expr {
                 )
             }
 
-            models::expr::expr_kind::Data::And(msg) => {
+            models::expr::ExprKind::And(msg) => {
                 let left = msg.left.as_ref().expect("left field should exist").as_ref();
                 let right = msg
                     .right
@@ -259,7 +258,7 @@ impl From<&models::Expr> for ast::Expr {
                 ast::Expr::and(ast::Expr::from(left), ast::Expr::from(right))
             }
 
-            models::expr::expr_kind::Data::Or(msg) => {
+            models::expr::ExprKind::Or(msg) => {
                 let left = msg.left.as_ref().expect("left field should exist").as_ref();
                 let right = msg
                     .right
@@ -269,14 +268,14 @@ impl From<&models::Expr> for ast::Expr {
                 ast::Expr::or(ast::Expr::from(left), ast::Expr::from(right))
             }
 
-            models::expr::expr_kind::Data::UApp(msg) => {
+            models::expr::ExprKind::UApp(msg) => {
                 let arg = msg.expr.as_ref().expect("expr field should exist").as_ref();
                 let puop =
                     models::expr::unary_app::Op::try_from(msg.op).expect("decode should succeed");
                 ast::Expr::unary_app(ast::UnaryOp::from(&puop), ast::Expr::from(arg))
             }
 
-            models::expr::expr_kind::Data::BApp(msg) => {
+            models::expr::ExprKind::BApp(msg) => {
                 let pbop =
                     models::expr::binary_app::Op::try_from(msg.op).expect("decode should succeed");
                 let left = msg.left.as_ref().expect("left field should exist");
@@ -288,22 +287,22 @@ impl From<&models::Expr> for ast::Expr {
                 )
             }
 
-            models::expr::expr_kind::Data::ExtApp(msg) => ast::Expr::call_extension_fn(
+            models::expr::ExprKind::ExtApp(msg) => ast::Expr::call_extension_fn(
                 ast::Name::from(msg.fn_name.as_ref().expect("fn_name field should exist")),
                 msg.args.iter().map(ast::Expr::from).collect(),
             ),
 
-            models::expr::expr_kind::Data::GetAttr(msg) => {
+            models::expr::ExprKind::GetAttr(msg) => {
                 let arg = msg.expr.as_ref().expect("expr field should exist").as_ref();
                 ast::Expr::get_attr(ast::Expr::from(arg), msg.attr.clone().into())
             }
 
-            models::expr::expr_kind::Data::HasAttr(msg) => {
+            models::expr::ExprKind::HasAttr(msg) => {
                 let arg = msg.expr.as_ref().expect("expr field should exist").as_ref();
                 ast::Expr::has_attr(ast::Expr::from(arg), msg.attr.clone().into())
             }
 
-            models::expr::expr_kind::Data::Like(msg) => {
+            models::expr::ExprKind::Like(msg) => {
                 let arg = msg.expr.as_ref().expect("expr field should exist").as_ref();
                 ast::Expr::like(
                     ast::Expr::from(arg),
@@ -311,7 +310,7 @@ impl From<&models::Expr> for ast::Expr {
                 )
             }
 
-            models::expr::expr_kind::Data::Is(msg) => {
+            models::expr::ExprKind::Is(msg) => {
                 let arg = msg.expr.as_ref().expect("expr field should exist").as_ref();
                 ast::Expr::is_entity_type(
                     ast::Expr::from(arg),
@@ -323,11 +322,11 @@ impl From<&models::Expr> for ast::Expr {
                 )
             }
 
-            models::expr::expr_kind::Data::Set(msg) => {
+            models::expr::ExprKind::Set(msg) => {
                 ast::Expr::set(msg.elements.iter().map(ast::Expr::from))
             }
 
-            models::expr::expr_kind::Data::Record(msg) => ast::Expr::record(
+            models::expr::ExprKind::Record(msg) => ast::Expr::record(
                 msg.items
                     .iter()
                     .map(|(key, value)| (key.into(), ast::Expr::from(value))),
@@ -343,13 +342,13 @@ impl From<&ast::Expr> for models::Expr {
     fn from(v: &ast::Expr) -> Self {
         let expr_kind = match v.expr_kind() {
             ast::ExprKind::Lit(l) => {
-                models::expr::expr_kind::Data::Lit(models::expr::Literal::from(l))
+                models::expr::ExprKind::Lit(models::expr::Literal::from(l))
             }
             ast::ExprKind::Var(v) => {
-                models::expr::expr_kind::Data::Var(models::expr::Var::from(v).into())
+                models::expr::ExprKind::Var(models::expr::Var::from(v).into())
             }
             ast::ExprKind::Slot(sid) => {
-                models::expr::expr_kind::Data::Slot(models::SlotId::from(sid).into())
+                models::expr::ExprKind::Slot(models::SlotId::from(sid).into())
             }
 
             ast::ExprKind::Unknown(_u) => {
@@ -359,31 +358,31 @@ impl From<&ast::Expr> for models::Expr {
                 test_expr,
                 then_expr,
                 else_expr,
-            } => models::expr::expr_kind::Data::If(Box::new(models::expr::If {
+            } => models::expr::ExprKind::If(Box::new(models::expr::If {
                 test_expr: Some(Box::new(models::Expr::from(test_expr.as_ref()))),
                 then_expr: Some(Box::new(models::Expr::from(then_expr.as_ref()))),
                 else_expr: Some(Box::new(models::Expr::from(else_expr.as_ref()))),
             })),
             ast::ExprKind::And { left, right } => {
-                models::expr::expr_kind::Data::And(Box::new(models::expr::And {
+                models::expr::ExprKind::And(Box::new(models::expr::And {
                     left: Some(Box::new(models::Expr::from(left.as_ref()))),
                     right: Some(Box::new(models::Expr::from(right.as_ref()))),
                 }))
             }
             ast::ExprKind::Or { left, right } => {
-                models::expr::expr_kind::Data::Or(Box::new(models::expr::Or {
+                models::expr::ExprKind::Or(Box::new(models::expr::Or {
                     left: Some(Box::new(models::Expr::from(left.as_ref()))),
                     right: Some(Box::new(models::Expr::from(right.as_ref()))),
                 }))
             }
             ast::ExprKind::UnaryApp { op, arg } => {
-                models::expr::expr_kind::Data::UApp(Box::new(models::expr::UnaryApp {
+                models::expr::ExprKind::UApp(Box::new(models::expr::UnaryApp {
                     op: models::expr::unary_app::Op::from(op).into(),
                     expr: Some(Box::new(models::Expr::from(arg.as_ref()))),
                 }))
             }
             ast::ExprKind::BinaryApp { op, arg1, arg2 } => {
-                models::expr::expr_kind::Data::BApp(Box::new(models::expr::BinaryApp {
+                models::expr::ExprKind::BApp(Box::new(models::expr::BinaryApp {
                     op: models::expr::binary_app::Op::from(op).into(),
                     left: Some(Box::new(models::Expr::from(arg1.as_ref()))),
                     right: Some(Box::new(models::Expr::from(arg2.as_ref()))),
@@ -391,19 +390,19 @@ impl From<&ast::Expr> for models::Expr {
             }
             ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let pargs: Vec<models::Expr> = args.iter().map(models::Expr::from).collect();
-                models::expr::expr_kind::Data::ExtApp(models::expr::ExtensionFunctionApp {
+                models::expr::ExprKind::ExtApp(models::expr::ExtensionFunctionApp {
                     fn_name: Some(models::Name::from(fn_name)),
                     args: pargs,
                 })
             }
             ast::ExprKind::GetAttr { expr, attr } => {
-                models::expr::expr_kind::Data::GetAttr(Box::new(models::expr::GetAttr {
+                models::expr::ExprKind::GetAttr(Box::new(models::expr::GetAttr {
                     attr: attr.to_string(),
                     expr: Some(Box::new(models::Expr::from(expr.as_ref()))),
                 }))
             }
             ast::ExprKind::HasAttr { expr, attr } => {
-                models::expr::expr_kind::Data::HasAttr(Box::new(models::expr::HasAttr {
+                models::expr::ExprKind::HasAttr(Box::new(models::expr::HasAttr {
                     attr: attr.to_string(),
                     expr: Some(Box::new(models::Expr::from(expr.as_ref()))),
                 }))
@@ -414,13 +413,13 @@ impl From<&ast::Expr> for models::Expr {
                 for value in pattern.iter() {
                     ppattern.push(models::expr::like::PatternElem::from(value));
                 }
-                models::expr::expr_kind::Data::Like(Box::new(models::expr::Like {
+                models::expr::ExprKind::Like(Box::new(models::expr::Like {
                     expr: Some(Box::new(models::Expr::from(expr.as_ref()))),
                     pattern: ppattern,
                 }))
             }
             ast::ExprKind::Is { expr, entity_type } => {
-                models::expr::expr_kind::Data::Is(Box::new(models::expr::Is {
+                models::expr::ExprKind::Is(Box::new(models::expr::Is {
                     expr: Some(Box::new(models::Expr::from(expr.as_ref()))),
                     entity_type: Some(models::Name::from(entity_type)),
                 }))
@@ -430,7 +429,7 @@ impl From<&ast::Expr> for models::Expr {
                 for arg in args.as_ref() {
                     pargs.push(models::Expr::from(arg));
                 }
-                models::expr::expr_kind::Data::Set(models::expr::Set { elements: pargs })
+                models::expr::ExprKind::Set(models::expr::Set { elements: pargs })
             }
             ast::ExprKind::Record(record) => {
                 let precord = record
@@ -438,15 +437,13 @@ impl From<&ast::Expr> for models::Expr {
                     .iter()
                     .map(|(key, value)| (key.to_string(), models::Expr::from(value)))
                     .collect();
-                models::expr::expr_kind::Data::Record(models::expr::Record { items: precord })
+                models::expr::ExprKind::Record(models::expr::Record { items: precord })
             },
             #[cfg(feature="tolerant-ast")]
             ast::ExprKind::Error { .. } => unimplemented!("Protobufs feature not compatible with ASTs that contain error nodes - this should never happen"),
         };
         Self {
-            expr_kind: Some(Box::new(models::expr::ExprKind {
-                data: Some(expr_kind),
-            })),
+            expr_kind: Some(expr_kind),
         }
     }
 }
