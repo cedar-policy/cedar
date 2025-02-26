@@ -674,6 +674,24 @@ mod test {
     use super::*;
 
     #[test]
+    fn name_and_slot_roundtrip() {
+        let orig_name = ast::Name::from_normalized_str("B::C::D").unwrap();
+        assert_eq!(orig_name, ast::Name::from(&models::Name::from(&orig_name)));
+
+        let orig_slot1 = ast::SlotId::principal();
+        assert_eq!(
+            orig_slot1,
+            ast::SlotId::from(&models::SlotId::from(&orig_slot1))
+        );
+
+        let orig_slot2 = ast::SlotId::resource();
+        assert_eq!(
+            orig_slot2,
+            ast::SlotId::from(&models::SlotId::from(&orig_slot2))
+        );
+    }
+
+    #[test]
     fn entity_roundtrip() {
         let name = ast::Name::from_normalized_str("B::C::D").unwrap();
         let ety_specified = ast::EntityType::from(name);
@@ -752,6 +770,26 @@ mod test {
             "Type".parse().unwrap(),
         );
         assert_eq!(e9, ast::Expr::from(&models::Expr::from(&e9)));
+        let e10 = ast::Expr::slot(ast::SlotId::principal());
+        assert_eq!(e10, ast::Expr::from(&models::Expr::from(&e10)));
+        let e11 = ast::Expr::slot(ast::SlotId::resource());
+        assert_eq!(e11, ast::Expr::from(&models::Expr::from(&e11)));
+        let e12 = ast::Expr::and(ast::Expr::val(false), ast::Expr::not(ast::Expr::val(true)));
+        assert_eq!(e12, ast::Expr::from(&models::Expr::from(&e12)));
+        let e13 = ast::Expr::or(
+            ast::Expr::ite(
+                ast::Expr::get_attr(ast::Expr::var(ast::Var::Context), "a".into()),
+                ast::Expr::val(false),
+                ast::Expr::not(ast::Expr::val(true)),
+            ),
+            ast::Expr::greater(ast::Expr::val(33), ast::Expr::val(-33)),
+        );
+        assert_eq!(e13, ast::Expr::from(&models::Expr::from(&e13)));
+        let e14 = ast::Expr::contains(
+            ast::Expr::set([ast::Expr::val("beans"), ast::Expr::val("carrots")]),
+            ast::Expr::val("peas"),
+        );
+        assert_eq!(e14, ast::Expr::from(&models::Expr::from(&e14)));
     }
 
     #[test]
@@ -797,24 +835,6 @@ mod test {
         assert_eq!(
             euid_literal,
             ast::Literal::from(&models::expr::Literal::from(&euid_literal))
-        );
-    }
-
-    #[test]
-    fn name_and_slot_roundtrip() {
-        let orig_name = ast::Name::from_normalized_str("B::C::D").unwrap();
-        assert_eq!(orig_name, ast::Name::from(&models::Name::from(&orig_name)));
-
-        let orig_slot1 = ast::SlotId::principal();
-        assert_eq!(
-            orig_slot1,
-            ast::SlotId::from(&models::SlotId::from(&orig_slot1))
-        );
-
-        let orig_slot2 = ast::SlotId::resource();
-        assert_eq!(
-            orig_slot2,
-            ast::SlotId::from(&models::SlotId::from(&orig_slot2))
         );
     }
 
