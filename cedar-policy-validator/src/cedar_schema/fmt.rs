@@ -326,14 +326,18 @@ namespace TinyTodo {
         test_round_trip(r#"entity Foo {a: Set<Bool>};"#);
         test_round_trip(r#"entity Foo {a: {b: Long}};"#);
         test_round_trip(r#"entity Foo {a: {}};"#);
-        test_round_trip(r#"
+        test_round_trip(
+            r#"
         type A = Long;
         entity Foo {a: A};
-        "#);
-        test_round_trip(r#"
+        "#,
+        );
+        test_round_trip(
+            r#"
         entity A;
         entity Foo {a: A};
-        "#);
+        "#,
+        );
     }
 
     #[test]
@@ -376,7 +380,7 @@ namespace TinyTodo {
             }
         );
 
-        let fragment : json_schema::Fragment<RawName> = serde_json::from_value(schema_json).unwrap();
+        let fragment: json_schema::Fragment<RawName> = serde_json::from_value(schema_json).unwrap();
         let cedar_schema = fragment.to_cedarschema().unwrap();
 
         let (parsed_cedar_schema, _) =
@@ -405,10 +409,7 @@ namespace TinyTodo {
             }
         );
 
-        assert_eq!(
-            expected_roundtrip,
-            roundtrip_json,
-        );
+        assert_eq!(expected_roundtrip, roundtrip_json,);
     }
 
     #[test]
@@ -436,7 +437,7 @@ namespace TinyTodo {
             }
         );
 
-        let fragment : json_schema::Fragment<RawName> = serde_json::from_value(schema_json).unwrap();
+        let fragment: json_schema::Fragment<RawName> = serde_json::from_value(schema_json).unwrap();
         let cedar_schema = fragment.to_cedarschema().unwrap();
 
         let (parsed_cedar_schema, _) =
@@ -465,9 +466,6 @@ namespace TinyTodo {
             }
         );
 
-        assert_eq!(
-            expected_roundtrip,
-            roundtrip_json,
-        );
+        assert_eq!(expected_roundtrip, roundtrip_json,);
     }
 }
