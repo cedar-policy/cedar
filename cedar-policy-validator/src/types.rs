@@ -1075,13 +1075,14 @@ impl IntoIterator for Attributes {
 
 /// Used to tag record types to indicate if their attributes record is open or
 /// closed.
-#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone, Serialize)]
+#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone, Serialize, Default)]
 pub enum OpenTag {
     /// The attributes are open. A value of this type may have attributes other
     /// than those listed.
     OpenAttributes,
     /// The attributes are closed. The attributes for a value of this type must
     /// exactly match the attributes listed in the type.
+    #[default]
     ClosedAttributes,
 }
 

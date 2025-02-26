@@ -18,7 +18,7 @@ Cedar Language Version: TBD
 - Changed `Entities::add_entities` and `Entities::from_entities` to ignore structurally equal entities with the same Entity UID.
 - For `protobufs` experimental feature, a number of changes to the interface and
   the Protobuf format definitions, as we continue to iterate towards making this
-  feature stable.
+  feature stable. (#1488, #1495)
 
 ### Added
 
@@ -27,7 +27,7 @@ Cedar Language Version: TBD
 - Implemented [RFC 53 (enumerated entity types)](https://github.com/cedar-policy/rfcs/blob/main/text/0053-enum-entities.md)  (#1377)
 - Added the experimental feature `tolerant-ast` which allows certain errors to be propogated in AST expressions as an `ExprKind::Error` (#1470)
 
-## [4.3.3] - Coming soon
+## [4.3.3] - 2025-02-25
 
 ### Changed
 
