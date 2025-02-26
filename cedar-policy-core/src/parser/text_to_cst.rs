@@ -174,7 +174,9 @@ pub fn parse_expr_tolerant(text: &str) -> Result<Node<Option<cst::Expr>>, err::P
 #[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "tolerant-ast")]
     use crate::parser::cst::Expr;
+    #[cfg(feature = "tolerant-ast")]
     use crate::parser::cst::Policy;
     use crate::parser::test_utils::*;
     use crate::test_utils::*;
