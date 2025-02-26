@@ -356,6 +356,70 @@ namespace TinyTodo {
     }
 
     #[test]
+    fn primitives_roundtrip_to_entity_or_common() {
+        // Converting cedar->json never produces these primitve type nodes, instead using `EntityOrCommon`, so we need to test this starting from json.
+        let schema_json = serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {
+                        "User": { },
+                        "Photo": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {
+                                    "foo": { "type": "Long" },
+                                    "bar": { "type": "String" },
+                                    "baz": { "type": "Boolean" }
+                                }
+                            }
+                        }
+                    },
+                    "actions": {}
+                }
+            }
+        );
+
+        let fragment: json_schema::Fragment<RawName> = serde_json::from_value(schema_json).unwrap();
+        let cedar_schema = fragment.to_cedarschema().unwrap();
+
+        let (parsed_cedar_schema, _) =
+            parse_cedar_schema_fragment(&cedar_schema, Extensions::all_available()).unwrap();
+
+        let roundtrip_json = serde_json::to_value(parsed_cedar_schema).unwrap();
+        let expected_roundtrip = serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {
+                        "User": { },
+                        "Photo": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {
+                                    "foo": {
+                                        "type": "EntityOrCommon",
+                                        "name": "__cedar::Long"
+                                    },
+                                    "bar": {
+                                        "type": "EntityOrCommon",
+                                        "name": "__cedar::String"
+                                    },
+                                    "baz": {
+                                        "type": "EntityOrCommon",
+                                        "name": "__cedar::Bool"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "actions": {}
+                }
+            }
+        );
+
+        assert_eq!(expected_roundtrip, roundtrip_json,);
+    }
+
+    #[test]
     fn entity_type_reference_roundtrips_to_entity_or_common() {
         // Converting cedar->json never produces `Entity` nodes, so we need to test this starting from json.
         let schema_json = serde_json::json!(
