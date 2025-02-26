@@ -91,13 +91,19 @@ static DEFAULT_ACTION_CONSTRAINT: std::sync::LazyLock<ActionConstraint> =
     std::sync::LazyLock::new(|| ActionConstraint::any());
 
 #[cfg(feature = "tolerant-ast")]
-static DEFAULT_ERROR_EXPR: std::sync::LazyLock<Arc<Expr>> =
-    std::sync::LazyLock::new(|| {
-        // any expression in an error policy should be an error expression
-        Arc::new(<expr_allows_errors::ExprWithErrsBuilder as crate::expr_builder::ExprBuilder>::new()
-            .error(ParseErrors::singleton(ToASTError::new(ToASTErrorKind::ASTErrorNode, Loc::new(0..1, "ASTErrorNode".into()))))
-            .unwrap())
-    });
+static DEFAULT_ERROR_EXPR: std::sync::LazyLock<Arc<Expr>> = std::sync::LazyLock::new(|| {
+    // any expression in an error policy should be an error expression
+    // PANIC SAFETY: Infallible error type - can never fail
+    #[allow(clippy::unwrap_used)]
+    Arc::new(
+        <expr_allows_errors::ExprWithErrsBuilder as crate::expr_builder::ExprBuilder>::new()
+            .error(ParseErrors::singleton(ToASTError::new(
+                ToASTErrorKind::ASTErrorNode,
+                Loc::new(0..1, "ASTErrorNode".into()),
+            )))
+            .unwrap(),
+    )
+});
 
 /// Top level structure for a policy template.
 /// Contains both the AST for template, and the list of open slots in the template.
@@ -170,12 +176,8 @@ impl Template {
     }
 
     #[cfg(feature = "tolerant-ast")]
-    pub fn error(
-        id: PolicyID,
-    ) -> Self {
-        let body = TemplateBody::error(
-            id,
-        );
+    pub fn error(id: PolicyID) -> Self {
+        let body = TemplateBody::error(id);
         // INVARIANT (slot cache correctness)
         // This invariant is maintained in the body of the From impl
         Template::from(body)
