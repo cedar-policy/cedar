@@ -44,7 +44,7 @@ runs:
             --ignore '*/tests/*' \
             --ignore '*/test/*' \
             --excl-start '^\#\[cfg\(test\)\]' \
-            --excl-stop '^}' \
+            --excl-stop '^}$' \
             --ignore-not-existing \
             -o ./target/coverage/
     - name: Upload HTML coverage report
