@@ -42,7 +42,8 @@ use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
 #[cfg(feature = "tolerant-ast")]
 use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
 use crate::ast::{
-    self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, Template, UnreservedId
+    self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
+    PrincipalOrResourceConstraint, ResourceConstraint, Template, UnreservedId,
 };
 use crate::expr_builder::ExprBuilder;
 use crate::fuzzy_match::fuzzy_search_limited;
@@ -5620,7 +5621,6 @@ mod tests {
             permit(principal is something in, action, resource);
         "#;
         let parsed = assert_parse_policy_allows_errors(src);
-        println!("Parsed policy: {:?}", parsed);
     }
 
     #[cfg(feature = "tolerant-ast")]
@@ -5718,8 +5718,7 @@ mod tests {
         let src = r#"
             permit(principal, action == Action::, resource);
         "#;
-        let t = assert_parse_policy_allows_errors(src);
-        println!("{:?}", t);
+        assert_parse_policy_allows_errors(src);
     }
 
     #[cfg(feature = "tolerant-ast")]
