@@ -767,7 +767,7 @@ impl Doc for Node<Option<Policy>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let policy = self.as_inner()?;
         let policy = match policy {
-            Policy::PolicyImpl(policy_impl) => policy_impl,
+            Policy::Policy(policy_impl) => policy_impl,
             #[cfg(feature = "tolerant-ast")]
             Policy::PolicyError => return None,
         };

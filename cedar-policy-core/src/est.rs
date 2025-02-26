@@ -152,7 +152,7 @@ impl TryFrom<cst::Policy> for Policy {
     type Error = ParseErrors;
     fn try_from(policy: cst::Policy) -> Result<Policy, ParseErrors> {
         let policy = match policy {
-            cst::Policy::PolicyImpl(policy_impl) => policy_impl,
+            cst::Policy::Policy(policy_impl) => policy_impl,
             #[cfg(feature = "tolerant-ast")]
             cst::Policy::PolicyError => {
                 return Err(ParseErrors::singleton(ToASTError::new(

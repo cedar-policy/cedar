@@ -110,7 +110,7 @@ pub Policy: Node<Option<cst::Policy>> = {
     <conds:Cond*>
     ";"
     <r:@R>
-    => Node::with_source_loc(Some(cst::Policy::PolicyImpl(cst::PolicyImpl{ annotations,effect,variables,conds })), Loc::new(l..r, Arc::clone(src))),
+    => Node::with_source_loc(Some(cst::Policy::Policy(cst::PolicyImpl{ annotations,effect,variables,conds })), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <err:!> ";" <r:@R> => {
         // Tolerant AST creates a valid CST node representing the unparsable policy
         #[cfg(feature = "tolerant-ast")]

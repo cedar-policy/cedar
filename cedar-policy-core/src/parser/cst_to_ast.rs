@@ -169,7 +169,7 @@ impl Node<Option<cst::Policy>> {
         self.to_policy_template(id)
     }
 
-    /// Convert `cst::Policy` to an AST `InlinePolicy` or `Template`
+    /// Convert `cst::Policy` to an AST `StaticPolicy` or `Template`
     pub fn to_policy_or_template(
         &self,
         id: ast::PolicyID,
@@ -225,7 +225,7 @@ impl Node<Option<cst::Policy>> {
     pub fn to_policy_template(&self, id: ast::PolicyID) -> Result<ast::Template> {
         let policy = self.try_as_inner()?;
         let policy = match policy {
-            cst::Policy::PolicyImpl(policy_impl) => policy_impl,
+            cst::Policy::Policy(policy_impl) => policy_impl,
             #[cfg(feature = "tolerant-ast")]
             cst::Policy::PolicyError => {
                 // This will only happen if we use a 'tolerant' parser, otherwise errors should be caught
@@ -330,7 +330,7 @@ impl Node<Option<cst::Policy>> {
     pub fn to_policy_template_with_errors(&self, id: ast::PolicyID) -> Result<ast::Template> {
         let policy = self.try_as_inner()?;
         let policy = match policy {
-            cst::Policy::PolicyImpl(policy_impl) => policy_impl,
+            cst::Policy::Policy(policy_impl) => policy_impl,
             cst::Policy::PolicyError => {
                 // Note: In the future we will likely support AST Policy Error nodes, but for now we will fail
                 return Err(ParseErrors::singleton(ToASTError::new(
@@ -914,15 +914,16 @@ impl Node<Option<cst::VariableDef>> {
                 }
                 op => Err(self.to_ast_err(ToASTErrorKind::InvalidActionScopeOperator(*op))),
             }?;
-            let action_constraint_res = action_constraint.contains_only_action_types();
 
-            action_constraint_res.map_err(|non_action_euids| {
-                rel_expr
-                    .to_ast_err(parse_errors::InvalidActionType {
-                        euids: non_action_euids,
-                    })
-                    .into()
-            })
+            action_constraint
+                .contains_only_action_types()
+                .map_err(|non_action_euids| {
+                    rel_expr
+                        .to_ast_err(parse_errors::InvalidActionType {
+                            euids: non_action_euids,
+                        })
+                        .into()
+                })
         } else {
             Ok(ActionConstraint::Any)
         }

@@ -72,7 +72,6 @@ fn parse_collect_errors<'a, P, T>(
 /// This helper function calls a generated parser. If the given string is unparsable, it will return the relevant errors
 /// If a string is parsable but has errors, it will still return the parse expression
 /// NOTE: This should only be used to construct an AST that includes error nodes and NOT for evaluation
-/// [`err::ParseErrors`].
 #[cfg(feature = "tolerant-ast")]
 fn parse_collect_errors_tolerant<'a, P, T>(
     parser: &P,
@@ -1073,10 +1072,9 @@ mod tests {
                 .count(),
             3
         );
-        #[cfg(feature = "tolerant-ast")]
-        return ();
 
         // If the AST is not tolerant, unparsable policy should be None
+        #[cfg(not(feature = "tolerant-ast"))]
         assert_eq!(policies.0.into_iter().filter_map(|p| p.node).count(), 2);
     }
 
@@ -1102,7 +1100,7 @@ mod tests {
             r#"@foo permit (principal, action, resource);"#,
         );
         let policy = match policy {
-            cst::Policy::PolicyImpl(p) => p,
+            cst::Policy::Policy(p) => p,
             #[cfg(feature = "tolerant-ast")]
             cst::Policy::PolicyError => panic!("Should not be an error!"),
         };
@@ -1443,7 +1441,7 @@ mod tests {
         let (policy1, _) = policies.0[0].clone().into_inner();
         assert!(matches!(policy1.unwrap(), Policy::PolicyError));
         let (policy2, _) = policies.0[1].clone().into_inner();
-        assert!(matches!(policy2.unwrap(), Policy::PolicyImpl(_)));
+        assert!(matches!(policy2.unwrap(), Policy::Policy(_)));
 
         let src = r#"
         permit(principal, action, resource);
@@ -1454,7 +1452,7 @@ mod tests {
         let (policy1, _) = policies.0[1].clone().into_inner();
         assert!(matches!(policy1.unwrap(), Policy::PolicyError));
         let (policy2, _) = policies.0[0].clone().into_inner();
-        assert!(matches!(policy2.unwrap(), Policy::PolicyImpl(_)));
+        assert!(matches!(policy2.unwrap(), Policy::Policy(_)));
     }
 
     #[test]
@@ -1464,7 +1462,7 @@ mod tests {
             permit(principal, action, resource);
         "#;
         let policy = assert_parse_succeeds(parse_policy_tolerant, src);
-        assert!(matches!(policy, Policy::PolicyImpl(_)));
+        assert!(matches!(policy, Policy::Policy(_)));
 
         let src = r#"
             permit(principal, act;
