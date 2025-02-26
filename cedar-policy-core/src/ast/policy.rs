@@ -74,6 +74,31 @@ cfg_tolerant_ast! {
     });
 }
 
+#[cfg(feature = "tolerant-ast")]
+static DEFAULT_ANNOTATIONS: std::sync::LazyLock<Arc<Annotations>> =
+    std::sync::LazyLock::new(|| Arc::new(Annotations::default()));
+
+#[cfg(feature = "tolerant-ast")]
+static DEFAULT_PRINCIPAL_CONSTRAINT: std::sync::LazyLock<PrincipalConstraint> =
+    std::sync::LazyLock::new(|| PrincipalConstraint::any());
+
+#[cfg(feature = "tolerant-ast")]
+static DEFAULT_RESOURCE_CONSTRAINT: std::sync::LazyLock<ResourceConstraint> =
+    std::sync::LazyLock::new(|| ResourceConstraint::any());
+
+#[cfg(feature = "tolerant-ast")]
+static DEFAULT_ACTION_CONSTRAINT: std::sync::LazyLock<ActionConstraint> =
+    std::sync::LazyLock::new(|| ActionConstraint::any());
+
+#[cfg(feature = "tolerant-ast")]
+static DEFAULT_ERROR_EXPR: std::sync::LazyLock<Arc<Expr>> =
+    std::sync::LazyLock::new(|| {
+        // any expression in an error policy should be an error expression
+        Arc::new(<expr_allows_errors::ExprWithErrsBuilder as crate::expr_builder::ExprBuilder>::new()
+            .error(ParseErrors::singleton(ToASTError::new(ToASTErrorKind::ASTErrorNode, Loc::new(0..1, "ASTErrorNode".into()))))
+            .unwrap())
+    });
+
 /// Top level structure for a policy template.
 /// Contains both the AST for template, and the list of open slots in the template.
 ///
@@ -141,6 +166,18 @@ impl Template {
     /// Generate a template representing a policy that is unparsable
     pub fn error(id: PolicyID, loc: Option<Loc>) -> Self {
         let body = TemplateBody::error(id, loc);
+        Template::from(body)
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    pub fn error(
+        id: PolicyID,
+    ) -> Self {
+        let body = TemplateBody::error(
+            id,
+        );
+        // INVARIANT (slot cache correctness)
+        // This invariant is maintained in the body of the From impl
         Template::from(body)
     }
 
@@ -1980,6 +2017,7 @@ pub(crate) mod test_generators {
         for principal in all_principal_constraints() {
             for action in all_actions_constraints() {
                 for resource in all_resource_constraints() {
+                    println!("Creating template");
                     let permit = Template::new(
                         permit.clone(),
                         None,
