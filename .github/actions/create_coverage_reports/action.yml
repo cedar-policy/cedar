@@ -42,6 +42,7 @@ runs:
             --ignore '/*' \
             --ignore '*/build.rs' \
             --ignore '*/tests/*' \
+            --ignore '*/test/*' \
             --excl-start '^\#\[cfg\(test\)\]' \
             --excl-stop '^}' \
             --ignore-not-existing \
