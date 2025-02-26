@@ -42,8 +42,7 @@ use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
 #[cfg(feature = "tolerant-ast")]
 use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
 use crate::ast::{
-    self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
-    PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
+    self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, Template, UnreservedId
 };
 use crate::expr_builder::ExprBuilder;
 use crate::fuzzy_match::fuzzy_search_limited;
