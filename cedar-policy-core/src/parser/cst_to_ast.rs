@@ -42,8 +42,7 @@ use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
 #[cfg(feature = "tolerant-ast")]
 use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
 use crate::ast::{
-    self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
-    PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
+    self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint, Template, UnreservedId
 };
 use crate::expr_builder::ExprBuilder;
 use crate::fuzzy_match::fuzzy_search_limited;
@@ -332,11 +331,7 @@ impl Node<Option<cst::Policy>> {
         let policy = match policy {
             cst::Policy::Policy(policy_impl) => policy_impl,
             cst::Policy::PolicyError => {
-                // Note: In the future we will likely support AST Policy Error nodes, but for now we will fail
-                return Err(ParseErrors::singleton(ToASTError::new(
-                    ToASTErrorKind::CSTErrorNode,
-                    self.loc.clone(),
-                )));
+                return Ok(Template::error(id));
             }
         };
         // convert effect
@@ -5697,6 +5692,34 @@ mod tests {
             };
         "#;
         assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn invalid_policy_errors_enabled() {
+        let src = r#"
+            permit(principal,;
+        "#;
+        assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn invalid_policy_with_trailing_dot_errors_enabled() {
+        let src = r#"
+            permit(principal, action, resource) { principal. };
+        "#;
+        assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn missing_entity_identifier_errors_enabled() {
+        let src = r#"
+            permit(principal, action == Action::, resource);
+        "#;
+        let t = assert_parse_policy_allows_errors(src);
+        println!("{:?}", t);
     }
 
     #[cfg(feature = "tolerant-ast")]

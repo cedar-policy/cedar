@@ -28,9 +28,43 @@ use thiserror::Error;
 
 #[cfg(feature = "tolerant-ast")]
 use super::expr_allows_errors::AstExprErrorKind;
+#[cfg(feature = "tolerant-ast")]
+use crate::expr_builder::ExprBuilder;
+#[cfg(feature = "tolerant-ast")]
+use crate::parser::err::ParseErrors;
+#[cfg(feature = "tolerant-ast")]
+use crate::parser::err::ToASTError;
+#[cfg(feature = "tolerant-ast")]
+use crate::parser::err::ToASTErrorKind;
+
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
+
+#[cfg(feature = "tolerant-ast")]
+static DEFAULT_ANNOTATIONS: std::sync::LazyLock<Arc<Annotations>> =
+    std::sync::LazyLock::new(|| Arc::new(Annotations::default()));
+
+#[cfg(feature = "tolerant-ast")]
+static DEFAULT_PRINCIPAL_CONSTRAINT: std::sync::LazyLock<PrincipalConstraint> =
+    std::sync::LazyLock::new(|| PrincipalConstraint::any());
+
+#[cfg(feature = "tolerant-ast")]
+static DEFAULT_RESOURCE_CONSTRAINT: std::sync::LazyLock<ResourceConstraint> =
+    std::sync::LazyLock::new(|| ResourceConstraint::any());
+
+#[cfg(feature = "tolerant-ast")]
+static DEFAULT_ACTION_CONSTRAINT: std::sync::LazyLock<ActionConstraint> =
+    std::sync::LazyLock::new(|| ActionConstraint::any());
+
+#[cfg(feature = "tolerant-ast")]
+static DEFAULT_ERROR_EXPR: std::sync::LazyLock<Arc<Expr>> =
+    std::sync::LazyLock::new(|| {
+        // any expression in an error policy should be an error expression
+        Arc::new(<expr_allows_errors::ExprWithErrsBuilder as crate::expr_builder::ExprBuilder>::new()
+            .error(ParseErrors::singleton(ToASTError::new(ToASTErrorKind::ASTErrorNode, Loc::new(0..1, "ASTErrorNode".into()))))
+            .unwrap())
+    });
 
 /// Top level structure for a policy template.
 /// Contains both the AST for template, and the list of open slots in the template.
@@ -89,6 +123,19 @@ impl Template {
             action_constraint,
             resource_constraint,
             non_scope_constraint,
+        );
+        // INVARIANT (slot cache correctness)
+        // This invariant is maintained in the body of the From impl
+        Template::from(body)
+    }
+
+
+    #[cfg(feature = "tolerant-ast")]
+    pub fn error(
+        id: PolicyID,
+    ) -> Self {
+        let body = TemplateBody::error(
+            id,
         );
         // INVARIANT (slot cache correctness)
         // This invariant is maintained in the body of the From impl
@@ -888,7 +935,7 @@ impl From<StaticPolicy> for Arc<Template> {
 /// slots) and static policies (in which case it contains zero slots).
 #[derive(Educe, Clone, Debug)]
 #[educe(PartialEq, Eq, Hash)]
-pub struct TemplateBody {
+pub struct TemplateBodyImpl {
     /// ID of this policy
     id: PolicyID,
     /// Source location spanning the entire policy
@@ -920,78 +967,218 @@ pub struct TemplateBody {
     non_scope_constraints: Arc<Expr>,
 }
 
+
+#[derive(Clone, Hash, Eq, PartialEq, Debug)]
+// #[serde(from = "TemplateBody")]
+// #[serde(into = "TemplateBody")]
+pub enum TemplateBody {
+    TemplateBodyImpl(TemplateBodyImpl),
+    #[cfg(feature = "tolerant-ast")]
+    TemplateBodyError(PolicyID)
+}
+use serde::{Serializer, Deserializer};
+
+impl Serialize for TemplateBody {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            TemplateBody::TemplateBodyImpl(impl_body) => impl_body.serialize(serializer),
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(policy_id) => policy_id.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TemplateBody {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let impl_body = TemplateBodyImpl::deserialize(deserializer)?;
+        Ok(TemplateBody::TemplateBodyImpl(impl_body))
+    }
+}
+
+
 impl TemplateBody {
     /// Get the `Id` of this policy.
     pub fn id(&self) -> &PolicyID {
-        &self.id
+        match self {
+            TemplateBody::TemplateBodyImpl(TemplateBodyImpl {
+                id,
+                ..
+            }) => {
+                &id
+            },
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(policy_id) => {
+                &policy_id
+            }    
+        }
     }
 
     /// Get the location of this policy
     pub fn loc(&self) -> Option<&Loc> {
-        self.loc.as_ref()
+        match self {
+            TemplateBody::TemplateBodyImpl(TemplateBodyImpl {
+                loc,
+                ..
+            }) => {
+                loc.as_ref()
+            },
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_) => {
+                None
+            }   
+        }
     }
 
     /// Clone this policy with a new `Id`.
     pub fn new_id(&self, id: PolicyID) -> Self {
-        let mut new = self.clone();
+        let existing_template_body = match self {
+            TemplateBody::TemplateBodyImpl(t) => t,
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_) => return TemplateBody::TemplateBodyError(id)
+        };
+
+        let mut new = existing_template_body.clone();
         new.id = id;
-        new
+        TemplateBody::TemplateBodyImpl(new)
+    }
+
+
+    pub fn error(id: PolicyID) -> Self {
+        TemplateBody::TemplateBodyError(id)
     }
 
     /// Get the `Effect` of this policy.
     pub fn effect(&self) -> Effect {
-        self.effect
+        match self {
+            TemplateBody::TemplateBodyImpl(TemplateBodyImpl {
+                effect,
+                ..
+            }) => *effect,
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_) => Effect::Forbid
+        }
     }
 
     /// Get data from an annotation.
     pub fn annotation(&self, key: &AnyId) -> Option<&Annotation> {
-        self.annotations.get(key)
+        match self {
+            TemplateBody::TemplateBodyImpl(TemplateBodyImpl {
+                annotations,
+                ..
+            }) => annotations.get(key),
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_) => None
+        }
     }
 
     /// Get shared ref to annotations
     pub fn annotations_arc(&self) -> &Arc<Annotations> {
-        &self.annotations
+        match self {
+            TemplateBody::TemplateBodyImpl(TemplateBodyImpl {
+                annotations,
+                ..
+            }) => annotations,
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_) => &DEFAULT_ANNOTATIONS
+        }
     }
 
     /// Get all annotation data.
     pub fn annotations(&self) -> impl Iterator<Item = (&AnyId, &Annotation)> {
-        self.annotations.iter()
+        match self {
+            TemplateBody::TemplateBodyImpl(TemplateBodyImpl {
+                annotations,
+                ..
+            }) => annotations.iter(),
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_) => DEFAULT_ANNOTATIONS.iter()
+        }
     }
 
     /// Get the `principal` scope constraint of this policy.
     pub fn principal_constraint(&self) -> &PrincipalConstraint {
-        &self.principal_constraint
+        match self {
+            TemplateBody::TemplateBodyImpl(TemplateBodyImpl {
+                principal_constraint,
+                ..
+            }) => principal_constraint,
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_) => &DEFAULT_PRINCIPAL_CONSTRAINT
+        }
+
+        // &self.principal_constraint
     }
 
     /// Get the `principal` scope constraint as an expression.
     /// This will be a boolean-valued expression: either `true` (if the policy
     /// just has `principal,`), or an equality or hierarchy constraint
     pub fn principal_constraint_expr(&self) -> Expr {
-        self.principal_constraint.as_expr()
+        match self {
+            TemplateBody::TemplateBodyImpl(TemplateBodyImpl {
+                principal_constraint,
+                ..
+            }) => principal_constraint.as_expr(),
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_) => DEFAULT_PRINCIPAL_CONSTRAINT.as_expr()
+        }
     }
 
     /// Get the `action` scope constraint of this policy.
     pub fn action_constraint(&self) -> &ActionConstraint {
-        &self.action_constraint
+        match self {
+            TemplateBody::TemplateBodyImpl(TemplateBodyImpl {
+                action_constraint,
+                ..
+            }) => action_constraint,
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_) => &DEFAULT_ACTION_CONSTRAINT
+        }
     }
 
     /// Get the `action` scope constraint of this policy as an expression.
     /// This will be a boolean-valued expression: either `true` (if the policy
     /// just has `action,`), or an equality or hierarchy constraint
     pub fn action_constraint_expr(&self) -> Expr {
-        self.action_constraint.as_expr()
+        match self {
+            TemplateBody::TemplateBodyImpl(TemplateBodyImpl {
+                action_constraint,
+                ..
+            }) => action_constraint.as_expr(),
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_) => DEFAULT_ACTION_CONSTRAINT.as_expr()
+        }
     }
 
     /// Get the `resource` scope constraint of this policy.
     pub fn resource_constraint(&self) -> &ResourceConstraint {
-        &self.resource_constraint
+        match self {
+            TemplateBody::TemplateBodyImpl(TemplateBodyImpl {
+                resource_constraint,
+                ..
+            }) => resource_constraint,
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_) => &DEFAULT_RESOURCE_CONSTRAINT
+        }
     }
 
     /// Get the `resource` scope constraint of this policy as an expression.
     /// This will be a boolean-valued expression: either `true` (if the policy
     /// just has `resource,`), or an equality or hierarchy constraint
     pub fn resource_constraint_expr(&self) -> Expr {
-        self.resource_constraint.as_expr()
+        match self {
+            TemplateBody::TemplateBodyImpl(TemplateBodyImpl {
+                resource_constraint,
+                ..
+            }) => resource_constraint.as_expr(),
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_) => DEFAULT_RESOURCE_CONSTRAINT.as_expr()
+        }
     }
 
     /// Get the non-scope constraints of this policy.
@@ -999,12 +1186,26 @@ impl TemplateBody {
     /// This will be a conjunction of the policy's `when` conditions and the
     /// negation of each of the policy's `unless` conditions.
     pub fn non_scope_constraints(&self) -> &Expr {
-        &self.non_scope_constraints
+        match self {
+            TemplateBody::TemplateBodyImpl(TemplateBodyImpl {
+                non_scope_constraints,
+                ..
+            }) => &non_scope_constraints,
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_) => &DEFAULT_ERROR_EXPR
+        }
     }
 
     /// Get the Arc owning the non scope constraints
     pub fn non_scope_constraints_arc(&self) -> &Arc<Expr> {
-        &self.non_scope_constraints
+        match self {
+            TemplateBody::TemplateBodyImpl(TemplateBodyImpl {
+                non_scope_constraints,
+                ..
+            }) => &non_scope_constraints,
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_) => &DEFAULT_ERROR_EXPR
+        }
     }
 
     /// Get the condition expression of this policy.
@@ -1013,19 +1214,31 @@ impl TemplateBody {
     /// principal, resource, and action); the policy's "when" conditions; and
     /// the negation of each of the policy's "unless" conditions.
     pub fn condition(&self) -> Expr {
-        Expr::and(
-            Expr::and(
+        match self {
+            TemplateBody::TemplateBodyImpl(TemplateBodyImpl {
+                non_scope_constraints,
+                loc,
+                ..
+            }) => {
                 Expr::and(
-                    self.principal_constraint_expr(),
-                    self.action_constraint_expr(),
+                    Expr::and(
+                        Expr::and(
+                            self.principal_constraint_expr(),
+                            self.action_constraint_expr(),
+                        )
+                        .with_maybe_source_loc(loc.clone()),
+                        self.resource_constraint_expr(),
+                    )
+                    .with_maybe_source_loc(loc.clone()),
+                    non_scope_constraints.as_ref().clone(),
                 )
-                .with_maybe_source_loc(self.loc.clone()),
-                self.resource_constraint_expr(),
-            )
-            .with_maybe_source_loc(self.loc.clone()),
-            self.non_scope_constraints.as_ref().clone(),
-        )
-        .with_maybe_source_loc(self.loc.clone())
+                .with_maybe_source_loc(loc.clone())
+            }
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_) => <expr_allows_errors::ExprWithErrsBuilder as crate::expr_builder::ExprBuilder>::new()
+                .error(ParseErrors::singleton(ToASTError::new(ToASTErrorKind::ASTErrorNode, Loc::new(0..1, "ASTErrorNode".into()))))
+                .unwrap()
+        }
     }
 
     /// Construct a `Policy` from components that are already [`std::sync::Arc`] allocated
@@ -1040,7 +1253,7 @@ impl TemplateBody {
         resource_constraint: ResourceConstraint,
         non_scope_constraints: Arc<Expr>,
     ) -> Self {
-        Self {
+        Self::TemplateBodyImpl(TemplateBodyImpl {
             id,
             loc,
             annotations,
@@ -1049,7 +1262,7 @@ impl TemplateBody {
             action_constraint,
             resource_constraint,
             non_scope_constraints,
-        }
+        })
     }
 
     /// Construct a `Policy` from its components
@@ -1064,7 +1277,7 @@ impl TemplateBody {
         resource_constraint: ResourceConstraint,
         non_scope_constraints: Expr,
     ) -> Self {
-        Self {
+        Self::TemplateBodyImpl(TemplateBodyImpl {
             id,
             loc,
             annotations: Arc::new(annotations),
@@ -1073,7 +1286,7 @@ impl TemplateBody {
             action_constraint,
             resource_constraint,
             non_scope_constraints: Arc::new(non_scope_constraints),
-        }
+        })
     }
 }
 
@@ -1085,16 +1298,23 @@ impl From<StaticPolicy> for TemplateBody {
 
 impl std::fmt::Display for TemplateBody {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.annotations.fmt(f)?;
-        write!(
-            f,
-            "{}(\n  {},\n  {},\n  {}\n) when {{\n  {}\n}};",
-            self.effect(),
-            self.principal_constraint(),
-            self.action_constraint(),
-            self.resource_constraint(),
-            self.non_scope_constraints()
-        )
+        match self {
+            TemplateBody::TemplateBodyImpl(template_body_impl) => {
+                template_body_impl.annotations.fmt(f)?;
+                write!(
+                    f,
+                    "{}(\n  {},\n  {},\n  {}\n) when {{\n  {}\n}};",
+                    self.effect(),
+                    self.principal_constraint(),
+                    self.action_constraint(),
+                    self.resource_constraint(),
+                    self.non_scope_constraints()
+                )
+            },
+            TemplateBody::TemplateBodyError(policy_id) => {
+                write!(f, "TemplateBody::TemplateBodyError({policy_id})")
+            }
+        }
     }
 }
 
@@ -1658,18 +1878,26 @@ impl ActionConstraint {
 
 impl std::fmt::Display for StaticPolicy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (k, v) in self.0.annotations.iter() {
-            writeln!(f, "@{}(\"{}\")", k, v.val.escape_debug())?
+        let policy_template = &self.0;
+        match policy_template {
+            TemplateBody::TemplateBodyImpl(template_body_impl) => {
+                for (k, v) in template_body_impl.annotations.iter() {
+                    writeln!(f, "@{}(\"{}\")", k, v.val.escape_debug())?
+                }
+                write!(
+                    f,
+                    "{}(\n  {},\n  {},\n  {}\n) when {{\n  {}\n}};",
+                    self.effect(),
+                    self.principal_constraint(),
+                    self.action_constraint(),
+                    self.resource_constraint(),
+                    self.non_scope_constraints()
+                )
+            },
+            TemplateBody::TemplateBodyError(policy_id) => {
+                write!(f, "TemplateBody::TemplateBodyError({policy_id})")
+            }
         }
-        write!(
-            f,
-            "{}(\n  {},\n  {},\n  {}\n) when {{\n  {}\n}};",
-            self.effect(),
-            self.principal_constraint(),
-            self.action_constraint(),
-            self.resource_constraint(),
-            self.non_scope_constraints()
-        )
     }
 }
 
@@ -1803,6 +2031,7 @@ pub(crate) mod test_generators {
         for principal in all_principal_constraints() {
             for action in all_actions_constraints() {
                 for resource in all_resource_constraints() {
+                    println!("Creating template");
                     let permit = Template::new(
                         permit.clone(),
                         None,
