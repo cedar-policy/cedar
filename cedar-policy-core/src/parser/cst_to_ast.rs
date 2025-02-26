@@ -5472,16 +5472,6 @@ mod tests {
     // Test parsing AST that allows Error nodes
     #[cfg(feature = "tolerant-ast")]
     #[test]
-    fn repro_coles_bug() {
-        let src = r#"
-            permit(principal, action, resource) when { principal == U};
-        "#;
-        let p = assert_parse_policy_allows_errors(src);
-        println!("{:?}", p);
-    }
-
-    #[cfg(feature = "tolerant-ast")]
-    #[test]
     fn parsing_with_errors_succeeds_with_invalid_variable_in_when() {
         let src = r#"
             permit(principal, action, resource) when { pri };

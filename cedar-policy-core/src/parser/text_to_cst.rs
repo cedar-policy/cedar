@@ -174,6 +174,8 @@ pub fn parse_expr_tolerant(text: &str) -> Result<Node<Option<cst::Expr>>, err::P
 #[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
+    use crate::parser::cst::Expr;
+    use crate::parser::cst::Policy;
     use crate::parser::test_utils::*;
     use crate::test_utils::*;
 
@@ -1425,5 +1427,75 @@ mod tests {
         };
         "#,
         );
+    }
+
+    #[test]
+    #[cfg(feature = "tolerant-ast")]
+    fn policies_tolerant_success() {
+        let src = r#"
+            @bad-annotation("bad") permit (principal, action, resource);
+            permit(principal, action, resource);
+        "#;
+        let policies = assert_parse_succeeds(parse_policies_tolerant, src);
+        assert_eq!(policies.0.len(), 2);
+        let (policy1, _) = policies.0[0].clone().into_inner();
+        assert!(matches!(policy1.unwrap(), Policy::PolicyError));
+        let (policy2, _) = policies.0[1].clone().into_inner();
+        assert!(matches!(policy2.unwrap(), Policy::PolicyImpl(_)));
+
+        let src = r#"
+        permit(principal, action, resource);
+        permit(principal, ac;
+        "#;
+        let policies = assert_parse_succeeds(parse_policies_tolerant, src);
+        assert_eq!(policies.0.len(), 2);
+        let (policy1, _) = policies.0[1].clone().into_inner();
+        assert!(matches!(policy1.unwrap(), Policy::PolicyError));
+        let (policy2, _) = policies.0[0].clone().into_inner();
+        assert!(matches!(policy2.unwrap(), Policy::PolicyImpl(_)));
+    }
+
+    #[test]
+    #[cfg(feature = "tolerant-ast")]
+    fn policy_tolerant_success() {
+        let src = r#"
+            permit(principal, action, resource);
+        "#;
+        let policy = assert_parse_succeeds(parse_policy_tolerant, src);
+        assert!(matches!(policy, Policy::PolicyImpl(_)));
+
+        let src = r#"
+            permit(principal, act;
+        "#;
+        let policy = assert_parse_succeeds(parse_policy_tolerant, src);
+        assert!(matches!(policy, Policy::PolicyError));
+    }
+
+    #[test]
+    #[cfg(feature = "tolerant-ast")]
+    fn expr_tolerant_success() {
+        let src = r#"
+            x == 
+        "#;
+        let e = assert_parse_succeeds(parse_expr_tolerant, src);
+        assert!(matches!(e, Expr::ErrorExpr));
+
+        let src = r#"
+             == y
+        "#;
+        let e = assert_parse_succeeds(parse_expr_tolerant, src);
+        assert!(matches!(e, Expr::ErrorExpr));
+
+        let src = r#"
+            (1 + 2) -
+        "#;
+        let e = assert_parse_succeeds(parse_expr_tolerant, src);
+        assert!(matches!(e, Expr::ErrorExpr));
+
+        let src = r#"
+            x == y
+        "#;
+        let e = assert_parse_succeeds(parse_expr_tolerant, src);
+        assert!(matches!(e, Expr::Expr(_)));
     }
 }
