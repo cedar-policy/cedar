@@ -1118,7 +1118,9 @@ impl From<ActionEntityUID<Name>> for EntityUID {
 
 impl TryFrom<ActionEntityUID<InternalName>> for EntityUID {
     type Error = <InternalName as TryInto<Name>>::Error;
-    fn try_from(aeuid: ActionEntityUID<InternalName>) -> std::result::Result<Self, Self::Error> {
+    fn try_from(
+        aeuid: ActionEntityUID<InternalName>,
+    ) -> std::result::Result<Self, <InternalName as TryInto<Name>>::Error> {
         let ty = Name::try_from(aeuid.ty().clone())?;
         Ok(EntityUID::from_components(
             ty.into(),

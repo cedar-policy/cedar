@@ -110,8 +110,18 @@ pub Policy: Node<Option<cst::Policy>> = {
     <conds:Cond*>
     ";"
     <r:@R>
-    => Node::with_source_loc(Some(cst::Policy{ annotations,effect,variables,conds }), Loc::new(l..r, Arc::clone(src))),
-    <l:@L> <err:!> ";" <r:@R> => { errors.push(err); Node::with_source_loc(None, Loc::new(l..r, Arc::clone(src))) },
+    => Node::with_source_loc(Some(cst::Policy::Policy(cst::PolicyImpl{ annotations,effect,variables,conds })), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> <err:!> ";" <r:@R> => {
+        // Tolerant AST creates a valid CST node representing the unparsable policy
+        #[cfg(feature = "tolerant-ast")]
+        errors.push(err); 
+        #[cfg(feature = "tolerant-ast")]
+        return Node::with_source_loc(Some(cst::Policy::PolicyError), Loc::new(l..r, Arc::clone(src)));
+
+        // Otherwise we record this as a None node (unrecoverable error)
+        errors.push(err); 
+        Node::with_source_loc(None, Loc::new(l..r, Arc::clone(src)))
+    }
 }
 
 // VariableDef := Variable [':' Name] ['is' Add] [('in' | '==') Expr]
@@ -191,10 +201,20 @@ Cond: Node<Option<cst::Cond>> = {
 // Expr := Or | 'if' Expr 'then' Expr 'else' Expr
 pub Expr: Node<Option<cst::Expr>> = {
     <l:@L> <o:Or> <r:@R>
-        => Node::with_source_loc(Some(cst::Expr{ expr: Box::new(cst::ExprData::Or(o)) }), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(Some(cst::Expr::Expr(cst::ExprImpl { expr: Box::new(cst::ExprData::Or(o)) })), Loc::new(l..r, Arc::clone(src))),
     <l:@L> IF <i:Expr> THEN <t:Expr> ELSE <e:Expr> <r:@R>
-        => Node::with_source_loc(Some(cst::Expr{ expr: Box::new(cst::ExprData::If(i,t,e)) }), Loc::new(l..r, Arc::clone(src))),
-    <l:@L> <err:!> <r:@R> => { errors.push(err); Node::with_source_loc(None, Loc::new(l..r, Arc::clone(src))) },
+        => Node::with_source_loc(Some(cst::Expr::Expr(cst::ExprImpl { expr: Box::new(cst::ExprData::If(i,t,e)) })), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> <err:!> <r:@R> => { 
+        // Tolerant AST creates a valid CST node representing the unparsable expression
+        #[cfg(feature = "tolerant-ast")]
+        errors.push(err); 
+        #[cfg(feature = "tolerant-ast")]
+        return Node::with_source_loc(Some(cst::Expr::ErrorExpr), Loc::new(l..r, Arc::clone(src)));
+
+        // Otherwise we record this as a None node (unrecoverable error)
+        errors.push(err); 
+        Node::with_source_loc(None, Loc::new(l..r, Arc::clone(src))) 
+    },
 }
 
 // Or := And {'||' And}
@@ -366,7 +386,7 @@ RecInit: Node<Option<cst::RecInit>> = {
             let id7 = Node::with_source_loc(Some(cst::Relation::Common{initial: id6, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
             let id8 = Node::with_source_loc(Some(cst::And{initial: id7, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
             let id9 = Node::with_source_loc(Some(cst::Or{initial: id8, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
-            let e1 = Node::with_source_loc(Some(cst::Expr{ expr: Box::new(cst::ExprData::Or(id9)) }), Loc::new(l..r, Arc::clone(src)));
+            let e1 = Node::with_source_loc(Some(cst::Expr::Expr(cst::ExprImpl { expr: Box::new(cst::ExprData::Or(id9)) })), Loc::new(l..r, Arc::clone(src)));
 
             Node::with_source_loc(Some(cst::RecInit(e1,e2)), Loc::new(l..r, Arc::clone(src)))
         },

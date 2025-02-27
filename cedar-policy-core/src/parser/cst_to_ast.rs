@@ -224,6 +224,18 @@ impl Node<Option<cst::Policy>> {
     /// well, which will become templates with 0 slots
     pub fn to_policy_template(&self, id: ast::PolicyID) -> Result<ast::Template> {
         let policy = self.try_as_inner()?;
+        let policy = match policy {
+            cst::Policy::Policy(policy_impl) => policy_impl,
+            #[cfg(feature = "tolerant-ast")]
+            cst::Policy::PolicyError => {
+                // This will only happen if we use a 'tolerant' parser, otherwise errors should be caught
+                // during parsing to CST
+                return Err(ParseErrors::singleton(ToASTError::new(
+                    ToASTErrorKind::CSTErrorNode,
+                    self.loc.clone(),
+                )));
+            }
+        };
 
         // convert effect
         let maybe_effect = policy.effect.to_effect();
@@ -239,6 +251,7 @@ impl Node<Option<cst::Policy>> {
         // convert conditions
         let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
             let (e, is_when) = c.to_expr::<ast::ExprBuilder<()>>()?;
+
             let slot_errs = e.slots().map(|slot| {
                 ToASTError::new(
                     ToASTErrorKind::slots_in_condition_clause(
@@ -316,7 +329,16 @@ impl Node<Option<cst::Policy>> {
     #[cfg(feature = "tolerant-ast")]
     pub fn to_policy_template_with_errors(&self, id: ast::PolicyID) -> Result<ast::Template> {
         let policy = self.try_as_inner()?;
-
+        let policy = match policy {
+            cst::Policy::Policy(policy_impl) => policy_impl,
+            cst::Policy::PolicyError => {
+                // Note: In the future we will likely support AST Policy Error nodes, but for now we will fail
+                return Err(ParseErrors::singleton(ToASTError::new(
+                    ToASTErrorKind::CSTErrorNode,
+                    self.loc.clone(),
+                )));
+            }
+        };
         // convert effect
         let maybe_effect = policy.effect.to_effect();
 
@@ -326,7 +348,7 @@ impl Node<Option<cst::Policy>> {
         });
 
         // convert scope
-        let maybe_scope = policy.extract_scope();
+        let maybe_scope = policy.extract_scope_tolerant_ast();
 
         // convert conditions
         let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
@@ -362,7 +384,7 @@ impl Node<Option<cst::Policy>> {
     }
 }
 
-impl cst::Policy {
+impl cst::PolicyImpl {
     /// Get the scope constraints from the `cst::Policy`
     pub fn extract_scope(
         &self,
@@ -385,6 +407,72 @@ impl cst::Policy {
         let maybe_action = if let Some(scope2) = vars.next() {
             end_of_last_var = scope2.loc.end();
             scope2.to_action_constraint()
+        } else {
+            Err(ToASTError::new(
+                ToASTErrorKind::MissingScopeVariable(ast::Var::Action),
+                self.effect.loc.span(end_of_last_var),
+            )
+            .into())
+        };
+        let maybe_resource = if let Some(scope3) = vars.next() {
+            scope3.to_resource_constraint()
+        } else {
+            Err(ToASTError::new(
+                ToASTErrorKind::MissingScopeVariable(ast::Var::Resource),
+                self.effect.loc.span(end_of_last_var),
+            )
+            .into())
+        };
+
+        let maybe_extra_vars = if let Some(errs) = ParseErrors::from_iter(
+            // Add each of the extra constraints to the error list
+            vars.map(|extra_var| {
+                extra_var
+                    .try_as_inner()
+                    .map(|def| {
+                        extra_var
+                            .to_ast_err(ToASTErrorKind::ExtraScopeElement(Box::new(def.clone())))
+                    })
+                    .unwrap_or_else(|e| e)
+                    .into()
+            }),
+        ) {
+            Err(errs)
+        } else {
+            Ok(())
+        };
+        let (principal, action, resource, _) = flatten_tuple_4(
+            maybe_principal,
+            maybe_action,
+            maybe_resource,
+            maybe_extra_vars,
+        )?;
+        Ok((principal, action, resource))
+    }
+
+    /// Get the scope constraints from the `cst::Policy`
+    #[cfg(feature = "tolerant-ast")]
+    pub fn extract_scope_tolerant_ast(
+        &self,
+    ) -> Result<(PrincipalConstraint, ActionConstraint, ResourceConstraint)> {
+        // Tracks where the last variable in the scope ended. We'll point to
+        // this position to indicate where to fill in vars if we're missing one.
+        let mut end_of_last_var = self.effect.loc.end();
+
+        let mut vars = self.variables.iter();
+        let maybe_principal = if let Some(scope1) = vars.next() {
+            end_of_last_var = scope1.loc.end();
+            scope1.to_principal_constraint()
+        } else {
+            Err(ToASTError::new(
+                ToASTErrorKind::MissingScopeVariable(ast::Var::Principal),
+                self.effect.loc.span(end_of_last_var),
+            )
+            .into())
+        };
+        let maybe_action = if let Some(scope2) = vars.next() {
+            end_of_last_var = scope2.loc.end();
+            scope2.to_action_constraint_tolerant_ast()
         } else {
             Err(ToASTError::new(
                 ToASTErrorKind::MissingScopeVariable(ast::Var::Action),
@@ -634,14 +722,17 @@ impl ast::UnreservedId {
                             suggested_method.map(|m| format!("did you mean `{m}`?"))
                         }
                         let hint = suggest_method(self, &EXTENSION_STYLES.methods);
-                        Err(ToASTError::new(
-                            ToASTErrorKind::UnknownMethod {
-                                id: self.clone(),
-                                hint,
-                            },
-                            loc.clone(),
+                        convert_expr_error_to_parse_error::<Build>(
+                            ToASTError::new(
+                                ToASTErrorKind::UnknownMethod {
+                                    id: self.clone(),
+                                    hint,
+                                },
+                                loc.clone(),
+                            )
+                            .into(),
+                            Some(&loc),
                         )
-                        .into())
                     }
                 }
             }
@@ -715,7 +806,6 @@ impl Node<Option<cst::VariableDef>> {
         expected: ast::Var,
     ) -> Result<PrincipalOrResource> {
         let vardef = self.try_as_inner()?;
-
         let var = vardef.variable.to_var()?;
 
         if let Some(unused_typename) = vardef.unused_type_name.as_ref() {
@@ -823,6 +913,7 @@ impl Node<Option<cst::VariableDef>> {
                 }
                 op => Err(self.to_ast_err(ToASTErrorKind::InvalidActionScopeOperator(*op))),
             }?;
+
             action_constraint
                 .contains_only_action_types()
                 .map_err(|non_action_euids| {
@@ -832,6 +923,62 @@ impl Node<Option<cst::VariableDef>> {
                         })
                         .into()
                 })
+        } else {
+            Ok(ActionConstraint::Any)
+        }
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    fn to_action_constraint_tolerant_ast(&self) -> Result<ast::ActionConstraint> {
+        let vardef = self.try_as_inner()?;
+
+        match vardef.variable.to_var() {
+            Ok(ast::Var::Action) => Ok(()),
+            Ok(got) => Err(self
+                .to_ast_err(ToASTErrorKind::IncorrectVariable {
+                    expected: ast::Var::Action,
+                    got,
+                })
+                .into()),
+            Err(errs) => Err(errs),
+        }?;
+
+        if let Some(typename) = vardef.unused_type_name.as_ref() {
+            typename.to_type_constraint::<ast::ExprBuilder<()>>()?;
+        }
+
+        if vardef.entity_type.is_some() {
+            return Err(self.to_ast_err(ToASTErrorKind::IsInActionScope).into());
+        }
+
+        if let Some((op, rel_expr)) = &vardef.ineq {
+            let action_constraint = match op {
+                cst::RelOp::In => {
+                    // special check for the syntax `_ in _ is _`
+                    if let Ok(expr) = rel_expr.to_expr::<ast::ExprBuilder<()>>() {
+                        if matches!(expr.expr_kind(), ast::ExprKind::Is { .. }) {
+                            return Err(self.to_ast_err(ToASTErrorKind::IsInActionScope).into());
+                        }
+                    }
+                    match rel_expr.to_refs(ast::Var::Action)? {
+                        OneOrMultipleRefs::Single(single_ref) => {
+                            Ok(ActionConstraint::is_in([single_ref]))
+                        }
+                        OneOrMultipleRefs::Multiple(refs) => Ok(ActionConstraint::is_in(refs)),
+                    }
+                }
+                cst::RelOp::Eq => {
+                    let single_ref = rel_expr.to_ref(ast::Var::Action)?;
+                    Ok(ActionConstraint::is_eq(single_ref))
+                }
+                cst::RelOp::InvalidSingleEq => {
+                    Err(self.to_ast_err(ToASTErrorKind::InvalidSingleEq))
+                }
+                op => Err(self.to_ast_err(ToASTErrorKind::InvalidActionScopeOperator(*op))),
+            }?;
+            let action_constraint_res = action_constraint.contains_only_action_types();
+            // With 'tolerant-ast' feature enabled, we store invalid action constraints as an ErrorConstraint
+            Ok(action_constraint_res.unwrap_or(ActionConstraint::ErrorConstraint))
         } else {
             Ok(ActionConstraint::Any)
         }
@@ -866,6 +1013,7 @@ impl Node<Option<cst::Cond>> {
                 convert_expr_error_to_parse_error::<Build>(
                     self.to_ast_err(ToASTErrorKind::EmptyClause(Some(ident)))
                         .into(),
+                    Some(&self.loc),
                 )
             }
         };
@@ -895,8 +1043,11 @@ impl Node<Option<cst::Str>> {
 }
 
 #[cfg(feature = "tolerant-ast")]
-fn build_ast_error_node_if_possible<Build: ExprBuilder>(error: ParseErrors) -> Result<Build::Expr> {
-    let res = Build::new().error(error.clone());
+fn build_ast_error_node_if_possible<Build: ExprBuilder>(
+    error: ParseErrors,
+    loc: Option<&Loc>,
+) -> Result<Build::Expr> {
+    let res = Build::new().with_maybe_source_loc(loc).error(error.clone());
     match res {
         Ok(r) => Ok(r),
         Err(_) => Err(error),
@@ -904,11 +1055,13 @@ fn build_ast_error_node_if_possible<Build: ExprBuilder>(error: ParseErrors) -> R
 }
 
 /// Since ExprBuilder ErrorType can be Infallible or ParseErrors, if we get an error from building the node pass the ParseErrors along
+#[cfg_attr(not(feature = "tolerant-ast"), allow(unused_variables))]
 fn convert_expr_error_to_parse_error<Build: ExprBuilder>(
     error: ParseErrors,
+    loc: Option<&Loc>,
 ) -> Result<Build::Expr> {
     #[cfg(feature = "tolerant-ast")]
-    return build_ast_error_node_if_possible::<Build>(error);
+    return build_ast_error_node_if_possible::<Build>(error, loc);
     #[allow(unreachable_code)]
     Err(error)
 }
@@ -955,11 +1108,14 @@ where
         match self {
             Self::Expr { expr, .. } => Ok(expr),
             Self::Var { var, loc } => Ok(Build::new().with_source_loc(&loc).var(var)),
-            Self::Name { name, loc } => Err(ToASTError::new(
-                ToASTErrorKind::ArbitraryVariable(name.to_string().into()),
-                loc,
-            )
-            .into()),
+            Self::Name { name, loc } => convert_expr_error_to_parse_error::<Build>(
+                ToASTError::new(
+                    ToASTErrorKind::ArbitraryVariable(name.to_string().into()),
+                    loc.clone(),
+                )
+                .into(),
+                Some(&loc),
+            ),
             Self::StrLit { lit, loc } => {
                 match to_unescaped_string(lit) {
                     Ok(s) => Ok(Build::new().with_source_loc(&loc).val(s)),
@@ -1067,7 +1223,19 @@ impl Node<Option<cst::Expr>> {
     pub(crate) fn to_expr_or_special<Build: ExprBuilder>(
         &self,
     ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
-        let expr = self.try_as_inner()?;
+        let expr_opt = self.try_as_inner()?;
+
+        let expr = match expr_opt {
+            cst::Expr::Expr(expr_impl) => expr_impl,
+            #[cfg(feature = "tolerant-ast")]
+            cst::Expr::ErrorExpr => {
+                let e = ToASTError::new(ToASTErrorKind::CSTErrorNode, self.loc.clone());
+                return Ok(ExprOrSpecial::Expr {
+                    expr: convert_expr_error_to_parse_error::<Build>(e.into(), Some(&self.loc))?,
+                    loc: self.loc.clone(),
+                });
+            }
+        };
 
         match &*expr.expr {
             cst::ExprData::Or(or) => or.to_expr_or_special::<Build>(),
@@ -3422,6 +3590,7 @@ mod tests {
             r#"permit(principal, action in [Foo::Action::"view", Action::"view"], resource);"#,
         )
         .expect("Valid policy failed to parse");
+
         expect_action_error(
             r#"permit(principal, action == Foo::"view", resource);"#,
             "expected an entity uid with type `Action` but got `Foo::\"view\"`",
@@ -5266,7 +5435,7 @@ mod tests {
     #[cfg(feature = "tolerant-ast")]
     #[track_caller]
     fn assert_parse_policy_allows_errors(text: &str) -> ast::StaticPolicy {
-        text_to_cst::parse_policy(text)
+        text_to_cst::parse_policy_tolerant(text)
             .expect("failed parser")
             .to_policy_with_errors(ast::PolicyID::from_string("id"))
             .unwrap_or_else(|errs| {
@@ -5277,7 +5446,7 @@ mod tests {
     #[cfg(feature = "tolerant-ast")]
     #[track_caller]
     fn assert_parse_policy_allows_errors_fails(text: &str) -> ParseErrors {
-        let result = text_to_cst::parse_policy(text)
+        let result = text_to_cst::parse_policy_tolerant(text)
             .expect("failed parser")
             .to_policy_with_errors(ast::PolicyID::from_string("id"));
         match result {
@@ -5298,6 +5467,107 @@ mod tests {
         assert_parse_policy_allows_errors(src);
     }
 
+    // Test parsing AST that allows Error nodes
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn parsing_with_errors_succeeds_with_invalid_variable_in_when() {
+        let src = r#"
+            permit(principal, action, resource) when { pri };
+        "#;
+        assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn parsing_with_errors_succeeds_with_invalid_method() {
+        let src = r#"
+            permit(principal, action, resource) when { ip(principal.ip).i() };
+        "#;
+        assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn parsing_with_errors_succeeds_with_missing_second_operand_eq_and_in() {
+        // Test for == operator
+        let src_eq_cases = [
+            r#"permit(principal ==, action, resource);"#,
+            r#"permit(principal, action ==, resource);"#,
+            r#"permit(principal, action, resource ==);"#,
+            r#"permit(principal ==, action ==, resource);"#,
+            r#"permit(principal, action ==, resource ==);"#,
+            r#"permit(principal ==, action, resource ==);"#,
+            r#"permit(principal ==, action ==, resource ==);"#,
+        ];
+
+        for src in src_eq_cases.iter() {
+            assert_parse_policy_allows_errors(src);
+        }
+
+        // Test for in operator
+        let src_in_cases = [
+            r#"permit(principal in, action, resource);"#,
+            r#"permit(principal, action in, resource);"#,
+            r#"permit(principal, action, resource in);"#,
+            r#"permit(principal in, action in, resource);"#,
+            r#"permit(principal, action in, resource in);"#,
+            r#"permit(principal in, action, resource in);"#,
+            r#"permit(principal in, action in, resource in);"#,
+        ];
+
+        for src in src_in_cases.iter() {
+            assert_parse_policy_allows_errors(src);
+        }
+
+        // Cases with "is" and missing operands
+        let src_in_cases = [
+            r#"permit(principal is something in, action, resource);"#,
+            r#"permit(principal, action, resource is something in);"#,
+        ];
+        for src in src_in_cases.iter() {
+            assert_parse_policy_allows_errors(src);
+        }
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn parsing_with_errors_succeeds_with_invalid_variable_in_when_missing_operand() {
+        let src = r#"
+            permit(principal, action, resource) when { principal == };
+        "#;
+        assert_parse_policy_allows_errors(src);
+
+        let src = r#"
+        permit(principal, action, resource) when { resource == };
+        "#;
+        assert_parse_policy_allows_errors(src);
+
+        let src = r#"
+        permit(principal, action, resource) when { action == };
+        "#;
+        assert_parse_policy_allows_errors(src);
+
+        let src = r#"
+        permit(principal, action, resource) when { principal == User::test && action == };
+        "#;
+        assert_parse_policy_allows_errors(src);
+
+        let src = r#"
+        permit(principal, action, resource) when { action == &&  principal == User::test};
+        "#;
+        assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn parsing_with_errors_succeeds_with_missing_second_operand_is() {
+        let src = r#"
+            permit(principal is something in, action, resource);
+        "#;
+        let parsed = assert_parse_policy_allows_errors(src);
+        println!("Parsed policy: {:?}", parsed);
+    }
+
     #[cfg(feature = "tolerant-ast")]
     #[test]
     fn show_policy1_errors_enabled() {
@@ -5305,7 +5575,7 @@ mod tests {
             permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
         "#;
         let errs = assert_parse_policy_allows_errors_fails(src);
-        expect_n_errors(src, &errs, 6);
+        expect_n_errors(src, &errs, 4);
         expect_some_error_matches(
             src,
             &errs,
@@ -5328,22 +5598,6 @@ mod tests {
             &ExpectedErrorMessageBuilder::error("type constraints using `:` are not supported")
                 .help("try using `is` instead")
                 .exactly_one_underline("r")
-                .build(),
-        );
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("invalid variable: w")
-                .help("the valid Cedar variables are `principal`, `action`, `resource`, and `context`; did you mean to enclose `w` in quotes to make a string?")
-                .exactly_one_underline("w")
-                .build(),
-        );
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("invalid variable: u")
-                .help("the valid Cedar variables are `principal`, `action`, `resource`, and `context`; did you mean to enclose `u` in quotes to make a string?")
-                .exactly_one_underline("u")
                 .build(),
         );
         expect_some_error_matches(

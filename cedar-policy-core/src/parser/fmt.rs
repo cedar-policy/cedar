@@ -58,8 +58,16 @@ impl fmt::Display for Policies {
 }
 impl fmt::Display for Policy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let policy = match self {
+            Policy::Policy(p) => p,
+            #[cfg(feature = "tolerant-ast")]
+            Policy::PolicyError => {
+                writeln!(f, "Policy::PolicyError")?;
+                return Ok(());
+            }
+        };
         // start with annotations
-        for anno in self.annotations.iter() {
+        for anno in policy.annotations.iter() {
             if f.alternate() {
                 // each annotation on a new line
                 writeln!(f, "{:#}", View(anno))?;
@@ -69,8 +77,8 @@ impl fmt::Display for Policy {
         }
         // main policy body
         if f.alternate() {
-            write!(f, "{:#}(", View(&self.effect))?;
-            let mut vars = self.variables.iter();
+            write!(f, "{:#}(", View(&policy.effect))?;
+            let mut vars = policy.variables.iter();
             // if at least one var ...
             if let Some(v) = vars.next() {
                 // write out the first one ...
@@ -86,13 +94,13 @@ impl fmt::Display for Policy {
                 write!(f, ")")?;
             }
             // include conditions on their own lines
-            for c in self.conds.iter() {
+            for c in policy.conds.iter() {
                 write!(f, "\n{:#}", View(c))?;
             }
             write!(f, ";")?;
         } else {
-            write!(f, "{}(", View(&self.effect))?;
-            let mut vars = self.variables.iter();
+            write!(f, "{}(", View(&policy.effect))?;
+            let mut vars = policy.variables.iter();
             // if at least one var ...
             if let Some(v) = vars.next() {
                 // write out the first one ...
@@ -104,7 +112,7 @@ impl fmt::Display for Policy {
             }
             write!(f, ")")?;
 
-            for c in self.conds.iter() {
+            for c in policy.conds.iter() {
                 write!(f, " {}", View(c))?;
             }
             write!(f, ";")?;
@@ -126,10 +134,10 @@ impl fmt::Display for VariableDef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", View(&self.variable))?;
         if let Some(name) = &self.unused_type_name {
-            write!(f, ": {}", View(name))?;
+            write!(f, ": {}", View(&name))?;
         }
         if let Some((op, expr)) = &self.ineq {
-            write!(f, " {} {}", op, View(expr))?;
+            write!(f, " {} {}", op, View(&expr))?;
         }
         Ok(())
     }
@@ -150,7 +158,12 @@ impl fmt::Display for Cond {
 }
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let expr = &*self.expr;
+        // let expr_opt: &_ = &*self.expr;
+        let expr = match self {
+            Expr::Expr(expr_impl) => &*expr_impl.expr,
+            #[cfg(feature = "tolerant-ast")]
+            Expr::ErrorExpr => return write!(f, "Expr::Error"),
+        };
         match expr {
             ExprData::Or(or) => write!(f, "{}", View(or)),
             ExprData::If(ex1, ex2, ex3) => {

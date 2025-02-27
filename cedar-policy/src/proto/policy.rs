@@ -394,6 +394,16 @@ impl From<&ast::ActionConstraint> for models::ActionConstraint {
                     },
                 )),
             },
+            #[cfg(feature = "tolerant-ast")]
+            ast::ActionConstraint::ErrorConstraint =>
+            // Treat an error constraint as an Any constraint for Protobufs since Protobufs schema model has no Error
+            {
+                Self {
+                    data: Some(models::action_constraint::Data::Any(
+                        models::action_constraint::Any::Unit.into(),
+                    )),
+                }
+            }
         }
     }
 }

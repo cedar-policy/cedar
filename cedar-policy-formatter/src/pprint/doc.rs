@@ -37,6 +37,7 @@ impl Doc for Ident {
 impl Doc for Node<Option<VariableDef>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let vd = self.as_inner()?;
+
         let start_comment = get_comment_at_start(self.loc.span, &mut context.tokens)?;
         let var_doc = vd.variable.as_inner()?.to_doc(context)?;
 
@@ -157,33 +158,37 @@ impl Doc for Node<Option<Cond>> {
 
 impl Doc for Node<Option<Expr>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
-        match self.as_inner()?.expr.as_ref() {
-            ExprData::If(c, t, e) => {
-                fn pp_group<'src>(
-                    s: &'src str,
-                    c: Comment<'src>,
-                    e: &Node<Option<Expr>>,
-                    context: &mut Context<'_, 'src>,
-                ) -> RcDoc<'src> {
-                    add_comment(RcDoc::text(s), c, RcDoc::nil()).append(
-                        RcDoc::line()
-                            .append(e.to_doc(context))
-                            .nest(context.config.indent_width),
+        match self.as_inner()? {
+            Expr::Expr(expr_impl) => match expr_impl.expr.as_ref() {
+                ExprData::If(c, t, e) => {
+                    fn pp_group<'src>(
+                        s: &'src str,
+                        c: Comment<'src>,
+                        e: &Node<Option<Expr>>,
+                        context: &mut Context<'_, 'src>,
+                    ) -> RcDoc<'src> {
+                        add_comment(RcDoc::text(s), c, RcDoc::nil()).append(
+                            RcDoc::line()
+                                .append(e.to_doc(context))
+                                .nest(context.config.indent_width),
+                        )
+                    }
+                    let if_comment = get_comment_at_start(self.loc.span, &mut context.tokens)?;
+                    let then_comment = get_comment_after_end(c.loc.span, &mut context.tokens)?;
+                    let else_comment = get_comment_after_end(t.loc.span, &mut context.tokens)?;
+                    Some(
+                        pp_group("if", if_comment, &c, context)
+                            .append(RcDoc::line())
+                            .append(pp_group("then", then_comment, &t, context))
+                            .append(RcDoc::line())
+                            .append(pp_group("else", else_comment, &e, context))
+                            .group(),
                     )
                 }
-                let if_comment = get_comment_at_start(self.loc.span, &mut context.tokens)?;
-                let then_comment = get_comment_after_end(c.loc.span, &mut context.tokens)?;
-                let else_comment = get_comment_after_end(t.loc.span, &mut context.tokens)?;
-                Some(
-                    pp_group("if", if_comment, c, context)
-                        .append(RcDoc::line())
-                        .append(pp_group("then", then_comment, t, context))
-                        .append(RcDoc::line())
-                        .append(pp_group("else", else_comment, e, context))
-                        .group(),
-                )
-            }
-            ExprData::Or(e) => e.to_doc(context),
+                ExprData::Or(e) => e.to_doc(context),
+            },
+            #[cfg(feature = "tolerant-ast")]
+            Expr::ErrorExpr => None,
         }
     }
 }
@@ -761,6 +766,11 @@ impl Doc for Node<Option<Ident>> {
 impl Doc for Node<Option<Policy>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let policy = self.as_inner()?;
+        let policy = match policy {
+            Policy::Policy(policy_impl) => policy_impl,
+            #[cfg(feature = "tolerant-ast")]
+            Policy::PolicyError => return None,
+        };
 
         let anno_doc = RcDoc::intersperse(
             policy.annotations.iter().map(|a| a.to_doc(context)),

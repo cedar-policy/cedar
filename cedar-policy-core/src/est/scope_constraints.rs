@@ -26,6 +26,9 @@ use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
+#[cfg(feature = "tolerant-ast")]
+static ERROR_CONSTRAINT_STR: &'static str = "ActionConstraint::ErrorConstraint";
+
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
@@ -66,6 +69,10 @@ pub enum ActionConstraint {
     /// `in` constraint
     #[serde(rename = "in")]
     In(ActionInConstraint),
+    #[cfg(feature = "tolerant-ast")]
+    #[serde(alias = "error")]
+    /// Error node for a constraint that failed to parse
+    ErrorConstraint,
 }
 
 /// Serde JSON structure for a resource scope constraint in the EST format
@@ -420,6 +427,8 @@ impl ActionConstraint {
                 }))
             }
             ActionConstraint::All | ActionConstraint::Eq(EqConstraint::Slot { .. }) => Ok(self),
+            #[cfg(feature = "tolerant-ast")]
+            ActionConstraint::ErrorConstraint => Ok(self),
         }
     }
 }
@@ -461,6 +470,8 @@ impl std::fmt::Display for ActionConstraint {
                 std::fmt::Display::fmt(aic, f)?;
                 Ok(())
             }
+            #[cfg(feature = "tolerant-ast")]
+            Self::ErrorConstraint => write!(f, "{ERROR_CONSTRAINT_STR}"),
         }
     }
 }
@@ -833,6 +844,8 @@ impl From<ast::ActionConstraint> for ActionConstraint {
                         .collect(),
                 }),
             },
+            #[cfg(feature = "tolerant-ast")]
+            ast::ActionConstraint::ErrorConstraint => ActionConstraint::ErrorConstraint,
         }
     }
 }
@@ -862,6 +875,8 @@ impl TryFrom<ActionConstraint> for ast::ActionConstraint {
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             }
+            #[cfg(feature = "tolerant-ast")]
+            ActionConstraint::ErrorConstraint => Ok(ast::ActionConstraint::ErrorConstraint),
         }?;
 
         ast_action_constraint
