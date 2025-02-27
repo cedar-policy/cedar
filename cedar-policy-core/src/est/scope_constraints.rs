@@ -26,6 +26,9 @@ use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
+#[cfg(feature = "tolerant-ast")]
+static ERROR_CONSTRAINT_STR: &'static str = "ActionConstraint::ErrorConstraint";
+
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
@@ -468,7 +471,7 @@ impl std::fmt::Display for ActionConstraint {
                 Ok(())
             }
             #[cfg(feature = "tolerant-ast")]
-            Self::ErrorConstraint => write!(f, "action"),
+            Self::ErrorConstraint => write!(f, "{ERROR_CONSTRAINT_STR}"),
         }
     }
 }

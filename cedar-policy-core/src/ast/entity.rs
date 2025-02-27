@@ -41,6 +41,12 @@ static ERROR_NAME: std::sync::LazyLock<Name> =
 static ERROR_EID_SMOL_STR: std::sync::LazyLock<SmolStr> =
     std::sync::LazyLock::new(|| SmolStr::from("Eid::ErrorEid"));
 
+#[cfg(feature = "tolerant-ast")]
+static EID_ERROR_STR: &'static str = "Eid::Error";
+
+#[cfg(feature = "tolerant-ast")]
+static ENTITY_TYPE_ERROR_STR: &'static str = "EntityType::Error";
+
 /// The entity type that Actions must have
 pub static ACTION_ENTITY_TYPE: &str = "Action";
 
@@ -73,7 +79,7 @@ impl Serialize for EntityType {
         match self {
             EntityType::EntityType(name) => name.serialize(serializer),
             #[cfg(feature = "tolerant-ast")]
-            EntityType::ErrorEntityType => serializer.serialize_str("EntityType::Error"),
+            EntityType::ErrorEntityType => serializer.serialize_str(ENTITY_TYPE_ERROR_STR),
         }
     }
 }
@@ -165,7 +171,7 @@ impl std::fmt::Display for EntityType {
         match self {
             EntityType::EntityType(name) => write!(f, "{}", name),
             #[cfg(feature = "tolerant-ast")]
-            EntityType::ErrorEntityType => write!(f, "Error"),
+            EntityType::ErrorEntityType => write!(f, "{ENTITY_TYPE_ERROR_STR}"),
         }
     }
 }
@@ -332,7 +338,7 @@ impl std::fmt::Display for EntityUID {
                 entity_uid.eid.escaped()
             ),
             #[cfg(feature = "tolerant-ast")]
-            EntityUID::Error => write!(f, "{}::\"ExprError\"", self.entity_type()),
+            EntityUID::Error => write!(f, "{}::\"{}\"", self.entity_type(), self.eid().escaped()),
         }
     }
 }
@@ -399,7 +405,7 @@ impl Serialize for Eid {
         match self {
             Eid::Eid(s) => s.serialize(serializer),
             #[cfg(feature = "tolerant-ast")]
-            Eid::ErrorEid => serializer.serialize_str("Eid::Error"),
+            Eid::ErrorEid => serializer.serialize_str(EID_ERROR_STR),
         }
     }
 }
@@ -415,7 +421,7 @@ impl Eid {
         match self {
             Eid::Eid(smol_str) => smol_str.escape_debug().collect(),
             #[cfg(feature = "tolerant-ast")]
-            Eid::ErrorEid => "Eid::Error".into(),
+            Eid::ErrorEid => EID_ERROR_STR.into(),
         }
     }
 }
@@ -435,7 +441,7 @@ impl AsRef<str> for Eid {
         match self {
             Eid::Eid(smol_str) => smol_str,
             #[cfg(feature = "tolerant-ast")]
-            Eid::ErrorEid => "Eid::Error",
+            Eid::ErrorEid => EID_ERROR_STR,
         }
     }
 }
