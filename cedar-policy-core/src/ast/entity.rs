@@ -47,6 +47,9 @@ static EID_ERROR_STR: &'static str = "Eid::Error";
 #[cfg(feature = "tolerant-ast")]
 static ENTITY_TYPE_ERROR_STR: &'static str = "EntityType::Error";
 
+#[cfg(feature = "tolerant-ast")]
+static ENTITY_UID_ERROR_STR: &'static str = "EntityUID::Error";
+
 /// The entity type that Actions must have
 pub static ACTION_ENTITY_TYPE: &str = "Action";
 
@@ -222,7 +225,7 @@ impl Serialize for EntityUID {
         match self {
             EntityUID::EntityUID(uid_impl) => uid_impl.serialize(serializer),
             #[cfg(feature = "tolerant-ast")]
-            EntityUID::Error => serializer.serialize_str("EntityUID::Error"),
+            EntityUID::Error => serializer.serialize_str(ENTITY_UID_ERROR_STR),
         }
     }
 }
@@ -330,16 +333,7 @@ impl EntityUID {
 
 impl std::fmt::Display for EntityUID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EntityUID::EntityUID(entity_uid) => write!(
-                f,
-                "{}::\"{}\"",
-                self.entity_type(),
-                entity_uid.eid.escaped()
-            ),
-            #[cfg(feature = "tolerant-ast")]
-            EntityUID::Error => write!(f, "{}::\"{}\"", self.entity_type(), self.eid().escaped()),
-        }
+        write!(f, "{}::\"{}\"", self.entity_type(), self.eid().escaped())
     }
 }
 

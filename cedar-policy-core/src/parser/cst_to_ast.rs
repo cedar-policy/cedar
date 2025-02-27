@@ -1055,7 +1055,7 @@ fn build_ast_error_node_if_possible<Build: ExprBuilder>(
 }
 
 /// Since ExprBuilder ErrorType can be Infallible or ParseErrors, if we get an error from building the node pass the ParseErrors along
-#[allow(unused_variables)]
+#[cfg_attr(not(feature = "tolerant-ast"), allow(unused_variables))]
 fn convert_expr_error_to_parse_error<Build: ExprBuilder>(
     error: ParseErrors,
     loc: Option<&Loc>,
