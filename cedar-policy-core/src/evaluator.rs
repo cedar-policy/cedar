@@ -21,7 +21,6 @@ use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
 use std::collections::BTreeMap;
-#[cfg(test)]
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -236,7 +235,11 @@ impl<'e> Evaluator<'e> {
     ///    it doesn't consider whether we're processing a `Permit` policy or a
     ///    `Forbid` policy.
     pub fn partial_evaluate(&self, p: &Policy) -> Result<Either<bool, Expr>> {
-        match self.partial_interpret(&p.condition(), p.env())? {
+        self.partial_evaluate_with_mappings(p, None)
+    }
+
+    pub(crate) fn partial_evaluate_with_mappings(&self, p: &Policy, mappings: Option<&HashMap<SmolStr, Value>>) -> Result<Either<bool, Expr>> {
+        match self.partial_interpret_with_mappings(&p.condition(), p.env(), mappings)? {
             PartialValue::Value(v) => v.get_as_bool().map(Either::Left),
             PartialValue::Residual(e) => Ok(Either::Right(e)),
         }
@@ -260,10 +263,14 @@ impl<'e> Evaluator<'e> {
     /// May return an error, for instance if the `Expr` tries to access an
     /// attribute that doesn't exist.
     pub fn partial_interpret(&self, expr: &Expr, slots: &SlotEnv) -> Result<PartialValue> {
+        self.partial_interpret_with_mappings(expr, slots, None)
+    }
+
+    fn partial_interpret_with_mappings(&self, expr: &Expr, slots: &SlotEnv, mappings: Option<&HashMap<SmolStr, Value>>) -> Result<PartialValue> {
         stack_size_check()?;
 
-        let res = self.partial_interpret_internal(expr, slots);
-
+        let res = self.partial_interpret_internal(expr, slots, mappings);
+        
         // set the returned value's source location to the same source location
         // as the input expression had.
         // we do this here so that we don't have to set/propagate the source
@@ -288,7 +295,7 @@ impl<'e> Evaluator<'e> {
     /// all errors are set properly before returning them from
     /// `partial_interpret()`.
     #[allow(clippy::cognitive_complexity)]
-    fn partial_interpret_internal(&self, expr: &Expr, slots: &SlotEnv) -> Result<PartialValue> {
+    fn partial_interpret_internal(&self, expr: &Expr, slots: &SlotEnv, mappings_option: Option<&HashMap<SmolStr, Value>>) -> Result<PartialValue> {
         let loc = expr.source_loc(); // the `loc` describing the location of the entire expression
         match expr.expr_kind() {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
@@ -302,14 +309,29 @@ impl<'e> Evaluator<'e> {
                 Var::Resource => Ok(self.resource.evaluate(*v)),
                 Var::Context => Ok(self.context.clone()),
             },
-            ExprKind::Unknown(_) => Ok(PartialValue::Residual(expr.clone())),
+            ExprKind::Unknown(u) => {
+                match mappings_option {
+                    None => Ok(PartialValue::Residual(Expr::unknown(u.clone()))),
+                    Some(mappings) => match (mappings.get(&u.name), &u.type_annotation) {
+                        (None, _) => Ok(PartialValue::Residual(Expr::unknown(u.clone()))),
+                        (Some(v), None) => Ok(PartialValue::Value(v.clone().into())),
+                        (Some(v), Some(t)) => {
+                            if v.type_of() == *t {
+                                Ok(PartialValue::Value(v.clone().into()))
+                            } else {
+                                Err(EvaluationError::type_error_single(t.clone(), v))
+                            }
+                        }
+                    }
+                }
+            },
             ExprKind::If {
                 test_expr,
                 then_expr,
                 else_expr,
-            } => self.eval_if(test_expr, then_expr, else_expr, slots),
+            } => self.eval_if(test_expr, then_expr, else_expr, slots, mappings_option),
             ExprKind::And { left, right } => {
-                match self.partial_interpret(left, slots)? {
+                match self.partial_interpret_with_mappings(left, slots, mappings_option)? {
                     // PE Case
                     PartialValue::Residual(e) => {
                         Ok(PartialValue::Residual(Expr::and(e, right.as_ref().clone())))
@@ -317,7 +339,7 @@ impl<'e> Evaluator<'e> {
                     // Full eval case
                     PartialValue::Value(v) => {
                         if v.get_as_bool()? {
-                            match self.partial_interpret(right, slots)? {
+                            match self.partial_interpret_with_mappings(right, slots, mappings_option)? {
                                 // you might think that `true && <residual>` can be optimized to `<residual>`, but this isn't true because
                                 // <residual> must be boolean, or else it needs to type error. So return `true && <residual>` to ensure
                                 // type check happens
@@ -335,7 +357,7 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::Or { left, right } => {
-                match self.partial_interpret(left, slots)? {
+                match self.partial_interpret_with_mappings(left, slots, mappings_option)? {
                     // PE cases
                     PartialValue::Residual(r) => {
                         Ok(PartialValue::Residual(Expr::or(r, right.as_ref().clone())))
@@ -346,7 +368,7 @@ impl<'e> Evaluator<'e> {
                             // We can short circuit here
                             Ok(true.into())
                         } else {
-                            match self.partial_interpret(right, slots)? {
+                            match self.partial_interpret_with_mappings(right, slots, mappings_option)? {
                                 PartialValue::Residual(rhs) =>
                                 // you might think that `false || <residual>` can be optimized to `<residual>`, but this isn't true because
                                 // <residual> must be boolean, or else it needs to type error. So return `false || <residual>` to ensure
@@ -360,7 +382,7 @@ impl<'e> Evaluator<'e> {
                     }
                 }
             }
-            ExprKind::UnaryApp { op, arg } => match self.partial_interpret(arg, slots)? {
+            ExprKind::UnaryApp { op, arg } => match self.partial_interpret_with_mappings(arg, slots, mappings_option)? {
                 PartialValue::Value(arg) => match op {
                     UnaryOp::Not => match arg.get_as_bool()? {
                         true => Ok(false.into()),
@@ -393,8 +415,8 @@ impl<'e> Evaluator<'e> {
                 //   Operators are not partially evaluated, except in a few 'simple' cases when comparing a concrete value with an unknown of known type
                 //   implemented in short_circuit_*
                 let (arg1, arg2) = match (
-                    self.partial_interpret(arg1, slots)?,
-                    self.partial_interpret(arg2, slots)?,
+                    self.partial_interpret_with_mappings(arg1, slots, mappings_option)?,
+                    self.partial_interpret_with_mappings(arg2, slots, mappings_option)?,
                 ) {
                     (PartialValue::Value(v1), PartialValue::Value(v2)) => (v1, v2),
                     (PartialValue::Value(v1), PartialValue::Residual(e2)) => {
@@ -663,7 +685,7 @@ impl<'e> Evaluator<'e> {
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let args = args
                     .iter()
-                    .map(|arg| self.partial_interpret(arg, slots))
+                    .map(|arg| self.partial_interpret_with_mappings(arg, slots, mappings_option))
                     .collect::<Result<Vec<_>>>()?;
                 match split(args) {
                     Either::Left(vals) => {
@@ -676,8 +698,8 @@ impl<'e> Evaluator<'e> {
                     )),
                 }
             }
-            ExprKind::GetAttr { expr, attr } => self.get_attr(expr.as_ref(), attr, slots, loc),
-            ExprKind::HasAttr { expr, attr } => match self.partial_interpret(expr, slots)? {
+            ExprKind::GetAttr { expr, attr } => self.get_attr(expr.as_ref(), attr, slots, loc, mappings_option),
+            ExprKind::HasAttr { expr, attr } => match self.partial_interpret_with_mappings(expr, slots, mappings_option)? {
                 PartialValue::Value(Value {
                     value: ValueKind::Record(record),
                     ..
@@ -702,7 +724,7 @@ impl<'e> Evaluator<'e> {
                 PartialValue::Residual(r) => Ok(Expr::has_attr(r, attr.clone()).into()),
             },
             ExprKind::Like { expr, pattern } => {
-                let v = self.partial_interpret(expr, slots)?;
+                let v = self.partial_interpret_with_mappings(expr, slots, mappings_option)?;
                 match v {
                     PartialValue::Value(v) => {
                         Ok((pattern.wildcard_match(v.get_as_string()?)).into())
@@ -711,7 +733,7 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::Is { expr, entity_type } => {
-                let v = self.partial_interpret(expr, slots)?;
+                let v = self.partial_interpret_with_mappings(expr, slots, mappings_option)?;
                 match v {
                     PartialValue::Value(v) => {
                         Ok((v.get_as_entity()?.entity_type() == entity_type).into())
@@ -734,7 +756,7 @@ impl<'e> Evaluator<'e> {
             ExprKind::Set(items) => {
                 let vals = items
                     .iter()
-                    .map(|item| self.partial_interpret(item, slots))
+                    .map(|item| self.partial_interpret_with_mappings(item, slots, mappings_option))
                     .collect::<Result<Vec<_>>>()?;
                 match split(vals) {
                     Either::Left(vals) => Ok(Value::set(vals, loc.cloned()).into()),
@@ -744,7 +766,7 @@ impl<'e> Evaluator<'e> {
             ExprKind::Record(map) => {
                 let map = map
                     .iter()
-                    .map(|(k, v)| Ok((k.clone(), self.partial_interpret(v, slots)?)))
+                    .map(|(k, v)| Ok((k.clone(), self.partial_interpret_with_mappings(v, slots, mappings_option)?)))
                     .collect::<Result<Vec<_>>>()?;
                 let (names, evalled): (Vec<SmolStr>, Vec<PartialValue>) = map.into_iter().unzip();
                 match split(evalled) {
@@ -814,13 +836,14 @@ impl<'e> Evaluator<'e> {
         consequent: &Arc<Expr>,
         alternative: &Arc<Expr>,
         slots: &SlotEnv,
+        mappings_option: Option<&HashMap<SmolStr, Value>>,
     ) -> Result<PartialValue> {
-        match self.partial_interpret(guard, slots)? {
+        match self.partial_interpret_with_mappings(guard, slots, mappings_option)? {
             PartialValue::Value(v) => {
                 if v.get_as_bool()? {
-                    self.partial_interpret(consequent, slots)
+                    self.partial_interpret_with_mappings(consequent, slots, mappings_option)
                 } else {
-                    self.partial_interpret(alternative, slots)
+                    self.partial_interpret_with_mappings(alternative, slots, mappings_option)
                 }
             }
             PartialValue::Residual(guard) => {
@@ -838,8 +861,9 @@ impl<'e> Evaluator<'e> {
         attr: &SmolStr,
         slots: &SlotEnv,
         source_loc: Option<&Loc>,
+        mappings_option: Option<&HashMap<SmolStr, Value>>,
     ) -> Result<PartialValue> {
-        match self.partial_interpret(expr, slots)? {
+        match self.partial_interpret_with_mappings(expr, slots, mappings_option)? {
             // PE Cases
             PartialValue::Residual(res) => {
                 match res.expr_kind() {
@@ -861,7 +885,7 @@ impl<'e> Evaluator<'e> {
                                         source_loc.cloned(),
                                     )
                                 })
-                                .and_then(|e| self.partial_interpret(e, slots))
+                                .and_then(|e| self.partial_interpret_with_mappings(e, slots, mappings_option))
                         } else if map.keys().any(|k| k == attr) {
                             Ok(PartialValue::Residual(Expr::get_attr(
                                 Expr::record_arc(Arc::clone(map)),
@@ -908,6 +932,21 @@ impl<'e> Evaluator<'e> {
                 }
                 Dereference::Data(entity) => entity
                     .get(attr)
+                    .map(|pv| {
+                        match pv {
+                            PartialValue::Value(_) => pv.clone(),
+                            PartialValue::Residual(e) => match e.expr_kind() {
+                                ExprKind::Unknown(u) => match mappings_option {
+                                    None => pv.clone(),
+                                    Some(mappings) => match mappings.get(&u.name) {
+                                        Some(newval) => PartialValue::Value(newval.clone()),
+                                        None => pv.clone(),
+                                    }
+                                }
+                                _ => pv.clone(),
+                            }
+                        }
+                    })
                     .ok_or_else(|| {
                         EvaluationError::entity_attr_does_not_exist(
                             uid,
@@ -917,8 +956,7 @@ impl<'e> Evaluator<'e> {
                             entity.attrs_len(),
                             source_loc.cloned(),
                         )
-                    })
-                    .cloned(),
+                    }),
             },
             PartialValue::Value(v) => {
                 // PANIC SAFETY Entity type name is fully static and a valid unqualified `Name`

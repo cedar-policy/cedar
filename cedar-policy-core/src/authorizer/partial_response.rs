@@ -313,21 +313,28 @@ impl PartialResponse {
     /// Attempt to re-authorize this response given a mapping from unknowns to values
     pub fn reauthorize(
         &self,
-        mapping: &HashMap<SmolStr, Value>,
+        mappings: &HashMap<SmolStr, Value>,
         auth: &Authorizer,
         es: &Entities,
     ) -> Result<Self, ReauthorizationError> {
-        let policyset = self.all_policies(mapping)?;
-        let new_request = self.concretize_request(mapping)?;
-        Ok(auth.is_authorized_core(new_request, &policyset, es))
+        let policyset = self.all_residual_policies()?;
+        let new_request = self.concretize_request(mappings)?;
+        Ok(auth.is_authorized_core_with_mappings(new_request, &policyset, es, Some(mappings)))
     }
 
-    fn all_policies(&self, mapping: &HashMap<SmolStr, Value>) -> Result<PolicySet, PolicySetError> {
-        let mapper = map_unknowns(mapping);
+    fn all_residual_policies(&self) -> Result<PolicySet, PolicySetError> {
         PolicySet::try_from_iter(
             self.all_permit_residuals()
                 .chain(self.all_forbid_residuals())
-                .map(mapper),
+                .map(|(effect, id, expr, annotations)| {
+                    Policy::from_when_clause_annos(
+                        effect,
+                        expr.clone(),
+                        id.clone(),
+                        expr.source_loc().cloned(),
+                        annotations.clone(),
+                    )
+                }),
         )
     }
 
@@ -464,23 +471,6 @@ fn construct_policy((effect, id, expr, annotations): PolicyComponents<'_>) -> Po
         expr.source_loc().cloned(),
         (*annotations).clone(),
     )
-}
-
-/// Given a mapping from unknown names to values and a policy prototype
-/// substitute the residual with the mapping and build a policy.
-/// Curried for convenience
-fn map_unknowns<'a>(
-    mapping: &'a HashMap<SmolStr, Value>,
-) -> impl Fn(PolicyComponents<'a>) -> Policy {
-    |(effect, id, expr, annotations)| {
-        Policy::from_when_clause_annos(
-            effect,
-            Arc::new(expr.substitute(mapping)),
-            id.clone(),
-            expr.source_loc().cloned(),
-            annotations.clone(),
-        )
-    }
 }
 
 /// Checks if a given residual record did error, returning the [`PolicyID`] if it did
