@@ -7089,3 +7089,137 @@ mod schema_annotations {
         );
     }
 }
+
+mod to_cedar {
+    use std::collections::HashMap;
+
+    use crate::{Policy, PolicyId, PolicySet, SlotId, Template};
+
+    #[test]
+    fn json_policy_to_cedar() {
+        let policy_json = serde_json::json!({
+            "effect": "permit",
+            "principal": { "op": "All" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [
+                {
+                    "kind": "when",
+                    "body": {
+                        ".": {
+                            "left": {
+                                "Var": "context"
+                            },
+                            "attr": "is_frobnicated"
+                        }
+                    }
+                }
+            ]
+        });
+
+        let policy = Policy::from_json(None, policy_json).unwrap();
+
+        let policy_cedar = policy.to_cedar().unwrap();
+        let expected_policy_cedar = r#"permit(
+  principal,
+  action,
+  resource
+) when {
+  context["is_frobnicated"]
+};"#;
+
+        assert_eq!(policy_cedar, expected_policy_cedar);
+    }
+
+    #[test]
+    fn json_policy_set_to_cedar() {
+        let p1_json = serde_json::json!({
+            "effect": "permit",
+            "principal": { "op": "All" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [
+                {
+                    "kind": "when",
+                    "body": {
+                        ".": {
+                            "left": {
+                                "Var": "context"
+                            },
+                            "attr": "is_frobnicated"
+                        }
+                    }
+                }
+            ]
+        });
+        let t1_json = serde_json::json!({
+            "effect": "permit",
+            "principal": {
+                "op": "==",
+                "slot": "?principal"
+            },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [ ]
+        });
+        let pset_json = serde_json::json!({
+            "staticPolicies": {
+                "p1": p1_json,
+            },
+            "templates" : {
+                "t1": t1_json,
+            },
+            "templateLinks" : []
+        });
+        let pset = PolicySet::from_json_value(pset_json).unwrap();
+        let expected = r#"permit(
+  principal,
+  action,
+  resource
+) when {
+  context["is_frobnicated"]
+};
+
+permit(
+  principal == ?principal,
+  action,
+  resource
+) when {
+  true
+};"#;
+        assert_eq!(pset.to_cedar().unwrap(), expected);
+    }
+
+    #[test]
+    fn cedar_to_cedar_is_lossless() {
+        let policy_cedar = "permit ( principal, action, resource );";
+        let policy = Policy::parse(None, policy_cedar).unwrap();
+        let lossless_cedar = policy.to_cedar().unwrap();
+        assert_eq!(policy_cedar, lossless_cedar);
+    }
+
+    #[test]
+    fn template_linked_is_none() {
+        let mut pset = PolicySet::new();
+        let template: Template =
+            r"permit(principal == ?principal, action, resource) when { principal.bar };"
+                .parse()
+                .unwrap();
+        pset.add_template(template.new_id(PolicyId::new("template")))
+            .unwrap();
+
+        pset.link(
+            PolicyId::new("template"),
+            PolicyId::new("Link1"),
+            HashMap::from_iter([(SlotId::principal(), r#"User::"Joe""#.parse().unwrap())]),
+        )
+        .unwrap();
+
+        // Linked policies can't convert to Cedar format
+        let linked_policy = pset.policies().next().unwrap();
+        assert_eq!(linked_policy.to_cedar(), None);
+
+        // Neither can the whole policy set containing the linked policy
+        assert_eq!(pset.to_cedar(), None);
+    }
+}

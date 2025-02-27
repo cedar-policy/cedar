@@ -1114,7 +1114,7 @@ fn test_translate_policy() {
     let json_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar.json";
     let cedar = std::fs::read_to_string(cedar_filename).unwrap();
     let json = std::fs::read_to_string(json_filename).unwrap();
-    let translate_cmd = assert_cmd::Command::cargo_bin("cedar")
+    let to_json_command = assert_cmd::Command::cargo_bin("cedar")
         .expect("bin exists")
         .arg("translate-policy")
         .arg("--direction")
@@ -1123,12 +1123,39 @@ fn test_translate_policy() {
         .arg(cedar_filename)
         .assert();
 
-    let translated = std::str::from_utf8(&translate_cmd.get_output().stdout)
+    let translated_json = std::str::from_utf8(&to_json_command.get_output().stdout)
         .expect("output should be decodable");
 
     assert_eq!(
-        translated, json,
-        "\noriginal:\n{cedar}\n\ttranslated:\n{translated}",
+        translated_json, json,
+        "\noriginal:\n{cedar}\n\ttranslated:\n{translated_json}",
+    );
+
+    let translate_to_cedar = assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("translate-policy")
+        .arg("--direction")
+        .arg("json-to-cedar")
+        .arg("-p")
+        .arg(json_filename)
+        .assert();
+
+    let translated_cedar = std::str::from_utf8(&translate_to_cedar.get_output().stdout)
+        .expect("output should be decodable");
+
+    // Converting back from JSON adds an extra `when { true }`
+    let expected_translated_cedar = r#"permit(
+  principal == User::"alice",
+  action == Action::"update",
+  resource == Photo::"VacationPhoto94.jpg"
+) when {
+  true
+};
+"#;
+
+    assert_eq!(
+        translated_cedar, expected_translated_cedar,
+        "\noriginal:\n{cedar}\n\ttranslated:\n{translated_cedar}",
     );
 }
 

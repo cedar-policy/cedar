@@ -26,6 +26,9 @@ Cedar Language Version: TBD
 - Added `PolicySet::merge_policyset()` to merge a `PolicySet` into another `PolicySet` struct (resolving #610)
 - Implemented [RFC 53 (enumerated entity types)](https://github.com/cedar-policy/rfcs/blob/main/text/0053-enum-entities.md)  (#1377)
 - Added the experimental feature `tolerant-ast` which allows certain errors to be propogated in AST expressions as an `ExprKind::Error` (#1470)
+- Added `to_cedar` functions for `PolicySet`, `Policy`, and `Template` that
+  render the policy in the human-readable Cedar syntax. These function can be used
+  to convert JSON formatted policies into the human-readable syntax.
 
 ## [4.3.3] - 2025-02-25
 
