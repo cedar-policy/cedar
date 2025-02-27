@@ -1,0 +1,16 @@
+entity User in Group {
+    jobLevel: Long,
+    manager: User
+};
+entity Group;
+entity Document;
+
+action view appliesTo {
+    principal: User,
+    resource: Document,
+    context: {
+        token: {
+            is_secure: Bool
+        }
+    }
+};
