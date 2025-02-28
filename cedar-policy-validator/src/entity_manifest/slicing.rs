@@ -969,7 +969,7 @@ action BeSad appliesTo {
         let manifest = compute_entity_manifest(&schema, &pset).unwrap();
         expect_entity_slice_to(
             entities_json.clone(),
-            entities_json.clone(),
+            entities_json,
             &schema,
             &manifest,
         );
@@ -1027,8 +1027,8 @@ action Read appliesTo {
             }
         }]);
         expect_entity_slice_to(
-            entities_json.clone(),
-            expected_json.clone(),
+            entities_json,
+            expected_json,
             &schema,
             &manifest,
         );
@@ -1070,7 +1070,7 @@ action Read appliesTo {
         let manifest = compute_entity_manifest(&schema, &pset).unwrap();
         expect_entity_slice_to(
             entities_json.clone(),
-            entities_json.clone(),
+            entities_json,
             &schema,
             &manifest,
         );
@@ -1114,7 +1114,7 @@ action Read appliesTo {
         let manifest = compute_entity_manifest(&schema, &pset).unwrap();
         expect_entity_slice_to(
             entities_json.clone(),
-            entities_json.clone(),
+            entities_json,
             &schema,
             &manifest,
         );

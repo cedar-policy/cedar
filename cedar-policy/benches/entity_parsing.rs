@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)] // it's ok for benchmarking code to panic
+
 use std::str::FromStr;
 
 use cedar_policy::EntityTypeName;

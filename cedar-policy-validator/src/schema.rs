@@ -434,7 +434,7 @@ impl ValidatorSchema {
         // available in the empty namespace, we'd probably add that here.
         for tyname in primitive_types::<Name>()
             .map(|(id, _)| Name::unqualified_name(id))
-            .chain(extensions.ext_types().cloned().map(Into::into))
+            .chain(extensions.ext_types().cloned())
         {
             if !all_defs.is_defined_as_entity(tyname.as_ref())
                 && !all_defs.is_defined_as_common(tyname.as_ref())
@@ -891,7 +891,6 @@ impl ValidatorSchema {
             TCComputation::AssumeAlreadyComputed,
             extensions,
         )
-        .map_err(Into::into)
     }
 }
 

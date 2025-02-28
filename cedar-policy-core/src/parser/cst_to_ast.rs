@@ -731,7 +731,7 @@ impl ast::UnreservedId {
                                 loc.clone(),
                             )
                             .into(),
-                            Some(&loc),
+                            Some(loc),
                         )
                     }
                 }

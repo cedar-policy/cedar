@@ -350,7 +350,7 @@ impl PolicySet {
             let mut this_template_link_set = self
                 .template_to_links_map
                 .remove(tid)
-                .unwrap_or(HashSet::new());
+                .unwrap_or_default();
             for pid in other_template_link_set {
                 let pid = renaming.get(pid).unwrap_or(pid);
                 this_template_link_set.insert(pid.clone());
@@ -847,21 +847,17 @@ mod test {
                 };
                 // ensure no other policy was renamed
                 assert_eq!(renaming.keys().len(), 1);
-                match pset1.get(&pid0) {
-                    Some(new_p1) => assert_eq!(Policy::from(p1), new_p1.clone()),
-                    None => (),
+                if let Some(new_p1) = pset1.get(&pid0) {
+                    assert_eq!(Policy::from(p1), new_p1.clone());
                 }
-                match pset1.get(&pid1) {
-                    Some(new_p2) => assert_eq!(Policy::from(p2), new_p2.clone()),
-                    None => (),
+                if let Some(new_p2) = pset1.get(&pid1) {
+                    assert_eq!(Policy::from(p2), new_p2.clone());
                 }
-                match pset1.get(new_pid1) {
-                    Some(new_p3) => assert_eq!(Policy::from(p3), new_p3.clone()),
-                    None => (),
+                if let Some(new_p3) = pset1.get(new_pid1) {
+                    assert_eq!(Policy::from(p3), new_p3.clone());
                 }
-                match pset1.get(&pid2) {
-                    Some(new_p4) => assert_eq!(Policy::from(p4), new_p4.clone()),
-                    None => (),
+                if let Some(new_p4) = pset1.get(&pid2) {
+                    assert_eq!(Policy::from(p4), new_p4.clone());
                 }
             }
             Err(PolicySetError::Occupied { id }) => panic!(

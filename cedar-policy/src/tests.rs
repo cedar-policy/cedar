@@ -812,8 +812,7 @@ mod policy_set_tests {
         let mut pset = PolicySet::new();
         pset.add(static_policy).unwrap();
 
-        let entity_uids = pset.unknown_entities();
-        entity_uids.contains(&"test_entity_type::\"unknown\"".parse().unwrap());
+        assert!(pset.unknown_entities().contains(&"test_entity_type::\"unknown\"".parse().unwrap()));
     }
 
     #[test]
@@ -4228,8 +4227,6 @@ mod level_validation_tests {
             }
         }))
         .expect("Schema parse error.")
-        .try_into()
-        .expect("Expected valid schema.")
     }
 
     #[test]
@@ -4284,7 +4281,7 @@ mod level_validation_tests {
             ValidationError::EntityDerefLevelViolation(inner) => {
                 assert!(format!("{inner}").contains("Actual level is 2"));
             }
-            _ => unreachable!(),
+            _ => panic!("should be unreachable"),
         };
     }
 
@@ -4582,12 +4579,12 @@ mod error_source_tests {
         // same srcs as above
         for src in srcs {
             let pset = PolicySet::from_str(src).unwrap();
-            let res = validator.validate(&pset, ValidationMode::Strict);
-            for err in res.validation_errors() {
+            let val_result = validator.validate(&pset, ValidationMode::Strict);
+            for err in val_result.validation_errors() {
                 assert!(err.labels().is_some(), "no source span for the validation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(err.clone()));
                 assert!(err.source_code().is_some(), "no source code for the validation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(err.clone()));
             }
-            for warn in res.validation_warnings() {
+            for warn in val_result.validation_warnings() {
                 assert!(warn.labels().is_some(), "no source span for the validation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(warn.clone()));
                 assert!(warn.source_code().is_some(), "no source code for the validation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(warn.clone()));
             }

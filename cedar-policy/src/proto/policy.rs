@@ -505,6 +505,7 @@ mod test {
     use super::*;
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn policy_roundtrip() {
         let annotation1 = ast::Annotation {
             val: "".into(),
@@ -562,9 +563,9 @@ mod test {
         let name1 = Arc::new(ast::EntityType::from(
             ast::Name::from_normalized_str("B::C::D").unwrap(),
         ));
-        let prc1 = ast::PrincipalOrResourceConstraint::is_eq(euid1.to_owned());
-        let prc2 = ast::PrincipalOrResourceConstraint::is_in(euid1.to_owned());
-        let prc3 = ast::PrincipalOrResourceConstraint::is_entity_type(name1.to_owned());
+        let prc1 = ast::PrincipalOrResourceConstraint::is_eq(euid1.clone());
+        let prc2 = ast::PrincipalOrResourceConstraint::is_in(euid1.clone());
+        let prc3 = ast::PrincipalOrResourceConstraint::is_entity_type(name1.clone());
         let prc4 = ast::PrincipalOrResourceConstraint::is_entity_type_in(name1, euid1);
         assert_eq!(
             ast::PrincipalOrResourceConstraint::any(),

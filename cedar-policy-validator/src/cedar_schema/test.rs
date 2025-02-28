@@ -561,7 +561,7 @@ namespace Baz {action "Foo" appliesTo {
                     json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                         type_name: "UserGroup".parse().unwrap(),
                     }, loc: None};
-                let attribute = attributes.get(group).expect("No attribute `{group}`");
+                let attribute = attributes.get(group).unwrap_or_else(|| panic!("No attribute `{group}`"));
                 assert_has_type(attribute, &expected);
             });
         }});
@@ -603,7 +603,7 @@ namespace Baz {action "Foo" appliesTo {
                 let expected = json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "UserGroup".parse().unwrap(),
                 }, loc: None };
-                let attribute = attributes.get(group).expect("No attribute `{group}`");
+                let attribute = attributes.get(group).unwrap_or_else(|| panic!("No attribute `{group}`"));
                 assert_has_type(attribute, &expected);
             });
         }});

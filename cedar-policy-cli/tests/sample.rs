@@ -673,7 +673,7 @@ fn test_level_validate_samples(
             schema_format: SchemaFormat::Cedar,
         },
         policies: PoliciesArgs {
-            policies_file: Some(policies_file.clone()),
+            policies_file: Some(policies_file),
             policy_format: PolicyFormat::Cedar,
             template_linked_file: None,
         },

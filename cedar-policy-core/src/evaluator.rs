@@ -3415,8 +3415,8 @@ pub(crate) mod test {
                     duration_constructor.clone(),
                     vec![Value::from("2h").into()]))),
             Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: datetime_constructor.clone() }]);
-                assert_eq!(actual, Type::Extension { name: duration_constructor.clone() });
+                assert_eq!(expected, nonempty![Type::Extension { name: datetime_constructor }]);
+                assert_eq!(actual, Type::Extension { name: duration_constructor });
                 assert_eq!(advice, None);
         });
 

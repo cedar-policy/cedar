@@ -57,6 +57,11 @@ impl Pattern {
     pub fn len(&self) -> usize {
         self.elems.len()
     }
+
+    /// Is this an empty pattern
+    pub fn is_empty(&self) -> bool {
+        self.elems.is_empty()
+    }
 }
 
 impl From<Arc<Vec<PatternElem>>> for Pattern {
