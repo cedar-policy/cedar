@@ -2224,7 +2224,7 @@ mod schema_based_parsing_tests {
     use nonempty::NonEmpty;
     use serde_json::json;
     use smol_str::SmolStr;
-    use std::collections::HashSet;
+    use std::collections::{BTreeMap, HashSet};
     use std::sync::Arc;
 
     /// Mock schema impl used for most of these tests
@@ -2340,7 +2340,7 @@ mod schema_based_parsing_tests {
                         (
                             "inner3".into(),
                             AttributeType::required(SchemaType::Record {
-                                attrs: HashMap::from([(
+                                attrs: BTreeMap::from([(
                                     "innerinner".into(),
                                     AttributeType::required(employee_ty()),
                                 )]),
