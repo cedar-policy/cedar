@@ -2220,7 +2220,7 @@ impl PolicySet {
     /// Get the human-readable Cedar syntax representation of this policy set.
     /// This function is primarily intended for rendering JSON policies in the
     /// human-readable syntax, but it will also return the original policy text
-    /// (though possibly re-ordering policies withing the policy set) when the
+    /// (though possibly re-ordering policies within the policy set) when the
     /// policy-set contains policies parsed from the human-readable syntax.
     ///
     /// This will return `None` if there are any linked policies in the policy
