@@ -159,22 +159,22 @@ where
         // a slight optimization to avoid adding the ancestors of `ancestor_id` if
         // `ancestor_id` was an ancestor of any parent already explored by this loop.
         if !ancestors.contains(&ancestor_id) {
-            let ancestor = if let Some(ancestor) = nodes.get(&ancestor_id) {
-                ancestor
-            } else {
-                return;
+            let ancestor = match nodes.get(&ancestor_id) {
+                Some(ancestor) => ancestor,
+                None => return,
             };
             for grand_ancestor_id in ancestor.out_edges() {
                 ancestors.insert(grand_ancestor_id.clone());
             }
         }
     }
-    // Do the actual saturation of out-going edges of `node` here to avoid
-    // issues with rust's borrow checker.
+    // PANIC SAFETY this node should always exist because of the check to get `out_edges`
     #[allow(clippy::expect_used)]
     let node = nodes
         .get_mut(node_id)
         .expect("This node should always exist.");
+    // Do the actual saturation of out-going edges of `node` here to avoid
+    // issues with rust's borrow checker.
     for ancestor_id in ancestors {
         node.add_edge_to(ancestor_id);
     }
