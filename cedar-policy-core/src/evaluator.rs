@@ -2590,7 +2590,7 @@ pub(crate) mod test {
         .unwrap();
         let request = basic_request();
         let entities = Entities::from_entities(
-            std::iter::once(entity),
+            [entity],
             None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
             Extensions::none(),
@@ -5070,8 +5070,7 @@ pub(crate) mod test {
             Either::Right(expr) => {
                 println!("{expr}");
                 assert!(expr.contains_unknown());
-                let m: HashMap<_, _> =
-                    std::iter::once(("principal".into(), Value::from(euid))).collect();
+                let m: HashMap<_, _> = HashMap::from([("principal".into(), Value::from(euid))]);
                 let new_expr = expr.substitute_typed(&m).unwrap();
                 assert_eq!(
                     e.partial_interpret(&new_expr, &HashMap::new())

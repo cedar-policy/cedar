@@ -500,12 +500,12 @@ mod test {
             .unwrap();
 
         let r = a.is_authorized_core(q.clone(), &pset, &es);
-        let map = std::iter::once(("test".into(), Value::from(false))).collect();
+        let map = HashMap::from([("test".into(), Value::from(false))]);
         let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Allow);
         drop(r2);
 
-        let map = std::iter::once(("test".into(), Value::from(true))).collect();
+        let map = HashMap::from([("test".into(), Value::from(true))]);
         let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Deny);
 
@@ -614,11 +614,11 @@ mod test {
             .unwrap();
 
         let r = a.is_authorized_core(q.clone(), &pset, &es);
-        let map = std::iter::once(("a".into(), Value::from(false))).collect();
+        let map = HashMap::from([("a".into(), Value::from(false))]);
         let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Deny);
 
-        let map = std::iter::once(("a".into(), Value::from(true))).collect();
+        let map = HashMap::from([("a".into(), Value::from(true))]);
         let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Allow);
 

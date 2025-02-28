@@ -4957,7 +4957,7 @@ mod test_resolver {
                 (
                     "a".parse().unwrap(),
                     Type::record_with_required_attributes(
-                        std::iter::once(("foo".into(), Type::primitive_boolean())),
+                        [("foo".into(), Type::primitive_boolean())],
                         crate::types::OpenTag::ClosedAttributes
                     )
                 ),

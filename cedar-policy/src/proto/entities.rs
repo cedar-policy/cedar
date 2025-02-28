@@ -85,7 +85,7 @@ mod test {
         let mut entities2 = entities::Entities::new();
         entities2 = entities2
             .add_entities(
-                std::iter::once(entity.clone()),
+                [entity.clone()],
                 None::<&entities::NoEntitiesSchema>,
                 entities::TCComputation::AssumeAlreadyComputed,
                 extensions::Extensions::none(),

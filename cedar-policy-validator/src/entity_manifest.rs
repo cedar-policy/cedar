@@ -742,17 +742,17 @@ when {
 
         let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
         let expected_rust = EntityManifest {
-            per_action: std::iter::once((
+            per_action: HashMap::from([(
                 RequestType {
                     principal: "User".parse().unwrap(),
                     resource: "Document".parse().unwrap(),
                     action: r#"Action::"Read""#.parse().unwrap(),
                 },
                 RootAccessTrie {
-                    trie: std::iter::once((
+                    trie: HashMap::from([(
                         EntityRoot::Var(Var::Principal),
                         AccessTrie {
-                            children: std::iter::once((
+                            children: HashMap::from([(
                                 SmolStr::new("name"),
                                 Box::new(AccessTrie {
                                     children: HashMap::new(),
@@ -760,17 +760,14 @@ when {
                                     is_ancestor: false,
                                     node_type: Some(Type::primitive_string()),
                                 }),
-                            ))
-                            .collect(),
+                            )]),
                             ancestors_trie: RootAccessTrie::new(),
                             is_ancestor: false,
                             node_type: Some(Type::named_entity_reference("User".parse().unwrap())),
                         },
-                    ))
-                    .collect(),
+                    )]),
                 },
-            ))
-            .collect(),
+            )]),
         };
         let expected = serde_json::json! ({
           "perAction": [

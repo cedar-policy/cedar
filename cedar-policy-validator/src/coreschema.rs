@@ -1145,7 +1145,7 @@ mod test {
                 (ast::EntityUID::with_eid_and_type("People", "🤔").unwrap(), None),
                 (ast::EntityUID::with_eid_and_type("Action", "eat").unwrap(), None),
                 (ast::EntityUID::with_eid_and_type("Fruit", "🍉").unwrap(), None),
-                Context::from_pairs(std::iter::once(("fruit".into(), (Value::from(ast::EntityUID::with_eid_and_type("Fruit", "🥭").unwrap())).into())), Extensions::none()).expect("should be a valid context"),
+                Context::from_pairs([("fruit".into(), (Value::from(ast::EntityUID::with_eid_and_type("Fruit", "🥭").unwrap())).into())], Extensions::none()).expect("should be a valid context"),
                 Some(&schema_with_enums()),
                 Extensions::none(),
             ),

@@ -661,11 +661,10 @@ mod test {
         .expect("Failed to parse");
         pset.add_template(template).expect("Add failed");
 
-        let env: HashMap<SlotId, EntityUID> = std::iter::once((
+        let env: HashMap<SlotId, EntityUID> = HashMap::from([(
             SlotId::principal(),
             r#"Test::"test""#.parse().expect("Failed to parse"),
-        ))
-        .collect();
+        )]);
 
         let r = pset.link(PolicyID::from_string("t"), PolicyID::from_string("id"), env);
 
@@ -699,11 +698,10 @@ mod test {
             )
             .expect("Failed to parse"),
         );
-        let env1: HashMap<SlotId, EntityUID> = std::iter::once((
+        let env1: HashMap<SlotId, EntityUID> = HashMap::from([(
             SlotId::principal(),
             r#"Test::"test1""#.parse().expect("Failed to parse"),
-        ))
-        .collect();
+        )]);
 
         let p1 = Template::link(Arc::clone(&template), PolicyID::from_string("link"), env1)
             .expect("Failed to link");
@@ -715,11 +713,10 @@ mod test {
             "Adding link should implicitly add the template"
         );
 
-        let env2: HashMap<SlotId, EntityUID> = std::iter::once((
+        let env2: HashMap<SlotId, EntityUID> = HashMap::from([(
             SlotId::principal(),
             r#"Test::"test2""#.parse().expect("Failed to parse"),
-        ))
-        .collect();
+        )]);
 
         let p2 = Template::link(
             Arc::clone(&template),
@@ -745,11 +742,10 @@ mod test {
             )
             .expect("Failed to parse"),
         );
-        let env3: HashMap<SlotId, EntityUID> = std::iter::once((
+        let env3: HashMap<SlotId, EntityUID> = HashMap::from([(
             SlotId::resource(),
             r#"Test::"test3""#.parse().expect("Failed to parse"),
-        ))
-        .collect();
+        )]);
 
         let p4 = Template::link(
             Arc::clone(&template2),
@@ -908,7 +904,7 @@ mod test {
         set.link(
             PolicyID::from_string("template"),
             PolicyID::from_string("id"),
-            std::iter::once((SlotId::principal(), EntityUID::with_eid("eid"))).collect(),
+            HashMap::from([(SlotId::principal(), EntityUID::with_eid("eid"))]),
         )
         .expect("Linking failed!");
         assert_eq!(set.static_policies().count(), 1);

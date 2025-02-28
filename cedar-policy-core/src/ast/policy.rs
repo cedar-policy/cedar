@@ -1402,7 +1402,7 @@ impl Diagnostic for UnexpectedSlotError {
         match self {
             Self::FoundSlot(Slot { loc, .. }) => loc.as_ref().map(|loc| {
                 let label = miette::LabeledSpan::underline(loc.span);
-                Box::new(std::iter::once(label)) as Box<dyn Iterator<Item = miette::LabeledSpan>>
+                Box::new(std::iter::once(label)) as _
             }),
         }
     }

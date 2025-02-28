@@ -2244,7 +2244,7 @@ mod schema_based_parsing_tests {
                     action.clone(),
                     [(SmolStr::from("foo"), PartialValue::from(34))],
                     HashSet::new(),
-                    std::iter::once(r#"Action::"readOnly""#.parse().expect("valid uid")).collect(),
+                    HashSet::from([r#"Action::"readOnly""#.parse().expect("valid uid")]),
                     [],
                 ))),
                 r#"Action::"readOnly""# => Some(Arc::new(Entity::with_uid(action.clone()))),
@@ -2340,11 +2340,10 @@ mod schema_based_parsing_tests {
                         (
                             "inner3".into(),
                             AttributeType::required(SchemaType::Record {
-                                attrs: std::iter::once((
+                                attrs: HashMap::from([(
                                     "innerinner".into(),
                                     AttributeType::required(employee_ty()),
-                                ))
-                                .collect(),
+                                )]),
                                 open_attrs: false,
                             }),
                         ),
