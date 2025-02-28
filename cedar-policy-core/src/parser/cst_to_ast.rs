@@ -41,8 +41,6 @@ use super::unescape::{to_pattern, to_unescaped_string};
 use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
 #[cfg(feature = "tolerant-ast")]
 use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
-#[cfg(feature = "tolernat-ast")]
-use crate::ast::Template;
 use crate::ast::{
     self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
     PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
@@ -334,7 +332,7 @@ impl Node<Option<cst::Policy>> {
         let policy = match policy {
             cst::Policy::Policy(policy_impl) => policy_impl,
             cst::Policy::PolicyError => {
-                return Ok(Template::error(id));
+                return Ok(ast::Template::error(id));
             }
         };
         // convert effect
