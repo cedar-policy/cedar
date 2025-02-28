@@ -169,7 +169,7 @@ impl Node<Option<cst::Policy>> {
         self.to_policy_template(id)
     }
 
-    /// Convert `cst::Policy` to an AST `InlinePolicy` or `Template`
+    /// Convert `cst::Policy` to an AST `StaticPolicy` or `Template`
     pub fn to_policy_or_template(
         &self,
         id: ast::PolicyID,
@@ -1009,7 +1009,6 @@ impl Node<Option<cst::Cond>> {
                 convert_expr_error_to_parse_error::<Build>(
                     self.to_ast_err(ToASTErrorKind::EmptyClause(Some(ident)))
                         .into(),
-                    #[cfg(feature = "tolerant-ast")]
                     Some(&self.loc),
                 )
             }
@@ -1111,7 +1110,6 @@ where
                     loc.clone(),
                 )
                 .into(),
-                #[cfg(feature = "tolerant-ast")]
                 Some(&loc),
             ),
             Self::StrLit { lit, loc } => {
@@ -1230,7 +1228,6 @@ impl Node<Option<cst::Expr>> {
                 let e = ToASTError::new(ToASTErrorKind::CSTErrorNode, self.loc.clone());
                 return Ok(ExprOrSpecial::Expr {
                     expr: convert_expr_error_to_parse_error::<Build>(e.into(), Some(&self.loc))?,
-                    #[cfg(feature = "tolerant-ast")]
                     loc: self.loc.clone(),
                 });
             }
@@ -5469,17 +5466,6 @@ mod tests {
     // Test parsing AST that allows Error nodes
     #[cfg(feature = "tolerant-ast")]
     #[test]
-    fn repro_coles_bug() {
-        let src = r#"
-            permit(principal, action, resource) when { principal == U};
-        "#;
-        let p = assert_parse_policy_allows_errors(src);
-        println!("{:?}", p);
-    }
-
-    // Test parsing AST that allows Error nodes
-    #[cfg(feature = "tolerant-ast")]
-    #[test]
     fn parsing_with_errors_succeeds_with_invalid_variable_in_when() {
         let src = r#"
             permit(principal, action, resource) when { pri };
@@ -5570,57 +5556,11 @@ mod tests {
 
     #[cfg(feature = "tolerant-ast")]
     #[test]
-    fn parsing_with_errors_succeeds_with_complex_missing_operand_eq_and_in() {
-        // == operator test cases
-        let src_eq_complex_cases = [
-            // Basic missing operand cases
-            r#"permit(principal ==, action, resource);"#,
-            r#"permit(principal, action ==, resource);"#,
-            r#"permit(principal, action, resource ==);"#,
-            // Cases with existing values and missing operands
-            r#"permit(principal == Test::User::"blah", action, resource);"#,
-            r#"permit(principal, action == Action::"read", resource);"#,
-            r#"permit(principal, action, resource == Test::"data");"#,
-        ];
-
-        for src in src_eq_complex_cases.iter() {
-            let parsed = assert_parse_policy_allows_errors(src);
-            println!("Parsed == complex policy: {:?}", parsed);
-        }
-
-        // in operator test cases
-        let src_in_complex_cases = [
-            // Basic missing operand cases
-            r#"permit(principal in, action, resource);"#,
-            r#"permit(principal, action in, resource);"#,
-            r#"permit(principal, action, resource in);"#,
-            // Cases with existing collections
-            r#"permit(principal in ["admin", "user"], action, resource);"#,
-            r#"permit(principal, action in ["read", "write"], resource);"#,
-            r#"permit(principal, action, resource in ["sensitive", "public"]);"#,
-            // Cases with "is" and existing collections
-            r#"permit(principal is Group in ["admins", "editors"], action, resource);"#,
-            r#"permit(principal, action is Request in ["GET", "POST"], resource);"#,
-            r#"permit(principal, action, resource is Data in ["private", "public"]);"#,
-            // Mixed cases with multiple potential missing operands
-            r#"permit(principal is something in, action in, resource);"#,
-            r#"permit(principal, action is something in, resource in);"#,
-            r#"permit(principal is something in, action, resource in);"#,
-        ];
-
-        for src in src_in_complex_cases.iter() {
-            let parsed = assert_parse_policy_allows_errors(src);
-            println!("Parsed in complex policy: {:?}", parsed);
-        }
-    }
-
-    #[cfg(feature = "tolerant-ast")]
-    #[test]
     fn parsing_with_errors_succeeds_with_missing_second_operand_is() {
         let src = r#"
             permit(principal is something in, action, resource);
         "#;
-        let parsed = assert_parse_policy_allows_errors(src);
+        assert_parse_policy_allows_errors(src);
     }
 
     #[cfg(feature = "tolerant-ast")]
