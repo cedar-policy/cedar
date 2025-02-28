@@ -8,6 +8,10 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 ### Added
 
 - Added `json-to-cedar` direction to `translate-policy` command.
+- Add `--level` option to the `validate` command, exposing the `level-validate`
+  experimental feature through the CLI. (#1508, resolving #1501)
+
+## 4.3.3
 
 ## 4.3.2
 
