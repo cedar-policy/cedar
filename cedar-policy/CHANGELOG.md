@@ -86,6 +86,11 @@ Cedar Language Version: 4.2
 
 - Stopped emitting warnings for identifiers containing certain printable ASCII
   characters (e.g., `/` and `:`) (#1336, resolving #621)
+- `HierarchyNotRespected` validation error is no longer returned (although the
+  error variant remains, to avoid a breaking change). This means that in some
+  edge cases, policies that previously failed to validate under strict validation
+  will now pass validation, probably with an `ImpossiblePolicy` warning. (#1355,
+  resolving #638)
 
 ### Fixed
 
