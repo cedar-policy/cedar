@@ -43,7 +43,7 @@ use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
 use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
 use crate::ast::{
     self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
-    PrincipalOrResourceConstraint, ResourceConstraint, Template, UnreservedId,
+    PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
 };
 use crate::expr_builder::ExprBuilder;
 use crate::fuzzy_match::fuzzy_search_limited;
@@ -1054,7 +1054,7 @@ fn build_ast_error_node_if_possible<Build: ExprBuilder>(
 #[cfg_attr(not(feature = "tolerant-ast"), allow(unused_variables))]
 fn convert_expr_error_to_parse_error<Build: ExprBuilder>(
     error: ParseErrors,
-    #[cfg(feature = "tolerant-ast")] loc: Option<&Loc>,
+    loc: Option<&Loc>,
 ) -> Result<Build::Expr> {
     #[cfg(feature = "tolerant-ast")]
     return build_ast_error_node_if_possible::<Build>(error, loc);
