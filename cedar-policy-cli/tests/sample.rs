@@ -583,6 +583,7 @@ fn test_validate_samples(
         },
         deny_warnings: false,
         validation_mode: cedar_policy_cli::ValidationMode::Strict,
+        level: None,
     };
     let output = validate(&cmd);
     assert_eq!(exit_code, output, "{:#?}", cmd);
@@ -600,9 +601,88 @@ fn test_validate_samples(
         },
         deny_warnings: false,
         validation_mode: cedar_policy_cli::ValidationMode::Strict,
+        level: None,
     };
     let output = validate(&cmd);
     assert_eq!(exit_code, output, "{:#?}", cmd)
+}
+
+#[cfg(feature = "level-validate")]
+#[rstest]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-0.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    0,
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-1.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    0,
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-1.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    1,
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-1.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    0,
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-1.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    1,
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-2.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    0,
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-2.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    1,
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-2.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    2,
+    CedarExitCode::Success
+)]
+#[track_caller]
+fn test_level_validate_samples(
+    #[case] policies_file: impl Into<String>,
+    #[case] schema_file: impl AsRef<Path>,
+    #[case] level: u32,
+    #[case] exit_code: CedarExitCode,
+) {
+    let policies_file = policies_file.into();
+    let schema_file = schema_file.as_ref();
+
+    let cmd = ValidateArgs {
+        schema: SchemaArgs {
+            schema_file: schema_file.into(),
+            schema_format: SchemaFormat::Cedar,
+        },
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.clone()),
+            policy_format: PolicyFormat::Cedar,
+            template_linked_file: None,
+        },
+        deny_warnings: false,
+        validation_mode: cedar_policy_cli::ValidationMode::Strict,
+        level: Some(level),
+    };
+    let output = validate(&cmd);
+    assert_eq!(exit_code, output, "{:#?}", cmd);
 }
 
 #[rstest]
