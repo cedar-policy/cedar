@@ -1207,9 +1207,7 @@ impl TemplateBody {
             )
             .with_maybe_source_loc(self.loc().cloned()),
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_) => {
-                DEFAULT_ERROR_EXPR.as_ref().clone()
-            }
+            TemplateBody::TemplateBodyError(_) => DEFAULT_ERROR_EXPR.as_ref().clone(),
         }
     }
 
