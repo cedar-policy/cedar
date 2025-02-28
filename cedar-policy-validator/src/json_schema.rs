@@ -3788,7 +3788,8 @@ mod ord {
 }
 
 #[cfg(test)]
-#[allow(clippy::indexing_slicing)] // panics are ok in tests
+// PANIC SAFETY: tests
+#[allow(clippy::indexing_slicing)]
 mod enumerated_entity_types {
     use cool_asserts::assert_matches;
 
