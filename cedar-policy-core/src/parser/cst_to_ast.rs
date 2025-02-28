@@ -1064,7 +1064,6 @@ impl Node<Option<cst::Cond>> {
                 convert_expr_error_to_parse_error::<Build>(
                     self.to_ast_err(ToASTErrorKind::EmptyClause(Some(ident)))
                         .into(),
-                    #[cfg(feature = "tolerant-ast")]
                     Some(&self.loc),
                 )
             }
@@ -1166,7 +1165,6 @@ where
                     loc.clone(),
                 )
                 .into(),
-                #[cfg(feature = "tolerant-ast")]
                 Some(&loc),
             ),
             Self::StrLit { lit, loc } => {
@@ -1285,7 +1283,6 @@ impl Node<Option<cst::Expr>> {
                 let e = ToASTError::new(ToASTErrorKind::CSTErrorNode, self.loc.clone());
                 return Ok(ExprOrSpecial::Expr {
                     expr: convert_expr_error_to_parse_error::<Build>(e.into(), Some(&self.loc))?,
-                    #[cfg(feature = "tolerant-ast")]
                     loc: self.loc.clone(),
                 });
             }
@@ -6076,7 +6073,7 @@ mod tests {
         let src = r#"
             permit(principal is something in, action, resource);
         "#;
-        let parsed = assert_parse_policy_allows_errors(src);
+        assert_parse_policy_allows_errors(src);
     }
 
     #[cfg(feature = "tolerant-ast")]

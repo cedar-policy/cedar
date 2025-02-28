@@ -21,7 +21,7 @@ use educe::Educe;
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::SmolStr;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
@@ -92,11 +92,12 @@ static DEFAULT_ACTION_CONSTRAINT: std::sync::LazyLock<ActionConstraint> =
 
 #[cfg(feature = "tolerant-ast")]
 static DEFAULT_ERROR_EXPR: std::sync::LazyLock<Arc<Expr>> = std::sync::LazyLock::new(|| {
-    // any expression in an error policy should be an error expression
+    // Non scope constraint expression of an Error policy should also be an error
+    // This const represents an error expression that is part of an Error policy
     // PANIC SAFETY: Infallible error type - can never fail
     #[allow(clippy::unwrap_used)]
     Arc::new(
-        <expr_allows_errors::ExprWithErrsBuilder as crate::expr_builder::ExprBuilder>::new()
+        <ExprWithErrsBuilder as ExprBuilder>::new()
             .error(ParseErrors::singleton(ToASTError::new(
                 ToASTErrorKind::ASTErrorNode,
                 Loc::new(0..1, "ASTErrorNode".into()),
@@ -176,10 +177,9 @@ impl Template {
     }
 
     #[cfg(feature = "tolerant-ast")]
+    /// Generate a template representing a policy that is unparsable
     pub fn error(id: PolicyID) -> Self {
         let body = TemplateBody::error(id);
-        // INVARIANT (slot cache correctness)
-        // This invariant is maintained in the body of the From impl
         Template::from(body)
     }
 
@@ -1011,6 +1011,8 @@ pub struct TemplateBodyImpl {
 /// Policy datatype. This is used for both templates (in which case it contains
 /// slots) and static policies (in which case it contains zero slots).
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
+/// Policy datatype. This is used for both templates (in which case it contains
+/// slots) and static policies (in which case it contains zero slots).
 pub enum TemplateBody {
     /// Represents a valid template body
     TemplateBody(TemplateBodyImpl),
@@ -2019,7 +2021,6 @@ pub(crate) mod test_generators {
         for principal in all_principal_constraints() {
             for action in all_actions_constraints() {
                 for resource in all_resource_constraints() {
-                    println!("Creating template");
                     let permit = Template::new(
                         permit.clone(),
                         None,
