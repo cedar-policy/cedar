@@ -1191,9 +1191,7 @@ impl EntityRecordKind {
             EntityRecordKind::Entity(lub) => {
                 lub.get_attribute_types(schema).get_attr(attr).cloned()
             }
-            EntityRecordKind::ActionEntity { attrs, .. } => {
-                attrs.get_attr(attr).cloned()
-            }
+            EntityRecordKind::ActionEntity { attrs, .. } => attrs.get_attr(attr).cloned(),
             EntityRecordKind::AnyEntity => {
                 // the attribute may exist, but multiple types for it are possible
                 None

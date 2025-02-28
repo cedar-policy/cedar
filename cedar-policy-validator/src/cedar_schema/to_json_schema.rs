@@ -362,7 +362,8 @@ fn convert_entity_decl(
     impl Iterator<Item = (UnreservedId, json_schema::EntityType<RawName>)>,
     ToJsonSchemaErrors,
 > {
-    #[allow(clippy::needless_collect)] // 2025-02-28: this Clippy nursery lint is bugged, makes a suggestion that does not compile
+    // 2025-02-28: this Clippy nursery lint is bugged, makes a suggestion that does not compile
+    #[allow(clippy::needless_collect)]
     let names: Vec<Node<Id>> = e.data.node.names().cloned().collect();
     let etype = json_schema::EntityType {
         kind: match e.data.node {

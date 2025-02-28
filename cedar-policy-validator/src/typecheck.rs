@@ -1972,7 +1972,9 @@ impl<'a> SingleEnvTypechecker<'a> {
                     ),
                 }
                 .then_typecheck(|type_of_in, _| {
-                    if !self.mode.is_strict() || matches!(type_of_in.data(), Some(Type::True | Type::False)) {
+                    if !self.mode.is_strict()
+                        || matches!(type_of_in.data(), Some(Type::True | Type::False))
+                    {
                         TypecheckAnswer::success(type_of_in)
                     } else {
                         match (lhs_ty, rhs_ty) {
@@ -2549,7 +2551,8 @@ impl<'a> SingleEnvTypechecker<'a> {
             Ok(efunc) => {
                 let arg_tys = efunc.argument_types();
                 let ret_ty = efunc.return_type();
-                #[allow(clippy::useless_let_if_seq)] // since we mutate several times, I think readability is better if we keep a consistent pattern, rather than using Clippy's suggestion for the first block
+                // since we mutate several times, I think readability is better if we keep a consistent pattern, rather than using Clippy's suggestion for the first block
+                #[allow(clippy::useless_let_if_seq)]
                 let mut failed = false;
                 if args.len() != arg_tys.len() {
                     type_errors.push(ValidationError::wrong_number_args(

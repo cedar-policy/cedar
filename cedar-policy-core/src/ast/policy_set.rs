@@ -347,10 +347,8 @@ impl PolicySet {
         }
         for (tid, other_template_link_set) in &other.template_to_links_map {
             let tid = renaming.get(tid).unwrap_or(tid);
-            let mut this_template_link_set = self
-                .template_to_links_map
-                .remove(tid)
-                .unwrap_or_default();
+            let mut this_template_link_set =
+                self.template_to_links_map.remove(tid).unwrap_or_default();
             for pid in other_template_link_set {
                 let pid = renaming.get(pid).unwrap_or(pid);
                 this_template_link_set.insert(pid.clone());

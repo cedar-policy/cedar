@@ -1991,10 +1991,7 @@ impl<'a> arbitrary::Arbitrary<'a> for Type<RawName> {
                         attr_names
                             .into_iter()
                             .map(|attr_name| {
-                                Ok((
-                                    attr_name.into(),
-                                    u.arbitrary::<TypeOfAttribute<RawName>>()?,
-                                ))
+                                Ok((attr_name.into(), u.arbitrary::<TypeOfAttribute<RawName>>()?))
                             })
                             .collect::<arbitrary::Result<_>>()?
                     };

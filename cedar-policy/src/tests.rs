@@ -812,7 +812,9 @@ mod policy_set_tests {
         let mut pset = PolicySet::new();
         pset.add(static_policy).unwrap();
 
-        assert!(pset.unknown_entities().contains(&"test_entity_type::\"unknown\"".parse().unwrap()));
+        assert!(pset
+            .unknown_entities()
+            .contains(&"test_entity_type::\"unknown\"".parse().unwrap()));
     }
 
     #[test]
