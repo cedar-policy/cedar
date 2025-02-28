@@ -1,4 +1,5 @@
-#![allow(clippy::unwrap_used)] // it's ok for benchmarking code to panic
+// PANIC SAFETY: it's ok for benchmarking code to panic
+#![allow(clippy::unwrap_used)]
 
 use std::str::FromStr;
 
