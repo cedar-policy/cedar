@@ -924,7 +924,6 @@ pub struct EntityAttrEvaluationError {
 
 #[cfg(test)]
 mod test {
-    use cool_asserts::assert_matches;
     use std::str::FromStr;
 
     use super::*;
@@ -984,6 +983,8 @@ mod test {
     #[cfg(feature = "tolerant-ast")]
     #[test]
     fn error_entity() {
+        use cool_asserts::assert_matches;
+
         let e = EntityUID::Error;
         assert_matches!(e.eid(), Eid::ErrorEid);
         assert_matches!(e.entity_type(), EntityType::ErrorEntityType);

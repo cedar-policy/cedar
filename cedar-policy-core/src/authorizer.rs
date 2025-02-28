@@ -183,7 +183,6 @@ mod test {
     use super::*;
     use crate::ast::Annotations;
     use crate::parser;
-    use std::collections::HashMap;
 
     /// Sanity unit test case for is_authorized.
     /// More robust testing is accomplished through the integration tests.
@@ -473,6 +472,8 @@ mod test {
     #[test]
     #[cfg(feature = "partial-eval")]
     fn satisfied_permit_residual_forbid() {
+        use std::collections::HashMap;
+
         let q = Request::new(
             (EntityUID::with_eid("p"), None),
             (EntityUID::with_eid("a"), None),
