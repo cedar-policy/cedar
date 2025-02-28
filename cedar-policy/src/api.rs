@@ -2228,7 +2228,7 @@ impl PolicySet {
     /// cannot record policy ids because these cannot be specified in the Cedar
     /// syntax. The policies may be reordered, so parsing the resulting string
     /// with [`PolicySet::from_str`] is likely to yield different policy id
-    /// assignments. For these reasons you should prefer serializing as JSON and
+    /// assignments. For these reasons you should prefer serializing as JSON (or protobuf) and
     /// only using this function to obtain a representation to display to human
     /// users.
     ///
@@ -3440,8 +3440,8 @@ impl Policy {
     /// It will return `None` for linked policies because they cannot be
     /// directly rendered in Cedar syntax. You can instead render the unlinked
     /// template if you do not need to preserve links. If serializing links is
-    /// important, then you will need to serializing the whole policy set
-    /// containing the template and link to JSON.
+    /// important, then you will need to serialize the whole policy set
+    /// containing the template and link to JSON (or protobuf).
     ///
     /// It also does not format the policy according to any particular rules.
     /// Policy formatting can be done through the Cedar policy CLI or
