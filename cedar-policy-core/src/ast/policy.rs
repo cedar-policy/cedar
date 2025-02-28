@@ -1207,9 +1207,9 @@ impl TemplateBody {
             )
             .with_maybe_source_loc(self.loc().cloned()),
             #[cfg(feature = "tolerant-ast")]
-            #[allow(clippy::unwrap_used)]
-            // PANIC SAFETY: Error type returned is Infallible, so error is impossible
-            TemplateBody::TemplateBodyError(_) => DEFAULT_ERROR_EXPR.as_ref().clone(),
+            TemplateBody::TemplateBodyError(_) => {
+                DEFAULT_ERROR_EXPR.as_ref().clone()
+            }
         }
     }
 
