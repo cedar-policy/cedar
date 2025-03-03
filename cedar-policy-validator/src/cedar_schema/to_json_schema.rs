@@ -721,52 +721,52 @@ mod preserves_source_locations {
             .get(&Some(Name::parse_unqualified_name("NS").unwrap()))
             .expect("couldn't find namespace NS");
 
-        let entityA = ns
+        let entity_a = ns
             .entity_types
             .get(&"A".parse().unwrap())
             .expect("couldn't find entity A");
-        let entityB = ns
+        let entity_b = ns
             .entity_types
             .get(&"B".parse().unwrap())
             .expect("couldn't find entity B");
-        let entityC = ns
+        let entity_c = ns
             .entity_types
             .get(&"C".parse().unwrap())
             .expect("couldn't find entity C");
-        let ctypeS = ns
+        let ctype_s = ns
             .common_types
             .get(&json_schema::CommonTypeId::new("S".parse().unwrap()).unwrap())
             .expect("couldn't find common type S");
-        let ctypeAA = ns
+        let ctype_aa = ns
             .common_types
             .get(&json_schema::CommonTypeId::new("AA".parse().unwrap()).unwrap())
             .expect("couldn't find common type AA");
-        let actionRead = ns.actions.get("Read").expect("couldn't find action Read");
-        let actionWrite = ns.actions.get("Write").expect("couldn't find action Write");
-        let actionList = ns.actions.get("List").expect("couldn't find action List");
+        let action_read = ns.actions.get("Read").expect("couldn't find action Read");
+        let action_write = ns.actions.get("Write").expect("couldn't find action Write");
+        let action_list = ns.actions.get("List").expect("couldn't find action List");
 
-        assert_matches!(&entityA.loc, Some(loc) => assert_matches!(loc.snippet(),
+        assert_matches!(&entity_a.loc, Some(loc) => assert_matches!(loc.snippet(),
             Some("entity A;")
         ));
-        assert_matches!(&entityB.loc, Some(loc) => assert_matches!(loc.snippet(),
+        assert_matches!(&entity_b.loc, Some(loc) => assert_matches!(loc.snippet(),
             Some("entity B in A;")
         ));
-        assert_matches!(&entityC.loc, Some(loc) => assert_matches!(loc.snippet(),
+        assert_matches!(&entity_c.loc, Some(loc) => assert_matches!(loc.snippet(),
             Some("entity C in A {\n                bool: Bool,\n                s: S,\n                a: Set<A>,\n                b: { inner: B },\n            };")
         ));
-        assert_matches!(&ctypeS.loc, Some(loc) => assert_matches!(loc.snippet(),
+        assert_matches!(&ctype_s.loc, Some(loc) => assert_matches!(loc.snippet(),
             Some("type S = String;")
         ));
-        assert_matches!(&ctypeAA.loc, Some(loc) => assert_matches!(loc.snippet(),
+        assert_matches!(&ctype_aa.loc, Some(loc) => assert_matches!(loc.snippet(),
             Some("type AA = A;")
         ));
-        assert_matches!(&actionRead.loc, Some(loc) => assert_matches!(loc.snippet(),
+        assert_matches!(&action_read.loc, Some(loc) => assert_matches!(loc.snippet(),
             Some("action Read, Write;")
         ));
-        assert_matches!(&actionWrite.loc, Some(loc) => assert_matches!(loc.snippet(),
+        assert_matches!(&action_write.loc, Some(loc) => assert_matches!(loc.snippet(),
             Some("action Read, Write;")
         ));
-        assert_matches!(&actionList.loc, Some(loc) => assert_matches!(loc.snippet(),
+        assert_matches!(&action_list.loc, Some(loc) => assert_matches!(loc.snippet(),
             Some("action List in Read appliesTo {\n                principal: [A],\n                resource: [B, C],\n                context: {\n                    s: Set<S>,\n                    ab: { a: AA, b: B },\n                }\n            };")
         ));
     }
@@ -846,16 +846,16 @@ mod preserves_source_locations {
             });
         });});
 
-        let ctypeAA = ns
+        let ctype_aa = ns
             .common_types
             .get(&json_schema::CommonTypeId::new("AA".parse().unwrap()).unwrap())
             .expect("couldn't find common type AA");
-        assert_matches!(ctypeAA.ty.loc(), Some(loc) => {
+        assert_matches!(ctype_aa.ty.loc(), Some(loc) => {
             assert_matches!(loc.snippet(), Some("A"));
         });
 
-        let actionList = ns.actions.get("List").expect("couldn't find action List");
-        assert_matches!(&actionList.applies_to, Some(appliesto) => {
+        let action_list = ns.actions.get("List").expect("couldn't find action List");
+        assert_matches!(&action_list.applies_to, Some(appliesto) => {
             assert_matches!(appliesto.principal_types.first().expect("principal types were empty").loc(), Some(loc) => {
                 assert_matches!(loc.snippet(), Some("A"));
             });
