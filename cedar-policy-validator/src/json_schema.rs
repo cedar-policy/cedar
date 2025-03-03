@@ -338,10 +338,10 @@ pub struct NamespaceDefinition<N> {
     pub annotations: Annotations,
 }
 
+#[cfg(test)]
 impl<N> NamespaceDefinition<N> {
     /// Create a new [`NamespaceDefinition`] with specified entity types and
     /// actions, and no common types or annotations
-    #[cfg(test)]
     pub fn new(
         entity_types: impl IntoIterator<Item = (UnreservedId, EntityType<N>)>,
         actions: impl IntoIterator<Item = (SmolStr, ActionType<N>)>,

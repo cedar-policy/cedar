@@ -932,33 +932,6 @@ impl<'e> Evaluator<'e> {
         }
     }
 
-    /// Interpret an `Expr` in an empty `SlotEnv`. Also checks that the source
-    /// location is propagated to the result.
-    #[cfg(test)]
-    pub fn interpret_inline_policy(&self, e: &Expr) -> Result<Value> {
-        use std::collections::HashMap;
-        match self.partial_interpret(e, &HashMap::new())? {
-            PartialValue::Value(v) => {
-                debug_assert!(e.source_loc().is_some() == v.source_loc().is_some());
-                Ok(v)
-            }
-            PartialValue::Residual(r) => {
-                debug_assert!(e.source_loc().is_some() == r.source_loc().is_some());
-                Err(err::EvaluationError::non_value(r))
-            }
-        }
-    }
-
-    /// Evaluate an expression, potentially leaving a residual
-    #[cfg(test)]
-    pub fn partial_eval_expr(&self, p: &Expr) -> Result<Either<Value, Expr>> {
-        let env = SlotEnv::new();
-        match self.partial_interpret(p, &env)? {
-            PartialValue::Value(v) => Ok(Either::Left(v)),
-            PartialValue::Residual(r) => Ok(Either::Right(r)),
-        }
-    }
-
     /// Evaluate a binary operation between a residual expression (left) and a value (right). If despite the unknown contained in the residual, concrete result
     /// can be obtained (using the type annotation on the residual), it is returned.
     fn short_circuit_residual_and_value(
@@ -1035,12 +1008,34 @@ impl<'e> Evaluator<'e> {
             _ => None,
         }
     }
+}
 
-    // by default, Coverlay does not track coverage for lines after a line
-    // containing #[cfg(test)].
-    // we use the following sentinel to "turn back on" coverage tracking for
-    // remaining lines of this file, until the next #[cfg(test)]
-    // GRCOV_BEGIN_COVERAGE
+#[cfg(test)]
+impl Evaluator<'_> {
+    /// Interpret an `Expr` in an empty `SlotEnv`. Also checks that the source
+    /// location is propagated to the result.
+    pub fn interpret_inline_policy(&self, e: &Expr) -> Result<Value> {
+        use std::collections::HashMap;
+        match self.partial_interpret(e, &HashMap::new())? {
+            PartialValue::Value(v) => {
+                debug_assert!(e.source_loc().is_some() == v.source_loc().is_some());
+                Ok(v)
+            }
+            PartialValue::Residual(r) => {
+                debug_assert!(e.source_loc().is_some() == r.source_loc().is_some());
+                Err(err::EvaluationError::non_value(r))
+            }
+        }
+    }
+
+    /// Evaluate an expression, potentially leaving a residual
+    pub fn partial_eval_expr(&self, p: &Expr) -> Result<Either<Value, Expr>> {
+        let env = SlotEnv::new();
+        match self.partial_interpret(p, &env)? {
+            PartialValue::Value(v) => Ok(Either::Left(v)),
+            PartialValue::Residual(r) => Ok(Either::Right(r)),
+        }
+    }
 }
 
 impl std::fmt::Debug for Evaluator<'_> {
@@ -1186,65 +1181,57 @@ pub(crate) mod test {
         let entity_no_attrs_no_parents =
             Entity::with_uid(EntityUID::with_eid("entity_no_attrs_no_parents"));
 
-        let mut entity_with_attrs = Entity::with_uid(EntityUID::with_eid("entity_with_attrs"));
-        entity_with_attrs
-            .set_attr(
-                "spoon".into(),
-                RestrictedExpr::val(787).as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
-        entity_with_attrs
-            .set_attr(
-                "fork".into(),
-                RestrictedExpr::val("spoon").as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
-        entity_with_attrs
-            .set_attr(
+        let attrs = HashMap::from([
+            ("spoon".into(), RestrictedExpr::val(787)),
+            ("fork".into(), RestrictedExpr::val("spoon")),
+            (
                 "tags".into(),
                 RestrictedExpr::set(vec![
                     RestrictedExpr::val("fun"),
                     RestrictedExpr::val("good"),
                     RestrictedExpr::val("useful"),
-                ])
-                .as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
-        entity_with_attrs
-            .set_attr(
+                ]),
+            ),
+            (
                 "address".into(),
                 RestrictedExpr::record(vec![
                     ("street".into(), RestrictedExpr::val("234 magnolia")),
                     ("town".into(), RestrictedExpr::val("barmstadt")),
                     ("country".into(), RestrictedExpr::val("amazonia")),
                 ])
-                .unwrap()
-                .as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
+                .unwrap(),
+            ),
+        ]);
+        let entity_with_attrs = Entity::new(
+            EntityUID::with_eid("entity_with_attrs"),
+            attrs.clone(),
+            HashSet::new(),
+            HashSet::new(),
+            HashMap::new(),
+            Extensions::none(),
+        )
+        .unwrap();
 
-        let mut entity_with_tags = Entity::with_uid(EntityUID::with_eid("entity_with_tags"));
-        entity_with_tags
-            .set_tag(
-                "spoon".into(),
-                RestrictedExpr::val(-121).as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
+        let tags = HashMap::from([("spoon".into(), RestrictedExpr::val(-121))]);
+        let entity_with_tags = Entity::new(
+            EntityUID::with_eid("entity_with_tags"),
+            HashMap::new(),
+            HashSet::new(),
+            HashSet::new(),
+            tags.clone(),
+            Extensions::none(),
+        )
+        .unwrap();
 
-        let mut entity_with_tags_and_attrs = entity_with_attrs.clone();
-        entity_with_tags_and_attrs.set_uid(EntityUID::with_eid("entity_with_tags_and_attrs"));
-        entity_with_tags_and_attrs
-            .set_tag(
-                "spoon".into(),
-                RestrictedExpr::val(-121).as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
+        let entity_with_tags_and_attrs = Entity::new(
+            EntityUID::with_eid("entity_with_tags_and_attrs"),
+            attrs,
+            HashSet::new(),
+            HashSet::new(),
+            tags,
+            Extensions::none(),
+        )
+        .unwrap();
 
         let mut child = Entity::with_uid(EntityUID::with_eid("child"));
         let mut parent = Entity::with_uid(EntityUID::with_eid("parent"));

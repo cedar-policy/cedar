@@ -563,9 +563,11 @@ impl PolicySet {
         }
         Ok(policies)
     }
+}
 
+#[cfg(test)]
+impl PolicySet {
     /// Create an empty [`PolicySet`]
-    #[cfg(test)]
     pub(super) fn new() -> Self {
         Self {
             static_policies: StaticPolicySet::Set(Vec::new()),

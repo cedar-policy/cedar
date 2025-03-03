@@ -15,7 +15,6 @@
  */
 
 //! Contains test for strict typechecking.
-// GRCOV_STOP_COVERAGE
 
 use cool_asserts::assert_matches;
 use serde_json::json;

@@ -35,11 +35,7 @@ mod demo_tests {
     use smol_str::ToSmolStr;
 
     use crate::{
-        cedar_schema::{
-            self,
-            ast::PR,
-            err::{ToJsonSchemaError, NO_PR_HELP_MSG},
-        },
+        cedar_schema::{self, err::NO_PR_HELP_MSG},
         json_schema::{self, EntityType, EntityTypeKind},
         schema::test::utils::collect_warnings,
         CedarSchemaError, RawName,
@@ -277,18 +273,12 @@ mod demo_tests {
                 principal : [c]
             };
         "#;
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(crate::CedarSchemaError::Parsing(err)) => {
-            assert_matches!(err.errors(), cedar_schema::parser::CedarSchemaParseErrors::JsonError(json_errs) => {
-                assert!(json_errs
-                    .iter()
-                    .any(|err| {
-                        matches!(
-                            err,
-                            ToJsonSchemaError::DuplicatePrincipalOrResource(err) if err.kind() == PR::Principal
-                        )
-                    })
-                );
-            });
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                r#"error parsing schema: duplicate `principal` declaration in action `Foo`"#
+            ).help(
+                "Actions may only have a single principal declaration, but a principal declaration may specify a list of entity types like `principal: [X, Y, Z]`"
+            ).exactly_two_underlines("principal: [a, b],", "principal : [c]").build());
         });
     }
 
@@ -304,17 +294,12 @@ mod demo_tests {
                 resource: [c]
             };
         "#;
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(crate::CedarSchemaError::Parsing(err)) => {
-            assert_matches!(err.errors(), cedar_schema::parser::CedarSchemaParseErrors::JsonError(json_errs) => {
-                assert!(json_errs
-                    .iter()
-                    .any(|err| {
-                        matches!(
-                            err,
-                            ToJsonSchemaError::DuplicatePrincipalOrResource(err) if err.kind() == PR::Resource
-                        )
-                    }));
-            });
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                r#"error parsing schema: duplicate `resource` declaration in action `Foo`"#
+            ).help(
+                "Actions may only have a single resource declaration, but a resource declaration may specify a list of entity types like `resource: [X, Y, Z]`"
+            ).exactly_two_underlines("resource: [a, b],", "resource: [c]").build());
         });
     }
 
