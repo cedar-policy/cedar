@@ -56,6 +56,8 @@ impl From<Template> for TemplateBody {
 
 impl Template {
     /// Checks the invariant (slot cache correctness)
+    ///
+    /// This function is a no-op in release builds, but checks the invariant (and panics if it fails) in debug builds.
     pub fn check_invariant(&self) {
         #[cfg(debug_assertions)]
         {
