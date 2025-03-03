@@ -662,34 +662,6 @@ impl Entity {
                 == (other.ancestors().collect::<HashSet<_>>())
     }
 
-    /// Set the given attribute to the given value.
-    // Only used for convenience in some tests and when fuzzing
-    #[cfg(any(test, fuzzing))]
-    pub fn set_attr(
-        &mut self,
-        attr: SmolStr,
-        val: BorrowedRestrictedExpr<'_>,
-        extensions: &Extensions<'_>,
-    ) -> Result<(), EvaluationError> {
-        let val = RestrictedEvaluator::new(extensions).partial_interpret(val)?;
-        self.attrs.insert(attr, val.into());
-        Ok(())
-    }
-
-    /// Set the given tag to the given value.
-    // Only used for convenience in some tests and when fuzzing
-    #[cfg(any(test, fuzzing))]
-    pub fn set_tag(
-        &mut self,
-        tag: SmolStr,
-        val: BorrowedRestrictedExpr<'_>,
-        extensions: &Extensions<'_>,
-    ) -> Result<(), EvaluationError> {
-        let val = RestrictedEvaluator::new(extensions).partial_interpret(val)?;
-        self.tags.insert(tag, val.into());
-        Ok(())
-    }
-
     /// Mark the given `UID` as an indirect ancestor of this `Entity`
     ///
     /// The given `UID` will not be added as an indirecty ancestor if
