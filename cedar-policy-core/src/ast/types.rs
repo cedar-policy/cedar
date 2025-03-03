@@ -15,13 +15,12 @@
  */
 
 use crate::ast::EntityType;
-use serde::{Deserialize, Serialize};
 
 use super::Name;
 
 /// This represents the runtime type of a Cedar value.
 /// Nominal types: two entity types are equal if they have the same Name.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
 pub enum Type {
     /// Boolean type
     Bool,

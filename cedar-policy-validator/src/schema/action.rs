@@ -17,10 +17,9 @@
 //! This module contains the definition of `ValidatorActionId` and the types it relies on
 
 use cedar_policy_core::{
-    ast::{self, EntityType, EntityUID, PartialValueSerializedAsExpr},
+    ast::{self, EntityType, EntityUID, PartialValue},
     transitive_closure::TCNode,
 };
-use serde::Serialize;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashSet};
 
@@ -35,8 +34,7 @@ use crate::{
 /// Contains information about actions used by the validator.  The contents of
 /// the struct are the same as the schema entity type structure, but the
 /// `member_of` relation is reversed to instead be `descendants`.
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug)]
 pub struct ValidatorActionId {
     /// The name of the action.
     pub(crate) name: EntityUID,
@@ -59,10 +57,7 @@ pub struct ValidatorActionId {
     /// The actual attribute value for this action, used to construct an
     /// `Entity` for this action. Could also be used for more precise
     /// typechecking by partial evaluation.
-    ///
-    /// Attributes are serialized as `RestrictedExpr`s, so that roundtripping
-    /// works seamlessly.
-    pub(crate) attributes: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
+    pub(crate) attributes: BTreeMap<SmolStr, PartialValue>,
 }
 
 impl ValidatorActionId {
@@ -77,7 +72,7 @@ impl ValidatorActionId {
         descendants: impl IntoIterator<Item = EntityUID>,
         context: Type,
         attribute_types: Attributes,
-        attributes: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
+        attributes: BTreeMap<SmolStr, PartialValue>,
     ) -> Self {
         Self {
             name,
@@ -150,7 +145,7 @@ impl ValidatorActionId {
     }
 
     /// Attribute values for this action
-    pub fn attributes(&self) -> impl Iterator<Item = (&SmolStr, &PartialValueSerializedAsExpr)> {
+    pub fn attributes(&self) -> impl Iterator<Item = (&SmolStr, &PartialValue)> {
         self.attributes.iter()
     }
 }
@@ -183,8 +178,7 @@ impl TCNode<EntityUID> for ValidatorActionId {
 /// [`InternalName`] and [`Name`] always represents a fully-qualified name, but
 /// as of this writing we always use [`Name`] or [`InternalName`] for the
 /// parameter here when we want to indicate names have been fully qualified.)
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug)]
 pub(crate) struct ValidatorApplySpec<N> {
     /// The principal entity types the action can be applied to.
     principal_apply_spec: HashSet<N>,

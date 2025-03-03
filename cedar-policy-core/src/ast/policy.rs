@@ -36,9 +36,7 @@ extern crate tsify;
 /// Contains both the AST for template, and the list of open slots in the template.
 ///
 /// Note that this "template" may have no slots, in which case this `Template` represents a static policy
-#[derive(Clone, Hash, Eq, PartialEq, Debug, Serialize, Deserialize)]
-#[serde(from = "TemplateBody")]
-#[serde(into = "TemplateBody")]
+#[derive(Clone, Hash, Eq, PartialEq, Debug)]
 pub struct Template {
     body: TemplateBody,
     /// INVARIANT (slot cache correctness): This Vec must contain _all_ of the open slots in `body`
@@ -568,9 +566,11 @@ pub type SlotEnv = HashMap<SlotId, EntityUID>;
 
 /// Represents either a static policy or a template linked policy.
 ///
-/// This is the serializable version because it simply refers to the `Template` by its Id
-/// and does not contain a reference to the `Template` itself
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Contains less rich information than `Policy`. In particular, this form is
+/// easier to convert to/from the Protobuf representation of a `Policy`, because
+/// it simply refers to the `Template` by its Id and does not contain a
+/// reference to the `Template` itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LiteralPolicy {
     /// ID of the template this policy is an instance of
     template_id: PolicyID,
@@ -580,29 +580,6 @@ pub struct LiteralPolicy {
     link_id: Option<PolicyID>,
     /// Values of the slots
     values: SlotEnv,
-}
-
-/// A borrowed version of LiteralPolicy exclusively for serialization
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct BorrowedLiteralPolicy<'a> {
-    /// ID of the template this policy is an instance of
-    template_id: &'a PolicyID,
-    /// ID of this link.
-    /// This is `None` for static policies, and the static policy ID is defined
-    /// as the `template_id`
-    link_id: Option<&'a PolicyID>,
-    /// Values of the slots
-    values: &'a SlotEnv,
-}
-
-impl<'a> From<&'a Policy> for BorrowedLiteralPolicy<'a> {
-    fn from(p: &'a Policy) -> Self {
-        Self {
-            template_id: p.template.id(),
-            link_id: p.link.as_ref(),
-            values: &p.values,
-        }
-    }
 }
 
 impl LiteralPolicy {
@@ -779,7 +756,7 @@ impl From<Policy> for LiteralPolicy {
 /// Static Policies are policy that do not come from templates.
 /// They have the same structure as a template definition, but cannot contain slots
 // INVARIANT: (Static Policy Correctness): A Static Policy TemplateBody must have zero slots
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Clone, Hash, Eq, PartialEq, Debug)]
 pub struct StaticPolicy(TemplateBody);
 
 impl StaticPolicy {
@@ -926,7 +903,7 @@ impl From<StaticPolicy> for Arc<Template> {
 
 /// Policy datatype. This is used for both templates (in which case it contains
 /// slots) and static policies (in which case it contains zero slots).
-#[derive(Educe, Serialize, Deserialize, Clone, Debug)]
+#[derive(Educe, Clone, Debug)]
 #[educe(PartialEq, Eq, Hash)]
 pub struct TemplateBody {
     /// ID of this policy
@@ -1139,7 +1116,7 @@ impl std::fmt::Display for TemplateBody {
 }
 
 /// Template constraint on principal scope variables
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct PrincipalConstraint {
     pub(crate) constraint: PrincipalOrResourceConstraint,
 }
@@ -1246,7 +1223,7 @@ impl std::fmt::Display for PrincipalConstraint {
 }
 
 /// Template constraint on resource scope variables
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct ResourceConstraint {
     pub(crate) constraint: PrincipalOrResourceConstraint,
 }
@@ -1353,14 +1330,13 @@ impl std::fmt::Display for ResourceConstraint {
 }
 
 /// A reference to an EntityUID that may be a Slot
-#[derive(Educe, Serialize, Deserialize, Clone, Debug, Eq)]
+#[derive(Educe, Clone, Debug, Eq)]
 #[educe(Hash, PartialEq, PartialOrd, Ord)]
 pub enum EntityReference {
     /// Reference to a literal EUID
     EUID(Arc<EntityUID>),
     /// Template Slot
     Slot(
-        #[serde(skip)]
         #[educe(PartialEq(ignore))]
         #[educe(PartialOrd(ignore))]
         #[educe(Hash(ignore))]
@@ -1421,7 +1397,7 @@ impl From<EntityUID> for EntityReference {
 }
 
 /// Subset of AST variables that have the same constraint form
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum PrincipalOrResource {
     /// The principal of a request
@@ -1452,7 +1428,7 @@ impl TryFrom<Var> for PrincipalOrResource {
 
 /// Represents the constraints for principals and resources.
 /// Can either not constrain, or constrain via `==` or `in` for a single entity literal.
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub enum PrincipalOrResourceConstraint {
     /// Unconstrained
     Any,
@@ -1579,7 +1555,7 @@ impl PrincipalOrResourceConstraint {
 
 /// Constraint for action scope variables.
 /// Action variables can be constrained to be in any variable in a list.
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub enum ActionConstraint {
     /// Unconstrained
     Any,
@@ -1892,33 +1868,15 @@ mod test {
     };
 
     #[test]
-    fn literal_and_borrowed() {
+    fn link_templates() {
         for template in all_templates() {
+            template.check_invariant();
             let t = Arc::new(template);
             let env = t
                 .slots()
                 .map(|slot| (slot.id, EntityUID::with_eid("eid")))
                 .collect();
-            let p = Template::link(t, PolicyID::from_string("id"), env).expect("Linking failed");
-
-            let b_literal = BorrowedLiteralPolicy::from(&p);
-            let src = serde_json::to_string(&b_literal).expect("ser error");
-            let literal: LiteralPolicy = serde_json::from_str(&src).expect("de error");
-
-            assert_eq!(b_literal.template_id, &literal.template_id);
-            assert_eq!(b_literal.link_id, literal.link_id.as_ref());
-            assert_eq!(b_literal.values, &literal.values);
-        }
-    }
-
-    #[test]
-    fn template_roundtrip() {
-        for template in all_templates() {
-            template.check_invariant();
-            let json = serde_json::to_string(&template).expect("Serialization Failed");
-            let t2 = serde_json::from_str::<Template>(&json).expect("Deserialization failed");
-            t2.check_invariant();
-            assert_eq!(template, t2);
+            let _ = Template::link(t, PolicyID::from_string("id"), env).expect("Linking failed");
         }
     }
 

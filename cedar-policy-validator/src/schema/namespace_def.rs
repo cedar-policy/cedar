@@ -21,8 +21,8 @@ use std::collections::{hash_map::Entry, BTreeMap, HashMap, HashSet};
 
 use cedar_policy_core::{
     ast::{
-        EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name,
-        PartialValueSerializedAsExpr, UnreservedId,
+        EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name, PartialValue,
+        UnreservedId,
     },
     entities::{json::err::JsonDeserializationErrorContext, CedarValueJson},
     evaluator::RestrictedEvaluator,
@@ -696,7 +696,7 @@ pub struct ActionFragment<N, A> {
     /// The values for the attributes defined for this actions entity, stored
     /// separately so that we can later extract these values to construct the
     /// actual `Entity` objects defined by the schema.
-    pub(super) attributes: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
+    pub(super) attributes: BTreeMap<SmolStr, PartialValue>,
 }
 
 impl ActionFragment<ConditionalName, ConditionalName> {
@@ -777,9 +777,9 @@ impl ActionFragment<ConditionalName, ConditionalName> {
         m: HashMap<SmolStr, CedarValueJson>,
         action_id: &EntityUID,
         extensions: &Extensions<'_>,
-    ) -> crate::err::Result<(Attributes, BTreeMap<SmolStr, PartialValueSerializedAsExpr>)> {
+    ) -> crate::err::Result<(Attributes, BTreeMap<SmolStr, PartialValue>)> {
         let mut attr_types: HashMap<SmolStr, Type> = HashMap::with_capacity(m.len());
-        let mut attr_values: BTreeMap<SmolStr, PartialValueSerializedAsExpr> = BTreeMap::new();
+        let mut attr_values: BTreeMap<SmolStr, PartialValue> = BTreeMap::new();
         let evaluator = RestrictedEvaluator::new(extensions);
 
         for (k, v) in m {
@@ -810,7 +810,7 @@ impl ActionFragment<ConditionalName, ConditionalName> {
                         err,
                     })
                 })?;
-            attr_values.insert(k.clone(), pv.into());
+            attr_values.insert(k, pv);
         }
         Ok((
             Attributes::with_required_attributes(attr_types),

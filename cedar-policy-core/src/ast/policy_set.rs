@@ -20,15 +20,12 @@ use super::{
 };
 use itertools::Itertools;
 use miette::Diagnostic;
-use serde::{Deserialize, Serialize};
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::{borrow::Borrow, sync::Arc};
 use thiserror::Error;
 
 /// Represents a set of `Policy`s
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(try_from = "LiteralPolicySet")]
-#[serde(into = "LiteralPolicySet")]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct PolicySet {
     /// `templates` contains all bodies of policies in the `PolicySet`.
     /// A body is either:
@@ -49,8 +46,12 @@ pub struct PolicySet {
     template_to_links_map: HashMap<PolicyID, HashSet<PolicyID>>,
 }
 
-/// A Policy Set that can be serialized, but does not contain as rich information as `PolicySet`
-#[derive(Debug, Serialize, Deserialize)]
+/// A Policy Set that contains less rich information than `PolicySet`.
+///
+/// In particular, this form is easier to convert to/from the Protobuf
+/// representation of a `PolicySet`, because policies are represented as
+/// `LiteralPolicy` instead of `Policy`.
+#[derive(Debug)]
 pub struct LiteralPolicySet {
     /// Like the `templates` field of `PolicySet`
     templates: HashMap<PolicyID, Template>,
