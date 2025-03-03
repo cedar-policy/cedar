@@ -244,10 +244,10 @@ impl StaticallyTyped for EntityUID {
     }
 }
 
+#[cfg(test)]
 impl EntityUID {
     /// Create an `EntityUID` with the given string as its EID.
     /// Useful for testing.
-    #[cfg(test)]
     pub(crate) fn with_eid(eid: &str) -> Self {
         Self::EntityUID(EntityUIDImpl {
             ty: Self::test_entity_type(),
@@ -255,25 +255,16 @@ impl EntityUID {
             loc: None,
         })
     }
-    // by default, Coverlay does not track coverage for lines after a line
-    // containing #[cfg(test)].
-    // we use the following sentinel to "turn back on" coverage tracking for
-    // remaining lines of this file, until the next #[cfg(test)]
-    // GRCOV_BEGIN_COVERAGE
 
     /// The type of entities created with the above `with_eid()`.
-    #[cfg(test)]
     pub(crate) fn test_entity_type() -> EntityType {
         let name = Name::parse_unqualified_name("test_entity_type")
             .expect("test_entity_type should be a valid identifier");
         EntityType::EntityType(name)
     }
-    // by default, Coverlay does not track coverage for lines after a line
-    // containing #[cfg(test)].
-    // we use the following sentinel to "turn back on" coverage tracking for
-    // remaining lines of this file, until the next #[cfg(test)]
-    // GRCOV_BEGIN_COVERAGE
+}
 
+impl EntityUID {
     /// Create an `EntityUID` with the given (unqualified) typename, and the given string as its EID.
     pub fn with_eid_and_type(typename: &str, eid: &str) -> Result<Self, ParseErrors> {
         Ok(Self::EntityUID(EntityUIDImpl {
@@ -669,13 +660,6 @@ impl Entity {
             && self.attrs == other.attrs
             && (self.ancestors().collect::<HashSet<_>>())
                 == (other.ancestors().collect::<HashSet<_>>())
-    }
-
-    /// Set the UID to the given value.
-    // Only used for convenience in some tests
-    #[cfg(test)]
-    pub fn set_uid(&mut self, uid: EntityUID) {
-        self.uid = uid;
     }
 
     /// Set the given attribute to the given value.

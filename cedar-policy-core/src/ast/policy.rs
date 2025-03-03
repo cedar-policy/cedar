@@ -56,13 +56,15 @@ impl From<Template> for TemplateBody {
 
 impl Template {
     /// Checks the invariant (slot cache correctness)
-    #[cfg(test)]
     pub fn check_invariant(&self) {
-        for slot in self.body.condition().slots() {
-            assert!(self.slots.contains(&slot));
-        }
-        for slot in self.slots() {
-            assert!(self.body.condition().slots().contains(slot));
+        #[cfg(debug_assertions)]
+        {
+            for slot in self.body.condition().slots() {
+                assert!(self.slots.contains(&slot));
+            }
+            for slot in self.slots() {
+                assert!(self.body.condition().slots().contains(slot));
+            }
         }
     }
     // by default, Coverlay does not track coverage for lines after a line
@@ -273,10 +275,7 @@ impl Template {
             body,
             slots: vec![],
         });
-        #[cfg(test)]
-        {
-            t.check_invariant();
-        }
+        t.check_invariant();
         // by default, Coverlay does not track coverage for lines after a line
         // containing #[cfg(test)].
         // we use the following sentinel to "turn back on" coverage tracking for
@@ -386,15 +385,10 @@ impl Policy {
     /// INVARIANT (values total map):
     /// `values` must bind every open slot in `template`
     fn new(template: Arc<Template>, link_id: Option<PolicyID>, values: SlotEnv) -> Self {
-        #[cfg(test)]
+        #[cfg(debug_assertions)]
         {
             Template::check_binding(&template, &values).expect("(values total map) does not hold!");
         }
-        // by default, Coverlay does not track coverage for lines after a line
-        // containing #[cfg(test)].
-        // we use the following sentinel to "turn back on" coverage tracking for
-        // remaining lines of this file, until the next #[cfg(test)]
-        // GRCOV_BEGIN_COVERAGE
         Self {
             template,
             link: link_id,

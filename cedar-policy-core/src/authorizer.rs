@@ -640,11 +640,6 @@ mod test {
         assert!(r.residual_forbids.is_empty());
     }
 }
-// by default, Coverlay does not track coverage for lines after a line
-// containing #[cfg(test)].
-// we use the following sentinel to "turn back on" coverage tracking for
-// remaining lines of this file, until the next #[cfg(test)]
-// GRCOV_BEGIN_COVERAGE
 
 /// Authorization response returned from the `Authorizer`
 #[derive(Debug, PartialEq, Eq, Clone)]
