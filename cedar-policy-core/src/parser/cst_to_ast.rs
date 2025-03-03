@@ -5763,7 +5763,7 @@ mod tests {
     #[cfg(feature = "tolerant-ast")]
     #[test]
     fn multiple_policys_with_unparsable_policy_ok() {
-        // can have multiple annotations
+        // When we have a malformed policy, it should become an error node but the rest of the policies should parse
         let policyset = text_to_cst::parse_policies_tolerant(
             r#"
             // POLICY 1 
