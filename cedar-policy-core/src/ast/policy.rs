@@ -67,11 +67,6 @@ impl Template {
             }
         }
     }
-    // by default, Coverlay does not track coverage for lines after a line
-    // containing #[cfg(test)].
-    // we use the following sentinel to "turn back on" coverage tracking for
-    // remaining lines of this file, until the next #[cfg(test)]
-    // GRCOV_BEGIN_COVERAGE
 
     /// Construct a `Template` from its components
     #[allow(clippy::too_many_arguments)]
@@ -276,11 +271,6 @@ impl Template {
             slots: vec![],
         });
         t.check_invariant();
-        // by default, Coverlay does not track coverage for lines after a line
-        // containing #[cfg(test)].
-        // we use the following sentinel to "turn back on" coverage tracking for
-        // remaining lines of this file, until the next #[cfg(test)]
-        // GRCOV_BEGIN_COVERAGE
         let p = Policy::new(Arc::clone(&t), None, HashMap::new());
         (t, p)
     }
@@ -387,6 +377,8 @@ impl Policy {
     fn new(template: Arc<Template>, link_id: Option<PolicyID>, values: SlotEnv) -> Self {
         #[cfg(debug_assertions)]
         {
+            // PANIC SAFETY: asserts (value total map invariant) which is justified at call sites
+            #[allow(clippy::expect_used)]
             Template::check_binding(&template, &values).expect("(values total map) does not hold!");
         }
         Self {
@@ -681,11 +673,6 @@ mod hashing_tests {
         assert_eq!(compute_hash(&a), compute_hash(&b));
     }
 }
-// by default, Coverlay does not track coverage for lines after a line
-// containing #[cfg(test)].
-// we use the following sentinel to "turn back on" coverage tracking for
-// remaining lines of this file, until the next #[cfg(test)]
-// GRCOV_BEGIN_COVERAGE
 
 /// Errors that can happen during policy reification
 #[derive(Debug, Diagnostic, Error)]
