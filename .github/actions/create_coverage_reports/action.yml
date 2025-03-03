@@ -38,8 +38,8 @@ runs:
             --source-dir . \
             --binary-path ./target/debug/ \
             -t html,cobertura \
-            --ignore 'cedar-policy/benches' \
-            --ignore 'cedar-testing' \
+            --ignore 'cedar-policy/benches/*' \
+            --ignore 'cedar-testing/*' \
             --ignore 'target/debug/*' \
             --ignore '/*' \
             --ignore '*/build.rs' \
