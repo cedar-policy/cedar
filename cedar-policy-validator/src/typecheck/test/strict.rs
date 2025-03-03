@@ -95,6 +95,7 @@ fn assert_strict_type_error(
 }
 
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
+#[allow(clippy::too_many_arguments)]
 fn assert_types_must_match(
     schema: json_schema::Fragment<RawName>,
     env: &RequestEnv<'_>,

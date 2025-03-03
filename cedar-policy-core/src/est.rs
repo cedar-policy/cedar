@@ -34,6 +34,8 @@ use crate::expr_builder::ExprBuilder;
 use crate::parser::cst;
 use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
+#[cfg(feature = "tolerant-ast")]
+use crate::parser::Loc;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::collections::{BTreeMap, HashMap};
@@ -149,6 +151,17 @@ impl Clause {
 impl TryFrom<cst::Policy> for Policy {
     type Error = ParseErrors;
     fn try_from(policy: cst::Policy) -> Result<Policy, ParseErrors> {
+        let policy = match policy {
+            cst::Policy::Policy(policy_impl) => policy_impl,
+            #[cfg(feature = "tolerant-ast")]
+            cst::Policy::PolicyError => {
+                return Err(ParseErrors::singleton(ToASTError::new(
+                    ToASTErrorKind::CSTErrorNode,
+                    // Since we don't have a loc when doing this transformation, we create an arbitrary one
+                    Loc::new(0..1, "CSTErrorNode".into()),
+                )));
+            }
+        };
         let maybe_effect = policy.effect.to_effect();
         let maybe_scope = policy.extract_scope();
         let maybe_annotations = policy.get_ast_annotations(|v, l| {

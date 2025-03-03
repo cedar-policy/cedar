@@ -126,6 +126,8 @@ pub struct TranslatePolicyArgs {
 pub enum PolicyTranslationDirection {
     /// Cedar policy syntax -> JSON
     CedarToJson,
+    /// JSON -> Cedar policy syntax
+    JsonToCedar,
 }
 
 #[derive(Args, Debug)]
@@ -184,6 +186,11 @@ pub struct ValidateArgs {
     /// experimental feature `permissive-validate` and `partial-validate`, respectively, enabled.
     #[arg(long, value_enum, default_value_t = ValidationMode::Strict)]
     pub validation_mode: ValidationMode,
+    /// Validate the policy at this level.
+    /// This option is experimental and will cause the CLI to exit if it was not
+    /// built with the experimental feature `level-validate` enabled.
+    #[arg(long)]
+    pub level: Option<u32>,
 }
 
 #[derive(Args, Debug)]
@@ -435,7 +442,7 @@ impl PartialRequestArgs {
             builder
                 .schema(schema)
                 .build()
-                .wrap_err_with(|| format!("failed to build request with validation"))
+                .wrap_err_with(|| "failed to build request with validation".to_string())
         } else {
             Ok(builder.build())
         }
@@ -801,7 +808,19 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
     };
 
     let validator = Validator::new(schema);
-    let result = validator.validate(&pset, mode);
+
+    #[cfg_attr(not(feature = "level-validate"), allow(unused_variables))]
+    let result = if let Some(level) = args.level {
+        #[cfg(not(feature = "level-validate"))]
+        {
+            eprintln!("Error: arguments include the experimental option `--level`, but this executable was not built with `level-validate` experimental feature enabled");
+            return CedarExitCode::Failure;
+        }
+        #[cfg(feature = "level-validate")]
+        validator.validate_with_level(&pset, mode, level)
+    } else {
+        validator.validate(&pset, mode)
+    };
 
     if !result.validation_passed()
         || (args.deny_warnings && !result.validation_passed_without_warnings())
@@ -932,8 +951,19 @@ pub fn format_policies(args: &FormatArgs) -> CedarExitCode {
     }
 }
 
-fn translate_policy_to_json(cedar_src: impl AsRef<str>) -> Result<String> {
-    let policy_set = PolicySet::from_str(cedar_src.as_ref())?;
+fn translate_policy_to_cedar(
+    json_src: Option<impl AsRef<Path> + std::marker::Copy>,
+) -> Result<String> {
+    let policy_set = read_json_policy_set(json_src)?;
+    policy_set.to_cedar().ok_or(miette!(
+        "Unable to translate policy set containing template linked policies."
+    ))
+}
+
+fn translate_policy_to_json(
+    cedar_src: Option<impl AsRef<Path> + std::marker::Copy>,
+) -> Result<String> {
+    let policy_set = read_cedar_policy_set(cedar_src)?;
     let output = policy_set.to_json()?.to_string();
     Ok(output)
 }
@@ -941,8 +971,9 @@ fn translate_policy_to_json(cedar_src: impl AsRef<str>) -> Result<String> {
 fn translate_policy_inner(args: &TranslatePolicyArgs) -> Result<String> {
     let translate = match args.direction {
         PolicyTranslationDirection::CedarToJson => translate_policy_to_json,
+        PolicyTranslationDirection::JsonToCedar => translate_policy_to_cedar,
     };
-    read_from_file_or_stdin(args.input_file.as_ref(), "policy").and_then(translate)
+    translate(args.input_file.as_ref())
 }
 
 pub fn translate_policy(args: &TranslatePolicyArgs) -> CedarExitCode {

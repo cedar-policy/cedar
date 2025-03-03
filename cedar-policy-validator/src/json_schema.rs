@@ -254,7 +254,7 @@ impl CommonTypeId {
     /// Make a valid [`CommonTypeId`] from this [`UnreservedId`], modifying the
     /// id if needed to avoid reserved basenames
     #[cfg(feature = "arbitrary")]
-    fn make_into_valid_common_type_id(id: UnreservedId) -> Self {
+    fn make_into_valid_common_type_id(id: &UnreservedId) -> Self {
         Self::new(id.clone()).unwrap_or_else(|_| {
             // PANIC SAFETY: `_Bool`, `_Record`, and etc are valid unreserved names.
             #[allow(clippy::unwrap_used)]
@@ -276,7 +276,7 @@ impl Display for CommonTypeId {
 impl<'a> arbitrary::Arbitrary<'a> for CommonTypeId {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         let id: UnreservedId = u.arbitrary()?;
-        Ok(CommonTypeId::make_into_valid_common_type_id(id))
+        Ok(CommonTypeId::make_into_valid_common_type_id(&id))
     }
 
     fn size_hint(depth: usize) -> (usize, Option<usize>) {
@@ -1118,7 +1118,9 @@ impl From<ActionEntityUID<Name>> for EntityUID {
 
 impl TryFrom<ActionEntityUID<InternalName>> for EntityUID {
     type Error = <InternalName as TryInto<Name>>::Error;
-    fn try_from(aeuid: ActionEntityUID<InternalName>) -> std::result::Result<Self, Self::Error> {
+    fn try_from(
+        aeuid: ActionEntityUID<InternalName>,
+    ) -> std::result::Result<Self, <InternalName as TryInto<Name>>::Error> {
         let ty = Name::try_from(aeuid.ty().clone())?;
         Ok(EntityUID::from_components(
             ty.into(),
@@ -1989,10 +1991,7 @@ impl<'a> arbitrary::Arbitrary<'a> for Type<RawName> {
                         attr_names
                             .into_iter()
                             .map(|attr_name| {
-                                Ok((
-                                    attr_name.into(),
-                                    u.arbitrary::<TypeOfAttribute<RawName>>()?.into(),
-                                ))
+                                Ok((attr_name.into(), u.arbitrary::<TypeOfAttribute<RawName>>()?))
                             })
                             .collect::<arbitrary::Result<_>>()?
                     };
@@ -3789,6 +3788,8 @@ mod ord {
 }
 
 #[cfg(test)]
+// PANIC SAFETY: tests
+#[allow(clippy::indexing_slicing)]
 mod enumerated_entity_types {
     use cool_asserts::assert_matches;
 

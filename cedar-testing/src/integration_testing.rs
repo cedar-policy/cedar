@@ -347,12 +347,12 @@ pub fn perform_integration_test(
         // now check that entity slicing arrives at the same decision
         #[cfg(feature = "entity-manifest")]
         if should_validate {
-            let entity_manifest = compute_entity_manifest(&schema, &policies).expect("test failed");
+            let entity_manifest = compute_entity_manifest(schema, policies).expect("test failed");
             let entity_slice = entity_manifest
-                .slice_entities(&entities, &request)
+                .slice_entities(entities, &request)
                 .expect("test failed");
             let slice_response = test_impl
-                .is_authorized(&request, &policies, &entity_slice)
+                .is_authorized(&request, policies, &entity_slice)
                 .expect("Authorization failed");
             check_matches_json(
                 &slice_response,

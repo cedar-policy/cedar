@@ -1,5 +1,6 @@
 name: Nightly build
 on:
+  workflow_dispatch:
   schedule:
     - cron: '0 0 * * *'
 
@@ -8,3 +9,6 @@ env:
 jobs:
   build_and_test:
     uses: ./.github/workflows/build_and_test.yml
+    with:
+      collect_coverage: true
+      retention-days: 2

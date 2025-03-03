@@ -16,16 +16,33 @@ Cedar Language Version: TBD
 ### Changed
 
 - Changed `Entities::add_entities` and `Entities::from_entities` to ignore structurally equal entities with the same Entity UID.
+- For `protobufs` experimental feature, a number of changes to the interface and
+  the Protobuf format definitions, as we continue to iterate towards making this
+  feature stable. (#1488, #1495, #1506)
 
 ### Added
 
 - Added `Entities::remove_entities()` to remove `Entity`s from an `Entities` struct (resolving #701)
-- Added `PolicySet::merge_policyset()` to merge a `PolicySet` into another `PolicySet` struct (resolving #610)
+- Added `PolicySet::merge()` to merge a `PolicySet` into another `PolicySet` struct (resolving #610)
 - Implemented [RFC 53 (enumerated entity types)](https://github.com/cedar-policy/rfcs/blob/main/text/0053-enum-entities.md)  (#1377)
 - Added `Entities::upsert_entities()` to add or update `Entity`s in an `Entities` struct (resolving #1479)
+- Added the experimental feature `tolerant-ast` which allows certain errors to be propogated in AST expressions as an `ExprKind::Error` (#1470)
+- Added `to_cedar` functions for `PolicySet`, `Policy`, and `Template` that
+  render the policy in the human-readable Cedar syntax. These functions can be used
+  to convert JSON formatted policies into the human-readable syntax.
+
+## [4.3.3] - 2025-02-25
+
+### Changed
+
+- Significant changes to the API for the experimental `protobufs` feature
+  (#1452, #1467, others)
 
 ### Fixed
 
+- Fixed the experimental `protobufs` feature so that code depending on `cedar-policy`
+  with this feature now successfully builds, even if that code is not part of the
+  same Cargo workspace as `cedar-policy`, `cedar-policy-core`, etc (#1452).
 - Fixed a bug in the experimental `entity-manifest` feature. If an entity appears as
   both a possible value for a scope variable and an entity literal, slicing
   using entity manifests will now correctly capture all necessary attributes (#1429).
@@ -823,7 +840,8 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.3.2...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.3.3...main
+[4.3.3]: https://github.com/cedar-policy/cedar/compare/v4.3.2...v4.3.3
 [4.3.2]: https://github.com/cedar-policy/cedar/compare/v4.3.1...v4.3.2
 [4.3.1]: https://github.com/cedar-policy/cedar/compare/v4.3.0...v4.3.1
 [4.3.0]: https://github.com/cedar-policy/cedar/compare/v4.2.2...v4.3.0

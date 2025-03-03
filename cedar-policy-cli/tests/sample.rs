@@ -583,6 +583,7 @@ fn test_validate_samples(
         },
         deny_warnings: false,
         validation_mode: cedar_policy_cli::ValidationMode::Strict,
+        level: None,
     };
     let output = validate(&cmd);
     assert_eq!(exit_code, output, "{:#?}", cmd);
@@ -600,9 +601,88 @@ fn test_validate_samples(
         },
         deny_warnings: false,
         validation_mode: cedar_policy_cli::ValidationMode::Strict,
+        level: None,
     };
     let output = validate(&cmd);
     assert_eq!(exit_code, output, "{:#?}", cmd)
+}
+
+#[cfg(feature = "level-validate")]
+#[rstest]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-0.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    0,
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-1.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    0,
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-1.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    1,
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-1.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    0,
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-1.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    1,
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-2.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    0,
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-2.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    1,
+    CedarExitCode::ValidationFailure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/level-validation/policy-level-2.cedar",
+    "sample-data/tiny_sandboxes/level-validation/schema.cedarschema",
+    2,
+    CedarExitCode::Success
+)]
+#[track_caller]
+fn test_level_validate_samples(
+    #[case] policies_file: impl Into<String>,
+    #[case] schema_file: impl AsRef<Path>,
+    #[case] level: u32,
+    #[case] exit_code: CedarExitCode,
+) {
+    let policies_file = policies_file.into();
+    let schema_file = schema_file.as_ref();
+
+    let cmd = ValidateArgs {
+        schema: SchemaArgs {
+            schema_file: schema_file.into(),
+            schema_format: SchemaFormat::Cedar,
+        },
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file),
+            policy_format: PolicyFormat::Cedar,
+            template_linked_file: None,
+        },
+        deny_warnings: false,
+        validation_mode: cedar_policy_cli::ValidationMode::Strict,
+        level: Some(level),
+    };
+    let output = validate(&cmd);
+    assert_eq!(exit_code, output, "{:#?}", cmd);
 }
 
 #[rstest]
@@ -1114,7 +1194,7 @@ fn test_translate_policy() {
     let json_filename = "sample-data/tiny_sandboxes/translate-policy/policy.cedar.json";
     let cedar = std::fs::read_to_string(cedar_filename).unwrap();
     let json = std::fs::read_to_string(json_filename).unwrap();
-    let translate_cmd = assert_cmd::Command::cargo_bin("cedar")
+    let to_json_command = assert_cmd::Command::cargo_bin("cedar")
         .expect("bin exists")
         .arg("translate-policy")
         .arg("--direction")
@@ -1123,12 +1203,39 @@ fn test_translate_policy() {
         .arg(cedar_filename)
         .assert();
 
-    let translated = std::str::from_utf8(&translate_cmd.get_output().stdout)
+    let translated_json = std::str::from_utf8(&to_json_command.get_output().stdout)
         .expect("output should be decodable");
 
     assert_eq!(
-        translated, json,
-        "\noriginal:\n{cedar}\n\ttranslated:\n{translated}",
+        translated_json, json,
+        "\noriginal:\n{cedar}\n\ttranslated:\n{translated_json}",
+    );
+
+    let translate_to_cedar = assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("translate-policy")
+        .arg("--direction")
+        .arg("json-to-cedar")
+        .arg("-p")
+        .arg(json_filename)
+        .assert();
+
+    let translated_cedar = std::str::from_utf8(&translate_to_cedar.get_output().stdout)
+        .expect("output should be decodable");
+
+    // Converting back from JSON adds an extra `when { true }`
+    let expected_translated_cedar = r#"permit(
+  principal == User::"alice",
+  action == Action::"update",
+  resource == Photo::"VacationPhoto94.jpg"
+) when {
+  true
+};
+"#;
+
+    assert_eq!(
+        translated_cedar, expected_translated_cedar,
+        "\noriginal:\n{cedar}\n\ttranslated:\n{translated_cedar}",
     );
 }
 

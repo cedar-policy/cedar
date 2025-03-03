@@ -46,6 +46,7 @@ pub struct Annotated<T> {
 
 pub type Schema = Vec<Annotated<Namespace>>;
 
+#[allow(clippy::type_complexity)]
 pub fn deduplicate_annotations<T>(
     data: T,
     annotations: Vec<Node<(Node<AnyId>, Option<Node<SmolStr>>)>>,
@@ -116,6 +117,7 @@ impl Path {
     }
 
     /// Consume the [`Path`] and get an owned iterator over the elements. Most significant name first
+    #[allow(clippy::should_implement_trait)] // difficult to write the `IntoIter` type for this implementation
     pub fn into_iter(self) -> impl Iterator<Item = Node<Id>> {
         let loc = self.0.loc;
         self.0
@@ -162,16 +164,21 @@ impl PathInternal {
         self.namespace.iter().chain(once(&self.basename))
     }
 
-    fn into_iter(self) -> impl Iterator<Item = Id> {
-        self.namespace.into_iter().chain(once(self.basename))
-    }
-
     /// Is this referring to a name _in_ the `__cedar` namespace (ex: `__cedar::Bool`)
     fn is_in_cedar(&self) -> bool {
         match self.namespace.as_slice() {
             [id] => id.as_ref() == CEDAR_NAMESPACE,
             _ => false,
         }
+    }
+}
+
+impl IntoIterator for PathInternal {
+    type Item = Id;
+    type IntoIter = std::iter::Chain<<Vec<Id> as IntoIterator>::IntoIter, std::iter::Once<Id>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.namespace.into_iter().chain(once(self.basename))
     }
 }
 

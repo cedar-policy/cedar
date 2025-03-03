@@ -8,6 +8,18 @@ env:
 jobs:
   build_and_test:
     uses: ./.github/workflows/build_and_test.yml
+    with:
+      collect_coverage: true
+
+  check_coverage:
+    name: Check coverage criteria
+    needs: build_and_test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/create_coverage_comment
+        with:
+          threshold: 0.8
 
   cargo_semver_checks:
     name: Cargo SemVer Checks

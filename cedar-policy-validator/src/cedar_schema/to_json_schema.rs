@@ -362,6 +362,8 @@ fn convert_entity_decl(
     impl Iterator<Item = (UnreservedId, json_schema::EntityType<RawName>)>,
     ToJsonSchemaErrors,
 > {
+    // 2025-02-28: this Clippy nursery lint is bugged, makes a suggestion that does not compile
+    #[allow(clippy::needless_collect)]
     let names: Vec<Node<Id>> = e.data.node.names().cloned().collect();
     let etype = json_schema::EntityType {
         kind: match e.data.node {
@@ -645,6 +647,7 @@ fn partition_decls(
     (entities, actions, types)
 }
 
+#[allow(clippy::type_complexity)]
 fn into_partition_decls(
     decls: impl IntoIterator<Item = Annotated<Node<Declaration>>>,
 ) -> (
@@ -684,6 +687,7 @@ mod preserves_source_locations {
     use json_schema::{EntityType, EntityTypeKind};
 
     #[test]
+    #[allow(clippy::cognitive_complexity)]
     fn entity_action_and_common_type_decls() {
         let (schema, _) = json_schema::Fragment::from_cedarschema_str(
             r#"
@@ -768,6 +772,7 @@ mod preserves_source_locations {
     }
 
     #[test]
+    #[allow(clippy::cognitive_complexity)]
     fn types() {
         let (schema, _) = json_schema::Fragment::from_cedarschema_str(
             r#"
@@ -804,7 +809,7 @@ mod preserves_source_locations {
         assert_matches!(ns
             .entity_types
             .get(&"C".parse().unwrap())
-            .expect("couldn't find entity C"), EntityType { kind: EntityTypeKind::Standard(entityC), ..} => { 
+            .expect("couldn't find entity C"), EntityType { kind: EntityTypeKind::Standard(entityC), ..} => {
         assert_matches!(entityC.member_of_types.first().unwrap().loc(), Some(loc) => {
             assert_matches!(loc.snippet(), Some("A"));
         });

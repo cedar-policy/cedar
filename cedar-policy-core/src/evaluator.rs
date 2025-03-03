@@ -21,11 +21,11 @@ use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
 use std::collections::BTreeMap;
-#[cfg(test)]
-use std::collections::HashMap;
 use std::sync::Arc;
 
 mod err;
+#[cfg(feature = "tolerant-ast")]
+use crate::evaluator::EvaluationError::ASTErrorExpr;
 pub use err::evaluation_errors;
 pub use err::EvaluationError;
 pub(crate) use err::*;
@@ -760,6 +760,10 @@ impl<'e> Evaluator<'e> {
                     }
                 }
             }
+            #[cfg(feature = "tolerant-ast")]
+            ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError {
+                source_loc: loc.cloned(),
+            })),
         }
     }
 
@@ -932,6 +936,7 @@ impl<'e> Evaluator<'e> {
     /// location is propagated to the result.
     #[cfg(test)]
     pub fn interpret_inline_policy(&self, e: &Expr) -> Result<Value> {
+        use std::collections::HashMap;
         match self.partial_interpret(e, &HashMap::new())? {
             PartialValue::Value(v) => {
                 debug_assert!(e.source_loc().is_some() == v.source_loc().is_some());
@@ -1119,6 +1124,7 @@ fn stack_size_check() -> Result<()> {
 #[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
 pub(crate) mod test {
+    use std::collections::{HashMap, HashSet};
     use std::str::FromStr;
 
     use super::*;
@@ -2562,8 +2568,6 @@ pub(crate) mod test {
         );
     }
 
-    use std::collections::HashSet;
-
     #[test]
     fn large_entity_err() {
         let expr = Expr::get_attr(
@@ -2584,7 +2588,7 @@ pub(crate) mod test {
         .unwrap();
         let request = basic_request();
         let entities = Entities::from_entities(
-            std::iter::once(entity),
+            [entity],
             None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
             Extensions::none(),
@@ -3409,8 +3413,8 @@ pub(crate) mod test {
                     duration_constructor.clone(),
                     vec![Value::from("2h").into()]))),
             Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: datetime_constructor.clone() }]);
-                assert_eq!(actual, Type::Extension { name: duration_constructor.clone() });
+                assert_eq!(expected, nonempty![Type::Extension { name: datetime_constructor }]);
+                assert_eq!(actual, Type::Extension { name: duration_constructor });
                 assert_eq!(advice, None);
         });
 
@@ -5064,8 +5068,7 @@ pub(crate) mod test {
             Either::Right(expr) => {
                 println!("{expr}");
                 assert!(expr.contains_unknown());
-                let m: HashMap<_, _> =
-                    std::iter::once(("principal".into(), Value::from(euid))).collect();
+                let m: HashMap<_, _> = HashMap::from([("principal".into(), Value::from(euid))]);
                 let new_expr = expr.substitute_typed(&m).unwrap();
                 assert_eq!(
                     e.partial_interpret(&new_expr, &HashMap::new())

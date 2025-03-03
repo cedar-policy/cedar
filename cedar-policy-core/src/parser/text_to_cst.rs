@@ -69,6 +69,39 @@ fn parse_collect_errors<'a, P, T>(
     }
 }
 
+/// This helper function calls a generated parser. If the given string is unparsable, it will return the relevant errors
+/// If a string is parsable but has errors, it will still return the parse expression
+/// NOTE: This should only be used to construct an AST that includes error nodes and NOT for evaluation
+#[cfg(feature = "tolerant-ast")]
+fn parse_collect_errors_tolerant<'a, P, T>(
+    parser: &P,
+    parse: impl FnOnce(
+        &P,
+        &mut Vec<err::RawErrorRecovery<'a>>,
+        &Arc<str>,
+        &'a str,
+    ) -> Result<T, err::RawParseError<'a>>,
+    text: &'a str,
+) -> Result<T, err::ParseErrors> {
+    let mut errs = Vec::new();
+    let result = parse(parser, &mut errs, &Arc::from(text), text);
+
+    let errors = errs
+        .into_iter()
+        .map(|rc| err::ToCSTError::from_raw_err_recovery(rc, Arc::from(text)))
+        .map(Into::into);
+    let parsed = match result {
+        Ok(parsed) => parsed,
+        Err(e) => {
+            return Err(err::ParseErrors::new(
+                err::ToCSTError::from_raw_parse_err(e, Arc::from(text)).into(),
+                errors,
+            ));
+        }
+    };
+    Ok(parsed)
+}
+
 // Thread-safe "global" parsers, initialized at first use
 lazy_static::lazy_static! {
     static ref POLICIES_PARSER: grammar::PoliciesParser = grammar::PoliciesParser::new();
@@ -115,12 +148,35 @@ pub fn parse_ident(text: &str) -> Result<Node<Option<cst::Ident>>, err::ParseErr
     parse_collect_errors(&*IDENT_PARSER, grammar::IdentParser::parse, text)
 }
 
+/// Create CST for one policy statement from text - allows CST error nodes on certain parse failures
+#[cfg(feature = "tolerant-ast")]
+pub fn parse_policy_tolerant(text: &str) -> Result<Node<Option<cst::Policy>>, err::ParseErrors> {
+    parse_collect_errors_tolerant(&*POLICY_PARSER, grammar::PolicyParser::parse, text)
+}
+
+/// Create CST for one policy statement from text - allows CST error nodes on certain parse failures
+#[cfg(feature = "tolerant-ast")]
+pub fn parse_policies_tolerant(
+    text: &str,
+) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
+    parse_collect_errors_tolerant(&*POLICIES_PARSER, grammar::PoliciesParser::parse, text)
+}
+
+/// Create CST for one Expression from text - allows CST error nodes on certain parse failures
+#[cfg(feature = "tolerant-ast")]
+pub fn parse_expr_tolerant(text: &str) -> Result<Node<Option<cst::Expr>>, err::ParseErrors> {
+    parse_collect_errors_tolerant(&*EXPR_PARSER, grammar::ExprParser::parse, text)
+}
 // PANIC SAFETY unit test code
 #[allow(clippy::panic)]
 // PANIC SAFETY unit test code
 #[allow(clippy::indexing_slicing)]
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "tolerant-ast")]
+    use crate::parser::cst::Expr;
+    #[cfg(feature = "tolerant-ast")]
+    use crate::parser::cst::Policy;
     use crate::parser::test_utils::*;
     use crate::test_utils::*;
 
@@ -989,6 +1045,7 @@ mod tests {
         );
     }
 
+    #[allow(unreachable_code)]
     #[test]
     fn policies6() {
         // test that an error doesn't stop the parser
@@ -1003,6 +1060,21 @@ mod tests {
             .expect("parser error")
             .node
             .expect("no data");
+
+        // In the tolerant AST we store the Policy Error node
+        #[cfg(feature = "tolerant-ast")]
+        assert_eq!(
+            policies
+                .clone()
+                .0
+                .into_iter()
+                .filter_map(|p| p.node)
+                .count(),
+            3
+        );
+
+        // If the AST is not tolerant, unparsable policy should be None
+        #[cfg(not(feature = "tolerant-ast"))]
         assert_eq!(policies.0.into_iter().filter_map(|p| p.node).count(), 2);
     }
 
@@ -1027,6 +1099,11 @@ mod tests {
             parse_policy,
             r#"@foo permit (principal, action, resource);"#,
         );
+        let policy = match policy {
+            cst::Policy::Policy(p) => p,
+            #[cfg(feature = "tolerant-ast")]
+            cst::Policy::PolicyError => panic!("Should not be an error!"),
+        };
         let annotation = policy.annotations.first().unwrap().as_inner().unwrap();
         assert_eq!(annotation.value, None);
         assert_eq!(
@@ -1350,5 +1427,75 @@ mod tests {
         };
         "#,
         );
+    }
+
+    #[test]
+    #[cfg(feature = "tolerant-ast")]
+    fn policies_tolerant_success() {
+        let src = r#"
+            @bad-annotation("bad") permit (principal, action, resource);
+            permit(principal, action, resource);
+        "#;
+        let policies = assert_parse_succeeds(parse_policies_tolerant, src);
+        assert_eq!(policies.0.len(), 2);
+        let (policy1, _) = policies.0[0].clone().into_inner();
+        assert!(matches!(policy1.unwrap(), Policy::PolicyError));
+        let (policy2, _) = policies.0[1].clone().into_inner();
+        assert!(matches!(policy2.unwrap(), Policy::Policy(_)));
+
+        let src = r#"
+        permit(principal, action, resource);
+        permit(principal, ac;
+        "#;
+        let policies = assert_parse_succeeds(parse_policies_tolerant, src);
+        assert_eq!(policies.0.len(), 2);
+        let (policy1, _) = policies.0[1].clone().into_inner();
+        assert!(matches!(policy1.unwrap(), Policy::PolicyError));
+        let (policy2, _) = policies.0[0].clone().into_inner();
+        assert!(matches!(policy2.unwrap(), Policy::Policy(_)));
+    }
+
+    #[test]
+    #[cfg(feature = "tolerant-ast")]
+    fn policy_tolerant_success() {
+        let src = r#"
+            permit(principal, action, resource);
+        "#;
+        let policy = assert_parse_succeeds(parse_policy_tolerant, src);
+        assert!(matches!(policy, Policy::Policy(_)));
+
+        let src = r#"
+            permit(principal, act;
+        "#;
+        let policy = assert_parse_succeeds(parse_policy_tolerant, src);
+        assert!(matches!(policy, Policy::PolicyError));
+    }
+
+    #[test]
+    #[cfg(feature = "tolerant-ast")]
+    fn expr_tolerant_success() {
+        let src = r#"
+            x == 
+        "#;
+        let e = assert_parse_succeeds(parse_expr_tolerant, src);
+        assert!(matches!(e, Expr::ErrorExpr));
+
+        let src = r#"
+             == y
+        "#;
+        let e = assert_parse_succeeds(parse_expr_tolerant, src);
+        assert!(matches!(e, Expr::ErrorExpr));
+
+        let src = r#"
+            (1 + 2) -
+        "#;
+        let e = assert_parse_succeeds(parse_expr_tolerant, src);
+        assert!(matches!(e, Expr::ErrorExpr));
+
+        let src = r#"
+            x == y
+        "#;
+        let e = assert_parse_succeeds(parse_expr_tolerant, src);
+        assert!(matches!(e, Expr::Expr(_)));
     }
 }

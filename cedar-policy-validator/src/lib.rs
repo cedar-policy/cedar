@@ -52,6 +52,7 @@ pub use str_checks::confusable_string_checks;
 pub mod cedar_schema;
 pub mod typecheck;
 use typecheck::Typechecker;
+mod partition_nonempty;
 pub mod types;
 
 /// Used to select how a policy will be validated.
@@ -604,6 +605,7 @@ mod enumerated_entity_types {
     }
 
     #[test]
+    #[allow(clippy::cognitive_complexity)]
     fn basic_invalid() {
         let schema = schema();
         let template = parse_policy_or_template(None, r#"permit(principal, action == Action::"a", resource) when { principal == Foo::"fo" };"#).unwrap();
@@ -683,7 +685,7 @@ mod enumerated_entity_types {
         "#,
         )
         .unwrap();
-        let validator = Validator::new(schema.clone());
+        let validator = Validator::new(schema);
         let (errors, warnings) =
             validator.validate_policy(&template, crate::ValidationMode::Strict);
         assert!(warnings.collect_vec().is_empty());

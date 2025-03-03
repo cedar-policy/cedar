@@ -14,12 +14,7 @@
  * limitations under the License.
  */
 
-#![cfg(test)]
-// PANIC SAFETY unit tests
-#![allow(clippy::panic)]
-#![allow(clippy::cognitive_complexity, clippy::too_many_lines)]
-
-use super::*;
+use super::super::*;
 
 use authorizer::Decision;
 use cedar_policy_core::ast;
@@ -340,8 +335,7 @@ mod scope_constraints_tests {
     #[test]
     fn principal_constraint_link() {
         let euid = EntityUid::from_strs("T", "a");
-        let map: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::principal(), euid.clone())).collect();
+        let map: HashMap<SlotId, EntityUid> = HashMap::from([(SlotId::principal(), euid.clone())]);
         let p = link(
             "permit(principal in ?principal,action,resource);",
             map.clone(),
@@ -357,8 +351,7 @@ mod scope_constraints_tests {
     #[test]
     fn resource_constraint_link() {
         let euid = EntityUid::from_strs("T", "a");
-        let map: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::resource(), euid.clone())).collect();
+        let map: HashMap<SlotId, EntityUid> = HashMap::from([(SlotId::resource(), euid.clone())]);
         let p = link(
             "permit(principal,action,resource in ?resource);",
             map.clone(),
@@ -437,7 +430,7 @@ mod policy_set_tests {
         pset.add_template(template).expect("Add failed");
 
         let env: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
         pset.link(PolicyId::new("t"), PolicyId::new("id"), env.clone())
             .expect("Failed to link");
 
@@ -473,7 +466,7 @@ mod policy_set_tests {
         pset.add_template(template).expect("Add failed");
 
         let env: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
 
         let before_link = pset.clone();
         let r = pset.link(PolicyId::new("t"), PolicyId::new("id"), env);
@@ -508,12 +501,12 @@ mod policy_set_tests {
         pset.add_template(template).expect("Failed to add");
 
         let env1: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test1"))).collect();
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test1"))]);
         pset.link(PolicyId::new("t"), PolicyId::new("link"), env1)
             .expect("Failed to link");
 
         let env2: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test2"))).collect();
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test2"))]);
 
         let err = pset
             .link(PolicyId::new("t"), PolicyId::new("link"), env2.clone())
@@ -541,7 +534,7 @@ mod policy_set_tests {
         pset.add_template(template2)
             .expect("Failed to add template");
         let env3: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::resource(), EntityUid::from_strs("Test", "test3"))).collect();
+            HashMap::from([(SlotId::resource(), EntityUid::from_strs("Test", "test3"))]);
 
         pset.link(PolicyId::new("t"), PolicyId::new("unique3"), env3.clone())
             .expect_err("should have failed due to conflict on template id");
@@ -609,7 +602,7 @@ mod policy_set_tests {
 
         let linked_policy_id = PolicyId::new("linked");
         let env1: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
         pset.link(PolicyId::new("t"), linked_policy_id.clone(), env1)
             .expect("Failed to link");
 
@@ -635,7 +628,7 @@ mod policy_set_tests {
         assert_eq!(response.decision(), Decision::Deny);
 
         let env1: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
         pset.link(PolicyId::new("t"), linked_policy_id.clone(), env1)
             .expect("Failed to link");
 
@@ -670,7 +663,7 @@ mod policy_set_tests {
         let mut pset = PolicySet::new();
         pset.add_template(template).unwrap();
         let env: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
         pset.link(PolicyId::new("policy0"), PolicyId::new("policy3"), env)
             .unwrap();
         let template = Template::parse(
@@ -711,7 +704,7 @@ mod policy_set_tests {
         pset.link(
             PolicyId::new("template"),
             PolicyId::new("linked"),
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]),
         )
         .expect("Link failure");
 
@@ -777,7 +770,7 @@ mod policy_set_tests {
         pset.link(
             PolicyId::new("template"),
             PolicyId::new("linked"),
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]),
         )
         .unwrap();
 
@@ -812,8 +805,9 @@ mod policy_set_tests {
         let mut pset = PolicySet::new();
         pset.add(static_policy).unwrap();
 
-        let entity_uids = pset.unknown_entities();
-        entity_uids.contains(&"test_entity_type::\"unknown\"".parse().unwrap());
+        assert!(pset
+            .unknown_entities()
+            .contains(&"test_entity_type::\"unknown\"".parse().unwrap()));
     }
 
     #[test]
@@ -830,7 +824,7 @@ mod policy_set_tests {
         pset.link(
             PolicyId::new("template"),
             linked_policy_id.clone(),
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]),
         )
         .unwrap();
 
@@ -893,7 +887,7 @@ mod policy_set_tests {
         pset.link(
             PolicyId::new("template"),
             linked_policy_id.clone(),
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]),
         )
         .unwrap();
 
@@ -919,7 +913,7 @@ mod policy_set_tests {
         pset.link(
             PolicyId::new("template"),
             linked_policy_id.clone(),
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]),
         )
         .unwrap();
         assert_eq!(
@@ -931,7 +925,7 @@ mod policy_set_tests {
         pset.link(
             PolicyId::new("template"),
             PolicyId::new("linked2"),
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect(),
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]),
         )
         .unwrap();
         assert_eq!(
@@ -1087,7 +1081,7 @@ mod policy_set_tests {
         let mut pset = PolicySet::new();
         pset.add_template(template).unwrap();
         let env: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
         pset.link(PolicyId::new("policy0"), PolicyId::new("policy1"), env)
             .unwrap();
 
@@ -1136,7 +1130,7 @@ mod policy_set_tests {
         let mut pset = PolicySet::new();
         pset.add_template(template).unwrap();
         let env: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
         pset.link(PolicyId::new("policy0"), PolicyId::new("policy3"), env)
             .unwrap();
 
@@ -1190,7 +1184,7 @@ mod policy_set_tests {
         let mut pset = PolicySet::new();
         pset.add_template(template).unwrap();
         let env: HashMap<SlotId, EntityUid> =
-            std::iter::once((SlotId::principal(), EntityUid::from_strs("Test", "test"))).collect();
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
 
         //fails for link; link
         pset.link(
@@ -1362,8 +1356,8 @@ mod ancestors_tests {
         let b_euid: EntityUid = EntityUid::from_strs("test", "b");
         let c_euid: EntityUid = EntityUid::from_strs("test", "C");
         let a = Entity::new_no_attrs(a_euid.clone(), HashSet::new());
-        let b = Entity::new_no_attrs(b_euid.clone(), std::iter::once(a_euid.clone()).collect());
-        let c = Entity::new_no_attrs(c_euid.clone(), std::iter::once(b_euid.clone()).collect());
+        let b = Entity::new_no_attrs(b_euid.clone(), HashSet::from([a_euid.clone()]));
+        let c = Entity::new_no_attrs(c_euid.clone(), HashSet::from([b_euid.clone()]));
         let es = Entities::from_entities([a, b, c], None).unwrap();
         let ans = es.ancestors(&c_euid).unwrap().collect::<HashSet<_>>();
         assert_eq!(ans.len(), 2);
@@ -2191,8 +2185,6 @@ mod schema_based_parsing_tests {
 
     /// Simple test that exercises a variety of attribute types for single entities
     #[test]
-    #[allow(clippy::too_many_lines)]
-    #[allow(clippy::cognitive_complexity)]
     fn single_attr_types() {
         let schema = Schema::from_json_value(json!(
         {"": {
@@ -2656,8 +2648,6 @@ mod schema_based_parsing_tests {
 
     /// Simple test that exercises a variety of attribute types.
     #[test]
-    #[allow(clippy::too_many_lines)]
-    #[allow(clippy::cognitive_complexity)]
     fn attr_types() {
         let schema = Schema::from_json_value(json!(
         {"": {
@@ -4228,8 +4218,6 @@ mod level_validation_tests {
             }
         }))
         .expect("Schema parse error.")
-        .try_into()
-        .expect("Expected valid schema.")
     }
 
     #[test]
@@ -4284,7 +4272,7 @@ mod level_validation_tests {
             ValidationError::EntityDerefLevelViolation(inner) => {
                 assert!(format!("{inner}").contains("Actual level is 2"));
             }
-            _ => unreachable!(),
+            _ => panic!("should be unreachable"),
         };
     }
 
@@ -4582,12 +4570,12 @@ mod error_source_tests {
         // same srcs as above
         for src in srcs {
             let pset = PolicySet::from_str(src).unwrap();
-            let res = validator.validate(&pset, ValidationMode::Strict);
-            for err in res.validation_errors() {
+            let val_result = validator.validate(&pset, ValidationMode::Strict);
+            for err in val_result.validation_errors() {
                 assert!(err.labels().is_some(), "no source span for the validation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(err.clone()));
                 assert!(err.source_code().is_some(), "no source code for the validation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(err.clone()));
             }
-            for warn in res.validation_warnings() {
+            for warn in val_result.validation_warnings() {
                 assert!(warn.labels().is_some(), "no source span for the validation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(warn.clone()));
                 assert!(warn.source_code().is_some(), "no source code for the validation error resulting from:\n  {src}\nerror was:\n{:?}", miette::Report::new(warn.clone()));
             }
@@ -5768,8 +5756,6 @@ mod policy_set_est_tests {
     }
 }
 
-// PANIC SAFETY unit tests
-#[allow(clippy::indexing_slicing)]
 mod authorization_error_tests {
     use super::*;
 
@@ -6536,7 +6522,7 @@ mod version_tests {
 
     #[test]
     fn test_sdk_version() {
-        assert_eq!(get_sdk_version().to_string(), "4.3.0");
+        assert_eq!(get_sdk_version().to_string(), "4.4.0");
     }
 
     #[test]
@@ -7087,5 +7073,139 @@ mod schema_annotations {
             ),
             None
         );
+    }
+}
+
+mod to_cedar {
+    use std::collections::HashMap;
+
+    use crate::{Policy, PolicyId, PolicySet, SlotId, Template};
+
+    #[test]
+    fn json_policy_to_cedar() {
+        let policy_json = serde_json::json!({
+            "effect": "permit",
+            "principal": { "op": "All" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [
+                {
+                    "kind": "when",
+                    "body": {
+                        ".": {
+                            "left": {
+                                "Var": "context"
+                            },
+                            "attr": "is_frobnicated"
+                        }
+                    }
+                }
+            ]
+        });
+
+        let policy = Policy::from_json(None, policy_json).unwrap();
+
+        let policy_cedar = policy.to_cedar().unwrap();
+        let expected_policy_cedar = r#"permit(
+  principal,
+  action,
+  resource
+) when {
+  context["is_frobnicated"]
+};"#;
+
+        assert_eq!(policy_cedar, expected_policy_cedar);
+    }
+
+    #[test]
+    fn json_policy_set_to_cedar() {
+        let p1_json = serde_json::json!({
+            "effect": "permit",
+            "principal": { "op": "All" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [
+                {
+                    "kind": "when",
+                    "body": {
+                        ".": {
+                            "left": {
+                                "Var": "context"
+                            },
+                            "attr": "is_frobnicated"
+                        }
+                    }
+                }
+            ]
+        });
+        let t1_json = serde_json::json!({
+            "effect": "permit",
+            "principal": {
+                "op": "==",
+                "slot": "?principal"
+            },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [ ]
+        });
+        let pset_json = serde_json::json!({
+            "staticPolicies": {
+                "p1": p1_json,
+            },
+            "templates" : {
+                "t1": t1_json,
+            },
+            "templateLinks" : []
+        });
+        let pset = PolicySet::from_json_value(pset_json).unwrap();
+        let expected = r#"permit(
+  principal,
+  action,
+  resource
+) when {
+  context["is_frobnicated"]
+};
+
+permit(
+  principal == ?principal,
+  action,
+  resource
+) when {
+  true
+};"#;
+        assert_eq!(pset.to_cedar().unwrap(), expected);
+    }
+
+    #[test]
+    fn cedar_to_cedar_is_lossless() {
+        let policy_cedar = "permit ( principal, action, resource );";
+        let policy = Policy::parse(None, policy_cedar).unwrap();
+        let lossless_cedar = policy.to_cedar().unwrap();
+        assert_eq!(policy_cedar, lossless_cedar);
+    }
+
+    #[test]
+    fn template_linked_is_none() {
+        let mut pset = PolicySet::new();
+        let template: Template =
+            r"permit(principal == ?principal, action, resource) when { principal.bar };"
+                .parse()
+                .unwrap();
+        pset.add_template(template.new_id(PolicyId::new("template")))
+            .unwrap();
+
+        pset.link(
+            PolicyId::new("template"),
+            PolicyId::new("Link1"),
+            HashMap::from_iter([(SlotId::principal(), r#"User::"Joe""#.parse().unwrap())]),
+        )
+        .unwrap();
+
+        // Linked policies can't convert to Cedar format
+        let linked_policy = pset.policies().next().unwrap();
+        assert_eq!(linked_policy.to_cedar(), None);
+
+        // Neither can the whole policy set containing the linked policy
+        assert_eq!(pset.to_cedar(), None);
     }
 }

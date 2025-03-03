@@ -354,6 +354,11 @@ impl Validator {
                     .unwrap_or_default()
                     .into_iter(),
             ),
+            #[cfg(feature = "tolerant-ast")]
+            ActionConstraint::ErrorConstraint => {
+                let v = vec![].into_iter();
+                Box::new(v)
+            }
         }
     }
 

@@ -131,7 +131,7 @@ impl Entity {
         Self(ast::Entity::new_with_attr_partial_value(
             uid.into(),
             [],
-            [].into_iter().collect(),
+            HashSet::new(),
             parents.into_iter().map(EntityUid::into).collect(),
             [],
         ))
@@ -152,7 +152,7 @@ impl Entity {
         Ok(Self(ast::Entity::new(
             uid.into(),
             attrs.into_iter().map(|(k, v)| (k.into(), v.0)),
-            [].into_iter().collect(),
+            HashSet::new(),
             parents.into_iter().map(EntityUid::into).collect(),
             tags.into_iter().map(|(k, v)| (k.into(), v.0)),
             Extensions::all_available(),
@@ -2254,6 +2254,43 @@ impl PolicySet {
         Ok(est)
     }
 
+    /// Get the human-readable Cedar syntax representation of this policy set.
+    /// This function is primarily intended for rendering JSON policies in the
+    /// human-readable syntax, but it will also return the original policy text
+    /// (though possibly re-ordering policies within the policy set) when the
+    /// policy-set contains policies parsed from the human-readable syntax.
+    ///
+    /// This will return `None` if there are any linked policies in the policy
+    /// set because they cannot be directly rendered in Cedar syntax. It also
+    /// cannot record policy ids because these cannot be specified in the Cedar
+    /// syntax. The policies may be reordered, so parsing the resulting string
+    /// with [`PolicySet::from_str`] is likely to yield different policy id
+    /// assignments. For these reasons you should prefer serializing as JSON (or protobuf) and
+    /// only using this function to obtain a representation to display to human
+    /// users.
+    ///
+    /// This function does not format the policy according to any particular
+    /// rules.  Policy formatting can be done through the Cedar policy CLI or
+    /// the `cedar-policy-formatter` crate.
+    pub fn to_cedar(&self) -> Option<String> {
+        let policies = self
+            .policies
+            .values()
+            // We'd like to print policies in a deterministic order, so we sort
+            // before printing, hoping that the size of policy sets is fairly
+            // small.
+            .sorted_by_key(|p| AsRef::<str>::as_ref(p.id()))
+            .map(|p| p.to_cedar())
+            .collect::<Option<Vec<_>>>()?;
+        let templates = self
+            .templates
+            .values()
+            .sorted_by_key(|t| AsRef::<str>::as_ref(t.id()))
+            .map(|t| t.to_cedar());
+
+        Some(policies.into_iter().chain(templates).join("\n\n"))
+    }
+
     /// Create a fresh empty `PolicySet`
     pub fn new() -> Self {
         Self {
@@ -2286,7 +2323,7 @@ impl PolicySet {
         T: PartialEq + Clone,
     {
         for (pid, ot) in other {
-            match renaming.get(&pid) {
+            match renaming.get(pid) {
                 Some(new_pid) => {
                     this.insert(new_pid.clone(), ot.clone());
                 }
@@ -2318,9 +2355,9 @@ impl PolicySet {
     /// the other `PolicySet` are automatically renamed to avoid conflict.
     /// This renaming is returned as a Hashmap from the old `PolicyId` to the
     /// renamed `PolicyId`.
-    pub fn merge_policyset(
+    pub fn merge(
         &mut self,
-        other: &PolicySet,
+        other: &Self,
         rename_duplicates: bool,
     ) -> Result<HashMap<PolicyId, PolicyId>, PolicySetError> {
         match self.ast.merge_policyset(&other.ast, rename_duplicates) {
@@ -2860,6 +2897,14 @@ impl Template {
                 ActionConstraint::In(ids.iter().map(|id| id.as_ref().clone().into()).collect())
             }
             ast::ActionConstraint::Eq(id) => ActionConstraint::Eq(id.as_ref().clone().into()),
+            #[cfg(feature = "tolerant-ast")]
+            ast::ActionConstraint::ErrorConstraint => {
+                // We will only have an ErrorConstraint if we are using a parser that allows Error nodes
+                // It is not recommended to evaluate an AST that allows error nodes
+                // If somehow someone tries to evaluate an AST that includes an Action constraint error, we will
+                // treat it as `Any`
+                ActionConstraint::Any
+            }
         }
     }
 
@@ -2928,6 +2973,21 @@ impl Template {
     pub fn to_json(&self) -> Result<serde_json::Value, PolicyToJsonError> {
         let est = self.lossless.est()?;
         serde_json::to_value(est).map_err(Into::into)
+    }
+
+    /// Get the human-readable Cedar syntax representation of this template.
+    /// This function is primarily intended for rendering JSON policies in the
+    /// human-readable syntax, but it will also return the original policy text
+    /// when given a policy parsed from the human-readable syntax.
+    ///
+    /// It also does not format the policy according to any particular rules.
+    /// Policy formatting can be done through the Cedar policy CLI or
+    /// the `cedar-policy-formatter` crate.
+    pub fn to_cedar(&self) -> String {
+        match &self.lossless {
+            LosslessPolicy::Est(_) => self.ast.to_string(),
+            LosslessPolicy::Text { text, .. } => text.clone(),
+        }
     }
 
     /// Get valid [`RequestEnv`]s.
@@ -3179,6 +3239,14 @@ impl Policy {
                     .collect(),
             ),
             ast::ActionConstraint::Eq(id) => ActionConstraint::Eq(EntityUid::ref_cast(id).clone()),
+            #[cfg(feature = "tolerant-ast")]
+            ast::ActionConstraint::ErrorConstraint => {
+                // We will only have an ErrorConstraint if we are using a parser that allows Error nodes
+                // It is not recommended to evaluate an AST that allows error nodes
+                // If somehow someone tries to evaluate an AST that includes an Action constraint error, we will
+                // treat it as `Any`
+                ActionConstraint::Any
+            }
         }
     }
 
@@ -3399,6 +3467,33 @@ impl Policy {
     pub fn to_json(&self) -> Result<serde_json::Value, PolicyToJsonError> {
         let est = self.lossless.est()?;
         serde_json::to_value(est).map_err(Into::into)
+    }
+
+    /// Get the human-readable Cedar syntax representation of this policy. This
+    /// function is primarily intended for rendering JSON policies in the
+    /// human-readable syntax, but it will also return the original policy text
+    /// when given a policy parsed from the human-readable syntax.
+    ///
+    /// It will return `None` for linked policies because they cannot be
+    /// directly rendered in Cedar syntax. You can instead render the unlinked
+    /// template if you do not need to preserve links. If serializing links is
+    /// important, then you will need to serialize the whole policy set
+    /// containing the template and link to JSON (or protobuf).
+    ///
+    /// It also does not format the policy according to any particular rules.
+    /// Policy formatting can be done through the Cedar policy CLI or
+    /// the `cedar-policy-formatter` crate.
+    pub fn to_cedar(&self) -> Option<String> {
+        match &self.lossless {
+            LosslessPolicy::Est(_) => Some(self.ast.to_string()),
+            LosslessPolicy::Text { text, slots } => {
+                if slots.is_empty() {
+                    Some(text.clone())
+                } else {
+                    None
+                }
+            }
+        }
     }
 
     /// Get all the unknown entities from the policy

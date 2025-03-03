@@ -304,8 +304,7 @@ impl Diagnostic for NotValue {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         match self {
             Self::NotValue { loc } => loc.as_ref().map(|loc| {
-                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span)))
-                    as Box<dyn Iterator<Item = _>>
+                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span))) as _
             }),
         }
     }
@@ -359,6 +358,8 @@ impl TryFrom<Expr> for ValueKind {
                 .map(|(k, v)| Value::try_from(v.clone()).map(|v| (k.clone(), v)))
                 .collect::<Result<BTreeMap<SmolStr, Value>, _>>()
                 .map(|m| Self::Record(Arc::new(m))),
+            #[cfg(feature = "tolerant-ast")]
+            ExprKind::Error { .. } => Err(NotValue::NotValue { loc }),
         }
     }
 }

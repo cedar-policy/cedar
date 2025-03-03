@@ -22,7 +22,6 @@ use cedar_policy::{
     Authorizer, Context, Entities, Entity, EntityUid, PolicySet, Request, RestrictedExpression,
 };
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use std::iter::once;
 use std::{
     collections::{HashMap, HashSet},
     str::FromStr,
@@ -72,8 +71,8 @@ pub fn large_context_record(c: &mut Criterion) {
 
     let euid: EntityUid = r#"Placeholder::"entity""#.parse().unwrap();
     let req = Request::new(euid.clone(), euid.clone(), euid, Context::empty(), None).unwrap();
-    let large_entities = Entities::from_entities(once(large_entity), None).unwrap();
-    let small_entities = Entities::from_entities(once(small_entity), None).unwrap();
+    let large_entities = Entities::from_entities([large_entity], None).unwrap();
+    let small_entities = Entities::from_entities([small_entity], None).unwrap();
     let auth = Authorizer::new();
 
     let mut group = c.benchmark_group("is_authorized large_entity_record");

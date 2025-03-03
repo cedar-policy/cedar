@@ -49,7 +49,7 @@ pub enum Str {
 
 /// Policy statement, the main building block of the language
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Policy {
+pub struct PolicyImpl {
     /// Annotations
     pub annotations: Vec<Node<Annotation>>,
     /// policy effect
@@ -58,6 +58,16 @@ pub struct Policy {
     pub variables: Vec<Node<VariableDef>>,
     /// Conditions
     pub conds: Vec<Node<Cond>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+/// Policy statement - can be an Error node when 'tolerant-ast' feature is switched on
+pub enum Policy {
+    /// Valid policy CST node
+    Policy(PolicyImpl),
+    #[cfg(feature = "tolerant-ast")]
+    /// Policy that has failed to parse
+    PolicyError,
 }
 
 /// The variable part of one of the main item of a policy
@@ -140,10 +150,21 @@ pub struct Cond {
 
 /// The main computation aspect of a policy, outer
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Expr {
+pub struct ExprImpl {
     /// expression content
     pub expr: Box<ExprData>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+/// Expression CST Node
+pub enum Expr {
+    /// Expression that has been successfully parsed
+    Expr(ExprImpl),
+    /// To create a tolerant-ast, we keep a node to represented nodes that failed to parse
+    #[cfg(feature = "tolerant-ast")]
+    ErrorExpr,
+}
+
 /// The main computation aspect of a policy, inner
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprData {
