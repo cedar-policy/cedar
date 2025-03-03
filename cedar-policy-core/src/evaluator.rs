@@ -21,8 +21,6 @@ use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
 use std::collections::BTreeMap;
-#[cfg(test)]
-use std::collections::HashMap;
 use std::sync::Arc;
 
 mod err;
@@ -938,6 +936,7 @@ impl<'e> Evaluator<'e> {
     /// location is propagated to the result.
     #[cfg(test)]
     pub fn interpret_inline_policy(&self, e: &Expr) -> Result<Value> {
+        use std::collections::HashMap;
         match self.partial_interpret(e, &HashMap::new())? {
             PartialValue::Value(v) => {
                 debug_assert!(e.source_loc().is_some() == v.source_loc().is_some());
@@ -1125,6 +1124,7 @@ fn stack_size_check() -> Result<()> {
 #[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
 pub(crate) mod test {
+    use std::collections::{HashMap, HashSet};
     use std::str::FromStr;
 
     use super::*;
@@ -2567,8 +2567,6 @@ pub(crate) mod test {
             }
         );
     }
-
-    use std::collections::HashSet;
 
     #[test]
     fn large_entity_err() {

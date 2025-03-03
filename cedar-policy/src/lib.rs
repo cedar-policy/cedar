@@ -51,5 +51,4 @@ pub mod ffi;
 #[cfg(feature = "protobufs")]
 pub mod proto;
 
-mod prop_test_policy_set;
-mod tests;
+mod test;
