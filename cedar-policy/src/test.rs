@@ -15,13 +15,12 @@
  */
 
 #![cfg(test)]
-
 // PANIC SAFETY unit tests
 #![allow(clippy::panic)]
 // PANIC SAFETY unit tests
 #![allow(clippy::indexing_slicing)]
 #![allow(clippy::cognitive_complexity, clippy::too_many_lines)]
 
-mod tests;
+mod test;
 
 mod prop_test_policy_set;
