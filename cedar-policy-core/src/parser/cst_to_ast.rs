@@ -5760,6 +5760,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "tolerant-ast")]
     #[test]
     fn multiple_policys_with_unparsable_policy_ok() {
         // can have multiple annotations
