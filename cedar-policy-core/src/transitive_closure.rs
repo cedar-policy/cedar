@@ -138,6 +138,193 @@ fn compute_tc_internal<K, V>(
     }
 }
 
+fn cyclic_tc<K, V>(nodes: &mut HashMap<K, V>)
+where
+    K: Clone + Eq + Hash + Debug,
+    V: TCNode<K>,
+{
+    let node_ids = nodes.keys().map(K::clone).collect::<Vec<K>>();
+    let mut order_visited = HashMap::new();
+    let mut root = HashMap::new();
+    let mut vstack = Vec::new();
+    let mut cstack = Vec::new();
+    let mut component = HashMap::new();
+    let mut comp_succ = Vec::new();
+    let mut comp_elts = Vec::new();
+    for node_id in node_ids {
+        if !order_visited.contains_key(&node_id) {
+            cyclic_tc_internal(
+                &node_id,
+                &nodes,
+                &mut order_visited,
+                &mut root,
+                &mut vstack,
+                &mut cstack,
+                &mut component,
+                &mut comp_succ,
+                &mut comp_elts,
+            );    
+        }
+    }
+    // component_tc => nodes_tc
+    for comp_id in 0..comp_elts.len() {
+        let mut elt_succ = HashSet::new();
+        // PANIC SAFETY! `comp_succ` and `comp_elts` must have the same length, thus `comp_id` is a valid index to `comp_succ`.
+        #[allow(clippy::indexing_slicing)]
+        for comp_parent_id in comp_succ[comp_id].iter() {
+            // PANIC SAFETY! `comp_parent_id` must be a valid component id to be inserted into `comp_succ` therefore must exist within `comp_elts`.
+            #[allow(clippy::indexing_slicing)]
+            for node_id in comp_elts[*comp_parent_id].iter() {
+                // not fine to consume here
+                elt_succ.insert(node_id.clone());
+            }
+        }
+        // PANIC SAFETY! `comp_id` \in [0, |`comp_elts`|) is a valid index into `comp_elts`.
+        #[allow(clippy::indexing_slicing)]
+        for node_id in comp_elts[comp_id].iter() {
+            let node = match nodes.get_mut(node_id) {
+                Some(node) => node,
+                None => continue,
+            };
+            for parent_id in elt_succ.iter() {
+                node.add_edge_to(parent_id.clone());
+            }
+        }
+    }
+}
+
+fn cyclic_tc_internal<K, V>(
+    node_id: &K,
+    nodes: &HashMap<K, V>,
+    order_visited: &mut HashMap<K, usize>,
+    root: &mut HashMap<K, K>,
+    vstack: &mut Vec<K>,
+    cstack: &mut Vec<usize>,
+    component: &mut HashMap<K, usize>,
+    comp_succ: &mut Vec<HashSet<usize>>,
+    comp_elts: &mut Vec<HashSet<K>>,
+) where
+    K: Clone + Eq + Hash + Debug,
+    V: TCNode<K>,
+{
+    let node_order = order_visited.len();
+    // when was the root of this node's component visited?
+    // initially the root of this node's component is this node itself
+    // keeping track in auxillary function to avoid re-fetching in a loop
+    let mut root_order = node_order;
+    order_visited.insert(node_id.clone(), node_order);
+    root.insert(node_id.clone(), node_id.clone());
+    vstack.push(node_id.clone());
+    let height = cstack.len();
+    let mut self_loop = false;
+    let out_edges = match nodes.get(node_id) {
+        Some(node) => node.out_edges().collect(),
+        None => Vec::new(),
+    };
+    for parent_id in out_edges {
+        if node_id == parent_id {
+            self_loop = true;
+        } else {
+            // The edge from node_id to parent_id is a forward edge iff
+            // node_id is visited before parent_id and we do not visit
+            // parent_id from node_id (i.e., we do not recursively call
+            // cyclic_tc_interanl on parent_id from this call).
+            let mut maybe_forward_edge = true;
+            if !order_visited.contains_key(parent_id) {
+                maybe_forward_edge = false;
+                cyclic_tc_internal(
+                    parent_id,
+                    nodes,
+                    order_visited,
+                    root,
+                    vstack,
+                    cstack,
+                    component,
+                    comp_succ,
+                    comp_elts,
+                );
+            }
+            match component.get(parent_id) {
+                None => {
+                    // PANIC SAFETY! `parent_id` must have been visited either by a previous call or just above
+                    #[allow(clippy::expect_used)]
+                    let parent_root = root
+                        .get(parent_id)
+                        .expect("Parent has been visited so it must have a root.");
+                    // PANIC SAFETY! in order for `parent_root` to be the parent of `parent_id` it must have been visited.
+                    #[allow(clippy::expect_used)]
+                    let parent_root_order = order_visited
+                        .get(parent_root)
+                        .expect("The parent's root must have been visited.");
+                    if *parent_root_order < root_order {
+                        root_order = *parent_root_order;
+                        root.insert(node_id.clone(), parent_root.clone());
+                    }
+                }
+                Some(parent_component) => {
+                    // PANIC SAFETY! `parent_id` must have been visited either by a previous call or just above
+                    #[allow(clippy::expect_used)]
+                    let parent_order = order_visited
+                        .get(parent_id)
+                        .expect("The parent must have been traversed by this point.");
+                    // if not a forward edge
+                    if !(maybe_forward_edge && &node_order < parent_order) {
+                        cstack.push(*parent_component);
+                    }
+                }
+            }
+        }
+    } // end for loop over parents
+      // PANIC SAFETY! `node_id` must have a root. It was inserted at the begining of this function
+    #[allow(clippy::expect_used)]
+    let node_root = root
+        .get(node_id)
+        .expect("Node must have a root by this point.");
+    // if this node is the root of its connected component
+    if node_id == node_root {
+        let component_id = comp_elts.len();
+        let mut succ = HashSet::new();
+        let mut elmts = HashSet::new();
+        // PANIC SAFETY! The vertex stack must not be empty because at least node_id must be on the stack!
+        #[allow(clippy::expect_used)]
+        if self_loop || vstack.last().expect("vertex stack must be non-empty") != node_id {
+            succ.insert(component_id);
+        }
+        let mut cstack_tail = cstack.split_off(height);
+        // sort by topological order of the components, which should be equivalent to the reverse order of their ids
+        // cstack_tail are all of the components reachable (1 step) from any node within this component
+        cstack_tail.sort_by(|a, b| b.cmp(a));
+        // iterate through components in topological order
+        for i in 0..cstack_tail.len() {
+            // update this component's successors with next component avoiding duplicate components
+            // PANIC SAFETY! both `i` and `i - 1` are gauranteed to be valid indices into `cstack_tail`.
+            #[allow(clippy::indexing_slicing)]
+            if i == 0 || cstack_tail[i - 1] == cstack_tail[i] {
+                // PANIC SAFETY! `i` is a valid index into `cstack_tail`.
+                #[allow(clippy::indexing_slicing)]
+                let X = cstack_tail[i];
+                if succ.insert(X) {
+                    // PANIC SAFETY! `X` is a component id created by a previous call to `cyclic_tc_internal` and thus must be a valid index to `comp_succ`.
+                    #[allow(clippy::indexing_slicing)]
+                    succ.extend(comp_succ[X].clone());
+                }
+            }
+        }
+        loop {
+            // PANIC SAFETY! The vertex stack `vstack` must contain at least `node_id`
+            #[allow(clippy::expect_used)]
+            let ancestor_id = vstack.pop().expect("Vetex stack must be non-empty");
+            component.insert(ancestor_id.clone(), component_id);
+            elmts.insert(ancestor_id.clone());
+            if *node_id == ancestor_id {
+                break;
+            }
+        }
+        comp_succ.push(succ);
+        comp_elts.push(elmts);
+    }
+}
+
 /// Saturate the out-going edges of the node identified by `node_id` within the graph
 /// represented by `nodes` assuming that each node appearing in `seen` already satisfies
 /// this property. The process works by performing a depth-first search over the ancestors
@@ -830,16 +1017,18 @@ mod tests {
         // fails TC enforcement
         assert!(enforce_tc(&entities).is_err());
         // compute TC
-        compute_tc_internal(
-            entities
-                .keys()
-                .map(EntityUID::clone)
-                .collect::<Vec<EntityUID>>()
-                .into_iter(),
-            &mut entities,
-            HashSet::new(),
-            true,
-        );
+        cyclic_tc(&mut entities);
+        // compute_tc_internal(
+        //     entities
+        //         .keys()
+        //         .map(EntityUID::clone)
+        //         .collect::<Vec<EntityUID>>()
+        //         .into_iter(),
+        //     &mut entities,
+        //     HashSet::new(),
+        //     true,
+        // );
+        assert!(enforce_tc(&entities).is_ok());
         // the graph may or may not pass the TC check but it will always fail cycle check
         match enforce_dag_from_tc(&entities) {
             Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
