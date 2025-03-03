@@ -237,23 +237,6 @@ impl Node<Option<cst::Policy>> {
         }
     }
 
-    /// Convert `cst::Policy` to an AST `StaticPolicy` or `Template`
-    #[cfg(feature = "tolerant-ast")]
-    pub fn to_policy_or_template_tolerant(
-        &self,
-        id: ast::PolicyID,
-    ) -> Result<Either<ast::StaticPolicy, ast::Template>> {
-        let t = self.to_policy_template_tolerant(id)?;
-        if t.slots().count() == 0 {
-            // PANIC SAFETY: A `Template` with no slots will successfully convert to a `StaticPolicy`
-            #[allow(clippy::expect_used)]
-            let p = ast::StaticPolicy::try_from(t).expect("internal invariant violation: a template with no slots should be a valid static policy");
-            Ok(Either::Left(p))
-        } else {
-            Ok(Either::Right(t))
-        }
-    }
-
     /// Convert `cst::Policy` to an AST `StaticPolicy`. (Will fail if the CST is for a template)
     pub fn to_policy(&self, id: ast::PolicyID) -> Result<ast::StaticPolicy> {
         let maybe_template = self.to_policy_template(id);
