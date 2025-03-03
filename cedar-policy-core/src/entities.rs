@@ -516,10 +516,10 @@ pub enum TCComputation {
 #[allow(clippy::panic)]
 #[allow(clippy::cognitive_complexity)]
 mod json_parsing_tests {
-
     use super::*;
     use crate::{extensions::Extensions, test_utils::*, transitive_closure::TcError};
     use cool_asserts::assert_matches;
+    use std::collections::HashSet;
 
     #[test]
     fn simple_json_parse1() {
@@ -1900,7 +1900,7 @@ mod json_parsing_tests {
                     ),
                 ),
             ],
-            [].into_iter().collect(),
+            HashSet::new(),
             [
                 EntityUID::with_eid("parent1"),
                 EntityUID::with_eid("parent2"),
@@ -1945,7 +1945,7 @@ mod json_parsing_tests {
                 "oops".into(),
                 RestrictedExpr::record([("__entity".into(), RestrictedExpr::val("hi"))]).unwrap(),
             )],
-            [].into_iter().collect(),
+            HashSet::new(),
             [
                 EntityUID::with_eid("parent1"),
                 EntityUID::with_eid("parent2"),
@@ -2224,7 +2224,7 @@ mod schema_based_parsing_tests {
     use nonempty::NonEmpty;
     use serde_json::json;
     use smol_str::SmolStr;
-    use std::collections::HashSet;
+    use std::collections::{BTreeMap, HashSet};
     use std::sync::Arc;
 
     /// Mock schema impl used for most of these tests
@@ -2243,8 +2243,8 @@ mod schema_based_parsing_tests {
                 r#"Action::"view""# => Some(Arc::new(Entity::new_with_attr_partial_value(
                     action.clone(),
                     [(SmolStr::from("foo"), PartialValue::from(34))],
-                    [].into_iter().collect(),
-                    std::iter::once(r#"Action::"readOnly""#.parse().expect("valid uid")).collect(),
+                    HashSet::new(),
+                    HashSet::from([r#"Action::"readOnly""#.parse().expect("valid uid")]),
                     [],
                 ))),
                 r#"Action::"readOnly""# => Some(Arc::new(Entity::with_uid(action.clone()))),
@@ -2340,11 +2340,10 @@ mod schema_based_parsing_tests {
                         (
                             "inner3".into(),
                             AttributeType::required(SchemaType::Record {
-                                attrs: std::iter::once((
+                                attrs: BTreeMap::from([(
                                     "innerinner".into(),
                                     AttributeType::required(employee_ty()),
-                                ))
-                                .collect(),
+                                )]),
                                 open_attrs: false,
                             }),
                         ),

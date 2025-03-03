@@ -1187,13 +1187,11 @@ impl EntityRecordKind {
     ///   attribute (e.g., `AnyEntity`), returns `None`.
     pub(crate) fn get_attr(&self, schema: &ValidatorSchema, attr: &str) -> Option<AttributeType> {
         match self {
-            EntityRecordKind::Record { attrs, .. } => attrs.get_attr(attr).cloned().map(Into::into),
+            EntityRecordKind::Record { attrs, .. } => attrs.get_attr(attr).cloned(),
             EntityRecordKind::Entity(lub) => {
                 lub.get_attribute_types(schema).get_attr(attr).cloned()
             }
-            EntityRecordKind::ActionEntity { attrs, .. } => {
-                attrs.get_attr(attr).cloned().map(Into::into)
-            }
+            EntityRecordKind::ActionEntity { attrs, .. } => attrs.get_attr(attr).cloned(),
             EntityRecordKind::AnyEntity => {
                 // the attribute may exist, but multiple types for it are possible
                 None

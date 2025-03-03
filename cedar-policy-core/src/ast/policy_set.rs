@@ -347,10 +347,8 @@ impl PolicySet {
         }
         for (tid, other_template_link_set) in &other.template_to_links_map {
             let tid = renaming.get(tid).unwrap_or(tid);
-            let mut this_template_link_set = self
-                .template_to_links_map
-                .remove(tid)
-                .unwrap_or(HashSet::new());
+            let mut this_template_link_set =
+                self.template_to_links_map.remove(tid).unwrap_or_default();
             for pid in other_template_link_set {
                 let pid = renaming.get(pid).unwrap_or(pid);
                 this_template_link_set.insert(pid.clone());
@@ -663,11 +661,10 @@ mod test {
         .expect("Failed to parse");
         pset.add_template(template).expect("Add failed");
 
-        let env: HashMap<SlotId, EntityUID> = std::iter::once((
+        let env: HashMap<SlotId, EntityUID> = HashMap::from([(
             SlotId::principal(),
             r#"Test::"test""#.parse().expect("Failed to parse"),
-        ))
-        .collect();
+        )]);
 
         let r = pset.link(PolicyID::from_string("t"), PolicyID::from_string("id"), env);
 
@@ -701,11 +698,10 @@ mod test {
             )
             .expect("Failed to parse"),
         );
-        let env1: HashMap<SlotId, EntityUID> = std::iter::once((
+        let env1: HashMap<SlotId, EntityUID> = HashMap::from([(
             SlotId::principal(),
             r#"Test::"test1""#.parse().expect("Failed to parse"),
-        ))
-        .collect();
+        )]);
 
         let p1 = Template::link(Arc::clone(&template), PolicyID::from_string("link"), env1)
             .expect("Failed to link");
@@ -717,11 +713,10 @@ mod test {
             "Adding link should implicitly add the template"
         );
 
-        let env2: HashMap<SlotId, EntityUID> = std::iter::once((
+        let env2: HashMap<SlotId, EntityUID> = HashMap::from([(
             SlotId::principal(),
             r#"Test::"test2""#.parse().expect("Failed to parse"),
-        ))
-        .collect();
+        )]);
 
         let p2 = Template::link(
             Arc::clone(&template),
@@ -747,11 +742,10 @@ mod test {
             )
             .expect("Failed to parse"),
         );
-        let env3: HashMap<SlotId, EntityUID> = std::iter::once((
+        let env3: HashMap<SlotId, EntityUID> = HashMap::from([(
             SlotId::resource(),
             r#"Test::"test3""#.parse().expect("Failed to parse"),
-        ))
-        .collect();
+        )]);
 
         let p4 = Template::link(
             Arc::clone(&template2),
@@ -847,21 +841,17 @@ mod test {
                 };
                 // ensure no other policy was renamed
                 assert_eq!(renaming.keys().len(), 1);
-                match pset1.get(&pid0) {
-                    Some(new_p1) => assert_eq!(Policy::from(p1), new_p1.clone()),
-                    None => (),
+                if let Some(new_p1) = pset1.get(&pid0) {
+                    assert_eq!(Policy::from(p1), new_p1.clone());
                 }
-                match pset1.get(&pid1) {
-                    Some(new_p2) => assert_eq!(Policy::from(p2), new_p2.clone()),
-                    None => (),
+                if let Some(new_p2) = pset1.get(&pid1) {
+                    assert_eq!(Policy::from(p2), new_p2.clone());
                 }
-                match pset1.get(new_pid1) {
-                    Some(new_p3) => assert_eq!(Policy::from(p3), new_p3.clone()),
-                    None => (),
+                if let Some(new_p3) = pset1.get(new_pid1) {
+                    assert_eq!(Policy::from(p3), new_p3.clone());
                 }
-                match pset1.get(&pid2) {
-                    Some(new_p4) => assert_eq!(Policy::from(p4), new_p4.clone()),
-                    None => (),
+                if let Some(new_p4) = pset1.get(&pid2) {
+                    assert_eq!(Policy::from(p4), new_p4.clone());
                 }
             }
             Err(PolicySetError::Occupied { id }) => panic!(
@@ -914,7 +904,7 @@ mod test {
         set.link(
             PolicyID::from_string("template"),
             PolicyID::from_string("id"),
-            std::iter::once((SlotId::principal(), EntityUID::with_eid("eid"))).collect(),
+            HashMap::from([(SlotId::principal(), EntityUID::with_eid("eid"))]),
         )
         .expect("Linking failed!");
         assert_eq!(set.static_policies().count(), 1);

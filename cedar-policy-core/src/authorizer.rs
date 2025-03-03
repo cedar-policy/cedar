@@ -180,9 +180,8 @@ impl std::fmt::Debug for Authorizer {
 #[allow(clippy::panic)]
 #[cfg(test)]
 mod test {
-    use crate::ast::Annotations;
-
     use super::*;
+    use crate::ast::Annotations;
     use crate::parser;
 
     /// Sanity unit test case for is_authorized.
@@ -473,6 +472,8 @@ mod test {
     #[test]
     #[cfg(feature = "partial-eval")]
     fn satisfied_permit_residual_forbid() {
+        use std::collections::HashMap;
+
         let q = Request::new(
             (EntityUID::with_eid("p"), None),
             (EntityUID::with_eid("a"), None),
@@ -500,12 +501,12 @@ mod test {
             .unwrap();
 
         let r = a.is_authorized_core(q.clone(), &pset, &es);
-        let map = [("test".into(), Value::from(false))].into_iter().collect();
+        let map = HashMap::from([("test".into(), Value::from(false))]);
         let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Allow);
         drop(r2);
 
-        let map = [("test".into(), Value::from(true))].into_iter().collect();
+        let map = HashMap::from([("test".into(), Value::from(true))]);
         let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Deny);
 
@@ -585,6 +586,8 @@ mod test {
     #[test]
     #[cfg(feature = "partial-eval")]
     fn residual_permits() {
+        use std::collections::HashMap;
+
         let q = Request::new(
             (EntityUID::with_eid("p"), None),
             (EntityUID::with_eid("a"), None),
@@ -614,11 +617,11 @@ mod test {
             .unwrap();
 
         let r = a.is_authorized_core(q.clone(), &pset, &es);
-        let map = [("a".into(), Value::from(false))].into_iter().collect();
+        let map = HashMap::from([("a".into(), Value::from(false))]);
         let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Deny);
 
-        let map = [("a".into(), Value::from(true))].into_iter().collect();
+        let map = HashMap::from([("a".into(), Value::from(true))]);
         let r2: Response = r.reauthorize(&map, &a, &es).unwrap().into();
         assert_eq!(r2.decision, Decision::Allow);
 

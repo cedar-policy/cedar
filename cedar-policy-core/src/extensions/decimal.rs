@@ -178,7 +178,7 @@ fn extension_err(msg: impl Into<String>, advice: Option<String>) -> evaluator::E
         constants::DECIMAL_FROM_STR_NAME.clone(),
         msg.into(),
         None,
-        advice.map(Into::into), // source loc will be added by the evaluator
+        advice, // source loc will be added by the evaluator
     )
 }
 

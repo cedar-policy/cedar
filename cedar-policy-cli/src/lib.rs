@@ -442,7 +442,7 @@ impl PartialRequestArgs {
             builder
                 .schema(schema)
                 .build()
-                .wrap_err_with(|| format!("failed to build request with validation"))
+                .wrap_err_with(|| "failed to build request with validation".to_string())
         } else {
             Ok(builder.build())
         }

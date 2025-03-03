@@ -304,8 +304,7 @@ impl Diagnostic for NotValue {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         match self {
             Self::NotValue { loc } => loc.as_ref().map(|loc| {
-                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span)))
-                    as Box<dyn Iterator<Item = _>>
+                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span))) as _
             }),
         }
     }

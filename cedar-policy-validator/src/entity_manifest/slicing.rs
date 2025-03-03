@@ -967,12 +967,7 @@ action BeSad appliesTo {
             r#"permit(principal in User::"oliver", action, resource) when { principal.name == User::"oliver".name };"#,
         ).unwrap();
         let manifest = compute_entity_manifest(&schema, &pset).unwrap();
-        expect_entity_slice_to(
-            entities_json.clone(),
-            entities_json.clone(),
-            &schema,
-            &manifest,
-        );
+        expect_entity_slice_to(entities_json.clone(), entities_json, &schema, &manifest);
     }
 
     #[test]
@@ -1026,12 +1021,7 @@ action Read appliesTo {
                 "bar": "bar",
             }
         }]);
-        expect_entity_slice_to(
-            entities_json.clone(),
-            expected_json.clone(),
-            &schema,
-            &manifest,
-        );
+        expect_entity_slice_to(entities_json, expected_json, &schema, &manifest);
     }
 
     #[test]
@@ -1068,12 +1058,7 @@ action Read appliesTo {
             r#"permit(principal in User::"oliver", action, resource) when { principal.foo == User::"oliver".bar };"#,
         ).unwrap();
         let manifest = compute_entity_manifest(&schema, &pset).unwrap();
-        expect_entity_slice_to(
-            entities_json.clone(),
-            entities_json.clone(),
-            &schema,
-            &manifest,
-        );
+        expect_entity_slice_to(entities_json.clone(), entities_json, &schema, &manifest);
     }
 
     #[test]
@@ -1112,12 +1097,7 @@ action Read appliesTo {
             r#"permit(principal in User::"oliver", action, resource) when { principal.foo.bar == User::"oliver".foo.baz };"#,
         ).unwrap();
         let manifest = compute_entity_manifest(&schema, &pset).unwrap();
-        expect_entity_slice_to(
-            entities_json.clone(),
-            entities_json.clone(),
-            &schema,
-            &manifest,
-        );
+        expect_entity_slice_to(entities_json.clone(), entities_json, &schema, &manifest);
     }
 
     #[test]

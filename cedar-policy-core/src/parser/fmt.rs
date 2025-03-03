@@ -134,10 +134,10 @@ impl fmt::Display for VariableDef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", View(&self.variable))?;
         if let Some(name) = &self.unused_type_name {
-            write!(f, ": {}", View(&name))?;
+            write!(f, ": {}", View(name))?;
         }
         if let Some((op, expr)) = &self.ineq {
-            write!(f, " {} {}", op, View(&expr))?;
+            write!(f, " {} {}", op, View(expr))?;
         }
         Ok(())
     }

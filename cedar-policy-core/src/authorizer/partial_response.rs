@@ -778,10 +778,10 @@ mod test {
         .unwrap();
 
         let context_unknown = Context::from_pairs(
-            std::iter::once((
+            [(
                 "b".into(),
                 RestrictedExpr::unknown(Unknown::new_untyped("b")),
-            )),
+            )],
             Extensions::all_available(),
         )
         .unwrap();
@@ -800,10 +800,10 @@ mod test {
 
         let response_with_concrete_resource = partial_response
             .reauthorize(
-                &HashMap::from_iter(std::iter::once((
+                &HashMap::from([(
                     "resource".into(),
                     EntityUID::from_normalized_str(r#"NS::"b""#).unwrap().into(),
-                ))),
+                )]),
                 &authorizer,
                 &entities,
             )
@@ -820,7 +820,7 @@ mod test {
 
         let response_with_concrete_context_attr = response_with_concrete_resource
             .reauthorize(
-                &HashMap::from_iter(std::iter::once(("b".into(), true.into()))),
+                &HashMap::from([("b".into(), true.into())]),
                 &authorizer,
                 &entities,
             )

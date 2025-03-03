@@ -27,7 +27,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 #[cfg(feature = "tolerant-ast")]
-static ERROR_CONSTRAINT_STR: &'static str = "ActionConstraint::ErrorConstraint";
+static ERROR_CONSTRAINT_STR: &str = "ActionConstraint::ErrorConstraint";
 
 #[cfg(feature = "wasm")]
 extern crate tsify;

@@ -177,11 +177,11 @@ impl Doc for Node<Option<Expr>> {
                     let then_comment = get_comment_after_end(c.loc.span, &mut context.tokens)?;
                     let else_comment = get_comment_after_end(t.loc.span, &mut context.tokens)?;
                     Some(
-                        pp_group("if", if_comment, &c, context)
+                        pp_group("if", if_comment, c, context)
                             .append(RcDoc::line())
-                            .append(pp_group("then", then_comment, &t, context))
+                            .append(pp_group("then", then_comment, t, context))
                             .append(RcDoc::line())
-                            .append(pp_group("else", else_comment, &e, context))
+                            .append(pp_group("else", else_comment, e, context))
                             .group(),
                     )
                 }

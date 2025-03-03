@@ -109,7 +109,7 @@ impl EntityTypeDescription {
 impl entities::EntityTypeDescription for EntityTypeDescription {
     fn enum_entity_eids(&self) -> Option<NonEmpty<Eid>> {
         match &self.validator_type.kind {
-            ValidatorEntityTypeKind::Enum(choices) => Some(choices.clone().map(|s| Eid::new(s))),
+            ValidatorEntityTypeKind::Enum(choices) => Some(choices.clone().map(Eid::new)),
             _ => None,
         }
     }
@@ -232,10 +232,10 @@ impl ast::RequestSchema for ValidatorSchema {
                 }
                 if let Some(context) = request.context() {
                     validate_euids_in_partial_value(
-                        &CoreSchema::new(&self),
+                        &CoreSchema::new(self),
                         &context.clone().into(),
                     )
-                    .map_err(|err| RequestValidationError::InvalidEnumEntity(err))?;
+                    .map_err(RequestValidationError::InvalidEnumEntity)?;
                     let expected_context_ty = validator_action_id.context_type();
                     if !expected_context_ty
                         .typecheck_partial_value(&context.clone().into(), extensions)
@@ -1145,7 +1145,7 @@ mod test {
                 (ast::EntityUID::with_eid_and_type("People", "🤔").unwrap(), None),
                 (ast::EntityUID::with_eid_and_type("Action", "eat").unwrap(), None),
                 (ast::EntityUID::with_eid_and_type("Fruit", "🍉").unwrap(), None),
-                Context::from_pairs(std::iter::once(("fruit".into(), (Value::from(ast::EntityUID::with_eid_and_type("Fruit", "🥭").unwrap())).into())), Extensions::none()).expect("should be a valid context"),
+                Context::from_pairs([("fruit".into(), (Value::from(ast::EntityUID::with_eid_and_type("Fruit", "🥭").unwrap())).into())], Extensions::none()).expect("should be a valid context"),
                 Some(&schema_with_enums()),
                 Extensions::none(),
             ),

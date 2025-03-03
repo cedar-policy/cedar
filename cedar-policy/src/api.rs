@@ -131,7 +131,7 @@ impl Entity {
         Self(ast::Entity::new_with_attr_partial_value(
             uid.into(),
             [],
-            [].into_iter().collect(),
+            HashSet::new(),
             parents.into_iter().map(EntityUid::into).collect(),
             [],
         ))
@@ -152,7 +152,7 @@ impl Entity {
         Ok(Self(ast::Entity::new(
             uid.into(),
             attrs.into_iter().map(|(k, v)| (k.into(), v.0)),
-            [].into_iter().collect(),
+            HashSet::new(),
             parents.into_iter().map(EntityUid::into).collect(),
             tags.into_iter().map(|(k, v)| (k.into(), v.0)),
             Extensions::all_available(),
@@ -2286,7 +2286,7 @@ impl PolicySet {
         T: PartialEq + Clone,
     {
         for (pid, ot) in other {
-            match renaming.get(&pid) {
+            match renaming.get(pid) {
                 Some(new_pid) => {
                     this.insert(new_pid.clone(), ot.clone());
                 }
@@ -2318,9 +2318,9 @@ impl PolicySet {
     /// the other `PolicySet` are automatically renamed to avoid conflict.
     /// This renaming is returned as a Hashmap from the old `PolicyId` to the
     /// renamed `PolicyId`.
-    pub fn merge_policyset(
+    pub fn merge(
         &mut self,
-        other: &PolicySet,
+        other: &Self,
         rename_duplicates: bool,
     ) -> Result<HashMap<PolicyId, PolicyId>, PolicySetError> {
         match self.ast.merge_policyset(&other.ast, rename_duplicates) {

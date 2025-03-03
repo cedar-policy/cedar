@@ -104,13 +104,14 @@ fn perform_integration_test_from_json(jsonfile: impl AsRef<Path>) {
         serde_json::to_writer_pretty(&mut ctx_file, &json_request.context)
             .expect("failed to write to tempfile");
 
-        let mut entity_args = Vec::new();
-        entity_args.push("--principal".to_string());
-        entity_args.push(value_to_euid_string(json_request.principal.into()).unwrap());
-        entity_args.push("--resource".to_string());
-        entity_args.push(value_to_euid_string(json_request.resource.into()).unwrap());
-        entity_args.push("--action".to_string());
-        entity_args.push(value_to_euid_string(json_request.action.into()).unwrap());
+        let mut entity_args = vec![
+            "--principal".to_string(),
+            value_to_euid_string(json_request.principal.into()).unwrap(),
+            "--resource".to_string(),
+            value_to_euid_string(json_request.resource.into()).unwrap(),
+            "--action".to_string(),
+            value_to_euid_string(json_request.action.into()).unwrap(),
+        ];
         if !json_request.validate_request {
             entity_args.push("--request-validation=false".to_string());
         }

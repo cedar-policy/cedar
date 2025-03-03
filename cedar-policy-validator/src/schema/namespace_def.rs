@@ -217,7 +217,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
                         .into_iter()
                         .map(SchemaError::from)
                         .chain(res2.err().map(SchemaError::from))
-                        .chain(res3.err().map(SchemaError::from)),
+                        .chain(res3.err()),
                 )
                 .expect("there must be an error");
                 Err(SchemaError::join_nonempty(errs))

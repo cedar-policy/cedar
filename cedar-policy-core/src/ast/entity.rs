@@ -42,13 +42,13 @@ static ERROR_EID_SMOL_STR: std::sync::LazyLock<SmolStr> =
     std::sync::LazyLock::new(|| SmolStr::from("Eid::ErrorEid"));
 
 #[cfg(feature = "tolerant-ast")]
-static EID_ERROR_STR: &'static str = "Eid::Error";
+static EID_ERROR_STR: &str = "Eid::Error";
 
 #[cfg(feature = "tolerant-ast")]
-static ENTITY_TYPE_ERROR_STR: &'static str = "EntityType::Error";
+static ENTITY_TYPE_ERROR_STR: &str = "EntityType::Error";
 
 #[cfg(feature = "tolerant-ast")]
-static ENTITY_UID_ERROR_STR: &'static str = "EntityUID::Error";
+static ENTITY_UID_ERROR_STR: &str = "EntityUID::Error";
 
 /// The entity type that Actions must have
 pub static ACTION_ENTITY_TYPE: &str = "Action";
@@ -105,7 +105,7 @@ impl EntityType {
     /// The name of this entity type
     pub fn name(&self) -> &Name {
         match self {
-            EntityType::EntityType(name) => &name,
+            EntityType::EntityType(name) => name,
             #[cfg(feature = "tolerant-ast")]
             EntityType::ErrorEntityType => &ERROR_NAME,
         }
@@ -423,7 +423,7 @@ impl Eid {
 impl AsRef<SmolStr> for Eid {
     fn as_ref(&self) -> &SmolStr {
         match self {
-            Eid::Eid(smol_str) => &smol_str,
+            Eid::Eid(smol_str) => smol_str,
             #[cfg(feature = "tolerant-ast")]
             Eid::ErrorEid => &ERROR_EID_SMOL_STR,
         }
@@ -747,6 +747,7 @@ impl Entity {
     }
 
     /// Consume the entity and return the entity's owned Uid, attributes, ancestors, parents, and tags.
+    #[allow(clippy::type_complexity)]
     pub fn into_inner(
         self,
     ) -> (
@@ -982,17 +983,19 @@ mod test {
     #[cfg(feature = "tolerant-ast")]
     #[test]
     fn error_entity() {
+        use cool_asserts::assert_matches;
+
         let e = EntityUID::Error;
-        assert!(matches!(e.eid(), Eid::ErrorEid));
-        assert!(matches!(e.entity_type(), EntityType::ErrorEntityType));
+        assert_matches!(e.eid(), Eid::ErrorEid);
+        assert_matches!(e.entity_type(), EntityType::ErrorEntityType);
         assert!(!e.is_action());
-        assert!(matches!(e.loc(), None));
+        assert_matches!(e.loc(), None);
 
         let error_eid = Eid::ErrorEid;
         assert_eq!(error_eid.escaped(), "Eid::Error");
 
         let error_type = EntityType::ErrorEntityType;
-        assert_eq!(error_type.is_action(), false);
+        assert!(!error_type.is_action());
         assert_eq!(error_type.qualify_with(None), EntityType::ErrorEntityType);
         assert_eq!(
             error_type.qualify_with(Some(&Name(InternalName::from(Id::new_unchecked(
