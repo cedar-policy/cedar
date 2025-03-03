@@ -38,9 +38,12 @@ runs:
             --source-dir . \
             --binary-path ./target/debug/ \
             -t html,cobertura \
+            --ignore 'cedar-policy/benches' \
+            --ignore 'cedar-testing' \
             --ignore 'target/debug/*' \
             --ignore '/*' \
             --ignore '*/build.rs' \
+            --ignore '*/test*.rs' \
             --ignore '*/tests/*' \
             --ignore '*/test/*' \
             --excl-start '^\#\[cfg\(test\)\]' \
