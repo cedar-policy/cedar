@@ -1033,7 +1033,7 @@ impl TemplateBody {
                 TemplateBody::TemplateBody(new)
             }
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_) => return TemplateBody::TemplateBodyError(id),
+            TemplateBody::TemplateBodyError(_) => TemplateBody::TemplateBodyError(id),
         }
     }
 
