@@ -1031,7 +1031,7 @@ impl TemplateBody {
                 let mut new = t.clone();
                 new.id = id;
                 TemplateBody::TemplateBody(new)
-            },
+            }
             #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(_) => return TemplateBody::TemplateBodyError(id),
         }
