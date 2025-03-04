@@ -240,7 +240,7 @@ impl Node<Option<cst::Policy>> {
         if t.slots().count() == 0 {
             // PANIC SAFETY: A `Template` with no slots will successfully convert to a `StaticPolicy`
             #[allow(clippy::expect_used)]
-                let p = ast::StaticPolicy::try_from(t).expect("internal invariant violation: a template with no slots should be a valid static policy");
+            let p = ast::StaticPolicy::try_from(t).expect("internal invariant violation: a template with no slots should be a valid static policy");
             Ok(Either::Left(p))
         } else {
             Ok(Either::Right(t))
@@ -5778,8 +5778,6 @@ mod tests {
             )
             when { resource.owner == principal };
 
-
-            // BEGIN ERROR POLICY NODE
             // POLICY2 - unparsable
             @id("label_private")
             forbid (
@@ -5794,8 +5792,6 @@ mod tests {
             resource in PhotoApp::Application::"PhotoApp"
             )
             when { resource has subjects && resource.subjects.contains(principal) };
-            // END ERROR POLICY NODE 
-
 
             // POLICY 4
             @id("PhotoJudge")

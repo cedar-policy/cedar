@@ -26,53 +26,53 @@ use smol_str::SmolStr;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 
-#[cfg(feature = "tolerant-ast")]
-use super::expr_allows_errors::AstExprErrorKind;
-#[cfg(feature = "tolerant-ast")]
-use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
-#[cfg(feature = "tolerant-ast")]
-use crate::expr_builder::ExprBuilder;
-#[cfg(feature = "tolerant-ast")]
-use crate::parser::err::ParseErrors;
-#[cfg(feature = "tolerant-ast")]
-use crate::parser::err::ToASTError;
-#[cfg(feature = "tolerant-ast")]
-use crate::parser::err::ToASTErrorKind;
-
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
-#[cfg(feature = "tolerant-ast")]
-static DEFAULT_ANNOTATIONS: std::sync::LazyLock<Arc<Annotations>> =
-    std::sync::LazyLock::new(|| Arc::new(Annotations::default()));
+macro_rules! cfg_tolerant_ast {
+    ($($item:item)*) => {
+        $(
+            #[cfg(feature = "tolerant-ast")]
+            $item
+        )*
+    };
+}
 
-#[cfg(feature = "tolerant-ast")]
-static DEFAULT_PRINCIPAL_CONSTRAINT: std::sync::LazyLock<PrincipalConstraint> =
-    std::sync::LazyLock::new(|| PrincipalConstraint::any());
+cfg_tolerant_ast! {
+    use super::expr_allows_errors::AstExprErrorKind;
+    use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
+    use crate::expr_builder::ExprBuilder;
+    use crate::parser::err::ParseErrors;
+    use crate::parser::err::ToASTError;
+    use crate::parser::err::ToASTErrorKind;
 
-#[cfg(feature = "tolerant-ast")]
-static DEFAULT_RESOURCE_CONSTRAINT: std::sync::LazyLock<ResourceConstraint> =
-    std::sync::LazyLock::new(|| ResourceConstraint::any());
+    static DEFAULT_ANNOTATIONS: std::sync::LazyLock<Arc<Annotations>> =
+        std::sync::LazyLock::new(|| Arc::new(Annotations::default()));
 
-#[cfg(feature = "tolerant-ast")]
-static DEFAULT_ACTION_CONSTRAINT: std::sync::LazyLock<ActionConstraint> =
-    std::sync::LazyLock::new(|| ActionConstraint::any());
+    static DEFAULT_PRINCIPAL_CONSTRAINT: std::sync::LazyLock<PrincipalConstraint> =
+        std::sync::LazyLock::new(|| PrincipalConstraint::any());
 
-#[cfg(feature = "tolerant-ast")]
-static DEFAULT_ERROR_EXPR: std::sync::LazyLock<Arc<Expr>> = std::sync::LazyLock::new(|| {
-    // Non scope constraint expression of an Error policy should also be an error
-    // This const represents an error expression that is part of an Error policy
-    // PANIC SAFETY: Infallible error type - can never fail
-    #[allow(clippy::unwrap_used)]
-    Arc::new(
-        <ExprWithErrsBuilder as ExprBuilder>::new()
-            .error(ParseErrors::singleton(ToASTError::new(
-                ToASTErrorKind::ASTErrorNode,
-                Loc::new(0..1, "ASTErrorNode".into()),
-            )))
-            .unwrap(),
-    )
-});
+    static DEFAULT_RESOURCE_CONSTRAINT: std::sync::LazyLock<ResourceConstraint> =
+        std::sync::LazyLock::new(|| ResourceConstraint::any());
+
+    static DEFAULT_ACTION_CONSTRAINT: std::sync::LazyLock<ActionConstraint> =
+        std::sync::LazyLock::new(|| ActionConstraint::any());
+
+    static DEFAULT_ERROR_EXPR: std::sync::LazyLock<Arc<Expr>> = std::sync::LazyLock::new(|| {
+        // Non scope constraint expression of an Error policy should also be an error
+        // This const represents an error expression that is part of an Error policy
+        // PANIC SAFETY: Infallible error type - can never fail
+        #[allow(clippy::unwrap_used)]
+        Arc::new(
+            <ExprWithErrsBuilder as ExprBuilder>::new()
+                .error(ParseErrors::singleton(ToASTError::new(
+                    ToASTErrorKind::ASTErrorNode,
+                    Loc::new(0..1, "ASTErrorNode".into()),
+                )))
+                .unwrap(),
+        )
+    });
+}
 
 /// Top level structure for a policy template.
 /// Contains both the AST for template, and the list of open slots in the template.
@@ -1026,15 +1026,15 @@ impl TemplateBody {
 
     /// Clone this policy with a new `Id`.
     pub fn new_id(&self, id: PolicyID) -> Self {
-        let existing_template_body = match self {
-            TemplateBody::TemplateBody(t) => t,
+        match self {
+            TemplateBody::TemplateBody(t) => {
+                let mut new = t.clone();
+                new.id = id;
+                TemplateBody::TemplateBody(new)
+            },
             #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(_) => return TemplateBody::TemplateBodyError(id),
-        };
-
-        let mut new = existing_template_body.clone();
-        new.id = id;
-        TemplateBody::TemplateBody(new)
+        }
     }
 
     #[cfg(feature = "tolerant-ast")]
