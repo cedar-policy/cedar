@@ -20,8 +20,7 @@
 //! testing (see <https://github.com/cedar-policy/cedar-spec>).
 
 pub use cedar_policy::ffi;
-use cedar_policy_core::ast::{self, PartialValue};
-use cedar_policy_core::ast::{Expr, PolicySet, Request, Value};
+use cedar_policy_core::ast::{self, Expr, PolicySet, Request, Value};
 use cedar_policy_core::authorizer::Authorizer;
 use cedar_policy_core::entities::{Entities, TCComputation};
 use cedar_policy_core::evaluator::Evaluator;
@@ -31,7 +30,6 @@ use core::panic;
 use miette::miette;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 /// Return type for `CedarTestImplementation` methods
@@ -97,15 +95,6 @@ pub struct TestValidationResult {
 
 pub mod partial {
     use super::*;
-    #[derive(Debug, Deserialize, PartialEq, Eq)]
-    #[serde(rename_all = "camelCase")]
-    pub struct FlatPartialResponse {
-        pub known_permits: HashSet<String>,
-        pub known_forbids: HashSet<String>,
-        pub determining_under_approx: HashSet<String>,
-        pub determining_over_approx: HashSet<String>,
-        pub decision: Decision,
-    }
 
     #[derive(Debug, Deserialize, PartialEq, Eq)]
     #[serde(rename_all = "camelCase")]
@@ -175,26 +164,6 @@ pub trait CedarTestImplementation {
         expr: &Expr,
         enable_extensions: bool,
         expected: Option<Value>,
-    ) -> TestResult<bool>;
-
-    fn partial_is_authorized(
-        &self,
-        request: &Request,
-        entities: &Entities,
-        policies: &PolicySet,
-    ) -> TestResult<partial::FlatPartialResponse>;
-
-    /// Custom partial evaluator entry point. The bool return value indicates the whether
-    /// evaluating the provided expression produces the expected value.
-    /// `expected` is optional to allow for the case where no return value is
-    /// expected due to errors.
-    fn partial_evaluate(
-        &self,
-        request: &Request,
-        entities: &Entities,
-        expr: &Expr,
-        enable_extensions: bool,
-        expected: Option<ExprOrValue>,
     ) -> TestResult<bool>;
 
     /// Custom validator entry point.
@@ -315,61 +284,6 @@ impl CedarTestImplementation for RustEngine {
             timing_info: HashMap::from([("authorize".into(), Micros(duration.as_micros()))]),
         };
         TestResult::Success(response)
-    }
-
-    fn partial_is_authorized(
-        &self,
-        request: &Request,
-        entities: &Entities,
-        policies: &PolicySet,
-    ) -> TestResult<partial::FlatPartialResponse> {
-        let a = Authorizer::new();
-        let pr = a.is_authorized_core(request.clone(), policies, entities);
-
-        let r = partial::FlatPartialResponse {
-            known_permits: pr.satisfied_permits.keys().map(|x| x.to_string()).collect(),
-            known_forbids: pr.satisfied_forbids.keys().map(|x| x.to_string()).collect(),
-            decision: partial::Decision::from_core(pr.decision()),
-            determining_over_approx: pr
-                .may_be_determining()
-                .map(|x| x.id().to_string())
-                .collect(),
-            determining_under_approx: pr
-                .must_be_determining()
-                .map(|x| x.id().to_string())
-                .collect(),
-        };
-
-        TestResult::Success(r)
-    }
-
-    fn partial_evaluate(
-        &self,
-        request: &Request,
-        entities: &Entities,
-        expr: &Expr,
-        enable_extensions: bool,
-        expected: Option<ExprOrValue>,
-    ) -> TestResult<bool> {
-        let exts = if enable_extensions {
-            Extensions::all_available()
-        } else {
-            Extensions::none()
-        };
-        let e = Evaluator::new(request.clone(), entities, exts);
-        let result = e.partial_interpret(expr, &HashMap::default());
-        match (result, expected) {
-            (Ok(PartialValue::Residual(r)), Some(ExprOrValue::Expr(e))) => {
-                TestResult::Success(r == e)
-            }
-            (Ok(PartialValue::Value(v)), Some(ExprOrValue::Value(e))) => {
-                let v_as_e: Expr = v.into();
-                TestResult::Success(v_as_e == e)
-            }
-
-            (Err(_), None) => TestResult::Success(true),
-            _ => TestResult::Success(false),
-        }
     }
 
     fn interpret(
