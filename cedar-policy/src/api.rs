@@ -3669,10 +3669,12 @@ impl Expression {
             vec![src_expr],
         ))
     }
+}
 
+#[cfg(test)]
+impl Expression {
     /// Deconstruct an [`Expression`] to get the internal type.
     /// This function is only intended to be used internally.
-    #[cfg(test)]
     pub(crate) fn into_inner(self) -> ast::Expr {
         self.0
     }
@@ -3774,10 +3776,12 @@ impl RestrictedExpression {
             name.as_ref(),
         )))
     }
+}
 
+#[cfg(test)]
+impl RestrictedExpression {
     /// Deconstruct an [`RestrictedExpression`] to get the internal type.
     /// This function is only intended to be used internally.
-    #[cfg(test)]
     pub(crate) fn into_inner(self) -> ast::RestrictedExpr {
         self.0
     }

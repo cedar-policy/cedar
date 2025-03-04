@@ -1132,11 +1132,13 @@ impl AllDefs {
     fn entity_and_common_names(&self) -> impl Iterator<Item = &InternalName> {
         self.entity_defs.iter().chain(self.common_defs.iter())
     }
+}
 
+#[cfg(test)]
+impl AllDefs {
     /// Build an [`AllDefs`] that assumes the given fully-qualified
     /// [`InternalName`]s are defined (by the user) as entity types, and there
     /// are no defined common types or actions.
-    #[cfg(test)]
     pub(crate) fn from_entity_defs(names: impl IntoIterator<Item = InternalName>) -> Self {
         Self {
             entity_defs: names.into_iter().collect(),

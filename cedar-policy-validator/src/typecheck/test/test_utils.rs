@@ -16,7 +16,6 @@
 
 //! Contains utility functions for testing that expression typecheck or fail to
 //! typecheck correctly.
-// GRCOV_STOP_COVERAGE
 
 use cool_asserts::assert_matches;
 use itertools::Itertools;

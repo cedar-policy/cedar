@@ -235,9 +235,11 @@ impl EntityUid {
             .into_euid(|| JsonDeserializationErrorContext::EntityUid)?
             .into())
     }
+}
 
+#[cfg(test)]
+impl EntityUid {
     /// Testing utility for creating `EntityUids` a bit easier
-    #[cfg(test)]
     pub(crate) fn from_strs(typename: &str, id: &str) -> Self {
         Self::from_type_name_and_id(
             EntityTypeName::from_str(typename).unwrap(),

@@ -14,12 +14,7 @@
  * limitations under the License.
  */
 
-#![cfg(test)]
-// PANIC SAFETY unit tests
-#![allow(clippy::panic)]
-#![allow(clippy::cognitive_complexity, clippy::too_many_lines)]
-
-use super::*;
+use super::super::*;
 
 use authorizer::Decision;
 use cedar_policy_core::ast;
@@ -2190,8 +2185,6 @@ mod schema_based_parsing_tests {
 
     /// Simple test that exercises a variety of attribute types for single entities
     #[test]
-    #[allow(clippy::too_many_lines)]
-    #[allow(clippy::cognitive_complexity)]
     fn single_attr_types() {
         let schema = Schema::from_json_value(json!(
         {"": {
@@ -2655,8 +2648,6 @@ mod schema_based_parsing_tests {
 
     /// Simple test that exercises a variety of attribute types.
     #[test]
-    #[allow(clippy::too_many_lines)]
-    #[allow(clippy::cognitive_complexity)]
     fn attr_types() {
         let schema = Schema::from_json_value(json!(
         {"": {
@@ -5765,8 +5756,6 @@ mod policy_set_est_tests {
     }
 }
 
-// PANIC SAFETY unit tests
-#[allow(clippy::indexing_slicing)]
 mod authorization_error_tests {
     use super::*;
 

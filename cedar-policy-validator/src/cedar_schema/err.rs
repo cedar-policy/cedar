@@ -576,18 +576,11 @@ pub struct DuplicatePrincipalOrResource {
     loc2: Loc,
 }
 
-impl DuplicatePrincipalOrResource {
-    #[cfg(test)]
-    pub(crate) fn kind(&self) -> PR {
-        self.kind
-    }
-}
-
 impl Diagnostic for DuplicatePrincipalOrResource {
     impl_diagnostic_from_two_source_loc_fields!(loc1, loc2);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        let msg = format!("Actions may only have a single {} declaration. If you need it to apply to multiple types, try creating a parent type and using the `in` keyword", self.kind);
+        let msg = format!("Actions may only have a single {kind} declaration, but a {kind} declaration may specify a list of entity types like `{kind}: [X, Y, Z]`", kind=self.kind);
         Some(Box::new(msg))
     }
 }

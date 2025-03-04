@@ -1526,20 +1526,6 @@ pub enum Var {
     Context,
 }
 
-#[cfg(test)]
-mod var_generator {
-    use super::Var;
-    #[cfg(test)]
-    pub fn all_vars() -> impl Iterator<Item = Var> {
-        [Var::Principal, Var::Action, Var::Resource, Var::Context].into_iter()
-    }
-}
-// by default, Coverlay does not track coverage for lines after a line
-// containing #[cfg(test)].
-// we use the following sentinel to "turn back on" coverage tracking for
-// remaining lines of this file, until the next #[cfg(test)]
-// GRCOV_BEGIN_COVERAGE
-
 impl From<PrincipalOrResource> for Var {
     fn from(v: PrincipalOrResource) -> Self {
         match v {
@@ -1588,7 +1574,11 @@ mod test {
 
     use crate::expr_builder::ExprBuilder as _;
 
-    use super::{var_generator::all_vars, *};
+    use super::*;
+
+    pub fn all_vars() -> impl Iterator<Item = Var> {
+        [Var::Principal, Var::Action, Var::Resource, Var::Context].into_iter()
+    }
 
     // Tests that Var::Into never panics
     #[test]
