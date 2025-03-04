@@ -29,8 +29,7 @@ use cedar_policy_core::{
 };
 use namespace_def::EntityTypeFragment;
 use nonempty::NonEmpty;
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
+use serde::Deserialize;
 use smol_str::ToSmolStr;
 use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet};
 use std::str::FromStr;
@@ -151,16 +150,12 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
 ///
 /// In this representation, all common types are fully expanded, and all entity
 /// type names are fully disambiguated (fully qualified).
-#[serde_as]
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug)]
 pub struct ValidatorSchema {
     /// Map from entity type names to the [`ValidatorEntityType`] object.
-    #[serde_as(as = "Vec<(_, _)>")]
     entity_types: HashMap<EntityType, ValidatorEntityType>,
 
     /// Map from action id names to the [`ValidatorActionId`] object.
-    #[serde_as(as = "Vec<(_, _)>")]
     action_ids: HashMap<EntityUID, ValidatorActionId>,
 
     /// For easy lookup, this is a map from action name to `Entity` object
@@ -168,7 +163,6 @@ pub struct ValidatorSchema {
     /// in the `ValidatorSchema`, but not efficient to extract -- getting the
     /// `Entity` from the `ValidatorSchema` is O(N) as of this writing, but with
     /// this cache it's O(1).
-    #[serde_as(as = "Vec<(_, _)>")]
     pub(crate) actions: HashMap<EntityUID, Arc<Entity>>,
 }
 
@@ -872,12 +866,12 @@ impl ValidatorSchema {
             }
         }
         action_ids.iter().map(move |(action_id, action)| {
-            Entity::new_with_attr_partial_value_serialized_as_expr(
+            Entity::new_with_attr_partial_value(
                 action_id.clone(),
                 action.attributes.clone(),
                 HashSet::new(),
                 action_ancestors.remove(action_id).unwrap_or_default(),
-                BTreeMap::new(), // actions cannot have entity tags
+                [], // actions cannot have entity tags
             )
         })
     }

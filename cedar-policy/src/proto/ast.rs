@@ -20,11 +20,7 @@ use super::models;
 use cedar_policy_core::{
     ast, evaluator::RestrictedEvaluator, extensions::Extensions, FromNormalizedStr,
 };
-use smol_str::SmolStr;
-use std::{
-    collections::{BTreeMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::HashSet, sync::Arc};
 
 // PANIC SAFETY: experimental feature
 #[allow(clippy::fallible_impl_from)]
@@ -131,37 +127,29 @@ impl From<&models::Entity> for ast::Entity {
     fn from(v: &models::Entity) -> Self {
         let eval = RestrictedEvaluator::new(Extensions::none());
 
-        let attrs: BTreeMap<SmolStr, ast::PartialValueSerializedAsExpr> = v
-            .attrs
-            .iter()
-            .map(|(key, value)| {
-                let pval = eval
-                    .partial_interpret(
-                        ast::BorrowedRestrictedExpr::new(&ast::Expr::from(value)).unwrap(),
-                    )
-                    .expect("interpret on RestrictedExpr");
-                (key.into(), pval.into())
-            })
-            .collect();
+        let attrs = v.attrs.iter().map(|(key, value)| {
+            let pval = eval
+                .partial_interpret(
+                    ast::BorrowedRestrictedExpr::new(&ast::Expr::from(value)).unwrap(),
+                )
+                .expect("interpret on RestrictedExpr");
+            (key.into(), pval)
+        });
 
         let ancestors: HashSet<ast::EntityUID> =
             v.ancestors.iter().map(ast::EntityUID::from).collect();
 
-        let tags: BTreeMap<SmolStr, ast::PartialValueSerializedAsExpr> = v
-            .tags
-            .iter()
-            .map(|(key, value)| {
-                let pval = eval
-                    .partial_interpret(
-                        ast::BorrowedRestrictedExpr::new(&ast::Expr::from(value))
-                            .expect("RestrictedExpr"),
-                    )
-                    .expect("interpret on RestrictedExpr");
-                (key.into(), pval.into())
-            })
-            .collect();
+        let tags = v.tags.iter().map(|(key, value)| {
+            let pval = eval
+                .partial_interpret(
+                    ast::BorrowedRestrictedExpr::new(&ast::Expr::from(value))
+                        .expect("RestrictedExpr"),
+                )
+                .expect("interpret on RestrictedExpr");
+            (key.into(), pval)
+        });
 
-        Self::new_with_attr_partial_value_serialized_as_expr(
+        Self::new_with_attr_partial_value(
             ast::EntityUID::from(v.uid.as_ref().expect("uid field should exist")),
             attrs,
             ancestors,
@@ -669,8 +657,6 @@ impl From<&ast::Context> for models::Expr {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
-
     use super::*;
 
     #[test]
@@ -722,15 +708,13 @@ mod test {
             ast::EntityUID::from(&models::EntityUid::from(&euid3))
         );
 
-        let attrs = (1..=7)
-            .map(|id| (format!("{id}").into(), ast::RestrictedExpr::val(true)))
-            .collect::<HashMap<SmolStr, _>>();
+        let attrs = (1..=7).map(|id| (format!("{id}").into(), ast::RestrictedExpr::val(true)));
         let entity = ast::Entity::new(
             r#"Foo::"bar""#.parse().unwrap(),
             attrs,
             HashSet::new(),
             HashSet::new(),
-            BTreeMap::new(),
+            [],
             Extensions::none(),
         )
         .unwrap();

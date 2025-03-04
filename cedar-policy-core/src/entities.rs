@@ -22,9 +22,6 @@ use crate::transitive_closure::{compute_tc, enforce_tc_and_dag};
 use std::collections::{hash_map, HashMap};
 use std::sync::Arc;
 
-use serde::Serialize;
-use serde_with::serde_as;
-
 /// Module for checking that entities conform with a schema
 pub mod conformance;
 /// Module for error types
@@ -44,29 +41,20 @@ use err::*;
 /// Represents an entity hierarchy, and allows looking up `Entity` objects by
 /// UID.
 //
-/// Note that `Entities` is `Serialize`, but currently this is only used for the
-/// FFI layer in DRT. All others use (and should use) the `from_json_*()` and
-/// `write_to_json()` methods as necessary.
-#[serde_as]
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+/// Note that `Entities` is not `Serialize` itself -- use either the
+/// `from_json_*()` and `write_to_json()` methods here, or the `proto` module in
+/// `cedar-policy`, which is capable of ser/de both Core types like this and
+/// `cedar-policy` types.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Entities {
-    /// Serde cannot serialize a HashMap to JSON when the key to the map cannot
-    /// be serialized to a JSON string. This is a limitation of the JSON format.
-    /// `serde_as` annotation are used to serialize the data as associative
-    /// lists instead.
-    ///
     /// Important internal invariant: for any `Entities` object that exists,
     /// the `ancestor` relation is transitively closed.
-    #[serde_as(as = "Vec<(_, _)>")]
     entities: HashMap<EntityUID, Arc<Entity>>,
 
     /// The mode flag determines whether this store functions as a partial store or
     /// as a fully concrete store.
     /// Mode::Concrete means that the store is fully concrete, and failed dereferences are an error.
     /// Mode::Partial means the store is partial, and failed dereferences result in a residual.
-    #[serde(default)]
-    #[serde(skip_deserializing)]
-    #[serde(skip_serializing)]
     mode: Mode,
 }
 

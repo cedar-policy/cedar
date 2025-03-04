@@ -44,7 +44,7 @@ extern crate tsify;
 /// where the expression was written in policy source code, and some generic
 /// data which is stored on each node of the AST.
 /// Cloning is O(1).
-#[derive(Educe, Serialize, Deserialize, Debug, Clone)]
+#[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq, Hash)]
 pub struct Expr<T = ()> {
     expr_kind: ExprKind<T>,
@@ -56,7 +56,7 @@ pub struct Expr<T = ()> {
 
 /// The possible expression variants. This enum should be matched on by code
 /// recursively traversing the AST.
-#[derive(Serialize, Deserialize, Hash, Debug, Clone, PartialEq, Eq)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind<T = ()> {
     /// Literal value
     Lit(Literal),
@@ -819,7 +819,7 @@ pub enum SubstitutionError {
 }
 
 /// Representation of a partial-evaluation Unknown at the AST level
-#[derive(Serialize, Deserialize, Hash, Debug, Clone, PartialEq, Eq)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub struct Unknown {
     /// The name of the unknown
     pub name: SmolStr,

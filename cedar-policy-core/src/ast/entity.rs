@@ -26,7 +26,6 @@ use educe::Educe;
 use itertools::Itertools;
 use miette::Diagnostic;
 use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
-use serde_with::{serde_as, TryFromInto};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::str::FromStr;
@@ -440,17 +439,15 @@ impl<'a> arbitrary::Arbitrary<'a> for Eid {
 }
 
 /// Entity datatype
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct Entity {
     /// UID
     uid: EntityUID,
 
-    /// Internal BTreeMap of attributes.
-    /// We use a btreemap so that the keys have a deterministic order.
+    /// Internal `BTreeMap` of attributes.
     ///
-    /// In the serialized form of `Entity`, attribute values appear as
-    /// `RestrictedExpr`s, for mostly historical reasons.
-    attrs: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
+    /// We use a `BTreeMap` so that the keys have a deterministic order.
+    attrs: BTreeMap<SmolStr, PartialValue>,
 
     /// Set of indirect ancestors of this `Entity` as UIDs
     indirect_ancestors: HashSet<EntityUID>,
@@ -466,10 +463,7 @@ pub struct Entity {
     ///
     /// Like for `attrs`, we use a `BTreeMap` so that the tags have a
     /// deterministic order.
-    /// And like in `attrs`, the values in `tags` appear as `RestrictedExpr` in
-    /// the serialized form of `Entity`.
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    tags: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
+    tags: BTreeMap<SmolStr, PartialValue>,
 }
 
 impl std::hash::Hash for Entity {
@@ -501,7 +495,7 @@ impl Entity {
                     was_attr,
                     err,
                 })?;
-            Ok((k, attr_val.into()))
+            Ok((k, attr_val))
         };
         let evaluated_attrs = attrs
             .into_iter()
@@ -535,32 +529,12 @@ impl Entity {
         parents: HashSet<EntityUID>,
         tags: impl IntoIterator<Item = (SmolStr, PartialValue)>,
     ) -> Self {
-        Self::new_with_attr_partial_value_serialized_as_expr(
+        Self {
             uid,
-            attrs.into_iter().map(|(k, v)| (k, v.into())).collect(),
+            attrs: attrs.into_iter().collect(),
             indirect_ancestors,
             parents,
-            tags.into_iter().map(|(k, v)| (k, v.into())).collect(),
-        )
-    }
-
-    /// Create a new `Entity` with this UID, attributes, ancestors, and tags
-    ///
-    /// Unlike in `Entity::new()`, in this constructor, attributes and tags are
-    /// expressed as `PartialValueSerializedAsExpr`.
-    pub fn new_with_attr_partial_value_serialized_as_expr(
-        uid: EntityUID,
-        attrs: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
-        indirect_ancestors: HashSet<EntityUID>,
-        parents: HashSet<EntityUID>,
-        tags: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
-    ) -> Self {
-        Entity {
-            uid,
-            attrs,
-            indirect_ancestors,
-            parents,
-            tags,
+            tags: tags.into_iter().collect(),
         }
     }
 
@@ -571,12 +545,12 @@ impl Entity {
 
     /// Get the value for the given attribute, or `None` if not present
     pub fn get(&self, attr: &str) -> Option<&PartialValue> {
-        self.attrs.get(attr).map(|v| v.as_ref())
+        self.attrs.get(attr)
     }
 
     /// Get the value for the given tag, or `None` if not present
     pub fn get_tag(&self, tag: &str) -> Option<&PartialValue> {
-        self.tags.get(tag).map(|v| v.as_ref())
+        self.tags.get(tag)
     }
 
     /// Is this `Entity` a (direct or indirect) descendant of `e` in the entity hierarchy?
@@ -631,12 +605,12 @@ impl Entity {
 
     /// Iterate over this entity's attributes
     pub fn attrs(&self) -> impl Iterator<Item = (&SmolStr, &PartialValue)> {
-        self.attrs.iter().map(|(k, v)| (k, v.as_ref()))
+        self.attrs.iter()
     }
 
     /// Iterate over this entity's tags
     pub fn tags(&self) -> impl Iterator<Item = (&SmolStr, &PartialValue)> {
-        self.tags.iter().map(|(k, v)| (k, v.as_ref()))
+        self.tags.iter()
     }
 
     /// Create an `Entity` with the given UID, no attributes, no parents, and no tags.
@@ -713,19 +687,12 @@ impl Entity {
         HashSet<EntityUID>,
         HashMap<SmolStr, PartialValue>,
     ) {
-        let Self {
-            uid,
-            attrs,
-            indirect_ancestors,
-            parents,
-            tags,
-        } = self;
         (
-            uid,
-            attrs.into_iter().map(|(k, v)| (k, v.0)).collect(),
-            indirect_ancestors,
-            parents,
-            tags.into_iter().map(|(k, v)| (k, v.0)).collect(),
+            self.uid,
+            self.attrs.into_iter().collect(),
+            self.indirect_ancestors,
+            self.parents,
+            self.tags.into_iter().collect(),
         )
     }
 
@@ -815,47 +782,6 @@ impl std::fmt::Display for Entity {
                 .join("; "),
             self.ancestors().join(", ")
         )
-    }
-}
-
-/// `PartialValue`, but serialized as a `RestrictedExpr`.
-///
-/// (Extension values can't be directly serialized, but can be serialized as
-/// `RestrictedExpr`)
-#[serde_as]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct PartialValueSerializedAsExpr(
-    #[serde_as(as = "TryFromInto<RestrictedExpr>")] PartialValue,
-);
-
-impl AsRef<PartialValue> for PartialValueSerializedAsExpr {
-    fn as_ref(&self) -> &PartialValue {
-        &self.0
-    }
-}
-
-impl std::ops::Deref for PartialValueSerializedAsExpr {
-    type Target = PartialValue;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<PartialValue> for PartialValueSerializedAsExpr {
-    fn from(value: PartialValue) -> PartialValueSerializedAsExpr {
-        PartialValueSerializedAsExpr(value)
-    }
-}
-
-impl From<PartialValueSerializedAsExpr> for PartialValue {
-    fn from(value: PartialValueSerializedAsExpr) -> PartialValue {
-        value.0
-    }
-}
-
-impl std::fmt::Display for PartialValueSerializedAsExpr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
     }
 }
 

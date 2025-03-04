@@ -1063,15 +1063,7 @@ mod tests {
 
         // In the tolerant AST we store the Policy Error node
         #[cfg(feature = "tolerant-ast")]
-        assert_eq!(
-            policies
-                .clone()
-                .0
-                .into_iter()
-                .filter_map(|p| p.node)
-                .count(),
-            3
-        );
+        assert_eq!(policies.0.into_iter().filter_map(|p| p.node).count(), 3);
 
         // If the AST is not tolerant, unparsable policy should be None
         #[cfg(not(feature = "tolerant-ast"))]
@@ -1475,7 +1467,7 @@ mod tests {
     #[cfg(feature = "tolerant-ast")]
     fn expr_tolerant_success() {
         let src = r#"
-            x == 
+            x ==
         "#;
         let e = assert_parse_succeeds(parse_expr_tolerant, src);
         assert!(matches!(e, Expr::ErrorExpr));
