@@ -520,7 +520,7 @@ impl cst::PolicyImpl {
         let mut vars = self.variables.iter();
         let maybe_principal = if let Some(scope1) = vars.next() {
             end_of_last_var = scope1.loc.end();
-            scope1.to_principal_constraint()
+            scope1.to_principal_constraint_tolerant_ast()
         } else {
             Err(ToASTError::new(
                 ToASTErrorKind::MissingScopeVariable(ast::Var::Principal),
@@ -539,7 +539,7 @@ impl cst::PolicyImpl {
             .into())
         };
         let maybe_resource = if let Some(scope3) = vars.next() {
-            scope3.to_resource_constraint()
+            scope3.to_resource_constraint_tolerant_ast()
         } else {
             Err(ToASTError::new(
                 ToASTErrorKind::MissingScopeVariable(ast::Var::Resource),
@@ -847,8 +847,34 @@ impl Node<Option<cst::VariableDef>> {
         }
     }
 
+    #[cfg(feature = "tolerant-ast")]
+    fn to_principal_constraint_tolerant_ast(&self) -> Result<PrincipalConstraint> {
+        match self.to_principal_or_resource_constraint_tolerant_ast(ast::Var::Principal)? {
+            PrincipalOrResource::Principal(p) => Ok(p),
+            PrincipalOrResource::Resource(_) => Err(self
+                .to_ast_err(ToASTErrorKind::IncorrectVariable {
+                    expected: ast::Var::Principal,
+                    got: ast::Var::Resource,
+                })
+                .into()),
+        }
+    }
+
     fn to_resource_constraint(&self) -> Result<ResourceConstraint> {
         match self.to_principal_or_resource_constraint(ast::Var::Resource)? {
+            PrincipalOrResource::Principal(_) => Err(self
+                .to_ast_err(ToASTErrorKind::IncorrectVariable {
+                    expected: ast::Var::Resource,
+                    got: ast::Var::Principal,
+                })
+                .into()),
+            PrincipalOrResource::Resource(r) => Ok(r),
+        }
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    fn to_resource_constraint_tolerant_ast(&self) -> Result<ResourceConstraint> {
+        match self.to_principal_or_resource_constraint_tolerant_ast(ast::Var::Resource)? {
             PrincipalOrResource::Principal(_) => Err(self
                 .to_ast_err(ToASTErrorKind::IncorrectVariable {
                     expected: ast::Var::Resource,
@@ -880,6 +906,72 @@ impl Node<Option<cst::VariableDef>> {
                 }
             }
             let eref = rel_expr.to_ref_or_slot(var)?;
+            match (op, &vardef.entity_type) {
+                (cst::RelOp::Eq, None) => Ok(PrincipalOrResourceConstraint::Eq(eref)),
+                (cst::RelOp::Eq, Some(_)) => Err(self.to_ast_err(ToASTErrorKind::IsWithEq)),
+                (cst::RelOp::In, None) => Ok(PrincipalOrResourceConstraint::In(eref)),
+                (cst::RelOp::In, Some(entity_type)) => {
+                    match entity_type
+                        .to_expr_or_special::<ast::ExprBuilder<()>>()?
+                        .into_entity_type()
+                    {
+                        Ok(et) => Ok(PrincipalOrResourceConstraint::IsIn(Arc::new(et), eref)),
+                        Err(eos) => Err(eos.to_ast_err(ToASTErrorKind::InvalidIsType {
+                            lhs: var.to_string(),
+                            rhs: eos.loc().snippet().unwrap_or("<invalid>").to_string(),
+                        })),
+                    }
+                }
+                (cst::RelOp::InvalidSingleEq, _) => {
+                    Err(self.to_ast_err(ToASTErrorKind::InvalidSingleEq))
+                }
+                (op, _) => Err(self.to_ast_err(ToASTErrorKind::InvalidScopeOperator(*op))),
+            }
+        } else if let Some(entity_type) = &vardef.entity_type {
+            match entity_type
+                .to_expr_or_special::<ast::ExprBuilder<()>>()?
+                .into_entity_type()
+            {
+                Ok(et) => Ok(PrincipalOrResourceConstraint::Is(Arc::new(et))),
+                Err(eos) => Err(eos.to_ast_err(ToASTErrorKind::InvalidIsType {
+                    lhs: var.to_string(),
+                    rhs: eos.loc().snippet().unwrap_or("<invalid>").to_string(),
+                })),
+            }
+        } else {
+            Ok(PrincipalOrResourceConstraint::Any)
+        }?;
+        match var {
+            ast::Var::Principal => Ok(PrincipalOrResource::Principal(PrincipalConstraint::new(c))),
+            ast::Var::Resource => Ok(PrincipalOrResource::Resource(ResourceConstraint::new(c))),
+            got => Err(self
+                .to_ast_err(ToASTErrorKind::IncorrectVariable { expected, got })
+                .into()),
+        }
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    fn to_principal_or_resource_constraint_tolerant_ast(
+        &self,
+        expected: ast::Var,
+    ) -> Result<PrincipalOrResource> {
+        let vardef = self.try_as_inner()?;
+        let var = vardef.variable.to_var()?;
+
+        if let Some(unused_typename) = vardef.unused_type_name.as_ref() {
+            unused_typename.to_type_constraint::<ast::ExprBuilder<()>>()?;
+        }
+
+        let c = if let Some((op, rel_expr)) = &vardef.ineq {
+            // special check for the syntax `_ in _ is _`
+            if op == &cst::RelOp::In {
+                if let Ok(expr) = rel_expr.to_expr::<ast::ExprBuilder<()>>() {
+                    if matches!(expr.expr_kind(), ast::ExprKind::Is { .. }) {
+                        return Err(self.to_ast_err(ToASTErrorKind::InvertedIsIn).into());
+                    }
+                }
+            }
+            let eref = rel_expr.to_ref_or_slot_tolerant_ast(var)?;
             match (op, &vardef.entity_type) {
                 (cst::RelOp::Eq, None) => Ok(PrincipalOrResourceConstraint::Eq(eref)),
                 (cst::RelOp::Eq, Some(_)) => Err(self.to_ast_err(ToASTErrorKind::IsWithEq)),
@@ -5542,6 +5634,36 @@ mod tests {
             permit(principal, action, resource) when { ip(principal.ip).i() };
         "#;
         assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn parsing_with_errors_succeeds_with_invalid_uid_for_in() {
+        let src = r#"
+            permit (
+                principal,
+                action,
+                resource in H
+            )
+            when { true };
+        "#;
+        let p = assert_parse_policy_allows_errors(src);
+        println!("{:?}", p);
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn parsing_with_errors_succeeds_with_invalid_bracket_for_in() {
+        let src = r#"
+            permit (
+                principal,
+                action,
+                resource in [
+            )
+            when { true };
+        "#;
+        let p = assert_parse_policy_allows_errors(src);
+        println!("{:?}", p);
     }
 
     #[cfg(feature = "tolerant-ast")]
