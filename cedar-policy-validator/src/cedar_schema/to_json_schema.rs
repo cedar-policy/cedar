@@ -81,7 +81,9 @@ pub fn cedar_schema_to_json_schema(
 
     let names = build_namespace_bindings(all_namespaces.iter().map(|ns| &ns.data))?;
     let warnings = compute_namespace_warnings(&names, extensions);
-    let fragment = collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?.collect();
+    let fragment:std::collections::BTreeMap<Option<Name>, json_schema::NamespaceDefinition<RawName>> = collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?.collect();
+    // fragment.iter().for_each(|(_, n)| n.common_types.iter().for_each(|t| println!("Common type: {:?}", t.1)));
+    // println!("{:?}", );
     Ok((
         json_schema::Fragment(fragment),
         warnings.collect::<Vec<_>>().into_iter(),
