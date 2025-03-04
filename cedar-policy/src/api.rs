@@ -4519,7 +4519,7 @@ mod test_access {
 
     fn schema() -> Schema {
         let src = r#"
-        type Task = {
+          type Task = {
     "id": Long,
     "name": String,
     "state": String,
