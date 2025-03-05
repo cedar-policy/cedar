@@ -21,7 +21,7 @@ use educe::Educe;
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
@@ -139,8 +139,8 @@ impl Template {
 
     #[cfg(feature = "tolerant-ast")]
     /// Generate a template representing a policy that is unparsable
-    pub fn error(id: PolicyID) -> Self {
-        let body = TemplateBody::error(id);
+    pub fn error(id: PolicyID, loc: Option<Loc>) -> Self {
+        let body = TemplateBody::error(id, loc);
         Template::from(body)
     }
 
@@ -977,32 +977,7 @@ pub enum TemplateBody {
     TemplateBody(TemplateBodyImpl),
     #[cfg(feature = "tolerant-ast")]
     /// Represents a policy that failed to parse
-    TemplateBodyError(PolicyID),
-}
-
-impl Serialize for TemplateBody {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match self {
-            TemplateBody::TemplateBody(impl_body) => impl_body.serialize(serializer),
-            #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(policy_id) => {
-                format!("TemplateBody::TemplateBodyError({policy_id})").serialize(serializer)
-            }
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for TemplateBody {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let impl_body = TemplateBodyImpl::deserialize(deserializer)?;
-        Ok(TemplateBody::TemplateBody(impl_body))
-    }
+    TemplateBodyError(PolicyID, Option<Loc>),
 }
 
 impl TemplateBody {
@@ -1011,7 +986,7 @@ impl TemplateBody {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl { id, .. }) => &id,
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(policy_id) => &policy_id,
+            TemplateBody::TemplateBodyError(policy_id, _) => &policy_id,
         }
     }
 
@@ -1020,7 +995,7 @@ impl TemplateBody {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl { loc, .. }) => loc.as_ref(),
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_) => None,
+            TemplateBody::TemplateBodyError(_, loc) => loc.as_ref(),
         }
     }
 
@@ -1033,14 +1008,16 @@ impl TemplateBody {
                 TemplateBody::TemplateBody(new)
             }
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_) => TemplateBody::TemplateBodyError(id),
+            TemplateBody::TemplateBodyError(_, loc) => {
+                TemplateBody::TemplateBodyError(id, loc.clone())
+            }
         }
     }
 
     #[cfg(feature = "tolerant-ast")]
     /// Create a template body representing a policy that failed to parse
-    pub fn error(id: PolicyID) -> Self {
-        TemplateBody::TemplateBodyError(id)
+    pub fn error(id: PolicyID, loc: Option<Loc>) -> Self {
+        TemplateBody::TemplateBodyError(id, loc)
     }
 
     /// Get the `Effect` of this policy.
@@ -1048,7 +1025,7 @@ impl TemplateBody {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl { effect, .. }) => *effect,
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_) => Effect::Forbid,
+            TemplateBody::TemplateBodyError(_, _) => Effect::Forbid,
         }
     }
 
@@ -1059,7 +1036,7 @@ impl TemplateBody {
                 annotations.get(key)
             }
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_) => None,
+            TemplateBody::TemplateBodyError(_, _) => None,
         }
     }
 
@@ -1068,7 +1045,7 @@ impl TemplateBody {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl { annotations, .. }) => annotations,
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_) => &DEFAULT_ANNOTATIONS,
+            TemplateBody::TemplateBodyError(_, _) => &DEFAULT_ANNOTATIONS,
         }
     }
 
@@ -1077,7 +1054,7 @@ impl TemplateBody {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl { annotations, .. }) => annotations.iter(),
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_) => DEFAULT_ANNOTATIONS.iter(),
+            TemplateBody::TemplateBodyError(_, _) => DEFAULT_ANNOTATIONS.iter(),
         }
     }
 
@@ -1089,7 +1066,7 @@ impl TemplateBody {
                 ..
             }) => principal_constraint,
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_) => &DEFAULT_PRINCIPAL_CONSTRAINT,
+            TemplateBody::TemplateBodyError(_, _) => &DEFAULT_PRINCIPAL_CONSTRAINT,
         }
 
         // &self.principal_constraint
@@ -1105,7 +1082,7 @@ impl TemplateBody {
                 ..
             }) => principal_constraint.as_expr(),
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_) => DEFAULT_PRINCIPAL_CONSTRAINT.as_expr(),
+            TemplateBody::TemplateBodyError(_, _) => DEFAULT_PRINCIPAL_CONSTRAINT.as_expr(),
         }
     }
 
@@ -1116,7 +1093,7 @@ impl TemplateBody {
                 action_constraint, ..
             }) => action_constraint,
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_) => &DEFAULT_ACTION_CONSTRAINT,
+            TemplateBody::TemplateBodyError(_, _) => &DEFAULT_ACTION_CONSTRAINT,
         }
     }
 
@@ -1129,7 +1106,7 @@ impl TemplateBody {
                 action_constraint, ..
             }) => action_constraint.as_expr(),
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_) => DEFAULT_ACTION_CONSTRAINT.as_expr(),
+            TemplateBody::TemplateBodyError(_, _) => DEFAULT_ACTION_CONSTRAINT.as_expr(),
         }
     }
 
@@ -1141,7 +1118,7 @@ impl TemplateBody {
                 ..
             }) => resource_constraint,
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_) => &DEFAULT_RESOURCE_CONSTRAINT,
+            TemplateBody::TemplateBodyError(_, _) => &DEFAULT_RESOURCE_CONSTRAINT,
         }
     }
 
@@ -1155,7 +1132,7 @@ impl TemplateBody {
                 ..
             }) => resource_constraint.as_expr(),
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_) => DEFAULT_RESOURCE_CONSTRAINT.as_expr(),
+            TemplateBody::TemplateBodyError(_, _) => DEFAULT_RESOURCE_CONSTRAINT.as_expr(),
         }
     }
 
@@ -1170,7 +1147,7 @@ impl TemplateBody {
                 ..
             }) => &non_scope_constraints,
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_) => &DEFAULT_ERROR_EXPR,
+            TemplateBody::TemplateBodyError(_, _) => &DEFAULT_ERROR_EXPR,
         }
     }
 
@@ -1182,7 +1159,7 @@ impl TemplateBody {
                 ..
             }) => &non_scope_constraints,
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_) => &DEFAULT_ERROR_EXPR,
+            TemplateBody::TemplateBodyError(_, _) => &DEFAULT_ERROR_EXPR,
         }
     }
 
@@ -1207,7 +1184,7 @@ impl TemplateBody {
             )
             .with_maybe_source_loc(self.loc().cloned()),
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_) => DEFAULT_ERROR_EXPR.as_ref().clone(),
+            TemplateBody::TemplateBodyError(_, _) => DEFAULT_ERROR_EXPR.as_ref().clone(),
         }
     }
 
@@ -1282,7 +1259,7 @@ impl std::fmt::Display for TemplateBody {
                 )
             }
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(policy_id) => {
+            TemplateBody::TemplateBodyError(policy_id, _) => {
                 write!(f, "TemplateBody::TemplateBodyError({policy_id})")
             }
         }
@@ -1866,7 +1843,7 @@ impl std::fmt::Display for StaticPolicy {
                 )
             }
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(policy_id) => {
+            TemplateBody::TemplateBodyError(policy_id, _) => {
                 write!(f, "TemplateBody::TemplateBodyError({policy_id})")
             }
         }
@@ -2375,7 +2352,9 @@ mod test {
         use std::str::FromStr;
 
         let policy_id = PolicyID::from_string("error_policy");
-        let error_body = TemplateBody::TemplateBodyError(policy_id.clone());
+        let error_loc = Loc::new(0..1, "ASTErrorNode".into());
+        let error_body =
+            TemplateBody::TemplateBodyError(policy_id.clone(), Some(error_loc.clone()));
 
         let expected_error = <ExprWithErrsBuilder as ExprBuilder>::new()
             .error(ParseErrors::singleton(ToASTError::new(
@@ -2388,13 +2367,13 @@ mod test {
         assert_eq!(error_body.id(), &policy_id);
 
         // Test loc() method
-        assert_eq!(error_body.loc(), None);
+        assert_eq!(error_body.loc(), Some(&error_loc));
 
         // Test new_id() method
         let new_policy_id = PolicyID::from_string("new_error_policy");
         let updated_error_body = error_body.new_id(new_policy_id.clone());
         assert_matches!(updated_error_body,
-            TemplateBody::TemplateBodyError(id) if id == new_policy_id
+            TemplateBody::TemplateBodyError(id, loc) if id == new_policy_id && loc.clone().unwrap() == error_loc
         );
 
         // Test effect() method
@@ -2437,7 +2416,8 @@ mod test {
     #[test]
     fn template_error_methods() {
         let policy_id = PolicyID::from_string("error_policy");
-        let error_template = Template::error(policy_id.clone());
+        let error_loc = Loc::new(0..1, "ASTErrorNode".into());
+        let error_template = Template::error(policy_id.clone(), Some(error_loc.clone()));
 
         // Check template properties
         assert_eq!(error_template.id(), &policy_id);
@@ -2447,7 +2427,7 @@ mod test {
 
         // Check body is an error template body
         assert_matches!(error_template.body,
-            TemplateBody::TemplateBodyError(ref id) if id == &policy_id
+            TemplateBody::TemplateBodyError(ref id, ref loc) if id == &policy_id && loc.clone().unwrap() == error_loc
         );
 
         // Test principal_constraint() method
@@ -2475,14 +2455,10 @@ mod test {
         );
 
         // Verify location is None
-        assert_eq!(error_template.loc(), None);
+        assert_eq!(error_template.loc(), Some(&error_loc));
 
         // Verify annotations are default
         assert!(error_template.annotations().count() == 0);
-
-        let serialized = serde_json::to_string(&error_template).expect("Serialization failed");
-        assert!(serialized.contains("TemplateBody::TemplateBodyError"));
-        assert!(serialized.contains(&policy_id.to_string()));
 
         // Verify display implementation
         let display_str = format!("{}", error_template);

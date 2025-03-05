@@ -394,7 +394,7 @@ impl Node<Option<cst::Policy>> {
         let policy = match policy {
             cst::Policy::Policy(policy_impl) => policy_impl,
             cst::Policy::PolicyError => {
-                return Ok(ast::Template::error(id));
+                return Ok(ast::Template::error(id, Some(self.loc.clone())));
             }
         };
         // convert effect
