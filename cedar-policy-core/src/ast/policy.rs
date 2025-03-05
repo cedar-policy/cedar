@@ -969,9 +969,9 @@ pub struct TemplateBodyImpl {
     non_scope_constraints: Arc<Expr>,
 }
 
-#[derive(Clone, Hash, Eq, PartialEq, Debug)]
 /// Policy datatype. This is used for both templates (in which case it contains
 /// slots) and static policies (in which case it contains zero slots).
+#[derive(Clone, Hash, Eq, PartialEq, Debug)]
 pub enum TemplateBody {
     /// Represents a valid template body
     TemplateBody(TemplateBodyImpl),
