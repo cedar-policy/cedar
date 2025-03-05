@@ -214,6 +214,13 @@ impl Node<Option<cst::Policy>> {
         self.to_policy_template(id)
     }
 
+    /// Convert `cst::Policy` to `ast::Template`. Works for static policies as
+    /// well, which will become templates with 0 slots
+    #[cfg(feature = "tolerant-ast")]
+    pub fn to_template_tolerant(&self, id: ast::PolicyID) -> Result<ast::Template> {
+        self.to_policy_template_with_errors(id)
+    }
+
     /// Convert `cst::Policy` to an AST `StaticPolicy` or `Template`
     pub fn to_policy_or_template(
         &self,
@@ -5957,5 +5964,146 @@ mod tests {
                 .is_none(),
             true
         );
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn fail_scope1_tolerant_ast() {
+        let src = r#"
+            permit(
+                principal in [User::"jane",Group::"friends"],
+                action,
+                resource
+            );
+        "#;
+        let errs = assert_parse_policy_allows_errors_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "expected single entity uid or template slot, found set of entity uids",
+            )
+            .exactly_one_underline(r#"[User::"jane",Group::"friends"]"#)
+            .build(),
+        );
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn fail_scope2_tolerant_ast() {
+        let src = r#"
+            permit(
+                principal in User::"jane",
+                action == if true then Photo::"view" else Photo::"edit",
+                resource
+            );
+        "#;
+        let errs = assert_parse_policy_allows_errors_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("expected an entity uid, found an `if` expression")
+                .exactly_one_underline(r#"if true then Photo::"view" else Photo::"edit""#)
+                .build(),
+        );
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn invalid_slot_tolerant_ast() {
+        let invalid_policies = [
+            (
+                r#"permit(principal == ?resource, action, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?resource instead of ?principal").exactly_one_underline("?resource").build(),
+            ),
+            (
+                r#"permit(principal in ?resource, action, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?resource instead of ?principal").exactly_one_underline("?resource").build(),
+            ),
+            (
+                r#"permit(principal == ?foo, action, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?foo instead of ?principal").exactly_one_underline("?foo").build(),
+            ),
+            (
+                r#"permit(principal in ?foo, action, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?foo instead of ?principal").exactly_one_underline("?foo").build(),
+            ),
+
+            (
+                r#"permit(principal, action, resource == ?principal);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?principal instead of ?resource").exactly_one_underline("?principal").build(),
+            ),
+            (
+                r#"permit(principal, action, resource in ?principal);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?principal instead of ?resource").exactly_one_underline("?principal").build(),
+            ),
+            (
+                r#"permit(principal, action, resource == ?baz);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?baz instead of ?resource").exactly_one_underline("?baz").build(),
+            ),
+            (
+                r#"permit(principal, action, resource in ?baz);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?baz instead of ?resource").exactly_one_underline("?baz").build(),
+            ),
+            (
+                r#"permit(principal, action, resource) when { principal == ?foo};"#,
+                ExpectedErrorMessageBuilder::error(
+                    "`?foo` is not a valid template slot",
+                ).help(
+                    "a template slot may only be `?principal` or `?resource`",
+                ).exactly_one_underline("?foo").build(),
+            ),
+
+            (
+                r#"permit(principal, action == ?action, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?action").build(),
+            ),
+            (
+                r#"permit(principal, action in ?action, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?action").build(),
+            ),
+            (
+                r#"permit(principal, action == ?principal, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?principal").build(),
+            ),
+            (
+                r#"permit(principal, action in ?principal, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?principal").build(),
+            ),
+            (
+                r#"permit(principal, action == ?resource, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?resource").build(),
+            ),
+            (
+                r#"permit(principal, action in ?resource, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?resource").build(),
+            ),
+            (
+                r#"permit(principal, action in [?bar], resource);"#,
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?bar").build(),
+            ),
+        ];
+
+        for (p_src, expected) in invalid_policies {
+            assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+                expect_err(p_src, &miette::Report::new(e), &expected);
+            });
+            let forbid_src = format!("forbid{}", &p_src[6..]);
+            assert_matches!(parse_policy_or_template_tolerant(None, &forbid_src), Err(e) => {
+                expect_err(forbid_src.as_str(), &miette::Report::new(e), &expected);
+            });
+        }
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    fn parse_policy_or_template_tolerant(
+        id: Option<ast::PolicyID>,
+        text: &str,
+    ) -> Result<ast::Template> {
+        let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
+        let cst = text_to_cst::parse_policy_tolerant(text)?;
+        cst.to_template_tolerant(id)
     }
 }
