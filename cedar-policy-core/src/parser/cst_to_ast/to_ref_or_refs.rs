@@ -17,14 +17,14 @@
 use std::sync::Arc;
 
 use super::Result;
-use crate::ast::EntityUID;
-use crate::ast::EntityReference;
 use crate::ast;
+use crate::ast::EntityReference;
+use crate::ast::EntityUID;
 use crate::parser::{
-        cst::{self, Literal},
-        err::{self, ParseErrors, ToASTError, ToASTErrorKind},
-        Loc, Node,
-    };
+    cst::{self, Literal},
+    err::{self, ParseErrors, ToASTError, ToASTErrorKind},
+    Loc, Node,
+};
 
 /// Type level marker for parsing sets of entity uids or single uids
 /// This presents having either a large level of code duplication
@@ -221,22 +221,6 @@ impl Node<Option<cst::Expr>> {
     }
 }
 
-#[cfg(feature = "tolerant-ast")]
-fn create_refkind_error<T: RefKind>() -> T {
-    T::error_node()
-}
-
-/// Since ExprBuilder ErrorType can be Infallible or ParseErrors, if we get an error from building the node pass the ParseErrors along
-#[cfg_attr(not(feature = "tolerant-ast"), allow(unused_variables))]
-fn convert_refkind_error_to_parse_error<T: RefKind>(
-    error: ParseErrors,
-) -> Result<T> {
-    #[cfg(feature = "tolerant-ast")]
-    return Ok(create_refkind_error());
-    #[allow(unreachable_code)]
-    Err(error)
-}
-
 impl Node<Option<cst::Primary>> {
     fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
         let prim = self.try_as_inner()?;
@@ -370,7 +354,7 @@ impl Node<Option<cst::Primary>> {
                         },
                     ))
                     .into();
-                convert_refkind_error_to_parse_error::<T>(error)
+                Ok(T::error_node())
             }
             cst::Primary::Expr(x) => x.to_ref_or_refs::<T>(var),
             cst::Primary::EList(lst) => {
@@ -432,7 +416,7 @@ impl Node<Option<cst::Unary>> {
         }
     }
 
-    #[cfg(feature="tolerant-ast")]
+    #[cfg(feature = "tolerant-ast")]
     fn to_ref_or_refs_tolerant_ast<T: RefKind>(&self, var: ast::Var) -> Result<T> {
         let unary = self.try_as_inner()?;
 
@@ -583,7 +567,6 @@ impl Node<Option<cst::Relation>> {
                 .into()),
         }
     }
-    
 }
 
 impl Node<Option<cst::Or>> {
