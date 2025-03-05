@@ -154,6 +154,14 @@ impl Node<Option<cst::Expr>> {
         self.to_ref_or_refs::<SingleEntity>(var).map(|x| x.0)
     }
 
+    /// Extract a single `EntityUID` from this expression. The expression must
+    /// be exactly a single entity literal expression.
+    #[cfg(feature = "tolerant-ast")]
+    pub fn to_ref_tolerant_ast(&self, var: ast::Var) -> Result<EntityUID> {
+        self.to_ref_or_refs_tolerant_ast::<SingleEntity>(var)
+            .map(|x| x.0)
+    }
+
     /// Extract a single `EntityUID` or a template slot from this expression.
     /// The expression must be exactly a single entity literal expression or
     /// a single template slot.
@@ -175,6 +183,15 @@ impl Node<Option<cst::Expr>> {
     /// number of entity literals.
     pub fn to_refs(&self, var: ast::Var) -> Result<OneOrMultipleRefs> {
         self.to_ref_or_refs::<OneOrMultipleRefs>(var)
+    }
+
+    /// Extract a single `EntityUID` or set of `EntityUID`s from this
+    /// expression. The expression must either be exactly a single entity
+    /// literal expression a single set literal expression, containing some
+    /// number of entity literals.
+    #[cfg(feature = "tolerant-ast")]
+    pub fn to_refs_tolerant_ast(&self, var: ast::Var) -> Result<OneOrMultipleRefs> {
+        self.to_ref_or_refs_tolerant_ast::<OneOrMultipleRefs>(var)
     }
 
     fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {

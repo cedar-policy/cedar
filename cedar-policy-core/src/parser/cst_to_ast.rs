@@ -1117,7 +1117,7 @@ impl Node<Option<cst::VariableDef>> {
                             return Err(self.to_ast_err(ToASTErrorKind::IsInActionScope).into());
                         }
                     }
-                    match rel_expr.to_refs(ast::Var::Action)? {
+                    match rel_expr.to_refs_tolerant_ast(ast::Var::Action)? {
                         OneOrMultipleRefs::Single(single_ref) => {
                             Ok(ActionConstraint::is_in([single_ref]))
                         }
@@ -1125,7 +1125,7 @@ impl Node<Option<cst::VariableDef>> {
                     }
                 }
                 cst::RelOp::Eq => {
-                    let single_ref = rel_expr.to_ref(ast::Var::Action)?;
+                    let single_ref = rel_expr.to_ref_tolerant_ast(ast::Var::Action)?;
                     Ok(ActionConstraint::is_eq(single_ref))
                 }
                 cst::RelOp::InvalidSingleEq => {
@@ -5669,6 +5669,21 @@ mod tests {
             when { true };
         "#;
         assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn repro_coles_bug() {
+        let src = r#"
+            permit (
+                principal,
+                action in A,
+                resource
+            )
+            when { true };
+        "#;
+        let p = assert_parse_policy_allows_errors(src);
+        println!("{:?}", p);
     }
 
     #[cfg(feature = "tolerant-ast")]
