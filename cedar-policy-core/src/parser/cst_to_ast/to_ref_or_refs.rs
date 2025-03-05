@@ -635,3 +635,31 @@ impl Node<Option<cst::And>> {
         }
     }
 }
+
+
+#[cfg(test)]
+mod test {
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn to_ref_or_refs_tolerant_ast() {
+        use crate::ast;
+        use crate::parser::cst::Name;
+        use crate::parser::cst::Relation;
+        use crate::parser::cst_to_ast::to_ref_or_refs::SingleEntity;
+        use crate::parser::Node;
+        use crate::parser::cst;
+
+        let n:  Node<Option<cst::Primary>> = Node {
+            node:Some(cst::Primary::Name(
+                Node {
+                    node: Some(
+                        Name {
+                            path: vec![],
+                            name: todo!(),
+                        }),
+                    loc: todo!()})),
+            loc: todo!()
+        };
+        n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+    }
+}
