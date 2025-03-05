@@ -218,7 +218,7 @@ impl Node<Option<cst::Policy>> {
     /// well, which will become templates with 0 slots
     #[cfg(feature = "tolerant-ast")]
     pub fn to_template_tolerant(&self, id: ast::PolicyID) -> Result<ast::Template> {
-        self.to_policy_template_with_errors(id)
+        self.to_policy_template_tolerant(id)
     }
 
     /// Convert `cst::Policy` to an AST `StaticPolicy` or `Template`
