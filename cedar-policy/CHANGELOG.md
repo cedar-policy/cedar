@@ -25,6 +25,7 @@ Cedar Language Version: TBD
 - Added `Entities::remove_entities()` to remove `Entity`s from an `Entities` struct (resolving #701)
 - Added `PolicySet::merge()` to merge a `PolicySet` into another `PolicySet` struct (resolving #610)
 - Implemented [RFC 53 (enumerated entity types)](https://github.com/cedar-policy/rfcs/blob/main/text/0053-enum-entities.md)  (#1377)
+- Added `Entities::upsert_entities()` to add or update `Entity`s in an `Entities` struct (resolving #1479)
 - Added the experimental feature `tolerant-ast` which allows certain errors to be propogated in AST expressions as an `ExprKind::Error` (#1470)
 - Added `to_cedar` functions for `PolicySet`, `Policy`, and `Template` that
   render the policy in the human-readable Cedar syntax. These functions can be used
