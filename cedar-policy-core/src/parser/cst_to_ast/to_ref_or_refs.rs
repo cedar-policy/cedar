@@ -337,23 +337,8 @@ impl Node<Option<cst::Primary>> {
                     .into())
             }
             cst::Primary::Ref(x) => T::create_single_ref(x.to_ref()?),
-            cst::Primary::Name(name) => {
-                let found = match name.as_inner() {
-                    Some(name) => format!("name `{name}`"),
-                    None => "name".to_string(),
-                };
-                let error: ParseErrors = self
-                    .to_ast_err(ToASTErrorKind::wrong_node(
-                        T::err_str(),
-                        found,
-                        if var != ast::Var::Action {
-                            Some("try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid".to_string())
-                        } else {
-                            // We don't allow `is` in the action scope, so we won't suggest trying it.
-                            Some("try including an identifier string if you intended this name to be an entity uid".to_string())
-                        },
-                    ))
-                    .into();
+            cst::Primary::Name(_) => {
+                // Tolerant AST supports invalid entity uid name - create an AST error node
                 Ok(T::error_node())
             }
             cst::Primary::Expr(x) => x.to_ref_or_refs::<T>(var),
