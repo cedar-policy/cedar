@@ -5677,7 +5677,7 @@ mod tests {
         let src = r#"
             permit (
                 principal,
-                action in A,
+                action in [A],
                 resource
             )
             when { true };
