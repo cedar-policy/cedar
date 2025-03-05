@@ -115,7 +115,7 @@ pub fn parse_cedar_schema_fragment<'a>(
     CedarSchemaParseErrors,
 > {
     let ast: Schema = parse_collect_errors(&*SCHEMA_PARSER, grammar::SchemaParser::parse, src)?;
-    ast.iter().for_each(|a| println!("{:?}", a));
+    // ast.iter().for_each(|a| println!("{:?}", a));
     let tuple = cedar_schema_to_json_schema(ast, extensions)?;
     Ok(tuple)
 }
