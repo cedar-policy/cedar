@@ -74,6 +74,7 @@ pub fn cedar_schema_to_json_schema(
     // that namespace make it into the JSON schema structure under that
     // namespace's key.
     let (qualified_namespaces, unqualified_namespace) = split_unqualified_namespace(schema);
+    
     // Create a single iterator for all namespaces
     let all_namespaces = qualified_namespaces
         .chain(unqualified_namespace)
@@ -129,6 +130,8 @@ fn split_unqualified_namespace(
     // First split every namespace into those with explicit names and those without
     let (qualified, unqualified): (Vec<_>, Vec<_>) =
         namespaces.into_iter().partition(|n| n.data.name.is_some());
+    qualified.iter().for_each(|a| println!("Qualified: {:?}", a));
+    unqualified.iter().for_each(|a| println!("UnQualified: {:?}", a));
 
     // Now combine all the decls in namespaces without names into one unqualified namespace
     let mut unqualified_decls = vec![];
