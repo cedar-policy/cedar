@@ -363,7 +363,7 @@ impl Node<Option<cst::Primary>> {
                 // Calling `create_multiple_refs` first so that we error
                 // immediately if we see a set when we don't expect one.
                 let create_multiple_refs = T::create_multiple_refs(&self.loc)?;
-                let v = ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref(var)))?;
+                let v = ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref_tolerant_ast(var)))?;
                 Ok(create_multiple_refs(v))
             }
             cst::Primary::RInits(_) => Err(self
