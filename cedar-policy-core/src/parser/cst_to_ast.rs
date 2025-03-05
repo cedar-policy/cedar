@@ -5638,7 +5638,7 @@ mod tests {
 
     #[cfg(feature = "tolerant-ast")]
     #[test]
-    fn parsing_with_errors_succeeds_with_invalid_uid_for_in() {
+    fn parsing_with_errors_succeeds_with_invalid_uid_resource_constraint() {
         let src = r#"
             permit (
                 principal,
@@ -5647,8 +5647,21 @@ mod tests {
             )
             when { true };
         "#;
-        let p = assert_parse_policy_allows_errors(src);
-        println!("{:?}", p);
+        assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn parsing_with_errors_succeeds_with_invalid_uid_principal_constraint() {
+        let src = r#"
+            permit (
+                principal in J,
+                action,
+                resource
+            )
+            when { true };
+        "#;
+        assert_parse_policy_allows_errors(src);
     }
 
     #[cfg(feature = "tolerant-ast")]
