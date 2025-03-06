@@ -6347,61 +6347,6 @@ mod tests {
         });
     }
 
-    // #[cfg(feature = "tolerant-ast")]
-    // #[test]
-    // fn scope_unexpected_nested_sets_tolerant() {
-    //     let policy = r#"
-    //         permit (
-    //             principal == [[User::"alice"]],
-    //             action,
-    //             resource
-    //         );
-    //     "#;
-    //     assert_matches!(
-    //         parse_policy(None, policy),
-    //         Err(e) => {
-    //             expect_n_errors(policy, &e, 1);
-    //             expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
-    //                 "expected single entity uid or template slot, found set of entity uids",
-    //             ).exactly_one_underline(r#"[[User::"alice"]]"#).build());
-    //         }
-    //     );
-
-    //     let policy = r#"
-    //         permit (
-    //             principal,
-    //             action,
-    //             resource == [[?resource]]
-    //         );
-    //     "#;
-    //     assert_matches!(
-    //         parse_policy(None, policy),
-    //         Err(e) => {
-    //             expect_n_errors(policy, &e, 1);
-    //             expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
-    //                 "expected single entity uid or template slot, found set of entity uids",
-    //             ).exactly_one_underline("[[?resource]]").build());
-    //         }
-    //     );
-
-    //     let policy = r#"
-    //         permit (
-    //             principal,
-    //             action in [[[Action::"act"]]],
-    //             resource
-    //         );
-    //     "#;
-    //     assert_matches!(
-    //         parse_policy(None, policy),
-    //         Err(e) => {
-    //             expect_n_errors(policy, &e, 1);
-    //             expect_some_error_matches(policy, &e, &ExpectedErrorMessageBuilder::error(
-    //                 "expected single entity uid, found set of entity uids",
-    //             ).exactly_one_underline(r#"[[Action::"act"]]"#).build());
-    //         }
-    //     );
-    // }
-
     #[cfg(feature = "tolerant-ast")]
     fn parse_policy_or_template_tolerant(
         id: Option<ast::PolicyID>,
