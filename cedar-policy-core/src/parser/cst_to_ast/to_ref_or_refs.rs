@@ -363,7 +363,8 @@ impl Node<Option<cst::Primary>> {
                 // Calling `create_multiple_refs` first so that we error
                 // immediately if we see a set when we don't expect one.
                 let create_multiple_refs = T::create_multiple_refs(&self.loc)?;
-                let v = ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref_tolerant_ast(var)))?;
+                let v =
+                    ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref_tolerant_ast(var)))?;
                 Ok(create_multiple_refs(v))
             }
             cst::Primary::RInits(_) => Err(self
@@ -636,30 +637,221 @@ impl Node<Option<cst::And>> {
     }
 }
 
-
+#[cfg(feature = "tolerant-ast")]
 #[cfg(test)]
 mod test {
-    #[cfg(feature = "tolerant-ast")]
+    use crate::ast;
+    use crate::ast::EntityUID;
+    use crate::parser::cst;
+    use crate::parser::cst::Name;
+    use crate::parser::cst_to_ast::to_ref_or_refs::SingleEntity;
+    use crate::parser::Loc;
+    use crate::parser::Node;
+
     #[test]
     fn to_ref_or_refs_tolerant_ast() {
-        use crate::ast;
-        use crate::parser::cst::Name;
-        use crate::parser::cst::Relation;
-        use crate::parser::cst_to_ast::to_ref_or_refs::SingleEntity;
-        use crate::parser::Node;
-        use crate::parser::cst;
+        let n = test_primary_name_node();
+        let result = n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+        assert!(matches!(result.unwrap().0, EntityUID::Error));
 
-        let n:  Node<Option<cst::Primary>> = Node {
-            node:Some(cst::Primary::Name(
+        let n = test_primary_literal_node();
+        let result = n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+        assert!(result.is_err());
+
+        let n = test_primary_slot_node();
+        let result = n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+        assert!(result.is_err());
+
+        let n = test_primary_expr_error_node();
+        let result = n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+        assert!(matches!(result.unwrap().0, EntityUID::Error));
+
+        let n = test_primary_expr_node();
+        let result = n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+        assert!(matches!(result.unwrap().0, EntityUID::EntityUID(_)));
+
+        let n = test_primary_ref_node();
+        let result = n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+        assert!(matches!(result.unwrap().0, EntityUID::EntityUID(_)));
+
+        let n = test_primary_elist_node();
+        let result = n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+        assert!(result.is_err());
+
+        let n = test_primary_rinits_node();
+        let result = n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+        assert!(result.is_err());
+    }
+
+    fn test_primary_rinits_node() -> Node<Option<cst::Primary>> {
+        Node {
+            node: Some(cst::Primary::RInits(vec![])),
+            loc: Loc::new(0..1, "This is also a test".into()),
+        }
+    }
+
+    fn test_primary_expr_error_node() -> Node<Option<cst::Primary>> {
+        Node {
+            node: Some(cst::Primary::Expr(Node {
+                node: Some(cst::Expr::ErrorExpr),
+                loc: Loc::new(0..1, "This is a test".into()),
+            })),
+            loc: Loc::new(0..1, "This is also a test".into()),
+        }
+    }
+
+    fn test_primary_elist_node() -> Node<Option<cst::Primary>> {
+        Node {
+            node: Some(cst::Primary::EList(vec![
                 Node {
-                    node: Some(
-                        Name {
+                    node: Some(test_expr()),
+                    loc: Loc::new(0..1, "This is also a test".into()),
+                },
+                Node {
+                    node: Some(test_expr()),
+                    loc: Loc::new(0..1, "This is also a test".into()),
+                },
+            ])),
+            loc: Loc::new(0..1, "This is also a test".into()),
+        }
+    }
+
+    fn test_unary_node() -> Node<Option<cst::Unary>> {
+        Node {
+            node: Some(cst::Unary {
+                op: None,
+                item: Node {
+                    node: Some(cst::Member {
+                        item: test_primary_ref_node(),
+                        access: vec![],
+                    }),
+                    loc: Loc::new(0..1, "This is a test".into()),
+                },
+            }),
+            loc: Loc::new(0..1, "This is a test".into()),
+        }
+    }
+
+    fn test_mult_node() -> Node<Option<cst::Mult>> {
+        Node {
+            node: Some(cst::Mult {
+                initial: test_unary_node(),
+                extended: vec![],
+            }),
+            loc: Loc::new(0..1, "This is a test".into()),
+        }
+    }
+
+    fn test_add_node() -> Node<Option<cst::Add>> {
+        Node {
+            node: Some(cst::Add {
+                initial: test_mult_node(),
+                extended: vec![],
+            }),
+            loc: Loc::new(0..1, "This is a test".into()),
+        }
+    }
+
+    fn test_relation_node() -> Node<Option<cst::Relation>> {
+        Node {
+            node: Some(cst::Relation::Common {
+                initial: test_add_node(),
+                extended: vec![],
+            }),
+            loc: Loc::new(0..1, "This is a test".into()),
+        }
+    }
+
+    fn test_expr_or_node() -> cst::ExprData {
+        cst::ExprData::Or(Node {
+            node: Some(cst::Or {
+                extended: vec![],
+                initial: Node {
+                    node: Some(cst::And {
+                        initial: test_relation_node(),
+                        extended: vec![],
+                    }),
+                    loc: Loc::new(0..1, "This is a test".into()),
+                },
+            }),
+            loc: Loc::new(0..1, "This is a test".into()),
+        })
+    }
+
+    fn test_expr() -> cst::Expr {
+        cst::Expr::Expr(cst::ExprImpl {
+            expr: Box::new(test_expr_or_node()),
+        })
+    }
+
+    fn test_primary_expr_node() -> Node<Option<cst::Primary>> {
+        Node {
+            node: Some(cst::Primary::Expr(Node {
+                node: Some(test_expr()),
+                loc: Loc::new(0..1, "This is a test".into()),
+            })),
+            loc: Loc::new(0..1, "This is also a test".into()),
+        }
+    }
+
+    fn test_primary_name_node() -> Node<Option<cst::Primary>> {
+        Node {
+            node: Some(cst::Primary::Name(Node {
+                node: Some(Name {
+                    path: vec![],
+                    name: Node {
+                        loc: Loc::new(0..1, "So much testing".into()),
+                        node: Some(cst::Ident::Ident("test".into())),
+                    },
+                }),
+                loc: Loc::new(0..1, "This is a test".into()),
+            })),
+            loc: Loc::new(0..1, "This is also a test".into()),
+        }
+    }
+
+    fn test_primary_literal_node() -> Node<Option<cst::Primary>> {
+        Node {
+            node: Some(cst::Primary::Literal(Node {
+                node: Some(cst::Literal::True),
+                loc: Loc::new(0..1, "This is a test".into()),
+            })),
+            loc: Loc::new(0..1, "This is also a test".into()),
+        }
+    }
+
+    fn test_primary_slot_node() -> Node<Option<cst::Primary>> {
+        Node {
+            node: Some(cst::Primary::Slot(Node {
+                node: Some(cst::Slot::Principal),
+                loc: Loc::new(0..1, "This is a test".into()),
+            })),
+            loc: Loc::new(0..1, "This is also a test".into()),
+        }
+    }
+
+    fn test_primary_ref_node() -> Node<Option<cst::Primary>> {
+        Node {
+            node: Some(cst::Primary::Ref(Node {
+                node: Some(cst::Ref::Uid {
+                    path: Node {
+                        node: Some(Name {
                             path: vec![],
-                            name: todo!(),
+                            name: Node {
+                                loc: Loc::new(0..1, "So much testing".into()),
+                                node: Some(cst::Ident::Ident("test".into())),
+                            },
                         }),
-                    loc: todo!()})),
-            loc: todo!()
-        };
-        n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+                        loc: Loc::new(0..1, "This is a test".into()),
+                    },
+                    eid: Node {
+                        node: Some(cst::Str::String("test".into())),
+                        loc: Loc::new(0..1, "This is a test".into()),
+                    },
+                }),
+                loc: Loc::new(0..1, "This is a test".into()),
+            })),
+            loc: Loc::new(0..1, "This is also a test".into()),
+        }
     }
 }
