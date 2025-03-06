@@ -579,6 +579,8 @@ impl ValidatorSchema {
                         tags,
                         loc,
                     } => {
+                        println!("HERE WE ARE: {:?}", loc.clone());
+
                         let (attributes, open_attributes) = {
                             let unresolved =
                                 try_jsonschema_type_into_validator_type(attributes.0, extensions)?;
@@ -600,7 +602,7 @@ impl ValidatorSchema {
                         Ok((
                             name.with_loc(loc.as_ref()),
                             ValidatorEntityType::new_standard(
-                                name,
+                                name.clone(),
                                 descendants,
                                 attributes,
                                 open_attributes,

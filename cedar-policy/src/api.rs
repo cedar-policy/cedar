@@ -4518,53 +4518,59 @@ mod test_access {
     use super::*;
 
     fn schema() -> Schema {
-        let src = r#"
-          type Task = {
-    "id": Long,
-    "name": String,
-    "state": String,
-};
+//         let src = r#"
+//           type Task = {
+//     "id": Long,
+//     "name": String,
+//     "state": String,
+// };
 
-type Tasks = Set<Task>;
-entity List in [Application] = {
-  "editors": Team,
-  "name": String,
-  "owner": User,
-  "readers": Team,
-  "tasks": Tasks,
-};
+// type Tasks = Set<Task>;
+// entity List in [Application] = {
+//   "editors": Team,
+//   "name": String,
+//   "owner": User,
+//   "readers": Team,
+//   "tasks": Tasks,
+// };
+// entity Application;
+// entity User in [Team, Application] = {
+//   "joblevel": Long,
+//   "location": String,
+// };
+
+// entity CoolList;
+
+// entity Team in [Team, Application];
+
+// action Read, Write, Create;
+
+// action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
+//     principal: [User],
+//     resource : [List]
+// };
+
+// action GetList in Read appliesTo {
+//     principal : [User],
+//     resource : [List, CoolList]
+// };
+
+// action GetLists in Read appliesTo {
+//     principal : [User],
+//     resource : [Application]
+// };
+
+// action CreateList in Create appliesTo {
+//     principal : [User],
+//     resource : [Application]
+// };
+
+//         "#;
+
+let src = r#"
 entity Application;
-entity User in [Team, Application] = {
-  "joblevel": Long,
-  "location": String,
-};
 
 entity CoolList;
-
-entity Team in [Team, Application];
-
-action Read, Write, Create;
-
-action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
-    principal: [User],
-    resource : [List]
-};
-
-action GetList in Read appliesTo {
-    principal : [User],
-    resource : [List, CoolList]
-};
-
-action GetLists in Read appliesTo {
-    principal : [User],
-    resource : [Application]
-};
-
-action CreateList in Create appliesTo {
-    principal : [User],
-    resource : [Application]
-};
-
         "#;
 
         src.parse().unwrap()
