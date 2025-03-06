@@ -531,13 +531,16 @@ impl ValidatorSchema {
                 match entity_type {
                     EntityTypeFragment::Enum(choices) => Ok((
                         name.clone(),
-                        ValidatorEntityType::new_enum(name, descendants, choices),
+                        ValidatorEntityType::new_enum(name.clone(), descendants, choices, name.loc().cloned()),
                     )),
                     EntityTypeFragment::Standard {
                         attributes,
                         parents: _,
                         tags,
+                        loc
                     } => {
+                        println!("HERE WE ARE: {:?}", loc.clone());
+
                         let (attributes, open_attributes) = {
                             let unresolved =
                                 try_jsonschema_type_into_validator_type(attributes.0, extensions)?;
@@ -555,14 +558,16 @@ impl ValidatorSchema {
                             .transpose()?
                             .map(|unresolved| unresolved.resolve_common_type_refs(&common_types))
                             .transpose()?;
+             
                         Ok((
-                            name.clone(),
+                            name.with_loc(loc.as_ref()),
                             ValidatorEntityType::new_standard(
-                                name,
+                                name.clone(),
                                 descendants,
                                 attributes,
                                 open_attributes,
                                 tags,
+                                loc
                             ),
                         ))
                     }

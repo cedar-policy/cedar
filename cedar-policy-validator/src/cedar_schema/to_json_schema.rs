@@ -83,7 +83,7 @@ pub fn cedar_schema_to_json_schema(
     let names = build_namespace_bindings(all_namespaces.iter().map(|ns| &ns.data))?;
     let warnings = compute_namespace_warnings(&names, extensions);
     let fragment:std::collections::BTreeMap<Option<Name>, json_schema::NamespaceDefinition<RawName>> = collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?.collect();
-    // fragment.iter().for_each(|(_, n)| n.common_types.iter().for_each(|t| println!("Common type: {:?}", t.1)));
+    fragment.iter().for_each(|(_, n)| n.entity_types.iter().for_each(|e| println!("ENTITY: {:?}", e)));
     // println!("{:?}", );
     Ok((
         json_schema::Fragment(fragment),
@@ -130,8 +130,8 @@ fn split_unqualified_namespace(
     // First split every namespace into those with explicit names and those without
     let (qualified, unqualified): (Vec<_>, Vec<_>) =
         namespaces.into_iter().partition(|n| n.data.name.is_some());
-    qualified.iter().for_each(|a| println!("Qualified: {:?}", a));
-    unqualified.iter().for_each(|a| println!("UnQualified: {:?}", a));
+    // qualified.iter().for_each(|a| println!("Qualified: {:?}", a));
+    // unqualified.iter().for_each(|a| println!("UnQualified: {:?}", a));
 
     // Now combine all the decls in namespaces without names into one unqualified namespace
     let mut unqualified_decls = vec![];
@@ -381,6 +381,7 @@ fn convert_entity_decl(
                     member_of_types: d.member_of_types.into_iter().map(RawName::from).collect(),
                     shape: convert_attr_decls(d.attrs),
                     tags: d.tags.map(cedar_type_to_json_type),
+                    loc: Some(e.data.loc.clone())
                 })
             }
         },

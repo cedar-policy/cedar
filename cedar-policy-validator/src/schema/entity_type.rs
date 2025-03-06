@@ -21,7 +21,7 @@ use serde::Serialize;
 use smol_str::SmolStr;
 use std::collections::HashSet;
 
-use cedar_policy_core::{ast::EntityType, transitive_closure::TCNode};
+use cedar_policy_core::{ast::EntityType, parser::Loc, transitive_closure::TCNode};
 
 use crate::types::{AttributeType, Attributes, OpenTag, Type};
 
@@ -46,6 +46,9 @@ pub struct ValidatorEntityType {
     ///
     /// For enumerated entities, this is always empty.
     pub(crate) attributes: Attributes,
+
+    /// The location
+    pub loc: Option<Loc>
 }
 
 /// The kind of validator entity types.
@@ -86,6 +89,7 @@ impl ValidatorEntityType {
         attributes: Attributes,
         open_attributes: OpenTag,
         tags: Option<Type>,
+        loc: Option<Loc>
     ) -> Self {
         Self {
             name,
@@ -95,6 +99,7 @@ impl ValidatorEntityType {
                 open_attributes,
                 tags,
             }),
+            loc
         }
     }
 
@@ -106,12 +111,14 @@ impl ValidatorEntityType {
         name: EntityType,
         descendants: impl IntoIterator<Item = EntityType>,
         values: NonEmpty<SmolStr>,
+        loc: Option<Loc>
     ) -> Self {
         Self {
             name,
             descendants: descendants.into_iter().collect(),
             attributes: Attributes::with_attributes([]),
             kind: ValidatorEntityTypeKind::Enum(values),
+            loc
         }
     }
 
