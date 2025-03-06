@@ -272,6 +272,25 @@ impl PrincipalConstraint {
             }
         }
     }
+
+    /// Returns true if this constraint has a slot.
+    pub fn has_slot(&self) -> bool {
+        match self {
+            PrincipalConstraint::All => false,
+            PrincipalConstraint::Eq(EqConstraint::Entity { entity: _ }) => false,
+            PrincipalConstraint::Eq(EqConstraint::Slot { slot: _ }) => true,
+            PrincipalConstraint::In(PrincipalOrResourceInConstraint::Entity { entity: _ }) => false,
+            PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot { slot: _ }) => true,
+            PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type: _,
+                in_entity: None | Some(PrincipalOrResourceInConstraint::Entity { .. }),
+            }) => false,
+            PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type: _,
+                in_entity: Some(PrincipalOrResourceInConstraint::Slot { slot: _ }),
+            }) => true,
+        }
+    }
 }
 
 impl ResourceConstraint {
@@ -376,6 +395,25 @@ impl ResourceConstraint {
             }
         }
     }
+
+    /// Returns true if this constraint has a slot.
+    pub fn has_slot(&self) -> bool {
+        match self {
+            ResourceConstraint::All => false,
+            ResourceConstraint::Eq(EqConstraint::Entity { entity: _ }) => false,
+            ResourceConstraint::In(PrincipalOrResourceInConstraint::Entity { entity: _ }) => false,
+            ResourceConstraint::Eq(EqConstraint::Slot { slot: _ }) => true,
+            ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot { slot: _ }) => true,
+            ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type: _,
+                in_entity: None | Some(PrincipalOrResourceInConstraint::Entity { .. }),
+            }) => false,
+            ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                entity_type: _,
+                in_entity: Some(PrincipalOrResourceInConstraint::Slot { slot: _ }),
+            }) => true,
+        }
+    }
 }
 
 impl ActionConstraint {
@@ -430,6 +468,12 @@ impl ActionConstraint {
             #[cfg(feature = "tolerant-ast")]
             ActionConstraint::ErrorConstraint => Ok(self),
         }
+    }
+
+    /// Returns true if this constraint has a slot.
+    pub fn has_slot(&self) -> bool {
+        // currently, slots are not allowed in action constraints
+        false
     }
 }
 

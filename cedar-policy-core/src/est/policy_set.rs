@@ -19,6 +19,9 @@ use super::PolicySetFromJsonError;
 use crate::ast::{self, EntityUID, PolicyID, SlotId};
 use crate::entities::json::err::JsonDeserializationErrorContext;
 use crate::entities::json::EntityUidJson;
+use crate::parser::cst::Policies;
+use crate::parser::err::ParseErrors;
+use crate::parser::Node;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::collections::HashMap;
@@ -125,6 +128,45 @@ impl TryFrom<PolicySet> for ast::PolicySet {
         }
 
         Ok(ast_pset)
+    }
+}
+
+impl TryFrom<Node<Option<Policies>>> for PolicySet {
+    type Error = ParseErrors;
+
+    fn try_from(policies: Node<Option<Policies>>) -> Result<Self, Self::Error> {
+        let mut templates = HashMap::new();
+        let mut static_policies = HashMap::new();
+        let mut all_errs: Vec<ParseErrors> = vec![];
+        for (policy_id, policy) in policies.with_generated_policyids()? {
+            match policy.try_as_inner() {
+                Ok(cst) => match Policy::try_from(cst.clone()) {
+                    Ok(est) => {
+                        if est.is_template() {
+                            templates.insert(policy_id, est);
+                        } else {
+                            static_policies.insert(policy_id, est);
+                        }
+                    }
+                    Err(e) => {
+                        all_errs.push(e);
+                    }
+                },
+                Err(e) => {
+                    all_errs.push(e.into());
+                }
+            };
+        }
+        // fail on any error
+        if let Some(errs) = ParseErrors::flatten(all_errs) {
+            Err(errs)
+        } else {
+            Ok(PolicySet {
+                templates,
+                static_policies,
+                template_links: Vec::new(),
+            })
+        }
     }
 }
 

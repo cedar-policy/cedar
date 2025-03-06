@@ -124,6 +124,14 @@ impl Policy {
             annotations: self.annotations,
         })
     }
+
+    /// Returns true if this policy is a template, i.e., it has at least one slot.
+    pub fn is_template(&self) -> bool {
+        self.principal.has_slot()
+            || self.action.has_slot()
+            || self.resource.has_slot()
+            || self.conditions.iter().any(|c| c.has_slot())
+    }
 }
 
 impl Clause {
@@ -145,6 +153,12 @@ impl Clause {
             When(e) => Ok(When(e.sub_entity_literals(mapping)?)),
             Unless(e) => Ok(Unless(e.sub_entity_literals(mapping)?)),
         }
+    }
+
+    /// Returns true if this clause has a slot.
+    pub fn has_slot(&self) -> bool {
+        // currently, slots are not allowed in clauses
+        false
     }
 }
 
