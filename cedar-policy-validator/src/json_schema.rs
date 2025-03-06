@@ -566,6 +566,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N
                     member_of_types: Option::from(value.member_of_types).unwrap_or_default(),
                     shape: Option::from(value.shape).unwrap_or_default(),
                     tags: Option::from(value.tags),
+                    loc: todo!()
                 }),
                 annotations: value.annotations,
                 loc: None,
@@ -595,6 +596,9 @@ pub struct StandardEntityType<N> {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     pub tags: Option<Type<N>>,
+    /// Shrug?
+    #[serde(skip)]
+    pub(crate) loc: Option<Loc>
 }
 
 #[cfg(test)]
@@ -636,6 +640,7 @@ impl EntityType<RawName> {
                     tags: ty
                         .tags
                         .map(|ty| ty.conditionally_qualify_type_references(ns)),
+                    loc: todo!()
                 }),
                 annotations,
                 loc,
@@ -678,6 +683,7 @@ impl EntityType<ConditionalName> {
                         .tags
                         .map(|ty| ty.fully_qualify_type_references(all_defs))
                         .transpose()?,
+                    loc: todo!()
                 }),
                 annotations,
                 loc,
