@@ -332,7 +332,7 @@ pub struct NamespaceDefinition<N> {
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     pub entity_types: BTreeMap<UnreservedId, EntityType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    pub actions: BTreeMap<SmolStr, ActionType<N>>,
+    pub actions: BTreeMap<ActionName, ActionType<N>>,
     /// Annotations
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
@@ -345,7 +345,7 @@ impl<N> NamespaceDefinition<N> {
     /// actions, and no common types or annotations
     pub fn new(
         entity_types: impl IntoIterator<Item = (UnreservedId, EntityType<N>)>,
-        actions: impl IntoIterator<Item = (SmolStr, ActionType<N>)>,
+        actions: impl IntoIterator<Item = (ActionName, ActionType<N>)>,
     ) -> Self {
         Self {
             common_types: BTreeMap::new(),
@@ -567,7 +567,7 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N
                     member_of_types: Option::from(value.member_of_types).unwrap_or_default(),
                     shape: Option::from(value.shape).unwrap_or_default(),
                     tags: Option::from(value.tags),
-                    loc: todo!()
+                    loc: None,
                 }),
                 annotations: value.annotations,
                 loc: None,
@@ -600,7 +600,8 @@ pub struct StandardEntityType<N> {
     pub tags: Option<Type<N>>,
     /// Shrug?
     #[serde(skip)]
-    pub(crate) loc: Option<Loc>
+    #[educe(Eq(ignore))]
+    pub(crate) loc: Option<Loc>,
 }
 
 #[cfg(test)]
@@ -642,7 +643,7 @@ impl EntityType<RawName> {
                     tags: ty
                         .tags
                         .map(|ty| ty.conditionally_qualify_type_references(ns)),
-                    loc: todo!()
+                    loc: None,
                 }),
                 annotations,
                 loc,
@@ -685,7 +686,7 @@ impl EntityType<ConditionalName> {
                         .tags
                         .map(|ty| ty.fully_qualify_type_references(all_defs))
                         .transpose()?,
-                    loc: todo!()
+                    loc: None,
                 }),
                 annotations,
                 loc,
@@ -774,6 +775,68 @@ impl AttributesOrContext<ConditionalName> {
         Ok(AttributesOrContext(
             self.0.fully_qualify_type_references(all_defs)?,
         ))
+    }
+}
+
+/// TODO
+#[derive(Educe, Debug, Clone)]
+#[educe(PartialEq, Eq)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub struct ActionName {
+    /// something
+    pub name: SmolStr,
+    /// todo
+    #[educe(Eq(ignore))]
+    pub loc: Option<Loc>
+}
+use std::hash::Hash;
+use std::hash::Hasher;
+impl Hash for ActionName {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
+}
+
+impl Ord for ActionName {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.name.cmp(&other.name)
+    }
+}
+
+impl PartialOrd for ActionName {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.name.partial_cmp(&other.name)
+    }
+}
+
+impl From<&str> for ActionName {
+    fn from(value: &str) -> Self {
+        Self {
+            name: value.into(),
+            loc: None
+        }
+    }
+}
+impl Serialize for ActionName {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.name)
+    }
+}
+
+impl<'de> Deserialize<'de> for ActionName {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>
+    {
+        let name = SmolStr::deserialize(deserializer)?;
+        Ok(ActionName {
+            name,
+            loc: None,
+        })
     }
 }
 
@@ -1043,6 +1106,8 @@ impl ActionEntityUID<RawName> {
         self,
         ns: Option<&InternalName>,
     ) -> ActionEntityUID<ConditionalName> {
+        // println!("Action: CONDITIONALLY QUALIFIED");
+
         // Upholding the INVARIANT on ActionEntityUID.ty: constructing an `ActionEntityUID<ConditionalName>`,
         // so in the constructed `ActionEntityUID`, `.ty` must be `Some` in all cases
         ActionEntityUID {
@@ -1064,6 +1129,8 @@ impl ActionEntityUID<RawName> {
     pub fn qualify_with(self, ns: Option<&InternalName>) -> ActionEntityUID<InternalName> {
         // Upholding the INVARIANT on ActionEntityUID.ty: constructing an `ActionEntityUID<InternalName>`,
         // so in the constructed `ActionEntityUID`, `.ty` must be `Some` in all cases
+        // println!("Action: QUALIFY WITH");
+
         ActionEntityUID {
             id: self.id,
             ty: {
@@ -1118,6 +1185,8 @@ impl ActionEntityUID<ConditionalName> {
     pub(crate) fn possibilities(&self) -> impl Iterator<Item = ActionEntityUID<InternalName>> + '_ {
         // Upholding the INVARIANT on ActionEntityUID.ty: constructing `ActionEntityUID<InternalName>`,
         // so in the constructed `ActionEntityUID`, `.ty` must be `Some` in all cases
+        // println!("Action: POSSIBILITIES");
+
         self.ty()
             .possibilities()
             .map(|possibility| ActionEntityUID {
@@ -1132,6 +1201,8 @@ impl ActionEntityUID<ConditionalName> {
     /// As of this writing, [`ActionEntityUID<RawName>`] has a `Display` impl while
     /// [`ActionEntityUID<ConditionalName>`] does not.
     pub(crate) fn as_raw(&self) -> ActionEntityUID<RawName> {
+        // println!("Action: AS RAW");
+
         ActionEntityUID {
             id: self.id.clone(),
             ty: self.ty.as_ref().map(|ty| ty.raw().clone()),
@@ -1186,6 +1257,8 @@ impl TryFrom<ActionEntityUID<InternalName>> for EntityUID {
 impl From<EntityUID> for ActionEntityUID<Name> {
     fn from(euid: EntityUID) -> Self {
         let (ty, id) = euid.components();
+        println!("Action: FROM ENTITY UID");
+
         ActionEntityUID {
             ty: Some(ty.into()),
             id: <Eid as AsRef<SmolStr>>::as_ref(&id).clone(),
@@ -3171,6 +3244,7 @@ mod test_json_roundtrip {
                     "a".parse().unwrap(),
                     EntityType {
                         kind: EntityTypeKind::Standard(StandardEntityType {
+                            loc: None,
                             member_of_types: vec!["a".parse().unwrap()],
                             shape: AttributesOrContext(Type::Type {
                                 ty: TypeVariant::Record(RecordType {
@@ -3222,6 +3296,7 @@ mod test_json_roundtrip {
                         "a".parse().unwrap(),
                         EntityType {
                             kind: EntityTypeKind::Standard(StandardEntityType {
+                                loc: None,
                                 member_of_types: vec!["a".parse().unwrap()],
                                 shape: AttributesOrContext(Type::Type {
                                     ty: TypeVariant::Record(RecordType {
