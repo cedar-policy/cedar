@@ -51,7 +51,7 @@ mod demo_tests {
         "#;
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::none()).unwrap();
-        let foo = schema.0.get(&None).unwrap().actions.get("Foo").unwrap();
+        let foo = schema.0.get(&None).unwrap().actions.get(&"Foo".into()).unwrap();
         assert_matches!(foo,
             json_schema::ActionType {
                 applies_to : Some(json_schema::ApplySpec {
@@ -214,7 +214,7 @@ mod demo_tests {
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let unqual = schema.0.get(&None).unwrap();
-        let foo = unqual.actions.get("Foo").unwrap();
+        let foo = unqual.actions.get(&"Foo".into()).unwrap();
         assert_matches!(&foo, json_schema::ActionType {
             applies_to: Some(json_schema::ApplySpec { resource_types, principal_types, .. }),
             ..
@@ -245,7 +245,7 @@ mod demo_tests {
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let unqual = schema.0.get(&None).unwrap();
-        let foo = unqual.actions.get("Foo").unwrap();
+        let foo = unqual.actions.get(&"Foo".into()).unwrap();
         assert_matches!(foo, json_schema::ActionType {
             applies_to: Some(json_schema::ApplySpec { resource_types, principal_types, .. }),
             ..
@@ -313,7 +313,7 @@ mod demo_tests {
             loc: None,
         };
         let namespace =
-            json_schema::NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
+            json_schema::NamespaceDefinition::new(empty(), once((ActionName::from("foo"), action)));
         let fragment =
             json_schema::Fragment(BTreeMap::from([(Some("bar".parse().unwrap()), namespace)]));
         let as_src = fragment.to_cedarschema().unwrap();
@@ -411,11 +411,12 @@ namespace Baz {action "Foo" appliesTo {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
+                    loc: None
                 }
                 .into(),
             )],
             BTreeMap::from([(
-                "j".to_smolstr(),
+                ActionName::from("j"),
                 json_schema::ActionType::<RawName> {
                     attributes: None,
                     applies_to: Some(json_schema::ApplySpec::<RawName> {

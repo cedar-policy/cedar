@@ -37,7 +37,7 @@ use super::{
 };
 use crate::{
     cedar_schema,
-    json_schema::{self, CommonType},
+    json_schema::{self, ActionName, CommonType},
     RawName,
 };
 
@@ -74,16 +74,19 @@ pub fn cedar_schema_to_json_schema(
     // that namespace make it into the JSON schema structure under that
     // namespace's key.
     let (qualified_namespaces, unqualified_namespace) = split_unqualified_namespace(schema);
-    
+
     // Create a single iterator for all namespaces
     let all_namespaces = qualified_namespaces
         .chain(unqualified_namespace)
         .collect::<Vec<_>>();
-
+    // println!("all_namespaces: {:?}", all_namespaces);
     let names = build_namespace_bindings(all_namespaces.iter().map(|ns| &ns.data))?;
     let warnings = compute_namespace_warnings(&names, extensions);
-    let fragment:std::collections::BTreeMap<Option<Name>, json_schema::NamespaceDefinition<RawName>> = collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?.collect();
-    fragment.iter().for_each(|(_, n)| n.entity_types.iter().for_each(|e| println!("ENTITY: {:?}", e)));
+    let fragment: std::collections::BTreeMap<
+        Option<Name>,
+        json_schema::NamespaceDefinition<RawName>,
+    > = collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?.collect();
+    // fragment.iter().for_each(|(_, n)| n.entity_types.iter().for_each(|e| println!("ENTITY: {:?}", e)));
     // println!("{:?}", );
     Ok((
         json_schema::Fragment(fragment),
@@ -225,7 +228,7 @@ impl TryFrom<Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName>
 /// Converts action type decls
 fn convert_action_decl(
     a: Annotated<Node<ActionDecl>>,
-) -> Result<impl Iterator<Item = (SmolStr, json_schema::ActionType<RawName>)>, ToJsonSchemaErrors> {
+) -> Result<impl Iterator<Item = (ActionName, json_schema::ActionType<RawName>)>, ToJsonSchemaErrors> {
     let ActionDecl {
         names,
         parents,
@@ -249,7 +252,7 @@ fn convert_action_decl(
         loc: Some(a.data.loc),
     };
     // Then map that type across all of the bound names
-    Ok(names.into_iter().map(move |name| (name.node, ty.clone())))
+    Ok(names.into_iter().map(move |name| (ActionName { name: name.node, loc: Some(name.loc) }, ty.clone())))
 }
 
 fn convert_qual_name(qn: Node<QualName>) -> json_schema::ActionEntityUID<RawName> {
@@ -381,7 +384,7 @@ fn convert_entity_decl(
                     member_of_types: d.member_of_types.into_iter().map(RawName::from).collect(),
                     shape: convert_attr_decls(d.attrs),
                     tags: d.tags.map(cedar_type_to_json_type),
-                    loc: Some(e.data.loc.clone())
+                    loc: Some(e.data.loc.clone()),
                 })
             }
         },

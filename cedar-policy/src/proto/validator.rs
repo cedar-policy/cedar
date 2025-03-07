@@ -166,7 +166,7 @@ impl From<&models::EntityDecl> for cedar_policy_validator::ValidatorEntityType {
                 model_to_attributes(&v.attributes),
                 types::OpenTag::default(),
                 v.tags.as_ref().map(types::Type::from),
-                None
+                None,
             ),
             Some(enum_choices) => {
                 // `enum_choices` is not empty, so `v` represents an enumerated entity type.
