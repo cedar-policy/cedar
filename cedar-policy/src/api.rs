@@ -30,7 +30,7 @@ use cedar_policy_validator::entity_manifest;
 pub use cedar_policy_validator::entity_manifest::{
     AccessTrie, EntityManifest, EntityRoot, Fields, RootAccessTrie,
 };
-use cedar_policy_validator::json_schema;
+use cedar_policy_validator::json_schema::{self, ActionName};
 use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;
 
@@ -1506,9 +1506,10 @@ impl SchemaFragment {
         id: &EntityId,
     ) -> Option<impl Iterator<Item = (&str, &str)>> {
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
+        let action_name = ActionName {name: id.as_ref().into(), loc: None};
         ns_def
             .actions
-            .get(id.as_ref())
+            .get(&action_name)
             .map(|a| annotations_to_pairs(&a.annotations))
     }
 
@@ -1525,9 +1526,11 @@ impl SchemaFragment {
         id: &EntityId,
         annotation_key: impl AsRef<str>,
     ) -> Option<&str> {
+        let action_name = ActionName {name: id.as_ref().into(), loc: None};
+
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
         get_annotation_by_key(
-            &ns_def.actions.get(id.as_ref())?.annotations,
+            &ns_def.actions.get(&action_name)?.annotations,
             annotation_key,
         )
     }
@@ -4518,60 +4521,64 @@ mod test_access {
     use super::*;
 
     fn schema() -> Schema {
-//         let src = r#"
-//           type Task = {
-//     "id": Long,
-//     "name": String,
-//     "state": String,
-// };
+                let src = r#"
+                  type Task = {
+            "id": Long,
+            "name": String,
+            "state": String,
+        };
 
-// type Tasks = Set<Task>;
-// entity List in [Application] = {
-//   "editors": Team,
-//   "name": String,
-//   "owner": User,
-//   "readers": Team,
-//   "tasks": Tasks,
-// };
-// entity Application;
-// entity User in [Team, Application] = {
-//   "joblevel": Long,
-//   "location": String,
-// };
+        type Tasks = Set<Task>;
+        entity List in [Application] = {
+          "editors": Team,
+          "name": String,
+          "owner": User,
+          "readers": Team,
+          "tasks": Tasks,
+        };
+        entity Application;
+        entity User in [Team, Application] = {
+          "joblevel": Long,
+          "location": String,
+        };
 
-// entity CoolList;
+        entity CoolList;
 
-// entity Team in [Team, Application];
+        entity Team in [Team, Application];
 
-// action Read, Write, Create;
+        action Read, Write, Create;
 
-// action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
-//     principal: [User],
-//     resource : [List]
-// };
+        action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
+            principal: [User],
+            resource : [List]
+        };
 
-// action GetList in Read appliesTo {
-//     principal : [User],
-//     resource : [List, CoolList]
-// };
+        action GetList in Read appliesTo {
+            principal : [User],
+            resource : [List, CoolList]
+        };
 
-// action GetLists in Read appliesTo {
-//     principal : [User],
-//     resource : [Application]
-// };
+        action GetLists in Read appliesTo {
+            principal : [User],
+            resource : [Application]
+        };
 
-// action CreateList in Create appliesTo {
-//     principal : [User],
-//     resource : [Application]
-// };
+        action CreateList in Create appliesTo {
+            principal : [User],
+            resource : [Application]
+        };
 
-//         "#;
+                "#;
 
-let src = r#"
-entity Application;
-
-entity CoolList;
-        "#;
+        // let src = r#"
+        // entity Application;
+        // entity User;
+        // action Read, Write, Create;
+        // action CreateList in Create appliesTo {
+        //     principal : [User],
+        //     resource : [Application]
+        // };
+        // "#;
 
         src.parse().unwrap()
     }

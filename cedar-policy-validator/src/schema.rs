@@ -316,6 +316,7 @@ impl ValidatorSchema {
     ) -> Option<impl Iterator<Item = &'a EntityType> + 'a> {
         if self.entity_types.contains_key(ty) {
             Some(self.entity_types.values().filter_map(|ety| {
+                // println!("Fetching ancestors loc: {:?}", ety.clone());
                 if ety.descendants.contains(ty) {
                     Some(&ety.name)
                 } else {
@@ -514,6 +515,8 @@ impl ValidatorSchema {
             }
 
             for (name, entity_type) in ns_def.entity_types.defs {
+                println!("first pass: {:?}", name);
+                println!("Entity type fragment: {:?}", entity_type);
                 match entity_type_fragments.entry(name) {
                     Entry::Vacant(v) => v.insert(entity_type),
                     Entry::Occupied(o) => {
@@ -526,6 +529,7 @@ impl ValidatorSchema {
             }
 
             for (action_euid, action) in ns_def.actions.actions {
+                // println!("Action fragment action euid: {:?}", action_euid.clone());
                 match action_fragments.entry(action_euid) {
                     Entry::Vacant(v) => v.insert(action),
                     Entry::Occupied(o) => {
@@ -542,7 +546,10 @@ impl ValidatorSchema {
         // to get a `children` relation.
         let mut entity_children: HashMap<EntityType, HashSet<EntityType>> = HashMap::new();
         for (name, entity_type) in entity_type_fragments.iter() {
+            println!("Name: {:?}", name);
+            println!("Parents:");
             for parent in entity_type.parents() {
+                println!("Parent: {:?}", parent);
                 entity_children
                     .entry(internal_name_to_entity_type(parent.clone())?)
                     .or_default()
@@ -579,7 +586,7 @@ impl ValidatorSchema {
                         tags,
                         loc,
                     } => {
-                        println!("HERE WE ARE: {:?}", loc.clone());
+                        // println!("HERE WE ARE: {:?}", loc.clone());
 
                         let (attributes, open_attributes) = {
                             let unresolved =
@@ -627,6 +634,9 @@ impl ValidatorSchema {
         let mut action_ids = action_fragments
             .into_iter()
             .map(|(name, action)| -> Result<_> {
+                let loc = action.loc;
+                // println!("Name: {:?}", name);
+                // println!("Action location: {:?}",loc.clone() );
                 let descendants = action_children.remove(&name).unwrap_or_default();
                 let (context, open_context_attributes) = {
                     let unresolved =
