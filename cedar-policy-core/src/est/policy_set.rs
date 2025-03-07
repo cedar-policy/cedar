@@ -340,4 +340,39 @@ mod test {
             "invalid entry: found duplicate key at line 6 column 65"
         );
     }
+
+    #[test]
+    fn try_from_policies_static_only() {
+        let src = r#"
+            permit(principal == User::"alice", action, resource);
+            permit(principal, action == Action::"view", resource);
+        "#;
+        let node = crate::parser::text_to_cst::parse_policies(src).expect("Policies should parse");
+        let policy_set =
+            PolicySet::try_from(node).expect("Conversion to policy set should succeed");
+        assert_eq!(policy_set.static_policies.len(), 2);
+        assert!(policy_set.templates.is_empty());
+        assert!(policy_set.template_links.is_empty());
+    }
+
+    #[test]
+    fn try_from_policies_static_and_templates() {
+        let src = r#"
+            permit(principal == User::"alice", action, resource);
+            permit(principal == ?principal, action == Action::"view", resource);
+        "#;
+        let node = crate::parser::text_to_cst::parse_policies(src).expect("Policies should parse");
+        let policy_set =
+            PolicySet::try_from(node).expect("Conversion to policy set should succeed");
+        assert_eq!(policy_set.static_policies.len(), 1);
+        assert_eq!(policy_set.templates.len(), 1);
+        assert!(policy_set.template_links.is_empty());
+    }
+
+    #[test]
+    fn try_from_policies_with_parse_error() {
+        let src = r#"principal(p, action, resource);"#;
+        let node = crate::parser::text_to_cst::parse_policies(src).expect("policies should parse");
+        PolicySet::try_from(node).expect_err("Expected parse error to result in err");
+    }
 }
