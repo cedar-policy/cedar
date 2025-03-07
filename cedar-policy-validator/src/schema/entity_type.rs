@@ -48,8 +48,10 @@ pub struct ValidatorEntityType {
     pub(crate) attributes: Attributes,
 
     /// The location
-    pub loc: Option<Loc>
+    #[serde(skip)]
+    pub loc: Option<Loc>,
 }
+
 
 /// The kind of validator entity types.
 ///
@@ -89,7 +91,7 @@ impl ValidatorEntityType {
         attributes: Attributes,
         open_attributes: OpenTag,
         tags: Option<Type>,
-        loc: Option<Loc>
+        loc: Option<Loc>,
     ) -> Self {
         Self {
             name,
@@ -99,7 +101,7 @@ impl ValidatorEntityType {
                 open_attributes,
                 tags,
             }),
-            loc
+            loc,
         }
     }
 
@@ -111,14 +113,14 @@ impl ValidatorEntityType {
         name: EntityType,
         descendants: impl IntoIterator<Item = EntityType>,
         values: NonEmpty<SmolStr>,
-        loc: Option<Loc>
+        loc: Option<Loc>,
     ) -> Self {
         Self {
             name,
             descendants: descendants.into_iter().collect(),
             attributes: Attributes::with_attributes([]),
             kind: ValidatorEntityTypeKind::Enum(values),
-            loc
+            loc,
         }
     }
 

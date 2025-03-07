@@ -74,38 +74,6 @@ cfg_tolerant_ast! {
     });
 }
 
-#[cfg(feature = "tolerant-ast")]
-static DEFAULT_ANNOTATIONS: std::sync::LazyLock<Arc<Annotations>> =
-    std::sync::LazyLock::new(|| Arc::new(Annotations::default()));
-
-#[cfg(feature = "tolerant-ast")]
-static DEFAULT_PRINCIPAL_CONSTRAINT: std::sync::LazyLock<PrincipalConstraint> =
-    std::sync::LazyLock::new(|| PrincipalConstraint::any());
-
-#[cfg(feature = "tolerant-ast")]
-static DEFAULT_RESOURCE_CONSTRAINT: std::sync::LazyLock<ResourceConstraint> =
-    std::sync::LazyLock::new(|| ResourceConstraint::any());
-
-#[cfg(feature = "tolerant-ast")]
-static DEFAULT_ACTION_CONSTRAINT: std::sync::LazyLock<ActionConstraint> =
-    std::sync::LazyLock::new(|| ActionConstraint::any());
-
-#[cfg(feature = "tolerant-ast")]
-static DEFAULT_ERROR_EXPR: std::sync::LazyLock<Arc<Expr>> = std::sync::LazyLock::new(|| {
-    // Non scope constraint expression of an Error policy should also be an error
-    // This const represents an error expression that is part of an Error policy
-    // PANIC SAFETY: Infallible error type - can never fail
-    #[allow(clippy::unwrap_used)]
-    Arc::new(
-        <ExprWithErrsBuilder as ExprBuilder>::new()
-            .error(ParseErrors::singleton(ToASTError::new(
-                ToASTErrorKind::ASTErrorNode,
-                Loc::new(0..1, "ASTErrorNode".into()),
-            )))
-            .unwrap(),
-    )
-});
-
 /// Top level structure for a policy template.
 /// Contains both the AST for template, and the list of open slots in the template.
 ///
@@ -173,13 +141,6 @@ impl Template {
     /// Generate a template representing a policy that is unparsable
     pub fn error(id: PolicyID, loc: Option<Loc>) -> Self {
         let body = TemplateBody::error(id, loc);
-        Template::from(body)
-    }
-
-    #[cfg(feature = "tolerant-ast")]
-    /// Generate a template representing a policy that is unparsable
-    pub fn error(id: PolicyID) -> Self {
-        let body = TemplateBody::error(id);
         Template::from(body)
     }
 
