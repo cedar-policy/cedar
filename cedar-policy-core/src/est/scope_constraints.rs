@@ -933,3 +933,96 @@ impl TryFrom<ActionConstraint> for ast::ActionConstraint {
             })
     }
 }
+
+#[cfg(test)]
+mod test {
+    fn parse_policy(template: &str) -> crate::est::Policy {
+        let cst = crate::parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        cst.try_into().unwrap()
+    }
+
+    fn principal_has_slot(principal_text: &str) -> bool {
+        let text = format!("permit({principal_text}, action, resource);");
+        parse_policy(&text).principal.has_slot()
+    }
+
+    fn resource_has_slot(resource_text: &str) -> bool {
+        let text = format!("permit(principal, action, {resource_text});");
+        parse_policy(&text).resource.has_slot()
+    }
+
+    #[test]
+    fn has_slot_principal_all() {
+        assert!(!principal_has_slot(r#"principal"#));
+    }
+
+    #[test]
+    fn has_slot_principal_eq_entity() {
+        assert!(!principal_has_slot(r#"principal == User::"alice""#));
+    }
+
+    #[test]
+    fn has_slot_principal_eq_slot() {
+        assert!(principal_has_slot(r#"principal == ?principal"#));
+    }
+
+    #[test]
+    fn has_slot_principal_in_entity() {
+        assert!(!principal_has_slot(r#"principal in Group::"friends""#));
+    }
+
+    #[test]
+    fn has_slot_principal_in_slot() {
+        assert!(principal_has_slot(r#"principal in ?principal"#));
+    }
+
+    #[test]
+    fn has_slot_principal_is_entity() {
+        assert!(!principal_has_slot(r#"principal is User"#));
+    }
+
+    #[test]
+    fn has_slot_principal_is_slot() {
+        assert!(principal_has_slot(r#"principal is User in ?principal"#));
+    }
+
+    #[test]
+    fn has_slot_resource_all() {
+        assert!(!resource_has_slot(r#"resource"#));
+    }
+
+    #[test]
+    fn has_slot_resource_eq_entity() {
+        assert!(!resource_has_slot(
+            r#"resource == Photo::"VacationPhoto94.jpg""#
+        ));
+    }
+
+    #[test]
+    fn has_slot_resource_eq_slot() {
+        assert!(resource_has_slot(r#"resource == ?resource"#));
+    }
+
+    #[test]
+    fn has_slot_resource_in_entity() {
+        assert!(!resource_has_slot(r#"resource in Group::"vacation""#));
+    }
+
+    #[test]
+    fn has_slot_resource_in_slot() {
+        assert!(resource_has_slot(r#"resource in ?resource"#));
+    }
+
+    #[test]
+    fn has_slot_resource_is_entity() {
+        assert!(!resource_has_slot(r#"resource is Photo"#));
+    }
+
+    #[test]
+    fn has_slot_resource_is_slot() {
+        assert!(resource_has_slot(r#"resource is Photo in ?resource"#));
+    }
+}

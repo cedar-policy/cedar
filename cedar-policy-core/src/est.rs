@@ -4613,6 +4613,82 @@ mod test {
             .unwrap()
         );
     }
+
+    #[test]
+    fn is_template_principal_slot() {
+        let template = r#"
+            permit(
+                principal == ?principal,
+                action == Action::"view",
+                resource
+            );
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        assert!(
+            est.is_template(),
+            "Policy with principal slot not marked as template"
+        );
+    }
+
+    #[test]
+    fn is_template_resource_slot() {
+        let template = r#"
+            permit(
+                principal,
+                action == Action::"view",
+                resource in ?resource
+            );
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        assert!(
+            est.is_template(),
+            "Policy with resource slot not marked as template"
+        );
+    }
+
+    #[test]
+    fn is_template_static_policy() {
+        let template = r#"
+            permit(
+                principal,
+                action == Action::"view",
+                resource
+            );
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        assert!(!est.is_template(), "Static policy marked as template");
+    }
+
+    #[test]
+    fn is_template_static_policy_with_condition() {
+        let template = r#"
+            permit(
+                principal,
+                action == Action::"view",
+                resource
+            ) when {
+                principal in resource.owners
+            };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        assert!(!est.is_template(), "Static policy marked as template");
+    }
 }
 
 #[cfg(test)]
