@@ -841,9 +841,18 @@ enum PrincipalOrResource {
     Resource(ResourceConstraint),
 }
 
+enum TolerantAstSetting {
+    NotTolerant,
+    #[cfg(feature = "tolerant-ast")]
+    Tolerant,
+}
+
 impl Node<Option<cst::VariableDef>> {
     fn to_principal_constraint(&self) -> Result<PrincipalConstraint> {
-        match self.to_principal_or_resource_constraint(ast::Var::Principal)? {
+        match self.to_principal_or_resource_constraint(
+            ast::Var::Principal,
+            TolerantAstSetting::NotTolerant,
+        )? {
             PrincipalOrResource::Principal(p) => Ok(p),
             PrincipalOrResource::Resource(_) => Err(self
                 .to_ast_err(ToASTErrorKind::IncorrectVariable {
@@ -856,7 +865,10 @@ impl Node<Option<cst::VariableDef>> {
 
     #[cfg(feature = "tolerant-ast")]
     fn to_principal_constraint_tolerant_ast(&self) -> Result<PrincipalConstraint> {
-        match self.to_principal_or_resource_constraint_tolerant_ast(ast::Var::Principal)? {
+        match self.to_principal_or_resource_constraint(
+            ast::Var::Principal,
+            TolerantAstSetting::Tolerant,
+        )? {
             PrincipalOrResource::Principal(p) => Ok(p),
             PrincipalOrResource::Resource(_) => Err(self
                 .to_ast_err(ToASTErrorKind::IncorrectVariable {
@@ -868,7 +880,10 @@ impl Node<Option<cst::VariableDef>> {
     }
 
     fn to_resource_constraint(&self) -> Result<ResourceConstraint> {
-        match self.to_principal_or_resource_constraint(ast::Var::Resource)? {
+        match self.to_principal_or_resource_constraint(
+            ast::Var::Resource,
+            TolerantAstSetting::NotTolerant,
+        )? {
             PrincipalOrResource::Principal(_) => Err(self
                 .to_ast_err(ToASTErrorKind::IncorrectVariable {
                     expected: ast::Var::Resource,
@@ -881,7 +896,9 @@ impl Node<Option<cst::VariableDef>> {
 
     #[cfg(feature = "tolerant-ast")]
     fn to_resource_constraint_tolerant_ast(&self) -> Result<ResourceConstraint> {
-        match self.to_principal_or_resource_constraint_tolerant_ast(ast::Var::Resource)? {
+        match self
+            .to_principal_or_resource_constraint(ast::Var::Resource, TolerantAstSetting::Tolerant)?
+        {
             PrincipalOrResource::Principal(_) => Err(self
                 .to_ast_err(ToASTErrorKind::IncorrectVariable {
                     expected: ast::Var::Resource,
@@ -895,6 +912,7 @@ impl Node<Option<cst::VariableDef>> {
     fn to_principal_or_resource_constraint(
         &self,
         expected: ast::Var,
+        tolerant_ast: TolerantAstSetting,
     ) -> Result<PrincipalOrResource> {
         let vardef = self.try_as_inner()?;
         let var = vardef.variable.to_var()?;
@@ -912,73 +930,11 @@ impl Node<Option<cst::VariableDef>> {
                     }
                 }
             }
-            let eref = rel_expr.to_ref_or_slot(var)?;
-            match (op, &vardef.entity_type) {
-                (cst::RelOp::Eq, None) => Ok(PrincipalOrResourceConstraint::Eq(eref)),
-                (cst::RelOp::Eq, Some(_)) => Err(self.to_ast_err(ToASTErrorKind::IsWithEq)),
-                (cst::RelOp::In, None) => Ok(PrincipalOrResourceConstraint::In(eref)),
-                (cst::RelOp::In, Some(entity_type)) => {
-                    match entity_type
-                        .to_expr_or_special::<ast::ExprBuilder<()>>()?
-                        .into_entity_type()
-                    {
-                        Ok(et) => Ok(PrincipalOrResourceConstraint::IsIn(Arc::new(et), eref)),
-                        Err(eos) => Err(eos.to_ast_err(ToASTErrorKind::InvalidIsType {
-                            lhs: var.to_string(),
-                            rhs: eos.loc().snippet().unwrap_or("<invalid>").to_string(),
-                        })),
-                    }
-                }
-                (cst::RelOp::InvalidSingleEq, _) => {
-                    Err(self.to_ast_err(ToASTErrorKind::InvalidSingleEq))
-                }
-                (op, _) => Err(self.to_ast_err(ToASTErrorKind::InvalidScopeOperator(*op))),
-            }
-        } else if let Some(entity_type) = &vardef.entity_type {
-            match entity_type
-                .to_expr_or_special::<ast::ExprBuilder<()>>()?
-                .into_entity_type()
-            {
-                Ok(et) => Ok(PrincipalOrResourceConstraint::Is(Arc::new(et))),
-                Err(eos) => Err(eos.to_ast_err(ToASTErrorKind::InvalidIsType {
-                    lhs: var.to_string(),
-                    rhs: eos.loc().snippet().unwrap_or("<invalid>").to_string(),
-                })),
-            }
-        } else {
-            Ok(PrincipalOrResourceConstraint::Any)
-        }?;
-        match var {
-            ast::Var::Principal => Ok(PrincipalOrResource::Principal(PrincipalConstraint::new(c))),
-            ast::Var::Resource => Ok(PrincipalOrResource::Resource(ResourceConstraint::new(c))),
-            got => Err(self
-                .to_ast_err(ToASTErrorKind::IncorrectVariable { expected, got })
-                .into()),
-        }
-    }
-
-    #[cfg(feature = "tolerant-ast")]
-    fn to_principal_or_resource_constraint_tolerant_ast(
-        &self,
-        expected: ast::Var,
-    ) -> Result<PrincipalOrResource> {
-        let vardef = self.try_as_inner()?;
-        let var = vardef.variable.to_var()?;
-
-        if let Some(unused_typename) = vardef.unused_type_name.as_ref() {
-            unused_typename.to_type_constraint::<ast::ExprBuilder<()>>()?;
-        }
-
-        let c = if let Some((op, rel_expr)) = &vardef.ineq {
-            // special check for the syntax `_ in _ is _`
-            if op == &cst::RelOp::In {
-                if let Ok(expr) = rel_expr.to_expr::<ast::ExprBuilder<()>>() {
-                    if matches!(expr.expr_kind(), ast::ExprKind::Is { .. }) {
-                        return Err(self.to_ast_err(ToASTErrorKind::InvertedIsIn).into());
-                    }
-                }
-            }
-            let eref = rel_expr.to_ref_or_slot_tolerant_ast(var)?;
+            let eref = match tolerant_ast {
+                TolerantAstSetting::NotTolerant => rel_expr.to_ref_or_slot(var)?,
+                #[cfg(feature = "tolerant-ast")]
+                TolerantAstSetting::Tolerant => rel_expr.to_ref_or_slot_tolerant_ast(var)?,
+            };
             match (op, &vardef.entity_type) {
                 (cst::RelOp::Eq, None) => Ok(PrincipalOrResourceConstraint::Eq(eref)),
                 (cst::RelOp::Eq, Some(_)) => Err(self.to_ast_err(ToASTErrorKind::IsWithEq)),
