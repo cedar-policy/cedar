@@ -1320,7 +1320,7 @@ impl Validator {
 
     /// Get the `Schema` this `Validator` is using.
     pub fn schema(&self) -> &Schema {
-        self.0.schema().ref_cast()
+        RefCast::ref_cast(self.0.schema())
     }
 
     /// Validate all policies in a policy set, collecting all validation errors
