@@ -5629,7 +5629,7 @@ mod tests {
 
     #[cfg(feature = "tolerant-ast")]
     #[test]
-    fn repro_coles_bug() {
+    fn invalid_action_constraint_in_a_list() {
         let src = r#"
             permit (
                 principal,
