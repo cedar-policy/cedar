@@ -214,6 +214,13 @@ impl Node<Option<cst::Policy>> {
         self.to_policy_template(id)
     }
 
+    /// Convert `cst::Policy` to `ast::Template`. Works for static policies as
+    /// well, which will become templates with 0 slots
+    #[cfg(feature = "tolerant-ast")]
+    pub fn to_template_tolerant(&self, id: ast::PolicyID) -> Result<ast::Template> {
+        self.to_policy_template_tolerant(id)
+    }
+
     /// Convert `cst::Policy` to an AST `StaticPolicy` or `Template`
     pub fn to_policy_or_template(
         &self,
@@ -520,7 +527,7 @@ impl cst::PolicyImpl {
         let mut vars = self.variables.iter();
         let maybe_principal = if let Some(scope1) = vars.next() {
             end_of_last_var = scope1.loc.end();
-            scope1.to_principal_constraint()
+            scope1.to_principal_constraint_tolerant_ast()
         } else {
             Err(ToASTError::new(
                 ToASTErrorKind::MissingScopeVariable(ast::Var::Principal),
@@ -539,7 +546,7 @@ impl cst::PolicyImpl {
             .into())
         };
         let maybe_resource = if let Some(scope3) = vars.next() {
-            scope3.to_resource_constraint()
+            scope3.to_resource_constraint_tolerant_ast()
         } else {
             Err(ToASTError::new(
                 ToASTErrorKind::MissingScopeVariable(ast::Var::Resource),
@@ -834,9 +841,34 @@ enum PrincipalOrResource {
     Resource(ResourceConstraint),
 }
 
+enum TolerantAstSetting {
+    NotTolerant,
+    #[cfg(feature = "tolerant-ast")]
+    Tolerant,
+}
+
 impl Node<Option<cst::VariableDef>> {
     fn to_principal_constraint(&self) -> Result<PrincipalConstraint> {
-        match self.to_principal_or_resource_constraint(ast::Var::Principal)? {
+        match self.to_principal_or_resource_constraint(
+            ast::Var::Principal,
+            TolerantAstSetting::NotTolerant,
+        )? {
+            PrincipalOrResource::Principal(p) => Ok(p),
+            PrincipalOrResource::Resource(_) => Err(self
+                .to_ast_err(ToASTErrorKind::IncorrectVariable {
+                    expected: ast::Var::Principal,
+                    got: ast::Var::Resource,
+                })
+                .into()),
+        }
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    fn to_principal_constraint_tolerant_ast(&self) -> Result<PrincipalConstraint> {
+        match self.to_principal_or_resource_constraint(
+            ast::Var::Principal,
+            TolerantAstSetting::Tolerant,
+        )? {
             PrincipalOrResource::Principal(p) => Ok(p),
             PrincipalOrResource::Resource(_) => Err(self
                 .to_ast_err(ToASTErrorKind::IncorrectVariable {
@@ -848,7 +880,25 @@ impl Node<Option<cst::VariableDef>> {
     }
 
     fn to_resource_constraint(&self) -> Result<ResourceConstraint> {
-        match self.to_principal_or_resource_constraint(ast::Var::Resource)? {
+        match self.to_principal_or_resource_constraint(
+            ast::Var::Resource,
+            TolerantAstSetting::NotTolerant,
+        )? {
+            PrincipalOrResource::Principal(_) => Err(self
+                .to_ast_err(ToASTErrorKind::IncorrectVariable {
+                    expected: ast::Var::Resource,
+                    got: ast::Var::Principal,
+                })
+                .into()),
+            PrincipalOrResource::Resource(r) => Ok(r),
+        }
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    fn to_resource_constraint_tolerant_ast(&self) -> Result<ResourceConstraint> {
+        match self
+            .to_principal_or_resource_constraint(ast::Var::Resource, TolerantAstSetting::Tolerant)?
+        {
             PrincipalOrResource::Principal(_) => Err(self
                 .to_ast_err(ToASTErrorKind::IncorrectVariable {
                     expected: ast::Var::Resource,
@@ -862,6 +912,7 @@ impl Node<Option<cst::VariableDef>> {
     fn to_principal_or_resource_constraint(
         &self,
         expected: ast::Var,
+        tolerant_ast: TolerantAstSetting,
     ) -> Result<PrincipalOrResource> {
         let vardef = self.try_as_inner()?;
         let var = vardef.variable.to_var()?;
@@ -879,7 +930,11 @@ impl Node<Option<cst::VariableDef>> {
                     }
                 }
             }
-            let eref = rel_expr.to_ref_or_slot(var)?;
+            let eref = match tolerant_ast {
+                TolerantAstSetting::NotTolerant => rel_expr.to_ref_or_slot(var)?,
+                #[cfg(feature = "tolerant-ast")]
+                TolerantAstSetting::Tolerant => rel_expr.to_ref_or_slot_tolerant_ast(var)?,
+            };
             match (op, &vardef.entity_type) {
                 (cst::RelOp::Eq, None) => Ok(PrincipalOrResourceConstraint::Eq(eref)),
                 (cst::RelOp::Eq, Some(_)) => Err(self.to_ast_err(ToASTErrorKind::IsWithEq)),
@@ -1018,7 +1073,7 @@ impl Node<Option<cst::VariableDef>> {
                             return Err(self.to_ast_err(ToASTErrorKind::IsInActionScope).into());
                         }
                     }
-                    match rel_expr.to_refs(ast::Var::Action)? {
+                    match rel_expr.to_refs_tolerant_ast(ast::Var::Action)? {
                         OneOrMultipleRefs::Single(single_ref) => {
                             Ok(ActionConstraint::is_in([single_ref]))
                         }
@@ -1026,7 +1081,7 @@ impl Node<Option<cst::VariableDef>> {
                     }
                 }
                 cst::RelOp::Eq => {
-                    let single_ref = rel_expr.to_ref(ast::Var::Action)?;
+                    let single_ref = rel_expr.to_ref_tolerant_ast(ast::Var::Action)?;
                     Ok(ActionConstraint::is_eq(single_ref))
                 }
                 cst::RelOp::InvalidSingleEq => {
@@ -5546,6 +5601,62 @@ mod tests {
 
     #[cfg(feature = "tolerant-ast")]
     #[test]
+    fn parsing_with_errors_succeeds_with_invalid_uid_resource_constraint() {
+        let src = r#"
+            permit (
+                principal,
+                action,
+                resource in H
+            )
+            when { true };
+        "#;
+        assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn parsing_with_errors_succeeds_with_invalid_uid_principal_constraint() {
+        let src = r#"
+            permit (
+                principal in J,
+                action,
+                resource
+            )
+            when { true };
+        "#;
+        assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn invalid_action_constraint_in_a_list() {
+        let src = r#"
+            permit (
+                principal,
+                action in [A],
+                resource
+            )
+            when { true };
+        "#;
+        assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn parsing_with_errors_succeeds_with_invalid_bracket_for_in() {
+        let src = r#"
+            permit (
+                principal,
+                action,
+                resource in [
+            )
+            when { true };
+        "#;
+        assert_parse_policy_allows_errors(src);
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
     fn parsing_with_errors_succeeds_with_missing_second_operand_eq_and_in() {
         // Test for == operator
         let src_eq_cases = [
@@ -5822,5 +5933,383 @@ mod tests {
                 .is_none(),
             true
         );
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn fail_scope1_tolerant_ast() {
+        let src = r#"
+            permit(
+                principal in [User::"jane",Group::"friends"],
+                action,
+                resource
+            );
+        "#;
+        let errs = assert_parse_policy_allows_errors_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error(
+                "expected single entity uid or template slot, found set of entity uids",
+            )
+            .exactly_one_underline(r#"[User::"jane",Group::"friends"]"#)
+            .build(),
+        );
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn fail_scope2_tolerant_ast() {
+        let src = r#"
+            permit(
+                principal in User::"jane",
+                action == if true then Photo::"view" else Photo::"edit",
+                resource
+            );
+        "#;
+        let errs = assert_parse_policy_allows_errors_fails(src);
+        expect_n_errors(src, &errs, 1);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("expected an entity uid, found an `if` expression")
+                .exactly_one_underline(r#"if true then Photo::"view" else Photo::"edit""#)
+                .build(),
+        );
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn invalid_slot_tolerant_ast() {
+        let invalid_policies = [
+            (
+                r#"permit(principal == ?resource, action, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?resource instead of ?principal").exactly_one_underline("?resource").build(),
+            ),
+            (
+                r#"permit(principal in ?resource, action, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?resource instead of ?principal").exactly_one_underline("?resource").build(),
+            ),
+            (
+                r#"permit(principal == ?foo, action, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?foo instead of ?principal").exactly_one_underline("?foo").build(),
+            ),
+            (
+                r#"permit(principal in ?foo, action, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?foo instead of ?principal").exactly_one_underline("?foo").build(),
+            ),
+
+            (
+                r#"permit(principal, action, resource == ?principal);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?principal instead of ?resource").exactly_one_underline("?principal").build(),
+            ),
+            (
+                r#"permit(principal, action, resource in ?principal);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?principal instead of ?resource").exactly_one_underline("?principal").build(),
+            ),
+            (
+                r#"permit(principal, action, resource == ?baz);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?baz instead of ?resource").exactly_one_underline("?baz").build(),
+            ),
+            (
+                r#"permit(principal, action, resource in ?baz);"#,
+                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?baz instead of ?resource").exactly_one_underline("?baz").build(),
+            ),
+            (
+                r#"permit(principal, action, resource) when { principal == ?foo};"#,
+                ExpectedErrorMessageBuilder::error(
+                    "`?foo` is not a valid template slot",
+                ).help(
+                    "a template slot may only be `?principal` or `?resource`",
+                ).exactly_one_underline("?foo").build(),
+            ),
+
+            (
+                r#"permit(principal, action == ?action, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?action").build(),
+            ),
+            (
+                r#"permit(principal, action in ?action, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?action").build(),
+            ),
+            (
+                r#"permit(principal, action == ?principal, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?principal").build(),
+            ),
+            (
+                r#"permit(principal, action in ?principal, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?principal").build(),
+            ),
+            (
+                r#"permit(principal, action == ?resource, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?resource").build(),
+            ),
+            (
+                r#"permit(principal, action in ?resource, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?resource").build(),
+            ),
+            (
+                r#"permit(principal, action in [?bar], resource);"#,
+                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?bar").build(),
+            ),
+        ];
+
+        for (p_src, expected) in invalid_policies {
+            assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+                expect_err(p_src, &miette::Report::new(e), &expected);
+            });
+            let forbid_src = format!("forbid{}", &p_src[6..]);
+            assert_matches!(parse_policy_or_template_tolerant(None, &forbid_src), Err(e) => {
+                expect_err(forbid_src.as_str(), &miette::Report::new(e), &expected);
+            });
+        }
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn missing_scope_constraint_tolerant_ast() {
+        let p_src = "permit();";
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(
+                p_src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("this policy is missing the `principal` variable in the scope")
+                    .exactly_one_underline("")
+                    .help("policy scopes must contain a `principal`, `action`, and `resource` element in that order")
+                    .build()
+            );
+        });
+        let p_src = "permit(principal);";
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(
+                p_src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("this policy is missing the `action` variable in the scope")
+                    .exactly_one_underline("")
+                    .help("policy scopes must contain a `principal`, `action`, and `resource` element in that order")
+                    .build()
+            );
+        });
+        let p_src = "permit(principal, action);";
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(
+                p_src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("this policy is missing the `resource` variable in the scope")
+                    .exactly_one_underline("")
+                    .help("policy scopes must contain a `principal`, `action`, and `resource` element in that order")
+                    .build()
+            );
+        });
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn invalid_scope_constraint_tolerant() {
+        let p_src = "permit(foo, action, resource);";
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "found an invalid variable in the policy scope: foo",
+                ).help(
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
+            ).exactly_one_underline("foo").build());
+        });
+
+        let p_src = "permit(resource, action, resource);";
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "found the variable `resource` where the variable `principal` must be used",
+                ).help(
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
+            ).exactly_one_underline("resource").build());
+        });
+
+        let p_src = "permit(principal, principal, resource);";
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "found the variable `principal` where the variable `action` must be used",
+                ).help(
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
+            ).exactly_one_underline("principal").build());
+        });
+        let p_src = "permit(principal, if, resource);";
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "found an invalid variable in the policy scope: if",
+                ).help(
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
+            ).exactly_one_underline("if").build());
+        });
+
+        let p_src = "permit(principal, action, like);";
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "found an invalid variable in the policy scope: like",
+                ).help(
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
+            ).exactly_one_underline("like").build());
+        });
+        let p_src = "permit(principal, action, principal);";
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "found the variable `principal` where the variable `resource` must be used",
+                ).help(
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
+            ).exactly_one_underline("principal").build());
+        });
+        let p_src = "permit(principal, action, action);";
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "found the variable `action` where the variable `resource` must be used",
+                ).help(
+                "policy scopes must contain a `principal`, `action`, and `resource` element in that order",
+            ).exactly_one_underline("action").build());
+        });
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn invalid_scope_operator_tolerant() {
+        let p_src = r#"permit(principal > User::"alice", action, resource);"#;
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "invalid operator in the policy scope: >",
+                ).help(
+                "policy scope clauses can only use `==`, `in`, `is`, or `_ is _ in _`"
+            ).exactly_one_underline("principal > User::\"alice\"").build());
+        });
+        let p_src = r#"permit(principal, action != Action::"view", resource);"#;
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "invalid operator in the action scope: !=",
+                ).help(
+                "action scope clauses can only use `==` or `in`"
+            ).exactly_one_underline("action != Action::\"view\"").build());
+        });
+        let p_src = r#"permit(principal, action, resource <= Folder::"things");"#;
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "invalid operator in the policy scope: <=",
+                ).help(
+                "policy scope clauses can only use `==`, `in`, `is`, or `_ is _ in _`"
+            ).exactly_one_underline("resource <= Folder::\"things\"").build());
+        });
+        let p_src = r#"permit(principal = User::"alice", action, resource);"#;
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "'=' is not a valid operator in Cedar",
+                ).help(
+                "try using '==' instead",
+            ).exactly_one_underline("principal = User::\"alice\"").build());
+        });
+        let p_src = r#"permit(principal, action = Action::"act", resource);"#;
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "'=' is not a valid operator in Cedar",
+                ).help(
+                "try using '==' instead",
+            ).exactly_one_underline("action = Action::\"act\"").build());
+        });
+        let p_src = r#"permit(principal, action, resource = Photo::"photo");"#;
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "'=' is not a valid operator in Cedar",
+                ).help(
+                "try using '==' instead",
+            ).exactly_one_underline("resource = Photo::\"photo\"").build());
+        });
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn scope_action_eq_set_tolerant() {
+        let p_src = r#"permit(principal, action == [Action::"view", Action::"edit"], resource);"#;
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, found set of entity uids").exactly_one_underline(r#"[Action::"view", Action::"edit"]"#).build());
+        });
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn scope_compare_to_string_tolerant() {
+        let p_src = r#"permit(principal == "alice", action, resource);"#;
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                r#"expected an entity uid or matching template slot, found literal `"alice"`"#
+            ).help(
+                "try including the entity type if you intended this string to be an entity uid"
+            ).exactly_one_underline(r#""alice""#).build());
+        });
+        let p_src = r#"permit(principal in "bob_friends", action, resource);"#;
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                r#"expected an entity uid or matching template slot, found literal `"bob_friends"`"#
+            ).help(
+                "try including the entity type if you intended this string to be an entity uid"
+            ).exactly_one_underline(r#""bob_friends""#).build());
+        });
+        let p_src = r#"permit(principal, action, resource in "jane_photos");"#;
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                r#"expected an entity uid or matching template slot, found literal `"jane_photos"`"#
+            ).help(
+                "try including the entity type if you intended this string to be an entity uid"
+            ).exactly_one_underline(r#""jane_photos""#).build());
+        });
+        let p_src = r#"permit(principal, action in ["view_actions"], resource);"#;
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                r#"expected an entity uid, found literal `"view_actions"`"#
+            ).help(
+                "try including the entity type if you intended this string to be an entity uid"
+            ).exactly_one_underline(r#""view_actions""#).build());
+        });
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn scope_and_tolerant() {
+        let p_src = r#"permit(principal == User::"alice" && principal in Group::"jane_friends", action, resource);"#;
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "expected an entity uid or matching template slot, found a `&&` expression"
+            ).help(
+                "the policy scope can only contain one constraint per variable. Consider moving the second operand of this `&&` into a `when` condition",
+            ).exactly_one_underline(r#"User::"alice" && principal in Group::"jane_friends""#).build());
+        });
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn scope_or_tolerant() {
+        let p_src =
+            r#"permit(principal == User::"alice" || principal == User::"bob", action, resource);"#;
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                "expected an entity uid or matching template slot, found a `||` expression"
+            ).help(
+                "the policy scope can only contain one constraint per variable. Consider moving the second operand of this `||` into a new policy",
+            ).exactly_one_underline(r#"User::"alice" || principal == User::"bob""#).build());
+        });
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn scope_action_in_set_set_tolerant() {
+        let p_src = r#"permit(principal, action in [[Action::"view"]], resource);"#;
+        assert_matches!(parse_policy_or_template_tolerant(None, p_src), Err(e) => {
+            expect_err(p_src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error("expected single entity uid, found set of entity uids").exactly_one_underline(r#"[Action::"view"]"#).build());
+        });
+    }
+
+    #[cfg(feature = "tolerant-ast")]
+    fn parse_policy_or_template_tolerant(
+        id: Option<ast::PolicyID>,
+        text: &str,
+    ) -> Result<ast::Template> {
+        let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
+        let cst = text_to_cst::parse_policy_tolerant(text)?;
+        cst.to_template_tolerant(id)
     }
 }
