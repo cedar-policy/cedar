@@ -237,9 +237,13 @@ impl Node<Option<cst::Expr>> {
         }
     }
 }
-
+use super::TolerantAstSetting;
 impl Node<Option<cst::Primary>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<T> {
         let prim = self.try_as_inner()?;
 
         match prim {
@@ -279,92 +283,43 @@ impl Node<Option<cst::Primary>> {
             }
             cst::Primary::Ref(x) => T::create_single_ref(x.to_ref()?),
             cst::Primary::Name(name) => {
-                let found = match name.as_inner() {
-                    Some(name) => format!("name `{name}`"),
-                    None => "name".to_string(),
-                };
-                Err(self
-                    .to_ast_err(ToASTErrorKind::wrong_node(
-                        T::err_str(),
-                        found,
-                        if var != ast::Var::Action {
-                            Some("try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid".to_string())
-                        } else {
-                            // We don't allow `is` in the action scope, so we won't suggest trying it.
-                            Some("try including an identifier string if you intended this name to be an entity uid".to_string())
-                        },
-                    ))
-                    .into())
-            }
-            cst::Primary::Expr(x) => x.to_ref_or_refs::<T>(var),
-            cst::Primary::EList(lst) => {
-                // Calling `create_multiple_refs` first so that we error
-                // immediately if we see a set when we don't expect one.
-                let create_multiple_refs = T::create_multiple_refs(&self.loc)?;
-                let v = ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref(var)))?;
-                Ok(create_multiple_refs(v))
-            }
-            cst::Primary::RInits(_) => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    "record initializer",
-                    None::<String>,
-                ))
-                .into()),
-        }
-    }
-
-    #[cfg(feature = "tolerant-ast")]
-    fn to_ref_or_refs_tolerant_ast<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let prim = self.try_as_inner()?;
-
-        match prim {
-            cst::Primary::Slot(s) => {
-                // Call `create_slot` first so that we fail immediately if the
-                // `RefKind` does not permit slots, and only then complain if
-                // it's the wrong slot. This avoids getting an error
-                // `found ?action instead of ?action` when `action` doesn't
-                // support slots.
-                let slot_ref = T::create_slot(&self.loc)?;
-                let slot = s.try_as_inner()?;
-                if slot.matches(var) {
-                    Ok(slot_ref)
-                } else {
-                    Err(self
-                        .to_ast_err(ToASTErrorKind::wrong_node(
-                            T::err_str(),
-                            format!("{slot} instead of ?{var}"),
-                            None::<String>,
-                        ))
-                        .into())
+                match tolerant_setting {
+                    TolerantAstSetting::NotTolerant => {
+                        let found = match name.as_inner() {
+                            Some(name) => format!("name `{name}`"),
+                            None => "name".to_string(),
+                        };
+                        Err(self
+                            .to_ast_err(ToASTErrorKind::wrong_node(
+                                T::err_str(),
+                                found,
+                                if var != ast::Var::Action {
+                                    Some("try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid".to_string())
+                                } else {
+                                    // We don't allow `is` in the action scope, so we won't suggest trying it.
+                                    Some("try including an identifier string if you intended this name to be an entity uid".to_string())
+                                },
+                            ))
+                            .into())
+                    }
+                    #[cfg(feature = "tolerant-ast")]
+                    TolerantAstSetting::Tolerant => Ok(T::error_node()),
                 }
             }
-            cst::Primary::Literal(lit) => {
-                let lit = lit.try_as_inner()?;
-                let found = format!("literal `{lit}`");
-                Err(self
-                    .to_ast_err(ToASTErrorKind::wrong_node(
-                        T::err_str(),
-                        found,
-                        match lit {
-                            Literal::Str(_) => Some("try including the entity type if you intended this string to be an entity uid"),
-                            _ => None,
-                        }
-                    ))
-                    .into())
-            }
-            cst::Primary::Ref(x) => T::create_single_ref(x.to_ref()?),
-            cst::Primary::Name(_) => {
-                // Tolerant AST supports invalid entity uid name - create an AST error node
-                Ok(T::error_node())
-            }
             cst::Primary::Expr(x) => x.to_ref_or_refs::<T>(var),
             cst::Primary::EList(lst) => {
                 // Calling `create_multiple_refs` first so that we error
                 // immediately if we see a set when we don't expect one.
                 let create_multiple_refs = T::create_multiple_refs(&self.loc)?;
-                let v =
-                    ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref_tolerant_ast(var)))?;
+                let v = match tolerant_setting {
+                    TolerantAstSetting::NotTolerant => {
+                        ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref(var)))?
+                    }
+                    #[cfg(feature = "tolerant-ast")]
+                    TolerantAstSetting::Tolerant => ParseErrors::transpose(
+                        lst.iter().map(|expr| expr.to_ref_tolerant_ast(var)),
+                    )?,
+                };
                 Ok(create_multiple_refs(v))
             }
             cst::Primary::RInits(_) => Err(self
@@ -383,7 +338,7 @@ impl Node<Option<cst::Member>> {
         let mem = self.try_as_inner()?;
 
         match mem.access.len() {
-            0 => mem.item.to_ref_or_refs::<T>(var),
+            0 => mem.item.to_ref_or_refs::<T>(var, TolerantAstSetting::NotTolerant),
             _n => {
                 Err(self.to_ast_err(ToASTErrorKind::wrong_node(T::err_str(), "a `.` expression", Some("entity types and namespaces cannot use `.` characters -- perhaps try `_` or `::` instead?"))).into())
             }
@@ -395,7 +350,7 @@ impl Node<Option<cst::Member>> {
         let mem = self.try_as_inner()?;
 
         match mem.access.len() {
-            0 => mem.item.to_ref_or_refs_tolerant_ast::<T>(var),
+            0 => mem.item.to_ref_or_refs::<T>(var, TolerantAstSetting::Tolerant),
             _n => {
                 Err(self.to_ast_err(ToASTErrorKind::wrong_node(T::err_str(), "a `.` expression", Some("entity types and namespaces cannot use `.` characters -- perhaps try `_` or `::` instead?"))).into())
             }
@@ -645,41 +600,50 @@ mod test {
     use crate::parser::cst;
     use crate::parser::cst::Name;
     use crate::parser::cst_to_ast::to_ref_or_refs::SingleEntity;
+    use crate::parser::cst_to_ast::TolerantAstSetting;
     use crate::parser::Loc;
     use crate::parser::Node;
 
     #[test]
     fn to_ref_or_refs_tolerant_ast() {
         let n = test_primary_name_node();
-        let result = n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+        let result =
+            n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
         assert!(matches!(result.unwrap().0, EntityUID::Error));
 
         let n = test_primary_literal_node();
-        let result = n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+        let result =
+            n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
         assert!(result.is_err());
 
         let n = test_primary_slot_node();
-        let result = n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+        let result =
+            n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
         assert!(result.is_err());
 
         let n = test_primary_expr_error_node();
-        let result = n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+        let result =
+            n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
         assert!(matches!(result.unwrap().0, EntityUID::Error));
 
         let n = test_primary_expr_node();
-        let result = n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+        let result =
+            n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
         assert!(matches!(result.unwrap().0, EntityUID::EntityUID(_)));
 
         let n = test_primary_ref_node();
-        let result = n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+        let result =
+            n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
         assert!(matches!(result.unwrap().0, EntityUID::EntityUID(_)));
 
         let n = test_primary_elist_node();
-        let result = n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+        let result =
+            n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
         assert!(result.is_err());
 
         let n = test_primary_rinits_node();
-        let result = n.to_ref_or_refs_tolerant_ast::<SingleEntity>(ast::Var::Principal);
+        let result =
+            n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
         assert!(result.is_err());
     }
 
