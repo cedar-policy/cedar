@@ -30,7 +30,7 @@ Cedar Language Version: TBD
   render the policy in the human-readable Cedar syntax. These functions can be used
   to convert JSON formatted policies into the human-readable syntax.
 - Added `Validator::schema()` to get a reference to the `Schema` even after it has been
-  consumed to construct a `Validator` (#1523)
+  consumed to construct a `Validator` (#1524)
 
 ## [4.3.3] - 2025-02-25
 
