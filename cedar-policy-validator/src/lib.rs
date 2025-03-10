@@ -104,6 +104,11 @@ impl Validator {
         Self { schema }
     }
 
+    /// Get the `ValidatorSchema` this `Validator` is using.
+    pub fn schema(&self) -> &ValidatorSchema {
+        &self.schema
+    }
+
     /// Validate all templates, links, and static policies in a policy set.
     /// Return a `ValidationResult`.
     pub fn validate(&self, policies: &PolicySet, mode: ValidationMode) -> ValidationResult {
