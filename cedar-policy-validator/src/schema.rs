@@ -506,8 +506,8 @@ impl ValidatorSchema {
             }
 
             for (name, entity_type) in ns_def.entity_types.defs {
-                println!("first pass: {:?}", name);
-                println!("Entity type fragment: {:?}", entity_type);
+                // println!("first pass: {:?}", name);
+                // println!("Entity type fragment: {:?}", entity_type);
                 match entity_type_fragments.entry(name) {
                     Entry::Vacant(v) => v.insert(entity_type),
                     Entry::Occupied(o) => {
@@ -538,10 +538,10 @@ impl ValidatorSchema {
         // to get a `children` relation.
         let mut entity_children: HashMap<EntityType, HashSet<EntityType>> = HashMap::new();
         for (name, entity_type) in entity_type_fragments.iter() {
-            println!("Name: {:?}", name);
-            println!("Parents:");
+            // println!("Name: {:?}", name);
+            // println!("Parents:");
             for parent in entity_type.parents() {
-                println!("Parent: {:?}", parent);
+                // println!("Parent: {:?}", parent);
                 entity_children
                     .entry(internal_name_to_entity_type(parent.clone())?)
                     .or_default()
@@ -562,7 +562,7 @@ impl ValidatorSchema {
                 // `check_for_undeclared`.
                 let descendants = entity_children.remove(&name).unwrap_or_default();
                 // println!("DESCENDENDS: {:?}", descendants);
-                println!("Name second time: {:?}", name);
+                // println!("Name second time: {:?}", name);
 
                 match entity_type {
                     EntityTypeFragment::Enum(choices) => Ok((
