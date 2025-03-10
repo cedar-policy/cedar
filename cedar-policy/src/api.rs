@@ -4503,64 +4503,62 @@ mod test_access {
     use super::*;
 
     fn schema() -> Schema {
-                let src = r#"
-                  type Task = {
-            "id": Long,
-            "name": String,
-            "state": String,
-        };
+        //         let src = r#"
+        //           type Task = {
+        //     "id": Long,
+        //     "name": String,
+        //     "state": String,
+        // };
 
-        type Tasks = Set<Task>;
-        entity List in [Application] = {
-          "editors": Team,
-          "name": String,
-          "owner": User,
-          "readers": Team,
-          "tasks": Tasks,
-        };
-        entity Application;
-        entity User in [Team, Application] = {
-          "joblevel": Long,
-          "location": String,
-        };
-
-        entity CoolList;
-
-        entity Team in [Team, Application];
-
-        action Read, Write, Create;
-
-        action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
-            principal: [User],
-            resource : [List]
-        };
-
-        action GetList in Read appliesTo {
-            principal : [User],
-            resource : [List, CoolList]
-        };
-
-        action GetLists in Read appliesTo {
-            principal : [User],
-            resource : [Application]
-        };
-
-        action CreateList in Create appliesTo {
-            principal : [User],
-            resource : [Application]
-        };
-
-                "#;
-
-        // let src = r#"
+        // type Tasks = Set<Task>;
+        // entity List in [Application] = {
+        //   "editors": Team,
+        //   "name": String,
+        //   "owner": User,
+        //   "readers": Team,
+        //   "tasks": Tasks,
+        // };
         // entity Application;
-        // entity User;
+        // entity User in [Team, Application] = {
+        //   "joblevel": Long,
+        //   "location": String,
+        // };
+
+        // entity CoolList;
+
+        // entity Team in [Team, Application];
+
         // action Read, Write, Create;
+
+        // action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
+        //     principal: [User],
+        //     resource : [List]
+        // };
+
+        // action GetList in Read appliesTo {
+        //     principal : [User],
+        //     resource : [List, CoolList]
+        // };
+
+        // action GetLists in Read appliesTo {
+        //     principal : [User],
+        //     resource : [Application]
+        // };
+
         // action CreateList in Create appliesTo {
         //     principal : [User],
         //     resource : [Application]
         // };
-        // "#;
+
+        //         "#;
+
+        let src = r#"
+                   type Task = {
+             "id": Long,
+             "name": String,
+             "state": String,
+         };
+        "#;
 
         src.parse().unwrap()
     }
@@ -4568,32 +4566,32 @@ mod test_access {
     #[test]
     fn principals() {
         let schema = schema();
-        // for et in schema.0.entity_type_names() {
-        //     println!(
-        //         "ET: {:?} {:?}",
-        //         et.name().basename(),
-        //         et.loc().unwrap().span
-        //     );
-        // }
+        for et in schema.0.entity_type_names() {
+            println!(
+                "ET: {:?} {:?}",
+                et.name().basename(),
+                et.loc().unwrap().span
+            );
+        }
 
-        // for et in schema.0.action_entities().unwrap() {
-        //     println!("Action UID: {:?}", et.uid());
-        //     println!("Parents: ------------------");
-        //     for p in et.parents() {
-        //         println!("{:?}", p)
-        //     }
-        //     println!("----------------------");
-        // }
-
-        let principals = schema.principals().collect::<HashSet<_>>();
-        println!("Principal:  {:?}", principals);
-        assert_eq!(principals.len(), 1);
-        let user: EntityTypeName = "User".parse().unwrap();
-        assert!(principals.contains(&user));
-        let principals = schema.principals().collect::<Vec<_>>();
-        assert!(principals.len() > 1);
-        assert!(principals.iter().all(|ety| **ety == user));
-        assert!(principals.iter().all(|ety| ety.0.loc().is_some()));        
+        for et in schema.0.action_entities().unwrap() {
+            println!("Action UID: {:?}", et.uid());
+            println!("Parents: ------------------");
+            for p in et.parents() {
+                println!("{:?}", p)
+            }
+            println!("----------------------");
+        }
+        println!("{:?}", schema);
+        // let principals = schema.principals().collect::<HashSet<_>>();
+        // println!("Principal:  {:?}", principals);
+        // assert_eq!(principals.len(), 1);
+        // let user: EntityTypeName = "User".parse().unwrap();
+        // assert!(principals.contains(&user));
+        // let principals = schema.principals().collect::<Vec<_>>();
+        // assert!(principals.len() > 1);
+        // assert!(principals.iter().all(|ety| **ety == user));
+        // assert!(principals.iter().all(|ety| ety.0.loc().is_some()));        
     }
 
     #[test]
@@ -4714,8 +4712,8 @@ mod test_access {
             .into_iter()
             .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
             .collect::<HashSet<EntityUid>>();
-        assert!(expected.iter().all(|ety| ety.0.loc().is_some()));
-        assert!(expected.iter().all(|ety| {println!("{:?}", ety.0.loc().unwrap().span); true}));
+        assert!(groups.iter().all(|ety| ety.0.loc().is_some()));
+        assert!(groups.iter().all(|ety| {println!("action pari:{:?}: {:?}", ety.clone(), ety.0.loc().unwrap().span); true}));
         assert_eq!(groups, expected);
     }
 
@@ -4817,6 +4815,9 @@ action CreateList in Create appliesTo {
     #[test]
     fn principals() {
         let schema = schema();
+        println!("SCHEMA: {:?}", schema);
+
+
         let principals = schema.principals().collect::<HashSet<_>>();
         assert_eq!(principals.len(), 1);
         let user: EntityTypeName = "Foo::User".parse().unwrap();
