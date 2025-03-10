@@ -174,6 +174,16 @@ pub trait CedarTestImplementation {
         mode: ValidationMode,
     ) -> TestResult<TestValidationResult>;
 
+    #[cfg(feature = "level-validate")]
+    /// Custom validator entry point with level.
+    fn validate_with_level(
+        &self,
+        schema: &ValidatorSchema,
+        policies: &PolicySet,
+        mode: ValidationMode,
+        level: i32,
+    ) -> TestResult<TestValidationResult>;
+
     fn validate_request(
         &self,
         schema: &ValidatorSchema,
@@ -322,6 +332,28 @@ impl CedarTestImplementation for RustEngine {
         };
         TestResult::Success(response)
     }
+
+    #[cfg(feature = "level-validate")]
+    fn validate_with_level(
+        &self,
+        schema: &ValidatorSchema,
+        policies: &PolicySet,
+        mode: ValidationMode,
+        level: i32,
+    ) -> TestResult<TestValidationResult> {
+        let validator = Validator::new(schema.clone());
+        let (result, duration) =
+            time_function(|| validator.validate_with_level(policies, mode, level as u32));
+        let response = TestValidationResult {
+            errors: result
+                .validation_errors()
+                .map(|err| format!("{err:?}"))
+                .collect(),
+            timing_info: HashMap::from([("validate".into(), Micros(duration.as_micros()))]),
+        };
+        TestResult::Success(response)
+    }
+
     fn validate_entities(
         &self,
         schema: &ValidatorSchema,
