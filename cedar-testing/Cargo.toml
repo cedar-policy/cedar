@@ -18,6 +18,7 @@ miette = { version = "7.5.0", features = ["fancy"] }
 default = ["ipaddr", "decimal"]
 decimal = ["cedar-policy/decimal"]
 ipaddr = ["cedar-policy/ipaddr"]
+level-validate = ["cedar-policy/level-validate"]
 integration-testing = []
 entity-manifest = ["cedar-policy/entity-manifest"]
 
