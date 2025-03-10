@@ -17,8 +17,7 @@
 //! This module contains the definition of `ValidatorActionId` and the types it relies on
 
 use cedar_policy_core::{
-    ast::{self, EntityType, EntityUID, PartialValue},
-    transitive_closure::TCNode,
+    ast::{self, EntityType, EntityUID, PartialValue}, parser::Loc, transitive_closure::TCNode
 };
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashSet};
@@ -58,6 +57,8 @@ pub struct ValidatorActionId {
     /// `Entity` for this action. Could also be used for more precise
     /// typechecking by partial evaluation.
     pub(crate) attributes: BTreeMap<SmolStr, PartialValue>,
+    /// Loc
+    pub loc: Option<Loc>
 }
 
 impl ValidatorActionId {
@@ -73,6 +74,7 @@ impl ValidatorActionId {
         context: Type,
         attribute_types: Attributes,
         attributes: BTreeMap<SmolStr, PartialValue>,
+        loc: Option<Loc>
     ) -> Self {
         Self {
             name,
@@ -84,6 +86,7 @@ impl ValidatorActionId {
             context,
             attribute_types,
             attributes,
+            loc
         }
     }
 

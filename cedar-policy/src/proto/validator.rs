@@ -123,6 +123,7 @@ impl From<&models::ActionDecl> for cedar_policy_validator::ValidatorActionId {
             // translate into a `ValidatorActionId` with no action attributes
             types::Attributes::with_attributes([]),
             BTreeMap::new(),
+            None,
         )
     }
 }

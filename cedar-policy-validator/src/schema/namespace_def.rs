@@ -641,10 +641,10 @@ impl ActionsDef<ConditionalName, ConditionalName> {
                     // println!("ACTION UID: {:?}, {:?}", action_uid.clone().id, action_uid.clone().loc.unwrap().span);
                     let frag = ActionFragment::from_raw_action(
                         ventry.key(),
-                        action_type,
+                        action_type.clone(),
                         schema_namespace,
                         extensions,
-                        action_uid.clone().loc.as_ref()
+                        action_type.loc.as_ref()
                     )?;
                     // println!("FRAG: {:?}", frag.clone());
                     ventry.insert(frag);
@@ -785,7 +785,7 @@ impl ActionFragment<ConditionalName, ConditionalName> {
                 .partition_nonempty()?,
             attribute_types: self.attribute_types,
             attributes: self.attributes,
-            loc: None,
+            loc: self.loc,
         })
     }
 

@@ -520,7 +520,7 @@ impl ValidatorSchema {
             }
 
             for (action_euid, action) in ns_def.actions.actions {
-                // println!("Action fragment action euid: {:?}", action_euid.clone());
+                // println!("Action loc: {:?}", action.clone().loc);
                 match action_fragments.entry(action_euid) {
                     Entry::Vacant(v) => v.insert(action),
                     Entry::Occupied(o) => {
@@ -651,6 +651,7 @@ impl ValidatorSchema {
                         context: Type::record_with_attributes(context, open_context_attributes),
                         attribute_types: action.attribute_types,
                         attributes: action.attributes,
+                        loc: loc.clone()
                     },
                 ))
             })
