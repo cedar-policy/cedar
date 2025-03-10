@@ -16,6 +16,7 @@
 
 //! This module contains the definition of `ValidatorEntityType`
 
+use educe::Educe;
 use nonempty::NonEmpty;
 use serde::Serialize;
 use smol_str::SmolStr;
@@ -50,6 +51,20 @@ pub struct ValidatorEntityType {
     /// The location
     #[serde(skip)]
     pub loc: Option<Loc>,
+}
+
+/// Contains entity type information for use by the validator. The contents of
+/// the struct are the same as the schema entity type structure, but the
+/// `member_of` relation is reversed to instead be `descendants`.
+#[derive(Clone, Debug, Serialize, Educe, Hash)]
+#[educe(Eq, PartialEq)]
+pub struct ValidatorCommonEntityType {
+        /// The name of the entity type.
+        pub(crate) name: EntityType,
+        /// The location
+        #[serde(skip)]
+        #[educe(Eq(ignore))]
+        pub loc: Option<Loc>,
 }
 
 
