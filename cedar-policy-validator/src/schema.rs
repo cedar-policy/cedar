@@ -27,6 +27,7 @@ use cedar_policy_core::{
     parser::Loc,
     transitive_closure::compute_tc,
 };
+use entity_type::ValidatorCommonEntityType;
 use namespace_def::EntityTypeFragment;
 use nonempty::NonEmpty;
 use serde::Deserialize;
@@ -165,6 +166,8 @@ pub struct ValidatorSchema {
     /// `Entity` from the `ValidatorSchema` is O(N) as of this writing, but with
     /// this cache it's O(1).
     pub(crate) actions: HashMap<EntityUID, Arc<Entity>>,
+    /// TODO
+    common_types: HashSet<ValidatorCommonEntityType>
 }
 
 /// Construct [`ValidatorSchema`] from a string containing a schema formatted
@@ -210,8 +213,26 @@ impl ValidatorSchema {
             .into_iter()
             .map(|id| (id.name().clone(), id))
             .collect();
-        Self::new_from_maps(entity_types, action_ids)
+        Self::new_from_maps(entity_types, action_ids, HashSet::new())
     }
+
+        /// Construct a new `ValidatorSchema` from a set of `ValidatorEntityType`s and `ValidatorActionId`s
+        pub fn new_with_common_types(
+            entity_types: impl IntoIterator<Item = ValidatorEntityType>,
+            action_ids: impl IntoIterator<Item = ValidatorActionId>,
+            common_types: impl IntoIterator<Item = ValidatorCommonEntityType>,
+        ) -> Self {
+            let entity_types = entity_types
+                .into_iter()
+                .map(|ety| (ety.name().clone(), ety))
+                .collect();
+            let action_ids = action_ids
+                .into_iter()
+                .map(|id| (id.name().clone(), id))
+                .collect();
+            let common_types = common_types.into_iter().collect();
+            Self::new_from_maps(entity_types, action_ids, common_types)
+        }
 
     /// for internal use: version of `new()` which takes the maps directly, rather than constructing them.
     ///
@@ -219,6 +240,7 @@ impl ValidatorSchema {
     fn new_from_maps(
         entity_types: HashMap<EntityType, ValidatorEntityType>,
         action_ids: HashMap<EntityUID, ValidatorActionId>,
+        common_types: HashSet<ValidatorCommonEntityType>
     ) -> Self {
         let actions = Self::action_entities_iter(&action_ids)
             .map(|e| (e.uid().clone(), Arc::new(e)))
@@ -227,6 +249,7 @@ impl ValidatorSchema {
             entity_types,
             action_ids,
             actions,
+            common_types
         }
     }
 
@@ -351,6 +374,7 @@ impl ValidatorSchema {
             entity_types: HashMap::new(),
             action_ids: HashMap::new(),
             actions: HashMap::new(),
+            common_types: HashSet::new()
         }
     }
 
@@ -502,6 +526,7 @@ impl ValidatorSchema {
         let mut entity_type_fragments: HashMap<EntityType, _> = HashMap::new();
         let mut action_fragments = HashMap::new();
         for ns_def in fragments.into_iter().flat_map(|f| f.0.into_iter()) {
+            
             for (name, ty) in ns_def.common_types.defs {
                 match common_types.entry(name) {
                     Entry::Vacant(v) => v.insert(ty),
@@ -541,6 +566,7 @@ impl ValidatorSchema {
 
         let resolver = CommonTypeResolver::new(&common_types);
         let common_types = resolver.resolve(extensions)?;
+   
 
         // Invert the `parents` relation defined by entities and action so far
         // to get a `children` relation.
@@ -685,7 +711,7 @@ impl ValidatorSchema {
             common_types.into_values(),
         )?;
 
-        Ok(ValidatorSchema::new_from_maps(entity_types, action_ids))
+        Ok(ValidatorSchema::new_from_maps(entity_types, action_ids, HashSet::new()))
     }
 
     /// Check that all entity types and actions referenced in the schema are in

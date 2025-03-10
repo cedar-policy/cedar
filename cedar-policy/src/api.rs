@@ -4521,64 +4521,62 @@ mod test_access {
     use super::*;
 
     fn schema() -> Schema {
-                let src = r#"
-                  type Task = {
-            "id": Long,
-            "name": String,
-            "state": String,
-        };
+        //         let src = r#"
+        //           type Task = {
+        //     "id": Long,
+        //     "name": String,
+        //     "state": String,
+        // };
 
-        type Tasks = Set<Task>;
-        entity List in [Application] = {
-          "editors": Team,
-          "name": String,
-          "owner": User,
-          "readers": Team,
-          "tasks": Tasks,
-        };
-        entity Application;
-        entity User in [Team, Application] = {
-          "joblevel": Long,
-          "location": String,
-        };
-
-        entity CoolList;
-
-        entity Team in [Team, Application];
-
-        action Read, Write, Create;
-
-        action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
-            principal: [User],
-            resource : [List]
-        };
-
-        action GetList in Read appliesTo {
-            principal : [User],
-            resource : [List, CoolList]
-        };
-
-        action GetLists in Read appliesTo {
-            principal : [User],
-            resource : [Application]
-        };
-
-        action CreateList in Create appliesTo {
-            principal : [User],
-            resource : [Application]
-        };
-
-                "#;
-
-        // let src = r#"
+        // type Tasks = Set<Task>;
+        // entity List in [Application] = {
+        //   "editors": Team,
+        //   "name": String,
+        //   "owner": User,
+        //   "readers": Team,
+        //   "tasks": Tasks,
+        // };
         // entity Application;
-        // entity User;
+        // entity User in [Team, Application] = {
+        //   "joblevel": Long,
+        //   "location": String,
+        // };
+
+        // entity CoolList;
+
+        // entity Team in [Team, Application];
+
         // action Read, Write, Create;
+
+        // action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
+        //     principal: [User],
+        //     resource : [List]
+        // };
+
+        // action GetList in Read appliesTo {
+        //     principal : [User],
+        //     resource : [List, CoolList]
+        // };
+
+        // action GetLists in Read appliesTo {
+        //     principal : [User],
+        //     resource : [Application]
+        // };
+
         // action CreateList in Create appliesTo {
         //     principal : [User],
         //     resource : [Application]
         // };
-        // "#;
+
+        //         "#;
+
+        let src = r#"
+                   type Task = {
+             "id": Long,
+             "name": String,
+             "state": String,
+         };
+        "#;
 
         src.parse().unwrap()
     }
@@ -4809,6 +4807,9 @@ action CreateList in Create appliesTo {
     #[test]
     fn principals() {
         let schema = schema();
+        println!("SCHEMA: {:?}", schema);
+
+
         let principals = schema.principals().collect::<HashSet<_>>();
         assert_eq!(principals.len(), 1);
         let user: EntityTypeName = "Foo::User".parse().unwrap();
