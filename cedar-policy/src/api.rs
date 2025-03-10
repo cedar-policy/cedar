@@ -4570,13 +4570,25 @@ mod test_access {
 
         //         "#;
 
-        let src = r#"
-                   type Task = {
-             "id": Long,
-             "name": String,
-             "state": String,
-         };
-        "#;
+                let src = r#"
+
+        entity User, List;
+        action Read, Write, Create;
+
+        action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
+            principal: [User],
+            resource : [List]
+        };
+
+                "#;
+
+        // let src = r#"
+        //            type Task = {
+        //      "id": Long,
+        //      "name": String,
+        //      "state": String,
+        //  };
+        // "#;
 
         src.parse().unwrap()
     }

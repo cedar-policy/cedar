@@ -554,7 +554,7 @@ impl ValidatorSchema {
             }
 
             for (action_euid, action) in ns_def.actions.actions {
-                // println!("Action fragment action euid: {:?}", action_euid.clone());
+                // println!("Action loc: {:?}", action.clone().loc);
                 match action_fragments.entry(action_euid) {
                     Entry::Vacant(v) => v.insert(action),
                     Entry::Occupied(o) => {
