@@ -522,7 +522,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
-                    loc: None
+                    loc: None,
                 }
                 .into(),
             )],
@@ -559,7 +559,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
-                    loc: None
+                    loc: None,
                 }
                 .into(),
             )],
@@ -651,7 +651,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
-                    loc: None
+                    loc: None,
                 }
                 .into(),
             )],
@@ -678,7 +678,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
-                    loc: None
+                    loc: None,
                 }
                 .into(),
             )],
@@ -705,7 +705,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
-                    loc: None
+                    loc: None,
                 }
                 .into(),
             )],
@@ -1083,7 +1083,7 @@ mod test {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
-                    loc: None
+                    loc: None,
                 }
                 .into(),
             )],
@@ -1119,7 +1119,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
-                        loc: None
+                        loc: None,
                     }
                     .into(),
                 ),
@@ -1129,7 +1129,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
-                        loc: None
+                        loc: None,
                     }
                     .into(),
                 ),
@@ -1518,7 +1518,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
-                        loc: None
+                        loc: None,
                     }
                     .into(),
                 ),
@@ -1528,7 +1528,7 @@ mod test {
                         member_of_types: vec![resource_parent_type.parse().unwrap()],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
-                        loc: None
+                        loc: None,
                     }
                     .into(),
                 ),
@@ -1538,7 +1538,7 @@ mod test {
                         member_of_types: vec![resource_grandparent_type.parse().unwrap()],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
-                        loc: None
+                        loc: None,
                     }
                     .into(),
                 ),
@@ -1548,7 +1548,7 @@ mod test {
                         member_of_types: vec![],
                         shape: json_schema::AttributesOrContext::default(),
                         tags: None,
-                        loc: None
+                        loc: None,
                     }
                     .into(),
                 ),

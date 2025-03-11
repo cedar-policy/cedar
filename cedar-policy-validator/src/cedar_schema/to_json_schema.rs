@@ -79,15 +79,12 @@ pub fn cedar_schema_to_json_schema(
     let all_namespaces = qualified_namespaces
         .chain(unqualified_namespace)
         .collect::<Vec<_>>();
-    // println!("all_namespaces: {:?}", all_namespaces);
     let names = build_namespace_bindings(all_namespaces.iter().map(|ns| &ns.data))?;
     let warnings = compute_namespace_warnings(&names, extensions);
     let fragment: std::collections::BTreeMap<
         Option<Name>,
         json_schema::NamespaceDefinition<RawName>,
     > = collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?.collect();
-    // fragment.iter().for_each(|(_, n)| n.entity_types.iter().for_each(|e| println!("ENTITY: {:?}", e)));
-    // println!("{:?}", );
     Ok((
         json_schema::Fragment(fragment),
         warnings.collect::<Vec<_>>().into_iter(),
@@ -133,8 +130,6 @@ fn split_unqualified_namespace(
     // First split every namespace into those with explicit names and those without
     let (qualified, unqualified): (Vec<_>, Vec<_>) =
         namespaces.into_iter().partition(|n| n.data.name.is_some());
-    // qualified.iter().for_each(|a| println!("Qualified: {:?}", a));
-    // unqualified.iter().for_each(|a| println!("UnQualified: {:?}", a));
 
     // Now combine all the decls in namespaces without names into one unqualified namespace
     let mut unqualified_decls = vec![];
@@ -228,7 +223,8 @@ impl TryFrom<Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName>
 /// Converts action type decls
 fn convert_action_decl(
     a: Annotated<Node<ActionDecl>>,
-) -> Result<impl Iterator<Item = (ActionName, json_schema::ActionType<RawName>)>, ToJsonSchemaErrors> {
+) -> Result<impl Iterator<Item = (ActionName, json_schema::ActionType<RawName>)>, ToJsonSchemaErrors>
+{
     let ActionDecl {
         names,
         parents,
