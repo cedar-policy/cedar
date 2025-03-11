@@ -48,7 +48,13 @@ impl<N: Display> Display for json_schema::NamespaceDefinition<N> {
             writeln!(f, "{}entity {n}{};", ty.annotations, ty)?
         }
         for (n, a) in &self.actions {
-            writeln!(f, "{}action \"{}\"{};", a.annotations, n.name.escape_debug(), a)?
+            writeln!(
+                f,
+                "{}action \"{}\"{};",
+                a.annotations,
+                n.name.escape_debug(),
+                a
+            )?
         }
         Ok(())
     }
@@ -263,15 +269,13 @@ mod tests {
 
     #[track_caller]
     fn test_round_trip(src: &str) {
-        println!("Source text: {:?}", src);
         let (cedar_schema, _) =
             parse_cedar_schema_fragment(src, Extensions::none()).expect("should parse");
         let printed_cedar_schema = cedar_schema.to_cedarschema().expect("should convert");
-        println!("Dest text: {:?}",printed_cedar_schema );
         let (parsed_cedar_schema, _) =
             parse_cedar_schema_fragment(&printed_cedar_schema, Extensions::none())
                 .expect("should parse");
-        // assert_eq!(cedar_schema, parsed_cedar_schema);
+        assert_eq!(cedar_schema, parsed_cedar_schema);
     }
 
     #[test]
