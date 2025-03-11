@@ -371,7 +371,7 @@ impl<T: Clone> From<ast::Expr<T>> for Clause {
 
 impl std::fmt::Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (k, v) in self.annotations.0.iter() {
+        for (k, v) in &self.annotations.0 {
             write!(f, "@{k}")?;
             if let Some(v) = v {
                 write!(f, "({v})")?;

@@ -512,7 +512,7 @@ mod test {
     impl<T: PartialEq> SlowSet<T> {
         pub fn from(iter: impl IntoIterator<Item = T>) -> Self {
             let mut contents = vec![];
-            for item in iter.into_iter() {
+            for item in iter {
                 if !contents.contains(&item) {
                     contents.push(item)
                 }

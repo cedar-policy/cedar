@@ -205,7 +205,7 @@ pub trait CedarTestImplementation {
 
 /// Specifies how authorization errors coming from this [`CedarTestImplementation`]
 ///  should be compared against errors coming from another implementation.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ErrorComparisonMode {
     /// Don't compare errors at all. The [`CedarTestImplementation`] will be
     /// expected to never report errors.

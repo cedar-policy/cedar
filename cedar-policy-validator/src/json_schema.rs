@@ -1220,7 +1220,7 @@ impl<N> Type<N> {
                 ..
             } => Box::new(std::iter::once(type_name)),
             Type::CommonTypeRef { type_name, .. } => Box::new(std::iter::once(type_name)),
-            _ => Box::new(std::iter::empty()),
+            Type::Type { .. } => Box::new(std::iter::empty()),
         }
     }
 
@@ -1965,7 +1965,8 @@ impl TypeVariant<ConditionalName> {
     }
 }
 
-// Only used for serialization
+// Only used for serialization. Must take a ref to work with serde macros.
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_partial_schema_default(b: &bool) -> bool {
     *b == partial_schema_default()
 }
@@ -2119,7 +2120,7 @@ impl<'a> arbitrary::Arbitrary<'a> for TypeOfAttribute<RawName> {
     }
 }
 
-// Only used for serialization
+// Only used for serialization. Must take a ref to work with serde macros.
 fn is_record_attribute_required_default(b: &bool) -> bool {
     *b == record_attribute_required_default()
 }

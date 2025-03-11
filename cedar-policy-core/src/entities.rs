@@ -131,7 +131,7 @@ impl Entities {
         extensions: &Extensions<'_>,
     ) -> Result<Self> {
         let checker = schema.map(|schema| EntitySchemaConformanceChecker::new(schema, extensions));
-        for entity in collection.into_iter() {
+        for entity in collection {
             if let Some(checker) = checker.as_ref() {
                 checker.validate_entity(&entity)?;
             }

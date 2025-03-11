@@ -93,13 +93,13 @@ impl std::fmt::Display for Pattern {
 }
 
 impl PatternElem {
-    fn match_char(&self, text_char: &char) -> bool {
+    fn match_char(self, text_char: char) -> bool {
         match self {
             PatternElem::Char(c) => text_char == c,
             PatternElem::Wildcard => true,
         }
     }
-    fn is_wildcard(&self) -> bool {
+    fn is_wildcard(self) -> bool {
         matches!(self, PatternElem::Wildcard)
     }
 }
@@ -139,7 +139,7 @@ impl Pattern {
                 star_idx = j;
                 tmp_idx = i;
                 j += 1;
-            } else if j < pattern_len && pattern[j].match_char(&text[i]) {
+            } else if j < pattern_len && pattern[j].match_char(text[i]) {
                 i += 1;
                 j += 1;
             } else if contains_star {

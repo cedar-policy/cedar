@@ -220,7 +220,7 @@ pub enum ToASTErrorKind {
     #[diagnostic(transparent)]
     InvalidActionType(#[from] parse_errors::InvalidActionType),
     /// Returned when a condition clause is empty
-    #[error("{}condition clause cannot be empty", match .0 { Some(ident) => format!("`{}` ", ident), None => "".to_string() })]
+    #[error("{}condition clause cannot be empty", match .0 { Some(ident) => format!("`{}` ", ident), None => String::new() })]
     EmptyClause(Option<cst::Ident>),
     /// Returned when membership chains do not resolve to an expression,
     /// violating an internal invariant
@@ -783,11 +783,11 @@ pub fn expected_to_string(expected: &[String], config: &ExpectedTokenConfig) -> 
         .map(|e| e.as_str())
         .collect::<BTreeSet<_>>();
     if expected.contains(config.identifier_sentinel) {
-        for token in config.special_identifier_tokens.iter() {
+        for token in &config.special_identifier_tokens {
             expected.remove(*token);
         }
         if !expected.contains(config.first_set_sentinel) {
-            for token in config.first_set_identifier_tokens.iter() {
+            for token in &config.first_set_identifier_tokens {
                 expected.remove(*token);
             }
         }

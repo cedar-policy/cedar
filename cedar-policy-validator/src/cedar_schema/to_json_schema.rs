@@ -130,7 +130,7 @@ fn split_unqualified_namespace(
 
     // Now combine all the decls in namespaces without names into one unqualified namespace
     let mut unqualified_decls = vec![];
-    for mut unqualified_namespace in unqualified.into_iter() {
+    for mut unqualified_namespace in unqualified {
         unqualified_decls.append(&mut unqualified_namespace.data.decls);
     }
 
@@ -450,7 +450,7 @@ where
 {
     let mut answers = vec![];
     let mut errs = vec![];
-    for r in iter.into_iter() {
+    for r in iter {
         match r {
             Ok(a) => {
                 answers.push(a);
@@ -554,7 +554,7 @@ fn make_warning_for_shadowing<'a>(
     extensions: &'a Extensions<'a>,
 ) -> impl Iterator<Item = SchemaWarning> + 'a {
     let mut warnings = vec![];
-    for (common_name, common_src_node) in n.common_types.iter() {
+    for (common_name, common_src_node) in &n.common_types {
         // Check if it shadows a entity name in the same namespace
         if let Some(entity_src_node) = n.entities.get(common_name) {
             let warning = schema_warnings::ShadowsEntityWarning {
@@ -636,7 +636,7 @@ fn partition_decls(
     let mut actions = vec![];
     let mut types = vec![];
 
-    for decl in decls.iter() {
+    for decl in decls {
         match &decl.data.node {
             Declaration::Entity(e) => entities.push(e),
             Declaration::Action(a) => actions.push(a),
@@ -659,7 +659,7 @@ fn into_partition_decls(
     let mut actions = vec![];
     let mut types = vec![];
 
-    for decl in decls.into_iter() {
+    for decl in decls {
         let loc = decl.data.loc;
         match decl.data.node {
             Declaration::Entity(e) => entities.push(Annotated {

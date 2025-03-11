@@ -363,7 +363,7 @@ impl Diagnostic for UnsafeOptionalAttributeAccess {
     "for policy `{policy_id}`, unable to guarantee safety of access to tag `{tag}`{}",
     match .entity_ty.as_ref().and_then(|lub| lub.get_single_entity()) {
         Some(ety) => format!(" on entity type `{ety}`"),
-        None => "".to_string()
+        None => String::new()
     }
 )]
 pub struct UnsafeTagAccess {
@@ -505,7 +505,7 @@ impl Display for EntityDerefLevel {
 impl From<u32> for EntityDerefLevel {
     fn from(value: u32) -> Self {
         EntityDerefLevel {
-            level: value as i64,
+            level: i64::from(value),
         }
     }
 }

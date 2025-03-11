@@ -198,14 +198,13 @@ impl Validator {
         // AND
         // exists spec in apply_specs such that there exists principal in spec.principals such that lit `memberOf` principal
         // (as well as for resource)
-        self.check_if_none_equal(apply_specs, entity_type, &select_apply_spec)
+        Self::check_if_none_equal(apply_specs, entity_type, &select_apply_spec)
             && self.check_if_any_contain(apply_specs, entity_type, &select_apply_spec)
     }
 
     // This checks the first property:
     // not exists spec in apply_specs such that lit in spec.principals
     fn check_if_none_equal<'a>(
-        &'a self,
         specs: &[&'a ValidatorApplySpec<ast::EntityType>],
         lit_opt: Option<&ast::EntityType>,
         select_apply_spec: &impl Fn(

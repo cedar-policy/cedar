@@ -100,7 +100,7 @@ impl<'e> RestrictedEvaluator<'e> {
     pub fn partial_interpret(&self, expr: BorrowedRestrictedExpr<'_>) -> Result<PartialValue> {
         stack_size_check()?;
 
-        let res = self.partial_interpret_internal(&expr);
+        let res = self.partial_interpret_internal(expr);
 
         // set the returned value's source location to the same source location
         // as the input expression had.
@@ -127,10 +127,7 @@ impl<'e> RestrictedEvaluator<'e> {
     /// `partial_interpret()`.
     ///
     /// INVARIANT: If this returns a residual, the residual expression must be a valid restricted expression.
-    fn partial_interpret_internal(
-        &self,
-        expr: &BorrowedRestrictedExpr<'_>,
-    ) -> Result<PartialValue> {
+    fn partial_interpret_internal(&self, expr: BorrowedRestrictedExpr<'_>) -> Result<PartialValue> {
         match expr.as_ref().expr_kind() {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
             ExprKind::Set(items) => {
@@ -543,8 +540,8 @@ impl<'e> Evaluator<'e> {
                             Dereference::Residual(r) => Ok(PartialValue::Residual(
                                 Expr::binary_app(BinaryOp::In, r, arg2.into()),
                             )),
-                            Dereference::NoSuchEntity => self.eval_in(uid1, None, arg2),
-                            Dereference::Data(entity1) => self.eval_in(uid1, Some(entity1), arg2),
+                            Dereference::NoSuchEntity => Self::eval_in(uid1, None, arg2),
+                            Dereference::Data(entity1) => Self::eval_in(uid1, Some(entity1), arg2),
                         }
                     }
                     // contains, which works on Sets
@@ -767,12 +764,7 @@ impl<'e> Evaluator<'e> {
         }
     }
 
-    fn eval_in(
-        &self,
-        uid1: &EntityUID,
-        entity1: Option<&Entity>,
-        arg2: Value,
-    ) -> Result<PartialValue> {
+    fn eval_in(uid1: &EntityUID, entity1: Option<&Entity>, arg2: Value) -> Result<PartialValue> {
         // `rhs` is a list of all the UIDs for which we need to
         // check if `uid1` is a descendant of
         let rhs = match arg2.value {
@@ -849,8 +841,7 @@ impl<'e> Evaluator<'e> {
                         if res.is_projectable() {
                             map.as_ref()
                                 .iter()
-                                .filter_map(|(k, v)| if k == attr { Some(v) } else { None })
-                                .next()
+                                .find_map(|(k, v)| if k == attr { Some(v) } else { None })
                                 .ok_or_else(|| {
                                     EvaluationError::record_attr_does_not_exist(
                                         attr.clone(),

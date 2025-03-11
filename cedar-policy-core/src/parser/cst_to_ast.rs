@@ -273,7 +273,7 @@ impl Node<Option<cst::Policy>> {
                             )),
                             _ => None,
                         },
-                        _ => None,
+                        ParseError::ToCST(_) => None,
                     })
                     .collect::<Vec<_>>();
                 errs.extend(new_errs);
@@ -499,7 +499,7 @@ impl cst::PolicyImpl {
         } else {
             Ok(())
         };
-        let (principal, action, resource, _) = flatten_tuple_4(
+        let (principal, action, resource, ()) = flatten_tuple_4(
             maybe_principal,
             maybe_action,
             maybe_resource,
@@ -581,7 +581,7 @@ impl cst::PolicyImpl {
     ) -> Result<BTreeMap<ast::AnyId, T>> {
         let mut annotations = BTreeMap::new();
         let mut all_errs: Vec<ParseErrors> = vec![];
-        for node in self.annotations.iter() {
+        for node in &self.annotations {
             match node.to_kv_pair(&annotation_constructor) {
                 Ok((k, v)) => {
                     use std::collections::btree_map::Entry;
@@ -1379,7 +1379,8 @@ impl Node<Option<cst::Relation>> {
                 } else {
                     Ok(())
                 };
-                let (first, rest, _) = flatten_tuple_3(maybe_first, maybe_rest, maybe_extra_elmts)?;
+                let (first, rest, ()) =
+                    flatten_tuple_3(maybe_first, maybe_rest, maybe_extra_elmts)?;
                 let mut rest = rest.into_iter();
                 let second = rest.next();
                 match second {

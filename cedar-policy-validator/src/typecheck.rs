@@ -1641,24 +1641,19 @@ impl<'a> SingleEnvTypechecker<'a> {
                         };
                         if prior_capability.contains(&Capability::new_borrowed_tag(arg1, arg2)) {
                             // Determine the set of possible tag types for this access.
-                            let tag_types = match self.tag_types(kind) {
-                                Ok(tag_types) => tag_types,
-                                Err(()) => {
-                                    // `kind` was not an entity type.
-                                    // should be unreachable, as we already typechecked that this matches
-                                    // `Type::any_entity_reference()`
-                                    type_errors.push(
-                                        ValidationError::internal_invariant_violation(
-                                            bin_expr.source_loc().cloned(),
-                                            self.policy_id.clone(),
-                                        ),
-                                    );
-                                    return TypecheckAnswer::fail(
-                                        ExprBuilder::new()
-                                            .with_same_source_loc(bin_expr)
-                                            .get_tag(expr_ty_arg1, expr_ty_arg2),
-                                    );
-                                }
+                            let Ok(tag_types) = self.tag_types(kind) else {
+                                // `kind` was not an entity type.
+                                // should be unreachable, as we already typechecked that this matches
+                                // `Type::any_entity_reference()`
+                                type_errors.push(ValidationError::internal_invariant_violation(
+                                    bin_expr.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                ));
+                                return TypecheckAnswer::fail(
+                                    ExprBuilder::new()
+                                        .with_same_source_loc(bin_expr)
+                                        .get_tag(expr_ty_arg1, expr_ty_arg2),
+                                );
                             };
                             if tag_types.is_empty() {
                                 // no entities in the LUB are allowed to have tags.

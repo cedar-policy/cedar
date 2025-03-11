@@ -469,7 +469,7 @@ fn parse_duration(s: &str) -> Result<Duration, DurationParseError> {
         .ok_or(DurationParseError::Overflow)
     };
     let mut ms = if s.starts_with('-') {
-        i64::try_from(-(ms as i128)).map_err(|_| DurationParseError::Overflow)?
+        i64::try_from(-i128::from(ms)).map_err(|_| DurationParseError::Overflow)?
     } else {
         i64::try_from(ms).map_err(|_| DurationParseError::Overflow)?
     };
@@ -512,7 +512,7 @@ impl UTCOffset {
     const MAX_MM: u32 = 60;
 
     fn to_seconds(&self) -> i64 {
-        let offset_in_seconds_unsigned = (self.hh * 3600 + self.mm * 60) as i64;
+        let offset_in_seconds_unsigned = i64::from(self.hh * 3600 + self.mm * 60);
         if self.positive {
             offset_in_seconds_unsigned
         } else {
@@ -983,8 +983,8 @@ mod tests {
         ] {
             assert!(parse_duration(s).is_err());
         }
-        assert!(parse_duration(&milliseconds_to_duration(i64::MAX as i128 + 1)).is_err());
-        assert!(parse_duration(&milliseconds_to_duration(i64::MIN as i128 - 1)).is_err());
+        assert!(parse_duration(&milliseconds_to_duration(i128::from(i64::MAX) + 1)).is_err());
+        assert!(parse_duration(&milliseconds_to_duration(i128::from(i64::MIN) - 1)).is_err());
     }
 
     #[test]

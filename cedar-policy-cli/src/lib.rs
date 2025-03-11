@@ -1240,12 +1240,9 @@ fn add_template_links_to_set(path: impl AsRef<Path>, policy_set: &mut PolicySet)
 
 /// Given a file containing template links, return a `Vec` of those links
 fn load_links_from_file(path: impl AsRef<Path>) -> Result<Vec<TemplateLinked>> {
-    let f = match std::fs::File::open(path) {
-        Ok(f) => f,
-        Err(_) => {
-            // If the file doesn't exist, then give back the empty entity set
-            return Ok(vec![]);
-        }
+    let Ok(f) = std::fs::File::open(path) else {
+        // If the file doesn't exist, then give back the empty entity set
+        return Ok(vec![]);
     };
     if f.metadata()
         .into_diagnostic()

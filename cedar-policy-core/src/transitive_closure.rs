@@ -565,7 +565,7 @@ mod tests {
         compute_tc_internal(&mut entities);
         // fails cycle check
         match enforce_dag_from_tc(&entities) {
-            Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
+            Ok(()) => panic!("enforce_dag_from_tc should have returned an error"),
             Err(TcError::HasCycle(err)) => {
                 assert!(err.vertex_with_loop() == &EntityUID::with_eid("B"));
             }
@@ -582,7 +582,7 @@ mod tests {
         assert!(enforce_tc(&entities).is_ok());
         // still fails cycle check
         match enforce_dag_from_tc(&entities) {
-            Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
+            Ok(()) => panic!("enforce_dag_from_tc should have returned an error"),
             Err(TcError::HasCycle(err)) => {
                 assert!(err.vertex_with_loop() == &EntityUID::with_eid("B"));
             }
@@ -616,7 +616,7 @@ mod tests {
         compute_tc_internal(&mut entities);
         // fails cycle check
         match enforce_dag_from_tc(&entities) {
-            Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
+            Ok(()) => panic!("enforce_dag_from_tc should have returned an error"),
             Err(TcError::HasCycle(err)) => {
                 assert!(
                     err.vertex_with_loop() == &EntityUID::with_eid("A")
@@ -639,7 +639,7 @@ mod tests {
         assert!(enforce_tc(&entities).is_ok());
         // still fails cycle check
         match enforce_dag_from_tc(&entities) {
-            Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
+            Ok(()) => panic!("enforce_dag_from_tc should have returned an error"),
             Err(TcError::HasCycle(err)) => {
                 assert!(
                     err.vertex_with_loop() == &EntityUID::with_eid("A")
@@ -692,7 +692,7 @@ mod tests {
         assert!(enforce_tc(&entities).is_ok());
         // still fails cycle check
         match enforce_dag_from_tc(&entities) {
-            Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
+            Ok(()) => panic!("enforce_dag_from_tc should have returned an error"),
             Err(TcError::HasCycle(err)) => {
                 // two possible cycles
                 assert!(
@@ -748,7 +748,7 @@ mod tests {
         assert!(enforce_tc(&entities).is_ok());
         // but still fail cycle check
         match enforce_dag_from_tc(&entities) {
-            Ok(_) => panic!("enforce_dag_from_tc should have returned an error"),
+            Ok(()) => panic!("enforce_dag_from_tc should have returned an error"),
             Err(TcError::HasCycle(_)) => (), // Every vertex is in a cycle
             Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
         }

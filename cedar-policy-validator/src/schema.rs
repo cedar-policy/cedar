@@ -507,7 +507,7 @@ impl ValidatorSchema {
         // Invert the `parents` relation defined by entities and action so far
         // to get a `children` relation.
         let mut entity_children: HashMap<EntityType, HashSet<EntityType>> = HashMap::new();
-        for (name, entity_type) in entity_type_fragments.iter() {
+        for (name, entity_type) in &entity_type_fragments {
             for parent in entity_type.parents() {
                 entity_children
                     .entry(internal_name_to_entity_type(parent.clone())?)
@@ -571,8 +571,8 @@ impl ValidatorSchema {
             .partition_nonempty()?;
 
         let mut action_children = HashMap::new();
-        for (euid, action) in action_fragments.iter() {
-            for parent in action.parents.iter() {
+        for (euid, action) in &action_fragments {
+            for parent in &action.parents {
                 action_children
                     .entry(parent.clone().try_into()?)
                     .or_insert_with(HashSet::new)
@@ -1213,7 +1213,7 @@ impl<'a> CommonTypeResolver<'a> {
         // Note that the keys of this map may be a superset of all common type
         // names
         let mut indegrees: HashMap<&InternalName, usize> = HashMap::new();
-        for (ty_name, deps) in self.graph.iter() {
+        for (ty_name, deps) in &self.graph {
             // Ensure that declared common types have values in `indegrees`
             indegrees.entry(ty_name).or_insert(0);
             for dep in deps {
@@ -1233,7 +1233,7 @@ impl<'a> CommonTypeResolver<'a> {
         let mut res: Vec<&'a InternalName> = Vec::new();
 
         // Find all type names with zero incoming edges
-        for (name, degree) in indegrees.iter() {
+        for (name, degree) in &indegrees {
             let name = *name;
             if *degree == 0 {
                 work_set.insert(name);
@@ -1245,7 +1245,7 @@ impl<'a> CommonTypeResolver<'a> {
         }
 
         // Pop a node
-        while let Some(name) = work_set.iter().next().cloned() {
+        while let Some(name) = work_set.iter().next().copied() {
             work_set.remove(name);
             if let Some(deps) = self.graph.get(name) {
                 for dep in deps {
@@ -1273,8 +1273,8 @@ impl<'a> CommonTypeResolver<'a> {
 
         // The set of nodes that have not been added to the result
         // i.e., there are still in-coming edges and hence exists a cycle
-        let mut set: HashSet<&InternalName> = HashSet::from_iter(self.graph.keys().cloned());
-        for name in res.iter() {
+        let mut set: HashSet<&InternalName> = HashSet::from_iter(self.graph.keys().copied());
+        for name in &res {
             set.remove(name);
         }
 
@@ -1348,7 +1348,7 @@ impl<'a> CommonTypeResolver<'a> {
                 }),
                 loc,
             }),
-            _ => Ok(ty),
+            json_schema::Type::Type { .. } => Ok(ty),
         }
     }
 
@@ -1363,7 +1363,7 @@ impl<'a> CommonTypeResolver<'a> {
             HashMap::new();
         let mut tys: HashMap<&'a InternalName, Type> = HashMap::new();
 
-        for &name in sorted_names.iter() {
+        for &name in &sorted_names {
             // PANIC SAFETY: `name.basename()` should be an existing common type id
             #[allow(clippy::unwrap_used)]
             let ty = self.defs.get(name).unwrap();
