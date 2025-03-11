@@ -277,13 +277,13 @@ impl PrincipalConstraint {
     pub fn has_slot(&self) -> bool {
         match self {
             PrincipalConstraint::All => false,
-            PrincipalConstraint::Eq(EqConstraint::Entity { entity: _ }) => false,
-            PrincipalConstraint::Eq(EqConstraint::Slot { slot: _ }) => true,
+            PrincipalConstraint::Eq(EqConstraint::Entity { .. }) => false,
+            PrincipalConstraint::Eq(EqConstraint::Slot { .. }) => true,
             PrincipalConstraint::In(PrincipalOrResourceInConstraint::Entity { entity: _ }) => false,
             PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot { slot: _ }) => true,
             PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
-                entity_type: _,
                 in_entity: None | Some(PrincipalOrResourceInConstraint::Entity { .. }),
+                ..
             }) => false,
             PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type: _,
