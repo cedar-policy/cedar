@@ -27,7 +27,6 @@ use cedar_policy_core::{
     parser::Loc,
     transitive_closure::compute_tc,
 };
-use entity_type::ValidatorCommonEntityType;
 use namespace_def::EntityTypeFragment;
 use nonempty::NonEmpty;
 use serde::Deserialize;
@@ -210,7 +209,7 @@ impl ValidatorSchema {
             .into_iter()
             .map(|id| (id.name().clone(), id))
             .collect();
-        Self::new_from_maps(entity_types, action_ids, HashSet::new())
+        Self::new_from_maps(entity_types, action_ids)
     }
 
     /// for internal use: version of `new()` which takes the maps directly, rather than constructing them.
@@ -219,7 +218,6 @@ impl ValidatorSchema {
     fn new_from_maps(
         entity_types: HashMap<EntityType, ValidatorEntityType>,
         action_ids: HashMap<EntityUID, ValidatorActionId>,
-        common_types: HashSet<ValidatorCommonEntityType>,
     ) -> Self {
         let actions = Self::action_entities_iter(&action_ids)
             .map(|e| (e.uid().clone(), Arc::new(e)))
@@ -569,7 +567,7 @@ impl ValidatorSchema {
                         Ok((
                             name.with_loc(loc.as_ref()),
                             ValidatorEntityType::new_standard(
-                                name.clone(),
+                                name,
                                 descendants,
                                 attributes,
                                 open_attributes,
@@ -614,7 +612,7 @@ impl ValidatorSchema {
                         context: Type::record_with_attributes(context, open_context_attributes),
                         attribute_types: action.attribute_types,
                         attributes: action.attributes,
-                        loc: action.loc.clone(),
+                        loc: action.loc,
                     },
                 ))
             })
@@ -642,11 +640,7 @@ impl ValidatorSchema {
             common_types.into_values(),
         )?;
 
-        Ok(ValidatorSchema::new_from_maps(
-            entity_types,
-            action_ids,
-            HashSet::new(),
-        ))
+        Ok(ValidatorSchema::new_from_maps(entity_types, action_ids))
     }
 
     /// Check that all entity types and actions referenced in the schema are in
@@ -3772,6 +3766,7 @@ mod test_rfc70 {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
                     .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .exactly_one_underline("entity T { bar: String };")
                     .build(),
             );
         });
@@ -3789,6 +3784,7 @@ mod test_rfc70 {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
                     .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .exactly_one_underline("entity T { bar: String };")
                     .build(),
             );
         });
@@ -3922,6 +3918,7 @@ mod test_rfc70 {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
                     .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .exactly_one_underline("entity T in T { foo: String };")
                     .build(),
             );
         });
@@ -3983,6 +3980,7 @@ mod test_rfc70 {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("definition of `NS::Action::\"A\"` illegally shadows the existing definition of `Action::\"A\"`")
                     .help("try renaming one of the actions, or moving `Action::\"A\"` to a different namespace")
+                    .exactly_one_underline("A")
                     .build(),
             );
         });

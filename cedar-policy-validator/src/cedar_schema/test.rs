@@ -318,7 +318,7 @@ mod demo_tests {
             annotations: Annotations::new(),
             loc: None,
         };
-        let namespace = json_schema::NamespaceDefinition::new(empty(), once("foo".into(), action));
+        let namespace = json_schema::NamespaceDefinition::new(empty(), once(("foo".into(), action)));
         let fragment =
             json_schema::Fragment(BTreeMap::from([(Some("bar".parse().unwrap()), namespace)]));
         let as_src = fragment.to_cedarschema().unwrap();
@@ -1485,6 +1485,7 @@ mod translator_tests {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("definition of `Demo::email_address` illegally shadows the existing definition of `email_address`")
                     .help("try renaming one of the definitions, or moving `email_address` to a different namespace")
+                    .exactly_one_underline("entity email_address {\n              where: String,\n            };")
                     .build(),
             );
         });

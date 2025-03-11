@@ -292,6 +292,7 @@ mod test {
             context: Type::any_record(),
             attribute_types: Attributes::default(),
             attributes: BTreeMap::default(),
+            loc: None
         }
     }
 
