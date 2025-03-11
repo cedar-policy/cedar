@@ -364,7 +364,7 @@ mod demo_tests {
             #[cfg(feature = "extended-schema")]
             defn_loc: None,
         };
-        let namespace = json_schema::NamespaceDefinition::new(empty(), once("foo".into(), action));
+        let namespace = json_schema::NamespaceDefinition::new(empty(), once(("foo".into(), action)));
         let fragment =
             json_schema::Fragment(BTreeMap::from([(Some("bar".parse().unwrap()), namespace)]));
         let as_src = fragment.to_cedarschema().unwrap();
