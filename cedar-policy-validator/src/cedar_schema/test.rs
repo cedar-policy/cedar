@@ -51,7 +51,13 @@ mod demo_tests {
         "#;
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::none()).unwrap();
-        let foo = schema.0.get(&None).unwrap().actions.get(&"Foo".into()).unwrap();
+        let foo = schema
+            .0
+            .get(&None)
+            .unwrap()
+            .actions
+            .get(&"Foo".into())
+            .unwrap();
         assert_matches!(foo,
             json_schema::ActionType {
                 applies_to : Some(json_schema::ApplySpec {
@@ -358,8 +364,7 @@ mod demo_tests {
             #[cfg(feature = "extended-schema")]
             defn_loc: None,
         };
-        let namespace =
-            json_schema::NamespaceDefinition::new(empty(), once((ActionName::from("foo"), action)));
+        let namespace = json_schema::NamespaceDefinition::new(empty(), once("foo".into(), action));
         let fragment =
             json_schema::Fragment(BTreeMap::from([(Some("bar".parse().unwrap()), namespace)]));
         let as_src = fragment.to_cedarschema().unwrap();
@@ -457,12 +462,12 @@ namespace Baz {action "Foo" appliesTo {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
-                    loc: None
+                    loc: None,
                 }
                 .into(),
             )],
             BTreeMap::from([(
-                ActionName::from("j"),
+                "j".into(),
                 json_schema::ActionType::<RawName> {
                     attributes: None,
                     applies_to: Some(json_schema::ApplySpec::<RawName> {

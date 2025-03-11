@@ -21,7 +21,7 @@ use educe::Educe;
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
@@ -972,8 +972,6 @@ pub struct TemplateBodyImpl {
 /// Policy datatype. This is used for both templates (in which case it contains
 /// slots) and static policies (in which case it contains zero slots).
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
-/// Policy datatype. This is used for both templates (in which case it contains
-/// slots) and static policies (in which case it contains zero slots).
 pub enum TemplateBody {
     /// Represents a valid template body
     TemplateBody(TemplateBodyImpl),

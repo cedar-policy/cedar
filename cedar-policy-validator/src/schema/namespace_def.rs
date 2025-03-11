@@ -151,7 +151,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
             namespace,
             common_types,
             entity_types,
-            actions, 
+            actions,
         })
     }
 

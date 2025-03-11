@@ -1506,7 +1506,10 @@ impl SchemaFragment {
         id: &EntityId,
     ) -> Option<impl Iterator<Item = (&str, &str)>> {
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
-        let action_name = ActionName {name: id.as_ref().into(), loc: None};
+        let action_name = ActionName {
+            name: id.as_ref().into(),
+            loc: None,
+        };
         ns_def
             .actions
             .get(&action_name)
@@ -1526,7 +1529,10 @@ impl SchemaFragment {
         id: &EntityId,
         annotation_key: impl AsRef<str>,
     ) -> Option<&str> {
-        let action_name = ActionName {name: id.as_ref().into(), loc: None};
+        let action_name = ActionName {
+            name: id.as_ref().into(),
+            loc: None,
+        };
 
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
         get_annotation_by_key(
@@ -4521,58 +4527,31 @@ mod test_access {
     use super::*;
 
     fn schema() -> Schema {
-        //         let src = r#"
-        //           type Task = {
-        //     "id": Long,
-        //     "name": String,
-        //     "state": String,
-        // };
+        let src = r#"
+                  type Task = {
+            "id": Long,
+            "name": String,
+            "state": String,
+        };
 
-        // type Tasks = Set<Task>;
-        // entity List in [Application] = {
-        //   "editors": Team,
-        //   "name": String,
-        //   "owner": User,
-        //   "readers": Team,
-        //   "tasks": Tasks,
-        // };
-        // entity Application;
-        // entity User in [Team, Application] = {
-        //   "joblevel": Long,
-        //   "location": String,
-        // };
+        type Tasks = Set<Task>;
+        entity List in [Application] = {
+          "editors": Team,
+          "name": String,
+          "owner": User,
+          "readers": Team,
+          "tasks": Tasks,
+        };
+        entity Application;
+        entity User in [Team, Application] = {
+          "joblevel": Long,
+          "location": String,
+        };
 
-        // entity CoolList;
+        entity CoolList;
 
-        // entity Team in [Team, Application];
+        entity Team in [Team, Application];
 
-        // action Read, Write, Create;
-
-        // action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
-        //     principal: [User],
-        //     resource : [List]
-        // };
-
-        // action GetList in Read appliesTo {
-        //     principal : [User],
-        //     resource : [List, CoolList]
-        // };
-
-        // action GetLists in Read appliesTo {
-        //     principal : [User],
-        //     resource : [Application]
-        // };
-
-        // action CreateList in Create appliesTo {
-        //     principal : [User],
-        //     resource : [Application]
-        // };
-
-        //         "#;
-
-                let src = r#"
-
-        entity User, List;
         action Read, Write, Create;
 
         action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
@@ -4580,7 +4559,34 @@ mod test_access {
             resource : [List]
         };
 
+        action GetList in Read appliesTo {
+            principal : [User],
+            resource : [List, CoolList]
+        };
+
+        action GetLists in Read appliesTo {
+            principal : [User],
+            resource : [Application]
+        };
+
+        action CreateList in Create appliesTo {
+            principal : [User],
+            resource : [Application]
+        };
+
                 "#;
+
+        //         let src = r#"
+
+        // entity User, List;
+        // action Read, Write, Create;
+
+        // action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
+        //     principal: [User],
+        //     resource : [List]
+        // };
+
+        //         "#;
 
         // let src = r#"
         //            type Task = {
@@ -4820,7 +4826,6 @@ action CreateList in Create appliesTo {
     fn principals() {
         let schema = schema();
         println!("SCHEMA: {:?}", schema);
-
 
         let principals = schema.principals().collect::<HashSet<_>>();
         assert_eq!(principals.len(), 1);

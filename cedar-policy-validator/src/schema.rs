@@ -166,8 +166,6 @@ pub struct ValidatorSchema {
     /// `Entity` from the `ValidatorSchema` is O(N) as of this writing, but with
     /// this cache it's O(1).
     pub(crate) actions: HashMap<EntityUID, Arc<Entity>>,
-    /// TODO
-    common_types: HashSet<ValidatorCommonEntityType>
 }
 
 /// Construct [`ValidatorSchema`] from a string containing a schema formatted
@@ -216,31 +214,13 @@ impl ValidatorSchema {
         Self::new_from_maps(entity_types, action_ids, HashSet::new())
     }
 
-        /// Construct a new `ValidatorSchema` from a set of `ValidatorEntityType`s and `ValidatorActionId`s
-        pub fn new_with_common_types(
-            entity_types: impl IntoIterator<Item = ValidatorEntityType>,
-            action_ids: impl IntoIterator<Item = ValidatorActionId>,
-            common_types: impl IntoIterator<Item = ValidatorCommonEntityType>,
-        ) -> Self {
-            let entity_types = entity_types
-                .into_iter()
-                .map(|ety| (ety.name().clone(), ety))
-                .collect();
-            let action_ids = action_ids
-                .into_iter()
-                .map(|id| (id.name().clone(), id))
-                .collect();
-            let common_types = common_types.into_iter().collect();
-            Self::new_from_maps(entity_types, action_ids, common_types)
-        }
-
     /// for internal use: version of `new()` which takes the maps directly, rather than constructing them.
     ///
     /// This function constructs the `actions` cache.
     fn new_from_maps(
         entity_types: HashMap<EntityType, ValidatorEntityType>,
         action_ids: HashMap<EntityUID, ValidatorActionId>,
-        common_types: HashSet<ValidatorCommonEntityType>
+        common_types: HashSet<ValidatorCommonEntityType>,
     ) -> Self {
         let actions = Self::action_entities_iter(&action_ids)
             .map(|e| (e.uid().clone(), Arc::new(e)))
@@ -249,7 +229,6 @@ impl ValidatorSchema {
             entity_types,
             action_ids,
             actions,
-            common_types
         }
     }
 
@@ -374,7 +353,6 @@ impl ValidatorSchema {
             entity_types: HashMap::new(),
             action_ids: HashMap::new(),
             actions: HashMap::new(),
-            common_types: HashSet::new()
         }
     }
 
@@ -526,7 +504,6 @@ impl ValidatorSchema {
         let mut entity_type_fragments: HashMap<EntityType, _> = HashMap::new();
         let mut action_fragments = HashMap::new();
         for ns_def in fragments.into_iter().flat_map(|f| f.0.into_iter()) {
-            
             for (name, ty) in ns_def.common_types.defs {
                 match common_types.entry(name) {
                     Entry::Vacant(v) => v.insert(ty),
@@ -540,8 +517,6 @@ impl ValidatorSchema {
             }
 
             for (name, entity_type) in ns_def.entity_types.defs {
-                // println!("first pass: {:?}", name);
-                // println!("Entity type fragment: {:?}", entity_type);
                 match entity_type_fragments.entry(name) {
                     Entry::Vacant(v) => v.insert(entity_type),
                     Entry::Occupied(o) => {
@@ -554,7 +529,6 @@ impl ValidatorSchema {
             }
 
             for (action_euid, action) in ns_def.actions.actions {
-                // println!("Action loc: {:?}", action.clone().loc);
                 match action_fragments.entry(action_euid) {
                     Entry::Vacant(v) => v.insert(action),
                     Entry::Occupied(o) => {
@@ -566,16 +540,12 @@ impl ValidatorSchema {
 
         let resolver = CommonTypeResolver::new(&common_types);
         let common_types = resolver.resolve(extensions)?;
-   
 
         // Invert the `parents` relation defined by entities and action so far
         // to get a `children` relation.
         let mut entity_children: HashMap<EntityType, HashSet<EntityType>> = HashMap::new();
         for (name, entity_type) in entity_type_fragments.iter() {
-            // println!("Name: {:?}", name);
-            // println!("Parents:");
             for parent in entity_type.parents() {
-                // println!("Parent: {:?}", parent);
                 entity_children
                     .entry(internal_name_to_entity_type(parent.clone())?)
                     .or_default()
@@ -612,8 +582,6 @@ impl ValidatorSchema {
                         tags,
                         loc,
                     } => {
-                        // println!("HERE WE ARE: {:?}", loc.clone());
-
                         let (attributes, open_attributes) = {
                             let unresolved =
                                 try_jsonschema_type_into_validator_type(attributes.0, extensions)?;
@@ -660,9 +628,6 @@ impl ValidatorSchema {
         let mut action_ids = action_fragments
             .into_iter()
             .map(|(name, action)| -> Result<_> {
-                let loc = action.loc;
-                // println!("Name: {:?}", name);
-                // println!("Action location: {:?}",loc.clone() );
                 let descendants = action_children.remove(&name).unwrap_or_default();
                 let (context, open_context_attributes) = {
                     let unresolved =
@@ -711,7 +676,11 @@ impl ValidatorSchema {
             common_types.into_values(),
         )?;
 
-        Ok(ValidatorSchema::new_from_maps(entity_types, action_ids, HashSet::new()))
+        Ok(ValidatorSchema::new_from_maps(
+            entity_types,
+            action_ids,
+            HashSet::new(),
+        ))
     }
 
     /// Check that all entity types and actions referenced in the schema are in

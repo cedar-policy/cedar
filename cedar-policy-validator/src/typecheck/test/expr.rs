@@ -69,7 +69,7 @@ fn slot_in_typechecks() {
         member_of_types: vec![],
         shape: json_schema::AttributesOrContext::default(),
         tags: None,
-        loc: None
+        loc: None,
     }
     .into();
     let schema = json_schema::NamespaceDefinition::new([("typename".parse().unwrap(), etype)], []);
@@ -101,7 +101,7 @@ fn slot_equals_typechecks() {
         member_of_types: vec![],
         shape: json_schema::AttributesOrContext::default(),
         tags: None,
-        loc: None
+        loc: None,
     }
     .into();
     // These don't typecheck in strict mode because the test_util expression

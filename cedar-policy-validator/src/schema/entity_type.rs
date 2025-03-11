@@ -59,14 +59,13 @@ pub struct ValidatorEntityType {
 #[derive(Clone, Debug, Serialize, Educe, Hash)]
 #[educe(Eq, PartialEq)]
 pub struct ValidatorCommonEntityType {
-        /// The name of the entity type.
-        pub(crate) name: EntityType,
-        /// The location
-        #[serde(skip)]
-        #[educe(Eq(ignore))]
-        pub loc: Option<Loc>,
+    /// The name of the entity type.
+    pub(crate) name: EntityType,
+    /// The location
+    #[serde(skip)]
+    #[educe(Eq(ignore))]
+    pub loc: Option<Loc>,
 }
-
 
 /// The kind of validator entity types.
 ///

@@ -788,7 +788,7 @@ pub struct ActionName {
     pub name: SmolStr,
     /// todo
     #[educe(Eq(ignore))]
-    pub loc: Option<Loc>
+    pub loc: Option<Loc>,
 }
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -814,7 +814,7 @@ impl From<&str> for ActionName {
     fn from(value: &str) -> Self {
         Self {
             name: value.into(),
-            loc: None
+            loc: None,
         }
     }
 }
@@ -830,13 +830,10 @@ impl Serialize for ActionName {
 impl<'de> Deserialize<'de> for ActionName {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
-        D: Deserializer<'de>
+        D: Deserializer<'de>,
     {
         let name = SmolStr::deserialize(deserializer)?;
-        Ok(ActionName {
-            name,
-            loc: None,
-        })
+        Ok(ActionName { name, loc: None })
     }
 }
 
@@ -1106,8 +1103,6 @@ impl ActionEntityUID<RawName> {
         self,
         ns: Option<&InternalName>,
     ) -> ActionEntityUID<ConditionalName> {
-        // println!("Action: CONDITIONALLY QUALIFIED");
-
         // Upholding the INVARIANT on ActionEntityUID.ty: constructing an `ActionEntityUID<ConditionalName>`,
         // so in the constructed `ActionEntityUID`, `.ty` must be `Some` in all cases
         ActionEntityUID {
@@ -1129,8 +1124,6 @@ impl ActionEntityUID<RawName> {
     pub fn qualify_with(self, ns: Option<&InternalName>) -> ActionEntityUID<InternalName> {
         // Upholding the INVARIANT on ActionEntityUID.ty: constructing an `ActionEntityUID<InternalName>`,
         // so in the constructed `ActionEntityUID`, `.ty` must be `Some` in all cases
-        // println!("Action: QUALIFY WITH");
-
         ActionEntityUID {
             id: self.id,
             ty: {
@@ -1185,8 +1178,6 @@ impl ActionEntityUID<ConditionalName> {
     pub(crate) fn possibilities(&self) -> impl Iterator<Item = ActionEntityUID<InternalName>> + '_ {
         // Upholding the INVARIANT on ActionEntityUID.ty: constructing `ActionEntityUID<InternalName>`,
         // so in the constructed `ActionEntityUID`, `.ty` must be `Some` in all cases
-        // println!("Action: POSSIBILITIES");
-
         self.ty()
             .possibilities()
             .map(|possibility| ActionEntityUID {
@@ -1201,8 +1192,6 @@ impl ActionEntityUID<ConditionalName> {
     /// As of this writing, [`ActionEntityUID<RawName>`] has a `Display` impl while
     /// [`ActionEntityUID<ConditionalName>`] does not.
     pub(crate) fn as_raw(&self) -> ActionEntityUID<RawName> {
-        // println!("Action: AS RAW");
-
         ActionEntityUID {
             id: self.id.clone(),
             ty: self.ty.as_ref().map(|ty| ty.raw().clone()),
@@ -1257,8 +1246,6 @@ impl TryFrom<ActionEntityUID<InternalName>> for EntityUID {
 impl From<EntityUID> for ActionEntityUID<Name> {
     fn from(euid: EntityUID) -> Self {
         let (ty, id) = euid.components();
-        // println!("Action: FROM ENTITY UID");
-
         ActionEntityUID {
             ty: Some(ty.into()),
             id: <Eid as AsRef<SmolStr>>::as_ref(&id).clone(),
