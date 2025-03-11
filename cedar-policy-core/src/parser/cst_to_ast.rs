@@ -5823,7 +5823,6 @@ mod tests {
         }
     }
 
-    
     #[cfg(feature = "tolerant-ast")]
     #[test]
     fn parsing_with_errors_succeeds_with_missing_second_operand_is() {

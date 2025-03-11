@@ -151,7 +151,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
             namespace,
             common_types,
             entity_types,
-            actions, 
+            actions,
         })
     }
 
@@ -404,7 +404,8 @@ impl EntityTypesDef<ConditionalName> {
         let mut defs: HashMap<EntityType, _> = HashMap::new();
         for (id, entity_type) in schema_files_types {
             let ety = internal_name_to_entity_type(
-                RawName::new_from_unreserved_with_loc(id, entity_type.loc.clone()).qualify_with(schema_namespace), // the declaration name is always (unconditionally) prefixed by the current/active namespace
+                RawName::new_from_unreserved_with_loc(id, entity_type.loc.clone())
+                    .qualify_with(schema_namespace), // the declaration name is always (unconditionally) prefixed by the current/active namespace
             )?;
             match defs.entry(ety) {
                 Entry::Vacant(ventry) => {
@@ -634,8 +635,11 @@ impl ActionsDef<ConditionalName, ConditionalName> {
         let mut actions = HashMap::new();
         for (action_id_str, action_type) in schema_file_actions {
             // println!("action_id_str: {:?}", action_id_str);
-            let action_uid = json_schema::ActionEntityUID::default_type(action_id_str.name.clone(), action_id_str.loc.clone())
-                .qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
+            let action_uid = json_schema::ActionEntityUID::default_type(
+                action_id_str.name.clone(),
+                action_id_str.loc.clone(),
+            )
+            .qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
             match actions.entry(action_uid.clone().try_into()?) {
                 Entry::Vacant(ventry) => {
                     // println!("ACTION UID: {:?}, {:?}", action_uid.clone().id, action_uid.clone().loc.unwrap().span);
@@ -644,7 +648,7 @@ impl ActionsDef<ConditionalName, ConditionalName> {
                         action_type.clone(),
                         schema_namespace,
                         extensions,
-                        action_type.loc.as_ref()
+                        action_type.loc.as_ref(),
                     )?;
                     // println!("FRAG: {:?}", frag.clone());
                     ventry.insert(frag);
@@ -709,7 +713,7 @@ pub struct ActionFragment<N, A> {
     /// actual `Entity` objects defined by the schema.
     pub(super) attributes: BTreeMap<SmolStr, PartialValue>,
     /// TODO
-    pub(super) loc: Option<Loc>
+    pub(super) loc: Option<Loc>,
 }
 
 impl ActionFragment<ConditionalName, ConditionalName> {
@@ -718,7 +722,7 @@ impl ActionFragment<ConditionalName, ConditionalName> {
         action_type: json_schema::ActionType<RawName>,
         schema_namespace: Option<&InternalName>,
         extensions: &Extensions<'_>,
-        loc: Option<&Loc>
+        loc: Option<&Loc>,
     ) -> crate::err::Result<Self> {
         let (principal_types, resource_types, context) = action_type
             .applies_to
