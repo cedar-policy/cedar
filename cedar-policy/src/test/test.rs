@@ -6541,6 +6541,11 @@ mod policy_manipulation_functions_tests {
             mapping.clone(),
         );
         assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice" is User in User::"Alice" };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" is User in User::"Bob" };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
             r#"permit(principal, action, resource) when { if User::"Alice" then User::"Alice" else User::"Alice" };"#,
             r#"permit(principal, action, resource) when { if User::"Bob" then User::"Bob" else User::"Bob" };"#,
             mapping.clone(),
@@ -6558,6 +6563,35 @@ mod policy_manipulation_functions_tests {
         assert_entity_sub(
             r#"permit(principal, action, resource) when { User::"Alice".lessThan(User::"Alice") };"#,
             r#"permit(principal, action, resource) when { User::"Bob".lessThan(User::"Bob") };"#,
+            mapping.clone(),
+        );
+    }
+
+    #[test]
+    fn test_entity_sub_no_entity() {
+        let mapping = [(
+            EntityUid::from_type_name_and_id(
+                EntityTypeName::from_str("User").unwrap(),
+                EntityId::from_str("Alice").unwrap(),
+            ),
+            EntityUid::from_type_name_and_id(
+                EntityTypeName::from_str("User").unwrap(),
+                EntityId::from_str("Bob").unwrap(),
+            ),
+        )];
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { 1 };"#,
+            r#"permit(principal, action, resource) when { 1 };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { false };"#,
+            r#"permit(principal, action, resource) when { false };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { "foo" };"#,
+            r#"permit(principal, action, resource) when { "foo" };"#,
             mapping.clone(),
         );
     }
@@ -6634,22 +6668,27 @@ mod policy_manipulation_functions_tests {
 
     #[test]
     fn sub_other_is_same() {
+        let mapping = [(
+            EntityUid::from_type_name_and_id(
+                EntityTypeName::from_str("User").unwrap(),
+                EntityId::from_str("Bob").unwrap(),
+            ),
+            EntityUid::from_type_name_and_id(
+                EntityTypeName::from_str("User").unwrap(),
+                EntityId::from_str("Dean").unwrap(),
+            ),
+        )];
         let policy_str =
             r#"permit(principal, action, resource) when { principal == User::"Alice" };"#;
-        assert_entity_sub(
-            policy_str,
-            policy_str,
-            [(
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("Bob").unwrap(),
-                ),
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("Dean").unwrap(),
-                ),
-            )],
-        );
+        assert_entity_sub(policy_str, policy_str, mapping.clone());
+        let policy_str = r#"permit(principal == User::"Alice", action, resource);"#;
+        assert_entity_sub(policy_str, policy_str, mapping.clone());
+        let policy_str = r#"permit(principal in User::"Alice", action, resource);"#;
+        assert_entity_sub(policy_str, policy_str, mapping.clone());
+        let policy_str = r#"permit(principal, action, resource == User::"Alice");"#;
+        assert_entity_sub(policy_str, policy_str, mapping.clone());
+        let policy_str = r#"permit(principal, action, resource in User::"Alice");"#;
+        assert_entity_sub(policy_str, policy_str, mapping);
     }
 
     #[test]
