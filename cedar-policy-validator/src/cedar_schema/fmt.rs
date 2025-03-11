@@ -237,14 +237,14 @@ pub fn json_schema_to_cedar_schema_str<N: Display>(
             .entity_types
             .keys()
             .map(|ty_name| {
-                RawName::new_from_unreserved(ty_name.clone()).qualify_with_name(name.as_ref())
+                RawName::new_from_unreserved(ty_name.clone(), None).qualify_with_name(name.as_ref())
             })
             .collect();
         let common_types: HashSet<InternalName> = ns
             .common_types
             .keys()
             .map(|ty_name| {
-                RawName::new_from_unreserved(ty_name.clone().into())
+                RawName::new_from_unreserved(ty_name.clone().into(), None)
                     .qualify_with_name(name.as_ref())
             })
             .collect();

@@ -119,6 +119,7 @@ impl EntityType {
         }
     }
 
+    /// Create a clone of this EntityType with given loc
     pub fn with_loc(&self, loc: Option<&Loc>) -> Self {
         match self {
             EntityType::EntityType(name) => EntityType::EntityType(Name(InternalName {

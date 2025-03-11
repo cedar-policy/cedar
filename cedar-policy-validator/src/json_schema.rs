@@ -1051,11 +1051,7 @@ impl ActionEntityUID<RawName> {
     // This function is only available for `RawName` and not other values of `N`,
     // in order to uphold the INVARIANT on self.ty.
     pub fn default_type(id: SmolStr, loc: Option<Loc>) -> Self {
-        Self {
-            id,
-            ty: None,
-            loc: loc,
-        }
+        Self { id, ty: None, loc }
     }
 }
 
@@ -1106,7 +1102,7 @@ impl ActionEntityUID<RawName> {
                     .unwrap_or_else(|| RawName::from_str("Action").expect("valid raw name"));
                 Some(raw_name.qualify_with(ns))
             },
-            loc: self.loc.clone(),
+            loc: self.loc,
         }
     }
 }

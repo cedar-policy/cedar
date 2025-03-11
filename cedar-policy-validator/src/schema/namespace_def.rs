@@ -143,7 +143,6 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
         )?;
         let actions =
             ActionsDef::from_raw_actions(namespace_def.actions, namespace.as_ref(), extensions)?;
-        // println!("ACTION DEF: {:?}", actions);
         let entity_types =
             EntityTypesDef::from_raw_entity_types(namespace_def.entity_types, namespace.as_ref())?;
 
@@ -289,7 +288,7 @@ impl CommonTypeDefs<ConditionalName> {
     ) -> crate::err::Result<Self> {
         let mut defs = HashMap::new();
         for (id, schema_ty) in schema_file_type_def {
-            let name = RawName::new_from_unreserved(id.into()).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
+            let name = RawName::new_from_unreserved(id.into(), None).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
             match defs.entry(name) {
                 Entry::Vacant(ventry) => {
                     ventry
@@ -315,7 +314,7 @@ impl CommonTypeDefs<ConditionalName> {
     ) -> crate::err::Result<Self> {
         let mut defs = HashMap::with_capacity(input_type_defs.len());
         for (id, schema_ty) in input_type_defs {
-            let name = RawName::new_from_unreserved(id).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
+            let name = RawName::new_from_unreserved(id, None).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
             match defs.entry(name) {
                 Entry::Vacant(ventry) => {
                     ventry.insert(schema_ty);
@@ -342,7 +341,7 @@ impl CommonTypeDefs<ConditionalName> {
     ) -> Self {
         Self {
             defs: HashMap::from_iter([(
-                RawName::new_from_unreserved(id).qualify_with(schema_namespace),
+                RawName::new_from_unreserved(id, None).qualify_with(schema_namespace),
                 schema_ty,
             )]),
         }
@@ -404,7 +403,7 @@ impl EntityTypesDef<ConditionalName> {
         let mut defs: HashMap<EntityType, _> = HashMap::new();
         for (id, entity_type) in schema_files_types {
             let ety = internal_name_to_entity_type(
-                RawName::new_from_unreserved_with_loc(id, entity_type.loc.clone())
+                RawName::new_from_unreserved(id, entity_type.loc.clone())
                     .qualify_with(schema_namespace), // the declaration name is always (unconditionally) prefixed by the current/active namespace
             )?;
             match defs.entry(ety) {
@@ -634,7 +633,6 @@ impl ActionsDef<ConditionalName, ConditionalName> {
     ) -> crate::err::Result<Self> {
         let mut actions = HashMap::new();
         for (action_id_str, action_type) in schema_file_actions {
-            // println!("action_id_str: {:?}", action_id_str);
             let action_uid = json_schema::ActionEntityUID::default_type(
                 action_id_str.name.clone(),
                 action_id_str.loc.clone(),
@@ -642,7 +640,6 @@ impl ActionsDef<ConditionalName, ConditionalName> {
             .qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
             match actions.entry(action_uid.clone().try_into()?) {
                 Entry::Vacant(ventry) => {
-                    // println!("ACTION UID: {:?}, {:?}", action_uid.clone().id, action_uid.clone().loc.unwrap().span);
                     let frag = ActionFragment::from_raw_action(
                         ventry.key(),
                         action_type.clone(),
@@ -650,11 +647,10 @@ impl ActionsDef<ConditionalName, ConditionalName> {
                         extensions,
                         action_type.loc.as_ref(),
                     )?;
-                    // println!("FRAG: {:?}", frag.clone());
                     ventry.insert(frag);
                 }
                 Entry::Occupied(_) => {
-                    return Err(DuplicateActionError(action_id_str.name.clone()).into());
+                    return Err(DuplicateActionError(action_id_str.name).into());
                 }
             }
         }
