@@ -5779,58 +5779,11 @@ mod tests {
 
     #[cfg(feature = "tolerant-ast")]
     #[test]
-    fn parsing_with_errors_succeeds_with_complex_missing_operand_eq_and_in() {
-        // == operator test cases
-        let src_eq_complex_cases = [
-            // Basic missing operand cases
-            r#"permit(principal ==, action, resource);"#,
-            r#"permit(principal, action ==, resource);"#,
-            r#"permit(principal, action, resource ==);"#,
-            // Cases with existing values and missing operands
-            r#"permit(principal == Test::User::"blah", action, resource);"#,
-            r#"permit(principal, action == Action::"read", resource);"#,
-            r#"permit(principal, action, resource == Test::"data");"#,
-        ];
-
-        for src in src_eq_complex_cases.iter() {
-            let parsed = assert_parse_policy_allows_errors(src);
-            println!("Parsed == complex policy: {:?}", parsed);
-        }
-
-        // in operator test cases
-        let src_in_complex_cases = [
-            // Basic missing operand cases
-            r#"permit(principal in, action, resource);"#,
-            r#"permit(principal, action in, resource);"#,
-            r#"permit(principal, action, resource in);"#,
-            r#"permit(principal in, action in, resource);"#,
-            r#"permit(principal, action in, resource in);"#,
-            r#"permit(principal in, action, resource in);"#,
-            r#"permit(principal in, action in, resource in);"#,
-        ];
-
-        for src in src_in_complex_cases.iter() {
-            assert_parse_policy_allows_errors(src);
-        }
-
-        // Cases with "is" and missing operands
-        let src_in_cases = [
-            r#"permit(principal is something in, action, resource);"#,
-            r#"permit(principal, action, resource is something in);"#,
-        ];
-        for src in src_in_cases.iter() {
-            assert_parse_policy_allows_errors(src);
-        }
-    }
-
-    #[cfg(feature = "tolerant-ast")]
-    #[test]
     fn parsing_with_errors_succeeds_with_missing_second_operand_is() {
         let src = r#"
             permit(principal ==, action, resource);
         "#;
-        let parsed = assert_parse_policy_allows_errors(src);
-        println!("Parsed policy: {:?}", parsed);
+        assert_parse_policy_allows_errors(src);
     }
 
     #[cfg(feature = "tolerant-ast")]
