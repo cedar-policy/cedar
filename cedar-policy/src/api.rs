@@ -2243,13 +2243,13 @@ impl PolicySet {
             // before printing, hoping that the size of policy sets is fairly
             // small.
             .sorted_by_key(|p| AsRef::<str>::as_ref(p.id()))
-            .map(|p| p.to_cedar())
+            .map(Policy::to_cedar)
             .collect::<Option<Vec<_>>>()?;
         let templates = self
             .templates
             .values()
             .sorted_by_key(|t| AsRef::<str>::as_ref(t.id()))
-            .map(|t| t.to_cedar());
+            .map(Template::to_cedar);
 
         Some(policies.into_iter().chain(templates).join("\n\n"))
     }

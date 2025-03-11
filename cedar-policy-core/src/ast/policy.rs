@@ -50,13 +50,13 @@ cfg_tolerant_ast! {
         std::sync::LazyLock::new(|| Arc::new(Annotations::default()));
 
     static DEFAULT_PRINCIPAL_CONSTRAINT: std::sync::LazyLock<PrincipalConstraint> =
-        std::sync::LazyLock::new(|| PrincipalConstraint::any());
+        std::sync::LazyLock::new(PrincipalConstraint::any);
 
     static DEFAULT_RESOURCE_CONSTRAINT: std::sync::LazyLock<ResourceConstraint> =
-        std::sync::LazyLock::new(|| ResourceConstraint::any());
+        std::sync::LazyLock::new(ResourceConstraint::any);
 
     static DEFAULT_ACTION_CONSTRAINT: std::sync::LazyLock<ActionConstraint> =
-        std::sync::LazyLock::new(|| ActionConstraint::any());
+        std::sync::LazyLock::new(ActionConstraint::any);
 
     static DEFAULT_ERROR_EXPR: std::sync::LazyLock<Arc<Expr>> = std::sync::LazyLock::new(|| {
         // Non scope constraint expression of an Error policy should also be an error
@@ -984,9 +984,9 @@ impl TemplateBody {
     /// Get the `Id` of this policy.
     pub fn id(&self) -> &PolicyID {
         match self {
-            TemplateBody::TemplateBody(TemplateBodyImpl { id, .. }) => &id,
+            TemplateBody::TemplateBody(TemplateBodyImpl { id, .. }) => id,
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(policy_id, _) => &policy_id,
+            TemplateBody::TemplateBodyError(id, _) => id,
         }
     }
 
@@ -1145,7 +1145,7 @@ impl TemplateBody {
             TemplateBody::TemplateBody(TemplateBodyImpl {
                 non_scope_constraints,
                 ..
-            }) => &non_scope_constraints,
+            }) => non_scope_constraints,
             #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(_, _) => &DEFAULT_ERROR_EXPR,
         }
@@ -1157,7 +1157,7 @@ impl TemplateBody {
             TemplateBody::TemplateBody(TemplateBodyImpl {
                 non_scope_constraints,
                 ..
-            }) => &non_scope_constraints,
+            }) => non_scope_constraints,
             #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(_, _) => &DEFAULT_ERROR_EXPR,
         }
