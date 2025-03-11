@@ -53,7 +53,7 @@ pub struct InternalName {
 /// A shortcut for [`InternalName::unqualified_name`]
 impl From<Id> for InternalName {
     fn from(value: Id) -> Self {
-        Self::unqualified_name(value)
+        Self::unqualified_name(value, None)
     }
 }
 
@@ -82,15 +82,7 @@ impl InternalName {
     }
 
     /// Create an [`InternalName`] with no path (no namespaces).
-    pub fn unqualified_name(id: Id) -> Self {
-        Self {
-            id,
-            path: Arc::new(vec![]),
-            loc: None,
-        }
-    }
-
-    pub fn unqualified_name_with_loc(id: Id, loc: Option<Loc>) -> Self {
+    pub fn unqualified_name(id: Id, loc: Option<Loc>) -> Self {
         Self {
             id,
             path: Arc::new(vec![]),
@@ -101,7 +93,7 @@ impl InternalName {
     /// Get the [`InternalName`] representing the reserved `__cedar` namespace
     pub fn __cedar() -> Self {
         // using `Id::new_unchecked()` for performance reasons -- this function is called many times by validator code
-        Self::unqualified_name(Id::new_unchecked("__cedar"))
+        Self::unqualified_name(Id::new_unchecked("__cedar"), None)
     }
 
     /// Create an [`InternalName`] with no path (no namespaces).
@@ -452,7 +444,7 @@ impl Name {
     /// Create a [`Name`] with no path (no namespaces).
     pub fn unqualified_name(id: UnreservedId) -> Self {
         // This is safe (upholds the `Name` invariant) because `id` must be an `UnreservedId`
-        Self(InternalName::unqualified_name(id.0))
+        Self(InternalName::unqualified_name(id.0, None))
     }
 
     /// Get the basename of the [`Name`] (ie, with namespaces stripped).

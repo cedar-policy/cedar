@@ -28,7 +28,6 @@ use miette::Diagnostic;
 use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::f32::consts::E;
 use std::str::FromStr;
 use std::sync::Arc;
 use thiserror::Error;
