@@ -955,9 +955,9 @@ fn translate_policy_to_cedar(
     json_src: Option<impl AsRef<Path> + std::marker::Copy>,
 ) -> Result<String> {
     let policy_set = read_json_policy_set(json_src)?;
-    policy_set.to_cedar().ok_or(miette!(
-        "Unable to translate policy set containing template linked policies."
-    ))
+    policy_set.to_cedar().ok_or_else(|| {
+        miette!("Unable to translate policy set containing template linked policies.")
+    })
 }
 
 fn translate_policy_to_json(
