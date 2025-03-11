@@ -461,7 +461,7 @@ impl cst::PolicyImpl {
         let mut vars = self.variables.iter();
         let maybe_principal = if let Some(scope1) = vars.next() {
             end_of_last_var = scope1.loc.end();
-            scope1.to_principal_constraint()
+            scope1.to_principal_constraint(TolerantAstSetting::NotTolerant)
         } else {
             Err(ToASTError::new(
                 ToASTErrorKind::MissingScopeVariable(ast::Var::Principal),
@@ -471,7 +471,7 @@ impl cst::PolicyImpl {
         };
         let maybe_action = if let Some(scope2) = vars.next() {
             end_of_last_var = scope2.loc.end();
-            scope2.to_action_constraint()
+            scope2.to_action_constraint(TolerantAstSetting::NotTolerant)
         } else {
             Err(ToASTError::new(
                 ToASTErrorKind::MissingScopeVariable(ast::Var::Action),
@@ -480,7 +480,7 @@ impl cst::PolicyImpl {
             .into())
         };
         let maybe_resource = if let Some(scope3) = vars.next() {
-            scope3.to_resource_constraint()
+            scope3.to_resource_constraint(TolerantAstSetting::NotTolerant)
         } else {
             Err(ToASTError::new(
                 ToASTErrorKind::MissingScopeVariable(ast::Var::Resource),
@@ -527,7 +527,7 @@ impl cst::PolicyImpl {
         let mut vars = self.variables.iter();
         let maybe_principal = if let Some(scope1) = vars.next() {
             end_of_last_var = scope1.loc.end();
-            scope1.to_principal_constraint_tolerant_ast()
+            scope1.to_principal_constraint(TolerantAstSetting::Tolerant)
         } else {
             Err(ToASTError::new(
                 ToASTErrorKind::MissingScopeVariable(ast::Var::Principal),
@@ -537,7 +537,7 @@ impl cst::PolicyImpl {
         };
         let maybe_action = if let Some(scope2) = vars.next() {
             end_of_last_var = scope2.loc.end();
-            scope2.to_action_constraint_tolerant_ast()
+            scope2.to_action_constraint(TolerantAstSetting::Tolerant)
         } else {
             Err(ToASTError::new(
                 ToASTErrorKind::MissingScopeVariable(ast::Var::Action),
@@ -546,7 +546,7 @@ impl cst::PolicyImpl {
             .into())
         };
         let maybe_resource = if let Some(scope3) = vars.next() {
-            scope3.to_resource_constraint_tolerant_ast()
+            scope3.to_resource_constraint(TolerantAstSetting::Tolerant)
         } else {
             Err(ToASTError::new(
                 ToASTErrorKind::MissingScopeVariable(ast::Var::Resource),
@@ -848,11 +848,11 @@ enum TolerantAstSetting {
 }
 
 impl Node<Option<cst::VariableDef>> {
-    fn to_principal_constraint(&self) -> Result<PrincipalConstraint> {
-        match self.to_principal_or_resource_constraint(
-            ast::Var::Principal,
-            TolerantAstSetting::NotTolerant,
-        )? {
+    fn to_principal_constraint(
+        &self,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<PrincipalConstraint> {
+        match self.to_principal_or_resource_constraint(ast::Var::Principal, tolerant_setting)? {
             PrincipalOrResource::Principal(p) => Ok(p),
             PrincipalOrResource::Resource(_) => Err(self
                 .to_ast_err(ToASTErrorKind::IncorrectVariable {
@@ -863,42 +863,11 @@ impl Node<Option<cst::VariableDef>> {
         }
     }
 
-    #[cfg(feature = "tolerant-ast")]
-    fn to_principal_constraint_tolerant_ast(&self) -> Result<PrincipalConstraint> {
-        match self.to_principal_or_resource_constraint(
-            ast::Var::Principal,
-            TolerantAstSetting::Tolerant,
-        )? {
-            PrincipalOrResource::Principal(p) => Ok(p),
-            PrincipalOrResource::Resource(_) => Err(self
-                .to_ast_err(ToASTErrorKind::IncorrectVariable {
-                    expected: ast::Var::Principal,
-                    got: ast::Var::Resource,
-                })
-                .into()),
-        }
-    }
-
-    fn to_resource_constraint(&self) -> Result<ResourceConstraint> {
-        match self.to_principal_or_resource_constraint(
-            ast::Var::Resource,
-            TolerantAstSetting::NotTolerant,
-        )? {
-            PrincipalOrResource::Principal(_) => Err(self
-                .to_ast_err(ToASTErrorKind::IncorrectVariable {
-                    expected: ast::Var::Resource,
-                    got: ast::Var::Principal,
-                })
-                .into()),
-            PrincipalOrResource::Resource(r) => Ok(r),
-        }
-    }
-
-    #[cfg(feature = "tolerant-ast")]
-    fn to_resource_constraint_tolerant_ast(&self) -> Result<ResourceConstraint> {
-        match self
-            .to_principal_or_resource_constraint(ast::Var::Resource, TolerantAstSetting::Tolerant)?
-        {
+    fn to_resource_constraint(
+        &self,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<ResourceConstraint> {
+        match self.to_principal_or_resource_constraint(ast::Var::Resource, tolerant_setting)? {
             PrincipalOrResource::Principal(_) => Err(self
                 .to_ast_err(ToASTErrorKind::IncorrectVariable {
                     expected: ast::Var::Resource,
@@ -979,7 +948,10 @@ impl Node<Option<cst::VariableDef>> {
         }
     }
 
-    fn to_action_constraint(&self) -> Result<ast::ActionConstraint> {
+    fn to_action_constraint(
+        &self,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<ast::ActionConstraint> {
         let vardef = self.try_as_inner()?;
 
         match vardef.variable.to_var() {
@@ -1010,7 +982,14 @@ impl Node<Option<cst::VariableDef>> {
                             return Err(self.to_ast_err(ToASTErrorKind::IsInActionScope).into());
                         }
                     }
-                    match rel_expr.to_refs(ast::Var::Action)? {
+                    let one_or_multiple_refs = match tolerant_setting {
+                        TolerantAstSetting::NotTolerant => rel_expr.to_refs(ast::Var::Action)?,
+                        #[cfg(feature = "tolerant-ast")]
+                        TolerantAstSetting::Tolerant => {
+                            rel_expr.to_refs_tolerant_ast(ast::Var::Action)?
+                        }
+                    };
+                    match one_or_multiple_refs {
                         OneOrMultipleRefs::Single(single_ref) => {
                             Ok(ActionConstraint::is_in([single_ref]))
                         }
@@ -1018,7 +997,13 @@ impl Node<Option<cst::VariableDef>> {
                     }
                 }
                 cst::RelOp::Eq => {
-                    let single_ref = rel_expr.to_ref(ast::Var::Action)?;
+                    let single_ref = match tolerant_setting {
+                        TolerantAstSetting::NotTolerant => rel_expr.to_ref(ast::Var::Action)?,
+                        #[cfg(feature = "tolerant-ast")]
+                        TolerantAstSetting::Tolerant => {
+                            rel_expr.to_ref_tolerant_ast(ast::Var::Action)?
+                        }
+                    };
                     Ok(ActionConstraint::is_eq(single_ref))
                 }
                 cst::RelOp::InvalidSingleEq => {
@@ -1027,71 +1012,23 @@ impl Node<Option<cst::VariableDef>> {
                 op => Err(self.to_ast_err(ToASTErrorKind::InvalidActionScopeOperator(*op))),
             }?;
 
-            action_constraint
-                .contains_only_action_types()
-                .map_err(|non_action_euids| {
-                    rel_expr
-                        .to_ast_err(parse_errors::InvalidActionType {
-                            euids: non_action_euids,
-                        })
-                        .into()
-                })
-        } else {
-            Ok(ActionConstraint::Any)
-        }
-    }
-
-    #[cfg(feature = "tolerant-ast")]
-    fn to_action_constraint_tolerant_ast(&self) -> Result<ast::ActionConstraint> {
-        let vardef = self.try_as_inner()?;
-
-        match vardef.variable.to_var() {
-            Ok(ast::Var::Action) => Ok(()),
-            Ok(got) => Err(self
-                .to_ast_err(ToASTErrorKind::IncorrectVariable {
-                    expected: ast::Var::Action,
-                    got,
-                })
-                .into()),
-            Err(errs) => Err(errs),
-        }?;
-
-        if let Some(typename) = vardef.unused_type_name.as_ref() {
-            typename.to_type_constraint::<ast::ExprBuilder<()>>()?;
-        }
-
-        if vardef.entity_type.is_some() {
-            return Err(self.to_ast_err(ToASTErrorKind::IsInActionScope).into());
-        }
-
-        if let Some((op, rel_expr)) = &vardef.ineq {
-            let action_constraint = match op {
-                cst::RelOp::In => {
-                    // special check for the syntax `_ in _ is _`
-                    if let Ok(expr) = rel_expr.to_expr::<ast::ExprBuilder<()>>() {
-                        if matches!(expr.expr_kind(), ast::ExprKind::Is { .. }) {
-                            return Err(self.to_ast_err(ToASTErrorKind::IsInActionScope).into());
-                        }
-                    }
-                    match rel_expr.to_refs_tolerant_ast(ast::Var::Action)? {
-                        OneOrMultipleRefs::Single(single_ref) => {
-                            Ok(ActionConstraint::is_in([single_ref]))
-                        }
-                        OneOrMultipleRefs::Multiple(refs) => Ok(ActionConstraint::is_in(refs)),
-                    }
+            match tolerant_setting {
+                TolerantAstSetting::NotTolerant => action_constraint
+                    .contains_only_action_types()
+                    .map_err(|non_action_euids| {
+                        rel_expr
+                            .to_ast_err(parse_errors::InvalidActionType {
+                                euids: non_action_euids,
+                            })
+                            .into()
+                    }),
+                #[cfg(feature = "tolerant-ast")]
+                TolerantAstSetting::Tolerant => {
+                    let action_constraint_res = action_constraint.contains_only_action_types();
+                    // With 'tolerant-ast' feature enabled, we store invalid action constraints as an ErrorConstraint
+                    Ok(action_constraint_res.unwrap_or(ActionConstraint::ErrorConstraint))
                 }
-                cst::RelOp::Eq => {
-                    let single_ref = rel_expr.to_ref_tolerant_ast(ast::Var::Action)?;
-                    Ok(ActionConstraint::is_eq(single_ref))
-                }
-                cst::RelOp::InvalidSingleEq => {
-                    Err(self.to_ast_err(ToASTErrorKind::InvalidSingleEq))
-                }
-                op => Err(self.to_ast_err(ToASTErrorKind::InvalidActionScopeOperator(*op))),
-            }?;
-            let action_constraint_res = action_constraint.contains_only_action_types();
-            // With 'tolerant-ast' feature enabled, we store invalid action constraints as an ErrorConstraint
-            Ok(action_constraint_res.unwrap_or(ActionConstraint::ErrorConstraint))
+            }
         } else {
             Ok(ActionConstraint::Any)
         }

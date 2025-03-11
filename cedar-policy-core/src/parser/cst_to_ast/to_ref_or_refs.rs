@@ -151,14 +151,15 @@ impl Node<Option<cst::Expr>> {
     /// Extract a single `EntityUID` from this expression. The expression must
     /// be exactly a single entity literal expression.
     pub fn to_ref(&self, var: ast::Var) -> Result<EntityUID> {
-        self.to_ref_or_refs::<SingleEntity>(var).map(|x| x.0)
+        self.to_ref_or_refs::<SingleEntity>(var, TolerantAstSetting::NotTolerant)
+            .map(|x| x.0)
     }
 
     /// Extract a single `EntityUID` from this expression. The expression must
     /// be exactly a single entity literal expression.
     #[cfg(feature = "tolerant-ast")]
     pub fn to_ref_tolerant_ast(&self, var: ast::Var) -> Result<EntityUID> {
-        self.to_ref_or_refs_tolerant_ast::<SingleEntity>(var)
+        self.to_ref_or_refs::<SingleEntity>(var, TolerantAstSetting::Tolerant)
             .map(|x| x.0)
     }
 
@@ -166,7 +167,7 @@ impl Node<Option<cst::Expr>> {
     /// The expression must be exactly a single entity literal expression or
     /// a single template slot.
     pub fn to_ref_or_slot(&self, var: ast::Var) -> Result<EntityReference> {
-        self.to_ref_or_refs::<EntityReference>(var)
+        self.to_ref_or_refs::<EntityReference>(var, TolerantAstSetting::NotTolerant)
     }
 
     /// Extract a single `EntityUID` or a template slot from this expression.
@@ -174,7 +175,7 @@ impl Node<Option<cst::Expr>> {
     /// a single template slot.
     #[cfg(feature = "tolerant-ast")]
     pub fn to_ref_or_slot_tolerant_ast(&self, var: ast::Var) -> Result<EntityReference> {
-        self.to_ref_or_refs_tolerant_ast::<EntityReference>(var)
+        self.to_ref_or_refs::<EntityReference>(var, TolerantAstSetting::Tolerant)
     }
 
     /// Extract a single `EntityUID` or set of `EntityUID`s from this
@@ -182,7 +183,7 @@ impl Node<Option<cst::Expr>> {
     /// literal expression a single set literal expression, containing some
     /// number of entity literals.
     pub fn to_refs(&self, var: ast::Var) -> Result<OneOrMultipleRefs> {
-        self.to_ref_or_refs::<OneOrMultipleRefs>(var)
+        self.to_ref_or_refs::<OneOrMultipleRefs>(var, TolerantAstSetting::NotTolerant)
     }
 
     /// Extract a single `EntityUID` or set of `EntityUID`s from this
@@ -191,10 +192,14 @@ impl Node<Option<cst::Expr>> {
     /// number of entity literals.
     #[cfg(feature = "tolerant-ast")]
     pub fn to_refs_tolerant_ast(&self, var: ast::Var) -> Result<OneOrMultipleRefs> {
-        self.to_ref_or_refs_tolerant_ast::<OneOrMultipleRefs>(var)
+        self.to_ref_or_refs::<OneOrMultipleRefs>(var, TolerantAstSetting::Tolerant)
     }
 
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<T> {
         let expr_opt = self.try_as_inner()?;
 
         let expr = match expr_opt {
@@ -204,29 +209,11 @@ impl Node<Option<cst::Expr>> {
         };
 
         match &*expr.expr {
-            cst::ExprData::Or(o) => o.to_ref_or_refs::<T>(var),
-            cst::ExprData::If(_, _, _) => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    "an `if` expression",
-                    None::<String>,
-                ))
-                .into()),
-        }
-    }
-
-    #[cfg(feature = "tolerant-ast")]
-    fn to_ref_or_refs_tolerant_ast<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let expr_opt = self.try_as_inner()?;
-
-        let expr = match expr_opt {
-            cst::Expr::Expr(expr_impl) => expr_impl,
-            #[cfg(feature = "tolerant-ast")]
-            cst::Expr::ErrorExpr => return T::create_single_ref(EntityUID::Error),
-        };
-
-        match &*expr.expr {
-            cst::ExprData::Or(o) => o.to_ref_or_refs_tolerant_ast::<T>(var),
+            cst::ExprData::Or(o) => match tolerant_setting {
+                TolerantAstSetting::NotTolerant => o.to_ref_or_refs::<T>(var, tolerant_setting),
+                #[cfg(feature = "tolerant-ast")]
+                TolerantAstSetting::Tolerant => o.to_ref_or_refs::<T>(var, tolerant_setting),
+            },
             cst::ExprData::If(_, _, _) => Err(self
                 .to_ast_err(ToASTErrorKind::wrong_node(
                     T::err_str(),
@@ -306,7 +293,7 @@ impl Node<Option<cst::Primary>> {
                     TolerantAstSetting::Tolerant => Ok(T::error_node()),
                 }
             }
-            cst::Primary::Expr(x) => x.to_ref_or_refs::<T>(var),
+            cst::Primary::Expr(x) => x.to_ref_or_refs::<T>(var, tolerant_setting),
             cst::Primary::EList(lst) => {
                 // Calling `create_multiple_refs` first so that we error
                 // immediately if we see a set when we don't expect one.
@@ -334,23 +321,15 @@ impl Node<Option<cst::Primary>> {
 }
 
 impl Node<Option<cst::Member>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<T> {
         let mem = self.try_as_inner()?;
 
         match mem.access.len() {
-            0 => mem.item.to_ref_or_refs::<T>(var, TolerantAstSetting::NotTolerant),
-            _n => {
-                Err(self.to_ast_err(ToASTErrorKind::wrong_node(T::err_str(), "a `.` expression", Some("entity types and namespaces cannot use `.` characters -- perhaps try `_` or `::` instead?"))).into())
-            }
-        }
-    }
-
-    #[cfg(feature = "tolerant-ast")]
-    fn to_ref_or_refs_tolerant_ast<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let mem = self.try_as_inner()?;
-
-        match mem.access.len() {
-            0 => mem.item.to_ref_or_refs::<T>(var, TolerantAstSetting::Tolerant),
+            0 => mem.item.to_ref_or_refs::<T>(var, tolerant_setting),
             _n => {
                 Err(self.to_ast_err(ToASTErrorKind::wrong_node(T::err_str(), "a `.` expression", Some("entity types and namespaces cannot use `.` characters -- perhaps try `_` or `::` instead?"))).into())
             }
@@ -359,7 +338,11 @@ impl Node<Option<cst::Member>> {
 }
 
 impl Node<Option<cst::Unary>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<T> {
         let unary = self.try_as_inner()?;
 
         match &unary.op {
@@ -370,49 +353,21 @@ impl Node<Option<cst::Unary>> {
                     None::<String>,
                 ))
                 .into()),
-            None => unary.item.to_ref_or_refs::<T>(var),
-        }
-    }
-
-    #[cfg(feature = "tolerant-ast")]
-    fn to_ref_or_refs_tolerant_ast<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let unary = self.try_as_inner()?;
-
-        match &unary.op {
-            Some(op) => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    format!("a `{op}` expression"),
-                    None::<String>,
-                ))
-                .into()),
-            None => unary.item.to_ref_or_refs_tolerant_ast::<T>(var),
+            None => unary.item.to_ref_or_refs::<T>(var, tolerant_setting),
         }
     }
 }
 
 impl Node<Option<cst::Mult>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<T> {
         let mult = self.try_as_inner()?;
 
         match mult.extended.len() {
-            0 => mult.initial.to_ref_or_refs::<T>(var),
-            _n => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    "a `*` expression",
-                    None::<String>,
-                ))
-                .into()),
-        }
-    }
-
-    #[cfg(feature = "tolerant-ast")]
-    fn to_ref_or_refs_tolerant_ast<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let mult = self.try_as_inner()?;
-
-        match mult.extended.len() {
-            0 => mult.initial.to_ref_or_refs_tolerant_ast::<T>(var),
+            0 => mult.initial.to_ref_or_refs::<T>(var, tolerant_setting),
             _n => Err(self
                 .to_ast_err(ToASTErrorKind::wrong_node(
                     T::err_str(),
@@ -425,23 +380,15 @@ impl Node<Option<cst::Mult>> {
 }
 
 impl Node<Option<cst::Add>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<T> {
         let add = self.try_as_inner()?;
 
         match add.extended.len() {
-            0 => add.initial.to_ref_or_refs::<T>(var),
-            _n => {
-                Err(self.to_ast_err(ToASTErrorKind::wrong_node(T::err_str(), "a `+/-` expression", Some("entity types and namespaces cannot use `+` or `-` characters -- perhaps try `_` or `::` instead?"))).into())
-            }
-        }
-    }
-
-    #[cfg(feature = "tolerant-ast")]
-    fn to_ref_or_refs_tolerant_ast<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let add = self.try_as_inner()?;
-
-        match add.extended.len() {
-            0 => add.initial.to_ref_or_refs_tolerant_ast::<T>(var),
+            0 => add.initial.to_ref_or_refs::<T>(var, tolerant_setting),
             _n => {
                 Err(self.to_ast_err(ToASTErrorKind::wrong_node(T::err_str(), "a `+/-` expression", Some("entity types and namespaces cannot use `+` or `-` characters -- perhaps try `_` or `::` instead?"))).into())
             }
@@ -450,50 +397,16 @@ impl Node<Option<cst::Add>> {
 }
 
 impl Node<Option<cst::Relation>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<T> {
         let rel = self.try_as_inner()?;
 
         match rel {
             cst::Relation::Common { initial, extended } => match extended.len() {
-                0 => initial.to_ref_or_refs::<T>(var),
-                _n => Err(self
-                    .to_ast_err(ToASTErrorKind::wrong_node(
-                        T::err_str(),
-                        "a binary operator",
-                        None::<String>,
-                    ))
-                    .into()),
-            },
-            cst::Relation::Has { .. } => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    "a `has` expression",
-                    None::<String>,
-                ))
-                .into()),
-            cst::Relation::Like { .. } => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    "a `like` expression",
-                    None::<String>,
-                ))
-                .into()),
-            cst::Relation::IsIn { .. } => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    "an `is` expression",
-                    None::<String>,
-                ))
-                .into()),
-        }
-    }
-    #[cfg(feature = "tolerant-ast")]
-    fn to_ref_or_refs_tolerant_ast<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let rel = self.try_as_inner()?;
-
-        match rel {
-            cst::Relation::Common { initial, extended } => match extended.len() {
-                0 => initial.to_ref_or_refs_tolerant_ast::<T>(var),
+                0 => initial.to_ref_or_refs::<T>(var, tolerant_setting),
                 _n => Err(self
                     .to_ast_err(ToASTErrorKind::wrong_node(
                         T::err_str(),
@@ -528,27 +441,15 @@ impl Node<Option<cst::Relation>> {
 }
 
 impl Node<Option<cst::Or>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_ast: TolerantAstSetting,
+    ) -> Result<T> {
         let or = self.try_as_inner()?;
 
         match or.extended.len() {
-            0 => or.initial.to_ref_or_refs::<T>(var),
-            _n => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    "a `||` expression",
-                    Some("the policy scope can only contain one constraint per variable. Consider moving the second operand of this `||` into a new policy"),
-                ))
-                .into()),
-        }
-    }
-
-    #[cfg(feature = "tolerant-ast")]
-    fn to_ref_or_refs_tolerant_ast<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let or = self.try_as_inner()?;
-
-        match or.extended.len() {
-            0 => or.initial.to_ref_or_refs_tolerant_ast::<T>(var),
+            0 => or.initial.to_ref_or_refs::<T>(var, tolerant_ast),
             _n => Err(self
                 .to_ast_err(ToASTErrorKind::wrong_node(
                     T::err_str(),
@@ -561,26 +462,15 @@ impl Node<Option<cst::Or>> {
 }
 
 impl Node<Option<cst::And>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<T> {
         let and = self.try_as_inner()?;
 
         match and.extended.len() {
-            0 => and.initial.to_ref_or_refs::<T>(var),
-            _n => Err(self
-                .to_ast_err(ToASTErrorKind::wrong_node(
-                    T::err_str(),
-                    "a `&&` expression",
-                    Some("the policy scope can only contain one constraint per variable. Consider moving the second operand of this `&&` into a `when` condition"),
-                ))
-                .into()),
-        }
-    }
-    #[cfg(feature = "tolerant-ast")]
-    fn to_ref_or_refs_tolerant_ast<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let and = self.try_as_inner()?;
-
-        match and.extended.len() {
-            0 => and.initial.to_ref_or_refs_tolerant_ast::<T>(var),
+            0 => and.initial.to_ref_or_refs::<T>(var, tolerant_setting),
             _n => Err(self
                 .to_ast_err(ToASTErrorKind::wrong_node(
                     T::err_str(),
