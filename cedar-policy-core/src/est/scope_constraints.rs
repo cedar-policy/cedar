@@ -279,15 +279,15 @@ impl PrincipalConstraint {
             PrincipalConstraint::All => false,
             PrincipalConstraint::Eq(EqConstraint::Entity { .. }) => false,
             PrincipalConstraint::Eq(EqConstraint::Slot { .. }) => true,
-            PrincipalConstraint::In(PrincipalOrResourceInConstraint::Entity { entity: _ }) => false,
-            PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot { slot: _ }) => true,
+            PrincipalConstraint::In(PrincipalOrResourceInConstraint::Entity { .. }) => false,
+            PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot { .. }) => true,
             PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
                 in_entity: None | Some(PrincipalOrResourceInConstraint::Entity { .. }),
                 ..
             }) => false,
             PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
-                entity_type: _,
-                in_entity: Some(PrincipalOrResourceInConstraint::Slot { slot: _ }),
+                in_entity: Some(PrincipalOrResourceInConstraint::Slot { .. }),
+                ..
             }) => true,
         }
     }
@@ -400,17 +400,17 @@ impl ResourceConstraint {
     pub fn has_slot(&self) -> bool {
         match self {
             ResourceConstraint::All => false,
-            ResourceConstraint::Eq(EqConstraint::Entity { entity: _ }) => false,
-            ResourceConstraint::In(PrincipalOrResourceInConstraint::Entity { entity: _ }) => false,
-            ResourceConstraint::Eq(EqConstraint::Slot { slot: _ }) => true,
-            ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot { slot: _ }) => true,
+            ResourceConstraint::Eq(EqConstraint::Entity { .. }) => false,
+            ResourceConstraint::In(PrincipalOrResourceInConstraint::Entity { .. }) => false,
+            ResourceConstraint::Eq(EqConstraint::Slot { .. }) => true,
+            ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot { .. }) => true,
             ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
-                entity_type: _,
                 in_entity: None | Some(PrincipalOrResourceInConstraint::Entity { .. }),
+                ..
             }) => false,
             ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
-                entity_type: _,
-                in_entity: Some(PrincipalOrResourceInConstraint::Slot { slot: _ }),
+                in_entity: Some(PrincipalOrResourceInConstraint::Slot { .. }),
+                ..
             }) => true,
         }
     }
