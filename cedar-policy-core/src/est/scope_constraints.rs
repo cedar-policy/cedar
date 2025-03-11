@@ -272,6 +272,25 @@ impl PrincipalConstraint {
             }
         }
     }
+
+    /// Returns true if this constraint has a slot.
+    pub fn has_slot(&self) -> bool {
+        match self {
+            PrincipalConstraint::All => false,
+            PrincipalConstraint::Eq(EqConstraint::Entity { .. }) => false,
+            PrincipalConstraint::Eq(EqConstraint::Slot { .. }) => true,
+            PrincipalConstraint::In(PrincipalOrResourceInConstraint::Entity { .. }) => false,
+            PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot { .. }) => true,
+            PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                in_entity: None | Some(PrincipalOrResourceInConstraint::Entity { .. }),
+                ..
+            }) => false,
+            PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
+                in_entity: Some(PrincipalOrResourceInConstraint::Slot { .. }),
+                ..
+            }) => true,
+        }
+    }
 }
 
 impl ResourceConstraint {
@@ -376,6 +395,25 @@ impl ResourceConstraint {
             }
         }
     }
+
+    /// Returns true if this constraint has a slot.
+    pub fn has_slot(&self) -> bool {
+        match self {
+            ResourceConstraint::All => false,
+            ResourceConstraint::Eq(EqConstraint::Entity { .. }) => false,
+            ResourceConstraint::In(PrincipalOrResourceInConstraint::Entity { .. }) => false,
+            ResourceConstraint::Eq(EqConstraint::Slot { .. }) => true,
+            ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot { .. }) => true,
+            ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                in_entity: None | Some(PrincipalOrResourceInConstraint::Entity { .. }),
+                ..
+            }) => false,
+            ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
+                in_entity: Some(PrincipalOrResourceInConstraint::Slot { .. }),
+                ..
+            }) => true,
+        }
+    }
 }
 
 impl ActionConstraint {
@@ -430,6 +468,12 @@ impl ActionConstraint {
             #[cfg(feature = "tolerant-ast")]
             ActionConstraint::ErrorConstraint => Ok(self),
         }
+    }
+
+    /// Returns true if this constraint has a slot.
+    pub fn has_slot(&self) -> bool {
+        // currently, slots are not allowed in action constraints
+        false
     }
 }
 
@@ -887,5 +931,98 @@ impl TryFrom<ActionConstraint> for ast::ActionConstraint {
                 }
                 .into()
             })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    fn parse_policy(template: &str) -> crate::est::Policy {
+        let cst = crate::parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        cst.try_into().unwrap()
+    }
+
+    fn principal_has_slot(principal_text: &str) -> bool {
+        let text = format!("permit({principal_text}, action, resource);");
+        parse_policy(&text).principal.has_slot()
+    }
+
+    fn resource_has_slot(resource_text: &str) -> bool {
+        let text = format!("permit(principal, action, {resource_text});");
+        parse_policy(&text).resource.has_slot()
+    }
+
+    #[test]
+    fn has_slot_principal_all() {
+        assert!(!principal_has_slot(r#"principal"#));
+    }
+
+    #[test]
+    fn has_slot_principal_eq_entity() {
+        assert!(!principal_has_slot(r#"principal == User::"alice""#));
+    }
+
+    #[test]
+    fn has_slot_principal_eq_slot() {
+        assert!(principal_has_slot(r#"principal == ?principal"#));
+    }
+
+    #[test]
+    fn has_slot_principal_in_entity() {
+        assert!(!principal_has_slot(r#"principal in Group::"friends""#));
+    }
+
+    #[test]
+    fn has_slot_principal_in_slot() {
+        assert!(principal_has_slot(r#"principal in ?principal"#));
+    }
+
+    #[test]
+    fn has_slot_principal_is_entity() {
+        assert!(!principal_has_slot(r#"principal is User"#));
+    }
+
+    #[test]
+    fn has_slot_principal_is_slot() {
+        assert!(principal_has_slot(r#"principal is User in ?principal"#));
+    }
+
+    #[test]
+    fn has_slot_resource_all() {
+        assert!(!resource_has_slot(r#"resource"#));
+    }
+
+    #[test]
+    fn has_slot_resource_eq_entity() {
+        assert!(!resource_has_slot(
+            r#"resource == Photo::"VacationPhoto94.jpg""#
+        ));
+    }
+
+    #[test]
+    fn has_slot_resource_eq_slot() {
+        assert!(resource_has_slot(r#"resource == ?resource"#));
+    }
+
+    #[test]
+    fn has_slot_resource_in_entity() {
+        assert!(!resource_has_slot(r#"resource in Group::"vacation""#));
+    }
+
+    #[test]
+    fn has_slot_resource_in_slot() {
+        assert!(resource_has_slot(r#"resource in ?resource"#));
+    }
+
+    #[test]
+    fn has_slot_resource_is_entity() {
+        assert!(!resource_has_slot(r#"resource is Photo"#));
+    }
+
+    #[test]
+    fn has_slot_resource_is_slot() {
+        assert!(resource_has_slot(r#"resource is Photo in ?resource"#));
     }
 }

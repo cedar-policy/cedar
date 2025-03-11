@@ -124,6 +124,14 @@ impl Policy {
             annotations: self.annotations,
         })
     }
+
+    /// Returns true if this policy is a template, i.e., it has at least one slot.
+    pub fn is_template(&self) -> bool {
+        self.principal.has_slot()
+            || self.action.has_slot()
+            || self.resource.has_slot()
+            || self.conditions.iter().any(|c| c.has_slot())
+    }
 }
 
 impl Clause {
@@ -145,6 +153,12 @@ impl Clause {
             When(e) => Ok(When(e.sub_entity_literals(mapping)?)),
             Unless(e) => Ok(Unless(e.sub_entity_literals(mapping)?)),
         }
+    }
+
+    /// Returns true if this clause has a slot.
+    pub fn has_slot(&self) -> bool {
+        // currently, slots are not allowed in clauses
+        false
     }
 }
 
@@ -4598,6 +4612,82 @@ mod test {
             }))
             .unwrap()
         );
+    }
+
+    #[test]
+    fn is_template_principal_slot() {
+        let template = r#"
+            permit(
+                principal == ?principal,
+                action == Action::"view",
+                resource
+            );
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        assert!(
+            est.is_template(),
+            "Policy with principal slot not marked as template"
+        );
+    }
+
+    #[test]
+    fn is_template_resource_slot() {
+        let template = r#"
+            permit(
+                principal,
+                action == Action::"view",
+                resource in ?resource
+            );
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        assert!(
+            est.is_template(),
+            "Policy with resource slot not marked as template"
+        );
+    }
+
+    #[test]
+    fn is_template_static_policy() {
+        let template = r#"
+            permit(
+                principal,
+                action == Action::"view",
+                resource
+            );
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        assert!(!est.is_template(), "Static policy marked as template");
+    }
+
+    #[test]
+    fn is_template_static_policy_with_condition() {
+        let template = r#"
+            permit(
+                principal,
+                action == Action::"view",
+                resource
+            ) when {
+                principal in resource.owners
+            };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        assert!(!est.is_template(), "Static policy marked as template");
     }
 }
 
