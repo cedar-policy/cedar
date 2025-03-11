@@ -27,7 +27,6 @@ use cedar_policy_core::{
     parser::Loc,
     transitive_closure::compute_tc,
 };
-use entity_type::ValidatorCommonEntityType;
 use namespace_def::EntityTypeFragment;
 use nonempty::NonEmpty;
 use serde::Deserialize;
@@ -210,7 +209,7 @@ impl ValidatorSchema {
             .into_iter()
             .map(|id| (id.name().clone(), id))
             .collect();
-        Self::new_from_maps(entity_types, action_ids, HashSet::new())
+        Self::new_from_maps(entity_types, action_ids)
     }
 
     /// for internal use: version of `new()` which takes the maps directly, rather than constructing them.
@@ -219,7 +218,6 @@ impl ValidatorSchema {
     fn new_from_maps(
         entity_types: HashMap<EntityType, ValidatorEntityType>,
         action_ids: HashMap<EntityUID, ValidatorActionId>,
-        common_types: HashSet<ValidatorCommonEntityType>,
     ) -> Self {
         let actions = Self::action_entities_iter(&action_ids)
             .map(|e| (e.uid().clone(), Arc::new(e)))
@@ -569,7 +567,7 @@ impl ValidatorSchema {
                         Ok((
                             name.with_loc(loc.as_ref()),
                             ValidatorEntityType::new_standard(
-                                name.clone(),
+                                name,
                                 descendants,
                                 attributes,
                                 open_attributes,
@@ -642,11 +640,7 @@ impl ValidatorSchema {
             common_types.into_values(),
         )?;
 
-        Ok(ValidatorSchema::new_from_maps(
-            entity_types,
-            action_ids,
-            HashSet::new(),
-        ))
+        Ok(ValidatorSchema::new_from_maps(entity_types, action_ids))
     }
 
     /// Check that all entity types and actions referenced in the schema are in

@@ -143,7 +143,6 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
         )?;
         let actions =
             ActionsDef::from_raw_actions(namespace_def.actions, namespace.as_ref(), extensions)?;
-        // println!("ACTION DEF: {:?}", actions);
         let entity_types =
             EntityTypesDef::from_raw_entity_types(namespace_def.entity_types, namespace.as_ref())?;
 
@@ -660,7 +659,6 @@ impl ActionsDef<ConditionalName, ConditionalName> {
                 create_action_entity_uid_default_type(&action_name, &action_type, schema_namespace);
             match actions.entry(action_uid.clone().try_into()?) {
                 Entry::Vacant(ventry) => {
-                    // println!("ACTION UID: {:?}, {:?}", action_uid.clone().id, action_uid.clone().loc.unwrap().span);
                     let frag = ActionFragment::from_raw_action(
                         ventry.key(),
                         action_type.clone(),
@@ -668,7 +666,6 @@ impl ActionsDef<ConditionalName, ConditionalName> {
                         extensions,
                         action_type.loc.as_ref(),
                     )?;
-                    // println!("FRAG: {:?}", frag.clone());
                     ventry.insert(frag);
                 }
                 Entry::Occupied(_) => {
