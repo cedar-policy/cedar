@@ -3370,7 +3370,7 @@ impl Policy {
             .collect()
     }
 
-    /// Return a new policy where all occurences of key `EntityUid`s are replaced by value `EntityUid`
+    /// Return a new policy where all occurrences of key `EntityUid`s are replaced by value `EntityUid`
     /// (as a single, non-sequential substitution).
     pub fn sub_entity_literals(
         &self,
