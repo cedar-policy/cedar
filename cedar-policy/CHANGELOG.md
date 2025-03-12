@@ -29,6 +29,7 @@ Cedar Language Version: TBD
 - Added `to_cedar` functions for `PolicySet`, `Policy`, and `Template` that
   render the policy in the human-readable Cedar syntax. These functions can be used
   to convert JSON formatted policies into the human-readable syntax.
+- Added `Entities::upsert_entities()` to add or update `Entity`s in an `Entities` struct (resolving #1479)
 
 ## [4.3.3] - 2025-02-25
 
