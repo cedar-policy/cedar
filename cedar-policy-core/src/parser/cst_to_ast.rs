@@ -5658,6 +5658,11 @@ mod tests {
         permit(principal, action, resource) when { principal == User::test && action == };
         "#;
         assert_parse_policy_allows_errors(src);
+        
+        let src = r#"
+        permit(principal, action, resource) when { action == &&  principal == User::test};
+        "#;
+        assert_parse_policy_allows_errors(src);
     }
 
     #[cfg(feature = "tolerant-ast")]
