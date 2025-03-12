@@ -74,11 +74,11 @@ pub fn cedar_schema_to_json_schema(
     // that namespace make it into the JSON schema structure under that
     // namespace's key.
     let (qualified_namespaces, unqualified_namespace) = split_unqualified_namespace(schema);
-
     // Create a single iterator for all namespaces
     let all_namespaces = qualified_namespaces
         .chain(unqualified_namespace)
         .collect::<Vec<_>>();
+
     let names = build_namespace_bindings(all_namespaces.iter().map(|ns| &ns.data))?;
     let warnings = compute_namespace_warnings(&names, extensions);
     let fragment = collect_all_errors(all_namespaces.into_iter().map(convert_namespace))?.collect();
@@ -751,9 +751,18 @@ mod preserves_source_locations {
             .common_types
             .get(&json_schema::CommonTypeId::new("AA".parse().unwrap()).unwrap())
             .expect("couldn't find common type AA");
-        let action_read = ns.actions.get(&"Read".into()).expect("couldn't find action Read");
-        let action_write = ns.actions.get(&"Write".into()).expect("couldn't find action Write");
-        let action_list = ns.actions.get(&"List".into()).expect("couldn't find action List");
+        let action_read = ns
+            .actions
+            .get(&"Read".into())
+            .expect("couldn't find action Read");
+        let action_write = ns
+            .actions
+            .get(&"Write".into())
+            .expect("couldn't find action Write");
+        let action_list = ns
+            .actions
+            .get(&"List".into())
+            .expect("couldn't find action List");
 
         assert_matches!(&entity_a.loc, Some(loc) => assert_matches!(loc.snippet(),
             Some("entity A;")
@@ -864,7 +873,10 @@ mod preserves_source_locations {
             assert_matches!(loc.snippet(), Some("A"));
         });
 
-        let action_list = ns.actions.get(&"List".into()).expect("couldn't find action List");
+        let action_list = ns
+            .actions
+            .get(&"List".into())
+            .expect("couldn't find action List");
         assert_matches!(&action_list.applies_to, Some(appliesto) => {
             assert_matches!(appliesto.principal_types.first().expect("principal types were empty").loc(), Some(loc) => {
                 assert_matches!(loc.snippet(), Some("A"));

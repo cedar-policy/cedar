@@ -476,7 +476,7 @@ pub enum EntityTypeFragment<N> {
         /// resolved/inlined (e.g., because they are not defined in this schema
         /// fragment).
         tags: Option<json_schema::Type<N>>,
-        /// TODO?
+        /// Source location - if available
         loc: Option<Loc>,
     },
     Enum(NonEmpty<SmolStr>),
@@ -708,7 +708,7 @@ pub struct ActionFragment<N, A> {
     /// separately so that we can later extract these values to construct the
     /// actual `Entity` objects defined by the schema.
     pub(super) attributes: BTreeMap<SmolStr, PartialValue>,
-    /// TODO
+    /// Source location - if available
     pub(super) loc: Option<Loc>,
 }
 
