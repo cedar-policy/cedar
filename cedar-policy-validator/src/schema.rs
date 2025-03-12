@@ -27,10 +27,11 @@ use cedar_policy_core::{
     parser::Loc,
     transitive_closure::compute_tc,
 };
+use educe::Educe;
 use namespace_def::EntityTypeFragment;
 use nonempty::NonEmpty;
 use serde::Deserialize;
-use smol_str::ToSmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -147,6 +148,39 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
     }
 }
 
+/// TODO
+#[cfg(feature = "extended-schema")]
+#[derive(Clone, Debug, Hash, Educe)]
+#[educe(Eq, PartialEq)]
+pub struct ValidatorType {
+    tp: Type,
+    loc: Option<Loc>,
+}
+
+/// TODO
+#[cfg(feature = "extended-schema")]
+#[derive(Clone, Debug, Hash, Educe)]
+#[educe(Eq, PartialEq)]
+pub struct ValidatorCommonType {
+    name: SmolStr,
+    #[educe(Eq(ignore))]
+    name_loc: Option<Loc>,
+
+    #[educe(Eq(ignore))]
+    type_loc: Option<Loc>,
+}
+
+impl ValidatorCommonType {
+    /// TODO
+    pub fn new(name: &InternalName, ty: ValidatorType) -> Self {
+        Self {
+            name: name.basename().clone().into_smolstr(),
+            name_loc: name.loc().cloned(),
+            type_loc: ty.loc,
+        }
+    }
+}
+
 /// Internal representation of the schema for use by the validator.
 ///
 /// In this representation, all common types are fully expanded, and all entity
@@ -165,6 +199,9 @@ pub struct ValidatorSchema {
     /// `Entity` from the `ValidatorSchema` is O(N) as of this writing, but with
     /// this cache it's O(1).
     pub(crate) actions: HashMap<EntityUID, Arc<Entity>>,
+
+    #[cfg(feature = "extended-schema")]
+    common_types: HashSet<ValidatorCommonType>,
 }
 
 /// Construct [`ValidatorSchema`] from a string containing a schema formatted
@@ -213,6 +250,25 @@ impl ValidatorSchema {
         Self::new_from_maps(entity_types, action_ids)
     }
 
+    /// Construct a new `ValidatorSchema` from a set of `ValidatorEntityType`s and `ValidatorActionId`s
+    #[cfg(feature = "extended-schema")]
+    pub fn new_with_common_types(
+        entity_types: impl IntoIterator<Item = ValidatorEntityType>,
+        action_ids: impl IntoIterator<Item = ValidatorActionId>,
+        common_types: impl IntoIterator<Item = ValidatorCommonType>,
+    ) -> Self {
+        let entity_types = entity_types
+            .into_iter()
+            .map(|ety| (ety.name().clone(), ety))
+            .collect();
+        let action_ids = action_ids
+            .into_iter()
+            .map(|id| (id.name().clone(), id))
+            .collect();
+        let common_types = common_types.into_iter().map(|id| id).collect();
+        Self::new_from_maps_common_entity_types(entity_types, action_ids, common_types)
+    }
+
     /// for internal use: version of `new()` which takes the maps directly, rather than constructing them.
     ///
     /// This function constructs the `actions` cache.
@@ -227,7 +283,35 @@ impl ValidatorSchema {
             entity_types,
             action_ids,
             actions,
+            #[cfg(feature = "extended-schema")]
+            common_types: HashSet::new(),
         }
+    }
+
+    /// for internal use: version of `new()` which takes the maps directly, rather than constructing them.
+    ///
+    /// This function constructs the `actions` cache.
+    #[cfg(feature = "extended-schema")]
+    fn new_from_maps_common_entity_types(
+        entity_types: HashMap<EntityType, ValidatorEntityType>,
+        action_ids: HashMap<EntityUID, ValidatorActionId>,
+        common_types: HashSet<ValidatorCommonType>,
+    ) -> Self {
+        let actions = Self::action_entities_iter(&action_ids)
+            .map(|e| (e.uid().clone(), Arc::new(e)))
+            .collect();
+        Self {
+            entity_types,
+            action_ids,
+            actions,
+            common_types,
+        }
+    }
+
+    /// TODO
+    #[cfg(feature = "extended-schema")]
+    pub fn common_types(&self) -> impl Iterator<Item = &ValidatorCommonType> {
+        self.common_types.iter()
     }
 
     /// Returns an iterator over every entity type that can be a principal for any action in this schema
@@ -350,6 +434,8 @@ impl ValidatorSchema {
             entity_types: HashMap::new(),
             action_ids: HashMap::new(),
             actions: HashMap::new(),
+            #[cfg(feature = "extended-schema")]
+            common_types: HashSet::new(),
         }
     }
 
@@ -536,7 +622,11 @@ impl ValidatorSchema {
         }
 
         let resolver = CommonTypeResolver::new(&common_types);
-        let common_types = resolver.resolve(extensions)?;
+        let common_validator_types = resolver.resolve(extensions)?;
+        let common_types = common_validator_types.clone()
+            .into_iter()
+            .map(|(k, v)| (k, v.tp))
+            .collect();
 
         // Invert the `parents` relation defined by entities and action so far
         // to get a `children` relation.
@@ -658,7 +748,18 @@ impl ValidatorSchema {
         // Pass `true` here so that we also check that the action hierarchy does
         // not contain cycles.
         compute_tc(&mut action_ids, true)?;
-
+        #[cfg(feature = "extended-schema")]
+        let common_type_validators = common_validator_types
+            .clone()
+            .into_iter()
+            .filter(|ct| {
+                !matches!(ct.1.tp, Type::ExtensionType { .. })
+                    && !matches!(ct.1.tp, Type::Primitive { .. })
+            })
+            .map(|ct| ValidatorCommonType::new(ct.0, ct.1))
+            .collect();
+        #[cfg(feature = "extended-schema")]
+        println!("Common type validators: {:?}", common_type_validators);
         // Return with an error if there is an undeclared entity or action
         // referenced in any fragment. `{entity,action}_children` are provided
         // for the `undeclared_parent_{entities,actions}` arguments because
@@ -672,8 +773,15 @@ impl ValidatorSchema {
             action_children.into_keys(),
             common_types.into_values(),
         )?;
-
-        Ok(ValidatorSchema::new_from_maps(entity_types, action_ids))
+        #[cfg(not(feature = "extended-schema"))]
+        let validator_schema = Ok(ValidatorSchema::new_from_maps(entity_types, action_ids));
+        #[cfg(feature = "extended-schema")]
+        let validator_schema = Ok(ValidatorSchema::new_from_maps_common_entity_types(
+            entity_types,
+            action_ids,
+            common_type_validators,
+        ));
+        validator_schema
     }
 
     /// Check that all entity types and actions referenced in the schema are in
@@ -1398,14 +1506,17 @@ impl<'a> CommonTypeResolver<'a> {
 
     // Resolve common type references, returning a map from (fully-qualified)
     // [`InternalName`] of a common type to its [`Type`] definition
-    fn resolve(&self, extensions: &Extensions<'_>) -> Result<HashMap<&'a InternalName, Type>> {
+    fn resolve(
+        &self,
+        extensions: &Extensions<'_>,
+    ) -> Result<HashMap<&'a InternalName, ValidatorType>> {
         let sorted_names = self.topo_sort().map_err(|n| {
             SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError { ty: n })
         })?;
 
         let mut resolve_table: HashMap<&InternalName, json_schema::Type<InternalName>> =
             HashMap::new();
-        let mut tys: HashMap<&'a InternalName, Type> = HashMap::new();
+        let mut tys: HashMap<&'a InternalName, ValidatorType> = HashMap::new();
 
         for &name in sorted_names.iter() {
             // PANIC SAFETY: `name.basename()` should be an existing common type id
@@ -1413,11 +1524,19 @@ impl<'a> CommonTypeResolver<'a> {
             let ty = self.defs.get(name).unwrap();
             let substituted_ty = Self::resolve_type(&resolve_table, ty.clone())?;
             resolve_table.insert(name, substituted_ty.clone());
-            tys.insert(
-                name,
-                try_jsonschema_type_into_validator_type(substituted_ty, extensions)?
-                    .resolve_common_type_refs(&HashMap::new())?,
-            );
+
+            let validator_type =
+                try_jsonschema_type_into_validator_type(substituted_ty, extensions)?;
+            let loc = ty.loc();
+
+            println!("Got a loc: {:?}", loc);
+            let tp = validator_type.resolve_common_type_refs(&HashMap::new())?;
+            let vt = ValidatorType {
+                tp: tp.clone(),
+                loc: loc.cloned(),
+            };
+
+            tys.insert(name, vt);
         }
 
         Ok(tys)

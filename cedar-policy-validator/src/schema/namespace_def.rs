@@ -34,7 +34,7 @@ use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
 use smol_str::{SmolStr, ToSmolStr};
 
-use super::{internal_name_to_entity_type, AllDefs, ValidatorApplySpec};
+use super::{internal_name_to_entity_type, AllDefs, ValidatorApplySpec, ValidatorType};
 use crate::{
     err::{schema_errors::*, SchemaError},
     json_schema::{self, CommonTypeId, EntityTypeKind},
@@ -138,7 +138,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
             namespace_def
                 .common_types
                 .into_iter()
-                .map(|(key, value)| (key, value.ty)),
+                .map(|(key, value)| (key, value)),
             namespace.as_ref(),
         )?;
         let actions =
@@ -283,16 +283,20 @@ impl CommonTypeDefs<ConditionalName> {
     /// structures used by the schema format to those used internally by the
     /// validator.
     pub(crate) fn from_raw_common_types(
-        schema_file_type_def: impl IntoIterator<Item = (CommonTypeId, json_schema::Type<RawName>)>,
+        schema_file_type_def: impl IntoIterator<Item = (CommonTypeId, json_schema::CommonType<RawName>)>,
         schema_namespace: Option<&InternalName>,
     ) -> crate::err::Result<Self> {
         let mut defs = HashMap::new();
         for (id, schema_ty) in schema_file_type_def {
-            let name = RawName::new_from_unreserved(id.into(), None).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
+            let name = RawName::new_from_unreserved(id.into(), schema_ty.loc)
+                .qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
             match defs.entry(name) {
                 Entry::Vacant(ventry) => {
-                    ventry
-                        .insert(schema_ty.conditionally_qualify_type_references(schema_namespace));
+                    ventry.insert(
+                        schema_ty
+                            .ty
+                            .conditionally_qualify_type_references(schema_namespace),
+                    );
                 }
                 Entry::Occupied(oentry) => {
                     return Err(SchemaError::DuplicateCommonType(DuplicateCommonTypeError {
@@ -924,15 +928,15 @@ type ResolveFunc<T> = dyn FnOnce(&HashMap<&InternalName, Type>) -> crate::err::R
 /// Represent a type that might be defined in terms of some common-type
 /// definitions which are not necessarily available in the current namespace.
 pub(crate) enum WithUnresolvedCommonTypeRefs<T> {
-    WithUnresolved(Box<ResolveFunc<T>>),
-    WithoutUnresolved(T),
+    WithUnresolved(Box<ResolveFunc<T>>, Option<Loc>),
+    WithoutUnresolved(T, Option<Loc>),
 }
 
 impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
     pub fn new(
         f: impl FnOnce(&HashMap<&InternalName, Type>) -> crate::err::Result<T> + 'static,
     ) -> Self {
-        Self::WithUnresolved(Box::new(f))
+        Self::WithUnresolved(Box::new(f), None)
     }
 
     pub fn map<U: 'static>(
@@ -940,10 +944,12 @@ impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
         f: impl FnOnce(T) -> U + 'static,
     ) -> WithUnresolvedCommonTypeRefs<U> {
         match self {
-            Self::WithUnresolved(_) => WithUnresolvedCommonTypeRefs::new(|common_type_defs| {
+            Self::WithUnresolved(_, _) => WithUnresolvedCommonTypeRefs::new(|common_type_defs| {
                 self.resolve_common_type_refs(common_type_defs).map(f)
             }),
-            Self::WithoutUnresolved(v) => WithUnresolvedCommonTypeRefs::WithoutUnresolved(f(v)),
+            Self::WithoutUnresolved(v, _) => {
+                WithUnresolvedCommonTypeRefs::WithoutUnresolved(f(v), None)
+            }
         }
     }
 
@@ -959,25 +965,25 @@ impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
         common_type_defs: &HashMap<&InternalName, Type>,
     ) -> crate::err::Result<T> {
         match self {
-            WithUnresolvedCommonTypeRefs::WithUnresolved(f) => f(common_type_defs),
-            WithUnresolvedCommonTypeRefs::WithoutUnresolved(v) => Ok(v),
+            WithUnresolvedCommonTypeRefs::WithUnresolved(f, loc) => f(common_type_defs),
+            WithUnresolvedCommonTypeRefs::WithoutUnresolved(v, loc) => Ok(v),
         }
     }
 }
 
 impl<T: 'static> From<T> for WithUnresolvedCommonTypeRefs<T> {
     fn from(value: T) -> Self {
-        Self::WithoutUnresolved(value)
+        Self::WithoutUnresolved(value, None)
     }
 }
 
 impl<T: std::fmt::Debug> std::fmt::Debug for WithUnresolvedCommonTypeRefs<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            WithUnresolvedCommonTypeRefs::WithUnresolved(_) => {
+            WithUnresolvedCommonTypeRefs::WithUnresolved(_, _) => {
                 f.debug_tuple("WithUnresolved").finish()
             }
-            WithUnresolvedCommonTypeRefs::WithoutUnresolved(v) => {
+            WithUnresolvedCommonTypeRefs::WithoutUnresolved(v, _) => {
                 f.debug_tuple("WithoutUnresolved").field(v).finish()
             }
         }
