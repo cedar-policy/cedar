@@ -135,7 +135,7 @@ impl Entities {
             if let Some(checker) = checker.as_ref() {
                 checker.validate_entity(&entity)?;
             }
-            update_entity_map(&mut self.entities, entity)?;
+            update_entity_map(&mut self.entities, entity, false)?;
         }
         match tc_computation {
             TCComputation::AssumeAlreadyComputed => (),
@@ -181,6 +181,40 @@ impl Entities {
         Ok(self)
     }
 
+    /// Adds the [`crate::ast::Entity`]s in the iterator to this [`Entities`].
+    /// Fails if any error is encountered in the transitive closure computation.
+    ///
+    /// When a duplicate is encountered, the value is overwritten by the latest version.
+    ///
+    /// If `schema` is present, then the added entities will be validated
+    /// against the `schema`, returning an error if they do not conform to the
+    /// schema.
+    /// (This method will not add action entities from the `schema`.)
+    ///
+    /// If you pass [`TCComputation::AssumeAlreadyComputed`], then the caller is
+    /// responsible for ensuring that TC and DAG hold before calling this method.
+    pub fn upsert_entities(
+        mut self,
+        collection: impl IntoIterator<Item = Arc<Entity>>,
+        schema: Option<&impl Schema>,
+        tc_computation: TCComputation,
+        extensions: &Extensions<'_>,
+    ) -> Result<Self> {
+        let checker = schema.map(|schema| EntitySchemaConformanceChecker::new(schema, extensions));
+        for entity in collection.into_iter() {
+            if let Some(checker) = checker.as_ref() {
+                checker.validate_entity(&entity)?;
+            }
+            update_entity_map(&mut self.entities, entity, true)?;
+        }
+        match tc_computation {
+            TCComputation::AssumeAlreadyComputed => (),
+            TCComputation::EnforceAlreadyComputed => enforce_tc_and_dag(&self.entities)?,
+            TCComputation::ComputeNow => compute_tc(&mut self.entities, true)?,
+        };
+        Ok(self)
+    }
+
     /// Create an `Entities` object with the given entities.
     ///
     /// If `schema` is present, then action entities from that schema will also
@@ -196,7 +230,7 @@ impl Entities {
     ///   `entities` with the same Entity UID, or there is an entity in `entities` with the same
     ///   Entity UID as a non-identical entity in this structure
     /// - [`EntitiesError::TransitiveClosureError`] if `tc_computation ==
-    ///   TCComputation::EnforceAlreadyComputed` and the entities are not transitivly closed
+    ///   TCComputation::EnforceAlreadyComputed` and the entities are not transitively closed
     /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
     ///   to the schema
     pub fn from_entities(
@@ -374,7 +408,7 @@ fn create_entity_map(
 ) -> Result<HashMap<EntityUID, Arc<Entity>>> {
     let mut map: HashMap<EntityUID, Arc<Entity>> = HashMap::new();
     for e in es {
-        update_entity_map(&mut map, e)?;
+        update_entity_map(&mut map, e, false)?;
     }
     Ok(map)
 }
@@ -384,14 +418,22 @@ fn create_entity_map(
 /// with the same EntityUID as the specified entity. If such an entity is found and is
 /// not structurally equal to the specified entity produces an error. Otherwise,
 /// if a structurally equal entity is found, the state of the map is unchanged.
-fn update_entity_map(map: &mut HashMap<EntityUID, Arc<Entity>>, entity: Arc<Entity>) -> Result<()> {
+fn update_entity_map(
+    map: &mut HashMap<EntityUID, Arc<Entity>>,
+    entity: Arc<Entity>,
+    allow_override: bool,
+) -> Result<()> {
     match map.entry(entity.uid().clone()) {
-        hash_map::Entry::Occupied(occupied_entry) => {
-            // Check whether the occupying entity is structurally equal to the
-            // entity being processed
-            if !entity.deep_eq(occupied_entry.get()) {
-                let entry = occupied_entry.remove_entry();
-                return Err(EntitiesError::duplicate(entry.0));
+        hash_map::Entry::Occupied(mut occupied_entry) => {
+            if allow_override {
+                occupied_entry.insert(entity);
+            } else {
+                // Check whether the occupying entity is structurally equal to the
+                // entity being processed
+                if !entity.deep_eq(occupied_entry.get()) {
+                    let entry = occupied_entry.remove_entry();
+                    return Err(EntitiesError::duplicate(entry.0));
+                }
             }
         }
         hash_map::Entry::Vacant(v) => {
@@ -2144,8 +2186,8 @@ mod entities_tests {
         let mut e1 = Entity::with_uid(EntityUID::with_eid("a"));
         let mut e2 = Entity::with_uid(EntityUID::with_eid("b"));
         let e3 = Entity::with_uid(EntityUID::with_eid("c"));
-        e1.add_indirect_ancestor(EntityUID::with_eid("b"));
-        e2.add_indirect_ancestor(EntityUID::with_eid("c"));
+        e1.add_parent(EntityUID::with_eid("b"));
+        e2.add_parent(EntityUID::with_eid("c"));
 
         let es = Entities::from_entities(
             vec![e1, e2, e3],
@@ -2169,9 +2211,9 @@ mod entities_tests {
         let mut e1 = Entity::with_uid(EntityUID::with_eid("a"));
         let mut e2 = Entity::with_uid(EntityUID::with_eid("b"));
         let e3 = Entity::with_uid(EntityUID::with_eid("c"));
-        e1.add_indirect_ancestor(EntityUID::with_eid("b"));
+        e1.add_parent(EntityUID::with_eid("b"));
         e1.add_indirect_ancestor(EntityUID::with_eid("c"));
-        e2.add_indirect_ancestor(EntityUID::with_eid("c"));
+        e2.add_parent(EntityUID::with_eid("c"));
 
         Entities::from_entities(
             vec![e1, e2, e3],

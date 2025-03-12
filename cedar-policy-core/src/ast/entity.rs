@@ -689,6 +689,14 @@ impl Entity {
         self.parents.remove(uid);
     }
 
+    /// Remove all indirect ancestors of this `Entity`.
+    ///
+    /// The caller of this code is responsible for maintaining
+    /// transitive closure of hierarchy.
+    pub fn remove_all_indirect_ancestors(&mut self) {
+        self.indirect_ancestors.clear();
+    }
+
     /// Consume the entity and return the entity's owned Uid, attributes, ancestors, parents, and tags.
     #[allow(clippy::type_complexity)]
     pub fn into_inner(
@@ -762,6 +770,14 @@ impl TCNode<EntityUID> for Entity {
     fn has_edge_to(&self, e: &EntityUID) -> bool {
         self.is_descendant_of(e)
     }
+
+    fn reset_edges(&mut self) {
+        self.remove_all_indirect_ancestors()
+    }
+
+    fn direct_edges(&self) -> Box<dyn Iterator<Item = &EntityUID> + '_> {
+        Box::new(self.parents())
+    }
 }
 
 impl TCNode<EntityUID> for Arc<Entity> {
@@ -780,6 +796,15 @@ impl TCNode<EntityUID> for Arc<Entity> {
 
     fn has_edge_to(&self, e: &EntityUID) -> bool {
         self.is_descendant_of(e)
+    }
+
+    fn reset_edges(&mut self) {
+        // Use Arc::make_mut to get a mutable reference to the inner value
+        Arc::make_mut(self).remove_all_indirect_ancestors()
+    }
+
+    fn direct_edges(&self) -> Box<dyn Iterator<Item = &EntityUID> + '_> {
+        Box::new(self.parents())
     }
 }
 
