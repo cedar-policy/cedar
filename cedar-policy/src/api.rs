@@ -1349,6 +1349,11 @@ impl Validator {
         Self(cedar_policy_validator::Validator::new(schema.0))
     }
 
+    /// Get the `Schema` this `Validator` is using.
+    pub fn schema(&self) -> &Schema {
+        RefCast::ref_cast(self.0.schema())
+    }
+
     /// Validate all policies in a policy set, collecting all validation errors
     /// found into the returned `ValidationResult`. Each error is returned together with the
     /// policy id of the policy where the error was found. If a policy id
@@ -3401,7 +3406,7 @@ impl Policy {
             .collect()
     }
 
-    /// Return a new policy where all occurences of key `EntityUid`s are replaced by value `EntityUid`
+    /// Return a new policy where all occurrences of key `EntityUid`s are replaced by value `EntityUid`
     /// (as a single, non-sequential substitution).
     pub fn sub_entity_literals(
         &self,

@@ -6308,190 +6308,394 @@ mod policy_manipulation_functions_tests {
         assert!(res.contains(&EntityUid::from_str("User::\"Alice\"").expect("should parse")));
     }
 
+    #[track_caller]
+    fn assert_entity_sub(
+        policy_str: &str,
+        expected_policy_str: &str,
+        mapping: impl IntoIterator<Item = (EntityUid, EntityUid)>,
+    ) {
+        let policy = Policy::from_str(policy_str).unwrap();
+        let new_policy = policy
+            .sub_entity_literals(mapping.into_iter().collect())
+            .unwrap();
+        assert_eq!(new_policy.to_string(), expected_policy_str);
+    }
+
     #[test]
     fn test_entity_sub_principal() {
-        let policy_str = r#"permit(principal == User::"Alice", action, resource);"#;
-        let policy = Policy::from_str(policy_str).expect("should succeed");
-
-        let new_policy = policy
-            .sub_entity_literals(BTreeMap::from([(
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("Alice").unwrap(),
-                ),
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("Alice").unwrap(),
-                ),
-            )]))
-            .unwrap();
-        assert_eq!(policy.to_string(), new_policy.to_string());
-        let new_policy = policy
-            .sub_entity_literals(BTreeMap::from([(
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("Alice").unwrap(),
-                ),
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("Bob").unwrap(),
-                ),
-            )]))
-            .unwrap();
-        assert_ne!(policy.to_string(), new_policy.to_string());
+        let mapping = [(
+            EntityUid::from_type_name_and_id(
+                EntityTypeName::from_str("User").unwrap(),
+                EntityId::from_str("Alice").unwrap(),
+            ),
+            EntityUid::from_type_name_and_id(
+                EntityTypeName::from_str("User").unwrap(),
+                EntityId::from_str("Bob").unwrap(),
+            ),
+        )];
+        assert_entity_sub(
+            r#"permit(principal == User::"Alice", action, resource);"#,
+            r#"permit(principal == User::"Bob", action, resource);"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal in User::"Alice", action, resource);"#,
+            r#"permit(principal in User::"Bob", action, resource);"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal is User in User::"Alice", action, resource);"#,
+            r#"permit(principal is User in User::"Bob", action, resource);"#,
+            mapping,
+        );
     }
 
     #[test]
     fn test_entity_sub_action() {
-        let policy_str = r#"permit(principal, action == Action::"view", resource);"#;
-        let policy = Policy::from_str(policy_str).expect("should succeed");
-
-        let new_policy = policy
-            .sub_entity_literals(BTreeMap::from([(
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("Action").unwrap(),
-                    EntityId::from_str("view").unwrap(),
-                ),
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("Action").unwrap(),
-                    EntityId::from_str("view").unwrap(),
-                ),
-            )]))
-            .unwrap();
-        assert_eq!(policy.to_string(), new_policy.to_string());
-        let new_policy = policy
-            .sub_entity_literals(BTreeMap::from([(
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("Action").unwrap(),
-                    EntityId::from_str("view").unwrap(),
-                ),
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("Action").unwrap(),
-                    EntityId::from_str("read").unwrap(),
-                ),
-            )]))
-            .unwrap();
-        assert_ne!(policy.to_string(), new_policy.to_string());
+        let mapping = [(
+            EntityUid::from_type_name_and_id(
+                EntityTypeName::from_str("Action").unwrap(),
+                EntityId::from_str("view").unwrap(),
+            ),
+            EntityUid::from_type_name_and_id(
+                EntityTypeName::from_str("Action").unwrap(),
+                EntityId::from_str("read").unwrap(),
+            ),
+        )];
+        assert_entity_sub(
+            r#"permit(principal, action == Action::"view", resource);"#,
+            r#"permit(principal, action == Action::"read", resource);"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action in Action::"view", resource);"#,
+            r#"permit(principal, action in Action::"read", resource);"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action in [Action::"view", Action::"other"], resource);"#,
+            r#"permit(principal, action in [Action::"read", Action::"other"], resource);"#,
+            mapping,
+        );
     }
 
     #[test]
     fn test_entity_sub_resource() {
-        let policy_str = r#"permit(principal, action, resource == User::"Alice");"#;
-        let policy = Policy::from_str(policy_str).expect("should succeed");
-
-        let new_policy = policy
-            .sub_entity_literals(BTreeMap::from([(
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("Alice").unwrap(),
-                ),
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("Alice").unwrap(),
-                ),
-            )]))
-            .unwrap();
-        assert_eq!(policy.to_string(), new_policy.to_string());
-        let new_policy = policy
-            .sub_entity_literals(BTreeMap::from([(
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("Alice").unwrap(),
-                ),
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("Bob").unwrap(),
-                ),
-            )]))
-            .unwrap();
-        assert_ne!(policy.to_string(), new_policy.to_string());
+        let mapping = [(
+            EntityUid::from_type_name_and_id(
+                EntityTypeName::from_str("User").unwrap(),
+                EntityId::from_str("Alice").unwrap(),
+            ),
+            EntityUid::from_type_name_and_id(
+                EntityTypeName::from_str("User").unwrap(),
+                EntityId::from_str("Bob").unwrap(),
+            ),
+        )];
+        assert_entity_sub(
+            r#"permit(principal, action, resource == User::"Alice");"#,
+            r#"permit(principal, action, resource == User::"Bob");"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource in User::"Alice");"#,
+            r#"permit(principal, action, resource in User::"Bob");"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource is User in User::"Alice");"#,
+            r#"permit(principal, action, resource is User in User::"Bob");"#,
+            mapping,
+        );
     }
 
     #[test]
     fn test_entity_sub_body() {
-        let policy_str =
-            r#"permit(principal, action, resource) when { principal == User::"Alice" };"#;
-        let policy = Policy::from_str(policy_str).expect("should succeed");
+        let mapping = [(
+            EntityUid::from_type_name_and_id(
+                EntityTypeName::from_str("User").unwrap(),
+                EntityId::from_str("Alice").unwrap(),
+            ),
+            EntityUid::from_type_name_and_id(
+                EntityTypeName::from_str("User").unwrap(),
+                EntityId::from_str("Bob").unwrap(),
+            ),
+        )];
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { principal == User::"Alice" };"#,
+            r#"permit(principal, action, resource) when { principal == User::"Bob" };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { !User::"Alice" };"#,
+            r#"permit(principal, action, resource) when { !User::"Bob" };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { -(User::"Alice") };"#,
+            r#"permit(principal, action, resource) when { -(User::"Bob") };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice" != User::"Alice" };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" != User::"Bob" };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice" < User::"Alice" };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" < User::"Bob" };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice" <= User::"Alice" };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" <= User::"Bob" };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice" > User::"Alice" };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" > User::"Bob" };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice" >= User::"Alice" };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" >= User::"Bob" };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice" && User::"Alice" };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" && User::"Bob" };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice" || User::"Alice" };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" || User::"Bob" };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice" + User::"Alice" };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" + User::"Bob" };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice" - User::"Alice" };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" - User::"Bob" };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice" * User::"Alice" };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" * User::"Bob" };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice".contains(User::"Alice") };"#,
+            r#"permit(principal, action, resource) when { User::"Bob".contains(User::"Bob") };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice".containsAll(User::"Alice") };"#,
+            r#"permit(principal, action, resource) when { User::"Bob".containsAll(User::"Bob") };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice".containsAny(User::"Alice") };"#,
+            r#"permit(principal, action, resource) when { User::"Bob".containsAny(User::"Bob") };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice".isEmpty() };"#,
+            r#"permit(principal, action, resource) when { User::"Bob".isEmpty() };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice".isEmpty() };"#,
+            r#"permit(principal, action, resource) when { User::"Bob".isEmpty() };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice".getTag(User::"Alice") };"#,
+            r#"permit(principal, action, resource) when { User::"Bob".getTag(User::"Bob") };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice".hasTag(User::"Alice") };"#,
+            r#"permit(principal, action, resource) when { User::"Bob".hasTag(User::"Bob") };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice".attr };"#,
+            r#"permit(principal, action, resource) when { User::"Bob"["attr"] };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice" has attr };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" has "attr" };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice" like "*" };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" like "*" };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice" is User };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" is User };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice" is User in User::"Alice" };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" is User in User::"Bob" };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { if User::"Alice" then User::"Alice" else User::"Alice" };"#,
+            r#"permit(principal, action, resource) when { if User::"Bob" then User::"Bob" else User::"Bob" };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { [User::"Alice", User::"Alice"] };"#,
+            r#"permit(principal, action, resource) when { [User::"Bob", User::"Bob"] };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { {a: User::"Alice", b: User::"Alice"} };"#,
+            r#"permit(principal, action, resource) when { {"a": User::"Bob", "b": User::"Bob"} };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { User::"Alice".lessThan(User::"Alice") };"#,
+            r#"permit(principal, action, resource) when { User::"Bob".lessThan(User::"Bob") };"#,
+            mapping.clone(),
+        );
+    }
 
-        let new_policy = policy
-            .sub_entity_literals(BTreeMap::from([(
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("Alice").unwrap(),
-                ),
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("Alice").unwrap(),
-                ),
-            )]))
-            .unwrap();
-        assert_eq!(policy.to_string(), new_policy.to_string());
-        let new_policy = policy
-            .sub_entity_literals(BTreeMap::from([(
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("Alice").unwrap(),
-                ),
-                EntityUid::from_type_name_and_id(
-                    EntityTypeName::from_str("User").unwrap(),
-                    EntityId::from_str("Bob").unwrap(),
-                ),
-            )]))
-            .unwrap();
-        assert_ne!(policy.to_string(), new_policy.to_string());
+    #[test]
+    fn test_entity_sub_no_entity() {
+        let mapping = [(
+            EntityUid::from_type_name_and_id(
+                EntityTypeName::from_str("User").unwrap(),
+                EntityId::from_str("Alice").unwrap(),
+            ),
+            EntityUid::from_type_name_and_id(
+                EntityTypeName::from_str("User").unwrap(),
+                EntityId::from_str("Bob").unwrap(),
+            ),
+        )];
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { 1 };"#,
+            r#"permit(principal, action, resource) when { 1 };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { false };"#,
+            r#"permit(principal, action, resource) when { false };"#,
+            mapping.clone(),
+        );
+        assert_entity_sub(
+            r#"permit(principal, action, resource) when { "foo" };"#,
+            r#"permit(principal, action, resource) when { "foo" };"#,
+            mapping.clone(),
+        );
     }
 
     #[test]
     fn test_entity_swap() {
-        let policy_str = r#"permit(principal, action in [Action::"1", Action::"2"], resource) when { principal in [User::"1", User::"2"] };"#;
-        let policy = Policy::from_str(policy_str).expect("should succeed");
-        let expected_policy_str = r#"permit(principal, action in [Action::"2", Action::"1"], resource) when { principal in [User::"2", User::"1"] };"#;
+        assert_entity_sub(
+            r#"permit(principal, action in [Action::"1", Action::"2"], resource) when { principal in [User::"1", User::"2"] };"#,
+            r#"permit(principal, action in [Action::"2", Action::"1"], resource) when { principal in [User::"2", User::"1"] };"#,
+            [
+                (
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("User").unwrap(),
+                        EntityId::from_str("1").unwrap(),
+                    ),
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("User").unwrap(),
+                        EntityId::from_str("2").unwrap(),
+                    ),
+                ),
+                (
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("User").unwrap(),
+                        EntityId::from_str("2").unwrap(),
+                    ),
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("User").unwrap(),
+                        EntityId::from_str("1").unwrap(),
+                    ),
+                ),
+                (
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("Action").unwrap(),
+                        EntityId::from_str("1").unwrap(),
+                    ),
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("Action").unwrap(),
+                        EntityId::from_str("2").unwrap(),
+                    ),
+                ),
+                (
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("Action").unwrap(),
+                        EntityId::from_str("2").unwrap(),
+                    ),
+                    EntityUid::from_type_name_and_id(
+                        EntityTypeName::from_str("Action").unwrap(),
+                        EntityId::from_str("1").unwrap(),
+                    ),
+                ),
+            ],
+        );
+    }
 
-        let new_policy = policy
-            .sub_entity_literals(BTreeMap::from([
-                (
-                    EntityUid::from_type_name_and_id(
-                        EntityTypeName::from_str("User").unwrap(),
-                        EntityId::from_str("1").unwrap(),
-                    ),
-                    EntityUid::from_type_name_and_id(
-                        EntityTypeName::from_str("User").unwrap(),
-                        EntityId::from_str("2").unwrap(),
-                    ),
+    #[test]
+    fn sub_same_is_same() {
+        let policy_str =
+            r#"permit(principal, action, resource) when { principal == User::"Alice" };"#;
+        assert_entity_sub(
+            policy_str,
+            policy_str,
+            [(
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
                 ),
-                (
-                    EntityUid::from_type_name_and_id(
-                        EntityTypeName::from_str("User").unwrap(),
-                        EntityId::from_str("2").unwrap(),
-                    ),
-                    EntityUid::from_type_name_and_id(
-                        EntityTypeName::from_str("User").unwrap(),
-                        EntityId::from_str("1").unwrap(),
-                    ),
+                EntityUid::from_type_name_and_id(
+                    EntityTypeName::from_str("User").unwrap(),
+                    EntityId::from_str("Alice").unwrap(),
                 ),
-                (
-                    EntityUid::from_type_name_and_id(
-                        EntityTypeName::from_str("Action").unwrap(),
-                        EntityId::from_str("1").unwrap(),
-                    ),
-                    EntityUid::from_type_name_and_id(
-                        EntityTypeName::from_str("Action").unwrap(),
-                        EntityId::from_str("2").unwrap(),
-                    ),
-                ),
-                (
-                    EntityUid::from_type_name_and_id(
-                        EntityTypeName::from_str("Action").unwrap(),
-                        EntityId::from_str("2").unwrap(),
-                    ),
-                    EntityUid::from_type_name_and_id(
-                        EntityTypeName::from_str("Action").unwrap(),
-                        EntityId::from_str("1").unwrap(),
-                    ),
-                ),
-            ]))
-            .unwrap();
-        assert_eq!(new_policy.to_string(), expected_policy_str.to_string());
+            )],
+        );
+    }
+
+    #[test]
+    fn sub_other_is_same() {
+        let mapping = [(
+            EntityUid::from_type_name_and_id(
+                EntityTypeName::from_str("User").unwrap(),
+                EntityId::from_str("Bob").unwrap(),
+            ),
+            EntityUid::from_type_name_and_id(
+                EntityTypeName::from_str("User").unwrap(),
+                EntityId::from_str("Dean").unwrap(),
+            ),
+        )];
+        let policy_str =
+            r#"permit(principal, action, resource) when { principal == User::"Alice" };"#;
+        assert_entity_sub(policy_str, policy_str, mapping.clone());
+        let policy_str = r#"permit(principal == User::"Alice", action, resource);"#;
+        assert_entity_sub(policy_str, policy_str, mapping.clone());
+        let policy_str = r#"permit(principal in User::"Alice", action, resource);"#;
+        assert_entity_sub(policy_str, policy_str, mapping.clone());
+        let policy_str = r#"permit(principal, action, resource == User::"Alice");"#;
+        assert_entity_sub(policy_str, policy_str, mapping.clone());
+        let policy_str = r#"permit(principal, action, resource in User::"Alice");"#;
+        assert_entity_sub(policy_str, policy_str, mapping);
+    }
+
+    #[test]
+    fn sub_nothing_is_same() {
+        let policy_str =
+            r#"permit(principal, action, resource) when { principal == User::"Alice" };"#;
+        assert_entity_sub(policy_str, policy_str, []);
     }
 
     #[test]
