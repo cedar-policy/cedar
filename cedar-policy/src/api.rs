@@ -4510,51 +4510,51 @@ mod test_access {
 
     fn schema() -> Schema {
         let src = r#"
-            type Task = {
-                "id": Long,
-                "name": String,
-                "state": String,
-            };
+type Task = {
+    "id": Long,
+    "name": String,
+    "state": String,
+};
 
-            type Tasks = Set<Task>;
-            entity List in [Application] = {
-                "editors": Team,
-                "name": String,
-                "owner": User,
-                "readers": Team,
-                "tasks": Tasks,
-            };
-            entity Application;
-            entity User in [Team, Application] = {
-                "joblevel": Long,
-                "location": String,
-            };
+type Tasks = Set<Task>;
+entity List in [Application] = {
+    "editors": Team,
+    "name": String,
+    "owner": User,
+    "readers": Team,
+    "tasks": Tasks,
+};
+entity Application;
+entity User in [Team, Application] = {
+    "joblevel": Long,
+    "location": String,
+};
 
-            entity CoolList;
+entity CoolList;
 
-            entity Team in [Team, Application];
+entity Team in [Team, Application];
 
-            action Read, Write, Create;
+action Read, Write, Create;
 
-            action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
-                principal: [User],
-                resource : [List]
-            };
+action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
+    principal: [User],
+    resource : [List]
+};
 
-            action GetList in Read appliesTo {
-                principal : [User],
-                resource : [List, CoolList]
-            };
+action GetList in Read appliesTo {
+    principal : [User],
+    resource : [List, CoolList]
+};
 
-            action GetLists in Read appliesTo {
-                principal : [User],
-                resource : [Application]
-            };
+action GetLists in Read appliesTo {
+    principal : [User],
+    resource : [Application]
+};
 
-            action CreateList in Create appliesTo {
-                principal : [User],
-                resource : [Application]
-            };
+action CreateList in Create appliesTo {
+    principal : [User],
+    resource : [Application]
+};
         "#;
 
         src.parse().unwrap()
@@ -4591,10 +4591,6 @@ mod test_access {
         ]);
         assert_eq!(resources, expected);
         assert!(resources.iter().all(|ety| ety.0.loc().is_some()));
-        assert!(resources.iter().all(|ety| {
-            println!("{:?}", ety.0.loc().unwrap().span);
-            true
-        }));
     }
 
     #[test]
@@ -4741,16 +4737,16 @@ mod test_access_namespace {
 
 type Tasks = Set<Task>;
 entity List in [Application] = {
-  "editors": Team,
-  "name": String,
-  "owner": User,
-  "readers": Team,
-  "tasks": Tasks,
+"editors": Team,
+"name": String,
+"owner": User,
+"readers": Team,
+"tasks": Tasks,
 };
 entity Application;
 entity User in [Team, Application] = {
-  "joblevel": Long,
-  "location": String,
+"joblevel": Long,
+"location": String,
 };
 
 entity CoolList;
@@ -4788,8 +4784,6 @@ action CreateList in Create appliesTo {
     #[test]
     fn principals() {
         let schema = schema();
-        println!("SCHEMA: {:?}", schema);
-
         let principals = schema.principals().collect::<HashSet<_>>();
         assert_eq!(principals.len(), 1);
         let user: EntityTypeName = "Foo::User".parse().unwrap();

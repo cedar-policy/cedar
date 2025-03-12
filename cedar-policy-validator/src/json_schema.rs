@@ -34,6 +34,7 @@ use serde::{
 };
 use serde_with::serde_as;
 use smol_str::{SmolStr, ToSmolStr};
+use std::hash::{Hash, Hasher};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
@@ -597,7 +598,7 @@ pub struct StandardEntityType<N> {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     pub tags: Option<Type<N>>,
-    /// Shrug?
+    /// Source location, if available
     #[serde(skip)]
     #[educe(Eq(ignore))]
     pub(crate) loc: Option<Loc>,
@@ -777,20 +778,19 @@ impl AttributesOrContext<ConditionalName> {
     }
 }
 
-/// TODO
+/// Action Name struct that includes soruce location
 #[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ActionName {
-    /// something
+    /// Action name
     pub name: SmolStr,
-    /// todo
+    /// Source location - if available
     #[educe(Eq(ignore))]
     pub loc: Option<Loc>,
 }
-use std::hash::Hash;
-use std::hash::Hasher;
+
 impl Hash for ActionName {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.hash(state);
@@ -1035,7 +1035,7 @@ pub struct ActionEntityUID<N> {
     #[serde(skip_serializing_if = "Option::is_none")]
     ty: Option<N>,
     #[serde(skip)]
-    /// TOIDO
+    /// Source location - if available
     pub loc: Option<Loc>,
 }
 

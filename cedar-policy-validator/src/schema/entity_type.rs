@@ -47,7 +47,7 @@ pub struct ValidatorEntityType {
     /// For enumerated entities, this is always empty.
     pub(crate) attributes: Attributes,
 
-    /// The location
+    /// Source location - if available
     #[serde(skip)]
     pub loc: Option<Loc>,
 }

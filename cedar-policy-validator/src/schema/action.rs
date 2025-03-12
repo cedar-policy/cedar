@@ -59,8 +59,8 @@ pub struct ValidatorActionId {
     /// `Entity` for this action. Could also be used for more precise
     /// typechecking by partial evaluation.
     pub(crate) attributes: BTreeMap<SmolStr, PartialValue>,
-    /// Loc
-    pub loc: Option<Loc>,
+    /// Source location - if available
+    pub(crate) loc: Option<Loc>
 }
 
 impl ValidatorActionId {
@@ -292,7 +292,7 @@ mod test {
             context: Type::any_record(),
             attribute_types: Attributes::default(),
             attributes: BTreeMap::default(),
-            loc: None
+            loc: None,
         }
     }
 
