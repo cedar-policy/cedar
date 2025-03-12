@@ -214,7 +214,7 @@ impl Validator {
                                 (new_level, None)
                             }
                         }
-                        Type::EntityOrRecord(EntityRecordKind::AnyEntity) => {
+                        Type::EntityOrRecord(kind @ EntityRecordKind::AnyEntity) => {
                             // AnyEntity cannot be dereferenced
                             (EntityDerefLevel { level: 0 }, None)
                         }
