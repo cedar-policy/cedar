@@ -4507,7 +4507,7 @@ pub fn eval_expression(
 #[cfg(test)]
 mod test_access {
     use super::*;
-    
+
     fn schema() -> Schema {
         let src = r#"
         type Task = {
@@ -4728,7 +4728,7 @@ action CreateList in Create appliesTo {
 #[cfg(test)]
 mod test_access_namespace {
     use super::*;
-
+    
     fn schema() -> Schema {
         let src = r#"
         namespace Foo {
@@ -4740,16 +4740,16 @@ mod test_access_namespace {
 
 type Tasks = Set<Task>;
 entity List in [Application] = {
- "editors": Team,
- "name": String,
- "owner": User,
- "readers": Team,
- "tasks": Tasks,
+  "editors": Team,
+  "name": String,
+  "owner": User,
+  "readers": Team,
+  "tasks": Tasks,
 };
 entity Application;
 entity User in [Team, Application] = {
- "joblevel": Long,
- "location": String,
+  "joblevel": Long,
+  "location": String,
 };
 
 entity CoolList;
@@ -4783,6 +4783,7 @@ action CreateList in Create appliesTo {
 
         src.parse().unwrap()
     }
+
 
     #[test]
     fn principals() {
