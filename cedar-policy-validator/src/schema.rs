@@ -282,7 +282,6 @@ impl ValidatorSchema {
     ) -> Option<impl Iterator<Item = &'a EntityType> + 'a> {
         if self.entity_types.contains_key(ty) {
             Some(self.entity_types.values().filter_map(|ety| {
-                // println!("Fetching ancestors loc: {:?}", ety.clone());
                 if ety.descendants.contains(ty) {
                     Some(&ety.name)
                 } else {
