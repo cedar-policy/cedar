@@ -4728,7 +4728,7 @@ action CreateList in Create appliesTo {
 #[cfg(test)]
 mod test_access_namespace {
     use super::*;
-    
+
     fn schema() -> Schema {
         let src = r#"
         namespace Foo {
@@ -4783,7 +4783,6 @@ action CreateList in Create appliesTo {
 
         src.parse().unwrap()
     }
-
 
     #[test]
     fn principals() {
