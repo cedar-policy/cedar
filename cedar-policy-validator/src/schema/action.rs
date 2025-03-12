@@ -97,6 +97,11 @@ impl ValidatorActionId {
         &self.name
     }
 
+    /// The source location if available
+    pub fn loc(&self) -> Option<&Loc> {
+        self.loc.as_ref()
+    }
+
     /// Iterator over the actions that are members of this action
     pub fn descendants(&self) -> impl Iterator<Item = &EntityUID> {
         self.descendants.iter()
