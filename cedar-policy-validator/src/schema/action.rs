@@ -60,7 +60,7 @@ pub struct ValidatorActionId {
     /// typechecking by partial evaluation.
     pub(crate) attributes: BTreeMap<SmolStr, PartialValue>,
     /// Source location - if available
-    pub(crate) loc: Option<Loc>
+    pub(crate) loc: Option<Loc>,
 }
 
 impl ValidatorActionId {
