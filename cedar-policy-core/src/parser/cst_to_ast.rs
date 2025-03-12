@@ -5521,7 +5521,7 @@ mod tests {
     // Test parsing AST that allows Error nodes
     #[cfg(feature = "tolerant-ast")]
     #[test]
-    fn repro_coles_bug() {
+    fn parsing_with_errors_succeeds_with_invalid_variable_in_when() {
         let src = r#"
             permit(principal, action, resource) when { pri };
         "#;
@@ -5657,17 +5657,6 @@ mod tests {
         let src = r#"
         permit(principal, action, resource) when { principal == User::test && action == };
         "#;
-        let p = assert_parse_policy_allows_errors(src);
-        println!("{:?}", p);
-    }
-
-    // Test parsing AST that allows Error nodes
-    #[cfg(feature = "tolerant-ast")]
-    #[test]
-    fn parsing_with_errors_succeeds_with_invalid_variable_in_when() {
-        let src = r#"
-            permit(principal, action, resource) when { pri };
-        "#;
         assert_parse_policy_allows_errors(src);
     }
 
@@ -5675,7 +5664,7 @@ mod tests {
     #[test]
     fn parsing_with_errors_succeeds_with_missing_second_operand_is() {
         let src = r#"
-            permit(principal ==, action, resource);
+            permit(principal is something in, action, resource);
         "#;
         assert_parse_policy_allows_errors(src);
     }
