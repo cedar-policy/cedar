@@ -245,14 +245,15 @@ fn convert_action_decl(
         loc: Some(a.data.loc),
     };
     // Then map that type across all of the bound names
-    Ok(names
-        .into_iter()
-        .map(move |name| {
-            #[cfg(feature = "extended-schema")]
-            return (ActionName::new_with_loc(name.node, Some(name.loc)), ty.clone());
-            #[allow(unreachable_code)]
-            (ActionName::new(name.node), ty.clone())
-        }))
+    Ok(names.into_iter().map(move |name| {
+        #[cfg(feature = "extended-schema")]
+        return (
+            ActionName::new_with_loc(name.node, Some(name.loc)),
+            ty.clone(),
+        );
+        #[allow(unreachable_code)]
+        (ActionName::new(name.node), ty.clone())
+    }))
 }
 
 fn convert_qual_name(qn: Node<QualName>) -> json_schema::ActionEntityUID<RawName> {
