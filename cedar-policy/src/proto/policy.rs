@@ -427,19 +427,27 @@ impl From<&ast::Effect> for models::Effect {
 }
 
 impl From<&models::PolicySet> for ast::LiteralPolicySet {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
     fn from(v: &models::PolicySet) -> Self {
-        let templates = v.templates.iter().map(|(key, value)| {
+        let templates = v.templates.iter().map(|tb| {
             (
-                ast::PolicyID::from_string(key),
-                ast::Template::from(ast::TemplateBody::from(value)),
+                ast::PolicyID::from_string(&tb.id),
+                ast::Template::from(ast::TemplateBody::from(tb)),
             )
         });
 
-        let links = v.links.iter().map(|(key, value)| {
-            (
-                ast::PolicyID::from_string(key),
-                ast::LiteralPolicy::from(value),
-            )
+        let links = v.links.iter().map(|p| {
+            // per docs in core.proto, for static policies, `link_id` is omitted/ignored,
+            // and the ID of the policy is the `template_id`.
+            let id = if p.is_template_link {
+                p.link_id
+                    .as_ref()
+                    .expect("template link should have a link_id")
+            } else {
+                &p.template_id
+            };
+            (ast::PolicyID::from_string(id), ast::LiteralPolicy::from(p))
         });
 
         Self::new(templates, links)
@@ -448,45 +456,16 @@ impl From<&models::PolicySet> for ast::LiteralPolicySet {
 
 impl From<&ast::LiteralPolicySet> for models::PolicySet {
     fn from(v: &ast::LiteralPolicySet) -> Self {
-        let templates = v
-            .templates()
-            .map(|template| {
-                (
-                    String::from(template.id().as_ref()),
-                    models::TemplateBody::from(template),
-                )
-            })
-            .collect();
-        let links = v
-            .policies()
-            .map(|policy| {
-                (
-                    String::from(policy.id().as_ref()),
-                    models::Policy::from(policy),
-                )
-            })
-            .collect();
-
+        let templates = v.templates().map(models::TemplateBody::from).collect();
+        let links = v.policies().map(models::Policy::from).collect();
         Self { templates, links }
     }
 }
 
 impl From<&ast::PolicySet> for models::PolicySet {
     fn from(v: &ast::PolicySet) -> Self {
-        let templates: HashMap<String, models::TemplateBody> = v
-            .all_templates()
-            .map(|t| (String::from(t.id().as_ref()), models::TemplateBody::from(t)))
-            .collect();
-        let links: HashMap<String, models::Policy> = v
-            .policies()
-            .map(|policy| {
-                (
-                    String::from(policy.id().as_ref()),
-                    models::Policy::from(policy),
-                )
-            })
-            .collect();
-
+        let templates = v.all_templates().map(models::TemplateBody::from).collect();
+        let links = v.policies().map(models::Policy::from).collect();
         Self { templates, links }
     }
 }
@@ -503,6 +482,39 @@ mod test {
     use std::sync::Arc;
 
     use super::*;
+
+    // We add `PartialOrd` and `Ord` implementations for both `models::Policy` and
+    // `models::TemplateBody`, so that these can be sorted for testing purposes
+    impl Eq for models::Policy {}
+    impl PartialOrd for models::Policy {
+        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+    impl Ord for models::Policy {
+        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            // assumes that (link-id, template-id) pair is unique, otherwise we're
+            // technically violating `Ord` contract because there could exist two
+            // policies that return `Ordering::Equal` but are not equal with `Eq`
+            self.link_id()
+                .cmp(other.link_id())
+                .then_with(|| self.template_id.cmp(&other.template_id))
+        }
+    }
+    impl Eq for models::TemplateBody {}
+    impl PartialOrd for models::TemplateBody {
+        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+    impl Ord for models::TemplateBody {
+        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            // assumes that IDs are unique, otherwise we're technically violating
+            // `Ord` contract because there could exist two template-bodies that
+            // return `Ordering::Equal` but are not equal with `Eq`
+            self.id.cmp(&other.id)
+        }
+    }
 
     #[test]
     #[allow(clippy::too_many_lines)]
@@ -739,10 +751,17 @@ mod test {
             )]),
         )
         .unwrap();
-        let mps = models::PolicySet::from(&ps);
-        let mps_roundtrip = models::PolicySet::from(&ast::LiteralPolicySet::from(&mps));
+        let mut mps = models::PolicySet::from(&ps);
+        let mut mps_roundtrip = models::PolicySet::from(&ast::LiteralPolicySet::from(&mps));
 
-        // Can't compare LiteralPolicySets directly, so we compare their fields
+        // we accept permutations as equivalent, so before comparison, we sort
+        // both `.templates` and `.links`
+        mps.templates.sort();
+        mps_roundtrip.templates.sort();
+        mps.links.sort();
+        mps_roundtrip.links.sort();
+
+        // Can't compare `models::PolicySet` directly, so we compare their fields
         assert_eq!(mps.templates, mps_roundtrip.templates);
         assert_eq!(mps.links, mps_roundtrip.links);
     }
@@ -802,8 +821,15 @@ mod test {
             )]),
         )
         .unwrap();
-        let mps = models::PolicySet::from(&ps);
-        let mps_roundtrip = models::PolicySet::from(&ast::LiteralPolicySet::from(&mps));
+        let mut mps = models::PolicySet::from(&ps);
+        let mut mps_roundtrip = models::PolicySet::from(&ast::LiteralPolicySet::from(&mps));
+
+        // we accept permutations as equivalent, so before comparison, we sort
+        // both `.templates` and `.links`
+        mps.templates.sort();
+        mps_roundtrip.templates.sort();
+        mps.links.sort();
+        mps_roundtrip.links.sort();
 
         // Can't compare `models::PolicySet` directly, so we compare their fields
         assert_eq!(mps.templates, mps_roundtrip.templates);

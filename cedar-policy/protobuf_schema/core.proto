@@ -21,23 +21,19 @@ message Request {
     EntityUid principal = 1;
     EntityUid action = 2;
     EntityUid resource = 3;
-    Expr context = 4;
+    map<string, Expr> context = 4;
 }
 
 // the protobuf PolicySet message describes a complete policy set, including
 // templates, static policies, and/or template-linked policies.
 message PolicySet {
-    // Key is PolicyID as a string.
-    // Value is a `TemplateBody`.
-    // Both templates and static policies are included in this map, with static
+    // Both templates and static policies are included here, with static
     // policies represented as templates with zero slots.
-    map<string, TemplateBody> templates = 1;
-    // Key is PolicyID as a string.
-    // Value is a `Policy`.
-    // All static policies and template-linked policies are included in this map.
-    // Static policies must have exactly one entry in this map, and the PolicyID
-    // of the static policy must be the same in this map and the above map.
-    map<string, Policy> links = 2;
+    repeated TemplateBody templates = 1;
+    // All static policies and template-linked policies are included here.
+    // Static policies must appear exactly once, and the PolicyID of the static
+    // policy must be the same in this list and the above list.
+    repeated Policy links = 2;
 }
 
 message Entities {
