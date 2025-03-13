@@ -16,8 +16,6 @@
 
 //! Implementation of level validation (RFC 76)
 
-use crate::validation_errors::InternalInvariantViolation;
-
 use super::*;
 use cedar_policy_core::ast::{BinaryOp, PolicyID};
 use typecheck::PolicyCheck;
@@ -250,7 +248,7 @@ impl Validator {
             ExprKind::Error { .. } => (
                 EntityDerefLevel { level: 0 },
                 Some(ValidationError::InternalInvariantViolation(
-                    InternalInvariantViolation {
+                    validation_errors::InternalInvariantViolation {
                         source_loc: None,
                         policy_id: policy_id.clone(),
                     },
