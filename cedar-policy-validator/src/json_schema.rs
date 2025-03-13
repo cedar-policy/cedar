@@ -787,8 +787,30 @@ pub struct ActionName {
     /// Action name
     pub name: SmolStr,
     /// Source location - if available
+    #[cfg(feature = "extended-schema")]
     #[educe(Eq(ignore))]
     pub loc: Option<Loc>,
+}
+
+impl ActionName {
+    /// Create a new ActionName
+    pub fn new(name: SmolStr) -> Self {
+        Self {
+            name,
+            #[cfg(feature = "extended-schema")]
+            loc: None,
+        }
+    }
+
+    /// Create a new ActionName with source location
+    #[cfg(feature = "extended-schema")]
+    pub fn new_with_loc(name: SmolStr, loc: Option<Loc>) -> Self {
+        Self {
+            name,
+            #[cfg(feature = "extended-schema")]
+            loc,
+        }
+    }
 }
 
 impl Hash for ActionName {
@@ -813,6 +835,7 @@ impl From<&str> for ActionName {
     fn from(value: &str) -> Self {
         Self {
             name: value.into(),
+            #[cfg(feature = "extended-schema")]
             loc: None,
         }
     }
@@ -832,7 +855,11 @@ impl<'de> Deserialize<'de> for ActionName {
         D: Deserializer<'de>,
     {
         let name = SmolStr::deserialize(deserializer)?;
-        Ok(ActionName { name, loc: None })
+        Ok(ActionName {
+            name,
+            #[cfg(feature = "extended-schema")]
+            loc: None,
+        })
     }
 }
 
