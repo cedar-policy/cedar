@@ -48,13 +48,7 @@ impl<N: Display> Display for json_schema::NamespaceDefinition<N> {
             writeln!(f, "{}entity {n}{};", ty.annotations, ty)?
         }
         for (n, a) in &self.actions {
-            writeln!(
-                f,
-                "{}action \"{}\"{};",
-                a.annotations,
-                n.name.escape_debug(),
-                a
-            )?
+            writeln!(f, "{}action \"{}\"{};", a.annotations, n.escape_debug(), a)?
         }
         Ok(())
     }

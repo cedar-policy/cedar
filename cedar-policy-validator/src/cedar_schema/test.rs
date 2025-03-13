@@ -51,13 +51,7 @@ mod demo_tests {
         "#;
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::none()).unwrap();
-        let foo = schema
-            .0
-            .get(&None)
-            .unwrap()
-            .actions
-            .get(&"Foo".into())
-            .unwrap();
+        let foo = schema.0.get(&None).unwrap().actions.get("Foo").unwrap();
         assert_matches!(foo,
             json_schema::ActionType {
                 applies_to : Some(json_schema::ApplySpec {
@@ -220,7 +214,7 @@ mod demo_tests {
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let unqual = schema.0.get(&None).unwrap();
-        let foo = unqual.actions.get(&"Foo".into()).unwrap();
+        let foo = unqual.actions.get("Foo").unwrap();
         assert_matches!(&foo, json_schema::ActionType {
             applies_to: Some(json_schema::ApplySpec { resource_types, principal_types, .. }),
             ..
@@ -251,7 +245,7 @@ mod demo_tests {
         let (schema, _) =
             json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
         let unqual = schema.0.get(&None).unwrap();
-        let foo = unqual.actions.get(&"Foo".into()).unwrap();
+        let foo = unqual.actions.get("Foo").unwrap();
         assert_matches!(foo, json_schema::ActionType {
             applies_to: Some(json_schema::ApplySpec { resource_types, principal_types, .. }),
             ..
@@ -317,6 +311,7 @@ mod demo_tests {
             member_of: None,
             annotations: Annotations::new(),
             loc: None,
+            defn_loc: None,
         };
         let namespace =
             json_schema::NamespaceDefinition::new(empty(), once(("foo".into(), action)));
@@ -433,6 +428,7 @@ namespace Baz {action "Foo" appliesTo {
                     member_of: None,
                     annotations: Annotations::new(),
                     loc: None,
+                    defn_loc: None,
                 },
             )]),
         );
