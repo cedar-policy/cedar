@@ -793,7 +793,7 @@ pub struct ActionName {
 }
 
 impl ActionName {
-    /// Create a new ActionName
+    /// Create a new `ActionName`
     pub fn new(name: SmolStr) -> Self {
         Self {
             name,
@@ -802,7 +802,7 @@ impl ActionName {
         }
     }
 
-    /// Create a new ActionName with source location
+    /// Create a new `ActionName` with source location
     #[cfg(feature = "extended-schema")]
     pub fn new_with_loc(name: SmolStr, loc: Option<Loc>) -> Self {
         Self {
