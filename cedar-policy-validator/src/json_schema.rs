@@ -34,7 +34,7 @@ use serde::{
 };
 use serde_with::serde_as;
 use smol_str::{SmolStr, ToSmolStr};
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
@@ -332,8 +332,7 @@ pub struct NamespaceDefinition<N> {
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     pub entity_types: BTreeMap<UnreservedId, EntityType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, ActionType>"))]
-    pub actions: BTreeMap<ActionName, ActionType<N>>,
+    pub actions: BTreeMap<SmolStr, ActionType<N>>,
     /// Annotations
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
@@ -346,7 +345,7 @@ impl<N> NamespaceDefinition<N> {
     /// actions, and no common types or annotations
     pub fn new(
         entity_types: impl IntoIterator<Item = (UnreservedId, EntityType<N>)>,
-        actions: impl IntoIterator<Item = (ActionName, ActionType<N>)>,
+        actions: impl IntoIterator<Item = (SmolStr, ActionType<N>)>,
     ) -> Self {
         Self {
             common_types: BTreeMap::new(),
@@ -779,92 +778,6 @@ impl AttributesOrContext<ConditionalName> {
     }
 }
 
-/// Action Name struct that includes soruce location
-#[derive(Educe, Debug, Clone)]
-#[educe(PartialEq, Eq)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
-pub struct ActionName {
-    /// Action name
-    #[cfg_attr(feature = "wasm", tsify(type = "string"))]
-    pub name: SmolStr,
-    /// Source location - if available
-    #[cfg(feature = "extended-schema")]
-    #[educe(Eq(ignore))]
-    pub loc: Option<Loc>,
-}
-
-impl ActionName {
-    /// Create a new `ActionName`
-    pub fn new(name: SmolStr) -> Self {
-        Self {
-            name,
-            #[cfg(feature = "extended-schema")]
-            loc: None,
-        }
-    }
-
-    /// Create a new `ActionName` with source location
-    #[cfg(feature = "extended-schema")]
-    pub fn new_with_loc(name: SmolStr, loc: Option<Loc>) -> Self {
-        Self {
-            name,
-            #[cfg(feature = "extended-schema")]
-            loc,
-        }
-    }
-}
-
-impl Hash for ActionName {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-    }
-}
-
-impl Ord for ActionName {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.name.cmp(&other.name)
-    }
-}
-
-impl PartialOrd for ActionName {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.name.partial_cmp(&other.name)
-    }
-}
-
-impl From<&str> for ActionName {
-    fn from(value: &str) -> Self {
-        Self {
-            name: value.into(),
-            #[cfg(feature = "extended-schema")]
-            loc: None,
-        }
-    }
-}
-impl Serialize for ActionName {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&self.name)
-    }
-}
-
-impl<'de> Deserialize<'de> for ActionName {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let name = SmolStr::deserialize(deserializer)?;
-        Ok(ActionName {
-            name,
-            #[cfg(feature = "extended-schema")]
-            loc: None,
-        })
-    }
-}
-
 /// An [`ActionType`] describes a specific action entity.
 /// It also describes what principals/resources/contexts are valid for the
 /// action.
@@ -898,7 +811,7 @@ pub struct ActionType<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
     pub annotations: Annotations,
-    /// Source location
+    /// Source location of the whole type
     ///
     /// (As of this writing, this is not populated when parsing from JSON.
     /// It is only populated if constructing this structure from the
@@ -906,6 +819,11 @@ pub struct ActionType<N> {
     #[serde(skip)]
     #[educe(PartialEq(ignore))]
     pub loc: Option<Loc>,
+
+    /// Source location of only the action definition
+    #[serde(skip)]
+    #[educe(PartialEq(ignore))]
+    pub defn_loc: Option<Loc>,
 }
 
 impl ActionType<RawName> {
@@ -926,6 +844,7 @@ impl ActionType<RawName> {
             }),
             annotations: self.annotations,
             loc: self.loc,
+            defn_loc: self.defn_loc,
         }
     }
 }
@@ -957,6 +876,7 @@ impl ActionType<ConditionalName> {
                 .transpose()?,
             annotations: self.annotations,
             loc: self.loc,
+            defn_loc: self.defn_loc,
         })
     }
 }
@@ -3252,6 +3172,7 @@ mod test_json_roundtrip {
                         member_of: None,
                         annotations: Annotations::new(),
                         loc: None,
+                        defn_loc: None,
                     },
                 )],
             ),
@@ -3309,6 +3230,7 @@ mod test_json_roundtrip {
                             member_of: None,
                             annotations: Annotations::new(),
                             loc: None,
+                            defn_loc: None,
                         },
                     )],
                 ),

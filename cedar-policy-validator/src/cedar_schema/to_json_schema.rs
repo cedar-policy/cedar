@@ -37,7 +37,7 @@ use super::{
 };
 use crate::{
     cedar_schema,
-    json_schema::{self, ActionName, CommonType},
+    json_schema::{self, CommonType},
     RawName,
 };
 
@@ -220,8 +220,7 @@ impl TryFrom<Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName>
 /// Converts action type decls
 fn convert_action_decl(
     a: Annotated<Node<ActionDecl>>,
-) -> Result<impl Iterator<Item = (ActionName, json_schema::ActionType<RawName>)>, ToJsonSchemaErrors>
-{
+) -> Result<impl Iterator<Item = (SmolStr, json_schema::ActionType<RawName>)>, ToJsonSchemaErrors> {
     let ActionDecl {
         names,
         parents,
@@ -237,22 +236,21 @@ fn convert_action_decl(
             context: json_schema::AttributesOrContext::default(),
         });
     let member_of = parents.map(|parents| parents.into_iter().map(convert_qual_name).collect());
-    let ty = json_schema::ActionType {
-        attributes: None, // Action attributes are currently unsupported in the Cedar schema format
-        applies_to: Some(applies_to),
-        member_of,
-        annotations: a.annotations.into(),
-        loc: Some(a.data.loc),
-    };
+
     // Then map that type across all of the bound names
     Ok(names.into_iter().map(move |name| {
-        #[cfg(feature = "extended-schema")]
-        return (
-            ActionName::new_with_loc(name.node, Some(name.loc)),
-            ty.clone(),
-        );
-        #[allow(unreachable_code)]
-        (ActionName::new(name.node), ty.clone())
+        // #[cfg(feature = "extended-schema")]
+        let ty = json_schema::ActionType {
+            attributes: None, // Action attributes are currently unsupported in the Cedar schema format
+            applies_to: Some(applies_to.clone()),
+            member_of: member_of.clone(),
+            annotations: a.annotations.clone().into(),
+            loc: Some(a.data.loc.clone()),
+            defn_loc: Some(name.loc),
+        };
+        return (name.node, ty);
+        // // #[allow(unreachable_code)]
+        // (ActionName::new(name.node), ty.clone())
     }))
 }
 
@@ -751,18 +749,9 @@ mod preserves_source_locations {
             .common_types
             .get(&json_schema::CommonTypeId::new("AA".parse().unwrap()).unwrap())
             .expect("couldn't find common type AA");
-        let action_read = ns
-            .actions
-            .get(&"Read".into())
-            .expect("couldn't find action Read");
-        let action_write = ns
-            .actions
-            .get(&"Write".into())
-            .expect("couldn't find action Write");
-        let action_list = ns
-            .actions
-            .get(&"List".into())
-            .expect("couldn't find action List");
+        let action_read = ns.actions.get("Read").expect("couldn't find action Read");
+        let action_write = ns.actions.get("Write").expect("couldn't find action Write");
+        let action_list = ns.actions.get("List").expect("couldn't find action List");
 
         assert_matches!(&entity_a.loc, Some(loc) => assert_matches!(loc.snippet(),
             Some("entity A;")
@@ -873,10 +862,7 @@ mod preserves_source_locations {
             assert_matches!(loc.snippet(), Some("A"));
         });
 
-        let action_list = ns
-            .actions
-            .get(&"List".into())
-            .expect("couldn't find action List");
+        let action_list = ns.actions.get("List").expect("couldn't find action List");
         assert_matches!(&action_list.applies_to, Some(appliesto) => {
             assert_matches!(appliesto.principal_types.first().expect("principal types were empty").loc(), Some(loc) => {
                 assert_matches!(loc.snippet(), Some("A"));

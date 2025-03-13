@@ -615,6 +615,7 @@ mod test {
                     attributes: None,
                     annotations: Annotations::new(),
                     loc: None,
+                    defn_loc: None,
                 },
             )],
         );
@@ -752,6 +753,7 @@ mod test {
                     attributes: None,
                     annotations: Annotations::new(),
                     loc: None,
+                    defn_loc: None,
                 },
             )],
         );
@@ -786,6 +788,7 @@ mod test {
                     attributes: None,
                     annotations: Annotations::new(),
                     loc: None,
+                    defn_loc: None,
                 },
             )],
         );
@@ -987,6 +990,7 @@ mod test {
                     attributes: None,
                     annotations: Annotations::new(),
                     loc: None,
+                    defn_loc: None,
                 },
             )],
         );
@@ -1016,6 +1020,7 @@ mod test {
                     attributes: None,
                     annotations: Annotations::new(),
                     loc: None,
+                    defn_loc: None,
                 },
             )],
         );
@@ -1045,6 +1050,7 @@ mod test {
                     attributes: None,
                     annotations: Annotations::new(),
                     loc: None,
+                    defn_loc: None,
                 },
             )],
         );
@@ -1134,6 +1140,7 @@ mod test {
                     attributes: None,
                     annotations: Annotations::new(),
                     loc: None,
+                    defn_loc: None,
                 },
             )],
         )
@@ -1555,6 +1562,7 @@ mod test {
                         attributes: None,
                         annotations: Annotations::new(),
                         loc: None,
+                        defn_loc: None,
                     },
                 ),
                 (
@@ -1568,6 +1576,7 @@ mod test {
                         attributes: None,
                         annotations: Annotations::new(),
                         loc: None,
+                        defn_loc: None,
                     },
                 ),
                 (
@@ -1578,6 +1587,7 @@ mod test {
                         attributes: None,
                         annotations: Annotations::new(),
                         loc: None,
+                        defn_loc: None,
                     },
                 ),
             ],
