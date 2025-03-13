@@ -37,7 +37,7 @@ use smol_str::{SmolStr, ToSmolStr};
 use super::{internal_name_to_entity_type, AllDefs, ValidatorApplySpec};
 use crate::{
     err::{schema_errors::*, SchemaError},
-    json_schema::{self, ActionName, CommonTypeId, EntityTypeKind},
+    json_schema::{self, CommonTypeId, EntityTypeKind},
     partition_nonempty::PartitionNonEmpty,
     types::{AttributeType, Attributes, OpenTag, Type},
     ActionBehavior, ConditionalName, RawName, ReferenceType,
@@ -249,7 +249,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
             let mut actions_with_attributes: Vec<String> = Vec::new();
             for (name, a) in &schema_nsdef.actions {
                 if a.attributes.is_some() {
-                    actions_with_attributes.push(name.name.to_string());
+                    actions_with_attributes.push(name.to_string());
                 }
             }
             if !actions_with_attributes.is_empty() {
@@ -649,7 +649,7 @@ impl ActionsDef<ConditionalName, ConditionalName> {
     /// Construct an [`ActionsDef<ConditionalName>`] by converting the structures used by the
     /// schema format to those used internally by the validator.
     pub(crate) fn from_raw_actions(
-        schema_file_actions: impl IntoIterator<Item = (ActionName, json_schema::ActionType<RawName>)>,
+        schema_file_actions: impl IntoIterator<Item = (SmolStr, json_schema::ActionType<RawName>)>,
         schema_namespace: Option<&InternalName>,
         extensions: &Extensions<'_>,
     ) -> crate::err::Result<Self> {
