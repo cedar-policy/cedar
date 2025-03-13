@@ -332,6 +332,7 @@ pub struct NamespaceDefinition<N> {
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     pub entity_types: BTreeMap<UnreservedId, EntityType<N>>,
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
+    #[cfg_attr(feature = "wasm", tsify(type = "Record<string, ActionType>"))]
     pub actions: BTreeMap<ActionName, ActionType<N>>,
     /// Annotations
     #[serde(default)]
