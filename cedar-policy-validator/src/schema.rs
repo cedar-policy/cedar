@@ -4016,7 +4016,7 @@ mod test_rfc70 {
                 .help("try renaming one of the actions, or moving `Action::\"A\"` to a different namespace");
             #[cfg(feature = "extended-schema")]
             let assertion = assertion.exactly_one_underline("A");
-            
+
             expect_err(
                 src,
                 &miette::Report::new(e),
