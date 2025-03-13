@@ -30,7 +30,7 @@ use cedar_policy_validator::entity_manifest;
 pub use cedar_policy_validator::entity_manifest::{
     AccessTrie, EntityManifest, EntityRoot, Fields, RootAccessTrie,
 };
-use cedar_policy_validator::json_schema::{self, ActionName};
+use cedar_policy_validator::json_schema::{self};
 use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;
 
@@ -1506,10 +1506,9 @@ impl SchemaFragment {
         id: &EntityId,
     ) -> Option<impl Iterator<Item = (&str, &str)>> {
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
-        let action_name = ActionName::new(id.as_ref().into());
         ns_def
             .actions
-            .get(&action_name)
+            .get(id.as_ref())
             .map(|a| annotations_to_pairs(&a.annotations))
     }
 
@@ -1526,11 +1525,9 @@ impl SchemaFragment {
         id: &EntityId,
         annotation_key: impl AsRef<str>,
     ) -> Option<&str> {
-        let action_name = ActionName::new(id.as_ref().into());
-
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
         get_annotation_by_key(
-            &ns_def.actions.get(&action_name)?.annotations,
+            &ns_def.actions.get(id.as_ref())?.annotations,
             annotation_key,
         )
     }
@@ -4583,7 +4580,6 @@ action CreateList in Create appliesTo {
         let principals = schema.principals().collect::<Vec<_>>();
         assert!(principals.len() > 1);
         assert!(principals.iter().all(|ety| **ety == user));
-        #[cfg(feature = "extended-schema")]
         assert!(principals.iter().all(|ety| ety.0.loc().is_some()));
     }
 
@@ -4604,7 +4600,6 @@ action CreateList in Create appliesTo {
             "CoolList".parse().unwrap(),
         ]);
         assert_eq!(resources, expected);
-        #[cfg(feature = "extended-schema")]
         assert!(resources.iter().all(|ety| ety.0.loc().is_some()));
     }
 
@@ -4619,7 +4614,6 @@ action CreateList in Create appliesTo {
             .cloned()
             .collect::<Vec<_>>();
         assert_eq!(got, vec!["User".parse().unwrap()]);
-        #[cfg(feature = "extended-schema")]
         assert!(got.iter().all(|ety| ety.0.loc().is_some()));
         assert!(schema.principals_for_action(&delete_user).is_none());
     }
@@ -4637,7 +4631,6 @@ action CreateList in Create appliesTo {
             .cloned()
             .collect::<Vec<_>>();
         assert_eq!(got, vec!["List".parse().unwrap()]);
-        #[cfg(feature = "extended-schema")]
         assert!(got.iter().all(|ety| ety.0.loc().is_some()));
         let got = schema
             .resources_for_action(&create_list)
@@ -4645,7 +4638,6 @@ action CreateList in Create appliesTo {
             .cloned()
             .collect::<Vec<_>>();
         assert_eq!(got, vec!["Application".parse().unwrap()]);
-        #[cfg(feature = "extended-schema")]
         assert!(got.iter().all(|ety| ety.0.loc().is_some()));
         let got = schema
             .resources_for_action(&get_list)
@@ -4656,7 +4648,6 @@ action CreateList in Create appliesTo {
             got,
             HashSet::from(["List".parse().unwrap(), "CoolList".parse().unwrap()])
         );
-        #[cfg(feature = "extended-schema")]
         assert!(got.iter().all(|ety| ety.0.loc().is_some()));
         assert!(schema.principals_for_action(&delete_user).is_none());
     }
@@ -4670,7 +4661,6 @@ action CreateList in Create appliesTo {
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
-        #[cfg(feature = "extended-schema")]
         assert!(parents.iter().all(|ety| ety.0.loc().is_some()));
         let expected = HashSet::from(["Team".parse().unwrap(), "Application".parse().unwrap()]);
         assert_eq!(parents, expected);
@@ -4679,7 +4669,6 @@ action CreateList in Create appliesTo {
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
-        #[cfg(feature = "extended-schema")]
         assert!(parents.iter().all(|ety| ety.0.loc().is_some()));
         let expected = HashSet::from(["Application".parse().unwrap()]);
         assert_eq!(parents, expected);
@@ -4689,7 +4678,6 @@ action CreateList in Create appliesTo {
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
-        #[cfg(feature = "extended-schema")]
         assert!(parents.iter().all(|ety| ety.0.loc().is_some()));
         let expected = HashSet::from([]);
         assert_eq!(parents, expected);
@@ -4703,7 +4691,6 @@ action CreateList in Create appliesTo {
             .into_iter()
             .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
             .collect::<HashSet<EntityUid>>();
-        #[cfg(feature = "extended-schema")]
         assert!(groups.iter().all(|ety| ety.0.loc().is_some()));
         assert_eq!(groups, expected);
     }
@@ -4730,7 +4717,6 @@ action CreateList in Create appliesTo {
         .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
         .collect::<HashSet<EntityUid>>();
         assert_eq!(actions, expected);
-        #[cfg(feature = "extended-schema")]
         assert!(actions.iter().all(|ety| ety.0.loc().is_some()));
     }
 
