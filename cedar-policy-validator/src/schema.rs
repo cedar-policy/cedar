@@ -162,12 +162,12 @@ pub struct ValidatorType {
 #[derive(Clone, Debug, Hash, Educe)]
 #[educe(Eq, PartialEq)]
 pub struct ValidatorCommonType {
-    name: SmolStr,
+    pub name: SmolStr,
     #[educe(Eq(ignore))]
-    name_loc: Option<Loc>,
+    pub name_loc: Option<Loc>,
 
     #[educe(Eq(ignore))]
-    type_loc: Option<Loc>,
+    pub type_loc: Option<Loc>,
 }
 
 impl ValidatorCommonType {
