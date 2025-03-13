@@ -645,6 +645,8 @@ impl From<&models::Request> for ast::Request {
 }
 
 impl From<&ast::Request> for models::Request {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::unimplemented)]
     fn from(v: &ast::Request) -> Self {
         Self {
             principal: Some(models::EntityUid::from(v.principal())),
