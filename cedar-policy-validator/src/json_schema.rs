@@ -785,6 +785,7 @@ impl AttributesOrContext<ConditionalName> {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ActionName {
     /// Action name
+    #[cfg_attr(feature = "wasm", tsify(type = "string"))]
     pub name: SmolStr,
     /// Source location - if available
     #[cfg(feature = "extended-schema")]
