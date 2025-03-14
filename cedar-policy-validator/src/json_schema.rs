@@ -979,6 +979,7 @@ pub struct ActionEntityUID<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     ty: Option<N>,
+    #[cfg(feature = "extended-schema")]
     #[serde(skip)]
     /// Source location - if available
     pub loc: Option<Loc>,
@@ -988,15 +989,38 @@ impl ActionEntityUID<RawName> {
     /// Create a new `ActionEntityUID<RawName>`.
     /// `ty` = `None` is shorthand for `Action`.
     pub fn new(ty: Option<RawName>, id: SmolStr) -> Self {
-        Self { id, ty, loc: None }
+        Self {
+            id,
+            ty,
+            #[cfg(feature = "extended-schema")]
+            loc: None,
+        }
     }
 
     /// Given an `id`, get the [`ActionEntityUID`] representing `Action::<id>`.
     //
     // This function is only available for `RawName` and not other values of `N`,
     // in order to uphold the INVARIANT on self.ty.
-    pub fn default_type(id: SmolStr, loc: Option<Loc>) -> Self {
-        Self { id, ty: None, loc }
+    pub fn default_type(id: SmolStr) -> Self {
+        Self {
+            id,
+            ty: None,
+            #[cfg(feature = "extended-schema")]
+            loc: None,
+        }
+    }
+
+    /// Given an `id`, get the [`ActionEntityUID`] representing `Action::<id>`.
+    //
+    // This function is only available for `RawName` and not other values of `N`,
+    // in order to uphold the INVARIANT on self.ty.
+    #[cfg(feature = "extended-schema")]
+    pub fn default_type_with_loc(id: SmolStr, loc: Option<Loc>) -> Self {
+        Self {
+            id,
+            ty: None,
+            loc,
+        }
     }
 }
 
@@ -1029,6 +1053,7 @@ impl ActionEntityUID<RawName> {
                     .unwrap_or_else(|| RawName::from_str("Action").expect("valid raw name"));
                 Some(raw_name.conditionally_qualify_with(ns, ReferenceType::Entity))
             },
+            #[cfg(feature = "extended-schema")]
             loc: None,
         }
     }
@@ -1047,6 +1072,7 @@ impl ActionEntityUID<RawName> {
                     .unwrap_or_else(|| RawName::from_str("Action").expect("valid raw name"));
                 Some(raw_name.qualify_with(ns))
             },
+            #[cfg(feature = "extended-schema")]
             loc: self.loc,
         }
     }
@@ -1095,6 +1121,7 @@ impl ActionEntityUID<ConditionalName> {
             .map(|possibility| ActionEntityUID {
                 id: self.id.clone(),
                 ty: Some(possibility.clone()),
+                #[cfg(feature = "extended-schema")]
                 loc: None,
             })
     }
@@ -1106,6 +1133,7 @@ impl ActionEntityUID<ConditionalName> {
         ActionEntityUID {
             id: self.id.clone(),
             ty: self.ty.as_ref().map(|ty| ty.raw().clone()),
+            #[cfg(feature = "extended-schema")]
             loc: None,
         }
     }
@@ -1141,10 +1169,14 @@ impl TryFrom<ActionEntityUID<InternalName>> for EntityUID {
         aeuid: ActionEntityUID<InternalName>,
     ) -> std::result::Result<Self, <InternalName as TryInto<Name>>::Error> {
         let ty = Name::try_from(aeuid.ty().clone())?;
+        #[cfg(feature = "extended-schema")]
+        let loc = aeuid.loc;
+        #[cfg(not(feature = "extended-schema"))]
+        let loc = None;
         Ok(EntityUID::from_components(
             ty.into(),
             Eid::new(aeuid.id),
-            aeuid.loc,
+            loc,
         ))
     }
 }
@@ -1155,6 +1187,7 @@ impl From<EntityUID> for ActionEntityUID<Name> {
         ActionEntityUID {
             ty: Some(ty.into()),
             id: <Eid as AsRef<SmolStr>>::as_ref(&id).clone(),
+            #[cfg(feature = "extended-schema")]
             loc: None,
         }
     }
@@ -2230,6 +2263,7 @@ mod test {
             Some(vec![ActionEntityUID {
                 ty: None,
                 id: "readWrite".into(),
+                #[cfg(feature = "extended-schema")]
                 loc: None
             }])
         );

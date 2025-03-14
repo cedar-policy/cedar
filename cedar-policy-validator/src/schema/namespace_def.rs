@@ -626,6 +626,24 @@ impl<N, A> ActionsDef<N, A> {
     }
 }
 
+fn create_action_entity_uid_default_type(
+    action_name: &SmolStr,
+    action_type: &json_schema::ActionType<RawName>,
+    schema_namespace: Option<&InternalName>,
+) -> json_schema::ActionEntityUID<InternalName> {
+    let action_id_str = action_name.clone();
+    #[cfg(feature = "extended-schema")]
+    let action_id_loc = action_type.defn_loc.clone();
+    #[cfg(feature = "extended-schema")]
+    // the declaration name is always (unconditionally) prefixed by the current/active namespace
+    return json_schema::ActionEntityUID::default_type_with_loc(action_id_str, action_id_loc)
+        .qualify_with(schema_namespace);
+
+    #[cfg(not(feature = "extended-schema"))]
+    // the declaration name is always (unconditionally) prefixed by the current/active namespace
+    json_schema::ActionEntityUID::default_type(action_id_str).qualify_with(schema_namespace)
+}
+
 impl ActionsDef<ConditionalName, ConditionalName> {
     /// Construct an [`ActionsDef<ConditionalName>`] by converting the structures used by the
     /// schema format to those used internally by the validator.
@@ -636,14 +654,8 @@ impl ActionsDef<ConditionalName, ConditionalName> {
     ) -> crate::err::Result<Self> {
         let mut actions = HashMap::new();
         for (action_name, action_type) in schema_file_actions {
-            let action_id_str = action_name.clone();
-            #[cfg(feature = "extended-schema")]
-            let action_id_loc = action_type.defn_loc.clone();
-            #[cfg(not(feature = "extended-schema"))]
-            let action_id_loc = None;
-
-            let action_uid = json_schema::ActionEntityUID::default_type(action_name, action_id_loc)
-                .qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
+            let action_uid =
+                create_action_entity_uid_default_type(&action_name, &action_type, schema_namespace);
             match actions.entry(action_uid.clone().try_into()?) {
                 Entry::Vacant(ventry) => {
                     let frag = ActionFragment::from_raw_action(
@@ -656,7 +668,7 @@ impl ActionsDef<ConditionalName, ConditionalName> {
                     ventry.insert(frag);
                 }
                 Entry::Occupied(_) => {
-                    return Err(DuplicateActionError(action_id_str).into());
+                    return Err(DuplicateActionError(action_name).into());
                 }
             }
         }
