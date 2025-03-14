@@ -501,23 +501,26 @@ impl EntityTypeFragment<ConditionalName> {
     ) -> Self {
         match schema_file_type.kind {
             EntityTypeKind::Enum { choices } => Self::Enum(choices),
-            EntityTypeKind::Standard(ty) => Self::Standard {
-                attributes: ty
-                    .shape
-                    .conditionally_qualify_type_references(schema_namespace),
-                parents: ty
-                    .member_of_types
-                    .into_iter()
-                    .map(|raw_name| {
-                        // Only entity, not common, here for now; see #1064
-                        raw_name.conditionally_qualify_with(schema_namespace, ReferenceType::Entity)
-                    })
-                    .collect(),
-                tags: ty
-                    .tags
-                    .map(|tags| tags.conditionally_qualify_type_references(schema_namespace)),
-                loc: ty.loc,
-            },
+            EntityTypeKind::Standard(ty) => {
+                Self::Standard {
+                    attributes: ty
+                        .shape
+                        .conditionally_qualify_type_references(schema_namespace),
+                    parents: ty
+                        .member_of_types
+                        .into_iter()
+                        .map(|raw_name| {
+                            // Only entity, not common, here for now; see #1064
+                            raw_name
+                                .conditionally_qualify_with(schema_namespace, ReferenceType::Entity)
+                        })
+                        .collect(),
+                    tags: ty
+                        .tags
+                        .map(|tags| tags.conditionally_qualify_type_references(schema_namespace)),
+                    loc: None,
+                }
+            }
         }
     }
 
@@ -634,10 +637,7 @@ impl ActionsDef<ConditionalName, ConditionalName> {
         let mut actions = HashMap::new();
         for (action_name, action_type) in schema_file_actions {
             let action_id_str = action_name.clone();
-            // #[cfg(feature = "extended-schema")]
             let action_id_loc = action_type.defn_loc.clone();
-            // #[cfg(not(feature = "extended-schema"))]
-            // let action_id_loc = None;
 
             let action_uid = json_schema::ActionEntityUID::default_type(action_name, action_id_loc)
                 .qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace

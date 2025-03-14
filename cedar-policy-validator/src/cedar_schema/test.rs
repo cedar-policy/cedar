@@ -412,7 +412,6 @@ namespace Baz {action "Foo" appliesTo {
                     member_of_types: vec![],
                     shape: json_schema::AttributesOrContext::default(),
                     tags: None,
-                    loc: None,
                 }
                 .into(),
             )],
