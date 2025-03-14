@@ -814,6 +814,7 @@ pub struct ActionType<N> {
     pub loc: Option<Loc>,
 
     /// Source location of only the action definition
+    #[cfg(feature = "extended-schema")]
     #[serde(skip)]
     #[educe(PartialEq(ignore))]
     pub(crate) defn_loc: Option<Loc>,
@@ -837,6 +838,7 @@ impl ActionType<RawName> {
             }),
             annotations: self.annotations,
             loc: self.loc,
+            #[cfg(feature = "extended-schema")]
             defn_loc: self.defn_loc,
         }
     }
@@ -869,6 +871,7 @@ impl ActionType<ConditionalName> {
                 .transpose()?,
             annotations: self.annotations,
             loc: self.loc,
+            #[cfg(feature = "extended-schema")]
             defn_loc: self.defn_loc,
         })
     }
@@ -3164,6 +3167,7 @@ mod test_json_roundtrip {
                         member_of: None,
                         annotations: Annotations::new(),
                         loc: None,
+                        #[cfg(feature = "extended-schema")]
                         defn_loc: None,
                     },
                 )],
@@ -3221,6 +3225,7 @@ mod test_json_roundtrip {
                             member_of: None,
                             annotations: Annotations::new(),
                             loc: None,
+                            #[cfg(feature = "extended-schema")]
                             defn_loc: None,
                         },
                     )],
