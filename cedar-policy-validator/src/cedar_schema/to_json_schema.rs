@@ -239,7 +239,6 @@ fn convert_action_decl(
 
     // Then map that type across all of the bound names
     Ok(names.into_iter().map(move |name| {
-        // #[cfg(feature = "extended-schema")]
         let ty = json_schema::ActionType {
             attributes: None, // Action attributes are currently unsupported in the Cedar schema format
             applies_to: Some(applies_to.clone()),
@@ -249,8 +248,6 @@ fn convert_action_decl(
             defn_loc: Some(name.loc),
         };
         return (name.node, ty);
-        // // #[allow(unreachable_code)]
-        // (ActionName::new(name.node), ty.clone())
     }))
 }
 
@@ -383,7 +380,6 @@ fn convert_entity_decl(
                     member_of_types: d.member_of_types.into_iter().map(RawName::from).collect(),
                     shape: convert_attr_decls(d.attrs),
                     tags: d.tags.map(cedar_type_to_json_type),
-                    loc: Some(e.data.loc.clone()),
                 })
             }
         },
