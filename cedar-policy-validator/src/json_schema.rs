@@ -1016,11 +1016,7 @@ impl ActionEntityUID<RawName> {
     // in order to uphold the INVARIANT on self.ty.
     #[cfg(feature = "extended-schema")]
     pub fn default_type_with_loc(id: SmolStr, loc: Option<Loc>) -> Self {
-        Self {
-            id,
-            ty: None,
-            loc,
-        }
+        Self { id, ty: None, loc }
     }
 }
 
