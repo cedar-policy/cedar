@@ -4006,6 +4006,11 @@ mod test_rfc70 {
                 action A;
             }
         ";
+        let assertion = ExpectedErrorMessageBuilder::error("definition of `NS::Action::\"A\"` illegally shadows the existing definition of `Action::\"A\"`")
+        .help("try renaming one of the actions, or moving `Action::\"A\"` to a different namespace");
+        #[cfg(feature = "extended-schema")]
+        let assertion = assertion.exactly_one_underline("A");
+
         assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
             let assertion = ExpectedErrorMessageBuilder::error("definition of `NS::Action::\"A\"` illegally shadows the existing definition of `Action::\"A\"`")
                 .help("try renaming one of the actions, or moving `Action::\"A\"` to a different namespace");

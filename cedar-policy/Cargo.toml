@@ -61,6 +61,7 @@ protobufs = ["dep:prost", "dep:prost-build"]
 level-validate = ["cedar-policy-validator/level-validate"]
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 tolerant-ast = ["cedar-policy-core/tolerant-ast",  "cedar-policy-validator/tolerant-ast", "cedar-policy-formatter/tolerant-ast"]
+extended-schema = ["cedar-policy-validator/extended-schema"]
 
 [lib]
 # cdylib required for wasm

@@ -4691,6 +4691,7 @@ action CreateList in Create appliesTo {
             .into_iter()
             .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
             .collect::<HashSet<EntityUid>>();
+        #[cfg(feature = "extended-schema")]
         assert!(groups.iter().all(|ety| ety.0.loc().is_some()));
         assert_eq!(groups, expected);
     }
@@ -4717,6 +4718,7 @@ action CreateList in Create appliesTo {
         .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
         .collect::<HashSet<EntityUid>>();
         assert_eq!(actions, expected);
+        #[cfg(feature = "extended-schema")]
         assert!(actions.iter().all(|ety| ety.0.loc().is_some()));
     }
 

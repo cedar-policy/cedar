@@ -51,7 +51,8 @@ level-validate = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 entity-manifest = []
 tolerant-ast = ["cedar-policy-core/tolerant-ast"]
-experimental = ["tolerant-ast"]
+experimental = ["tolerant-ast", "extended-schema"]
+extended-schema = []
 
 [dev-dependencies]
 similar-asserts = "1.7.0"
