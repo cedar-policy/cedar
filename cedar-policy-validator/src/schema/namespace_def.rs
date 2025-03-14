@@ -637,7 +637,10 @@ impl ActionsDef<ConditionalName, ConditionalName> {
         let mut actions = HashMap::new();
         for (action_name, action_type) in schema_file_actions {
             let action_id_str = action_name.clone();
+            #[cfg(feature = "extended-schema")]
             let action_id_loc = action_type.defn_loc.clone();
+            #[cfg(not(feature = "extended-schema"))]
+            let action_id_loc = None;
 
             let action_uid = json_schema::ActionEntityUID::default_type(action_name, action_id_loc)
                 .qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace

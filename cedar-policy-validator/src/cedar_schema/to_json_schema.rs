@@ -245,6 +245,7 @@ fn convert_action_decl(
             member_of: member_of.clone(),
             annotations: a.annotations.clone().into(),
             loc: Some(a.data.loc.clone()),
+            #[cfg(feature = "extended-schema")]
             defn_loc: Some(name.loc),
         };
         return (name.node, ty);
