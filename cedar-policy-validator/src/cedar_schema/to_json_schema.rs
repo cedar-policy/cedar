@@ -248,7 +248,7 @@ fn convert_action_decl(
             #[cfg(feature = "extended-schema")]
             defn_loc: Some(name.loc),
         };
-        return (name.node, ty);
+        (name.node, ty)
     }))
 }
 
