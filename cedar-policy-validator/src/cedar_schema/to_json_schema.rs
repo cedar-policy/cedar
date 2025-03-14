@@ -394,7 +394,6 @@ fn convert_entity_decl(
                     member_of_types: d.member_of_types.into_iter().map(RawName::from).collect(),
                     shape: convert_attr_decls(d.attrs),
                     tags: d.tags.map(cedar_type_to_json_type),
-                    loc: Some(e.data.loc.clone()),
                 })
             }
         },
