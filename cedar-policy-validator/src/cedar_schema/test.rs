@@ -311,6 +311,8 @@ mod demo_tests {
             member_of: None,
             annotations: Annotations::new(),
             loc: None,
+            #[cfg(feature = "extended-schema")]
+            defn_loc: None,
         };
         let namespace =
             json_schema::NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
@@ -426,6 +428,8 @@ namespace Baz {action "Foo" appliesTo {
                     member_of: None,
                     annotations: Annotations::new(),
                     loc: None,
+                    #[cfg(feature = "extended-schema")]
+                    defn_loc: None,
                 },
             )]),
         );
@@ -1479,6 +1483,7 @@ mod translator_tests {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("definition of `Demo::email_address` illegally shadows the existing definition of `email_address`")
                     .help("try renaming one of the definitions, or moving `email_address` to a different namespace")
+                    .exactly_one_underline("entity email_address {\n              where: String,\n            };")
                     .build(),
             );
         });

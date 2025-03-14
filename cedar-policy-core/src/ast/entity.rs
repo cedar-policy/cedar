@@ -119,6 +119,19 @@ impl EntityType {
         }
     }
 
+    /// Create a clone of this EntityType with given loc
+    pub fn with_loc(&self, loc: Option<&Loc>) -> Self {
+        match self {
+            EntityType::EntityType(name) => EntityType::EntityType(Name(InternalName {
+                id: name.0.id.clone(),
+                path: name.0.path.clone(),
+                loc: loc.cloned(),
+            })),
+            #[cfg(feature = "tolerant-ast")]
+            EntityType::ErrorEntityType => self.clone(),
+        }
+    }
+
     /// Calls [`Name::qualify_with_name`] on the underlying [`Name`]
     pub fn qualify_with(&self, namespace: Option<&Name>) -> Self {
         match self {
