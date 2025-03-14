@@ -359,7 +359,7 @@ mod demo_tests {
             defn_loc: None,
         };
         let namespace =
-            json_schema::NamespaceDefinition::new(empty(), once(("foo".into(), action)));
+            json_schema::NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
         let fragment =
             json_schema::Fragment(BTreeMap::from([(Some("bar".parse().unwrap()), namespace)]));
         let as_src = fragment.to_cedarschema().unwrap();
@@ -461,7 +461,7 @@ namespace Baz {action "Foo" appliesTo {
                 .into(),
             )],
             BTreeMap::from([(
-                "j".into(),
+                "j".to_smolstr(),
                 json_schema::ActionType::<RawName> {
                     attributes: None,
                     applies_to: Some(json_schema::ApplySpec::<RawName> {
