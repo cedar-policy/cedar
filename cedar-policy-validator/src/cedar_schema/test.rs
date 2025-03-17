@@ -2517,8 +2517,7 @@ mod common_type_references {
             AttributeType {
                 attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }),
                 is_required: true,
-                #[cfg(feature = "extended-schema")]
-                loc: None
+                ..
             } => {
                 assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::primitive_long());
             }
@@ -2546,8 +2545,7 @@ mod common_type_references {
             AttributeType {
                 attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }),
                 is_required: true,
-                #[cfg(feature = "extended-schema")]
-                loc: None
+                ..
             } => {
                 assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::primitive_long());
             }
@@ -2579,8 +2577,7 @@ mod common_type_references {
             AttributeType {
                 attr_type: Type::EntityOrRecord(EntityRecordKind::Record { attrs, open_attributes: _ }),
                 is_required: true,
-                #[cfg(feature = "extended-schema")]
-                loc: None
+                ..
             } => {
                 assert_eq!(attrs.get_attr("a").unwrap().attr_type, Type::set(Type::primitive_long()));
             }
