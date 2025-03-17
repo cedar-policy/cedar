@@ -1407,8 +1407,8 @@ pub struct AttributeType {
     /// True when the attribute must be present. False if it is optional, and so
     /// may not be present in a record or entity.
     pub is_required: bool,
+    ///  Source location - if available
     #[cfg(feature = "extended-schema")]
-    /// Source location - if available
     #[serde(skip)]
     pub loc: Option<Loc>,
 }
