@@ -20,6 +20,7 @@
 mod capability;
 pub use capability::*;
 mod request_env;
+use educe::Educe;
 pub use request_env::*;
 
 use itertools::Itertools;
@@ -1398,7 +1399,8 @@ impl EntityRecordKind {
 }
 
 /// Contains the type of a record attribute and if the attribute is required.
-#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
+#[derive(Hash, Ord, PartialOrd, Educe, Debug, Clone, Serialize)]
+#[educe(Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AttributeType {
     /// The type of the attribute.
@@ -1410,6 +1412,7 @@ pub struct AttributeType {
     ///  Source location - if available
     #[cfg(feature = "extended-schema")]
     #[serde(skip)]
+    #[educe(Eq(ignore))]
     pub loc: Option<Loc>,
 }
 
@@ -1421,6 +1424,7 @@ impl AttributeType {
         Self {
             attr_type,
             is_required,
+            #[cfg(feature = "extended-schema")]
             loc: None,
         }
     }

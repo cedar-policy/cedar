@@ -2118,6 +2118,7 @@ pub struct TypeOfAttribute<N> {
 
     /// Source location - if available
     #[cfg(feature = "extended-schema")]
+    #[educe(Eq(ignore))]
     #[serde(skip)]
     pub loc: Option<Loc>,
 }
