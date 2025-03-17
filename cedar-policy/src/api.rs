@@ -4803,7 +4803,6 @@ action CreateList in Create appliesTo {
         let principals = schema.principals().collect::<Vec<_>>();
         assert!(principals.len() > 1);
         assert!(principals.iter().all(|ety| **ety == user));
-
     }
 
     #[test]

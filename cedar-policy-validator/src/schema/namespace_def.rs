@@ -34,7 +34,7 @@ use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
 use smol_str::{SmolStr, ToSmolStr};
 
-use super::{internal_name_to_entity_type, AllDefs, ValidatorApplySpec, ValidatorType};
+use super::{internal_name_to_entity_type, AllDefs, ValidatorApplySpec};
 use crate::{
     err::{schema_errors::*, SchemaError},
     json_schema::{self, CommonTypeId, EntityTypeKind},
@@ -136,9 +136,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
         // file into the representation used by the validator.
         let common_types = CommonTypeDefs::from_raw_common_types(
             namespace_def
-                .common_types
-                .into_iter()
-                .map(|(key, value)| (key, value)),
+                .common_types,
             namespace.as_ref(),
         )?;
         let actions =
@@ -965,8 +963,8 @@ impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
         common_type_defs: &HashMap<&InternalName, Type>,
     ) -> crate::err::Result<T> {
         match self {
-            WithUnresolvedCommonTypeRefs::WithUnresolved(f, loc) => f(common_type_defs),
-            WithUnresolvedCommonTypeRefs::WithoutUnresolved(v, loc) => Ok(v),
+            WithUnresolvedCommonTypeRefs::WithUnresolved(f, _loc) => f(common_type_defs),
+            WithUnresolvedCommonTypeRefs::WithoutUnresolved(v, _loc) => Ok(v),
         }
     }
 }
