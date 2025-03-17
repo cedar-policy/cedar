@@ -780,8 +780,6 @@ impl ValidatorSchema {
             })
             .map(|ct| ValidatorCommonType::new(ct.0, ct.1))
             .collect();
-        #[cfg(feature = "extended-schema")]
-        println!("Common type validators: {:?}", common_type_validators);
         // Return with an error if there is an undeclared entity or action
         // referenced in any fragment. `{entity,action}_children` are provided
         // for the `undeclared_parent_{entities,actions}` arguments because
@@ -1550,8 +1548,6 @@ impl<'a> CommonTypeResolver<'a> {
             let validator_type =
                 try_jsonschema_type_into_validator_type(substituted_ty, extensions)?;
             let loc = ty.loc();
-
-            println!("Got a loc: {:?}", loc);
             let tp = validator_type.resolve_common_type_refs(&HashMap::new())?;
             let vt = ValidatorType {
                 tp: tp.clone(),
@@ -3868,61 +3864,62 @@ mod test_rfc70 {
     use cool_asserts::assert_matches;
     use serde_json::json;
 
-    // /// Common type shadowing a common type is disallowed in both syntaxes
-    // #[test]
-    // fn common_common_conflict() {
-    //     let src = "
-    //         type T = String;
-    //         namespace NS {
-    //             type T = String;
-    //             entity User { t: T };
-    //         }
-    //     ";
-    //     assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
-    //         expect_err(
-    //             src,
-    //             &miette::Report::new(e),
-    //             &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
-    //                 .help("try renaming one of the definitions, or moving `T` to a different namespace")
-    //                 .build(),
-    //         );
-    //     });
+    /// Common type shadowing a common type is disallowed in both syntaxes
+    #[test]
+    fn common_common_conflict() {
+        let src = "
+            type T = String;
+            namespace NS {
+                type T = String;
+                entity User { t: T };
+            }
+        ";
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
+                    .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .exactly_one_underline("type T = String;")
+                    .build(),
+            );
+        });
 
-    //     let src_json = json!({
-    //         "": {
-    //             "commonTypes": {
-    //                 "T": { "type": "String" },
-    //             },
-    //             "entityTypes": {},
-    //             "actions": {},
-    //         },
-    //         "NS": {
-    //             "commonTypes": {
-    //                 "T": { "type": "String" },
-    //             },
-    //             "entityTypes": {
-    //                 "User": {
-    //                     "shape": {
-    //                         "type": "Record",
-    //                         "attributes": {
-    //                             "t": { "type": "T" },
-    //                         },
-    //                     }
-    //                 }
-    //             },
-    //             "actions": {},
-    //         }
-    //     });
-    //     assert_matches!(ValidatorSchema::from_json_value(src_json.clone(), Extensions::all_available()), Err(e) => {
-    //         expect_err(
-    //             &src_json,
-    //             &miette::Report::new(e),
-    //             &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
-    //                 .help("try renaming one of the definitions, or moving `T` to a different namespace")
-    //                 .build(),
-    //         );
-    //     });
-    // }
+        let src_json = json!({
+            "": {
+                "commonTypes": {
+                    "T": { "type": "String" },
+                },
+                "entityTypes": {},
+                "actions": {},
+            },
+            "NS": {
+                "commonTypes": {
+                    "T": { "type": "String" },
+                },
+                "entityTypes": {
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "t": { "type": "T" },
+                            },
+                        }
+                    }
+                },
+                "actions": {},
+            }
+        });
+        assert_matches!(ValidatorSchema::from_json_value(src_json.clone(), Extensions::all_available()), Err(e) => {
+            expect_err(
+                &src_json,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
+                    .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .build(),
+            );
+        });
+    }
 
     /// Entity type shadowing an entity type is disallowed in both syntaxes
     #[test]
@@ -4011,69 +4008,70 @@ mod test_rfc70 {
         });
     }
 
-    // /// Common type shadowing an entity type is disallowed in both syntaxes,
-    // /// even though it would be unambiguous in the JSON syntax
-    // #[test]
-    // fn common_entity_conflict() {
-    //     let src = "
-    //         entity T in T { foo: String };
-    //         namespace NS {
-    //             type T = String;
-    //             entity User { t: T };
-    //         }
-    //     ";
-    //     assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
-    //         expect_err(
-    //             src,
-    //             &miette::Report::new(e),
-    //             &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
-    //                 .help("try renaming one of the definitions, or moving `T` to a different namespace")
-    //                 .build(),
-    //         );
-    //     });
+    /// Common type shadowing an entity type is disallowed in both syntaxes,
+    /// even though it would be unambiguous in the JSON syntax
+    #[test]
+    fn common_entity_conflict() {
+        let src = "
+            entity T in T { foo: String };
+            namespace NS {
+                type T = String;
+                entity User { t: T };
+            }
+        ";
+        assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
+                    .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .exactly_one_underline("type T = String;")
+                    .build(),
+            );
+        });
 
-    //     let src_json = json!({
-    //         "": {
-    //             "entityTypes": {
-    //                 "T": {
-    //                     "memberOfTypes": ["T"],
-    //                     "shape": {
-    //                         "type": "Record",
-    //                         "attributes": {
-    //                             "foo": { "type": "String" },
-    //                         },
-    //                     }
-    //                 }
-    //             },
-    //             "actions": {},
-    //         },
-    //         "NS": {
-    //             "commonTypes": {
-    //                 "T": { "type": "String" },
-    //             },
-    //             "entityTypes": {
-    //                 "User": {
-    //                     "shape": {
-    //                         "type": "Record",
-    //                         "attributes": {
-    //                             "t": { "type": "T" },
-    //                         }
-    //                     }
-    //                 }
-    //             },
-    //             "actions": {},
-    //         }
-    //     });
-    //     assert_matches!(ValidatorSchema::from_json_value(src_json.clone(), Extensions::all_available()), Err(e) => {
-    //         expect_err(
-    //             &src_json,
-    //             &miette::Report::new(e),
-    //             &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
-    //                 .help("try renaming one of the definitions, or moving `T` to a different namespace")
-    //                 .build(),
-    //         );
-    //     });
-    // }
+        let src_json = json!({
+            "": {
+                "entityTypes": {
+                    "T": {
+                        "memberOfTypes": ["T"],
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "foo": { "type": "String" },
+                            },
+                        }
+                    }
+                },
+                "actions": {},
+            },
+            "NS": {
+                "commonTypes": {
+                    "T": { "type": "String" },
+                },
+                "entityTypes": {
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "t": { "type": "T" },
+                            }
+                        }
+                    }
+                },
+                "actions": {},
+            }
+        });
+        assert_matches!(ValidatorSchema::from_json_value(src_json.clone(), Extensions::all_available()), Err(e) => {
+            expect_err(
+                &src_json,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
+                    .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .build(),
+            );
+        });
+    }
 
     /// Entity type shadowing a common type is disallowed in both syntaxes, even
     /// though it would be unambiguous in the JSON syntax

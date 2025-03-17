@@ -4587,10 +4587,6 @@ action CreateList in Create appliesTo {
     #[test]
     fn principals_extended() {
         let schema = schema();
-        // schema
-        //     .0
-        //     .common_types()
-        //     .for_each(|c| println!("Common type: {:?}", c));
         let principals = schema.principals().collect::<HashSet<_>>();
         assert_eq!(principals.len(), 1);
         let user: EntityTypeName = "User".parse().unwrap();
@@ -4599,6 +4595,30 @@ action CreateList in Create appliesTo {
         assert!(principals.len() > 1);
         assert!(principals.iter().all(|ety| **ety == user));
         assert!(principals.iter().all(|ety| ety.0.loc().is_some()));
+    }
+
+    #[cfg(feature = "extended-schema")]
+    #[test]
+    fn common_types_extended() {
+        use cedar_policy_validator::ValidatorCommonType;
+
+        let schema = schema();
+        assert_eq!(schema.0.common_types().collect::<HashSet<_>>().len(), 2);
+        let task_type = ValidatorCommonType {
+            name: "Task".into(),
+            name_loc: None,
+            type_loc: None,
+        };
+        assert!(schema.0.common_types().contains(&task_type));
+
+        let tasks_type = ValidatorCommonType {
+            name: "Tasks".into(),
+            name_loc: None,
+            type_loc: None,
+        };
+        assert!(schema.0.common_types().contains(&tasks_type));
+        assert!(schema.0.common_types().all(|ct| ct.name_loc.is_some()));
+        assert!(schema.0.common_types().all(|ct| ct.type_loc.is_some()));
     }
 
     #[test]
