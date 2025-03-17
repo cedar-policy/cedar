@@ -4563,6 +4563,11 @@ action CreateList in Create appliesTo {
         assert!(principals.len() > 1);
         assert!(principals.iter().all(|ety| **ety == user));
         assert!(principals.iter().all(|ety| ety.0.loc().is_some()));
+
+        schema
+            .0
+            .entity_types()
+            .for_each(|t| t.attributes().iter().for_each(|a| assert!(a.1.loc.is_some())));
     }
 
     #[cfg(feature = "extended-schema")]
@@ -4736,6 +4741,7 @@ action CreateList in Create appliesTo {
             .into_iter()
             .map(|ty| ty.parse().unwrap())
             .collect::<HashSet<EntityTypeName>>();
+
         assert_eq!(entities, expected);
     }
 }

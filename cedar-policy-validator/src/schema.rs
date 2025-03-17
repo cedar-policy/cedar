@@ -1477,6 +1477,8 @@ impl<'a> CommonTypeResolver<'a> {
                                         required: attr_ty.required,
                                         ty: Self::resolve_type(resolve_table, attr_ty.ty)?,
                                         annotations: attr_ty.annotations,
+                                        #[cfg(feature = "extended-schema")]
+                                        loc: attr_ty.loc,
                                     },
                                 ))
                             })
