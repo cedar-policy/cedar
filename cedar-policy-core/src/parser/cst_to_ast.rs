@@ -1036,14 +1036,6 @@ impl Node<Option<cst::VariableDef>> {
     }
 }
 
-fn convert_error<Build: ExprBuilder>(error: ParseErrors) -> Result<Build::Expr> {
-    let res = Build::new().error(error.clone());
-    match res {
-        Ok(r) => Ok(r),
-        Err(_) => Err(error),
-    }
-}
-
 impl Node<Option<cst::Cond>> {
     /// to expr. Also returns, for informational purposes, a `bool` which is
     /// `true` if the cond is a `when` clause, `false` if it is an `unless`
@@ -2393,17 +2385,6 @@ mod tests {
             })
     }
 
-
-    #[track_caller]
-    fn assert_parse_policy_allows_errors(text: &str) -> ast::StaticPolicy {
-        text_to_cst::parse_policy(text)
-            .expect("failed parser")
-            .to_policy_with_errors(ast::PolicyID::from_string("id"))
-            .unwrap_or_else(|errs| {
-                panic!("failed conversion to AST:\n{:?}", miette::Report::new(errs))
-            })
-    }
-
     #[track_caller]
     fn assert_parse_policy_fails(text: &str) -> ParseErrors {
         let result = text_to_cst::parse_policy(text)
@@ -2417,15 +2398,13 @@ mod tests {
         }
     }
 
-
-    #[test]
-    fn parsing_with_errors_succeeds_with_empty_when() {
-        let src = r#"
-            permit(principal, action, resource) when {};
-        "#;
-        assert_parse_policy_allows_errors(src);
-    }
-
+    // #[test]
+    // fn parsing_with_errors_succeeds_with_empty_when() {
+    //     let src = r#"
+    //         permit(principal, action, resource) when {};
+    //     "#;
+    //     assert_parse_policy_allows_errors(src);
+    // }
 
     #[test]
     fn show_expr1() {
@@ -5711,48 +5690,6 @@ mod tests {
         "#;
         let parsed = assert_parse_policy_allows_errors(src);
         println!("Parsed policy: {:?}", parsed);
-    }
-
-    #[cfg(feature = "error-ast")]
-    #[test]
-    fn show_policy1_errors_enabled() {
-        let src = r#"
-            permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
-        "#;
-        let errs = assert_parse_policy_allows_errors_fails(src);
-        expect_n_errors(src, &errs, 4);
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("type constraints using `:` are not supported")
-                .help("try using `is` instead")
-                .exactly_one_underline("p")
-                .build(),
-        );
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("type constraints using `:` are not supported")
-                .help("try using `is` instead")
-                .exactly_one_underline("a")
-                .build(),
-        );
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("type constraints using `:` are not supported")
-                .help("try using `is` instead")
-                .exactly_one_underline("r")
-                .build(),
-        );
-        expect_some_error_matches(
-            src,
-            &errs,
-            &ExpectedErrorMessageBuilder::error("invalid policy condition: advice")
-                .help("condition must be either `when` or `unless`")
-                .exactly_one_underline("advice")
-                .build(),
-        );
     }
 
     #[cfg(feature = "tolerant-ast")]

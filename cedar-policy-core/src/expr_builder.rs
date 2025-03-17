@@ -24,11 +24,8 @@ use crate::{
         BinaryOp, EntityType, ExpressionConstructionError, Literal, Name, Pattern, SlotId, UnaryOp,
         Unknown, Var,
     },
-    parser::{cst, Loc, err::ParseErrors},
+    parser::{cst, err::ParseErrors, Loc},
 };
-
-#[cfg(feature = "tolerant-ast")]
-use crate::parser::err::ParseErrors;
 
 /// Defines a generic interface for building different expression data
 /// structures.
