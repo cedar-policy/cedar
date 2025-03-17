@@ -453,6 +453,8 @@ fn convert_attr_decl(
             ty: cedar_type_to_json_type(attr.node.data.ty),
             required: attr.node.data.required,
             annotations: attr.node.annotations.into(),
+            #[cfg(feature = "extended-schema")]
+            loc: Some(attr.loc),
         },
     )
 }
