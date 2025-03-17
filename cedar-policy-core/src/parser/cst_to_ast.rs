@@ -2398,14 +2398,6 @@ mod tests {
         }
     }
 
-    // #[test]
-    // fn parsing_with_errors_succeeds_with_empty_when() {
-    //     let src = r#"
-    //         permit(principal, action, resource) when {};
-    //     "#;
-    //     assert_parse_policy_allows_errors(src);
-    // }
-
     #[test]
     fn show_expr1() {
         assert_parse_expr_succeeds(
@@ -5529,7 +5521,7 @@ mod tests {
     // Test parsing AST that allows Error nodes
     #[cfg(feature = "tolerant-ast")]
     #[test]
-    fn repro_coles_bug() {
+    fn parsing_with_errors_succeeds_with_invalid_variable_in_when() {
         let src = r#"
             permit(principal, action, resource) when { pri };
         "#;
@@ -5684,12 +5676,44 @@ mod tests {
 
     #[cfg(feature = "tolerant-ast")]
     #[test]
-    fn parsing_with_errors_succeeds_with_missing_second_operand() {
+    fn show_policy1_errors_enabled() {
         let src = r#"
-            permit(principal ==, action, resource);
+            permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
         "#;
-        let parsed = assert_parse_policy_allows_errors(src);
-        println!("Parsed policy: {:?}", parsed);
+        let errs = assert_parse_policy_allows_errors_fails(src);
+        expect_n_errors(src, &errs, 4);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("type constraints using `:` are not supported")
+                .help("try using `is` instead")
+                .exactly_one_underline("p")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("type constraints using `:` are not supported")
+                .help("try using `is` instead")
+                .exactly_one_underline("a")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("type constraints using `:` are not supported")
+                .help("try using `is` instead")
+                .exactly_one_underline("r")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("invalid policy condition: advice")
+                .help("condition must be either `when` or `unless`")
+                .exactly_one_underline("advice")
+                .build(),
+        );
     }
 
     #[cfg(feature = "tolerant-ast")]

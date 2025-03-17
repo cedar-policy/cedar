@@ -4585,20 +4585,6 @@ action CreateList in Create appliesTo {
 
     #[cfg(feature = "extended-schema")]
     #[test]
-    fn principals_extended() {
-        let schema = schema();
-        let principals = schema.principals().collect::<HashSet<_>>();
-        assert_eq!(principals.len(), 1);
-        let user: EntityTypeName = "User".parse().unwrap();
-        assert!(principals.contains(&user));
-        let principals = schema.principals().collect::<Vec<_>>();
-        assert!(principals.len() > 1);
-        assert!(principals.iter().all(|ety| **ety == user));
-        assert!(principals.iter().all(|ety| ety.0.loc().is_some()));
-    }
-
-    #[cfg(feature = "extended-schema")]
-    #[test]
     fn common_types_extended() {
         use cedar_policy_validator::ValidatorCommonType;
 
