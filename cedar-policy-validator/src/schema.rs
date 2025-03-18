@@ -28,7 +28,7 @@ use cedar_policy_core::{
     transitive_closure::compute_tc,
 };
 use educe::Educe;
-use namespace_def::EntityTypeFragment;
+use namespace_def::{EntityTypeFragment, WithUnresolvedCommonTypeRefs};
 use nonempty::NonEmpty;
 use serde::Deserialize;
 use smol_str::{SmolStr, ToSmolStr};
@@ -644,11 +644,7 @@ impl ValidatorSchema {
 
         let resolver = CommonTypeResolver::new(&common_types);
         let common_validator_types = resolver.resolve(extensions)?;
-        let common_types = common_validator_types
-            .clone()
-            .into_iter()
-            .map(|(k, v)| (k, v.tp))
-            .collect();
+        let common_types = common_validator_types.clone().into_iter().collect();
 
         // Invert the `parents` relation defined by entities and action so far
         // to get a `children` relation.
@@ -692,8 +688,16 @@ impl ValidatorSchema {
                         loc,
                     } => {
                         let (attributes, open_attributes) = {
-                            let unresolved =
-                                try_jsonschema_type_into_validator_type(attributes.0, extensions)?;
+                            let unresolved = try_jsonschema_type_into_validator_type(
+                                attributes.0.clone(),
+                                extensions,
+                                attributes.0.loc().cloned(),
+                            )?;
+                            // match  unresolved {
+                            //     WithUnresolvedCommonTypeRefs::WithUnresolved(a, b) => {println!("WIthUnresolved: {:?}", b)},
+                            //     _ => println!("oops")
+                            // }
+                            // println!("UNRESOLVED: {:?}", unresolved);
                             Self::record_attributes_or_none(
                                 unresolved.resolve_common_type_refs(&common_types)?,
                             )
@@ -703,8 +707,15 @@ impl ValidatorSchema {
                                 }
                             })?
                         };
+                        // println!("Attributes in etity type frag: {:?}", attributes);
                         let tags = tags
-                            .map(|tags| try_jsonschema_type_into_validator_type(tags, extensions))
+                            .map(|tags| {
+                                try_jsonschema_type_into_validator_type(
+                                    tags.clone(),
+                                    extensions,
+                                    tags.loc().cloned(),
+                                )
+                            })
                             .transpose()?
                             .map(|unresolved| unresolved.resolve_common_type_refs(&common_types))
                             .transpose()?;
@@ -716,7 +727,7 @@ impl ValidatorSchema {
                                 descendants,
                                 attributes,
                                 open_attributes,
-                                tags,
+                                tags.and_then(|t| Some(t.tp)),
                                 loc,
                             ),
                         ))
@@ -739,8 +750,11 @@ impl ValidatorSchema {
             .map(|(name, action)| -> Result<_> {
                 let descendants = action_children.remove(&name).unwrap_or_default();
                 let (context, open_context_attributes) = {
-                    let unresolved =
-                        try_jsonschema_type_into_validator_type(action.context, extensions)?;
+                    let unresolved = try_jsonschema_type_into_validator_type(
+                        action.context.clone(),
+                        extensions,
+                        action.context.loc().cloned(),
+                    )?;
                     Self::record_attributes_or_none(
                         unresolved.resolve_common_type_refs(&common_types)?,
                     )
@@ -813,7 +827,7 @@ impl ValidatorSchema {
         undeclared_parent_entities: impl IntoIterator<Item = EntityType>,
         action_ids: &HashMap<EntityUID, ValidatorActionId>,
         undeclared_parent_actions: impl IntoIterator<Item = EntityUID>,
-        common_types: impl IntoIterator<Item = Type>,
+        common_types: impl IntoIterator<Item = ValidatorType>,
     ) -> Result<()> {
         // When we constructed `entity_types`, we removed entity types from  the
         // `entity_children` map as we encountered a declaration for that type.
@@ -830,7 +844,7 @@ impl ValidatorSchema {
         for entity_type in entity_types.values() {
             for (_, attr_typ) in entity_type.attributes().iter() {
                 Self::check_undeclared_in_type(
-                    &attr_typ.attr_type,
+                    &ValidatorType::new(attr_typ.attr_type.clone()),
                     entity_types,
                     &mut undeclared_e,
                 );
@@ -848,7 +862,11 @@ impl ValidatorSchema {
         // types and `appliesTo` lists. See the `entity_types` loop for why the
         // `descendants` list is not checked.
         for action in action_ids.values() {
-            Self::check_undeclared_in_type(&action.context, entity_types, &mut undeclared_e);
+            Self::check_undeclared_in_type(
+                &ValidatorType::new(action.context.clone()),
+                entity_types,
+                &mut undeclared_e,
+            );
 
             for p_entity in action.applies_to_principals() {
                 if !entity_types.contains_key(p_entity) {
@@ -874,8 +892,8 @@ impl ValidatorSchema {
         Ok(())
     }
 
-    fn record_attributes_or_none(ty: Type) -> Option<(Attributes, OpenTag)> {
-        match ty {
+    fn record_attributes_or_none(ty: ValidatorType) -> Option<(Attributes, OpenTag)> {
+        match ty.tp {
             Type::EntityOrRecord(EntityRecordKind::Record {
                 attrs,
                 open_attributes,
@@ -888,11 +906,11 @@ impl ValidatorSchema {
     /// declared entity types, adding any undeclared entity types to the
     /// `undeclared_types` set.
     fn check_undeclared_in_type(
-        ty: &Type,
+        ty: &ValidatorType,
         entity_types: &HashMap<EntityType, ValidatorEntityType>,
         undeclared_types: &mut BTreeSet<EntityType>,
     ) {
-        match ty {
+        match &ty.tp {
             Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => {
                 for name in lub.iter() {
                     if !entity_types.contains_key(name) {
@@ -904,7 +922,7 @@ impl ValidatorSchema {
             Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
                 for (_, attr_ty) in attrs.iter() {
                     Self::check_undeclared_in_type(
-                        &attr_ty.attr_type,
+                        &ValidatorType::new(attr_ty.attr_type.clone()),
                         entity_types,
                         undeclared_types,
                     );
@@ -913,7 +931,11 @@ impl ValidatorSchema {
 
             Type::Set {
                 element_type: Some(element_type),
-            } => Self::check_undeclared_in_type(element_type, entity_types, undeclared_types),
+            } => Self::check_undeclared_in_type(
+                &ValidatorType::new(*element_type.clone()),
+                entity_types,
+                undeclared_types,
+            ),
 
             _ => (),
         }
@@ -1505,6 +1527,7 @@ impl<'a> CommonTypeResolver<'a> {
                         attributes
                             .into_iter()
                             .map(|(attr, attr_ty)| -> Result<_> {
+                                // println!("ATTRIBUTE: {:?}, {:?}", attr, attr_ty.loc);
                                 Ok((
                                     attr,
                                     json_schema::TypeOfAttribute {
@@ -1547,12 +1570,15 @@ impl<'a> CommonTypeResolver<'a> {
             let substituted_ty = Self::resolve_type(&resolve_table, ty.clone())?;
             resolve_table.insert(name, substituted_ty.clone());
 
-            let validator_type =
-                try_jsonschema_type_into_validator_type(substituted_ty, extensions)?;
+            let validator_type = try_jsonschema_type_into_validator_type(
+                substituted_ty.clone(),
+                extensions,
+                substituted_ty.loc().cloned(),
+            )?;
             let loc = ty.loc();
             let tp = validator_type.resolve_common_type_refs(&HashMap::new())?;
             let vt = ValidatorType {
-                tp: tp.clone(),
+                tp: tp.tp.clone(),
                 #[cfg(feature = "extended-schema")]
                 loc: loc.cloned(),
             };

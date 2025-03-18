@@ -1443,13 +1443,13 @@ impl AttributeType {
 
     /// Construct an [`AttributeType`] for an attribute that is required.
     pub fn required_attribute(attr_type: Type) -> Self {
-        println!("Required attribute");
+        // println!("Required attribute");
         Self::new(attr_type, true)
     }
 
     /// Construct an [`AttributeType`] for an attribute that is optional.
     pub fn optional_attribute(attr_type: Type) -> Self {
-        println!("Optional attribute");
+        // println!("Optional attribute");
         Self::new(attr_type, false)
     }
 

@@ -4515,57 +4515,126 @@ pub fn eval_expression(
 // These are the same tests in validator, just ensuring all the plumbing is done correctly
 #[cfg(test)]
 mod test_access {
+    use cedar_policy_core::ast::{EntityType, Name};
+    use cedar_policy_validator::{
+        types::{AttributeType, Attributes, EntityRecordKind, Type},
+        ValidatorSchema,
+    };
+
     use super::*;
 
     fn schema() -> Schema {
+        //         let src = r#"
+        //         type Task = {
+        //     "id": Long,
+        //     "name": String,
+        //     "state": String,
+        // };
+
+        // type Tasks = Set<Task>;
+        // entity List in [Application] = {
+        //   "editors": Team,
+        //   "name": String,
+        //   "owner": User,
+        //   "readers": Team,
+        //   "tasks": Tasks,
+        // };
+        // entity Application;
+        // entity User in [Team, Application] = {
+        //   "joblevel": Long,
+        //   "location": String,
+        // };
+
+        // entity CoolList;
+
+        // entity Team in [Team, Application];
+
+        // action Read, Write, Create;
+
+        // action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
+        //     principal: [User],
+        //     resource : [List]
+        // };
+
+        // action GetList in Read appliesTo {
+        //     principal : [User],
+        //     resource : [List, CoolList]
+        // };
+
+        // action GetLists in Read appliesTo {
+        //     principal : [User],
+        //     resource : [Application]
+        // };
+
+        // action CreateList in Create appliesTo {
+        //     principal : [User],
+        //     resource : [Application]
+        // };
+
+        //         "#;
+
         let src = r#"
-        type Task = {
-    "id": Long,
-    "name": String,
-    "state": String,
+type PermissionsMap = {
+  hotelReservations: String,
+  propertyReservations: String,
+  // With unions, just have reservations: Set<Hotel|Property>
+  // Do similarly for PaymentDetails, Rates, etc.
+};
+type ComplexType = {
+  required: Bool,
+  hotels: Set<Hotel>,
 };
 
-type Tasks = Set<Task>;
-entity List in [Application] = {
-  "editors": Team,
-  "name": String,
-  "owner": User,
-  "readers": Team,
-  "tasks": Tasks,
-};
-entity Application;
-entity User in [Team, Application] = {
-  "joblevel": Long,
-  "location": String,
+entity Group {
+  
 };
 
-entity CoolList;
-
-entity Team in [Team, Application];
-
-action Read, Write, Create;
-
-action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
-    principal: [User],
-    resource : [List]
+entity User in [Group] {
+  viewPermissions: PermissionsMap,
+  memberPermissions: PermissionsMap,
+  hotelAdminPermissions: Set<Hotel>,
+  propertyAdminPermissions: Set<Property>,
+  lastName?: String,
+  property: Property,
+};
+entity Property in [Hotel] {
+  propertyName: String,
+};
+entity Hotel in [Hotel] {
+  hotelName: String,
+  complex: ComplexType
+};
+entity Reservation in [Property] {
+  reservationName: String
 };
 
-action GetList in Read appliesTo {
-    principal : [User],
-    resource : [List, CoolList]
-};
+action propertyManagerActions;
 
-action GetLists in Read appliesTo {
-    principal : [User],
-    resource : [Application]
-};
+// ACTIONS: Reservations
+action viewReservation, updateReservation, grantAccessReservation in [propertyManagerActions]
+  appliesTo {
+    principal: User,
+    resource: Reservation,
+    context: {
+      complex: ComplexType,
+      location: String
+    }
+  };
 
-action CreateList in Create appliesTo {
-    principal : [User],
-    resource : [Application]
-};
+// ACTIONS: Properties (plus, CreateReservation for a Property)
+action createReservation, viewProperty, updateProperty, grantAccessProperty in [propertyManagerActions]
+  appliesTo {
+    principal: User,
+    resource: Property,
+  };
 
-        "#;
+// ACTIONS: Hotels (plus, CreateProperty for a Hotel)
+action createProperty, createHotel, viewHotel, updateHotel, grantAccessHotel in [propertyManagerActions]
+  appliesTo {
+    principal: User,
+    resource: Hotel,
+  };
+"#;
 
         src.parse().unwrap()
     }
@@ -4582,11 +4651,61 @@ action CreateList in Create appliesTo {
         assert!(principals.iter().all(|ety| **ety == user));
         assert!(principals.iter().all(|ety| ety.0.loc().is_some()));
 
-        schema.0.entity_types().for_each(|t| {
-            t.attributes()
-                .iter()
-                .for_each(|a| assert!(a.1.loc.is_some()))
+        let et = EntityType::EntityType(Name::from_normalized_str("User").unwrap());
+        let et = schema.0.get_entity_type(&et).unwrap();
+        let attrs = et.attributes();
+
+        // works because we have entity attribute LOC info
+        let attr_path = vec!["viewPermissions".to_string()];
+        let attr = follow_attribute_path(&schema.0, &attr_path, attrs);
+        assert!(attr.is_some());
+        assert!(attr.and_then(|a| a.loc.as_ref()).is_some());
+
+        // doesnt work because there is no common type attribute LOC info
+        let attr_path = vec![
+            "viewPermissions".to_string(),
+            "hotelReservations".to_string(),
+        ];
+        let attr = follow_attribute_path(&schema.0, &attr_path, attrs);
+        assert!(attr.is_some());
+        let t: Option<bool> = attr.and_then(|a| {
+            // println!("Attribute: {:?}", a);
+            None
         });
+    }
+
+    fn follow_attribute_path<'a>(
+        schema: &'a ValidatorSchema,
+        attr_path: &[String],
+        attrs: &'a Attributes,
+    ) -> Option<&'a AttributeType> {
+        if attr_path.is_empty() {
+            return None;
+        }
+
+        let mut current_attrs = attrs;
+
+        for attr in &attr_path[..attr_path.len() - 1] {
+            let attr_info = current_attrs.get_attr(attr)?;
+
+            match &attr_info.attr_type {
+                Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => {
+                    let et = lub.get_single_entity()?;
+                    let vet = schema.get_entity_type(et).unwrap();
+                    current_attrs = vet.attributes()
+                }
+                Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
+                    current_attrs = attrs
+                }
+                Type::EntityOrRecord(EntityRecordKind::ActionEntity { attrs, .. }) => {
+                    current_attrs = attrs
+                }
+                _ => return None, // Other types don't have attributes to follow
+            }
+        }
+
+        let lookup = attr_path.last()?;
+        current_attrs.get_attr(lookup)
     }
 
     #[cfg(feature = "extended-schema")]
