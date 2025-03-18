@@ -4524,117 +4524,117 @@ mod test_access {
     use super::*;
 
     fn schema() -> Schema {
-        //         let src = r#"
-        //         type Task = {
-        //     "id": Long,
-        //     "name": String,
-        //     "state": String,
-        // };
+                let src = r#"
+                type Task = {
+            "id": Long,
+            "name": String,
+            "state": String,
+        };
 
-        // type Tasks = Set<Task>;
-        // entity List in [Application] = {
-        //   "editors": Team,
-        //   "name": String,
-        //   "owner": User,
-        //   "readers": Team,
-        //   "tasks": Tasks,
-        // };
-        // entity Application;
-        // entity User in [Team, Application] = {
-        //   "joblevel": Long,
-        //   "location": String,
-        // };
+        type Tasks = Set<Task>;
+        entity List in [Application] = {
+          "editors": Team,
+          "name": String,
+          "owner": User,
+          "readers": Team,
+          "tasks": Tasks,
+        };
+        entity Application;
+        entity User in [Team, Application] = {
+          "joblevel": Long,
+          "location": String,
+        };
 
-        // entity CoolList;
+        entity CoolList;
 
-        // entity Team in [Team, Application];
+        entity Team in [Team, Application];
 
-        // action Read, Write, Create;
+        action Read, Write, Create;
 
-        // action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
-        //     principal: [User],
-        //     resource : [List]
-        // };
+        action DeleteList, EditShare, UpdateList, CreateTask, UpdateTask, DeleteTask in Write appliesTo {
+            principal: [User],
+            resource : [List]
+        };
 
-        // action GetList in Read appliesTo {
-        //     principal : [User],
-        //     resource : [List, CoolList]
-        // };
+        action GetList in Read appliesTo {
+            principal : [User],
+            resource : [List, CoolList]
+        };
 
-        // action GetLists in Read appliesTo {
-        //     principal : [User],
-        //     resource : [Application]
-        // };
+        action GetLists in Read appliesTo {
+            principal : [User],
+            resource : [Application]
+        };
 
-        // action CreateList in Create appliesTo {
-        //     principal : [User],
-        //     resource : [Application]
-        // };
+        action CreateList in Create appliesTo {
+            principal : [User],
+            resource : [Application]
+        };
 
-        //         "#;
+                "#;
 
-        let src = r#"
-type PermissionsMap = {
-  hotelReservations: String,
-  propertyReservations: String,
-  // With unions, just have reservations: Set<Hotel|Property>
-  // Do similarly for PaymentDetails, Rates, etc.
-};
-type ComplexType = {
-  required: Bool,
-  hotels: Set<Hotel>,
-};
+//         let src = r#"
+// type PermissionsMap = {
+//   hotelReservations: String,
+//   propertyReservations: String,
+//   // With unions, just have reservations: Set<Hotel|Property>
+//   // Do similarly for PaymentDetails, Rates, etc.
+// };
+// type ComplexType = {
+//   required: Bool,
+//   hotels: Set<Hotel>,
+// };
 
-entity Group {
+// entity Group {
   
-};
+// };
 
-entity User in [Group] {
-  viewPermissions: PermissionsMap,
-  memberPermissions: PermissionsMap,
-  hotelAdminPermissions: Set<Hotel>,
-  propertyAdminPermissions: Set<Property>,
-  lastName?: String,
-  property: Property,
-};
-entity Property in [Hotel] {
-  propertyName: String,
-};
-entity Hotel in [Hotel] {
-  hotelName: String,
-  complex: ComplexType
-};
-entity Reservation in [Property] {
-  reservationName: String
-};
+// entity User in [Group] {
+//   viewPermissions: PermissionsMap,
+//   memberPermissions: PermissionsMap,
+//   hotelAdminPermissions: Set<Hotel>,
+//   propertyAdminPermissions: Set<Property>,
+//   lastName?: String,
+//   property: Property,
+// };
+// entity Property in [Hotel] {
+//   propertyName: String,
+// };
+// entity Hotel in [Hotel] {
+//   hotelName: String,
+//   complex: ComplexType
+// };
+// entity Reservation in [Property] {
+//   reservationName: String
+// };
 
-action propertyManagerActions;
+// action propertyManagerActions;
 
-// ACTIONS: Reservations
-action viewReservation, updateReservation, grantAccessReservation in [propertyManagerActions]
-  appliesTo {
-    principal: User,
-    resource: Reservation,
-    context: {
-      complex: ComplexType,
-      location: String
-    }
-  };
+// // ACTIONS: Reservations
+// action viewReservation, updateReservation, grantAccessReservation in [propertyManagerActions]
+//   appliesTo {
+//     principal: User,
+//     resource: Reservation,
+//     context: {
+//       complex: ComplexType,
+//       location: String
+//     }
+//   };
 
-// ACTIONS: Properties (plus, CreateReservation for a Property)
-action createReservation, viewProperty, updateProperty, grantAccessProperty in [propertyManagerActions]
-  appliesTo {
-    principal: User,
-    resource: Property,
-  };
+// // ACTIONS: Properties (plus, CreateReservation for a Property)
+// action createReservation, viewProperty, updateProperty, grantAccessProperty in [propertyManagerActions]
+//   appliesTo {
+//     principal: User,
+//     resource: Property,
+//   };
 
-// ACTIONS: Hotels (plus, CreateProperty for a Hotel)
-action createProperty, createHotel, viewHotel, updateHotel, grantAccessHotel in [propertyManagerActions]
-  appliesTo {
-    principal: User,
-    resource: Hotel,
-  };
-"#;
+// // ACTIONS: Hotels (plus, CreateProperty for a Hotel)
+// action createProperty, createHotel, viewHotel, updateHotel, grantAccessHotel in [propertyManagerActions]
+//   appliesTo {
+//     principal: User,
+//     resource: Hotel,
+//   };
+// "#;
 
         src.parse().unwrap()
     }
@@ -4650,28 +4650,32 @@ action createProperty, createHotel, viewHotel, updateHotel, grantAccessHotel in 
         assert!(principals.len() > 1);
         assert!(principals.iter().all(|ety| **ety == user));
         assert!(principals.iter().all(|ety| ety.0.loc().is_some()));
-
         let et = EntityType::EntityType(Name::from_normalized_str("User").unwrap());
+        println!("{:?}", et);
         let et = schema.0.get_entity_type(&et).unwrap();
-        let attrs = et.attributes();
+        println!("{:?}", et.loc.as_ref());
+        assert!(et.loc.as_ref().is_some()); // assertion fails
+        // let et = EntityType::EntityType(Name::from_normalized_str("User").unwrap());
+        // let et = schema.0.get_entity_type(&et).unwrap();
+        // let attrs = et.attributes();
 
-        // works because we have entity attribute LOC info
-        let attr_path = vec!["viewPermissions".to_string()];
-        let attr = follow_attribute_path(&schema.0, &attr_path, attrs);
-        assert!(attr.is_some());
-        assert!(attr.and_then(|a| a.loc.as_ref()).is_some());
+        // // works because we have entity attribute LOC info
+        // let attr_path = vec!["viewPermissions".to_string()];
+        // let attr = follow_attribute_path(&schema.0, &attr_path, attrs);
+        // assert!(attr.is_some());
+        // assert!(attr.and_then(|a| a.loc.as_ref()).is_some());
 
-        // doesnt work because there is no common type attribute LOC info
-        let attr_path = vec![
-            "viewPermissions".to_string(),
-            "hotelReservations".to_string(),
-        ];
-        let attr = follow_attribute_path(&schema.0, &attr_path, attrs);
-        assert!(attr.is_some());
-        let t: Option<bool> = attr.and_then(|a| {
-            // println!("Attribute: {:?}", a);
-            None
-        });
+        // // doesnt work because there is no common type attribute LOC info
+        // let attr_path = vec![
+        //     "viewPermissions".to_string(),
+        //     "hotelReservations".to_string(),
+        // ];
+        // let attr = follow_attribute_path(&schema.0, &attr_path, attrs);
+        // assert!(attr.is_some());
+        // let t: Option<bool> = attr.and_then(|a| {
+        //     // println!("Attribute: {:?}", a);
+        //     None
+        // });
     }
 
     fn follow_attribute_path<'a>(

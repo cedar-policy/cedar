@@ -2286,12 +2286,12 @@ pub(crate) mod test {
             InternalName::from_str("Bar").unwrap(),
         ]);
         let schema_ty = schema_ty.fully_qualify_type_references(&all_defs).unwrap();
-        let ty: Type =
-            try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available())
+        let ty: ValidatorType =
+            try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available(), None)
                 .expect("Error converting schema type to type.")
                 .resolve_common_type_refs(&HashMap::new())
                 .unwrap();
-        assert_eq!(ty, Type::named_entity_reference_from_str("NS::Foo"));
+        assert_eq!(ty.tp, Type::named_entity_reference_from_str("NS::Foo"));
     }
 
     #[test]
@@ -2315,12 +2315,12 @@ pub(crate) mod test {
             InternalName::from_str("Foo").unwrap(),
         ]);
         let schema_ty = schema_ty.fully_qualify_type_references(&all_defs).unwrap();
-        let ty: Type =
-            try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available())
+        let ty: ValidatorType =
+            try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available(), None)
                 .expect("Error converting schema type to type.")
                 .resolve_common_type_refs(&HashMap::new())
                 .unwrap();
-        assert_eq!(ty, Type::named_entity_reference_from_str("NS::Foo"));
+        assert_eq!(ty.tp, Type::named_entity_reference_from_str("NS::Foo"));
     }
 
     #[test]
@@ -2349,12 +2349,12 @@ pub(crate) mod test {
         let schema_ty = schema_ty.conditionally_qualify_type_references(None);
         let all_defs = AllDefs::from_entity_defs([InternalName::from_str("Foo").unwrap()]);
         let schema_ty = schema_ty.fully_qualify_type_references(&all_defs).unwrap();
-        let ty: Type =
-            try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available())
+        let ty: ValidatorType =
+            try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available(), None)
                 .expect("Error converting schema type to type.")
                 .resolve_common_type_refs(&HashMap::new())
                 .unwrap();
-        assert_eq!(ty, Type::closed_record_with_attributes(None));
+        assert_eq!(ty.tp, Type::closed_record_with_attributes(None));
     }
 
     #[test]
