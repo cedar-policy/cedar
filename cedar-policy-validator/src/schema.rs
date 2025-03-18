@@ -685,8 +685,9 @@ impl ValidatorSchema {
                         attributes,
                         parents: _,
                         tags,
-                        loc,
+                        // loc,
                     } => {
+                        // println!("IN THE STANDARD CASE WITH LOC: {:?}: {:?}", &name.name().basename(), name.loc());
                         let (attributes, open_attributes) = {
                             let unresolved = try_jsonschema_type_into_validator_type(
                                 attributes.0.clone(),
@@ -721,14 +722,14 @@ impl ValidatorSchema {
                             .transpose()?;
 
                         Ok((
-                            name.with_loc(loc.as_ref()),
+                            name.with_loc(name.loc().clone()),
                             ValidatorEntityType::new_standard(
-                                name,
+                                name.clone(),
                                 descendants,
                                 attributes,
                                 open_attributes,
                                 tags.and_then(|t| Some(t.tp)),
-                                loc,
+                                name.loc().cloned(),
                             ),
                         ))
                     }
