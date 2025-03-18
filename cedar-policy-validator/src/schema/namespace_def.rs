@@ -475,8 +475,8 @@ pub enum EntityTypeFragment<N> {
         /// resolved/inlined (e.g., because they are not defined in this schema
         /// fragment).
         tags: Option<json_schema::Type<N>>,
-        /// Source location - if available
-        loc: Option<Loc>,
+        // Source location - if available
+        // loc: Option<Loc>,
     },
     Enum(NonEmpty<SmolStr>),
 }
@@ -517,7 +517,7 @@ impl EntityTypeFragment<ConditionalName> {
                     tags: ty
                         .tags
                         .map(|tags| tags.conditionally_qualify_type_references(schema_namespace)),
-                    loc: None,
+                    // loc: ty.loc(),
                 }
             }
         }
@@ -539,7 +539,7 @@ impl EntityTypeFragment<ConditionalName> {
                 attributes,
                 parents,
                 tags,
-                loc,
+                // loc,
             } => {
                 // Fully qualify typenames appearing in `attributes`
                 let fully_qual_attributes = attributes.fully_qualify_type_references(all_defs);
@@ -568,7 +568,7 @@ impl EntityTypeFragment<ConditionalName> {
                         attributes,
                         parents,
                         tags,
-                        loc,
+                        // loc,
                     }),
                     (Ok(_), Ok(_), Some(undeclared_parents)) => Err(TypeNotDefinedError {
                         undefined_types: undeclared_parents,
