@@ -1576,12 +1576,11 @@ impl<'a> CommonTypeResolver<'a> {
                 extensions,
                 substituted_ty.loc().cloned(),
             )?;
-            let loc = ty.loc();
             let tp = validator_type.resolve_common_type_refs(&HashMap::new())?;
             let vt = ValidatorType {
                 tp: tp.tp.clone(),
                 #[cfg(feature = "extended-schema")]
-                loc: loc.cloned(),
+                loc: ty.loc().cloned(),
             };
 
             tys.insert(name, vt);

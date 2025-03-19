@@ -4524,7 +4524,7 @@ mod test_access {
     use super::*;
 
     fn schema() -> Schema {
-                let src = r#"
+        let src = r#"
                 type Task = {
             "id": Long,
             "name": String,
@@ -4573,68 +4573,68 @@ mod test_access {
 
                 "#;
 
-//         let src = r#"
-// type PermissionsMap = {
-//   hotelReservations: String,
-//   propertyReservations: String,
-//   // With unions, just have reservations: Set<Hotel|Property>
-//   // Do similarly for PaymentDetails, Rates, etc.
-// };
-// type ComplexType = {
-//   required: Bool,
-//   hotels: Set<Hotel>,
-// };
+        //         let src = r#"
+        // type PermissionsMap = {
+        //   hotelReservations: String,
+        //   propertyReservations: String,
+        //   // With unions, just have reservations: Set<Hotel|Property>
+        //   // Do similarly for PaymentDetails, Rates, etc.
+        // };
+        // type ComplexType = {
+        //   required: Bool,
+        //   hotels: Set<Hotel>,
+        // };
 
-// entity Group {
-  
-// };
+        // entity Group {
 
-// entity User in [Group] {
-//   viewPermissions: PermissionsMap,
-//   memberPermissions: PermissionsMap,
-//   hotelAdminPermissions: Set<Hotel>,
-//   propertyAdminPermissions: Set<Property>,
-//   lastName?: String,
-//   property: Property,
-// };
-// entity Property in [Hotel] {
-//   propertyName: String,
-// };
-// entity Hotel in [Hotel] {
-//   hotelName: String,
-//   complex: ComplexType
-// };
-// entity Reservation in [Property] {
-//   reservationName: String
-// };
+        // };
 
-// action propertyManagerActions;
+        // entity User in [Group] {
+        //   viewPermissions: PermissionsMap,
+        //   memberPermissions: PermissionsMap,
+        //   hotelAdminPermissions: Set<Hotel>,
+        //   propertyAdminPermissions: Set<Property>,
+        //   lastName?: String,
+        //   property: Property,
+        // };
+        // entity Property in [Hotel] {
+        //   propertyName: String,
+        // };
+        // entity Hotel in [Hotel] {
+        //   hotelName: String,
+        //   complex: ComplexType
+        // };
+        // entity Reservation in [Property] {
+        //   reservationName: String
+        // };
 
-// // ACTIONS: Reservations
-// action viewReservation, updateReservation, grantAccessReservation in [propertyManagerActions]
-//   appliesTo {
-//     principal: User,
-//     resource: Reservation,
-//     context: {
-//       complex: ComplexType,
-//       location: String
-//     }
-//   };
+        // action propertyManagerActions;
 
-// // ACTIONS: Properties (plus, CreateReservation for a Property)
-// action createReservation, viewProperty, updateProperty, grantAccessProperty in [propertyManagerActions]
-//   appliesTo {
-//     principal: User,
-//     resource: Property,
-//   };
+        // // ACTIONS: Reservations
+        // action viewReservation, updateReservation, grantAccessReservation in [propertyManagerActions]
+        //   appliesTo {
+        //     principal: User,
+        //     resource: Reservation,
+        //     context: {
+        //       complex: ComplexType,
+        //       location: String
+        //     }
+        //   };
 
-// // ACTIONS: Hotels (plus, CreateProperty for a Hotel)
-// action createProperty, createHotel, viewHotel, updateHotel, grantAccessHotel in [propertyManagerActions]
-//   appliesTo {
-//     principal: User,
-//     resource: Hotel,
-//   };
-// "#;
+        // // ACTIONS: Properties (plus, CreateReservation for a Property)
+        // action createReservation, viewProperty, updateProperty, grantAccessProperty in [propertyManagerActions]
+        //   appliesTo {
+        //     principal: User,
+        //     resource: Property,
+        //   };
+
+        // // ACTIONS: Hotels (plus, CreateProperty for a Hotel)
+        // action createProperty, createHotel, viewHotel, updateHotel, grantAccessHotel in [propertyManagerActions]
+        //   appliesTo {
+        //     principal: User,
+        //     resource: Hotel,
+        //   };
+        // "#;
 
         src.parse().unwrap()
     }
