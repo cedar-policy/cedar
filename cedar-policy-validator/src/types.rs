@@ -1399,8 +1399,8 @@ impl EntityRecordKind {
 }
 
 /// Contains the type of a record attribute and if the attribute is required.
-#[derive(Hash, Ord, PartialOrd, Educe, Debug, Clone, Serialize)]
-#[educe(Eq, PartialEq)]
+#[derive(Ord, PartialOrd, Educe, Debug, Clone, Serialize)]
+#[educe(Eq, PartialEq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct AttributeType {
     /// The type of the attribute.
