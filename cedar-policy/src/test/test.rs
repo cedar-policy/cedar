@@ -6563,7 +6563,7 @@ mod policy_manipulation_functions_tests {
         assert_entity_sub(
             r#"permit(principal, action, resource) when { User::"Alice".lessThan(User::"Alice") };"#,
             r#"permit(principal, action, resource) when { User::"Bob".lessThan(User::"Bob") };"#,
-            mapping.clone(),
+            mapping,
         );
     }
 
@@ -6580,19 +6580,19 @@ mod policy_manipulation_functions_tests {
             ),
         )];
         assert_entity_sub(
-            r#"permit(principal, action, resource) when { 1 };"#,
-            r#"permit(principal, action, resource) when { 1 };"#,
+            r"permit(principal, action, resource) when { 1 };",
+            r"permit(principal, action, resource) when { 1 };",
             mapping.clone(),
         );
         assert_entity_sub(
-            r#"permit(principal, action, resource) when { false };"#,
-            r#"permit(principal, action, resource) when { false };"#,
+            r"permit(principal, action, resource) when { false };",
+            r"permit(principal, action, resource) when { false };",
             mapping.clone(),
         );
         assert_entity_sub(
             r#"permit(principal, action, resource) when { "foo" };"#,
             r#"permit(principal, action, resource) when { "foo" };"#,
-            mapping.clone(),
+            mapping,
         );
     }
 
