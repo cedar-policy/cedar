@@ -237,7 +237,6 @@ fn convert_action_decl(
         });
     let member_of = parents.map(|parents| parents.into_iter().map(convert_qual_name).collect());
 
-    // Then map that type across all of the bound names
     Ok(names.into_iter().map(move |name| {
         let ty = json_schema::ActionType {
             attributes: None, // Action attributes are currently unsupported in the Cedar schema format
