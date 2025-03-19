@@ -104,7 +104,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - uses: taiki-e/install-action@cargo-hack
-    - run: cargo hack check --rust-version --workspace --all-targets --ignore-private
+    - run: cargo hack check --rust-version --workspace --all-targets --ignore-private --all-features
 
   wasm-build:
     name: run wasm build script
