@@ -123,6 +123,7 @@ impl From<&models::ActionDecl> for cedar_policy_validator::ValidatorActionId {
             // translate into a `ValidatorActionId` with no action attributes
             types::Attributes::with_attributes([]),
             BTreeMap::new(),
+            None,
         )
     }
 }
@@ -166,13 +167,14 @@ impl From<&models::EntityDecl> for cedar_policy_validator::ValidatorEntityType {
                 model_to_attributes(&v.attributes),
                 types::OpenTag::default(),
                 v.tags.as_ref().map(types::Type::from),
+                None,
             ),
             Some(enum_choices) => {
                 // `enum_choices` is not empty, so `v` represents an enumerated entity type.
                 // enumerated entity types must have no attributes or tags.
                 assert_eq!(&v.attributes, &HashMap::new());
                 assert_eq!(&v.tags, &None);
-                Self::new_enum(name, descendants, enum_choices)
+                Self::new_enum(name.clone(), descendants, enum_choices, name.loc().cloned())
             }
         }
     }

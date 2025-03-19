@@ -4562,6 +4562,7 @@ action CreateList in Create appliesTo {
         let principals = schema.principals().collect::<Vec<_>>();
         assert!(principals.len() > 1);
         assert!(principals.iter().all(|ety| **ety == user));
+        assert!(principals.iter().all(|ety| ety.0.loc().is_some()));
     }
 
     #[test]
@@ -4581,6 +4582,7 @@ action CreateList in Create appliesTo {
             "CoolList".parse().unwrap(),
         ]);
         assert_eq!(resources, expected);
+        assert!(resources.iter().all(|ety| ety.0.loc().is_some()));
     }
 
     #[test]
@@ -4594,6 +4596,7 @@ action CreateList in Create appliesTo {
             .cloned()
             .collect::<Vec<_>>();
         assert_eq!(got, vec!["User".parse().unwrap()]);
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
         assert!(schema.principals_for_action(&delete_user).is_none());
     }
 
@@ -4610,12 +4613,14 @@ action CreateList in Create appliesTo {
             .cloned()
             .collect::<Vec<_>>();
         assert_eq!(got, vec!["List".parse().unwrap()]);
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
         let got = schema
             .resources_for_action(&create_list)
             .unwrap()
             .cloned()
             .collect::<Vec<_>>();
         assert_eq!(got, vec!["Application".parse().unwrap()]);
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
         let got = schema
             .resources_for_action(&get_list)
             .unwrap()
@@ -4625,6 +4630,7 @@ action CreateList in Create appliesTo {
             got,
             HashSet::from(["List".parse().unwrap(), "CoolList".parse().unwrap()])
         );
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
         assert!(schema.principals_for_action(&delete_user).is_none());
     }
 
@@ -4637,6 +4643,7 @@ action CreateList in Create appliesTo {
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
+        assert!(parents.iter().all(|ety| ety.0.loc().is_some()));
         let expected = HashSet::from(["Team".parse().unwrap(), "Application".parse().unwrap()]);
         assert_eq!(parents, expected);
         let parents = schema
@@ -4644,6 +4651,7 @@ action CreateList in Create appliesTo {
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
+        assert!(parents.iter().all(|ety| ety.0.loc().is_some()));
         let expected = HashSet::from(["Application".parse().unwrap()]);
         assert_eq!(parents, expected);
         assert!(schema.ancestors(&"Foo".parse().unwrap()).is_none());
@@ -4652,6 +4660,7 @@ action CreateList in Create appliesTo {
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
+        assert!(parents.iter().all(|ety| ety.0.loc().is_some()));
         let expected = HashSet::from([]);
         assert_eq!(parents, expected);
     }
@@ -4664,6 +4673,8 @@ action CreateList in Create appliesTo {
             .into_iter()
             .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
             .collect::<HashSet<EntityUid>>();
+        #[cfg(feature = "extended-schema")]
+        assert!(groups.iter().all(|ety| ety.0.loc().is_some()));
         assert_eq!(groups, expected);
     }
 
@@ -4689,6 +4700,8 @@ action CreateList in Create appliesTo {
         .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
         .collect::<HashSet<EntityUid>>();
         assert_eq!(actions, expected);
+        #[cfg(feature = "extended-schema")]
+        assert!(actions.iter().all(|ety| ety.0.loc().is_some()));
     }
 
     #[test]

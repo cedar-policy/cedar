@@ -613,6 +613,8 @@ mod test {
                     attributes: None,
                     annotations: Annotations::new(),
                     loc: None,
+                    #[cfg(feature = "extended-schema")]
+                    defn_loc: None,
                 },
             )],
         );
@@ -747,6 +749,8 @@ mod test {
                     attributes: None,
                     annotations: Annotations::new(),
                     loc: None,
+                    #[cfg(feature = "extended-schema")]
+                    defn_loc: None,
                 },
             )],
         );
@@ -781,6 +785,8 @@ mod test {
                     attributes: None,
                     annotations: Annotations::new(),
                     loc: None,
+                    #[cfg(feature = "extended-schema")]
+                    defn_loc: None,
                 },
             )],
         );
@@ -982,6 +988,8 @@ mod test {
                     attributes: None,
                     annotations: Annotations::new(),
                     loc: None,
+                    #[cfg(feature = "extended-schema")]
+                    defn_loc: None,
                 },
             )],
         );
@@ -1011,6 +1019,8 @@ mod test {
                     attributes: None,
                     annotations: Annotations::new(),
                     loc: None,
+                    #[cfg(feature = "extended-schema")]
+                    defn_loc: None,
                 },
             )],
         );
@@ -1040,6 +1050,8 @@ mod test {
                     attributes: None,
                     annotations: Annotations::new(),
                     loc: None,
+                    #[cfg(feature = "extended-schema")]
+                    defn_loc: None,
                 },
             )],
         );
@@ -1126,6 +1138,8 @@ mod test {
                     attributes: None,
                     annotations: Annotations::new(),
                     loc: None,
+                    #[cfg(feature = "extended-schema")]
+                    defn_loc: None,
                 },
             )],
         )
@@ -1543,6 +1557,8 @@ mod test {
                         attributes: None,
                         annotations: Annotations::new(),
                         loc: None,
+                        #[cfg(feature = "extended-schema")]
+                        defn_loc: None,
                     },
                 ),
                 (
@@ -1556,6 +1572,8 @@ mod test {
                         attributes: None,
                         annotations: Annotations::new(),
                         loc: None,
+                        #[cfg(feature = "extended-schema")]
+                        defn_loc: None,
                     },
                 ),
                 (
@@ -1566,6 +1584,8 @@ mod test {
                         attributes: None,
                         annotations: Annotations::new(),
                         loc: None,
+                        #[cfg(feature = "extended-schema")]
+                        defn_loc: None,
                     },
                 ),
             ],

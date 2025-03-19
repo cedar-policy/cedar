@@ -528,15 +528,22 @@ impl ValidatorSchema {
                 // error for any other undeclared entity types by
                 // `check_for_undeclared`.
                 let descendants = entity_children.remove(&name).unwrap_or_default();
+
                 match entity_type {
                     EntityTypeFragment::Enum(choices) => Ok((
                         name.clone(),
-                        ValidatorEntityType::new_enum(name, descendants, choices),
+                        ValidatorEntityType::new_enum(
+                            name.clone(),
+                            descendants,
+                            choices,
+                            name.loc().cloned(),
+                        ),
                     )),
                     EntityTypeFragment::Standard {
                         attributes,
                         parents: _,
                         tags,
+                        loc,
                     } => {
                         let (attributes, open_attributes) = {
                             let unresolved =
@@ -555,14 +562,16 @@ impl ValidatorSchema {
                             .transpose()?
                             .map(|unresolved| unresolved.resolve_common_type_refs(&common_types))
                             .transpose()?;
+
                         Ok((
-                            name.clone(),
+                            name.with_loc(loc.as_ref()),
                             ValidatorEntityType::new_standard(
                                 name,
                                 descendants,
                                 attributes,
                                 open_attributes,
                                 tags,
+                                loc,
                             ),
                         ))
                     }
@@ -602,6 +611,7 @@ impl ValidatorSchema {
                         context: Type::record_with_attributes(context, open_context_attributes),
                         attribute_types: action.attribute_types,
                         attributes: action.attributes,
+                        loc: action.loc,
                     },
                 ))
             })
@@ -3755,6 +3765,7 @@ mod test_rfc70 {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
                     .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .exactly_one_underline("entity T { bar: String };")
                     .build(),
             );
         });
@@ -3772,6 +3783,7 @@ mod test_rfc70 {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
                     .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .exactly_one_underline("entity T { bar: String };")
                     .build(),
             );
         });
@@ -3905,6 +3917,7 @@ mod test_rfc70 {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
                     .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .exactly_one_underline("entity T in T { foo: String };")
                     .build(),
             );
         });
@@ -3960,13 +3973,16 @@ mod test_rfc70 {
                 action A;
             }
         ";
+        let assertion = ExpectedErrorMessageBuilder::error("definition of `NS::Action::\"A\"` illegally shadows the existing definition of `Action::\"A\"`")
+        .help("try renaming one of the actions, or moving `Action::\"A\"` to a different namespace");
+        #[cfg(feature = "extended-schema")]
+        let assertion = assertion.exactly_one_underline("A");
+
         assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("definition of `NS::Action::\"A\"` illegally shadows the existing definition of `Action::\"A\"`")
-                    .help("try renaming one of the actions, or moving `Action::\"A\"` to a different namespace")
-                    .build(),
+                &assertion.build()
             );
         });
 
