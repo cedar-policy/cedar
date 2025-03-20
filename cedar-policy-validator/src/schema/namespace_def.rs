@@ -1174,9 +1174,6 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
         } => {
             #[cfg(feature = "extended-schema")]
             let loc_clone = loc.clone();
-            #[cfg(not(feature = "extended-schema"))]
-            let loc_clone = loc;
-
             #[cfg(feature = "extended-schema")]
             return Ok(WithUnresolvedCommonTypeRefs::new_with_loc(
                 move |common_type_defs| {
@@ -1233,6 +1230,7 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
 
 /// Convert a [`json_schema::RecordType`] (with fully qualified names) into the
 /// [`Type`] type used by the validator.
+#[cfg_attr(not(feature = "extended-schema"), allow(unused_variables))]
 pub(crate) fn try_record_type_into_validator_type(
     rty: json_schema::RecordType<InternalName>,
     extensions: &Extensions<'_>,
