@@ -1306,7 +1306,7 @@ fn parse_record_attributes(
         loc,
     ));
 
-    #[cfg_attr(not(feature = "extended-schema"), allow(unreachable_code))]
+    #[cfg_attr(feature = "extended-schema", allow(unreachable_code))]
     Ok(WithUnresolvedCommonTypeRefs::new(|common_type_defs| {
         attrs_with_common_type_refs
             .into_iter()
