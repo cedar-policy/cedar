@@ -90,6 +90,8 @@ impl InternalName {
         }
     }
 
+    /// Create an [`InternalName`] with no path (no namespaces) and a source location.
+    #[cfg(feature = "extended-schema")]
     pub fn unqualified_name_with_loc(id: Id, loc: Option<Loc>) -> Self {
         Self {
             id,
