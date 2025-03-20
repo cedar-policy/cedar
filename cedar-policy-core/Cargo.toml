@@ -24,7 +24,7 @@ ref-cast = "1.0"
 rustc_lexer = "0.1"
 thiserror = "2.0"
 smol_str = { version = "0.3", features = ["serde"] }
-stacker = "0.1.19"
+stacker = "0.1.20"
 arbitrary = { version = "1", features = ["derive"], optional = true }
 miette = { version = "7.5.0", features = ["serde"] }
 nonempty = { version = "0.10.0", features = ["serialize"] }
