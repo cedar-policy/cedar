@@ -4515,12 +4515,6 @@ pub fn eval_expression(
 // These are the same tests in validator, just ensuring all the plumbing is done correctly
 #[cfg(test)]
 mod test_access {
-    use cedar_policy_core::ast::{EntityType, Name};
-    use cedar_policy_validator::{
-        types::{AttributeType, Attributes, EntityRecordKind, Type},
-        ValidatorSchema,
-    };
-
     use super::*;
 
     fn schema() -> Schema {

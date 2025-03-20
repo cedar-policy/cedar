@@ -28,7 +28,7 @@ use cedar_policy_core::{
     transitive_closure::compute_tc,
 };
 use educe::Educe;
-use namespace_def::{EntityTypeFragment, WithUnresolvedCommonTypeRefs};
+use namespace_def::{EntityTypeFragment};
 use nonempty::NonEmpty;
 use serde::Deserialize;
 use smol_str::{SmolStr, ToSmolStr};
@@ -685,20 +685,13 @@ impl ValidatorSchema {
                         attributes,
                         parents: _,
                         tags,
-                        // loc,
                     } => {
-                        // println!("IN THE STANDARD CASE WITH LOC: {:?}: {:?}", &name.name().basename(), name.loc());
                         let (attributes, open_attributes) = {
                             let unresolved = try_jsonschema_type_into_validator_type(
                                 attributes.0.clone(),
                                 extensions,
                                 attributes.0.loc().cloned(),
                             )?;
-                            // match  unresolved {
-                            //     WithUnresolvedCommonTypeRefs::WithUnresolved(a, b) => {println!("WIthUnresolved: {:?}", b)},
-                            //     _ => println!("oops")
-                            // }
-                            // println!("UNRESOLVED: {:?}", unresolved);
                             Self::record_attributes_or_none(
                                 unresolved.resolve_common_type_refs(&common_types)?,
                             )
@@ -4174,11 +4167,6 @@ mod test_rfc70 {
                 action A;
             }
         ";
-        let assertion = ExpectedErrorMessageBuilder::error("definition of `NS::Action::\"A\"` illegally shadows the existing definition of `Action::\"A\"`")
-        .help("try renaming one of the actions, or moving `Action::\"A\"` to a different namespace");
-        #[cfg(feature = "extended-schema")]
-        let assertion = assertion.exactly_one_underline("A");
-
         assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
             let assertion = ExpectedErrorMessageBuilder::error("definition of `NS::Action::\"A\"` illegally shadows the existing definition of `Action::\"A\"`")
                 .help("try renaming one of the actions, or moving `Action::\"A\"` to a different namespace");
