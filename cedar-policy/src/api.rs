@@ -4592,7 +4592,10 @@ action CreateList in Create appliesTo {
     #[cfg(feature = "extended-schema")]
     #[test]
     fn common_types_extended() {
-        use cedar_policy_validator::{types::{EntityRecordKind, Type}, ValidatorCommonType};
+        use cedar_policy_validator::{
+            types::{EntityRecordKind, Type},
+            ValidatorCommonType,
+        };
 
         let schema = schema();
         assert_eq!(schema.0.common_types().collect::<HashSet<_>>().len(), 2);
