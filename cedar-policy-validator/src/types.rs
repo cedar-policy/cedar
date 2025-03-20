@@ -40,8 +40,10 @@ use cedar_policy_core::{
         AttributeType as CoreAttributeType, SchemaType as CoreSchemaType,
     },
     extensions::{ExtensionFunctionLookupError, Extensions},
-    parser::Loc,
 };
+
+#[cfg(feature = "extended-schema")]
+use cedar_policy_core::parser::Loc;
 
 use crate::{validation_errors::LubHelp, ValidationMode};
 
