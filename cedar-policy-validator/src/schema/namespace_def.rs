@@ -931,7 +931,6 @@ impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
     pub fn new(
         f: impl FnOnce(&HashMap<&InternalName, ValidatorType>) -> crate::err::Result<T> + 'static,
     ) -> Self {
-        // println!("WithUnresolvedCommonTypeRefs::new");
         Self::WithUnresolved(Box::new(f), None)
     }
 
@@ -940,8 +939,14 @@ impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
         f: impl FnOnce(&HashMap<&InternalName, ValidatorType>) -> crate::err::Result<T> + 'static,
         loc: Option<Loc>,
     ) -> Self {
-        // println!("WithUnresolvedCommonTypeRefs::new with loc: {:?}", loc);
         Self::WithUnresolved(Box::new(f), loc)
+    }
+
+    pub fn loc(&self) -> Option<Loc> {
+        match self {
+            WithUnresolvedCommonTypeRefs::WithUnresolved(_, loc) => loc.clone(),
+            WithUnresolvedCommonTypeRefs::WithoutUnresolved(_, loc) => loc.clone(),
+        }
     }
 
     pub fn map<U: 'static>(
@@ -1129,7 +1134,6 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
             }
         }
         json_schema::Type::CommonTypeRef { type_name, .. } => {
-            // println!("Common type ref: {:?}", type_name);
             #[cfg(feature = "extended-schema")]
             return Ok(WithUnresolvedCommonTypeRefs::new_with_loc(
                 move |common_type_defs| {
@@ -1168,8 +1172,6 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
             ty: json_schema::TypeVariant::EntityOrCommon { type_name },
             ..
         } => {
-            // println!("Entity or common: {:?}", type_name);
-
             #[cfg(feature = "extended-schema")]
             return Ok(WithUnresolvedCommonTypeRefs::new_with_loc(
                 move |common_type_defs| {
@@ -1279,11 +1281,8 @@ fn parse_record_attributes(
         attrs_with_common_type_refs
             .into_iter()
             .map(|(s, (attr_ty, is_req))| {
-                let loc = match &attr_ty {
-                    WithUnresolvedCommonTypeRefs::WithUnresolved(_, loc) => loc.clone(),
-                    WithUnresolvedCommonTypeRefs::WithoutUnresolved(_, loc) => loc.clone(),
-                };
-                // println!("Common type defs unresolved common types: {:?}::{:?}", s, loc);
+                #[cfg(feature = "extended-schema")]
+                let loc = attr_ty.loc();
                 attr_ty
                     .resolve_common_type_refs(common_type_defs)
                     .map(|ty| {

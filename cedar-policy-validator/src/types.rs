@@ -1420,7 +1420,6 @@ impl AttributeType {
     /// Construct an [`AttributeType`] with some type that may be required or
     /// optional as specified by the `is_required` parameter.
     pub fn new(attr_type: Type, is_required: bool) -> Self {
-        // println!("New attribute");
         Self {
             attr_type,
             is_required,
@@ -1431,9 +1430,8 @@ impl AttributeType {
 
     #[cfg(feature = "extended-schema")]
     /// Construct an [`AttributeType`] with some type that may be required or
-    /// optional as specified by the `is_required` parameter.
+    /// optional as specified by the `is_required` parameter - includes source location 
     pub fn new_with_loc(attr_type: Type, is_required: bool, loc: Option<Loc>) -> Self {
-        // println!("New attribute with loc: {:?}", loc);
         Self {
             attr_type,
             is_required,
@@ -1443,13 +1441,11 @@ impl AttributeType {
 
     /// Construct an [`AttributeType`] for an attribute that is required.
     pub fn required_attribute(attr_type: Type) -> Self {
-        // println!("Required attribute");
         Self::new(attr_type, true)
     }
 
     /// Construct an [`AttributeType`] for an attribute that is optional.
     pub fn optional_attribute(attr_type: Type) -> Self {
-        // println!("Optional attribute");
         Self::new(attr_type, false)
     }
 
