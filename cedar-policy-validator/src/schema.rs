@@ -3109,7 +3109,6 @@ pub(crate) mod test {
                     .build());
         });
 
-        #[cfg(feature = "datetime")]
         {
             let src: serde_json::Value = json!({
                 "": {

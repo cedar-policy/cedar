@@ -39,7 +39,7 @@ prost-build = { version = "0.13", optional = true }
 
 [features]
 # by default, enable all Cedar extensions, but not other crate features
-default = ["ipaddr", "decimal"]
+default = ["ipaddr", "decimal", "datetime"]
 
 # Cedar extensions
 ipaddr = ["cedar-policy-core/ipaddr", "cedar-policy-validator/ipaddr"]
@@ -52,7 +52,7 @@ corpus-timing = []
 
 # Experimental features.
 # Enable all experimental features with `cargo build --features "experimental"`
-experimental = ["partial-eval", "permissive-validate", "partial-validate", "level-validate", "entity-manifest", "protobufs", "datetime", "tolerant-ast", "extended-schema"]
+experimental = ["partial-eval", "permissive-validate", "partial-validate", "level-validate", "entity-manifest", "protobufs", "tolerant-ast", "extended-schema"]
 entity-manifest = ["cedar-policy-validator/entity-manifest"]
 partial-eval = ["cedar-policy-core/partial-eval", "cedar-policy-validator/partial-eval"]
 permissive-validate = []

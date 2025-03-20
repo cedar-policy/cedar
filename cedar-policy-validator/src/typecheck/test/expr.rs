@@ -1353,7 +1353,6 @@ fn is_typechecks() {
     );
 }
 
-#[cfg(feature = "datetime")]
 mod datetime {
     use cedar_policy_core::{
         ast::{Expr, Name, Value},
