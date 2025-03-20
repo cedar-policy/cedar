@@ -475,8 +475,6 @@ pub enum EntityTypeFragment<N> {
         /// resolved/inlined (e.g., because they are not defined in this schema
         /// fragment).
         tags: Option<json_schema::Type<N>>,
-        // Source location - if available
-        // loc: Option<Loc>,
     },
     Enum(NonEmpty<SmolStr>),
 }
@@ -517,7 +515,6 @@ impl EntityTypeFragment<ConditionalName> {
                     tags: ty
                         .tags
                         .map(|tags| tags.conditionally_qualify_type_references(schema_namespace)),
-                    // loc: ty.loc(),
                 }
             }
         }
@@ -539,7 +536,6 @@ impl EntityTypeFragment<ConditionalName> {
                 attributes,
                 parents,
                 tags,
-                // loc,
             } => {
                 // Fully qualify typenames appearing in `attributes`
                 let fully_qual_attributes = attributes.fully_qualify_type_references(all_defs);
@@ -568,7 +564,6 @@ impl EntityTypeFragment<ConditionalName> {
                         attributes,
                         parents,
                         tags,
-                        // loc,
                     }),
                     (Ok(_), Ok(_), Some(undeclared_parents)) => Err(TypeNotDefinedError {
                         undefined_types: undeclared_parents,
@@ -1092,13 +1087,12 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
             ..
         } => Ok(
             try_jsonschema_type_into_validator_type(*element, extensions, loc)?
-                .map(|vt| {Type::set(vt.tp)})
-                .map(ValidatorType::new),
+                .map(|vt| {ValidatorType {tp: Type::set(vt.tp), loc: vt.loc}})
         ),
         json_schema::Type::Type {
             ty: json_schema::TypeVariant::Record(rty),
             ..
-        } => try_record_type_into_validator_type(rty, extensions),
+        } => try_record_type_into_validator_type(rty, extensions, loc),
         json_schema::Type::Type {
             ty: json_schema::TypeVariant::Entity { name },
             ..
@@ -1172,9 +1166,12 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
             ty: json_schema::TypeVariant::EntityOrCommon { type_name },
             ..
         } => {
+            let other_loc_clone = loc.clone();
             #[cfg(feature = "extended-schema")]
             return Ok(WithUnresolvedCommonTypeRefs::new_with_loc(
                 move |common_type_defs| {
+                    let loc_clone: Option<Loc> = loc.clone();
+
                     // First check if it's a common type, because in the edge case where
                     // the name is both a valid common type name and a valid entity type
                     // name, we give preference to the common type (see RFC 24).
@@ -1191,12 +1188,12 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
                                 tp: Type::named_entity_reference(internal_name_to_entity_type(
                                     type_name,
                                 )?),
-                                loc: None,
+                                loc: loc_clone.clone(),
                             })
                         }
                     }
                 },
-                loc,
+                other_loc_clone,
             ));
             #[cfg_attr(not(feature = "extended-schema"), allow(unreachable_code))]
             Ok(WithUnresolvedCommonTypeRefs::new(move |common_type_defs| {
@@ -1230,12 +1227,13 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
 pub(crate) fn try_record_type_into_validator_type(
     rty: json_schema::RecordType<InternalName>,
     extensions: &Extensions<'_>,
+    loc: Option<Loc>
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<ValidatorType>> {
     if cfg!(not(feature = "partial-validate")) && rty.additional_attributes {
         Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
     } else {
         Ok(
-            parse_record_attributes(rty.attributes.into_iter(), extensions)?.map(move |attrs| {
+            parse_record_attributes(rty.attributes.into_iter(), extensions, loc.clone())?.map(move |attrs| {
                 ValidatorType {
                     tp: Type::record_with_attributes(
                         attrs,
@@ -1246,7 +1244,7 @@ pub(crate) fn try_record_type_into_validator_type(
                         },
                     ),
                     #[cfg(feature = "extended-schema")]
-                    loc: None,
+                    loc,
                 }
             }),
         )
@@ -1260,6 +1258,7 @@ pub(crate) fn try_record_type_into_validator_type(
 fn parse_record_attributes(
     attrs: impl IntoIterator<Item = (SmolStr, json_schema::TypeOfAttribute<InternalName>)>,
     extensions: &Extensions<'_>,
+    loc: Option<Loc>
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Attributes>> {
     let attrs_with_common_type_refs = attrs
         .into_iter()
@@ -1277,22 +1276,35 @@ fn parse_record_attributes(
             ))
         })
         .collect::<crate::err::Result<Vec<_>>>()?;
-    Ok(WithUnresolvedCommonTypeRefs::new(|common_type_defs| {
+
+    #[cfg(feature = "extended-schema")]
+    return Ok(WithUnresolvedCommonTypeRefs::new_with_loc(|common_type_defs| {
         attrs_with_common_type_refs
             .into_iter()
             .map(|(s, (attr_ty, is_req))| {
-                #[cfg(feature = "extended-schema")]
                 let loc = attr_ty.loc();
                 attr_ty
                     .resolve_common_type_refs(common_type_defs)
                     .map(|ty| {
-                        #[cfg(feature = "extended-schema")]
-                        return (s, AttributeType::new_with_loc(ty.tp, is_req, loc));
-                        #[cfg_attr(not(feature = "extended-schema"), allow(unreachable_code))]
+                        (s, AttributeType::new_with_loc(ty.tp, is_req, loc))
+                    })
+            })
+            .collect::<crate::err::Result<Vec<_>>>()
+            .map(Attributes::with_attributes)
+    }, loc));
+
+    #[cfg_attr(not(feature = "extended-schema"), allow(unreachable_code))]
+    Ok(WithUnresolvedCommonTypeRefs::new_with_loc(|common_type_defs| {
+        attrs_with_common_type_refs
+            .into_iter()
+            .map(|(s, (attr_ty, is_req))| {
+                attr_ty
+                    .resolve_common_type_refs(common_type_defs)
+                    .map(|ty| {
                         (s, AttributeType::new(ty.tp, is_req))
                     })
             })
             .collect::<crate::err::Result<Vec<_>>>()
             .map(Attributes::with_attributes)
-    }))
+    }, loc))
 }
