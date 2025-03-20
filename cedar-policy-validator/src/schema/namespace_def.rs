@@ -1242,7 +1242,7 @@ pub(crate) fn try_record_type_into_validator_type(
         Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
     } else {
         #[cfg(feature = "extended-schema")]
-        let attr_loc =  loc.clone();
+        let attr_loc = loc.clone();
         #[cfg(not(feature = "extended-schema"))]
         let attr_loc = None;
         Ok(
