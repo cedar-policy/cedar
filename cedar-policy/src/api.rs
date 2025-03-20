@@ -4736,7 +4736,6 @@ action CreateList in Create appliesTo {
             .into_iter()
             .map(|ty| ty.parse().unwrap())
             .collect::<HashSet<EntityTypeName>>();
-
         assert_eq!(entities, expected);
     }
 }
