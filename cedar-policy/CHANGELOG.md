@@ -31,6 +31,7 @@ Cedar Language Version: TBD
   to convert JSON formatted policies into the human-readable syntax.
 - Added `Validator::schema()` to get a reference to the `Schema` even after it has been
   consumed to construct a `Validator` (#1524)
+- Added `Entities::upsert_entities()` to add or update `Entity`s in an `Entities` struct (resolving #1479)
 
 ## [4.3.3] - 2025-02-25
 
