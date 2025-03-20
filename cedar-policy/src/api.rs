@@ -4592,7 +4592,7 @@ action CreateList in Create appliesTo {
     #[cfg(feature = "extended-schema")]
     #[test]
     fn common_types_extended() {
-        use cedar_policy_validator::ValidatorCommonType;
+        use cedar_policy_validator::{types::{EntityRecordKind, Type}, ValidatorCommonType};
 
         let schema = schema();
         assert_eq!(schema.0.common_types().collect::<HashSet<_>>().len(), 2);
@@ -4611,6 +4611,31 @@ action CreateList in Create appliesTo {
         assert!(schema.0.common_types().contains(&tasks_type));
         assert!(schema.0.common_types().all(|ct| ct.name_loc.is_some()));
         assert!(schema.0.common_types().all(|ct| ct.type_loc.is_some()));
+
+        let et = EntityType::EntityType(Name::from_normalized_str("List").unwrap());
+        let et = schema.0.get_entity_type(&et).unwrap();
+        let attrs = et.attributes();
+
+        // Assert that attributes that are resolved from common types still get source locations
+        let t = attrs.get_attr("tasks").unwrap();
+        assert!(t.loc.is_some());
+        match &t.attr_type {
+            cedar_policy_validator::types::Type::Set { ref element_type } => {
+                let el = *element_type.clone().unwrap().to_owned();
+                match el {
+                    Type::EntityOrRecord(e) => match e {
+                        EntityRecordKind::Record { attrs, .. } => {
+                            assert!(attrs.get_attr("name").unwrap().loc.is_some());
+                            assert!(attrs.get_attr("id").unwrap().loc.is_some());
+                            assert!(attrs.get_attr("state").unwrap().loc.is_some());
+                        }
+                        _ => panic!("Oops"),
+                    },
+                    _ => panic!("Oops"),
+                }
+            }
+            _ => panic!("Oops"),
+        }
     }
 
     #[test]
