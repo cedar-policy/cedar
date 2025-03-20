@@ -19,6 +19,8 @@ Cedar Language Version: TBD
 - For `protobufs` experimental feature, a number of changes to the interface and
   the Protobuf format definitions, as we continue to iterate towards making this
   feature stable. (#1488, #1495, #1506)
+- `datetime` is now a default feature (#1541)
+- Bump MSRV to 1.81 (#1542)
 
 ### Added
 
