@@ -31,7 +31,9 @@ use educe::Educe;
 use namespace_def::EntityTypeFragment;
 use nonempty::NonEmpty;
 use serde::Deserialize;
-use smol_str::{SmolStr, ToSmolStr};
+#[cfg(feature = "extended-schema")]
+use smol_str::SmolStr;
+use smol_str::ToSmolStr;
 use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
