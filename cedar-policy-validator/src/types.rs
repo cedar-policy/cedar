@@ -1430,7 +1430,7 @@ impl AttributeType {
 
     #[cfg(feature = "extended-schema")]
     /// Construct an [`AttributeType`] with some type that may be required or
-    /// optional as specified by the `is_required` parameter - includes source location 
+    /// optional as specified by the `is_required` parameter - includes source location
     pub fn new_with_loc(attr_type: Type, is_required: bool, loc: Option<Loc>) -> Self {
         Self {
             attr_type,

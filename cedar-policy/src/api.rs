@@ -4515,6 +4515,8 @@ pub fn eval_expression(
 // These are the same tests in validator, just ensuring all the plumbing is done correctly
 #[cfg(test)]
 mod test_access {
+    use cedar_policy_core::ast::{EntityType, Name};
+
     use super::*;
 
     fn schema() -> Schema {
@@ -4581,8 +4583,12 @@ action CreateList in Create appliesTo {
         assert!(principals.len() > 1);
         assert!(principals.iter().all(|ety| **ety == user));
         assert!(principals.iter().all(|ety| ety.0.loc().is_some()));
+
+        let et = EntityType::EntityType(Name::from_normalized_str("User").unwrap());
+        let et = schema.0.get_entity_type(&et).unwrap();
+        assert!(et.loc.as_ref().is_some());
     }
-    
+
     #[cfg(feature = "extended-schema")]
     #[test]
     fn common_types_extended() {

@@ -39,7 +39,7 @@ impl RawName {
     }
 
     /// Create a new [`RawName`] from the given [`Id`] with source location
-   #[cfg(feature = "extended-schema")]
+    #[cfg(feature = "extended-schema")]
     pub fn new_with_loc(id: Id, loc: Option<Loc>) -> Self {
         Self(InternalName::unqualified_name_with_loc(id, loc))
     }

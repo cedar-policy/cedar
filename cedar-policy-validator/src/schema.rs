@@ -28,7 +28,7 @@ use cedar_policy_core::{
     transitive_closure::compute_tc,
 };
 use educe::Educe;
-use namespace_def::{EntityTypeFragment};
+use namespace_def::EntityTypeFragment;
 use nonempty::NonEmpty;
 use serde::Deserialize;
 use smol_str::{SmolStr, ToSmolStr};
@@ -705,11 +705,7 @@ impl ValidatorSchema {
                         let tags = tags
                             .map(|tags| {
                                 let tags_loc = tags.loc().cloned();
-                                try_jsonschema_type_into_validator_type(
-                                    tags,
-                                    extensions,
-                                    tags_loc,
-                                )
+                                try_jsonschema_type_into_validator_type(tags, extensions, tags_loc)
                             })
                             .transpose()?
                             .map(|unresolved| unresolved.resolve_common_type_refs(&common_types))
@@ -858,11 +854,7 @@ impl ValidatorSchema {
         // types and `appliesTo` lists. See the `entity_types` loop for why the
         // `descendants` list is not checked.
         for action in action_ids.values() {
-            Self::check_undeclared_in_type(
-                &action.context,
-                entity_types,
-                &mut undeclared_e,
-            );
+            Self::check_undeclared_in_type(&action.context, entity_types, &mut undeclared_e);
 
             for p_entity in action.applies_to_principals() {
                 if !entity_types.contains_key(p_entity) {
@@ -927,11 +919,7 @@ impl ValidatorSchema {
 
             Type::Set {
                 element_type: Some(element_type),
-            } => Self::check_undeclared_in_type(
-                &element_type,
-                entity_types,
-                undeclared_types,
-            ),
+            } => Self::check_undeclared_in_type(&element_type, entity_types, undeclared_types),
 
             _ => (),
         }
