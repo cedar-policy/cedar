@@ -277,14 +277,9 @@ impl ValidatorSchema {
         &self,
         mode: ValidationMode,
     ) -> impl Iterator<Item = RequestEnv<'_>> + '_ {
-        // Gather all of the actions declared in the schema.
-        let all_actions = self
-            .action_ids()
-            .filter_map(|a| self.get_action_id(a.name()));
-
         // For every action compute the cross product of the principal and
         // resource applies_to sets.
-        all_actions
+        self.action_ids()
             .flat_map(|action| {
                 action.applies_to_principals().flat_map(|principal| {
                     action
