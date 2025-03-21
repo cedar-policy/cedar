@@ -569,13 +569,10 @@ impl ValidatorSchema {
             .flat_map(|f| f.0.into_iter().map(|n| (n.namespace_clone(), n.loc)))
             .filter(|n| n.0.is_some())
             .map(|n| (n.0.unwrap(), n.1))
-            .map(|n| {
-                let n_clone = n.0.clone();
-                ValidatorNamespace {
-                    name: n_clone.basename().clone().into_smolstr(),
-                    name_loc: n_clone.loc().cloned(),
-                    type_loc: n.1,
-                }
+            .map(|n| ValidatorNamespace {
+                name: n.0.basename().clone().into_smolstr(),
+                name_loc: n.0.loc().cloned(),
+                type_loc: n.1,
             })
             .collect::<HashSet<_>>();
 
@@ -676,8 +673,7 @@ impl ValidatorSchema {
         }
 
         let resolver = CommonTypeResolver::new(&common_types);
-        let common_validator_types = resolver.resolve(extensions)?;
-        let common_types = common_validator_types.clone().into_iter().collect();
+        let common_types: HashMap<&InternalName, ValidatorType> = resolver.resolve(extensions)?;
 
         // Invert the `parents` relation defined by entities and action so far
         // to get a `children` relation.
@@ -810,7 +806,7 @@ impl ValidatorSchema {
         // not contain cycles.
         compute_tc(&mut action_ids, true)?;
         #[cfg(feature = "extended-schema")]
-        let common_type_validators = common_validator_types
+        let common_type_validators = common_types
             .clone()
             .into_iter()
             .filter(|ct| {
