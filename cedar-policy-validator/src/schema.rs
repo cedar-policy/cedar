@@ -153,24 +153,24 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
 #[derive(Clone, Debug, Educe)]
 #[educe(Eq, PartialEq)]
 pub struct ValidatorType {
-    tp: Type,
+    ty: Type,
     #[cfg(feature = "extended-schema")]
     loc: Option<Loc>,
 }
 
 impl ValidatorType {
     /// New validator type
-    pub fn new(tp: Type) -> Self {
+    pub fn new(ty: Type) -> Self {
         Self {
-            tp,
+            ty,
             #[cfg(feature = "extended-schema")]
             loc: None,
         }
     }
     /// New validator type with source location
     #[cfg(feature = "extended-schema")]
-    pub fn new_with_loc(tp: Type, loc: Option<Loc>) -> Self {
-        Self { tp, loc }
+    pub fn new_with_loc(ty: Type, loc: Option<Loc>) -> Self {
+        Self { ty, loc }
     }
 }
 
@@ -216,7 +216,7 @@ pub struct ValidatorNamespace {
 
     /// Namespace definition source location if available
     #[educe(Eq(ignore))]
-    pub type_loc: Option<Loc>,
+    pub def_loc: Option<Loc>,
 }
 
 /// Internal representation of the schema for use by the validator.
@@ -287,7 +287,14 @@ impl ValidatorSchema {
             .into_iter()
             .map(|id| (id.name().clone(), id))
             .collect();
-        Self::new_from_maps(entity_types, action_ids)
+        Self::new_from_maps(
+            entity_types,
+            action_ids,
+            #[cfg(feature = "extended-schema")]
+            HashSet::new(),
+            #[cfg(feature = "extended-schema")]
+            HashSet::new(),
+        )
     }
 
     /// for internal use: version of `new()` which takes the maps directly, rather than constructing them.
@@ -296,6 +303,8 @@ impl ValidatorSchema {
     fn new_from_maps(
         entity_types: HashMap<EntityType, ValidatorEntityType>,
         action_ids: HashMap<EntityUID, ValidatorActionId>,
+        #[cfg(feature = "extended-schema")] common_types: HashSet<ValidatorCommonType>,
+        #[cfg(feature = "extended-schema")] namespaces: HashSet<ValidatorNamespace>,
     ) -> Self {
         let actions = Self::action_entities_iter(&action_ids)
             .map(|e| (e.uid().clone(), Arc::new(e)))
@@ -305,30 +314,8 @@ impl ValidatorSchema {
             action_ids,
             actions,
             #[cfg(feature = "extended-schema")]
-            common_types: HashSet::new(),
-            #[cfg(feature = "extended-schema")]
-            namespaces: HashSet::new(),
-        }
-    }
-
-    /// for internal use: version of `new()` which takes the maps directly, rather than constructing them.
-    ///
-    /// This function constructs the `actions` cache.
-    #[cfg(feature = "extended-schema")]
-    fn new_from_maps_common_entity_types(
-        entity_types: HashMap<EntityType, ValidatorEntityType>,
-        action_ids: HashMap<EntityUID, ValidatorActionId>,
-        common_types: HashSet<ValidatorCommonType>,
-        namespaces: HashSet<ValidatorNamespace>,
-    ) -> Self {
-        let actions = Self::action_entities_iter(&action_ids)
-            .map(|e| (e.uid().clone(), Arc::new(e)))
-            .collect();
-        Self {
-            entity_types,
-            action_ids,
-            actions,
             common_types,
+            #[cfg(feature = "extended-schema")]
             namespaces,
         }
     }
@@ -527,18 +514,18 @@ impl ValidatorSchema {
 
         // Collect source location data for all the namespaces
         #[cfg(feature = "extended-schema")]
-        // PANIC SAFETY: Filtered out Nones so unwrap will always succeed
-        #[allow(clippy::unwrap_used)]
         let validator_namespaces = fragments
             .clone()
             .into_iter()
-            .flat_map(|f| f.0.into_iter().map(|n| (n.namespace_clone(), n.loc)))
-            .filter(|n| n.0.is_some())
-            .map(|n| (n.0.unwrap(), n.1))
+            .flat_map(|f| f.0.into_iter().map(|n| (n.namespace().cloned(), n.loc)))
+            .filter_map(|n| match n {
+                (Some(name), loc) => Some((name, loc)),
+                (None, _) => None,
+            })
             .map(|n| ValidatorNamespace {
                 name: n.0.basename().clone().into_smolstr(),
                 name_loc: n.0.loc().cloned(),
-                type_loc: n.1,
+                def_loc: n.1,
             })
             .collect::<HashSet<_>>();
 
@@ -713,7 +700,7 @@ impl ValidatorSchema {
                                 descendants,
                                 attributes,
                                 open_attributes,
-                                tags.map(|t| t.tp),
+                                tags.map(|t| t.ty),
                                 name.loc().cloned(),
                             ),
                         ))
@@ -776,8 +763,9 @@ impl ValidatorSchema {
             .clone()
             .into_iter()
             .filter(|ct| {
-                !matches!(ct.1.tp, Type::ExtensionType { .. })
-                    && !matches!(ct.1.tp, Type::Primitive { .. })
+                // Exclude primitives since we only want the definition locations of common types that the schema introduces
+                !matches!(ct.1.ty, Type::ExtensionType { .. })
+                    && !matches!(ct.1.ty, Type::Primitive { .. })
             })
             .map(|ct| ValidatorCommonType::new(ct.0, ct.1))
             .collect();
@@ -797,10 +785,12 @@ impl ValidatorSchema {
         #[cfg(not(feature = "extended-schema"))]
         let validator_schema = Ok(ValidatorSchema::new_from_maps(entity_types, action_ids));
         #[cfg(feature = "extended-schema")]
-        let validator_schema = Ok(ValidatorSchema::new_from_maps_common_entity_types(
+        let validator_schema = Ok(ValidatorSchema::new_from_maps(
             entity_types,
             action_ids,
+            #[cfg(feature = "extended-schema")]
             common_type_validators,
+            #[cfg(feature = "extended-schema")]
             validator_namespaces,
         ));
         validator_schema
@@ -841,7 +831,7 @@ impl ValidatorSchema {
 
         // Check for undeclared entity types within common types.
         for common_type in common_types {
-            Self::check_undeclared_in_type(&common_type.tp, entity_types, &mut undeclared_e);
+            Self::check_undeclared_in_type(&common_type.ty, entity_types, &mut undeclared_e);
         }
 
         // Undeclared actions in a `memberOf` list.
@@ -877,7 +867,7 @@ impl ValidatorSchema {
     }
 
     fn record_attributes_or_none(ty: ValidatorType) -> Option<(Attributes, OpenTag)> {
-        match ty.tp {
+        match ty.ty {
             Type::EntityOrRecord(EntityRecordKind::Record {
                 attrs,
                 open_attributes,
@@ -2264,7 +2254,7 @@ pub(crate) mod test {
                 .expect("Error converting schema type to type.")
                 .resolve_common_type_refs(&HashMap::new())
                 .unwrap();
-        assert_eq!(ty.tp, Type::named_entity_reference_from_str("NS::Foo"));
+        assert_eq!(ty.ty, Type::named_entity_reference_from_str("NS::Foo"));
     }
 
     #[test]
@@ -2293,7 +2283,7 @@ pub(crate) mod test {
                 .expect("Error converting schema type to type.")
                 .resolve_common_type_refs(&HashMap::new())
                 .unwrap();
-        assert_eq!(ty.tp, Type::named_entity_reference_from_str("NS::Foo"));
+        assert_eq!(ty.ty, Type::named_entity_reference_from_str("NS::Foo"));
     }
 
     #[test]
@@ -2327,7 +2317,7 @@ pub(crate) mod test {
                 .expect("Error converting schema type to type.")
                 .resolve_common_type_refs(&HashMap::new())
                 .unwrap();
-        assert_eq!(ty.tp, Type::closed_record_with_attributes(None));
+        assert_eq!(ty.ty, Type::closed_record_with_attributes(None));
     }
 
     #[test]
