@@ -38,21 +38,9 @@ impl RawName {
         Self(InternalName::unqualified_name(id, loc))
     }
 
-    /// Create a new [`RawName`] from the given [`Id`] with source location
-    #[cfg(feature = "extended-schema")]
-    pub fn new_with_loc(id: Id, loc: Option<Loc>) -> Self {
-        Self(InternalName::unqualified_name_with_loc(id, loc))
-    }
-
     /// Create a new [`RawName`] from the given [`UnreservedId`]
     pub fn new_from_unreserved(id: UnreservedId, loc: Option<Loc>) -> Self {
         Self::new(id.into(), loc)
-    }
-
-    /// Create a new [`RawName`] from the given [`UnreservedId`] with source location
-    #[cfg(feature = "extended-schema")]
-    pub fn new_from_unreserved_with_loc(id: UnreservedId, loc: Option<Loc>) -> Self {
-        Self::new_with_loc(id.into(), loc)
     }
 
     /// Create a new [`RawName`] from the given [`InternalName`].
