@@ -337,6 +337,11 @@ pub struct NamespaceDefinition<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
     pub annotations: Annotations,
+
+    #[cfg(feature = "extended-schema")]
+    #[serde(skip)]
+    #[educe(Eq(ignore))]
+    pub loc: Option<Loc>,
 }
 
 #[cfg(test)]
@@ -352,6 +357,8 @@ impl<N> NamespaceDefinition<N> {
             entity_types: entity_types.into_iter().collect(),
             actions: actions.into_iter().collect(),
             annotations: Annotations::new(),
+            #[cfg(feature = "extended-schema")]
+            loc: None,
         }
     }
 }
@@ -388,6 +395,8 @@ impl NamespaceDefinition<RawName> {
                 .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
                 .collect(),
             annotations: self.annotations,
+            #[cfg(feature = "extended-schema")]
+            loc: self.loc,
         }
     }
 }
@@ -429,6 +438,8 @@ impl NamespaceDefinition<ConditionalName> {
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
                 .collect::<Result<_>>()?,
             annotations: self.annotations,
+            #[cfg(feature = "extended-schema")]
+            loc: self.loc,
         })
     }
 }
