@@ -33,6 +33,10 @@ Cedar Language Version: TBD
   to convert JSON formatted policies into the human-readable syntax.
 - Added `Validator::schema()` to get a reference to the `Schema` even after it has been
   consumed to construct a `Validator` (#1524)
+- Added `Schema::request_envs()` to get all of the `RequestEnv`s that are valid
+  according to the schema. (This joins the existing `Policy::get_valid_request_envs()`
+  and `Template::get_valid_request_envs()` that return the subset of request envs that
+  are valid for a particular policy or template.) (#1547)
 
 ## [4.3.3] - 2025-02-25
 

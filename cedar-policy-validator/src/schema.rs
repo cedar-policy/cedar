@@ -39,7 +39,8 @@ use crate::{
     cedar_schema::SchemaWarning,
     json_schema,
     partition_nonempty::PartitionNonEmpty,
-    types::{Attributes, EntityRecordKind, OpenTag, Type},
+    types::{Attributes, EntityRecordKind, OpenTag, RequestEnv, Type},
+    ValidationMode,
 };
 
 mod action;
@@ -269,6 +270,44 @@ impl ValidatorSchema {
         self.action_ids
             .get(action)
             .map(ValidatorActionId::resources)
+    }
+
+    /// Returns an iterator over every valid `RequestEnv` in the schema
+    pub fn unlinked_request_envs(
+        &self,
+        mode: ValidationMode,
+    ) -> impl Iterator<Item = RequestEnv<'_>> + '_ {
+        // Gather all of the actions declared in the schema.
+        let all_actions = self
+            .action_ids()
+            .filter_map(|a| self.get_action_id(a.name()));
+
+        // For every action compute the cross product of the principal and
+        // resource applies_to sets.
+        all_actions
+            .flat_map(|action| {
+                action.applies_to_principals().flat_map(|principal| {
+                    action
+                        .applies_to_resources()
+                        .map(|resource| RequestEnv::DeclaredAction {
+                            principal,
+                            action: &action.name,
+                            resource,
+                            context: &action.context,
+                            principal_slot: None,
+                            resource_slot: None,
+                        })
+                })
+            })
+            .chain(if mode.is_partial() {
+                // A partial schema might not list all actions, and may not
+                // include all principal and resource types for the listed ones.
+                // So we typecheck with a fully unknown request to handle these
+                // missing cases.
+                Some(RequestEnv::UndeclaredAction)
+            } else {
+                None
+            })
     }
 
     /// Returns an iterator over all the entity types that can be a parent of `ty`
