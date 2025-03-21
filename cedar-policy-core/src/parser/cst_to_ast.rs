@@ -471,7 +471,7 @@ impl cst::PolicyImpl {
         };
         let maybe_action = if let Some(scope2) = vars.next() {
             end_of_last_var = scope2.loc.end();
-            scope2.to_action_constraint(TolerantAstSetting::NotTolerant)
+            scope2.to_action_constraint(&TolerantAstSetting::NotTolerant)
         } else {
             Err(ToASTError::new(
                 ToASTErrorKind::MissingScopeVariable(ast::Var::Action),
@@ -537,7 +537,7 @@ impl cst::PolicyImpl {
         };
         let maybe_action = if let Some(scope2) = vars.next() {
             end_of_last_var = scope2.loc.end();
-            scope2.to_action_constraint(TolerantAstSetting::Tolerant)
+            scope2.to_action_constraint(&TolerantAstSetting::Tolerant)
         } else {
             Err(ToASTError::new(
                 ToASTErrorKind::MissingScopeVariable(ast::Var::Action),
@@ -951,7 +951,7 @@ impl Node<Option<cst::VariableDef>> {
 
     fn to_action_constraint(
         &self,
-        tolerant_setting: TolerantAstSetting,
+        tolerant_setting: &TolerantAstSetting,
     ) -> Result<ast::ActionConstraint> {
         let vardef = self.try_as_inner()?;
 

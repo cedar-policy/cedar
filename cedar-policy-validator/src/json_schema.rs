@@ -337,6 +337,11 @@ pub struct NamespaceDefinition<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
     pub annotations: Annotations,
+
+    #[cfg(feature = "extended-schema")]
+    #[serde(skip)]
+    #[educe(Eq(ignore))]
+    pub loc: Option<Loc>,
 }
 
 #[cfg(test)]
@@ -352,6 +357,8 @@ impl<N> NamespaceDefinition<N> {
             entity_types: entity_types.into_iter().collect(),
             actions: actions.into_iter().collect(),
             annotations: Annotations::new(),
+            #[cfg(feature = "extended-schema")]
+            loc: None,
         }
     }
 }
@@ -388,6 +395,8 @@ impl NamespaceDefinition<RawName> {
                 .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
                 .collect(),
             annotations: self.annotations,
+            #[cfg(feature = "extended-schema")]
+            loc: self.loc,
         }
     }
 }
@@ -429,6 +438,8 @@ impl NamespaceDefinition<ConditionalName> {
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
                 .collect::<Result<_>>()?,
             annotations: self.annotations,
+            #[cfg(feature = "extended-schema")]
+            loc: self.loc,
         })
     }
 }
@@ -1627,15 +1638,18 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                                                     ty,
                                                     required,
                                                     annotations,
+                                                    #[cfg(feature = "extended-schema")]
+                                                    loc,
                                                 },
                                             )| {
                                                 (
                                                     k,
                                                     TypeOfAttribute {
                                                         ty: ty.into_n(),
-
                                                         required,
                                                         annotations,
+                                                        #[cfg(feature = "extended-schema")]
+                                                        loc,
                                                     },
                                                 )
                                             },
@@ -1912,15 +1926,18 @@ impl TypeVariant<RawName> {
                             ty,
                             required,
                             annotations,
+                            #[cfg(feature = "extended-schema")]
+                            loc,
                         },
                     )| {
                         (
                             attr,
                             TypeOfAttribute {
                                 ty: ty.conditionally_qualify_type_references(ns),
-
                                 required,
                                 annotations,
+                                #[cfg(feature = "extended-schema")]
+                                loc,
                             },
                         )
                     },
@@ -1995,6 +2012,8 @@ impl TypeVariant<ConditionalName> {
                                 ty,
                                 required,
                                 annotations,
+                                #[cfg(feature = "extended-schema")]
+                                loc,
                             },
                         )| {
                             Ok((
@@ -2003,6 +2022,8 @@ impl TypeVariant<ConditionalName> {
                                     ty: ty.fully_qualify_type_references(all_defs)?,
                                     required,
                                     annotations,
+                                    #[cfg(feature = "extended-schema")]
+                                    loc,
                                 },
                             ))
                         },
@@ -2105,6 +2126,12 @@ pub struct TypeOfAttribute<N> {
     #[serde(default = "record_attribute_required_default")]
     #[serde(skip_serializing_if = "is_record_attribute_required_default")]
     pub required: bool,
+
+    /// Source location - if available
+    #[cfg(feature = "extended-schema")]
+    #[educe(Eq(ignore))]
+    #[serde(skip)]
+    pub loc: Option<Loc>,
 }
 
 impl TypeOfAttribute<RawName> {
@@ -2114,6 +2141,8 @@ impl TypeOfAttribute<RawName> {
 
             required: self.required,
             annotations: self.annotations,
+            #[cfg(feature = "extended-schema")]
+            loc: self.loc,
         }
     }
 
@@ -2126,6 +2155,8 @@ impl TypeOfAttribute<RawName> {
             ty: self.ty.conditionally_qualify_type_references(ns),
             required: self.required,
             annotations: self.annotations,
+            #[cfg(feature = "extended-schema")]
+            loc: self.loc,
         }
     }
 }
@@ -2145,6 +2176,8 @@ impl TypeOfAttribute<ConditionalName> {
             ty: self.ty.fully_qualify_type_references(all_defs)?,
             required: self.required,
             annotations: self.annotations,
+            #[cfg(feature = "extended-schema")]
+            loc: self.loc,
         })
     }
 }
@@ -2156,6 +2189,8 @@ impl<'a> arbitrary::Arbitrary<'a> for TypeOfAttribute<RawName> {
             ty: u.arbitrary::<Type<RawName>>()?,
             required: u.arbitrary()?,
             annotations: u.arbitrary()?,
+            #[cfg(feature = "extended-schema")]
+            loc: None,
         })
     }
 
