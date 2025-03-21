@@ -939,7 +939,6 @@ impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
         Self::WithUnresolved(Box::new(f), None)
     }
 
-    #[cfg(feature = "extended-schema")]
     pub fn new_with_loc(
         f: impl FnOnce(&HashMap<&InternalName, ValidatorType>) -> crate::err::Result<T> + 'static,
         loc: Option<Loc>,
@@ -1144,8 +1143,7 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
             }
         }
         json_schema::Type::CommonTypeRef { type_name, .. } => {
-            #[cfg(feature = "extended-schema")]
-            return Ok(WithUnresolvedCommonTypeRefs::new_with_loc(
+            Ok(WithUnresolvedCommonTypeRefs::new_with_loc(
                 move |common_type_defs| {
                     common_type_defs
                         .get(&type_name)
@@ -1161,7 +1159,7 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
                         .ok_or_else(|| CommonTypeInvariantViolationError { name: type_name }.into())
                 },
                 loc,
-            ));
+            ))
         }
         json_schema::Type::Type {
             ty: json_schema::TypeVariant::EntityOrCommon { type_name },
