@@ -4515,7 +4515,7 @@ pub fn eval_expression(
 // These are the same tests in validator, just ensuring all the plumbing is done correctly
 #[cfg(test)]
 mod test_access {
-    use cedar_policy_core::ast::{EntityType, Name};
+    use cedar_policy_core::ast;
 
     use super::*;
 
@@ -4584,7 +4584,7 @@ action CreateList in Create appliesTo {
         assert!(principals.iter().all(|ety| **ety == user));
         assert!(principals.iter().all(|ety| ety.0.loc().is_some()));
 
-        let et = EntityType::EntityType(Name::from_normalized_str("User").unwrap());
+        let et = ast::EntityType::EntityType(ast::Name::from_normalized_str("User").unwrap());
         let et = schema.0.get_entity_type(&et).unwrap();
         assert!(et.loc.as_ref().is_some());
     }
@@ -4615,7 +4615,7 @@ action CreateList in Create appliesTo {
         assert!(schema.0.common_types().all(|ct| ct.name_loc.is_some()));
         assert!(schema.0.common_types().all(|ct| ct.type_loc.is_some()));
 
-        let et = EntityType::EntityType(Name::from_normalized_str("List").unwrap());
+        let et = ast::EntityType::EntityType(ast::Name::from_normalized_str("List").unwrap());
         let et = schema.0.get_entity_type(&et).unwrap();
         let attrs = et.attributes();
 
@@ -4649,7 +4649,7 @@ action CreateList in Create appliesTo {
         let default_namespace = schema.0.namespaces().last().unwrap();
         assert_eq!(default_namespace.name, SmolStr::from("__cedar"));
         assert!(default_namespace.name_loc.is_none());
-        assert!(default_namespace.type_loc.is_none())
+        assert!(default_namespace.def_loc.is_none())
     }
 
     #[test]
@@ -5068,7 +5068,7 @@ action CreateList in Create appliesTo {
             .last()
             .unwrap();
         assert!(default_namespace.name_loc.is_none());
-        assert!(default_namespace.type_loc.is_none());
+        assert!(default_namespace.def_loc.is_none());
 
         let default_namespace = schema
             .0
@@ -5077,7 +5077,7 @@ action CreateList in Create appliesTo {
             .last()
             .unwrap();
         assert!(default_namespace.name_loc.is_some());
-        assert!(default_namespace.type_loc.is_some())
+        assert!(default_namespace.def_loc.is_some())
     }
 }
 
