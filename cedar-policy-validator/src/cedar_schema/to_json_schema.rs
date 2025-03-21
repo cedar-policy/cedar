@@ -140,6 +140,7 @@ fn split_unqualified_namespace(
         let unqual = Namespace {
             name: None,
             decls: unqualified_decls,
+            loc: None,
         };
         (
             qualified.into_iter(),
@@ -213,6 +214,8 @@ impl TryFrom<Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName>
             entity_types,
             actions,
             annotations: n.annotations.into(),
+            #[cfg(feature = "extended-schema")]
+            loc: n.data.loc,
         })
     }
 }

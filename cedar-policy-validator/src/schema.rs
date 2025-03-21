@@ -204,6 +204,22 @@ impl ValidatorCommonType {
     }
 }
 
+/// Represents namespace - in extended-schema we maintain the set of namespace names as well as source location data
+#[cfg(feature = "extended-schema")]
+#[derive(Clone, Debug, Educe)]
+#[educe(Eq, PartialEq, Hash)]
+pub struct ValidatorNamespace {
+    /// Name of namespace
+    pub name: SmolStr,
+    /// Namespace name source location if available
+    #[educe(Eq(ignore))]
+    pub name_loc: Option<Loc>,
+
+    /// Namespace definition source location if available
+    #[educe(Eq(ignore))]
+    pub type_loc: Option<Loc>,
+}
+
 /// Internal representation of the schema for use by the validator.
 ///
 /// In this representation, all common types are fully expanded, and all entity
@@ -225,6 +241,8 @@ pub struct ValidatorSchema {
 
     #[cfg(feature = "extended-schema")]
     common_types: HashSet<ValidatorCommonType>,
+    #[cfg(feature = "extended-schema")]
+    namespaces: HashSet<ValidatorNamespace>,
 }
 
 /// Construct [`ValidatorSchema`] from a string containing a schema formatted
@@ -273,25 +291,6 @@ impl ValidatorSchema {
         Self::new_from_maps(entity_types, action_ids)
     }
 
-    /// Construct a new `ValidatorSchema` from a set of `ValidatorEntityType`s and `ValidatorActionId`s and `ValidatorCommonType`s
-    #[cfg(feature = "extended-schema")]
-    pub fn new_with_common_types(
-        entity_types: impl IntoIterator<Item = ValidatorEntityType>,
-        action_ids: impl IntoIterator<Item = ValidatorActionId>,
-        common_types: impl IntoIterator<Item = ValidatorCommonType>,
-    ) -> Self {
-        let entity_types = entity_types
-            .into_iter()
-            .map(|ety| (ety.name().clone(), ety))
-            .collect();
-        let action_ids = action_ids
-            .into_iter()
-            .map(|id| (id.name().clone(), id))
-            .collect();
-        let common_types = common_types.into_iter().collect();
-        Self::new_from_maps_common_entity_types(entity_types, action_ids, common_types)
-    }
-
     /// for internal use: version of `new()` which takes the maps directly, rather than constructing them.
     ///
     /// This function constructs the `actions` cache.
@@ -308,6 +307,8 @@ impl ValidatorSchema {
             actions,
             #[cfg(feature = "extended-schema")]
             common_types: HashSet::new(),
+            #[cfg(feature = "extended-schema")]
+            namespaces: HashSet::new(),
         }
     }
 
@@ -319,6 +320,7 @@ impl ValidatorSchema {
         entity_types: HashMap<EntityType, ValidatorEntityType>,
         action_ids: HashMap<EntityUID, ValidatorActionId>,
         common_types: HashSet<ValidatorCommonType>,
+        namespaces: HashSet<ValidatorNamespace>,
     ) -> Self {
         let actions = Self::action_entities_iter(&action_ids)
             .map(|e| (e.uid().clone(), Arc::new(e)))
@@ -328,6 +330,7 @@ impl ValidatorSchema {
             action_ids,
             actions,
             common_types,
+            namespaces,
         }
     }
 
@@ -335,6 +338,12 @@ impl ValidatorSchema {
     #[cfg(feature = "extended-schema")]
     pub fn common_types(&self) -> impl Iterator<Item = &ValidatorCommonType> {
         self.common_types.iter()
+    }
+
+    /// Returns an iter of validator namespaces in the schema
+    #[cfg(feature = "extended-schema")]
+    pub fn namespaces(&self) -> impl Iterator<Item = &ValidatorNamespace> {
+        self.namespaces.iter()
     }
 
     /// Returns an iterator over every entity type that can be a principal for any action in this schema
@@ -459,6 +468,8 @@ impl ValidatorSchema {
             actions: HashMap::new(),
             #[cfg(feature = "extended-schema")]
             common_types: HashSet::new(),
+            #[cfg(feature = "extended-schema")]
+            namespaces: HashSet::new(),
         }
     }
 
@@ -547,6 +558,26 @@ impl ValidatorSchema {
             // defining the items in the `__cedar` namespace.
             .chain(std::iter::once(cedar_fragment(extensions)))
             .collect::<Vec<_>>();
+
+        // Collect source location data for all the namespaces
+        #[cfg(feature = "extended-schema")]
+        // PANIC SAFETY: Filtered out Nones so unwrap will always succeed 
+        #[allow(clippy::unwrap_used)]
+        let validator_namespaces = fragments
+            .clone()
+            .into_iter()
+            .flat_map(|f| f.0.into_iter().map(|n| (n.namespace_clone(), n.loc)))
+            .filter(|n| n.0.is_some())
+            .map(|n| (n.0.unwrap(), n.1))
+            .map(|n| {
+                let n_clone = n.0.clone();
+                ValidatorNamespace {
+                    name: n_clone.basename().clone().into_smolstr(),
+                    name_loc: n_clone.loc().cloned(),
+                    type_loc: n.1,
+                }
+            })
+            .collect::<HashSet<_>>();
 
         // Build the sets of all entity type, common type, and action definitions
         // (fully-qualified names) in all fragments.
@@ -714,13 +745,13 @@ impl ValidatorSchema {
                             .transpose()?;
 
                         Ok((
-                            name.with_loc(name.loc().clone()),
+                            name.with_loc(name.loc()),
                             ValidatorEntityType::new_standard(
                                 name.clone(),
                                 descendants,
                                 attributes,
                                 open_attributes,
-                                tags.and_then(|t| Some(t.tp)),
+                                tags.map(|t|t.tp),
                                 name.loc().cloned(),
                             ),
                         ))
@@ -808,6 +839,7 @@ impl ValidatorSchema {
             entity_types,
             action_ids,
             common_type_validators,
+            validator_namespaces,
         ));
         validator_schema
     }
@@ -921,7 +953,7 @@ impl ValidatorSchema {
 
             Type::Set {
                 element_type: Some(element_type),
-            } => Self::check_undeclared_in_type(&element_type, entity_types, undeclared_types),
+            } => Self::check_undeclared_in_type(element_type, entity_types, undeclared_types),
 
             _ => (),
         }

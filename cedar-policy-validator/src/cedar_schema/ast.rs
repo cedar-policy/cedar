@@ -222,6 +222,7 @@ pub struct Namespace {
     pub name: Option<Path>,
     /// The [`Declaration`]s contained in this namespace
     pub decls: Vec<Annotated<Node<Declaration>>>,
+    pub loc: Option<Loc>,
 }
 
 impl Namespace {

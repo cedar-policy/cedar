@@ -4641,6 +4641,17 @@ action CreateList in Create appliesTo {
         }
     }
 
+    #[cfg(feature = "extended-schema")]
+    #[test]
+    fn namespace_extended() {
+        let schema = schema();
+        assert_eq!(schema.0.namespaces().collect::<HashSet<_>>().len(), 1);
+        let default_namespace = schema.0.namespaces().last().unwrap();
+        assert_eq!(default_namespace.name, SmolStr::from("__cedar"));
+        assert!(default_namespace.name_loc.is_none());
+        assert!(default_namespace.type_loc.is_none())
+    }
+
     #[test]
     fn empty_schema_principals_and_resources() {
         let empty: Schema = "".parse().unwrap();
@@ -4861,6 +4872,7 @@ action CreateList in Create appliesTo {
         let principals = schema.principals().collect::<Vec<_>>();
         assert!(principals.len() > 1);
         assert!(principals.iter().all(|ety| **ety == user));
+        assert!(principals.iter().all(|ety| ety.0.loc().is_some()));
     }
 
     #[test]
@@ -4880,6 +4892,7 @@ action CreateList in Create appliesTo {
             "Foo::CoolList".parse().unwrap(),
         ]);
         assert_eq!(resources, expected);
+        assert!(resources.iter().all(|ety| ety.0.loc().is_some()));
     }
 
     #[test]
@@ -4908,6 +4921,8 @@ action CreateList in Create appliesTo {
             .unwrap()
             .cloned()
             .collect::<Vec<_>>();
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
+
         assert_eq!(got, vec!["Foo::List".parse().unwrap()]);
         let got = schema
             .resources_for_action(&create_list)
@@ -4915,6 +4930,8 @@ action CreateList in Create appliesTo {
             .cloned()
             .collect::<Vec<_>>();
         assert_eq!(got, vec!["Foo::Application".parse().unwrap()]);
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
+
         let got = schema
             .resources_for_action(&get_list)
             .unwrap()
@@ -5037,6 +5054,30 @@ action CreateList in Create appliesTo {
         assert!(retrieved_context.get("testKey").is_some());
         assert!(retrieved_context.get("numKey").is_some());
         assert!(retrieved_context.get("nonexistent").is_none());
+    }
+
+    #[cfg(feature = "extended-schema")]
+    #[test]
+    fn namespace_extended() {
+        let schema = schema();
+        assert_eq!(schema.0.namespaces().collect::<HashSet<_>>().len(), 2);
+        let default_namespace = schema
+            .0
+            .namespaces()
+            .filter(|n| n.name == SmolStr::from("__cedar"))
+            .last()
+            .unwrap();
+        assert!(default_namespace.name_loc.is_none());
+        assert!(default_namespace.type_loc.is_none());
+
+        let default_namespace = schema
+            .0
+            .namespaces()
+            .filter(|n| n.name == SmolStr::from("Foo"))
+            .last()
+            .unwrap();
+        assert!(default_namespace.name_loc.is_some());
+        assert!(default_namespace.type_loc.is_some())
     }
 }
 

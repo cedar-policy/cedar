@@ -89,6 +89,8 @@ pub struct ValidatorNamespaceDef<N, A> {
     pub(super) entity_types: EntityTypesDef<N>,
     /// Action declarations.
     pub(super) actions: ActionsDef<N, A>,
+    #[cfg(feature = "extended-schema")]
+    pub(super) loc: Option<Loc>,
 }
 
 impl<N, A> ValidatorNamespaceDef<N, A> {
@@ -118,6 +120,12 @@ impl<N, A> ValidatorNamespaceDef<N, A> {
     pub fn namespace(&self) -> Option<&InternalName> {
         self.namespace.as_ref()
     }
+
+    /// The fully-qualified [`InternalName`] of the namespace this is a definition of.
+    /// `None` indicates this definition is for the empty namespace.
+    pub fn namespace_clone(&self) -> Option<InternalName> {
+        self.namespace.clone()
+    }
 }
 
 impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
@@ -146,6 +154,8 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
             common_types,
             entity_types,
             actions,
+            #[cfg(feature = "extended-schema")]
+            loc: namespace_def.loc,
         })
     }
 
@@ -162,6 +172,8 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
             common_types,
             entity_types: EntityTypesDef::new(),
             actions: ActionsDef::new(),
+            #[cfg(feature = "extended-schema")]
+            loc: None,
         })
     }
 
@@ -181,6 +193,8 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
             common_types,
             entity_types: EntityTypesDef::new(),
             actions: ActionsDef::new(),
+            #[cfg(feature = "extended-schema")]
+            loc: None,
         }
     }
 
@@ -204,6 +218,8 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
                 common_types,
                 entity_types,
                 actions,
+                #[cfg(feature = "extended-schema")]
+                loc: self.loc,
             }),
             (res1, res2, res3) => {
                 // PANIC SAFETY: at least one of the results is `Err`, so the input to `NonEmpty::collect()` cannot be an empty iterator
