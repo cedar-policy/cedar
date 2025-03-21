@@ -527,7 +527,7 @@ impl ValidatorSchema {
 
         // Collect source location data for all the namespaces
         #[cfg(feature = "extended-schema")]
-        // PANIC SAFETY: Filtered out Nones so unwrap will always succeed 
+        // PANIC SAFETY: Filtered out Nones so unwrap will always succeed
         #[allow(clippy::unwrap_used)]
         let validator_namespaces = fragments
             .clone()
@@ -717,7 +717,7 @@ impl ValidatorSchema {
                                 descendants,
                                 attributes,
                                 open_attributes,
-                                tags.map(|t|t.tp),
+                                tags.map(|t| t.tp),
                                 name.loc().cloned(),
                             ),
                         ))
