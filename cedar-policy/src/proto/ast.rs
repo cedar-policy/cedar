@@ -20,6 +20,7 @@ use super::models;
 use cedar_policy_core::{
     ast, evaluator::RestrictedEvaluator, extensions::Extensions, FromNormalizedStr,
 };
+use smol_str::ToSmolStr;
 use std::{collections::HashSet, sync::Arc};
 
 // PANIC SAFETY: experimental feature
@@ -436,6 +437,12 @@ impl From<&ast::Expr> for models::Expr {
     }
 }
 
+impl From<&ast::Value> for models::Expr {
+    fn from(v: &ast::Value) -> Self {
+        (&ast::Expr::from(v.clone())).into()
+    }
+}
+
 impl From<&models::expr::Var> for ast::Var {
     fn from(v: &models::expr::Var) -> Self {
         match v {
@@ -620,18 +627,49 @@ impl From<&models::Request> for ast::Request {
             ast::EntityUIDEntry::from(v.principal.as_ref().expect("principal.as_ref()")),
             ast::EntityUIDEntry::from(v.action.as_ref().expect("action.as_ref()")),
             ast::EntityUIDEntry::from(v.resource.as_ref().expect("resource.as_ref()")),
-            v.context.as_ref().map(ast::Context::from),
+            Some(
+                ast::Context::from_pairs(
+                    v.context.iter().map(|(k, v)| {
+                        (
+                            k.to_smolstr(),
+                            ast::RestrictedExpr::new(ast::Expr::from(v))
+                                .expect("encoded context should be a valid RestrictedExpr"),
+                        )
+                    }),
+                    Extensions::all_available(),
+                )
+                .expect("encoded context should be valid"),
+            ),
         )
     }
 }
 
 impl From<&ast::Request> for models::Request {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::unimplemented)]
     fn from(v: &ast::Request) -> Self {
         Self {
             principal: Some(models::EntityUid::from(v.principal())),
             action: Some(models::EntityUid::from(v.action())),
             resource: Some(models::EntityUid::from(v.resource())),
-            context: v.context().map(models::Expr::from),
+            context: {
+                let ctx = match v.context() {
+                    Some(ctx) => ctx,
+                    None => unimplemented!(
+                        "Requests with unknown context currently cannot be modeled in protobuf"
+                    ),
+                };
+                match ctx {
+                    ast::Context::Value(map) => map
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), models::Expr::from(v)))
+                        .collect(),
+                    ast::Context::RestrictedResidual(map) => map
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), models::Expr::from(v)))
+                        .collect(),
+                }
+            },
         }
     }
 }
@@ -642,10 +680,10 @@ impl From<&models::Expr> for ast::Context {
         #[allow(clippy::expect_used)]
         ast::Context::from_expr(
             ast::BorrowedRestrictedExpr::new(&ast::Expr::from(v))
-                .expect("context should be valid restricted expr"),
+                .expect("encoded context should be valid restricted expr"),
             Extensions::none(),
         )
-        .expect("Context::from_expr")
+        .expect("encoded context should be valid")
     }
 }
 
