@@ -24,6 +24,7 @@
 use crate::cedar_test_impl::*;
 use cedar_policy::{Decision, PolicyId, ValidationMode};
 use cedar_policy_core::ast::{EntityUID, PolicySet, Request};
+use cedar_policy_core::entities::EntityJsonParser;
 use cedar_policy_core::entities::{self, json::err::JsonDeserializationErrorContext, Entities};
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::{jsonvalue::JsonValueWithNoDuplicateKeys, parser};
@@ -86,7 +87,7 @@ pub struct JsonRequest {
     /// of JSON value
     pub context: JsonValueWithNoDuplicateKeys,
     /// Whether to enable request validation for this request
-    #[serde(default = "constant_true")]
+    #[serde(default)]
     pub validate_request: bool,
     /// Expected decision for the request
     pub decision: Decision,
@@ -94,10 +95,6 @@ pub struct JsonRequest {
     pub reason: Vec<PolicyId>,
     /// Expected policies that resulted in errors
     pub errors: Vec<PolicyId>,
-}
-
-fn constant_true() -> bool {
-    true
 }
 
 /// For relative paths, return the absolute path, assuming that the path
@@ -164,19 +161,19 @@ pub fn parse_schema_from_test(test: &JsonTest) -> ValidatorSchema {
 /// On failure to load or parse entities file.
 // PANIC SAFETY this is testing code
 #[allow(clippy::panic)]
-pub fn parse_entities_from_test(test: &JsonTest, schema: &ValidatorSchema) -> Entities {
+pub fn parse_entities_from_test(test: &JsonTest) -> Entities {
     let entity_file = resolve_integration_test_path(&test.entities);
     let json = std::fs::OpenOptions::new()
         .read(true)
         .open(entity_file)
         .unwrap_or_else(|e| panic!("error opening entity file {}: {e}", &test.entities));
 
-    let schema = cedar_policy_validator::CoreSchema::new(schema);
-    let eparser = entities::EntityJsonParser::new(
-        Some(&schema),
-        Extensions::all_available(),
-        entities::TCComputation::ComputeNow,
-    );
+    let eparser: EntityJsonParser<'_, '_, cedar_policy_validator::CoreSchema<'_>> =
+        entities::EntityJsonParser::new(
+            None,
+            Extensions::all_available(),
+            entities::TCComputation::ComputeNow,
+        );
     eparser
         .from_json_file(json)
         .unwrap_or_else(|e| panic!("error parsing entities in {}: {e}", &test.entities))
@@ -388,7 +385,7 @@ pub fn perform_integration_test_from_json_custom(
         serde_json::from_str(&jsonstr).unwrap_or_else(|e| panic!("error parsing {test_name}: {e}"));
     let policies = parse_policies_from_test(&test);
     let schema = parse_schema_from_test(&test);
-    let entities = parse_entities_from_test(&test, &schema);
+    let entities = parse_entities_from_test(&test);
     perform_integration_test(
         &policies,
         &entities,
