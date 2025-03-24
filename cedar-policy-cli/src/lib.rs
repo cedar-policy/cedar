@@ -89,7 +89,8 @@ pub enum Commands {
     Evaluate(EvaluateArgs),
     /// Validate a policy set against a schema
     Validate(ValidateArgs),
-    /// Check that policies successfully parse
+    /// Check that policies, schema, and/or entities successfully parse.
+    /// (All arguments are optional; this checks that whatever is provided parses)
     CheckParse(CheckParseArgs),
     /// Link a template
     Link(LinkArgs),
@@ -197,7 +198,13 @@ pub struct ValidateArgs {
 pub struct CheckParseArgs {
     /// Policies args (incorporated by reference)
     #[command(flatten)]
-    pub policies: PoliciesArgs,
+    pub policies: OptionalPoliciesArgs,
+    /// Schema args (incorporated by reference)
+    #[command(flatten)]
+    pub schema: OptionalSchemaArgs,
+    /// File containing JSON representation of a Cedar entity hierarchy
+    #[arg(long = "entities", value_name = "FILE")]
+    pub entities_file: Option<PathBuf>,
 }
 
 /// This struct contains the arguments that together specify a request.
@@ -474,6 +481,40 @@ impl PoliciesArgs {
             add_template_links_to_set(links_filename, &mut pset)?;
         }
         Ok(pset)
+    }
+}
+
+/// This struct contains the arguments that together specify an input policy or policy set,
+/// for commands where policies are optional.
+#[derive(Args, Debug)]
+pub struct OptionalPoliciesArgs {
+    /// File containing static Cedar policies and/or templates
+    #[arg(short, long = "policies", value_name = "FILE")]
+    pub policies_file: Option<String>,
+    /// Format of policies in the `--policies` file
+    #[arg(long = "policy-format", default_value_t, value_enum)]
+    pub policy_format: PolicyFormat,
+    /// File containing template-linked policies. Ignored if `--policies` is not
+    /// present (because in that case there are no templates to link against)
+    #[arg(short = 'k', long = "template-linked", value_name = "FILE")]
+    pub template_linked_file: Option<String>,
+}
+
+impl OptionalPoliciesArgs {
+    /// Turn this `OptionalPoliciesArgs` into the appropriate `PolicySet`
+    /// object, or `None` if no policies were provided
+    fn get_policy_set(&self) -> Result<Option<PolicySet>> {
+        match &self.policies_file {
+            None => Ok(None),
+            Some(policies_file) => {
+                let pargs = PoliciesArgs {
+                    policies_file: Some(policies_file.clone()),
+                    policy_format: self.policy_format,
+                    template_linked_file: self.template_linked_file.clone(),
+                };
+                pargs.get_policy_set().map(Some)
+            }
+        }
     }
 }
 
@@ -759,13 +800,33 @@ impl Termination for CedarExitCode {
 }
 
 pub fn check_parse(args: &CheckParseArgs) -> CedarExitCode {
+    let mut exit_code = CedarExitCode::Success;
     match args.policies.get_policy_set() {
-        Ok(_) => CedarExitCode::Success,
+        Ok(_) => (),
         Err(e) => {
             println!("{e:?}");
-            CedarExitCode::Failure
+            exit_code = CedarExitCode::Failure;
         }
     }
+    let schema = match args.schema.get_schema() {
+        Ok(schema) => schema,
+        Err(e) => {
+            println!("{e:?}");
+            exit_code = CedarExitCode::Failure;
+            None
+        }
+    };
+    match &args.entities_file {
+        None => (),
+        Some(efile) => match load_entities(efile, schema.as_ref()) {
+            Ok(_) => (),
+            Err(e) => {
+                println!("{e:?}");
+                exit_code = CedarExitCode::Failure;
+            }
+        },
+    }
+    exit_code
 }
 
 pub fn validate(args: &ValidateArgs) -> CedarExitCode {

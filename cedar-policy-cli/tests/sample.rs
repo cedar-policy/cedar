@@ -23,30 +23,39 @@ use std::path::{Path, PathBuf};
 
 use cedar_policy::EvalResult;
 use cedar_policy::SlotId;
-use cedar_policy_cli::check_parse;
-use cedar_policy_cli::OptionalSchemaArgs;
-use cedar_policy_cli::SchemaArgs;
-use cedar_policy_cli::SchemaFormat;
 use cedar_policy_cli::{
-    authorize, evaluate, link, validate, Arguments, AuthorizeArgs, CedarExitCode, CheckParseArgs,
-    EvaluateArgs, LinkArgs, PoliciesArgs, PolicyFormat, RequestArgs, ValidateArgs,
+    authorize, check_parse, evaluate, link, validate, Arguments, AuthorizeArgs, CedarExitCode,
+    CheckParseArgs, EvaluateArgs, LinkArgs, OptionalPoliciesArgs, OptionalSchemaArgs, PoliciesArgs,
+    PolicyFormat, RequestArgs, SchemaArgs, SchemaFormat, ValidateArgs,
 };
 
 use predicates::prelude::*;
 use rstest::rstest;
 
-fn run_check_parse_test(policies_file: impl Into<String>, expected_exit_code: CedarExitCode) {
+#[track_caller]
+fn run_check_parse_test(
+    policies_file: impl Into<String>,
+    schema_file: impl Into<PathBuf>,
+    entities_file: Option<impl Into<PathBuf>>,
+    expected_exit_code: CedarExitCode,
+) {
     let cmd = CheckParseArgs {
-        policies: PoliciesArgs {
+        policies: OptionalPoliciesArgs {
             policies_file: Some(policies_file.into()),
             policy_format: PolicyFormat::Cedar,
             template_linked_file: None,
         },
+        schema: OptionalSchemaArgs {
+            schema_file: Some(schema_file.into()),
+            schema_format: SchemaFormat::Cedar,
+        },
+        entities_file: entities_file.map(Into::into),
     };
     let output = check_parse(&cmd);
     assert_eq!(output, expected_exit_code, "{:#?}", cmd);
 }
 
+#[track_caller]
 fn run_authorize_test(
     policies_file: impl Into<String>,
     entities_file: impl Into<String>,
@@ -66,6 +75,7 @@ fn run_authorize_test(
     );
 }
 
+#[track_caller]
 fn run_authorize_test_with_linked_policies(
     policies_file: impl Into<String>,
     entities_file: impl Into<String>,
@@ -101,6 +111,7 @@ fn run_authorize_test_with_linked_policies(
     assert_eq!(exit_code, output, "{:#?}", cmd,);
 }
 
+#[track_caller]
 fn run_link_test(
     policies_file: impl Into<String>,
     links_file: impl Into<String>,
@@ -125,6 +136,7 @@ fn run_link_test(
     assert_eq!(output, expected);
 }
 
+#[track_caller]
 fn run_authorize_test_context(
     policies_file: impl Into<String>,
     entities_file: impl Into<String>,
@@ -160,6 +172,7 @@ fn run_authorize_test_context(
     assert_eq!(exit_code, output, "{:#?}", cmd,);
 }
 
+#[track_caller]
 fn run_authorize_test_json(
     policies_file: impl Into<String>,
     entities_file: impl Into<String>,
@@ -196,6 +209,8 @@ fn run_authorize_test_json(
 fn test_authorize_samples() {
     run_check_parse_test(
         "sample-data/sandbox_a/policies_1.cedar",
+        "sample-data/sandbox_a/schema.cedarschema",
+        None::<PathBuf>,
         CedarExitCode::Success,
     );
     run_authorize_test(
@@ -208,6 +223,8 @@ fn test_authorize_samples() {
     );
     run_check_parse_test(
         "sample-data/sandbox_a/policies_2.cedar",
+        "sample-data/sandbox_a/schema.cedarschema",
+        None::<PathBuf>,
         CedarExitCode::Success,
     );
     run_authorize_test(
@@ -276,6 +293,8 @@ fn test_authorize_samples() {
     );
     run_check_parse_test(
         "sample-data/sandbox_a/policies_3.cedar",
+        "sample-data/sandbox_a/schema.cedarschema",
+        None::<PathBuf>,
         CedarExitCode::Success,
     );
     run_authorize_test(
@@ -329,6 +348,8 @@ fn test_authorize_samples() {
 
     run_check_parse_test(
         "sample-data/sandbox_b/policies_4.cedar",
+        "sample-data/sandbox_b/schema.cedarschema",
+        None::<PathBuf>,
         CedarExitCode::Success,
     );
     run_authorize_test(
@@ -365,6 +386,8 @@ fn test_authorize_samples() {
     );
     run_check_parse_test(
         "sample-data/sandbox_b/policies_5.cedar",
+        "sample-data/sandbox_b/schema.cedarschema",
+        None::<PathBuf>,
         CedarExitCode::Success,
     );
     run_authorize_test(
