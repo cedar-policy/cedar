@@ -311,12 +311,19 @@ fn convert_app_decls(
                     )
                     .into());
                 }
-                None => {
-                    principal_types = Some(Node::with_source_loc(
-                        entity_tys.iter().map(|n| n.clone().into()).collect(),
-                        loc,
-                    ))
-                }
+                None => match entity_tys {
+                    None => {
+                        return Err(
+                            ToJsonSchemaError::empty_principal(name, name_loc.clone(), loc).into(),
+                        )
+                    }
+                    Some(entity_tys) => {
+                        principal_types = Some(Node::with_source_loc(
+                            entity_tys.iter().map(|n| n.clone().into()).collect(),
+                            loc,
+                        ))
+                    }
+                },
             },
             Node {
                 node:
@@ -334,12 +341,19 @@ fn convert_app_decls(
                         ToJsonSchemaError::duplicate_resource(name, existing_tys.loc, loc).into(),
                     );
                 }
-                None => {
-                    resource_types = Some(Node::with_source_loc(
-                        entity_tys.iter().map(|n| n.clone().into()).collect(),
-                        loc,
-                    ))
-                }
+                None => match entity_tys {
+                    None => {
+                        return Err(
+                            ToJsonSchemaError::empty_resource(name, name_loc.clone(), loc).into(),
+                        )
+                    }
+                    Some(entity_tys) => {
+                        resource_types = Some(Node::with_source_loc(
+                            entity_tys.iter().map(|n| n.clone().into()).collect(),
+                            loc,
+                        ))
+                    }
+                },
             },
         }
     }

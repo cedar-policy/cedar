@@ -132,6 +132,20 @@ impl<'a> ExpectedErrorMessageBuilder<'a> {
         }
     }
 
+    /// Add expected underlined text. The error message will be expected to have
+    /// exactly this many miette labels, and for each label (a, b), the underlined
+    /// portion should be `a` and the label text should be `b` (or `None` for no
+    /// label text).
+    pub fn with_underlines_or_labels(
+        self,
+        labels: impl IntoIterator<Item = (&'a str, Option<&'a str>)>,
+    ) -> Self {
+        Self {
+            underlines: labels.into_iter().collect(),
+            ..self
+        }
+    }
+
     /// Add expected contents of `source()`, or expected prefix of `source()` if
     /// this builder was originally constructed with `error_starts_with()`
     pub fn source(self, msg: &'a str) -> Self {

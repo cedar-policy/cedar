@@ -200,6 +200,50 @@ mod demo_tests {
     }
 
     #[test]
+    fn empty_principal() {
+        let src = r#"
+            entity a;
+            entity b;
+            action Foo appliesTo {
+                principal: [],
+                resource: [a, b]
+            };
+        "#;
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error parsing schema: for action `Foo`, `principal` is `[]`, which is invalid")
+                    .with_underlines_or_labels([("Foo", Some("for this action")), ("principal: []", Some("must not be `[]`"))])
+                    .help(NO_PR_HELP_MSG)
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn empty_resource() {
+        let src = r#"
+            entity a;
+            entity b;
+            action Foo appliesTo {
+                principal: [a, b],
+                resource: []
+            };
+        "#;
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error parsing schema: for action `Foo`, `resource` is `[]`, which is invalid")
+                    .with_underlines_or_labels([("Foo", Some("for this action")), ("resource: []", Some("must not be `[]`"))])
+                    .help(NO_PR_HELP_MSG)
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
     fn both_targets() {
         let src = r#"
             entity a;
@@ -278,7 +322,7 @@ mod demo_tests {
                 r#"error parsing schema: duplicate `principal` declaration in action `Foo`"#
             ).help(
                 "Actions may only have a single principal declaration, but a principal declaration may specify a list of entity types like `principal: [X, Y, Z]`"
-            ).exactly_two_underlines("principal: [a, b],", "principal : [c]").build());
+            ).exactly_two_underlines("principal: [a, b]", "principal : [c]").build());
         });
     }
 
@@ -299,7 +343,7 @@ mod demo_tests {
                 r#"error parsing schema: duplicate `resource` declaration in action `Foo`"#
             ).help(
                 "Actions may only have a single resource declaration, but a resource declaration may specify a list of entity types like `resource: [X, Y, Z]`"
-            ).exactly_two_underlines("resource: [a, b],", "resource: [c]").build());
+            ).exactly_two_underlines("resource: [a, b]", "resource: [c]").build());
         });
     }
 
@@ -1040,13 +1084,13 @@ mod parser_tests {
     action A in [B, C] appliesTo { context: {}};
 "#,
         );
-        assert_matches!(res, Ok(_));
+        assert_matches!(res, Ok(_)); // becomes an error in later processing
         let res = parse_schema(
             r#"
     action A in [B, C] appliesTo { principal: []};
 "#,
         );
-        assert_matches!(res, Err(_));
+        assert_matches!(res, Ok(_)); // becomes an error in later processing
         let res = parse_schema(
             r#"
     action A in [B, C] appliesTo { principal: X, resource: [Y]};
