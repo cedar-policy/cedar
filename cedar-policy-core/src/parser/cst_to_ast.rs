@@ -841,6 +841,7 @@ enum PrincipalOrResource {
     Resource(ResourceConstraint),
 }
 
+#[derive(Debug, Clone, Copy)]
 enum TolerantAstSetting {
     NotTolerant,
     #[cfg(feature = "tolerant-ast")]
@@ -5864,12 +5865,9 @@ mod tests {
         policyset
             .get(&ast::PolicyID::from_string("policy2"))
             .expect("should be a policy");
-        assert_eq!(
-            policyset
-                .get(&ast::PolicyID::from_string("policy3"))
-                .is_none(),
-            true
-        );
+        assert!(policyset
+            .get(&ast::PolicyID::from_string("policy3"))
+            .is_none());
     }
 
     #[cfg(feature = "tolerant-ast")]

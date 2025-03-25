@@ -1844,6 +1844,14 @@ impl Schema {
             .map(|iter| iter.map(RefCast::ref_cast))
     }
 
+    /// Returns an iterator over all the [`RequestEnv`]s that are valid
+    /// according to this schema.
+    pub fn request_envs(&self) -> impl Iterator<Item = RequestEnv> + '_ {
+        self.0
+            .unlinked_request_envs(cedar_policy_validator::ValidationMode::Strict)
+            .map(Into::into)
+    }
+
     /// Returns an iterator over all the entity types that can be an ancestor of `ty`
     ///
     /// ## Errors
@@ -2702,32 +2710,40 @@ impl RequestEnv {
     }
 }
 
-// Get valid request envs
-// This function is called by [`Template::get_valid_request_envs`] and
-// [`Policy::get_valid_request_envs`]
+#[doc(hidden)]
+impl From<cedar_policy_validator::types::RequestEnv<'_>> for RequestEnv {
+    fn from(renv: cedar_policy_validator::types::RequestEnv<'_>) -> Self {
+        match renv {
+            cedar_policy_validator::types::RequestEnv::DeclaredAction {
+                principal,
+                action,
+                resource,
+                ..
+            } => Self {
+                principal: principal.clone().into(),
+                action: action.clone().into(),
+                resource: resource.clone().into(),
+            },
+            // PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
+            #[allow(clippy::unreachable)]
+            cedar_policy_validator::types::RequestEnv::UndeclaredAction => {
+                unreachable!("used unsupported feature")
+            }
+        }
+    }
+}
+
+/// Get valid request envs for an `ast::Template`
+///
+/// This function is called by [`Template::get_valid_request_envs`] and
+/// [`Policy::get_valid_request_envs`]
 fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item = RequestEnv> {
     let tc = Typechecker::new(&s.0, cedar_policy_validator::ValidationMode::default());
     tc.typecheck_by_request_env(ast)
         .into_iter()
         .filter_map(|(env, pc)| {
             if matches!(pc, PolicyCheck::Success(_)) {
-                Some(match env {
-                    cedar_policy_validator::types::RequestEnv::DeclaredAction {
-                        principal,
-                        action,
-                        resource,
-                        ..
-                    } => RequestEnv {
-                        principal: principal.clone().into(),
-                        resource: resource.clone().into(),
-                        action: action.clone().into(),
-                    },
-                    //PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
-                    #[allow(clippy::unreachable)]
-                    cedar_policy_validator::types::RequestEnv::UndeclaredAction => {
-                        unreachable!("used unsupported feature")
-                    }
-                })
+                Some(env.into())
             } else {
                 None
             }
@@ -2958,9 +2974,10 @@ impl Template {
         }
     }
 
-    /// Get valid [`RequestEnv`]s.
-    /// A [`RequestEnv`] is valid when the template type checks w.r.t requests
-    /// that satisfy it.
+    /// Get the valid [`RequestEnv`]s for this template, according to the schema.
+    ///
+    /// That is, all the [`RequestEnv`]s in the schema for which this template is
+    /// not trivially false.
     pub fn get_valid_request_envs(&self, s: &Schema) -> impl Iterator<Item = RequestEnv> {
         get_valid_request_envs(&self.ast, s)
     }
@@ -3354,9 +3371,10 @@ impl Policy {
         Self::from_est(id, est)
     }
 
-    /// Get valid [`RequestEnv`]s.
-    /// A [`RequestEnv`] is valid when the policy type checks w.r.t requests
-    /// that satisfy it.
+    /// Get the valid [`RequestEnv`]s for this policy, according to the schema.
+    ///
+    /// That is, all the [`RequestEnv`]s in the schema for which this policy is
+    /// not trivially false.
     pub fn get_valid_request_envs(&self, s: &Schema) -> impl Iterator<Item = RequestEnv> {
         get_valid_request_envs(self.ast.template(), s)
     }
@@ -4562,6 +4580,7 @@ action CreateList in Create appliesTo {
         let principals = schema.principals().collect::<Vec<_>>();
         assert!(principals.len() > 1);
         assert!(principals.iter().all(|ety| **ety == user));
+        assert!(principals.iter().all(|ety| ety.0.loc().is_some()));
     }
 
     #[test]
@@ -4581,6 +4600,7 @@ action CreateList in Create appliesTo {
             "CoolList".parse().unwrap(),
         ]);
         assert_eq!(resources, expected);
+        assert!(resources.iter().all(|ety| ety.0.loc().is_some()));
     }
 
     #[test]
@@ -4594,6 +4614,7 @@ action CreateList in Create appliesTo {
             .cloned()
             .collect::<Vec<_>>();
         assert_eq!(got, vec!["User".parse().unwrap()]);
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
         assert!(schema.principals_for_action(&delete_user).is_none());
     }
 
@@ -4610,12 +4631,14 @@ action CreateList in Create appliesTo {
             .cloned()
             .collect::<Vec<_>>();
         assert_eq!(got, vec!["List".parse().unwrap()]);
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
         let got = schema
             .resources_for_action(&create_list)
             .unwrap()
             .cloned()
             .collect::<Vec<_>>();
         assert_eq!(got, vec!["Application".parse().unwrap()]);
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
         let got = schema
             .resources_for_action(&get_list)
             .unwrap()
@@ -4625,6 +4648,7 @@ action CreateList in Create appliesTo {
             got,
             HashSet::from(["List".parse().unwrap(), "CoolList".parse().unwrap()])
         );
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
         assert!(schema.principals_for_action(&delete_user).is_none());
     }
 
@@ -4637,6 +4661,7 @@ action CreateList in Create appliesTo {
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
+        assert!(parents.iter().all(|ety| ety.0.loc().is_some()));
         let expected = HashSet::from(["Team".parse().unwrap(), "Application".parse().unwrap()]);
         assert_eq!(parents, expected);
         let parents = schema
@@ -4644,6 +4669,7 @@ action CreateList in Create appliesTo {
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
+        assert!(parents.iter().all(|ety| ety.0.loc().is_some()));
         let expected = HashSet::from(["Application".parse().unwrap()]);
         assert_eq!(parents, expected);
         assert!(schema.ancestors(&"Foo".parse().unwrap()).is_none());
@@ -4652,6 +4678,7 @@ action CreateList in Create appliesTo {
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
+        assert!(parents.iter().all(|ety| ety.0.loc().is_some()));
         let expected = HashSet::from([]);
         assert_eq!(parents, expected);
     }
@@ -4664,6 +4691,8 @@ action CreateList in Create appliesTo {
             .into_iter()
             .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
             .collect::<HashSet<EntityUid>>();
+        #[cfg(feature = "extended-schema")]
+        assert!(groups.iter().all(|ety| ety.0.loc().is_some()));
         assert_eq!(groups, expected);
     }
 
@@ -4689,6 +4718,8 @@ action CreateList in Create appliesTo {
         .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
         .collect::<HashSet<EntityUid>>();
         assert_eq!(actions, expected);
+        #[cfg(feature = "extended-schema")]
+        assert!(actions.iter().all(|ety| ety.0.loc().is_some()));
     }
 
     #[test]

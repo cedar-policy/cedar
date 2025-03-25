@@ -236,15 +236,19 @@ fn convert_action_decl(
             context: json_schema::AttributesOrContext::default(),
         });
     let member_of = parents.map(|parents| parents.into_iter().map(convert_qual_name).collect());
-    let ty = json_schema::ActionType {
-        attributes: None, // Action attributes are currently unsupported in the Cedar schema format
-        applies_to: Some(applies_to),
-        member_of,
-        annotations: a.annotations.into(),
-        loc: Some(a.data.loc),
-    };
-    // Then map that type across all of the bound names
-    Ok(names.into_iter().map(move |name| (name.node, ty.clone())))
+
+    Ok(names.into_iter().map(move |name| {
+        let ty = json_schema::ActionType {
+            attributes: None, // Action attributes are currently unsupported in the Cedar schema format
+            applies_to: Some(applies_to.clone()),
+            member_of: member_of.clone(),
+            annotations: a.annotations.clone().into(),
+            loc: Some(a.data.loc.clone()),
+            #[cfg(feature = "extended-schema")]
+            defn_loc: Some(name.loc),
+        };
+        (name.node, ty)
+    }))
 }
 
 fn convert_qual_name(qn: Node<QualName>) -> json_schema::ActionEntityUID<RawName> {

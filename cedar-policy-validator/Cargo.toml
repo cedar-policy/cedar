@@ -21,7 +21,7 @@ itertools = "0.14"
 ref-cast = "1.0"
 unicode-security = "0.1.0"
 smol_str = { version = "0.3", features = ["serde"] }
-stacker = "0.1.19"
+stacker = "0.1.20"
 arbitrary = { version = "1", features = ["derive"], optional = true }
 lalrpop-util = { version = "0.22.1", features = ["lexer", "unicode"] }
 lazy_static = "1.4.0"
@@ -35,7 +35,7 @@ wasm-bindgen = { version = "0.2.97", optional = true }
 
 [features]
 # by default, enable all Cedar extensions
-default = ["ipaddr", "decimal"]
+default = ["ipaddr", "decimal", "datetime"]
 # when enabling a feature, make sure that the Core feature is also enabled
 ipaddr = ["cedar-policy-core/ipaddr"]
 decimal = ["cedar-policy-core/decimal"]
@@ -51,7 +51,8 @@ level-validate = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 entity-manifest = []
 tolerant-ast = ["cedar-policy-core/tolerant-ast"]
-experimental = ["tolerant-ast"]
+experimental = ["tolerant-ast", "extended-schema"]
+extended-schema = []
 
 [dev-dependencies]
 similar-asserts = "1.7.0"

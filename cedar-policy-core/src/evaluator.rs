@@ -3184,7 +3184,6 @@ pub(crate) mod test {
         );
     }
 
-    #[cfg(feature = "datetime")]
     #[test]
     fn interpret_datetime_extension_compares() {
         let request = basic_request();

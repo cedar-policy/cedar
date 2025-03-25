@@ -1384,7 +1384,11 @@ impl<T> Expr<T> {
                     fn_name: fn_name1,
                     args: args1,
                 },
-            ) => fn_name == fn_name1 && args.iter().zip(args1.iter()).all(|(a, a1)| a.eq_shape(a1)),
+            ) => {
+                fn_name == fn_name1
+                    && args.len() == args1.len()
+                    && args.iter().zip(args1.iter()).all(|(a, a1)| a.eq_shape(a1))
+            }
             (
                 GetAttr { expr, attr },
                 GetAttr {
@@ -1406,10 +1410,13 @@ impl<T> Expr<T> {
                     pattern: pattern1,
                 },
             ) => pattern == pattern1 && expr.eq_shape(expr1),
-            (Set(elems), Set(elems1)) => elems
-                .iter()
-                .zip(elems1.iter())
-                .all(|(e, e1)| e.eq_shape(e1)),
+            (Set(elems), Set(elems1)) => {
+                elems.len() == elems1.len()
+                    && elems
+                        .iter()
+                        .zip(elems1.iter())
+                        .all(|(e, e1)| e.eq_shape(e1))
+            }
             (Record(map), Record(map1)) => {
                 map.len() == map1.len()
                     && map
@@ -1570,6 +1577,7 @@ impl std::fmt::Display for Var {
 mod test {
     use cool_asserts::assert_matches;
     use itertools::Itertools;
+    use smol_str::ToSmolStr;
     use std::collections::{hash_map::DefaultHasher, HashSet};
 
     use crate::expr_builder::ExprBuilder as _;
@@ -1930,6 +1938,65 @@ mod test {
             ExprShapeOnly::new_from_borrowed(&expr1),
             ExprShapeOnly::new_from_borrowed(&expr2)
         );
+    }
+
+    #[test]
+    fn expr_shape_only_set_prefix_ne() {
+        let e1 = ExprShapeOnly::new_from_owned(Expr::set([]));
+        let e2 = ExprShapeOnly::new_from_owned(Expr::set([Expr::val(1)]));
+        let e3 = ExprShapeOnly::new_from_owned(Expr::set([Expr::val(1), Expr::val(2)]));
+
+        assert_ne!(e1, e2);
+        assert_ne!(e1, e3);
+        assert_ne!(e2, e1);
+        assert_ne!(e2, e3);
+        assert_ne!(e3, e1);
+        assert_ne!(e2, e1);
+    }
+
+    #[test]
+    fn expr_shape_only_ext_fn_arg_prefix_ne() {
+        let e1 = ExprShapeOnly::new_from_owned(Expr::call_extension_fn(
+            "decimal".parse().unwrap(),
+            vec![],
+        ));
+        let e2 = ExprShapeOnly::new_from_owned(Expr::call_extension_fn(
+            "decimal".parse().unwrap(),
+            vec![Expr::val("0.0")],
+        ));
+        let e3 = ExprShapeOnly::new_from_owned(Expr::call_extension_fn(
+            "decimal".parse().unwrap(),
+            vec![Expr::val("0.0"), Expr::val("0.0")],
+        ));
+
+        assert_ne!(e1, e2);
+        assert_ne!(e1, e3);
+        assert_ne!(e2, e1);
+        assert_ne!(e2, e3);
+        assert_ne!(e3, e1);
+        assert_ne!(e2, e1);
+    }
+
+    #[test]
+    fn expr_shape_only_record_attr_prefix_ne() {
+        let e1 = ExprShapeOnly::new_from_owned(Expr::record([]).unwrap());
+        let e2 = ExprShapeOnly::new_from_owned(
+            Expr::record([("a".to_smolstr(), Expr::val(1))]).unwrap(),
+        );
+        let e3 = ExprShapeOnly::new_from_owned(
+            Expr::record([
+                ("a".to_smolstr(), Expr::val(1)),
+                ("b".to_smolstr(), Expr::val(2)),
+            ])
+            .unwrap(),
+        );
+
+        assert_ne!(e1, e2);
+        assert_ne!(e1, e3);
+        assert_ne!(e2, e1);
+        assert_ne!(e2, e3);
+        assert_ne!(e3, e1);
+        assert_ne!(e2, e1);
     }
 
     #[test]
