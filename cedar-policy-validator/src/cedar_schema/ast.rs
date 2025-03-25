@@ -359,8 +359,8 @@ impl std::fmt::Display for PR {
 pub struct PRAppDecl {
     /// Is this constraining the `principal` or the `resource`
     pub kind: Node<PR>,
-    /// What entity types are allowed?
-    pub entity_tys: NonEmpty<Path>,
+    /// What entity types are allowed? `None` means none
+    pub entity_tys: Option<NonEmpty<Path>>,
 }
 
 /// A declaration of constraints on an action type
