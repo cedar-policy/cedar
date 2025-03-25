@@ -91,6 +91,8 @@ pub enum Commands {
     Validate(ValidateArgs),
     /// Check that policies, schema, and/or entities successfully parse.
     /// (All arguments are optional; this checks that whatever is provided parses)
+    ///
+    /// If no arguments are provided, reads policies from stdin and checks that they parse.
     CheckParse(CheckParseArgs),
     /// Link a template
     Link(LinkArgs),
@@ -800,6 +802,28 @@ impl Termination for CedarExitCode {
 }
 
 pub fn check_parse(args: &CheckParseArgs) -> CedarExitCode {
+    // for backwards compatibility: if no policies/schema/entities are provided,
+    // read policies from stdin and check that they parse
+    if (
+        &args.policies.policies_file,
+        &args.schema.schema_file,
+        &args.entities_file,
+    ) == (&None, &None, &None)
+    {
+        let pargs = PoliciesArgs {
+            policies_file: None, // read from stdin
+            policy_format: args.policies.policy_format,
+            template_linked_file: args.policies.template_linked_file.clone(),
+        };
+        match pargs.get_policy_set() {
+            Ok(_) => return CedarExitCode::Success,
+            Err(e) => {
+                println!("{e:?}");
+                return CedarExitCode::Failure;
+            }
+        }
+    }
+
     let mut exit_code = CedarExitCode::Success;
     match args.policies.get_policy_set() {
         Ok(_) => (),
