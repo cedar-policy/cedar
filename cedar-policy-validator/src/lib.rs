@@ -568,7 +568,7 @@ mod enumerated_entity_types {
         typecheck::test::test_utils::get_loc,
         types::{EntityLUB, Type},
         validation_errors::AttributeAccess,
-        ValidationError, Validator, ValidatorSchema,
+        ValidationError, ValidationWarning, Validator, ValidatorSchema,
     };
 
     #[track_caller]
@@ -729,22 +729,19 @@ mod enumerated_entity_types {
     #[test]
     fn no_ancestors() {
         let schema = schema();
-        let src =
-            r#"permit(principal, action == Action::"a", resource) when { principal in resource };"#;
+        let src = r#"permit(principal, action == Action::"a", resource) when { principal in Bar::"bar" };"#;
         let template = parse_policy_or_template(None, src).unwrap();
         let validator = Validator::new(schema);
         let (errors, warnings) =
             validator.validate_policy(&template, crate::ValidationMode::Strict);
-        assert!(warnings.collect_vec().is_empty());
         assert_eq!(
-            errors.collect_vec(),
-            [ValidationError::hierarchy_not_respected(
-                get_loc(src, "principal in resource"),
-                PolicyID::from_string("policy0"),
-                Some("Foo".parse().unwrap()),
-                Some("Bar".parse().unwrap()),
+            warnings.collect_vec(),
+            [ValidationWarning::impossible_policy(
+                get_loc(src, src),
+                PolicyID::from_string("policy0")
             )]
         );
+        assert!(errors.collect_vec().is_empty());
     }
 
     #[test]

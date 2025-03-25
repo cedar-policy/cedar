@@ -21,6 +21,11 @@ Cedar Language Version: TBD
   feature stable. (#1488, #1495, #1506, #1535)
 - `datetime` is now a default feature (#1541)
 - Bump MSRV to 1.81 (#1542)
+- `HierarchyNotRespected` validation error is no longer returned (although the
+  error variant remains, to avoid a breaking change). This means that in some
+  edge cases, policies that previously failed to validate under strict validation
+  will now pass validation, probably with an `ImpossiblePolicy` warning. (#1355,
+  resolving #638)
 
 ### Added
 
