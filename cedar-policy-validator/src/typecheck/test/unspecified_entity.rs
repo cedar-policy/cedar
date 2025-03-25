@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-// GRCOV_STOP_COVERAGE
-
 use crate::{json_schema, RawName};
 use cool_asserts::assert_matches;
 

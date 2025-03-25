@@ -80,7 +80,7 @@ impl<'a> Typechecker<'a> {
             schema,
             extensions: ExtensionSchemas::all_available(),
             mode,
-            unlinked_envs: Self::unlinked_request_envs(schema, mode).collect(),
+            unlinked_envs: schema.unlinked_request_envs(mode).collect(),
         }
     }
 
@@ -199,43 +199,6 @@ impl<'a> Typechecker<'a> {
                 })
             })
             .collect()
-    }
-
-    fn unlinked_request_envs(
-        schema: &ValidatorSchema,
-        mode: ValidationMode,
-    ) -> impl Iterator<Item = RequestEnv<'_>> + '_ {
-        // Gather all of the actions declared in the schema.
-        let all_actions = schema
-            .action_ids()
-            .filter_map(|a| schema.get_action_id(a.name()));
-
-        // For every action compute the cross product of the principal and
-        // resource applies_to sets.
-        all_actions
-            .flat_map(|action| {
-                action.applies_to_principals().flat_map(|principal| {
-                    action
-                        .applies_to_resources()
-                        .map(|resource| RequestEnv::DeclaredAction {
-                            principal,
-                            action: &action.name,
-                            resource,
-                            context: &action.context,
-                            principal_slot: None,
-                            resource_slot: None,
-                        })
-                })
-            })
-            .chain(if mode.is_partial() {
-                // A partial schema might not list all actions, and may not
-                // include all principal and resource types for the listed ones.
-                // So we typecheck with a fully unknown request to handle these
-                // missing cases.
-                Some(RequestEnv::UndeclaredAction)
-            } else {
-                None
-            })
     }
 
     /// Given a request environment and a template, return new environments
@@ -1174,6 +1137,8 @@ impl<'a> SingleEnvTypechecker<'a> {
                     },
                 )
             }
+            #[cfg(feature = "tolerant-ast")]
+            ExprKind::Error { .. } => TypecheckAnswer::ErrorAstNode,
         }
     }
 
@@ -2476,6 +2441,8 @@ impl<'a> SingleEnvTypechecker<'a> {
             Ok(efunc) => {
                 let arg_tys = efunc.argument_types();
                 let ret_ty = efunc.return_type();
+                // since we mutate several times, I think readability is better if we keep a consistent pattern, rather than using Clippy's suggestion for the first block
+                #[allow(clippy::useless_let_if_seq)]
                 let mut failed = false;
                 if args.len() != arg_tys.len() {
                     type_errors.push(ValidationError::wrong_number_args(

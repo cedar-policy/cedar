@@ -23,7 +23,6 @@ use crate::extensions::Extensions;
 use crate::parser::err::ParseErrors;
 use crate::parser::{self, Loc};
 use miette::Diagnostic;
-use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, ToSmolStr};
 use std::hash::{Hash, Hasher};
 use std::ops::Deref;
@@ -51,8 +50,7 @@ use thiserror::Error;
 ///
 /// These restrictions represent the expressions that are allowed to appear as
 /// attribute values in `Slice` and `Context`.
-#[derive(Deserialize, Serialize, Hash, Debug, Clone, PartialEq, Eq)]
-#[serde(transparent)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub struct RestrictedExpr(Expr);
 
 impl RestrictedExpr {
@@ -310,7 +308,7 @@ impl std::str::FromStr for RestrictedExpr {
 ///
 /// We derive `Copy` for this type because it's just a single reference, and
 /// `&T` is `Copy` for all `T`.
-#[derive(Serialize, Hash, Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq, Copy)]
 pub struct BorrowedRestrictedExpr<'a>(&'a Expr);
 
 impl<'a> BorrowedRestrictedExpr<'a> {
@@ -529,6 +527,8 @@ fn is_restricted(expr: &Expr) -> Result<(), RestrictedExpressionError> {
         ExprKind::ExtensionFunctionApp { args, .. } => args.iter().try_for_each(is_restricted),
         ExprKind::Set(exprs) => exprs.iter().try_for_each(is_restricted),
         ExprKind::Record(map) => map.values().try_for_each(is_restricted),
+        #[cfg(feature = "tolerant-ast")]
+        ExprKind::Error { .. } => Ok(()),
     }
 }
 

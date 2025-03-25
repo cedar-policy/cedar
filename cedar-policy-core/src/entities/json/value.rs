@@ -199,7 +199,7 @@ impl From<&EntityUID> for TypeAndId {
 impl TryFrom<TypeAndId> for EntityUID {
     type Error = crate::parser::err::ParseErrors;
 
-    fn try_from(e: TypeAndId) -> Result<EntityUID, Self::Error> {
+    fn try_from(e: TypeAndId) -> Result<EntityUID, crate::parser::err::ParseErrors> {
         Ok(EntityUID::from_components(
             Name::from_normalized_str(&e.entity_type)?.into(),
             Eid::new(e.id),

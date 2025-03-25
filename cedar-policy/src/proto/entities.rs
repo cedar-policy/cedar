@@ -18,53 +18,35 @@
 
 use super::models;
 use cedar_policy_core::{ast, entities, extensions};
-use std::sync::Arc;
 
 impl From<&models::Entities> for entities::Entities {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &models::Entities) -> Self {
-        let entities: Vec<Arc<ast::Entity>> = v
-            .entities
-            .iter()
-            .map(|e| Arc::new(ast::Entity::from(e)))
-            .collect();
+        let entities: Vec<ast::Entity> = v.entities.iter().map(ast::Entity::from).collect();
 
-        #[cfg(not(feature = "partial-eval"))]
-        let result = entities::Entities::new();
-
-        #[cfg(feature = "partial-eval")]
-        let mut result = entities::Entities::new();
-        #[cfg(feature = "partial-eval")]
-        if v.mode == models::Mode::Partial as i32 {
-            result = result.partial();
-        }
-
-        result
-            .add_entities(
-                entities,
-                None::<&entities::NoEntitiesSchema>,
-                entities::TCComputation::AssumeAlreadyComputed,
-                extensions::Extensions::none(),
-            )
-            .expect("Should be able to add entities")
+        // REVIEW (before stabilization): does `AssumeAlreadyComputed` make
+        // sense here? It will be the case for protobufs produced from our
+        // own serialization code, but others could produce protobufs in other
+        // ways that may not be TC
+        entities::Entities::from_entities(
+            entities,
+            None::<&entities::NoEntitiesSchema>,
+            entities::TCComputation::AssumeAlreadyComputed,
+            extensions::Extensions::all_available(),
+        )
+        .expect("protobuf entities should be valid")
     }
 }
 
 impl From<&entities::Entities> for models::Entities {
     fn from(v: &entities::Entities) -> Self {
-        let entities: Vec<models::Entity> = v.iter().map(models::Entity::from).collect();
-
-        if cfg!(feature = "partial-eval") && v.is_partial() {
-            Self {
-                entities,
-                mode: models::Mode::Partial.into(),
-            }
-        } else {
-            Self {
-                entities,
-                mode: models::Mode::Concrete.into(),
-            }
+        assert!(
+            !v.is_partial(),
+            "protobuf does not support encoding partial Entities"
+        );
+        Self {
+            entities: v.iter().map(models::Entity::from).collect(),
         }
     }
 }
@@ -74,6 +56,7 @@ mod test {
     use super::*;
     use smol_str::SmolStr;
     use std::collections::{BTreeMap, HashMap, HashSet};
+    use std::sync::Arc;
 
     #[test]
     fn entities_roundtrip() {
@@ -93,6 +76,7 @@ mod test {
                 r#"Foo::"bar""#.parse().unwrap(),
                 attrs.clone(),
                 HashSet::new(),
+                HashSet::new(),
                 BTreeMap::new(),
                 extensions::Extensions::none(),
             )
@@ -101,7 +85,7 @@ mod test {
         let mut entities2 = entities::Entities::new();
         entities2 = entities2
             .add_entities(
-                std::iter::once(entity.clone()),
+                [entity.clone()],
                 None::<&entities::NoEntitiesSchema>,
                 entities::TCComputation::AssumeAlreadyComputed,
                 extensions::Extensions::none(),
@@ -117,6 +101,7 @@ mod test {
             ast::Entity::new(
                 r#"Bar::"foo""#.parse().unwrap(),
                 attrs,
+                HashSet::new(),
                 HashSet::new(),
                 BTreeMap::new(),
                 extensions::Extensions::none(),

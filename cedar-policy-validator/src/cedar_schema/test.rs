@@ -35,11 +35,7 @@ mod demo_tests {
     use smol_str::ToSmolStr;
 
     use crate::{
-        cedar_schema::{
-            self,
-            ast::PR,
-            err::{ToJsonSchemaError, NO_PR_HELP_MSG},
-        },
+        cedar_schema::{self, err::NO_PR_HELP_MSG},
         json_schema::{self, EntityType, EntityTypeKind},
         schema::test::utils::collect_warnings,
         CedarSchemaError, RawName,
@@ -204,6 +200,50 @@ mod demo_tests {
     }
 
     #[test]
+    fn empty_principal() {
+        let src = r#"
+            entity a;
+            entity b;
+            action Foo appliesTo {
+                principal: [],
+                resource: [a, b]
+            };
+        "#;
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error parsing schema: for action `Foo`, `principal` is `[]`, which is invalid")
+                    .with_underlines_or_labels([("Foo", Some("for this action")), ("principal: []", Some("must not be `[]`"))])
+                    .help(NO_PR_HELP_MSG)
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn empty_resource() {
+        let src = r#"
+            entity a;
+            entity b;
+            action Foo appliesTo {
+                principal: [a, b],
+                resource: []
+            };
+        "#;
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(
+                src,
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("error parsing schema: for action `Foo`, `resource` is `[]`, which is invalid")
+                    .with_underlines_or_labels([("Foo", Some("for this action")), ("resource: []", Some("must not be `[]`"))])
+                    .help(NO_PR_HELP_MSG)
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
     fn both_targets() {
         let src = r#"
             entity a;
@@ -277,18 +317,12 @@ mod demo_tests {
                 principal : [c]
             };
         "#;
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(crate::CedarSchemaError::Parsing(err)) => {
-            assert_matches!(err.errors(), cedar_schema::parser::CedarSchemaParseErrors::JsonError(json_errs) => {
-                assert!(json_errs
-                    .iter()
-                    .any(|err| {
-                        matches!(
-                            err,
-                            ToJsonSchemaError::DuplicatePrincipalOrResource(err) if err.kind() == PR::Principal
-                        )
-                    })
-                );
-            });
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                r#"error parsing schema: duplicate `principal` declaration in action `Foo`"#
+            ).help(
+                "Actions may only have a single principal declaration, but a principal declaration may specify a list of entity types like `principal: [X, Y, Z]`"
+            ).exactly_two_underlines("principal: [a, b]", "principal : [c]").build());
         });
     }
 
@@ -304,17 +338,12 @@ mod demo_tests {
                 resource: [c]
             };
         "#;
-        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(crate::CedarSchemaError::Parsing(err)) => {
-            assert_matches!(err.errors(), cedar_schema::parser::CedarSchemaParseErrors::JsonError(json_errs) => {
-                assert!(json_errs
-                    .iter()
-                    .any(|err| {
-                        matches!(
-                            err,
-                            ToJsonSchemaError::DuplicatePrincipalOrResource(err) if err.kind() == PR::Resource
-                        )
-                    }));
-            });
+        assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
+            expect_err(src, &miette::Report::new(e), &ExpectedErrorMessageBuilder::error(
+                r#"error parsing schema: duplicate `resource` declaration in action `Foo`"#
+            ).help(
+                "Actions may only have a single resource declaration, but a resource declaration may specify a list of entity types like `resource: [X, Y, Z]`"
+            ).exactly_two_underlines("resource: [a, b]", "resource: [c]").build());
         });
     }
 
@@ -326,6 +355,8 @@ mod demo_tests {
             member_of: None,
             annotations: Annotations::new(),
             loc: None,
+            #[cfg(feature = "extended-schema")]
+            defn_loc: None,
         };
         let namespace =
             json_schema::NamespaceDefinition::new(empty(), once(("foo".to_smolstr(), action)));
@@ -441,6 +472,8 @@ namespace Baz {action "Foo" appliesTo {
                     member_of: None,
                     annotations: Annotations::new(),
                     loc: None,
+                    #[cfg(feature = "extended-schema")]
+                    defn_loc: None,
                 },
             )]),
         );
@@ -561,7 +594,7 @@ namespace Baz {action "Foo" appliesTo {
                     json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                         type_name: "UserGroup".parse().unwrap(),
                     }, loc: None};
-                let attribute = attributes.get(group).expect("No attribute `{group}`");
+                let attribute = attributes.get(group).unwrap_or_else(|| panic!("No attribute `{group}`"));
                 assert_has_type(attribute, &expected);
             });
         }});
@@ -603,7 +636,7 @@ namespace Baz {action "Foo" appliesTo {
                 let expected = json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "UserGroup".parse().unwrap(),
                 }, loc: None };
-                let attribute = attributes.get(group).expect("No attribute `{group}`");
+                let attribute = attributes.get(group).unwrap_or_else(|| panic!("No attribute `{group}`"));
                 assert_has_type(attribute, &expected);
             });
         }});
@@ -1051,13 +1084,13 @@ mod parser_tests {
     action A in [B, C] appliesTo { context: {}};
 "#,
         );
-        assert_matches!(res, Ok(_));
+        assert_matches!(res, Ok(_)); // becomes an error in later processing
         let res = parse_schema(
             r#"
     action A in [B, C] appliesTo { principal: []};
 "#,
         );
-        assert_matches!(res, Err(_));
+        assert_matches!(res, Ok(_)); // becomes an error in later processing
         let res = parse_schema(
             r#"
     action A in [B, C] appliesTo { principal: X, resource: [Y]};
@@ -1494,6 +1527,7 @@ mod translator_tests {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("definition of `Demo::email_address` illegally shadows the existing definition of `email_address`")
                     .help("try renaming one of the definitions, or moving `email_address` to a different namespace")
+                    .exactly_one_underline("entity email_address {\n              where: String,\n            };")
                     .build(),
             );
         });

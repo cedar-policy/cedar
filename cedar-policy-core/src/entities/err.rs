@@ -30,7 +30,8 @@ pub enum EntitiesError {
     #[error("error during entity deserialization")]
     #[diagnostic(transparent)]
     Deserialization(#[from] crate::entities::json::err::JsonDeserializationError),
-    /// Error constructing the Entities collection as there is a duplicate Entity UID
+    /// Error constructing the Entities collection due to encountering two different entities
+    /// with the same Entity UID
     #[error(transparent)]
     #[diagnostic(transparent)]
     Duplicate(Duplicate),
@@ -67,8 +68,8 @@ pub struct TransitiveClosureError {
     err: Box<transitive_closure::TcError<EntityUID>>,
 }
 
+#[cfg(test)]
 impl TransitiveClosureError {
-    #[cfg(test)]
     pub(crate) fn inner(&self) -> &transitive_closure::TcError<EntityUID> {
         self.err.as_ref()
     }
@@ -88,8 +89,8 @@ pub struct Duplicate {
     euid: EntityUID,
 }
 
+#[cfg(test)]
 impl Duplicate {
-    #[cfg(test)]
     pub(crate) fn euid(&self) -> &EntityUID {
         &self.euid
     }

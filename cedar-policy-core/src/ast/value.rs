@@ -23,16 +23,13 @@ use std::sync::Arc;
 use educe::Educe;
 use itertools::Itertools;
 use miette::Diagnostic;
-use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use thiserror::Error;
 
 /// This describes all the values which could be the dynamic result of evaluating an `Expr`.
 /// Cloning is O(1).
-#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq, PartialOrd, Ord)]
-#[serde(into = "Expr")]
-#[serde(try_from = "Expr")]
 pub struct Value {
     /// Underlying actual value
     pub value: ValueKind,
@@ -44,9 +41,7 @@ pub struct Value {
 
 /// This describes all the values which could be the dynamic result of evaluating an `Expr`.
 /// Cloning is O(1).
-#[derive(Debug, Clone, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(into = "Expr")]
-#[serde(try_from = "Expr")]
+#[derive(Debug, Clone, PartialOrd, Ord)]
 pub enum ValueKind {
     /// anything that is a Literal can also be the dynamic result of evaluating an `Expr`
     Lit(Literal),
@@ -304,8 +299,7 @@ impl Diagnostic for NotValue {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         match self {
             Self::NotValue { loc } => loc.as_ref().map(|loc| {
-                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span)))
-                    as Box<dyn Iterator<Item = _>>
+                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span))) as _
             }),
         }
     }
@@ -359,6 +353,8 @@ impl TryFrom<Expr> for ValueKind {
                 .map(|(k, v)| Value::try_from(v.clone()).map(|v| (k.clone(), v)))
                 .collect::<Result<BTreeMap<SmolStr, Value>, _>>()
                 .map(|m| Self::Record(Arc::new(m))),
+            #[cfg(feature = "tolerant-ast")]
+            ExprKind::Error { .. } => Err(NotValue::NotValue { loc }),
         }
     }
 }

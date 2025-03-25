@@ -16,7 +16,6 @@
 
 //! Contains tests for typechecking Cedar expressions outside of a larger
 //! policy and without a schema.
-// GRCOV_STOP_COVERAGE
 
 use std::{str::FromStr, vec};
 
@@ -1354,7 +1353,6 @@ fn is_typechecks() {
     );
 }
 
-#[cfg(feature = "datetime")]
 mod datetime {
     use cedar_policy_core::{
         ast::{Expr, Name, Value},

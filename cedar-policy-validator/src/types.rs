@@ -1075,13 +1075,14 @@ impl IntoIterator for Attributes {
 
 /// Used to tag record types to indicate if their attributes record is open or
 /// closed.
-#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone, Serialize)]
+#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone, Serialize, Default)]
 pub enum OpenTag {
     /// The attributes are open. A value of this type may have attributes other
     /// than those listed.
     OpenAttributes,
     /// The attributes are closed. The attributes for a value of this type must
     /// exactly match the attributes listed in the type.
+    #[default]
     ClosedAttributes,
 }
 
@@ -1186,13 +1187,11 @@ impl EntityRecordKind {
     ///   attribute (e.g., `AnyEntity`), returns `None`.
     pub(crate) fn get_attr(&self, schema: &ValidatorSchema, attr: &str) -> Option<AttributeType> {
         match self {
-            EntityRecordKind::Record { attrs, .. } => attrs.get_attr(attr).cloned().map(Into::into),
+            EntityRecordKind::Record { attrs, .. } => attrs.get_attr(attr).cloned(),
             EntityRecordKind::Entity(lub) => {
                 lub.get_attribute_types(schema).get_attr(attr).cloned()
             }
-            EntityRecordKind::ActionEntity { attrs, .. } => {
-                attrs.get_attr(attr).cloned().map(Into::into)
-            }
+            EntityRecordKind::ActionEntity { attrs, .. } => attrs.get_attr(attr).cloned(),
             EntityRecordKind::AnyEntity => {
                 // the attribute may exist, but multiple types for it are possible
                 None

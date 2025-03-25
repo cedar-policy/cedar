@@ -34,6 +34,8 @@ use crate::expr_builder::ExprBuilder;
 use crate::parser::cst;
 use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
+#[cfg(feature = "tolerant-ast")]
+use crate::parser::Loc;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::collections::{BTreeMap, HashMap};
@@ -122,6 +124,14 @@ impl Policy {
             annotations: self.annotations,
         })
     }
+
+    /// Returns true if this policy is a template, i.e., it has at least one slot.
+    pub fn is_template(&self) -> bool {
+        self.principal.has_slot()
+            || self.action.has_slot()
+            || self.resource.has_slot()
+            || self.conditions.iter().any(|c| c.has_slot())
+    }
 }
 
 impl Clause {
@@ -144,11 +154,28 @@ impl Clause {
             Unless(e) => Ok(Unless(e.sub_entity_literals(mapping)?)),
         }
     }
+
+    /// Returns true if this clause has a slot.
+    pub fn has_slot(&self) -> bool {
+        // currently, slots are not allowed in clauses
+        false
+    }
 }
 
 impl TryFrom<cst::Policy> for Policy {
     type Error = ParseErrors;
     fn try_from(policy: cst::Policy) -> Result<Policy, ParseErrors> {
+        let policy = match policy {
+            cst::Policy::Policy(policy_impl) => policy_impl,
+            #[cfg(feature = "tolerant-ast")]
+            cst::Policy::PolicyError => {
+                return Err(ParseErrors::singleton(ToASTError::new(
+                    ToASTErrorKind::CSTErrorNode,
+                    // Since we don't have a loc when doing this transformation, we create an arbitrary one
+                    Loc::new(0..1, "CSTErrorNode".into()),
+                )));
+            }
+        };
         let maybe_effect = policy.effect.to_effect();
         let maybe_scope = policy.extract_scope();
         let maybe_annotations = policy.get_ast_annotations(|v, l| {
@@ -4585,6 +4612,82 @@ mod test {
             }))
             .unwrap()
         );
+    }
+
+    #[test]
+    fn is_template_principal_slot() {
+        let template = r#"
+            permit(
+                principal == ?principal,
+                action == Action::"view",
+                resource
+            );
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        assert!(
+            est.is_template(),
+            "Policy with principal slot not marked as template"
+        );
+    }
+
+    #[test]
+    fn is_template_resource_slot() {
+        let template = r#"
+            permit(
+                principal,
+                action == Action::"view",
+                resource in ?resource
+            );
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        assert!(
+            est.is_template(),
+            "Policy with resource slot not marked as template"
+        );
+    }
+
+    #[test]
+    fn is_template_static_policy() {
+        let template = r#"
+            permit(
+                principal,
+                action == Action::"view",
+                resource
+            );
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        assert!(!est.is_template(), "Static policy marked as template");
+    }
+
+    #[test]
+    fn is_template_static_policy_with_condition() {
+        let template = r#"
+            permit(
+                principal,
+                action == Action::"view",
+                resource
+            ) when {
+                principal in resource.owners
+            };
+        "#;
+        let cst = parser::text_to_cst::parse_policy(template)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        assert!(!est.is_template(), "Static policy marked as template");
     }
 }
 

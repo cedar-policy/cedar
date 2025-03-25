@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#[cfg(feature = "tolerant-ast")]
+use super::expr_allows_errors::AstExprErrorKind;
 use crate::{
     ast::*,
     expr_builder::{self, ExprBuilder as _},
@@ -42,7 +44,7 @@ extern crate tsify;
 /// where the expression was written in policy source code, and some generic
 /// data which is stored on each node of the AST.
 /// Cloning is O(1).
-#[derive(Educe, Serialize, Deserialize, Debug, Clone)]
+#[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq, Hash)]
 pub struct Expr<T = ()> {
     expr_kind: ExprKind<T>,
@@ -54,7 +56,7 @@ pub struct Expr<T = ()> {
 
 /// The possible expression variants. This enum should be matched on by code
 /// recursively traversing the AST.
-#[derive(Serialize, Deserialize, Hash, Debug, Clone, PartialEq, Eq)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind<T = ()> {
     /// Literal value
     Lit(Literal),
@@ -155,6 +157,12 @@ pub enum ExprKind<T = ()> {
     Set(Arc<Vec<Expr<T>>>),
     /// Anonymous record (whose elements may be arbitrary expressions)
     Record(Arc<BTreeMap<SmolStr, Expr<T>>>),
+    #[cfg(feature = "tolerant-ast")]
+    /// Error expression - allows us to continue parsing even when we have errors
+    Error {
+        /// Type of error that led to the failure
+        error_kind: AstExprErrorKind,
+    },
 }
 
 impl From<Value> for Expr {
@@ -191,7 +199,7 @@ impl From<PartialValue> for Expr {
 }
 
 impl<T> Expr<T> {
-    fn new(expr_kind: ExprKind<T>, source_loc: Option<Loc>, data: T) -> Self {
+    pub(crate) fn new(expr_kind: ExprKind<T>, source_loc: Option<Loc>, data: T) -> Self {
         Self {
             expr_kind,
             source_loc,
@@ -385,6 +393,8 @@ impl<T> Expr<T> {
             ExprKind::Is { .. } => Some(Type::Bool),
             ExprKind::Set(_) => Some(Type::Set),
             ExprKind::Record(_) => Some(Type::Record),
+            #[cfg(feature = "tolerant-ast")]
+            ExprKind::Error { .. } => None,
         }
     }
 }
@@ -717,6 +727,8 @@ impl Expr {
                 expr.substitute_general::<T>(definitions)?,
                 entity_type.clone(),
             )),
+            #[cfg(feature = "tolerant-ast")]
+            ExprKind::Error { .. } => Ok(self.clone()),
         }
     }
 }
@@ -807,7 +819,7 @@ pub enum SubstitutionError {
 }
 
 /// Representation of a partial-evaluation Unknown at the AST level
-#[derive(Serialize, Deserialize, Hash, Debug, Clone, PartialEq, Eq)]
+#[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub struct Unknown {
     /// The name of the unknown
     pub name: SmolStr,
@@ -856,6 +868,9 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     type Expr = Expr<T>;
 
     type Data = T;
+
+    #[cfg(feature = "tolerant-ast")]
+    type ErrorType = ParseErrors;
 
     fn loc(&self) -> Option<&Loc> {
         self.source_loc.as_ref()
@@ -1168,6 +1183,12 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
             entity_type,
         })
     }
+
+    /// Don't support AST Error nodes - return the error right back
+    #[cfg(feature = "tolerant-ast")]
+    fn error(self, parse_errors: ParseErrors) -> Result<Self::Expr, Self::ErrorType> {
+        Err(parse_errors)
+    }
 }
 
 impl<T> ExprBuilder<T> {
@@ -1363,7 +1384,11 @@ impl<T> Expr<T> {
                     fn_name: fn_name1,
                     args: args1,
                 },
-            ) => fn_name == fn_name1 && args.iter().zip(args1.iter()).all(|(a, a1)| a.eq_shape(a1)),
+            ) => {
+                fn_name == fn_name1
+                    && args.len() == args1.len()
+                    && args.iter().zip(args1.iter()).all(|(a, a1)| a.eq_shape(a1))
+            }
             (
                 GetAttr { expr, attr },
                 GetAttr {
@@ -1385,10 +1410,13 @@ impl<T> Expr<T> {
                     pattern: pattern1,
                 },
             ) => pattern == pattern1 && expr.eq_shape(expr1),
-            (Set(elems), Set(elems1)) => elems
-                .iter()
-                .zip(elems1.iter())
-                .all(|(e, e1)| e.eq_shape(e1)),
+            (Set(elems), Set(elems1)) => {
+                elems.len() == elems1.len()
+                    && elems
+                        .iter()
+                        .zip(elems1.iter())
+                        .all(|(e, e1)| e.eq_shape(e1))
+            }
             (Record(map), Record(map1)) => {
                 map.len() == map1.len()
                     && map
@@ -1482,6 +1510,8 @@ impl<T> Expr<T> {
                 expr.hash_shape(state);
                 entity_type.hash(state);
             }
+            #[cfg(feature = "tolerant-ast")]
+            ExprKind::Error { error_kind, .. } => error_kind.hash(state),
         }
     }
 }
@@ -1502,20 +1532,6 @@ pub enum Var {
     /// the Context of the given request
     Context,
 }
-
-#[cfg(test)]
-mod var_generator {
-    use super::Var;
-    #[cfg(test)]
-    pub fn all_vars() -> impl Iterator<Item = Var> {
-        [Var::Principal, Var::Action, Var::Resource, Var::Context].into_iter()
-    }
-}
-// by default, Coverlay does not track coverage for lines after a line
-// containing #[cfg(test)].
-// we use the following sentinel to "turn back on" coverage tracking for
-// remaining lines of this file, until the next #[cfg(test)]
-// GRCOV_BEGIN_COVERAGE
 
 impl From<PrincipalOrResource> for Var {
     fn from(v: PrincipalOrResource) -> Self {
@@ -1561,11 +1577,16 @@ impl std::fmt::Display for Var {
 mod test {
     use cool_asserts::assert_matches;
     use itertools::Itertools;
+    use smol_str::ToSmolStr;
     use std::collections::{hash_map::DefaultHasher, HashSet};
 
     use crate::expr_builder::ExprBuilder as _;
 
-    use super::{var_generator::all_vars, *};
+    use super::*;
+
+    pub fn all_vars() -> impl Iterator<Item = Var> {
+        [Var::Principal, Var::Action, Var::Resource, Var::Context].into_iter()
+    }
 
     // Tests that Var::Into never panics
     #[test]
@@ -1917,6 +1938,65 @@ mod test {
             ExprShapeOnly::new_from_borrowed(&expr1),
             ExprShapeOnly::new_from_borrowed(&expr2)
         );
+    }
+
+    #[test]
+    fn expr_shape_only_set_prefix_ne() {
+        let e1 = ExprShapeOnly::new_from_owned(Expr::set([]));
+        let e2 = ExprShapeOnly::new_from_owned(Expr::set([Expr::val(1)]));
+        let e3 = ExprShapeOnly::new_from_owned(Expr::set([Expr::val(1), Expr::val(2)]));
+
+        assert_ne!(e1, e2);
+        assert_ne!(e1, e3);
+        assert_ne!(e2, e1);
+        assert_ne!(e2, e3);
+        assert_ne!(e3, e1);
+        assert_ne!(e2, e1);
+    }
+
+    #[test]
+    fn expr_shape_only_ext_fn_arg_prefix_ne() {
+        let e1 = ExprShapeOnly::new_from_owned(Expr::call_extension_fn(
+            "decimal".parse().unwrap(),
+            vec![],
+        ));
+        let e2 = ExprShapeOnly::new_from_owned(Expr::call_extension_fn(
+            "decimal".parse().unwrap(),
+            vec![Expr::val("0.0")],
+        ));
+        let e3 = ExprShapeOnly::new_from_owned(Expr::call_extension_fn(
+            "decimal".parse().unwrap(),
+            vec![Expr::val("0.0"), Expr::val("0.0")],
+        ));
+
+        assert_ne!(e1, e2);
+        assert_ne!(e1, e3);
+        assert_ne!(e2, e1);
+        assert_ne!(e2, e3);
+        assert_ne!(e3, e1);
+        assert_ne!(e2, e1);
+    }
+
+    #[test]
+    fn expr_shape_only_record_attr_prefix_ne() {
+        let e1 = ExprShapeOnly::new_from_owned(Expr::record([]).unwrap());
+        let e2 = ExprShapeOnly::new_from_owned(
+            Expr::record([("a".to_smolstr(), Expr::val(1))]).unwrap(),
+        );
+        let e3 = ExprShapeOnly::new_from_owned(
+            Expr::record([
+                ("a".to_smolstr(), Expr::val(1)),
+                ("b".to_smolstr(), Expr::val(2)),
+            ])
+            .unwrap(),
+        );
+
+        assert_ne!(e1, e2);
+        assert_ne!(e1, e3);
+        assert_ne!(e2, e1);
+        assert_ne!(e2, e3);
+        assert_ne!(e3, e1);
+        assert_ne!(e2, e1);
     }
 
     #[test]

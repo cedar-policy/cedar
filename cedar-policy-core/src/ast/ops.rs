@@ -14,10 +14,8 @@
  * limitations under the License.
  */
 
-use serde::{Deserialize, Serialize};
-
 /// Built-in operators with exactly one argument
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum UnaryOp {
     /// Logical negation
@@ -45,7 +43,7 @@ impl std::fmt::Display for UnaryOp {
 }
 
 /// Built-in operators with exactly two arguments
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum BinaryOp {
     /// Equality

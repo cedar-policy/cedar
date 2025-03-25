@@ -11,9 +11,9 @@ homepage.workspace = true
 repository = "https://github.com/cedar-policy/cedar"
 
 [dependencies]
-cedar-policy-core = { version = "=4.3.0", path = "../cedar-policy-core" }
-cedar-policy-validator = { version = "=4.3.0", path = "../cedar-policy-validator" }
-cedar-policy-formatter = { version = "=4.3.0", path = "../cedar-policy-formatter" }
+cedar-policy-core = { version = "=4.4.0", path = "../cedar-policy-core" }
+cedar-policy-validator = { version = "=4.4.0", path = "../cedar-policy-validator" }
+cedar-policy-formatter = { version = "=4.4.0", path = "../cedar-policy-formatter" }
 ref-cast = "1.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
@@ -31,7 +31,7 @@ prost = { version = "0.13", optional = true }
 serde-wasm-bindgen = { version = "0.6", optional = true }
 tsify = { version = "0.4.5", optional = true }
 wasm-bindgen = { version = "0.2.97", optional = true }
-semver = "1.0.25"
+semver = "1.0.26"
 lazy_static = "1.5.0"
 
 [build-dependencies]
@@ -39,7 +39,7 @@ prost-build = { version = "0.13", optional = true }
 
 [features]
 # by default, enable all Cedar extensions, but not other crate features
-default = ["ipaddr", "decimal"]
+default = ["ipaddr", "decimal", "datetime"]
 
 # Cedar extensions
 ipaddr = ["cedar-policy-core/ipaddr", "cedar-policy-validator/ipaddr"]
@@ -52,7 +52,7 @@ corpus-timing = []
 
 # Experimental features.
 # Enable all experimental features with `cargo build --features "experimental"`
-experimental = ["partial-eval", "permissive-validate", "partial-validate", "level-validate", "entity-manifest", "protobufs", "datetime"]
+experimental = ["partial-eval", "permissive-validate", "partial-validate", "level-validate", "entity-manifest", "protobufs", "tolerant-ast", "extended-schema"]
 entity-manifest = ["cedar-policy-validator/entity-manifest"]
 partial-eval = ["cedar-policy-core/partial-eval", "cedar-policy-validator/partial-eval"]
 permissive-validate = []
@@ -60,6 +60,8 @@ partial-validate = ["cedar-policy-validator/partial-validate"]
 protobufs = ["dep:prost", "dep:prost-build"]
 level-validate = ["cedar-policy-validator/level-validate"]
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
+tolerant-ast = ["cedar-policy-core/tolerant-ast",  "cedar-policy-validator/tolerant-ast", "cedar-policy-formatter/tolerant-ast"]
+extended-schema = ["cedar-policy-validator/extended-schema"]
 
 [lib]
 # cdylib required for wasm
@@ -70,7 +72,7 @@ miette = { version = "7.5.0", features = ["fancy"] }
 cool_asserts = "2.0"
 criterion = "0.5"
 globset = "0.4"
-cedar-policy-core = { version = "=4.3.0", features = [
+cedar-policy-core = { version = "=4.4.0", features = [
     "test-util",
 ], path = "../cedar-policy-core" }
 # NON-CRYPTOGRAPHIC random number generators
@@ -104,7 +106,7 @@ name = "deeply_nested_est"
 harness = false
 
 [package.metadata.docs.rs]
-features = ["partial-eval", "permissive-validate", "partial-validate", "level-validate", "entity-manifest", "datetime"]
+features = ["experimental"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [lints]

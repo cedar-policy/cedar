@@ -20,10 +20,10 @@ use super::models;
 use cedar_policy_core::{ast, FromNormalizedStr};
 use std::collections::HashMap;
 
-impl From<&models::LiteralPolicy> for ast::LiteralPolicy {
+impl From<&models::Policy> for ast::LiteralPolicy {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
-    fn from(v: &models::LiteralPolicy) -> Self {
+    fn from(v: &models::Policy) -> Self {
         let mut values: ast::SlotEnv = HashMap::new();
         if v.principal_euid.is_some() {
             values.insert(
@@ -48,10 +48,10 @@ impl From<&models::LiteralPolicy> for ast::LiteralPolicy {
 
         let template_id = ast::PolicyID::from_string(v.template_id.clone());
 
-        if v.link_id_specified {
+        if v.is_template_link {
             Self::template_linked_policy(
                 template_id,
-                ast::PolicyID::from_string(v.link_id.clone()),
+                ast::PolicyID::from_string(v.link_id.as_ref().expect("link_id field should exist")),
                 values,
             )
         } else {
@@ -60,24 +60,24 @@ impl From<&models::LiteralPolicy> for ast::LiteralPolicy {
     }
 }
 
-impl TryFrom<&models::LiteralPolicy> for ast::Policy {
+impl TryFrom<&models::Policy> for ast::Policy {
     type Error = ast::ReificationError;
-    fn try_from(policy: &models::LiteralPolicy) -> Result<Self, Self::Error> {
+    fn try_from(policy: &models::Policy) -> Result<Self, Self::Error> {
         // TODO: do we need to provide a nonempty `templates` argument to `.reify()`
         ast::LiteralPolicy::from(policy).reify(&HashMap::new())
     }
 }
 
-impl From<&ast::LiteralPolicy> for models::LiteralPolicy {
+impl From<&ast::LiteralPolicy> for models::Policy {
     fn from(v: &ast::LiteralPolicy) -> Self {
         Self {
-            template_id: v.template_id().to_string(),
+            template_id: v.template_id().as_ref().to_string(),
             link_id: if v.is_static() {
-                String::new()
+                None
             } else {
-                v.id().to_string()
+                Some(v.id().as_ref().to_string())
             },
-            link_id_specified: !v.is_static(),
+            is_template_link: !v.is_static(),
             principal_euid: v
                 .value(&ast::SlotId::principal())
                 .map(models::EntityUid::from),
@@ -88,16 +88,16 @@ impl From<&ast::LiteralPolicy> for models::LiteralPolicy {
     }
 }
 
-impl From<&ast::Policy> for models::LiteralPolicy {
+impl From<&ast::Policy> for models::Policy {
     fn from(v: &ast::Policy) -> Self {
         Self {
-            template_id: v.template().id().to_string(),
+            template_id: v.template().id().as_ref().to_string(),
             link_id: if v.is_static() {
-                String::new()
+                None
             } else {
-                v.id().to_string()
+                Some(v.id().as_ref().to_string())
             },
-            link_id_specified: !v.is_static(),
+            is_template_link: !v.is_static(),
             principal_euid: v
                 .env()
                 .get(&ast::SlotId::principal())
@@ -128,7 +128,10 @@ impl From<&models::TemplateBody> for ast::TemplateBody {
                 .map(|(key, value)| {
                     (
                         ast::AnyId::from_normalized_str(key).unwrap(),
-                        ast::Annotation::from(value),
+                        ast::Annotation {
+                            val: value.into(),
+                            loc: None,
+                        },
                     )
                 })
                 .collect(),
@@ -159,18 +162,22 @@ impl From<&models::TemplateBody> for ast::TemplateBody {
 
 impl From<&ast::TemplateBody> for models::TemplateBody {
     fn from(v: &ast::TemplateBody) -> Self {
-        let annotations: HashMap<String, models::Annotation> = v
+        let annotations: HashMap<String, String> = v
             .annotations()
-            .map(|(key, value)| (String::from(key.as_ref()), models::Annotation::from(value)))
+            .map(|(key, value)| (key.as_ref().into(), value.as_ref().into()))
             .collect();
 
         Self {
-            id: v.id().to_string(),
+            id: v.id().as_ref().to_string(),
             annotations,
             effect: models::Effect::from(&v.effect()).into(),
-            principal_constraint: Some(models::PrincipalConstraint::from(v.principal_constraint())),
+            principal_constraint: Some(models::PrincipalOrResourceConstraint::from(
+                v.principal_constraint(),
+            )),
             action_constraint: Some(models::ActionConstraint::from(v.action_constraint())),
-            resource_constraint: Some(models::ResourceConstraint::from(v.resource_constraint())),
+            resource_constraint: Some(models::PrincipalOrResourceConstraint::from(
+                v.resource_constraint(),
+            )),
             non_scope_constraints: Some(models::Expr::from(v.non_scope_constraints())),
         }
     }
@@ -182,43 +189,31 @@ impl From<&ast::Template> for models::TemplateBody {
     }
 }
 
-impl From<&models::PrincipalConstraint> for ast::PrincipalConstraint {
+impl From<&models::PrincipalOrResourceConstraint> for ast::PrincipalConstraint {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
-    fn from(v: &models::PrincipalConstraint) -> Self {
-        Self::new(ast::PrincipalOrResourceConstraint::from(
-            v.constraint
-                .as_ref()
-                .expect("constraint field should exist"),
-        ))
+    fn from(v: &models::PrincipalOrResourceConstraint) -> Self {
+        Self::new(ast::PrincipalOrResourceConstraint::from(v))
     }
 }
 
-impl From<&ast::PrincipalConstraint> for models::PrincipalConstraint {
+impl From<&ast::PrincipalConstraint> for models::PrincipalOrResourceConstraint {
     fn from(v: &ast::PrincipalConstraint) -> Self {
-        Self {
-            constraint: Some(models::PrincipalOrResourceConstraint::from(v.as_inner())),
-        }
+        models::PrincipalOrResourceConstraint::from(v.as_inner())
     }
 }
 
-impl From<&models::ResourceConstraint> for ast::ResourceConstraint {
+impl From<&models::PrincipalOrResourceConstraint> for ast::ResourceConstraint {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
-    fn from(v: &models::ResourceConstraint) -> Self {
-        Self::new(ast::PrincipalOrResourceConstraint::from(
-            v.constraint
-                .as_ref()
-                .expect("constraint field should exist"),
-        ))
+    fn from(v: &models::PrincipalOrResourceConstraint) -> Self {
+        Self::new(ast::PrincipalOrResourceConstraint::from(v))
     }
 }
 
-impl From<&ast::ResourceConstraint> for models::ResourceConstraint {
+impl From<&ast::ResourceConstraint> for models::PrincipalOrResourceConstraint {
     fn from(v: &ast::ResourceConstraint) -> Self {
-        Self {
-            constraint: Some(models::PrincipalOrResourceConstraint::from(v.as_inner())),
-        }
+        models::PrincipalOrResourceConstraint::from(v.as_inner())
     }
 }
 
@@ -227,11 +222,11 @@ impl From<&models::EntityReference> for ast::EntityReference {
     #[allow(clippy::expect_used)]
     fn from(v: &models::EntityReference) -> Self {
         match v.data.as_ref().expect("data field should exist") {
-            models::entity_reference::Data::Ty(ty) => {
-                match models::entity_reference::Ty::try_from(ty.to_owned())
+            models::entity_reference::Data::Slot(slot) => {
+                match models::entity_reference::Slot::try_from(*slot)
                     .expect("decode should succeed")
                 {
-                    models::entity_reference::Ty::Slot => ast::EntityReference::Slot(None),
+                    models::entity_reference::Slot::Unit => ast::EntityReference::Slot(None),
                 }
             }
             models::entity_reference::Data::Euid(euid) => {
@@ -250,8 +245,8 @@ impl From<&ast::EntityReference> for models::EntityReference {
                 )),
             },
             ast::EntityReference::Slot(_) => Self {
-                data: Some(models::entity_reference::Data::Ty(
-                    models::entity_reference::Ty::Slot.into(),
+                data: Some(models::entity_reference::Data::Slot(
+                    models::entity_reference::Slot::Unit.into(),
                 )),
             },
         }
@@ -263,11 +258,11 @@ impl From<&models::PrincipalOrResourceConstraint> for ast::PrincipalOrResourceCo
     #[allow(clippy::expect_used)]
     fn from(v: &models::PrincipalOrResourceConstraint) -> Self {
         match v.data.as_ref().expect("data field should exist") {
-            models::principal_or_resource_constraint::Data::Ty(ty) => {
-                match models::principal_or_resource_constraint::Ty::try_from(ty.to_owned())
+            models::principal_or_resource_constraint::Data::Any(unit) => {
+                match models::principal_or_resource_constraint::Any::try_from(*unit)
                     .expect("decode should succeed")
                 {
-                    models::principal_or_resource_constraint::Ty::Any => {
+                    models::principal_or_resource_constraint::Any::Unit => {
                         ast::PrincipalOrResourceConstraint::Any
                     }
                 }
@@ -284,12 +279,22 @@ impl From<&models::PrincipalOrResourceConstraint> for ast::PrincipalOrResourceCo
             }
             models::principal_or_resource_constraint::Data::Is(msg) => {
                 ast::PrincipalOrResourceConstraint::Is(
-                    ast::EntityType::from(msg.et.as_ref().expect("et field should exist")).into(),
+                    ast::EntityType::from(
+                        msg.entity_type
+                            .as_ref()
+                            .expect("entity_type field should exist"),
+                    )
+                    .into(),
                 )
             }
             models::principal_or_resource_constraint::Data::IsIn(msg) => {
                 ast::PrincipalOrResourceConstraint::IsIn(
-                    ast::EntityType::from(msg.et.as_ref().expect("et field should exist")).into(),
+                    ast::EntityType::from(
+                        msg.entity_type
+                            .as_ref()
+                            .expect("entity_type field should exist"),
+                    )
+                    .into(),
                     ast::EntityReference::from(msg.er.as_ref().expect("er field should exist")),
                 )
             }
@@ -301,8 +306,8 @@ impl From<&ast::PrincipalOrResourceConstraint> for models::PrincipalOrResourceCo
     fn from(v: &ast::PrincipalOrResourceConstraint) -> Self {
         match v {
             ast::PrincipalOrResourceConstraint::Any => Self {
-                data: Some(models::principal_or_resource_constraint::Data::Ty(
-                    models::principal_or_resource_constraint::Ty::Any.into(),
+                data: Some(models::principal_or_resource_constraint::Data::Any(
+                    models::principal_or_resource_constraint::Any::Unit.into(),
                 )),
             },
             ast::PrincipalOrResourceConstraint::In(er) => Self {
@@ -322,7 +327,7 @@ impl From<&ast::PrincipalOrResourceConstraint> for models::PrincipalOrResourceCo
             ast::PrincipalOrResourceConstraint::Is(na) => Self {
                 data: Some(models::principal_or_resource_constraint::Data::Is(
                     models::principal_or_resource_constraint::IsMessage {
-                        et: Some(models::EntityType::from(na.as_ref())),
+                        entity_type: Some(models::Name::from(na.as_ref())),
                     },
                 )),
             },
@@ -330,7 +335,7 @@ impl From<&ast::PrincipalOrResourceConstraint> for models::PrincipalOrResourceCo
                 data: Some(models::principal_or_resource_constraint::Data::IsIn(
                     models::principal_or_resource_constraint::IsInMessage {
                         er: Some(models::EntityReference::from(er)),
-                        et: Some(models::EntityType::from(na.as_ref())),
+                        entity_type: Some(models::Name::from(na.as_ref())),
                     },
                 )),
             },
@@ -343,11 +348,11 @@ impl From<&models::ActionConstraint> for ast::ActionConstraint {
     #[allow(clippy::expect_used)]
     fn from(v: &models::ActionConstraint) -> Self {
         match v.data.as_ref().expect("data.as_ref()") {
-            models::action_constraint::Data::Ty(ty) => {
-                match models::action_constraint::Ty::try_from(ty.to_owned())
+            models::action_constraint::Data::Any(unit) => {
+                match models::action_constraint::Any::try_from(*unit)
                     .expect("decode should succeed")
                 {
-                    models::action_constraint::Ty::Any => ast::ActionConstraint::Any,
+                    models::action_constraint::Any::Unit => ast::ActionConstraint::Any,
                 }
             }
             models::action_constraint::Data::In(msg) => ast::ActionConstraint::In(
@@ -367,8 +372,8 @@ impl From<&ast::ActionConstraint> for models::ActionConstraint {
     fn from(v: &ast::ActionConstraint) -> Self {
         match v {
             ast::ActionConstraint::Any => Self {
-                data: Some(models::action_constraint::Data::Ty(
-                    models::action_constraint::Ty::Any.into(),
+                data: Some(models::action_constraint::Data::Any(
+                    models::action_constraint::Any::Unit.into(),
                 )),
             },
             ast::ActionConstraint::In(euids) => {
@@ -389,6 +394,16 @@ impl From<&ast::ActionConstraint> for models::ActionConstraint {
                     },
                 )),
             },
+            #[cfg(feature = "tolerant-ast")]
+            ast::ActionConstraint::ErrorConstraint =>
+            // Treat an error constraint as an Any constraint for Protobufs since Protobufs schema model has no Error
+            {
+                Self {
+                    data: Some(models::action_constraint::Data::Any(
+                        models::action_constraint::Any::Unit.into(),
+                    )),
+                }
+            }
         }
     }
 }
@@ -411,74 +426,53 @@ impl From<&ast::Effect> for models::Effect {
     }
 }
 
-impl From<&models::LiteralPolicySet> for ast::LiteralPolicySet {
-    fn from(v: &models::LiteralPolicySet) -> Self {
-        let templates = v.templates.iter().map(|(key, value)| {
+impl From<&models::PolicySet> for ast::LiteralPolicySet {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &models::PolicySet) -> Self {
+        let templates = v.templates.iter().map(|tb| {
             (
-                ast::PolicyID::from_string(key),
-                ast::Template::from(ast::TemplateBody::from(value)),
+                ast::PolicyID::from_string(&tb.id),
+                ast::Template::from(ast::TemplateBody::from(tb)),
             )
         });
 
-        let links = v.links.iter().map(|(key, value)| {
-            (
-                ast::PolicyID::from_string(key),
-                ast::LiteralPolicy::from(value),
-            )
+        let links = v.links.iter().map(|p| {
+            // per docs in core.proto, for static policies, `link_id` is omitted/ignored,
+            // and the ID of the policy is the `template_id`.
+            let id = if p.is_template_link {
+                p.link_id
+                    .as_ref()
+                    .expect("template link should have a link_id")
+            } else {
+                &p.template_id
+            };
+            (ast::PolicyID::from_string(id), ast::LiteralPolicy::from(p))
         });
 
         Self::new(templates, links)
     }
 }
 
-impl From<&ast::LiteralPolicySet> for models::LiteralPolicySet {
+impl From<&ast::LiteralPolicySet> for models::PolicySet {
     fn from(v: &ast::LiteralPolicySet) -> Self {
-        let templates = v
-            .templates()
-            .map(|template| {
-                (
-                    String::from(template.id().as_ref()),
-                    models::TemplateBody::from(template),
-                )
-            })
-            .collect();
-        let links = v
-            .policies()
-            .map(|policy| {
-                (
-                    String::from(policy.id().as_ref()),
-                    models::LiteralPolicy::from(policy),
-                )
-            })
-            .collect();
-
+        let templates = v.templates().map(models::TemplateBody::from).collect();
+        let links = v.policies().map(models::Policy::from).collect();
         Self { templates, links }
     }
 }
 
-impl From<&ast::PolicySet> for models::LiteralPolicySet {
+impl From<&ast::PolicySet> for models::PolicySet {
     fn from(v: &ast::PolicySet) -> Self {
-        let templates: HashMap<String, models::TemplateBody> = v
-            .all_templates()
-            .map(|t| (String::from(t.id().as_ref()), models::TemplateBody::from(t)))
-            .collect();
-        let links: HashMap<String, models::LiteralPolicy> = v
-            .policies()
-            .map(|policy| {
-                (
-                    String::from(policy.id().as_ref()),
-                    models::LiteralPolicy::from(policy),
-                )
-            })
-            .collect();
-
+        let templates = v.all_templates().map(models::TemplateBody::from).collect();
+        let links = v.policies().map(models::Policy::from).collect();
         Self { templates, links }
     }
 }
 
-impl TryFrom<&models::LiteralPolicySet> for ast::PolicySet {
+impl TryFrom<&models::PolicySet> for ast::PolicySet {
     type Error = ast::ReificationError;
-    fn try_from(pset: &models::LiteralPolicySet) -> Result<Self, Self::Error> {
+    fn try_from(pset: &models::PolicySet) -> Result<Self, Self::Error> {
         ast::PolicySet::try_from(ast::LiteralPolicySet::from(pset))
     }
 }
@@ -489,25 +483,51 @@ mod test {
 
     use super::*;
 
+    // We add `PartialOrd` and `Ord` implementations for both `models::Policy` and
+    // `models::TemplateBody`, so that these can be sorted for testing purposes
+    impl Eq for models::Policy {}
+    impl PartialOrd for models::Policy {
+        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+    impl Ord for models::Policy {
+        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            // assumes that (link-id, template-id) pair is unique, otherwise we're
+            // technically violating `Ord` contract because there could exist two
+            // policies that return `Ordering::Equal` but are not equal with `Eq`
+            self.link_id()
+                .cmp(other.link_id())
+                .then_with(|| self.template_id.cmp(&other.template_id))
+        }
+    }
+    impl Eq for models::TemplateBody {}
+    impl PartialOrd for models::TemplateBody {
+        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+    impl Ord for models::TemplateBody {
+        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            // assumes that IDs are unique, otherwise we're technically violating
+            // `Ord` contract because there could exist two template-bodies that
+            // return `Ordering::Equal` but are not equal with `Eq`
+            self.id.cmp(&other.id)
+        }
+    }
+
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn policy_roundtrip() {
         let annotation1 = ast::Annotation {
             val: "".into(),
             loc: None,
         };
-        assert_eq!(
-            annotation1,
-            ast::Annotation::from(&models::Annotation::from(&annotation1))
-        );
 
         let annotation2 = ast::Annotation {
             val: "Hello World".into(),
             loc: None,
         };
-        assert_eq!(
-            annotation2,
-            ast::Annotation::from(&models::Annotation::from(&annotation2))
-        );
 
         assert_eq!(
             ast::Effect::Permit,
@@ -555,9 +575,9 @@ mod test {
         let name1 = Arc::new(ast::EntityType::from(
             ast::Name::from_normalized_str("B::C::D").unwrap(),
         ));
-        let prc1 = ast::PrincipalOrResourceConstraint::is_eq(euid1.to_owned());
-        let prc2 = ast::PrincipalOrResourceConstraint::is_in(euid1.to_owned());
-        let prc3 = ast::PrincipalOrResourceConstraint::is_entity_type(name1.to_owned());
+        let prc1 = ast::PrincipalOrResourceConstraint::is_eq(euid1.clone());
+        let prc2 = ast::PrincipalOrResourceConstraint::is_in(euid1.clone());
+        let prc3 = ast::PrincipalOrResourceConstraint::is_entity_type(name1.clone());
         let prc4 = ast::PrincipalOrResourceConstraint::is_entity_type_in(name1, euid1);
         assert_eq!(
             ast::PrincipalOrResourceConstraint::any(),
@@ -594,11 +614,11 @@ mod test {
         let rc = ast::ResourceConstraint::new(prc3);
         assert_eq!(
             pc,
-            ast::PrincipalConstraint::from(&models::PrincipalConstraint::from(&pc))
+            ast::PrincipalConstraint::from(&models::PrincipalOrResourceConstraint::from(&pc))
         );
         assert_eq!(
             rc,
-            ast::ResourceConstraint::from(&models::ResourceConstraint::from(&rc))
+            ast::ResourceConstraint::from(&models::PrincipalOrResourceConstraint::from(&rc))
         );
 
         assert_eq!(
@@ -613,14 +633,20 @@ mod test {
         let tb = ast::TemplateBody::new(
             ast::PolicyID::from_string("template"),
             None,
-            ast::Annotations::from_iter([(
-                ast::AnyId::from_normalized_str("read").unwrap(),
-                annotation1,
-            )]),
+            ast::Annotations::from_iter([
+                (
+                    ast::AnyId::from_normalized_str("read").unwrap(),
+                    annotation1,
+                ),
+                (
+                    ast::AnyId::from_normalized_str("write").unwrap(),
+                    annotation2,
+                ),
+            ]),
             ast::Effect::Permit,
-            pc,
-            ac1,
-            rc,
+            pc.clone(),
+            ac1.clone(),
+            rc.clone(),
             ast::Expr::val(true),
         );
         assert_eq!(
@@ -638,7 +664,35 @@ mod test {
         );
         assert_eq!(
             policy,
-            ast::LiteralPolicy::from(&models::LiteralPolicy::from(&policy))
+            ast::LiteralPolicy::from(&models::Policy::from(&policy))
+        );
+
+        let tb = ast::TemplateBody::new(
+            ast::PolicyID::from_string("\0\n \' \"+-$^!"),
+            None,
+            ast::Annotations::from_iter([]),
+            ast::Effect::Permit,
+            pc,
+            ac1,
+            rc,
+            ast::Expr::val(true),
+        );
+        assert_eq!(
+            tb,
+            ast::TemplateBody::from(&models::TemplateBody::from(&tb))
+        );
+
+        let policy = ast::LiteralPolicy::template_linked_policy(
+            ast::PolicyID::from_string("template\0\n \' \"+-$^!"),
+            ast::PolicyID::from_string("link\0\n \' \"+-$^!"),
+            HashMap::from_iter([(
+                ast::SlotId::principal(),
+                ast::EntityUID::with_eid_and_type("A", "eid").unwrap(),
+            )]),
+        );
+        assert_eq!(
+            policy,
+            ast::LiteralPolicy::from(&models::Policy::from(&policy))
         );
     }
 
@@ -697,11 +751,88 @@ mod test {
             )]),
         )
         .unwrap();
-        let lps = models::LiteralPolicySet::from(&ps);
-        let lps_roundtrip = models::LiteralPolicySet::from(&ast::LiteralPolicySet::from(&lps));
+        let mut mps = models::PolicySet::from(&ps);
+        let mut mps_roundtrip = models::PolicySet::from(&ast::LiteralPolicySet::from(&mps));
 
-        // Can't compare LiteralPolicySets directly, so we compare their fields
-        assert_eq!(lps.templates, lps_roundtrip.templates);
-        assert_eq!(lps.links, lps_roundtrip.links);
+        // we accept permutations as equivalent, so before comparison, we sort
+        // both `.templates` and `.links`
+        mps.templates.sort();
+        mps_roundtrip.templates.sort();
+        mps.links.sort();
+        mps_roundtrip.links.sort();
+
+        // Can't compare `models::PolicySet` directly, so we compare their fields
+        assert_eq!(mps.templates, mps_roundtrip.templates);
+        assert_eq!(mps.links, mps_roundtrip.links);
+    }
+
+    #[test]
+    fn policyset_roundtrip_escapes() {
+        let tb = ast::TemplateBody::new(
+            ast::PolicyID::from_string("template\0\n \' \"+-$^!"),
+            None,
+            ast::Annotations::from_iter(vec![(
+                ast::AnyId::from_normalized_str("read").unwrap(),
+                ast::Annotation {
+                    val: "".into(),
+                    loc: None,
+                },
+            )]),
+            ast::Effect::Permit,
+            ast::PrincipalConstraint::is_eq_slot(),
+            ast::ActionConstraint::Eq(
+                ast::EntityUID::with_eid_and_type("Action", "read")
+                    .unwrap()
+                    .into(),
+            ),
+            ast::ResourceConstraint::is_entity_type(
+                ast::EntityType::from(ast::Name::from_normalized_str("photo").unwrap()).into(),
+            ),
+            ast::Expr::val(true),
+        );
+
+        let policy1 = ast::Policy::from_when_clause(
+            ast::Effect::Permit,
+            ast::Expr::val(true),
+            ast::PolicyID::from_string("permit-true-trivial\0\n \' \"+-$^!"),
+            None,
+        );
+        let policy2 = ast::Policy::from_when_clause(
+            ast::Effect::Forbid,
+            ast::Expr::is_eq(
+                ast::Expr::var(ast::Var::Principal),
+                ast::Expr::val(ast::EntityUID::with_eid_and_type("A", "dog").unwrap()),
+            ),
+            ast::PolicyID::from_string("forbid-dog\0\n \' \"+-$^!"),
+            None,
+        );
+
+        let mut ps = ast::PolicySet::new();
+        ps.add_template(ast::Template::from(tb))
+            .expect("Failed to add template to policy set.");
+        ps.add(policy1).expect("Failed to add policy to policy set");
+        ps.add(policy2).expect("Failed to add policy to policy set");
+        ps.link(
+            ast::PolicyID::from_string("template\0\n \' \"+-$^!"),
+            ast::PolicyID::from_string("link\0\n \' \"+-$^!"),
+            HashMap::from_iter([(
+                ast::SlotId::principal(),
+                ast::EntityUID::with_eid_and_type("A", "friend").unwrap(),
+            )]),
+        )
+        .unwrap();
+        let mut mps = models::PolicySet::from(&ps);
+        let mut mps_roundtrip = models::PolicySet::from(&ast::LiteralPolicySet::from(&mps));
+
+        // we accept permutations as equivalent, so before comparison, we sort
+        // both `.templates` and `.links`
+        mps.templates.sort();
+        mps_roundtrip.templates.sort();
+        mps.links.sort();
+        mps_roundtrip.links.sort();
+
+        // Can't compare `models::PolicySet` directly, so we compare their fields
+        assert_eq!(mps.templates, mps_roundtrip.templates);
+        assert_eq!(mps.links, mps_roundtrip.links);
     }
 }

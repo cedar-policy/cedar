@@ -1,0 +1,34 @@
+name: Comment on the pull request
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+  statuses: read
+on:
+  workflow_run:
+    workflows: [Cargo Build & Test]
+    types:
+      - completed
+
+jobs:
+  post_comment:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download artifacts
+        shell: bash
+        run: |
+          STATUS=$(gh run download $RUN_ID --name coverage_comment && echo "SUCCESS" || echo "FAILURE")
+          echo "STATUS=$STATUS" >> $GITHUB_ENV
+        env:
+          RUN_ID: ${{github.event.workflow_run.id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Add comment to PR
+        if: ${{ env.STATUS == 'SUCCESS' }}
+        shell: bash
+        run: |
+          ISSUE_NUMBER=$(cat issue_number.txt)
+          gh pr comment $ISSUE_NUMBER --body-file markdown.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

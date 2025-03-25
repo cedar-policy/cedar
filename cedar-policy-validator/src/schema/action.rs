@@ -17,17 +17,16 @@
 //! This module contains the definition of `ValidatorActionId` and the types it relies on
 
 use cedar_policy_core::{
-    ast::{self, EntityType, EntityUID, PartialValueSerializedAsExpr},
+    ast::{self, EntityType, EntityUID, PartialValue},
+    parser::Loc,
     transitive_closure::TCNode,
 };
-use itertools::Itertools;
-use nonempty::NonEmpty;
-use serde::Serialize;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashSet};
 
 use super::internal_name_to_entity_type;
 use crate::{
+    partition_nonempty::PartitionNonEmpty,
     schema::{AllDefs, SchemaError},
     types::{Attributes, Type},
     ConditionalName,
@@ -36,8 +35,7 @@ use crate::{
 /// Contains information about actions used by the validator.  The contents of
 /// the struct are the same as the schema entity type structure, but the
 /// `member_of` relation is reversed to instead be `descendants`.
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug)]
 pub struct ValidatorActionId {
     /// The name of the action.
     pub(crate) name: EntityUID,
@@ -60,10 +58,9 @@ pub struct ValidatorActionId {
     /// The actual attribute value for this action, used to construct an
     /// `Entity` for this action. Could also be used for more precise
     /// typechecking by partial evaluation.
-    ///
-    /// Attributes are serialized as `RestrictedExpr`s, so that roundtripping
-    /// works seamlessly.
-    pub(crate) attributes: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
+    pub(crate) attributes: BTreeMap<SmolStr, PartialValue>,
+    /// Source location - if available
+    pub(crate) loc: Option<Loc>,
 }
 
 impl ValidatorActionId {
@@ -78,7 +75,8 @@ impl ValidatorActionId {
         descendants: impl IntoIterator<Item = EntityUID>,
         context: Type,
         attribute_types: Attributes,
-        attributes: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
+        attributes: BTreeMap<SmolStr, PartialValue>,
+        loc: Option<Loc>,
     ) -> Self {
         Self {
             name,
@@ -90,12 +88,18 @@ impl ValidatorActionId {
             context,
             attribute_types,
             attributes,
+            loc,
         }
     }
 
     /// The name of the action
     pub fn name(&self) -> &EntityUID {
         &self.name
+    }
+
+    /// The source location if available
+    pub fn loc(&self) -> Option<&Loc> {
+        self.loc.as_ref()
     }
 
     /// Iterator over the actions that are members of this action
@@ -151,7 +155,7 @@ impl ValidatorActionId {
     }
 
     /// Attribute values for this action
-    pub fn attributes(&self) -> impl Iterator<Item = (&SmolStr, &PartialValueSerializedAsExpr)> {
+    pub fn attributes(&self) -> impl Iterator<Item = (&SmolStr, &PartialValue)> {
         self.attributes.iter()
     }
 }
@@ -184,8 +188,7 @@ impl TCNode<EntityUID> for ValidatorActionId {
 /// [`InternalName`] and [`Name`] always represents a fully-qualified name, but
 /// as of this writing we always use [`Name`] or [`InternalName`] for the
 /// parameter here when we want to indicate names have been fully qualified.)
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug)]
 pub(crate) struct ValidatorApplySpec<N> {
     /// The principal entity types the action can be applied to.
     principal_apply_spec: HashSet<N>,
@@ -239,33 +242,31 @@ impl ValidatorApplySpec<ConditionalName> {
         self,
         all_defs: &AllDefs,
     ) -> Result<ValidatorApplySpec<ast::EntityType>, crate::schema::SchemaError> {
-        let (principal_apply_spec, principal_errs) = self
+        let principal_apply_spec = self
             .principal_apply_spec
             .into_iter()
             .map(|cname| {
                 let internal_name = cname.resolve(all_defs)?;
                 internal_name_to_entity_type(internal_name).map_err(Into::into)
             })
-            .partition_result::<_, Vec<SchemaError>, _, _>();
-        let (resource_apply_spec, resource_errs) = self
+            .partition_nonempty();
+        let resource_apply_spec = self
             .resource_apply_spec
             .into_iter()
             .map(|cname| {
                 let internal_name = cname.resolve(all_defs)?;
                 internal_name_to_entity_type(internal_name).map_err(Into::into)
             })
-            .partition_result::<_, Vec<SchemaError>, _, _>();
-        match (
-            NonEmpty::from_vec(principal_errs),
-            NonEmpty::from_vec(resource_errs),
-        ) {
-            (None, None) => Ok(ValidatorApplySpec {
+            .partition_nonempty();
+
+        match (principal_apply_spec, resource_apply_spec) {
+            (Ok(principal_apply_spec), Ok(resource_apply_spec)) => Ok(ValidatorApplySpec {
                 principal_apply_spec,
                 resource_apply_spec,
             }),
-            (Some(principal_errs), None) => Err(SchemaError::join_nonempty(principal_errs)),
-            (None, Some(resource_errs)) => Err(SchemaError::join_nonempty(resource_errs)),
-            (Some(principal_errs), Some(resource_errs)) => {
+            (Ok(_), Err(errs)) => Err(SchemaError::join_nonempty(errs)),
+            (Err(resource_errs), Ok(_)) => Err(SchemaError::join_nonempty(resource_errs)),
+            (Err(principal_errs), Err(resource_errs)) => {
                 let mut errs = principal_errs;
                 errs.extend(resource_errs);
                 Err(SchemaError::join_nonempty(errs))
@@ -296,6 +297,7 @@ mod test {
             context: Type::any_record(),
             attribute_types: Attributes::default(),
             attributes: BTreeMap::default(),
+            loc: None,
         }
     }
 

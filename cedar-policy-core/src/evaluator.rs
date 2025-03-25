@@ -21,11 +21,11 @@ use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
 use std::collections::BTreeMap;
-#[cfg(test)]
-use std::collections::HashMap;
 use std::sync::Arc;
 
 mod err;
+#[cfg(feature = "tolerant-ast")]
+use crate::evaluator::EvaluationError::ASTErrorExpr;
 pub use err::evaluation_errors;
 pub use err::EvaluationError;
 pub(crate) use err::*;
@@ -760,6 +760,10 @@ impl<'e> Evaluator<'e> {
                     }
                 }
             }
+            #[cfg(feature = "tolerant-ast")]
+            ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError {
+                source_loc: loc.cloned(),
+            })),
         }
     }
 
@@ -928,32 +932,6 @@ impl<'e> Evaluator<'e> {
         }
     }
 
-    /// Interpret an `Expr` in an empty `SlotEnv`. Also checks that the source
-    /// location is propagated to the result.
-    #[cfg(test)]
-    pub fn interpret_inline_policy(&self, e: &Expr) -> Result<Value> {
-        match self.partial_interpret(e, &HashMap::new())? {
-            PartialValue::Value(v) => {
-                debug_assert!(e.source_loc().is_some() == v.source_loc().is_some());
-                Ok(v)
-            }
-            PartialValue::Residual(r) => {
-                debug_assert!(e.source_loc().is_some() == r.source_loc().is_some());
-                Err(err::EvaluationError::non_value(r))
-            }
-        }
-    }
-
-    /// Evaluate an expression, potentially leaving a residual
-    #[cfg(test)]
-    pub fn partial_eval_expr(&self, p: &Expr) -> Result<Either<Value, Expr>> {
-        let env = SlotEnv::new();
-        match self.partial_interpret(p, &env)? {
-            PartialValue::Value(v) => Ok(Either::Left(v)),
-            PartialValue::Residual(r) => Ok(Either::Right(r)),
-        }
-    }
-
     /// Evaluate a binary operation between a residual expression (left) and a value (right). If despite the unknown contained in the residual, concrete result
     /// can be obtained (using the type annotation on the residual), it is returned.
     fn short_circuit_residual_and_value(
@@ -1030,12 +1008,34 @@ impl<'e> Evaluator<'e> {
             _ => None,
         }
     }
+}
 
-    // by default, Coverlay does not track coverage for lines after a line
-    // containing #[cfg(test)].
-    // we use the following sentinel to "turn back on" coverage tracking for
-    // remaining lines of this file, until the next #[cfg(test)]
-    // GRCOV_BEGIN_COVERAGE
+#[cfg(test)]
+impl Evaluator<'_> {
+    /// Interpret an `Expr` in an empty `SlotEnv`. Also checks that the source
+    /// location is propagated to the result.
+    pub fn interpret_inline_policy(&self, e: &Expr) -> Result<Value> {
+        use std::collections::HashMap;
+        match self.partial_interpret(e, &HashMap::new())? {
+            PartialValue::Value(v) => {
+                debug_assert!(e.source_loc().is_some() == v.source_loc().is_some());
+                Ok(v)
+            }
+            PartialValue::Residual(r) => {
+                debug_assert!(e.source_loc().is_some() == r.source_loc().is_some());
+                Err(err::EvaluationError::non_value(r))
+            }
+        }
+    }
+
+    /// Evaluate an expression, potentially leaving a residual
+    pub fn partial_eval_expr(&self, p: &Expr) -> Result<Either<Value, Expr>> {
+        let env = SlotEnv::new();
+        match self.partial_interpret(p, &env)? {
+            PartialValue::Value(v) => Ok(Either::Left(v)),
+            PartialValue::Residual(r) => Ok(Either::Right(r)),
+        }
+    }
 }
 
 impl std::fmt::Debug for Evaluator<'_> {
@@ -1119,6 +1119,7 @@ fn stack_size_check() -> Result<()> {
 #[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
 pub(crate) mod test {
+    use std::collections::{HashMap, HashSet};
     use std::str::FromStr;
 
     use super::*;
@@ -1180,80 +1181,72 @@ pub(crate) mod test {
         let entity_no_attrs_no_parents =
             Entity::with_uid(EntityUID::with_eid("entity_no_attrs_no_parents"));
 
-        let mut entity_with_attrs = Entity::with_uid(EntityUID::with_eid("entity_with_attrs"));
-        entity_with_attrs
-            .set_attr(
-                "spoon".into(),
-                RestrictedExpr::val(787).as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
-        entity_with_attrs
-            .set_attr(
-                "fork".into(),
-                RestrictedExpr::val("spoon").as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
-        entity_with_attrs
-            .set_attr(
+        let attrs = HashMap::from([
+            ("spoon".into(), RestrictedExpr::val(787)),
+            ("fork".into(), RestrictedExpr::val("spoon")),
+            (
                 "tags".into(),
                 RestrictedExpr::set(vec![
                     RestrictedExpr::val("fun"),
                     RestrictedExpr::val("good"),
                     RestrictedExpr::val("useful"),
-                ])
-                .as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
-        entity_with_attrs
-            .set_attr(
+                ]),
+            ),
+            (
                 "address".into(),
                 RestrictedExpr::record(vec![
                     ("street".into(), RestrictedExpr::val("234 magnolia")),
                     ("town".into(), RestrictedExpr::val("barmstadt")),
                     ("country".into(), RestrictedExpr::val("amazonia")),
                 ])
-                .unwrap()
-                .as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
+                .unwrap(),
+            ),
+        ]);
+        let entity_with_attrs = Entity::new(
+            EntityUID::with_eid("entity_with_attrs"),
+            attrs.clone(),
+            HashSet::new(),
+            HashSet::new(),
+            HashMap::new(),
+            Extensions::none(),
+        )
+        .unwrap();
 
-        let mut entity_with_tags = Entity::with_uid(EntityUID::with_eid("entity_with_tags"));
-        entity_with_tags
-            .set_tag(
-                "spoon".into(),
-                RestrictedExpr::val(-121).as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
+        let tags = HashMap::from([("spoon".into(), RestrictedExpr::val(-121))]);
+        let entity_with_tags = Entity::new(
+            EntityUID::with_eid("entity_with_tags"),
+            HashMap::new(),
+            HashSet::new(),
+            HashSet::new(),
+            tags.clone(),
+            Extensions::none(),
+        )
+        .unwrap();
 
-        let mut entity_with_tags_and_attrs = entity_with_attrs.clone();
-        entity_with_tags_and_attrs.set_uid(EntityUID::with_eid("entity_with_tags_and_attrs"));
-        entity_with_tags_and_attrs
-            .set_tag(
-                "spoon".into(),
-                RestrictedExpr::val(-121).as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
+        let entity_with_tags_and_attrs = Entity::new(
+            EntityUID::with_eid("entity_with_tags_and_attrs"),
+            attrs,
+            HashSet::new(),
+            HashSet::new(),
+            tags,
+            Extensions::none(),
+        )
+        .unwrap();
 
         let mut child = Entity::with_uid(EntityUID::with_eid("child"));
         let mut parent = Entity::with_uid(EntityUID::with_eid("parent"));
         let grandparent = Entity::with_uid(EntityUID::with_eid("grandparent"));
         let mut sibling = Entity::with_uid(EntityUID::with_eid("sibling"));
         let unrelated = Entity::with_uid(EntityUID::with_eid("unrelated"));
-        child.add_ancestor(parent.uid().clone());
-        sibling.add_ancestor(parent.uid().clone());
-        parent.add_ancestor(grandparent.uid().clone());
+        child.add_indirect_ancestor(parent.uid().clone());
+        sibling.add_indirect_ancestor(parent.uid().clone());
+        parent.add_indirect_ancestor(grandparent.uid().clone());
         let mut child_diff_type = Entity::with_uid(
             EntityUID::with_eid_and_type("other_type", "other_child")
                 .expect("should be a valid identifier"),
         );
-        child_diff_type.add_ancestor(parent.uid().clone());
-        child_diff_type.add_ancestor(grandparent.uid().clone());
+        child_diff_type.add_indirect_ancestor(parent.uid().clone());
+        child_diff_type.add_indirect_ancestor(grandparent.uid().clone());
 
         Entities::from_entities(
             vec![
@@ -2562,8 +2555,6 @@ pub(crate) mod test {
         );
     }
 
-    use std::collections::HashSet;
-
     #[test]
     fn large_entity_err() {
         let expr = Expr::get_attr(
@@ -2577,13 +2568,14 @@ pub(crate) mod test {
             r#"Foo::"bar""#.parse().unwrap(),
             attrs,
             HashSet::new(),
+            HashSet::new(),
             [],
             Extensions::none(),
         )
         .unwrap();
         let request = basic_request();
         let entities = Entities::from_entities(
-            std::iter::once(entity),
+            [entity],
             None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
             Extensions::none(),
@@ -3192,7 +3184,6 @@ pub(crate) mod test {
         );
     }
 
-    #[cfg(feature = "datetime")]
     #[test]
     fn interpret_datetime_extension_compares() {
         let request = basic_request();
@@ -3408,8 +3399,8 @@ pub(crate) mod test {
                     duration_constructor.clone(),
                     vec![Value::from("2h").into()]))),
             Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: datetime_constructor.clone() }]);
-                assert_eq!(actual, Type::Extension { name: duration_constructor.clone() });
+                assert_eq!(expected, nonempty![Type::Extension { name: datetime_constructor }]);
+                assert_eq!(actual, Type::Extension { name: duration_constructor });
                 assert_eq!(advice, None);
         });
 
@@ -4083,7 +4074,7 @@ pub(crate) mod test {
         //Alice has parent "Friends" but we don't add "Friends" to the slice
         let mut alice = Entity::with_uid(EntityUID::with_eid("Alice"));
         let parent = Entity::with_uid(EntityUID::with_eid("Friends"));
-        alice.add_ancestor(parent.uid().clone());
+        alice.add_indirect_ancestor(parent.uid().clone());
         let entities = Entities::from_entities(
             vec![alice],
             None::<&NoEntitiesSchema>,
@@ -5063,8 +5054,7 @@ pub(crate) mod test {
             Either::Right(expr) => {
                 println!("{expr}");
                 assert!(expr.contains_unknown());
-                let m: HashMap<_, _> =
-                    std::iter::once(("principal".into(), Value::from(euid))).collect();
+                let m: HashMap<_, _> = HashMap::from([("principal".into(), Value::from(euid))]);
                 let new_expr = expr.substitute_typed(&m).unwrap();
                 assert_eq!(
                     e.partial_interpret(&new_expr, &HashMap::new())

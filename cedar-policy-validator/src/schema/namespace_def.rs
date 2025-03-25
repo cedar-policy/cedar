@@ -21,13 +21,14 @@ use std::collections::{hash_map::Entry, BTreeMap, HashMap, HashSet};
 
 use cedar_policy_core::{
     ast::{
-        EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name,
-        PartialValueSerializedAsExpr, UnreservedId,
+        EntityAttrEvaluationError, EntityType, EntityUID, InternalName, Name, PartialValue,
+        UnreservedId,
     },
     entities::{json::err::JsonDeserializationErrorContext, CedarValueJson},
     evaluator::RestrictedEvaluator,
     extensions::Extensions,
     fuzzy_match::fuzzy_search,
+    parser::Loc,
 };
 use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
@@ -37,6 +38,7 @@ use super::{internal_name_to_entity_type, AllDefs, ValidatorApplySpec};
 use crate::{
     err::{schema_errors::*, SchemaError},
     json_schema::{self, CommonTypeId, EntityTypeKind},
+    partition_nonempty::PartitionNonEmpty,
     types::{AttributeType, Attributes, OpenTag, Type},
     ActionBehavior, ConditionalName, RawName, ReferenceType,
 };
@@ -216,7 +218,7 @@ impl ValidatorNamespaceDef<ConditionalName, ConditionalName> {
                         .into_iter()
                         .map(SchemaError::from)
                         .chain(res2.err().map(SchemaError::from))
-                        .chain(res3.err().map(SchemaError::from)),
+                        .chain(res3.err()),
                 )
                 .expect("there must be an error");
                 Err(SchemaError::join_nonempty(errs))
@@ -286,7 +288,7 @@ impl CommonTypeDefs<ConditionalName> {
     ) -> crate::err::Result<Self> {
         let mut defs = HashMap::new();
         for (id, schema_ty) in schema_file_type_def {
-            let name = RawName::new_from_unreserved(id.into()).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
+            let name = RawName::new_from_unreserved(id.into(), None).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
             match defs.entry(name) {
                 Entry::Vacant(ventry) => {
                     ventry
@@ -312,7 +314,7 @@ impl CommonTypeDefs<ConditionalName> {
     ) -> crate::err::Result<Self> {
         let mut defs = HashMap::with_capacity(input_type_defs.len());
         for (id, schema_ty) in input_type_defs {
-            let name = RawName::new_from_unreserved(id).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
+            let name = RawName::new_from_unreserved(id, None).qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
             match defs.entry(name) {
                 Entry::Vacant(ventry) => {
                     ventry.insert(schema_ty);
@@ -339,7 +341,7 @@ impl CommonTypeDefs<ConditionalName> {
     ) -> Self {
         Self {
             defs: HashMap::from_iter([(
-                RawName::new_from_unreserved(id).qualify_with(schema_namespace),
+                RawName::new_from_unreserved(id, None).qualify_with(schema_namespace),
                 schema_ty,
             )]),
         }
@@ -360,7 +362,7 @@ impl CommonTypeDefs<ConditionalName> {
                 .defs
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<Result<_, TypeNotDefinedError>>()?,
+                .partition_nonempty()?,
         })
     }
 }
@@ -401,7 +403,8 @@ impl EntityTypesDef<ConditionalName> {
         let mut defs: HashMap<EntityType, _> = HashMap::new();
         for (id, entity_type) in schema_files_types {
             let ety = internal_name_to_entity_type(
-                RawName::new_from_unreserved(id).qualify_with(schema_namespace), // the declaration name is always (unconditionally) prefixed by the current/active namespace
+                RawName::new_from_unreserved(id, entity_type.loc.clone())
+                    .qualify_with(schema_namespace), // the declaration name is always (unconditionally) prefixed by the current/active namespace
             )?;
             match defs.entry(ety) {
                 Entry::Vacant(ventry) => {
@@ -436,7 +439,7 @@ impl EntityTypesDef<ConditionalName> {
                 .defs
                 .into_iter()
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<Result<_, TypeNotDefinedError>>()?,
+                .partition_nonempty()?,
         })
     }
 }
@@ -473,6 +476,8 @@ pub enum EntityTypeFragment<N> {
         /// resolved/inlined (e.g., because they are not defined in this schema
         /// fragment).
         tags: Option<json_schema::Type<N>>,
+        /// Source location - if available
+        loc: Option<Loc>,
     },
     Enum(NonEmpty<SmolStr>),
 }
@@ -496,22 +501,26 @@ impl EntityTypeFragment<ConditionalName> {
     ) -> Self {
         match schema_file_type.kind {
             EntityTypeKind::Enum { choices } => Self::Enum(choices),
-            EntityTypeKind::Standard(ty) => Self::Standard {
-                attributes: ty
-                    .shape
-                    .conditionally_qualify_type_references(schema_namespace),
-                parents: ty
-                    .member_of_types
-                    .into_iter()
-                    .map(|raw_name| {
-                        // Only entity, not common, here for now; see #1064
-                        raw_name.conditionally_qualify_with(schema_namespace, ReferenceType::Entity)
-                    })
-                    .collect(),
-                tags: ty
-                    .tags
-                    .map(|tags| tags.conditionally_qualify_type_references(schema_namespace)),
-            },
+            EntityTypeKind::Standard(ty) => {
+                Self::Standard {
+                    attributes: ty
+                        .shape
+                        .conditionally_qualify_type_references(schema_namespace),
+                    parents: ty
+                        .member_of_types
+                        .into_iter()
+                        .map(|raw_name| {
+                            // Only entity, not common, here for now; see #1064
+                            raw_name
+                                .conditionally_qualify_with(schema_namespace, ReferenceType::Entity)
+                        })
+                        .collect(),
+                    tags: ty
+                        .tags
+                        .map(|tags| tags.conditionally_qualify_type_references(schema_namespace)),
+                    loc: None,
+                }
+            }
         }
     }
 
@@ -531,6 +540,7 @@ impl EntityTypeFragment<ConditionalName> {
                 attributes,
                 parents,
                 tags,
+                loc,
             } => {
                 // Fully qualify typenames appearing in `attributes`
                 let fully_qual_attributes = attributes.fully_qualify_type_references(all_defs);
@@ -538,7 +548,7 @@ impl EntityTypeFragment<ConditionalName> {
                 let parents: HashSet<InternalName> = parents
                     .into_iter()
                     .map(|parent| parent.resolve(all_defs))
-                    .collect::<Result<_, TypeNotDefinedError>>()?;
+                    .partition_nonempty()?;
                 // Fully qualify typenames appearing in `tags`
                 let fully_qual_tags = tags
                     .map(|tags| tags.fully_qualify_type_references(all_defs))
@@ -559,6 +569,7 @@ impl EntityTypeFragment<ConditionalName> {
                         attributes,
                         parents,
                         tags,
+                        loc,
                     }),
                     (Ok(_), Ok(_), Some(undeclared_parents)) => Err(TypeNotDefinedError {
                         undefined_types: undeclared_parents,
@@ -615,6 +626,25 @@ impl<N, A> ActionsDef<N, A> {
     }
 }
 
+#[cfg_attr(not(feature = "extended-schema"), allow(unused_variables))]
+fn create_action_entity_uid_default_type(
+    action_name: &SmolStr,
+    action_type: &json_schema::ActionType<RawName>,
+    schema_namespace: Option<&InternalName>,
+) -> json_schema::ActionEntityUID<InternalName> {
+    let action_id_str = action_name.clone();
+    #[cfg(feature = "extended-schema")]
+    let action_id_loc = action_type.defn_loc.clone();
+    #[cfg(feature = "extended-schema")]
+    // the declaration name is always (unconditionally) prefixed by the current/active namespace
+    return json_schema::ActionEntityUID::default_type_with_loc(action_id_str, action_id_loc)
+        .qualify_with(schema_namespace);
+
+    #[cfg(not(feature = "extended-schema"))]
+    // the declaration name is always (unconditionally) prefixed by the current/active namespace
+    json_schema::ActionEntityUID::default_type(action_id_str).qualify_with(schema_namespace)
+}
+
 impl ActionsDef<ConditionalName, ConditionalName> {
     /// Construct an [`ActionsDef<ConditionalName>`] by converting the structures used by the
     /// schema format to those used internally by the validator.
@@ -624,21 +654,22 @@ impl ActionsDef<ConditionalName, ConditionalName> {
         extensions: &Extensions<'_>,
     ) -> crate::err::Result<Self> {
         let mut actions = HashMap::new();
-        for (action_id_str, action_type) in schema_file_actions {
-            let action_uid = json_schema::ActionEntityUID::default_type(action_id_str.clone())
-                .qualify_with(schema_namespace); // the declaration name is always (unconditionally) prefixed by the current/active namespace
-            match actions.entry(action_uid.try_into()?) {
+        for (action_name, action_type) in schema_file_actions {
+            let action_uid =
+                create_action_entity_uid_default_type(&action_name, &action_type, schema_namespace);
+            match actions.entry(action_uid.clone().try_into()?) {
                 Entry::Vacant(ventry) => {
                     let frag = ActionFragment::from_raw_action(
                         ventry.key(),
-                        action_type,
+                        action_type.clone(),
                         schema_namespace,
                         extensions,
+                        action_type.loc.as_ref(),
                     )?;
                     ventry.insert(frag);
                 }
                 Entry::Occupied(_) => {
-                    return Err(DuplicateActionError(action_id_str).into());
+                    return Err(DuplicateActionError(action_name).into());
                 }
             }
         }
@@ -659,8 +690,8 @@ impl ActionsDef<ConditionalName, ConditionalName> {
             actions: self
                 .actions
                 .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<Result<_, SchemaError>>()?,
+                .map(|(k, v)| v.fully_qualify_type_references(all_defs).map(|v| (k, v)))
+                .partition_nonempty()?,
         })
     }
 }
@@ -695,7 +726,9 @@ pub struct ActionFragment<N, A> {
     /// The values for the attributes defined for this actions entity, stored
     /// separately so that we can later extract these values to construct the
     /// actual `Entity` objects defined by the schema.
-    pub(super) attributes: BTreeMap<SmolStr, PartialValueSerializedAsExpr>,
+    pub(super) attributes: BTreeMap<SmolStr, PartialValue>,
+    /// Source location - if available
+    pub(super) loc: Option<Loc>,
 }
 
 impl ActionFragment<ConditionalName, ConditionalName> {
@@ -704,6 +737,7 @@ impl ActionFragment<ConditionalName, ConditionalName> {
         action_type: json_schema::ActionType<RawName>,
         schema_namespace: Option<&InternalName>,
         extensions: &Extensions<'_>,
+        loc: Option<&Loc>,
     ) -> crate::err::Result<Self> {
         let (principal_types, resource_types, context) = action_type
             .applies_to
@@ -746,6 +780,7 @@ impl ActionFragment<ConditionalName, ConditionalName> {
                 .collect(),
             attribute_types,
             attributes,
+            loc: loc.cloned(),
         })
     }
 
@@ -765,14 +800,11 @@ impl ActionFragment<ConditionalName, ConditionalName> {
             parents: self
                 .parents
                 .into_iter()
-                .map(|parent| {
-                    parent
-                        .fully_qualify_type_references(all_defs)
-                        .map_err(Into::into)
-                })
-                .collect::<Result<_, SchemaError>>()?,
+                .map(|parent| parent.fully_qualify_type_references(all_defs))
+                .partition_nonempty()?,
             attribute_types: self.attribute_types,
             attributes: self.attributes,
+            loc: self.loc,
         })
     }
 
@@ -780,9 +812,9 @@ impl ActionFragment<ConditionalName, ConditionalName> {
         m: HashMap<SmolStr, CedarValueJson>,
         action_id: &EntityUID,
         extensions: &Extensions<'_>,
-    ) -> crate::err::Result<(Attributes, BTreeMap<SmolStr, PartialValueSerializedAsExpr>)> {
+    ) -> crate::err::Result<(Attributes, BTreeMap<SmolStr, PartialValue>)> {
         let mut attr_types: HashMap<SmolStr, Type> = HashMap::with_capacity(m.len());
-        let mut attr_values: BTreeMap<SmolStr, PartialValueSerializedAsExpr> = BTreeMap::new();
+        let mut attr_values: BTreeMap<SmolStr, PartialValue> = BTreeMap::new();
         let evaluator = RestrictedEvaluator::new(extensions);
 
         for (k, v) in m {
@@ -813,7 +845,7 @@ impl ActionFragment<ConditionalName, ConditionalName> {
                         err,
                     })
                 })?;
-            attr_values.insert(k.clone(), pv.into());
+            attr_values.insert(k, pv);
         }
         Ok((
             Attributes::with_required_attributes(attr_types),

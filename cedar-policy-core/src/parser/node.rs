@@ -18,13 +18,12 @@ use std::fmt::{self, Debug, Display};
 
 use educe::Educe;
 use miette::Diagnostic;
-use serde::{Deserialize, Serialize};
 
 use super::err::{ToASTError, ToASTErrorKind};
 use super::loc::Loc;
 
 /// Metadata for our syntax trees
-#[derive(Educe, Debug, Clone, Deserialize, Serialize)]
+#[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct Node<T> {
     /// Main data represented

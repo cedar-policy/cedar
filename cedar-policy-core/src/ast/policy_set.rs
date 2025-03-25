@@ -20,15 +20,12 @@ use super::{
 };
 use itertools::Itertools;
 use miette::Diagnostic;
-use serde::{Deserialize, Serialize};
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::{borrow::Borrow, sync::Arc};
 use thiserror::Error;
 
 /// Represents a set of `Policy`s
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(try_from = "LiteralPolicySet")]
-#[serde(into = "LiteralPolicySet")]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct PolicySet {
     /// `templates` contains all bodies of policies in the `PolicySet`.
     /// A body is either:
@@ -49,8 +46,12 @@ pub struct PolicySet {
     template_to_links_map: HashMap<PolicyID, HashSet<PolicyID>>,
 }
 
-/// A Policy Set that can be serialized, but does not contain as rich information as `PolicySet`
-#[derive(Debug, Serialize, Deserialize)]
+/// A Policy Set that contains less rich information than `PolicySet`.
+///
+/// In particular, this form is easier to convert to/from the Protobuf
+/// representation of a `PolicySet`, because policies are represented as
+/// `LiteralPolicy` instead of `Policy`.
+#[derive(Debug)]
 pub struct LiteralPolicySet {
     /// Like the `templates` field of `PolicySet`
     templates: HashMap<PolicyID, Template>,
@@ -262,6 +263,101 @@ impl PolicySet {
         }
 
         Ok(())
+    }
+
+    /// Helper function for `merge_policyset` to check if the `PolicyID` pid
+    /// appears in this `PolicySet`'s links or templates.
+    fn policy_id_is_bound(&self, pid: &PolicyID) -> bool {
+        self.templates.contains_key(pid) || self.links.contains_key(pid)
+    }
+
+    /// Helper function for `merge_policyset` to construct a renaming
+    /// that would resolve any conflicting `PolicyID`s. We use the type parameter `T`
+    /// to allow this code to be applied to both Templates and Policies.
+    fn update_renaming<T>(
+        &self,
+        this_contents: &HashMap<PolicyID, T>,
+        other: &Self,
+        other_contents: &HashMap<PolicyID, T>,
+        renaming: &mut HashMap<PolicyID, PolicyID>,
+        start_ind: &mut u32,
+    ) where
+        T: PartialEq + Clone,
+    {
+        for (pid, ot) in other_contents {
+            if let Some(tt) = this_contents.get(pid) {
+                if tt != ot {
+                    let mut new_pid = PolicyID::from_string(format!("policy{}", start_ind));
+                    *start_ind += 1;
+                    while self.policy_id_is_bound(&new_pid) || other.policy_id_is_bound(&new_pid) {
+                        new_pid = PolicyID::from_string(format!("policy{}", start_ind));
+                        *start_ind += 1;
+                    }
+                    renaming.insert(pid.clone(), new_pid);
+                }
+            }
+        }
+    }
+
+    /// Merges this `PolicySet` with another `PolicySet`.
+    /// This `PolicySet` is modified while the other `PolicySet`
+    /// remains unchanged.
+    ///
+    /// The flag `rename_duplicates` controls the expected behavior
+    /// when a `PolicyID` in this and the other `PolicySet` conflict.
+    ///
+    /// When `rename_duplicates` is false, conflicting `PolicyID`s result
+    /// in a occupied `PolicySetError`.
+    ///
+    /// Otherwise, when `rename_duplicates` is true, conflicting `PolicyID`s from
+    /// the other `PolicySet` are automatically renamed to avoid conflict.
+    /// This renaming is returned as a Hashmap from the old `PolicyID` to the
+    /// renamed `PolicyID`.
+    pub fn merge_policyset(
+        &mut self,
+        other: &PolicySet,
+        rename_duplicates: bool,
+    ) -> Result<HashMap<PolicyID, PolicyID>, PolicySetError> {
+        // Check for conflicting policy ids. If there is a conflict either
+        // throw an error or construct a renaming (if `rename_duplicates` is true)
+        let mut min_id = 0;
+        let mut renaming = HashMap::new();
+        self.update_renaming(
+            &self.templates,
+            other,
+            &other.templates,
+            &mut renaming,
+            &mut min_id,
+        );
+        self.update_renaming(&self.links, other, &other.links, &mut renaming, &mut min_id);
+        // If `rename_dupilicates` is false, then throw an error if any renaming should happen
+        if !rename_duplicates {
+            if let Some(pid) = renaming.keys().next() {
+                return Err(PolicySetError::Occupied { id: pid.clone() });
+            }
+        }
+        // either there are no conflicting policy ids
+        // or we should rename conflicting policy ids (using renaming) to avoid conflicting policy ids
+        for (pid, other_template) in &other.templates {
+            let pid = renaming.get(pid).unwrap_or(pid);
+            self.templates.insert(pid.clone(), other_template.clone());
+        }
+        for (pid, other_policy) in &other.links {
+            let pid = renaming.get(pid).unwrap_or(pid);
+            self.links.insert(pid.clone(), other_policy.clone());
+        }
+        for (tid, other_template_link_set) in &other.template_to_links_map {
+            let tid = renaming.get(tid).unwrap_or(tid);
+            let mut this_template_link_set =
+                self.template_to_links_map.remove(tid).unwrap_or_default();
+            for pid in other_template_link_set {
+                let pid = renaming.get(pid).unwrap_or(pid);
+                this_template_link_set.insert(pid.clone());
+            }
+            self.template_to_links_map
+                .insert(tid.clone(), this_template_link_set);
+        }
+        Ok(renaming)
     }
 
     /// Remove a static `Policy`` from the `PolicySet`.
@@ -566,11 +662,10 @@ mod test {
         .expect("Failed to parse");
         pset.add_template(template).expect("Add failed");
 
-        let env: HashMap<SlotId, EntityUID> = std::iter::once((
+        let env: HashMap<SlotId, EntityUID> = HashMap::from([(
             SlotId::principal(),
             r#"Test::"test""#.parse().expect("Failed to parse"),
-        ))
-        .collect();
+        )]);
 
         let r = pset.link(PolicyID::from_string("t"), PolicyID::from_string("id"), env);
 
@@ -604,11 +699,10 @@ mod test {
             )
             .expect("Failed to parse"),
         );
-        let env1: HashMap<SlotId, EntityUID> = std::iter::once((
+        let env1: HashMap<SlotId, EntityUID> = HashMap::from([(
             SlotId::principal(),
             r#"Test::"test1""#.parse().expect("Failed to parse"),
-        ))
-        .collect();
+        )]);
 
         let p1 = Template::link(Arc::clone(&template), PolicyID::from_string("link"), env1)
             .expect("Failed to link");
@@ -620,11 +714,10 @@ mod test {
             "Adding link should implicitly add the template"
         );
 
-        let env2: HashMap<SlotId, EntityUID> = std::iter::once((
+        let env2: HashMap<SlotId, EntityUID> = HashMap::from([(
             SlotId::principal(),
             r#"Test::"test2""#.parse().expect("Failed to parse"),
-        ))
-        .collect();
+        )]);
 
         let p2 = Template::link(
             Arc::clone(&template),
@@ -650,11 +743,10 @@ mod test {
             )
             .expect("Failed to parse"),
         );
-        let env3: HashMap<SlotId, EntityUID> = std::iter::once((
+        let env3: HashMap<SlotId, EntityUID> = HashMap::from([(
             SlotId::resource(),
             r#"Test::"test3""#.parse().expect("Failed to parse"),
-        ))
-        .collect();
+        )]);
 
         let p4 = Template::link(
             Arc::clone(&template2),
@@ -667,6 +759,106 @@ mod test {
             Err(PolicySetError::Occupied { id }) => {
                 assert_eq!(id, PolicyID::from_string("t"))
             }
+        }
+    }
+
+    #[test]
+    fn policy_merge_no_conflicts() {
+        let p1 = parser::parse_policy(
+            Some(PolicyID::from_string("policy0")),
+            "permit(principal,action,resource);",
+        )
+        .expect("Failed to parse");
+        let p2 = parser::parse_policy(
+            Some(PolicyID::from_string("policy1")),
+            "permit(principal,action,resource) when { false };",
+        )
+        .expect("Failed to parse");
+        let p3 = parser::parse_policy(
+            Some(PolicyID::from_string("policy0")),
+            "permit(principal,action,resource);",
+        )
+        .expect("Failed to parse");
+        let p4 = parser::parse_policy(
+            Some(PolicyID::from_string("policy2")),
+            "permit(principal,action,resource) when { true };",
+        )
+        .expect("Failed to parse");
+        let mut pset1 = PolicySet::new();
+        let mut pset2 = PolicySet::new();
+        pset1.add_static(p1).expect("Failed to add!");
+        pset1.add_static(p2).expect("Failed to add!");
+        pset2.add_static(p3).expect("Failed to add!");
+        pset2.add_static(p4).expect("Failed to add!");
+        // should not conflict because p1 == p3
+        match pset1.merge_policyset(&pset2, false) {
+            Ok(_) => (),
+            Err(PolicySetError::Occupied { id }) => panic!(
+                "There should not have been an error! Unexpected conflict for id {}",
+                id
+            ),
+        }
+    }
+
+    #[test]
+    fn policy_merge_with_conflicts() {
+        let pid0 = PolicyID::from_string("policy0");
+        let pid1 = PolicyID::from_string("policy1");
+        let pid2 = PolicyID::from_string("policy2");
+        let p1 = parser::parse_policy(Some(pid0.clone()), "permit(principal,action,resource);")
+            .expect("Failed to parse");
+        let p2 = parser::parse_policy(
+            Some(pid1.clone()),
+            "permit(principal,action,resource) when { false };",
+        )
+        .expect("Failed to parse");
+        let p3 = parser::parse_policy(Some(pid1.clone()), "permit(principal,action,resource);")
+            .expect("Failed to parse");
+        let p4 = parser::parse_policy(
+            Some(pid2.clone()),
+            "permit(principal,action,resource) when { true };",
+        )
+        .expect("Failed to parse");
+        let mut pset1 = PolicySet::new();
+        let mut pset2 = PolicySet::new();
+        pset1.add_static(p1.clone()).expect("Failed to add!");
+        pset1.add_static(p2.clone()).expect("Failed to add!");
+        pset2.add_static(p3.clone()).expect("Failed to add!");
+        pset2.add_static(p4.clone()).expect("Failed to add!");
+        // should conclict on pid "policy1"
+        match pset1.merge_policyset(&pset2, false) {
+            Ok(_) => panic!("`pset1` and `pset2` should conflict for PolicyID `policy1`"),
+            Err(PolicySetError::Occupied { id }) => {
+                assert_eq!(id, PolicyID::from_string("policy1"));
+            }
+        }
+        // should not conflict because of auto-renaming of conflicting policies
+        match pset1.merge_policyset(&pset2, true) {
+            Ok(renaming) => {
+                // ensure `policy1` was renamed
+                let new_pid1 = match renaming.get(&pid1) {
+                    Some(new_pid1) => new_pid1,
+                    None => panic!("Error: `policy1` is a conflict and should be renamed"),
+                };
+                // ensure no other policy was renamed
+                assert_eq!(renaming.keys().len(), 1);
+                if let Some(new_p1) = pset1.get(&pid0) {
+                    assert_eq!(Policy::from(p1), new_p1.clone());
+                }
+                if let Some(new_p2) = pset1.get(&pid1) {
+                    assert_eq!(Policy::from(p2), new_p2.clone());
+                }
+                if let Some(new_p3) = pset1.get(new_pid1) {
+                    assert_eq!(Policy::from(p3), new_p3.clone());
+                }
+                if let Some(new_p4) = pset1.get(&pid2) {
+                    assert_eq!(Policy::from(p4), new_p4.clone());
+                }
+            }
+            Err(PolicySetError::Occupied { id }) => panic!(
+                "There should not have been an error! Unexpected conflict for id {}",
+                id
+            ),
         }
     }
 
@@ -713,7 +905,7 @@ mod test {
         set.link(
             PolicyID::from_string("template"),
             PolicyID::from_string("id"),
-            std::iter::once((SlotId::principal(), EntityUID::with_eid("eid"))).collect(),
+            HashMap::from([(SlotId::principal(), EntityUID::with_eid("eid"))]),
         )
         .expect("Linking failed!");
         assert_eq!(set.static_policies().count(), 1);

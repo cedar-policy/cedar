@@ -1,0 +1,73 @@
+name: "Create Coverage Reports"
+description: >
+  Searches the directory tree rooted at the current working directory for raw coverage profiles
+  ('.profraw' files).
+  Builds grcov HTML and cobertura XML coverage reports from the located profiles.
+  Uploads the built reports as workflow artifacts.
+inputs:
+  retention-days:
+    description: >
+      Duration after which the uploaded artifacts will expire in days, or 0 to use the default setting for the 
+      repository.
+    required: false
+    default: "0"
+  artifact-prefix:
+    description: "Prefix of the name for the artifacts to be uploaded"
+    required: false
+    default: "coverage_report"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install LLVM tools
+      shell: bash
+      run: rustup component add llvm-tools-preview
+    - name: Install grcov
+      shell: bash
+      run: cargo install grcov
+    - name: Collect coverage profiles
+      shell: bash
+      run: zip -0 raw_cov.zip $(find . -name "*.profraw") -q
+    # Note: source-based branch coverage is not supported for Rust
+    # (see http://github.com/rust-lang/rust/issues/79649)
+    - name: Build coverage report
+      shell: bash
+      run: |
+        mkdir -p ./target/coverage
+        grcov raw_cov.zip \
+            --source-dir . \
+            --binary-path ./target/debug/ \
+            -t html,cobertura \
+            --ignore 'cedar-policy/benches/*' \
+            --ignore 'cedar-testing/*' \
+            --ignore 'target/debug/*' \
+            --ignore '/*' \
+            --ignore '*/build.rs' \
+            --ignore '*/test*.rs' \
+            --ignore '*/tests/*' \
+            --ignore '*/test/*' \
+            --excl-start '^\#\[cfg\(test\)\]' \
+            --excl-stop '^}$' \
+            --ignore-not-existing \
+            -o ./target/coverage/
+    - name: Upload HTML coverage report
+      uses: actions/upload-artifact@v4
+      id: upload-artifact
+      with:
+        name: ${{ inputs.artifact-prefix }}_html
+        path: target/coverage/html
+        retention-days: ${{ inputs.retention-days }}
+    - name: Create directory for cobertura report
+      shell: bash
+      run: |
+        mkdir -p target/coverage/cobertura
+        mv target/coverage/cobertura.xml target/coverage/cobertura/
+        echo $REPORT_LOCATION > target/coverage/cobertura/report_location.txt
+      env:
+        REPORT_LOCATION: ${{ steps.upload-artifact.outputs.artifact-url }}
+    - name: Upload cobertura coverage report
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-prefix }}_cobertura
+        path: target/coverage/cobertura
+        retention-days: ${{ inputs.retention-days }}

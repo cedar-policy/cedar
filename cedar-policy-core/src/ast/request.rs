@@ -33,7 +33,7 @@ use super::{
 };
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct Request {
     /// Principal associated with the request
     pub(crate) principal: EntityUIDEntry,
@@ -64,7 +64,7 @@ pub struct RequestType {
 /// An entry in a request for a Entity UID.
 /// It may either be a concrete EUID
 /// or an unknown in the case of partial evaluation
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub enum EntityUIDEntry {
     /// A concrete EntityUID
     Known {
@@ -275,10 +275,7 @@ impl std::fmt::Display for Request {
 }
 
 /// `Context` field of a `Request`
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-// Serialization is used for differential testing, which requires that `Context`
-// is serialized as a `RestrictedExpr`.
-#[serde(into = "RestrictedExpr")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Context {
     /// The context is a concrete value.
     Value(Arc<BTreeMap<SmolStr, Value>>),

@@ -15,7 +15,6 @@
  */
 
 //! Contains test for typechecking with partial schema files.
-// GRCOV_STOP_COVERAGE
 
 use std::collections::HashSet;
 

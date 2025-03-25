@@ -17,13 +17,13 @@
 use std::sync::Arc;
 
 use super::Result;
-use crate::{
-    ast::{self, EntityReference, EntityUID},
-    parser::{
-        cst::{self, Literal},
-        err::{self, ParseErrors, ToASTError, ToASTErrorKind},
-        Loc, Node,
-    },
+use crate::ast;
+use crate::ast::EntityReference;
+use crate::ast::EntityUID;
+use crate::parser::{
+    cst::{self, Literal},
+    err::{self, ParseErrors, ToASTError, ToASTErrorKind},
+    Loc, Node,
 };
 
 /// Type level marker for parsing sets of entity uids or single uids
@@ -36,8 +36,9 @@ trait RefKind: Sized {
     fn create_single_ref(e: EntityUID) -> Result<Self>;
     fn create_multiple_refs(loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self>;
     fn create_slot(loc: &Loc) -> Result<Self>;
+    #[cfg(feature = "tolerant-ast")]
+    fn error_node() -> Self;
 }
-
 struct SingleEntity(pub EntityUID);
 
 impl RefKind for SingleEntity {
@@ -70,6 +71,10 @@ impl RefKind for SingleEntity {
         )
         .into())
     }
+    #[cfg(feature = "tolerant-ast")]
+    fn error_node() -> Self {
+        SingleEntity(EntityUID::Error)
+    }
 }
 
 impl RefKind for EntityReference {
@@ -95,6 +100,10 @@ impl RefKind for EntityReference {
             loc.clone(),
         )
         .into())
+    }
+    #[cfg(feature = "tolerant-ast")]
+    fn error_node() -> Self {
+        EntityReference::EUID(Arc::new(EntityUID::Error))
     }
 }
 
@@ -132,20 +141,41 @@ impl RefKind for OneOrMultipleRefs {
         }
         Ok(create_multiple_refs)
     }
+    #[cfg(feature = "tolerant-ast")]
+    fn error_node() -> Self {
+        OneOrMultipleRefs::Single(EntityUID::Error)
+    }
 }
 
 impl Node<Option<cst::Expr>> {
     /// Extract a single `EntityUID` from this expression. The expression must
     /// be exactly a single entity literal expression.
     pub fn to_ref(&self, var: ast::Var) -> Result<EntityUID> {
-        self.to_ref_or_refs::<SingleEntity>(var).map(|x| x.0)
+        self.to_ref_or_refs::<SingleEntity>(var, TolerantAstSetting::NotTolerant)
+            .map(|x| x.0)
+    }
+
+    /// Extract a single `EntityUID` from this expression. The expression must
+    /// be exactly a single entity literal expression.
+    #[cfg(feature = "tolerant-ast")]
+    pub fn to_ref_tolerant_ast(&self, var: ast::Var) -> Result<EntityUID> {
+        self.to_ref_or_refs::<SingleEntity>(var, TolerantAstSetting::Tolerant)
+            .map(|x| x.0)
     }
 
     /// Extract a single `EntityUID` or a template slot from this expression.
     /// The expression must be exactly a single entity literal expression or
     /// a single template slot.
     pub fn to_ref_or_slot(&self, var: ast::Var) -> Result<EntityReference> {
-        self.to_ref_or_refs::<EntityReference>(var)
+        self.to_ref_or_refs::<EntityReference>(var, TolerantAstSetting::NotTolerant)
+    }
+
+    /// Extract a single `EntityUID` or a template slot from this expression.
+    /// The expression must be exactly a single entity literal expression or
+    /// a single template slot.
+    #[cfg(feature = "tolerant-ast")]
+    pub fn to_ref_or_slot_tolerant_ast(&self, var: ast::Var) -> Result<EntityReference> {
+        self.to_ref_or_refs::<EntityReference>(var, TolerantAstSetting::Tolerant)
     }
 
     /// Extract a single `EntityUID` or set of `EntityUID`s from this
@@ -153,14 +183,37 @@ impl Node<Option<cst::Expr>> {
     /// literal expression a single set literal expression, containing some
     /// number of entity literals.
     pub fn to_refs(&self, var: ast::Var) -> Result<OneOrMultipleRefs> {
-        self.to_ref_or_refs::<OneOrMultipleRefs>(var)
+        self.to_ref_or_refs::<OneOrMultipleRefs>(var, TolerantAstSetting::NotTolerant)
     }
 
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
-        let expr = self.try_as_inner()?;
+    /// Extract a single `EntityUID` or set of `EntityUID`s from this
+    /// expression. The expression must either be exactly a single entity
+    /// literal expression a single set literal expression, containing some
+    /// number of entity literals.
+    #[cfg(feature = "tolerant-ast")]
+    pub fn to_refs_tolerant_ast(&self, var: ast::Var) -> Result<OneOrMultipleRefs> {
+        self.to_ref_or_refs::<OneOrMultipleRefs>(var, TolerantAstSetting::Tolerant)
+    }
+
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<T> {
+        let expr_opt = self.try_as_inner()?;
+
+        let expr = match expr_opt {
+            cst::Expr::Expr(expr_impl) => expr_impl,
+            #[cfg(feature = "tolerant-ast")]
+            cst::Expr::ErrorExpr => return T::create_single_ref(EntityUID::Error),
+        };
 
         match &*expr.expr {
-            cst::ExprData::Or(o) => o.to_ref_or_refs::<T>(var),
+            cst::ExprData::Or(o) => match tolerant_setting {
+                TolerantAstSetting::NotTolerant => o.to_ref_or_refs::<T>(var, tolerant_setting),
+                #[cfg(feature = "tolerant-ast")]
+                TolerantAstSetting::Tolerant => o.to_ref_or_refs::<T>(var, tolerant_setting),
+            },
             cst::ExprData::If(_, _, _) => Err(self
                 .to_ast_err(ToASTErrorKind::wrong_node(
                     T::err_str(),
@@ -171,9 +224,13 @@ impl Node<Option<cst::Expr>> {
         }
     }
 }
-
+use super::TolerantAstSetting;
 impl Node<Option<cst::Primary>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<T> {
         let prim = self.try_as_inner()?;
 
         match prim {
@@ -213,29 +270,43 @@ impl Node<Option<cst::Primary>> {
             }
             cst::Primary::Ref(x) => T::create_single_ref(x.to_ref()?),
             cst::Primary::Name(name) => {
-                let found = match name.as_inner() {
-                    Some(name) => format!("name `{name}`"),
-                    None => "name".to_string(),
-                };
-                Err(self
-                    .to_ast_err(ToASTErrorKind::wrong_node(
-                        T::err_str(),
-                        found,
-                        if var != ast::Var::Action {
-                            Some("try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid".to_string())
-                        } else {
-                            // We don't allow `is` in the action scope, so we won't suggest trying it.
-                            Some("try including an identifier string if you intended this name to be an entity uid".to_string())
-                        },
-                    ))
-                    .into())
+                match tolerant_setting {
+                    TolerantAstSetting::NotTolerant => {
+                        let found = match name.as_inner() {
+                            Some(name) => format!("name `{name}`"),
+                            None => "name".to_string(),
+                        };
+                        Err(self
+                            .to_ast_err(ToASTErrorKind::wrong_node(
+                                T::err_str(),
+                                found,
+                                if var != ast::Var::Action {
+                                    Some("try using `is` to test for an entity type or including an identifier string if you intended this name to be an entity uid".to_string())
+                                } else {
+                                    // We don't allow `is` in the action scope, so we won't suggest trying it.
+                                    Some("try including an identifier string if you intended this name to be an entity uid".to_string())
+                                },
+                            ))
+                            .into())
+                    }
+                    #[cfg(feature = "tolerant-ast")]
+                    TolerantAstSetting::Tolerant => Ok(T::error_node()),
+                }
             }
-            cst::Primary::Expr(x) => x.to_ref_or_refs::<T>(var),
+            cst::Primary::Expr(x) => x.to_ref_or_refs::<T>(var, tolerant_setting),
             cst::Primary::EList(lst) => {
                 // Calling `create_multiple_refs` first so that we error
                 // immediately if we see a set when we don't expect one.
                 let create_multiple_refs = T::create_multiple_refs(&self.loc)?;
-                let v = ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref(var)))?;
+                let v = match tolerant_setting {
+                    TolerantAstSetting::NotTolerant => {
+                        ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref(var)))?
+                    }
+                    #[cfg(feature = "tolerant-ast")]
+                    TolerantAstSetting::Tolerant => ParseErrors::transpose(
+                        lst.iter().map(|expr| expr.to_ref_tolerant_ast(var)),
+                    )?,
+                };
                 Ok(create_multiple_refs(v))
             }
             cst::Primary::RInits(_) => Err(self
@@ -250,11 +321,15 @@ impl Node<Option<cst::Primary>> {
 }
 
 impl Node<Option<cst::Member>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<T> {
         let mem = self.try_as_inner()?;
 
         match mem.access.len() {
-            0 => mem.item.to_ref_or_refs::<T>(var),
+            0 => mem.item.to_ref_or_refs::<T>(var, tolerant_setting),
             _n => {
                 Err(self.to_ast_err(ToASTErrorKind::wrong_node(T::err_str(), "a `.` expression", Some("entity types and namespaces cannot use `.` characters -- perhaps try `_` or `::` instead?"))).into())
             }
@@ -263,7 +338,11 @@ impl Node<Option<cst::Member>> {
 }
 
 impl Node<Option<cst::Unary>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<T> {
         let unary = self.try_as_inner()?;
 
         match &unary.op {
@@ -274,17 +353,21 @@ impl Node<Option<cst::Unary>> {
                     None::<String>,
                 ))
                 .into()),
-            None => unary.item.to_ref_or_refs::<T>(var),
+            None => unary.item.to_ref_or_refs::<T>(var, tolerant_setting),
         }
     }
 }
 
 impl Node<Option<cst::Mult>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<T> {
         let mult = self.try_as_inner()?;
 
         match mult.extended.len() {
-            0 => mult.initial.to_ref_or_refs::<T>(var),
+            0 => mult.initial.to_ref_or_refs::<T>(var, tolerant_setting),
             _n => Err(self
                 .to_ast_err(ToASTErrorKind::wrong_node(
                     T::err_str(),
@@ -297,11 +380,15 @@ impl Node<Option<cst::Mult>> {
 }
 
 impl Node<Option<cst::Add>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<T> {
         let add = self.try_as_inner()?;
 
         match add.extended.len() {
-            0 => add.initial.to_ref_or_refs::<T>(var),
+            0 => add.initial.to_ref_or_refs::<T>(var, tolerant_setting),
             _n => {
                 Err(self.to_ast_err(ToASTErrorKind::wrong_node(T::err_str(), "a `+/-` expression", Some("entity types and namespaces cannot use `+` or `-` characters -- perhaps try `_` or `::` instead?"))).into())
             }
@@ -310,12 +397,16 @@ impl Node<Option<cst::Add>> {
 }
 
 impl Node<Option<cst::Relation>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<T> {
         let rel = self.try_as_inner()?;
 
         match rel {
             cst::Relation::Common { initial, extended } => match extended.len() {
-                0 => initial.to_ref_or_refs::<T>(var),
+                0 => initial.to_ref_or_refs::<T>(var, tolerant_setting),
                 _n => Err(self
                     .to_ast_err(ToASTErrorKind::wrong_node(
                         T::err_str(),
@@ -350,11 +441,15 @@ impl Node<Option<cst::Relation>> {
 }
 
 impl Node<Option<cst::Or>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_ast: TolerantAstSetting,
+    ) -> Result<T> {
         let or = self.try_as_inner()?;
 
         match or.extended.len() {
-            0 => or.initial.to_ref_or_refs::<T>(var),
+            0 => or.initial.to_ref_or_refs::<T>(var, tolerant_ast),
             _n => Err(self
                 .to_ast_err(ToASTErrorKind::wrong_node(
                     T::err_str(),
@@ -367,11 +462,15 @@ impl Node<Option<cst::Or>> {
 }
 
 impl Node<Option<cst::And>> {
-    fn to_ref_or_refs<T: RefKind>(&self, var: ast::Var) -> Result<T> {
+    fn to_ref_or_refs<T: RefKind>(
+        &self,
+        var: ast::Var,
+        tolerant_setting: TolerantAstSetting,
+    ) -> Result<T> {
         let and = self.try_as_inner()?;
 
         match and.extended.len() {
-            0 => and.initial.to_ref_or_refs::<T>(var),
+            0 => and.initial.to_ref_or_refs::<T>(var, tolerant_setting),
             _n => Err(self
                 .to_ast_err(ToASTErrorKind::wrong_node(
                     T::err_str(),
@@ -379,6 +478,234 @@ impl Node<Option<cst::And>> {
                     Some("the policy scope can only contain one constraint per variable. Consider moving the second operand of this `&&` into a `when` condition"),
                 ))
                 .into()),
+        }
+    }
+}
+
+#[cfg(feature = "tolerant-ast")]
+#[cfg(test)]
+mod test {
+    use crate::ast;
+    use crate::ast::EntityUID;
+    use crate::parser::cst;
+    use crate::parser::cst::Name;
+    use crate::parser::cst_to_ast::to_ref_or_refs::SingleEntity;
+    use crate::parser::cst_to_ast::TolerantAstSetting;
+    use crate::parser::Loc;
+    use crate::parser::Node;
+
+    #[test]
+    fn to_ref_or_refs_tolerant_ast() {
+        let n = test_primary_name_node();
+        let result =
+            n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
+        assert!(matches!(result.unwrap().0, EntityUID::Error));
+
+        let n = test_primary_literal_node();
+        let result =
+            n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
+        assert!(result.is_err());
+
+        let n = test_primary_slot_node();
+        let result =
+            n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
+        assert!(result.is_err());
+
+        let n = test_primary_expr_error_node();
+        let result =
+            n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
+        assert!(matches!(result.unwrap().0, EntityUID::Error));
+
+        let n = test_primary_expr_node();
+        let result =
+            n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
+        assert!(matches!(result.unwrap().0, EntityUID::EntityUID(_)));
+
+        let n = test_primary_ref_node();
+        let result =
+            n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
+        assert!(matches!(result.unwrap().0, EntityUID::EntityUID(_)));
+
+        let n = test_primary_elist_node();
+        let result =
+            n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
+        assert!(result.is_err());
+
+        let n = test_primary_rinits_node();
+        let result =
+            n.to_ref_or_refs::<SingleEntity>(ast::Var::Principal, TolerantAstSetting::Tolerant);
+        assert!(result.is_err());
+    }
+
+    fn test_primary_rinits_node() -> Node<Option<cst::Primary>> {
+        Node {
+            node: Some(cst::Primary::RInits(vec![])),
+            loc: Loc::new(0..1, "This is also a test".into()),
+        }
+    }
+
+    fn test_primary_expr_error_node() -> Node<Option<cst::Primary>> {
+        Node {
+            node: Some(cst::Primary::Expr(Node {
+                node: Some(cst::Expr::ErrorExpr),
+                loc: Loc::new(0..1, "This is a test".into()),
+            })),
+            loc: Loc::new(0..1, "This is also a test".into()),
+        }
+    }
+
+    fn test_primary_elist_node() -> Node<Option<cst::Primary>> {
+        Node {
+            node: Some(cst::Primary::EList(vec![
+                Node {
+                    node: Some(test_expr()),
+                    loc: Loc::new(0..1, "This is also a test".into()),
+                },
+                Node {
+                    node: Some(test_expr()),
+                    loc: Loc::new(0..1, "This is also a test".into()),
+                },
+            ])),
+            loc: Loc::new(0..1, "This is also a test".into()),
+        }
+    }
+
+    fn test_unary_node() -> Node<Option<cst::Unary>> {
+        Node {
+            node: Some(cst::Unary {
+                op: None,
+                item: Node {
+                    node: Some(cst::Member {
+                        item: test_primary_ref_node(),
+                        access: vec![],
+                    }),
+                    loc: Loc::new(0..1, "This is a test".into()),
+                },
+            }),
+            loc: Loc::new(0..1, "This is a test".into()),
+        }
+    }
+
+    fn test_mult_node() -> Node<Option<cst::Mult>> {
+        Node {
+            node: Some(cst::Mult {
+                initial: test_unary_node(),
+                extended: vec![],
+            }),
+            loc: Loc::new(0..1, "This is a test".into()),
+        }
+    }
+
+    fn test_add_node() -> Node<Option<cst::Add>> {
+        Node {
+            node: Some(cst::Add {
+                initial: test_mult_node(),
+                extended: vec![],
+            }),
+            loc: Loc::new(0..1, "This is a test".into()),
+        }
+    }
+
+    fn test_relation_node() -> Node<Option<cst::Relation>> {
+        Node {
+            node: Some(cst::Relation::Common {
+                initial: test_add_node(),
+                extended: vec![],
+            }),
+            loc: Loc::new(0..1, "This is a test".into()),
+        }
+    }
+
+    fn test_expr_or_node() -> cst::ExprData {
+        cst::ExprData::Or(Node {
+            node: Some(cst::Or {
+                extended: vec![],
+                initial: Node {
+                    node: Some(cst::And {
+                        initial: test_relation_node(),
+                        extended: vec![],
+                    }),
+                    loc: Loc::new(0..1, "This is a test".into()),
+                },
+            }),
+            loc: Loc::new(0..1, "This is a test".into()),
+        })
+    }
+
+    fn test_expr() -> cst::Expr {
+        cst::Expr::Expr(cst::ExprImpl {
+            expr: Box::new(test_expr_or_node()),
+        })
+    }
+
+    fn test_primary_expr_node() -> Node<Option<cst::Primary>> {
+        Node {
+            node: Some(cst::Primary::Expr(Node {
+                node: Some(test_expr()),
+                loc: Loc::new(0..1, "This is a test".into()),
+            })),
+            loc: Loc::new(0..1, "This is also a test".into()),
+        }
+    }
+
+    fn test_primary_name_node() -> Node<Option<cst::Primary>> {
+        Node {
+            node: Some(cst::Primary::Name(Node {
+                node: Some(Name {
+                    path: vec![],
+                    name: Node {
+                        loc: Loc::new(0..1, "So much testing".into()),
+                        node: Some(cst::Ident::Ident("test".into())),
+                    },
+                }),
+                loc: Loc::new(0..1, "This is a test".into()),
+            })),
+            loc: Loc::new(0..1, "This is also a test".into()),
+        }
+    }
+
+    fn test_primary_literal_node() -> Node<Option<cst::Primary>> {
+        Node {
+            node: Some(cst::Primary::Literal(Node {
+                node: Some(cst::Literal::True),
+                loc: Loc::new(0..1, "This is a test".into()),
+            })),
+            loc: Loc::new(0..1, "This is also a test".into()),
+        }
+    }
+
+    fn test_primary_slot_node() -> Node<Option<cst::Primary>> {
+        Node {
+            node: Some(cst::Primary::Slot(Node {
+                node: Some(cst::Slot::Principal),
+                loc: Loc::new(0..1, "This is a test".into()),
+            })),
+            loc: Loc::new(0..1, "This is also a test".into()),
+        }
+    }
+
+    fn test_primary_ref_node() -> Node<Option<cst::Primary>> {
+        Node {
+            node: Some(cst::Primary::Ref(Node {
+                node: Some(cst::Ref::Uid {
+                    path: Node {
+                        node: Some(Name {
+                            path: vec![],
+                            name: Node {
+                                loc: Loc::new(0..1, "So much testing".into()),
+                                node: Some(cst::Ident::Ident("test".into())),
+                            },
+                        }),
+                        loc: Loc::new(0..1, "This is a test".into()),
+                    },
+                    eid: Node {
+                        node: Some(cst::Str::String("test".into())),
+                        loc: Loc::new(0..1, "This is a test".into()),
+                    },
+                }),
+                loc: Loc::new(0..1, "This is a test".into()),
+            })),
+            loc: Loc::new(0..1, "This is also a test".into()),
         }
     }
 }

@@ -485,19 +485,39 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn no_principal(name: &impl ToSmolStr, loc: Loc) -> Self {
+    pub(crate) fn no_principal(name: &impl ToSmolStr, name_loc: Loc) -> Self {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Principal,
             name: name.to_smolstr(),
-            loc,
+            missing_or_empty: MissingOrEmpty::Missing,
+            name_loc,
         })
     }
 
-    pub(crate) fn no_resource(name: &impl ToSmolStr, loc: Loc) -> Self {
+    pub(crate) fn no_resource(name: &impl ToSmolStr, name_loc: Loc) -> Self {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Resource,
             name: name.to_smolstr(),
-            loc,
+            missing_or_empty: MissingOrEmpty::Missing,
+            name_loc,
+        })
+    }
+
+    pub(crate) fn empty_principal(name: &impl ToSmolStr, name_loc: Loc, loc: Loc) -> Self {
+        Self::NoPrincipalOrResource(NoPrincipalOrResource {
+            kind: PR::Principal,
+            name: name.to_smolstr(),
+            missing_or_empty: MissingOrEmpty::Empty { loc },
+            name_loc,
+        })
+    }
+
+    pub(crate) fn empty_resource(name: &impl ToSmolStr, name_loc: Loc, loc: Loc) -> Self {
+        Self::NoPrincipalOrResource(NoPrincipalOrResource {
+            kind: PR::Resource,
+            name: name.to_smolstr(),
+            missing_or_empty: MissingOrEmpty::Empty { loc },
+            name_loc,
         })
     }
 
@@ -576,18 +596,11 @@ pub struct DuplicatePrincipalOrResource {
     loc2: Loc,
 }
 
-impl DuplicatePrincipalOrResource {
-    #[cfg(test)]
-    pub(crate) fn kind(&self) -> PR {
-        self.kind
-    }
-}
-
 impl Diagnostic for DuplicatePrincipalOrResource {
     impl_diagnostic_from_two_source_loc_fields!(loc1, loc2);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        let msg = format!("Actions may only have a single {} declaration. If you need it to apply to multiple types, try creating a parent type and using the `in` keyword", self.kind);
+        let msg = format!("Actions may only have a single {kind} declaration, but a {kind} declaration may specify a list of entity types like `{kind}: [X, Y, Z]`", kind=self.kind);
         Some(Box::new(msg))
     }
 }
@@ -622,18 +635,57 @@ impl Diagnostic for DuplicateDeclarations {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-#[error("missing `{kind}` declaration for `{name}`")]
+#[error("{}", match .missing_or_empty {
+    MissingOrEmpty::Missing => format!("missing `{kind}` declaration for `{name}`"),
+    MissingOrEmpty::Empty { .. } => format!("for action `{name}`, `{kind}` is `[]`, which is invalid")
+})]
 pub struct NoPrincipalOrResource {
     kind: PR,
     name: SmolStr,
-    loc: Loc,
+    missing_or_empty: MissingOrEmpty,
+    /// Loc of the action name
+    name_loc: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum MissingOrEmpty {
+    /// The declaration was entirely missing
+    Missing,
+    /// The declaration was present but defined as `[]`
+    Empty {
+        /// `Loc` of the declaration
+        loc: Loc,
+    },
 }
 
 pub const NO_PR_HELP_MSG: &str =
-    "Every action must define both `principal` and `resource` targets.";
+    "Every action must define both `principal` and `resource` targets, and the `principal` and `resource` lists must not be `[]`.";
 
 impl Diagnostic for NoPrincipalOrResource {
-    impl_diagnostic_from_source_loc_field!(loc);
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        Some(&self.name_loc.src as &dyn miette::SourceCode)
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        match &self.missing_or_empty {
+            MissingOrEmpty::Missing => {
+                // just the action name
+                Some(Box::new(std::iter::once(miette::LabeledSpan::underline(
+                    self.name_loc.span,
+                ))))
+            }
+            MissingOrEmpty::Empty { loc } => {
+                // also underline the bad declaration
+                let action_name = miette::LabeledSpan::new_with_span(
+                    Some("for this action".into()),
+                    self.name_loc.span,
+                );
+                let decl =
+                    miette::LabeledSpan::new_with_span(Some("must not be `[]`".into()), loc.span);
+                Some(Box::new([action_name, decl].into_iter()))
+            }
+        }
+    }
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(NO_PR_HELP_MSG))

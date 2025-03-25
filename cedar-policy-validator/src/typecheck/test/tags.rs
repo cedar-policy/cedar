@@ -16,7 +16,6 @@
 
 //! Contains tests for defining entity tags and typechecking their
 //! access using the ability added by capabilities.
-// GRCOV_STOP_COVERAGE
 
 use super::test_utils::{
     assert_exactly_one_diagnostic, assert_policy_typecheck_fails,

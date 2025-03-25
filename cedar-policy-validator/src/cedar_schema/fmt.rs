@@ -231,14 +231,14 @@ pub fn json_schema_to_cedar_schema_str<N: Display>(
             .entity_types
             .keys()
             .map(|ty_name| {
-                RawName::new_from_unreserved(ty_name.clone()).qualify_with_name(name.as_ref())
+                RawName::new_from_unreserved(ty_name.clone(), None).qualify_with_name(name.as_ref())
             })
             .collect();
         let common_types: HashSet<InternalName> = ns
             .common_types
             .keys()
             .map(|ty_name| {
-                RawName::new_from_unreserved(ty_name.clone().into())
+                RawName::new_from_unreserved(ty_name.clone().into(), None)
                     .qualify_with_name(name.as_ref())
             })
             .collect();
@@ -257,7 +257,9 @@ pub fn json_schema_to_cedar_schema_str<N: Display>(
 mod tests {
     use cedar_policy_core::extensions::Extensions;
 
-    use crate::cedar_schema::parser::parse_cedar_schema_fragment;
+    use crate::{cedar_schema::parser::parse_cedar_schema_fragment, json_schema, RawName};
+
+    use similar_asserts::assert_eq;
 
     #[track_caller]
     fn test_round_trip(src: &str) {
@@ -314,5 +316,220 @@ namespace TinyTodo {
     };
 }"#;
         test_round_trip(src);
+    }
+
+    #[test]
+    fn attrs_types_roundtrip() {
+        test_round_trip(r#"entity Foo {a: Bool};"#);
+        test_round_trip(r#"entity Foo {a: Long};"#);
+        test_round_trip(r#"entity Foo {a: String};"#);
+        test_round_trip(r#"entity Foo {a: Set<Bool>};"#);
+        test_round_trip(r#"entity Foo {a: {b: Long}};"#);
+        test_round_trip(r#"entity Foo {a: {}};"#);
+        test_round_trip(
+            r#"
+        type A = Long;
+        entity Foo {a: A};
+        "#,
+        );
+        test_round_trip(
+            r#"
+        entity A;
+        entity Foo {a: A};
+        "#,
+        );
+    }
+
+    #[test]
+    fn enum_entities_roundtrip() {
+        test_round_trip(r#"entity Foo enum ["Bar", "Baz"];"#);
+        test_round_trip(r#"entity Foo enum ["Bar"];"#);
+        test_round_trip(r#"entity Foo enum ["\0\n\x7f"];"#);
+        test_round_trip(r#"entity enum enum ["enum"];"#);
+    }
+
+    #[test]
+    fn action_in_roundtrip() {
+        test_round_trip(r#"action Delete in Action::"Edit";"#);
+        test_round_trip(r#"action Delete in Action::"\n\x00";"#);
+        test_round_trip(r#"action Delete in [Action::"Edit", Action::"Destroy"];"#);
+    }
+
+    #[test]
+    fn primitives_roundtrip_to_entity_or_common() {
+        // Converting cedar->json never produces these primitve type nodes, instead using `EntityOrCommon`, so we need to test this starting from json.
+        let schema_json = serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {
+                        "User": { },
+                        "Photo": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {
+                                    "foo": { "type": "Long" },
+                                    "bar": { "type": "String" },
+                                    "baz": { "type": "Boolean" }
+                                }
+                            }
+                        }
+                    },
+                    "actions": {}
+                }
+            }
+        );
+
+        let fragment: json_schema::Fragment<RawName> = serde_json::from_value(schema_json).unwrap();
+        let cedar_schema = fragment.to_cedarschema().unwrap();
+
+        let (parsed_cedar_schema, _) =
+            parse_cedar_schema_fragment(&cedar_schema, Extensions::all_available()).unwrap();
+
+        let roundtrip_json = serde_json::to_value(parsed_cedar_schema).unwrap();
+        let expected_roundtrip = serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {
+                        "User": { },
+                        "Photo": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {
+                                    "foo": {
+                                        "type": "EntityOrCommon",
+                                        "name": "__cedar::Long"
+                                    },
+                                    "bar": {
+                                        "type": "EntityOrCommon",
+                                        "name": "__cedar::String"
+                                    },
+                                    "baz": {
+                                        "type": "EntityOrCommon",
+                                        "name": "__cedar::Bool"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "actions": {}
+                }
+            }
+        );
+
+        assert_eq!(expected_roundtrip, roundtrip_json,);
+    }
+
+    #[test]
+    fn entity_type_reference_roundtrips_to_entity_or_common() {
+        // Converting cedar->json never produces `Entity` nodes, so we need to test this starting from json.
+        let schema_json = serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {
+                        "User": { },
+                        "Photo": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {
+                                    "owner": {
+                                        "type": "Entity",
+                                        "name": "User"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "actions": {}
+                }
+            }
+        );
+
+        let fragment: json_schema::Fragment<RawName> = serde_json::from_value(schema_json).unwrap();
+        let cedar_schema = fragment.to_cedarschema().unwrap();
+
+        let (parsed_cedar_schema, _) =
+            parse_cedar_schema_fragment(&cedar_schema, Extensions::all_available()).unwrap();
+
+        let roundtrip_json = serde_json::to_value(parsed_cedar_schema).unwrap();
+        let expected_roundtrip = serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {
+                        "User": { },
+                        "Photo": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {
+                                    "owner": {
+                                        "type": "EntityOrCommon",
+                                        "name": "User"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "actions": {}
+                }
+            }
+        );
+
+        assert_eq!(expected_roundtrip, roundtrip_json,);
+    }
+
+    #[test]
+    fn extension_type_roundtrips_to_entity_or_common() {
+        // Converting cedar->json never produces `Extension` nodes, so we need to test this starting from json.
+        let schema_json = serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {
+                        "User": { },
+                        "Photo": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {
+                                    "owner": {
+                                        "type": "Extension",
+                                        "name": "Decimal"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "actions": {}
+                }
+            }
+        );
+
+        let fragment: json_schema::Fragment<RawName> = serde_json::from_value(schema_json).unwrap();
+        let cedar_schema = fragment.to_cedarschema().unwrap();
+
+        let (parsed_cedar_schema, _) =
+            parse_cedar_schema_fragment(&cedar_schema, Extensions::all_available()).unwrap();
+
+        let roundtrip_json = serde_json::to_value(parsed_cedar_schema).unwrap();
+        let expected_roundtrip = serde_json::json!(
+            {
+                "": {
+                    "entityTypes": {
+                        "User": { },
+                        "Photo": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {
+                                    "owner": {
+                                        "type": "EntityOrCommon",
+                                        "name": "__cedar::Decimal"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "actions": {}
+                }
+            }
+        );
+
+        assert_eq!(expected_roundtrip, roundtrip_json,);
     }
 }

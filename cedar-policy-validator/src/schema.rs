@@ -27,11 +27,9 @@ use cedar_policy_core::{
     parser::Loc,
     transitive_closure::compute_tc,
 };
-use itertools::Itertools;
 use namespace_def::EntityTypeFragment;
 use nonempty::NonEmpty;
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
+use serde::Deserialize;
 use smol_str::ToSmolStr;
 use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet};
 use std::str::FromStr;
@@ -40,7 +38,9 @@ use std::sync::Arc;
 use crate::{
     cedar_schema::SchemaWarning,
     json_schema,
-    types::{Attributes, EntityRecordKind, OpenTag, Type},
+    partition_nonempty::PartitionNonEmpty,
+    types::{Attributes, EntityRecordKind, OpenTag, RequestEnv, Type},
+    ValidationMode,
 };
 
 mod action;
@@ -124,7 +124,7 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
                         extensions,
                     )
                 })
-                .collect::<Result<Vec<_>>>()?,
+                .partition_nonempty()?,
         ))
     }
 
@@ -138,16 +138,12 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
         self,
         all_defs: &AllDefs,
     ) -> Result<ValidatorSchemaFragment<InternalName, EntityType>> {
-        let (nsdefs, errs) = self
-            .0
+        self.0
             .into_iter()
             .map(|ns_def| ns_def.fully_qualify_type_references(all_defs))
-            .partition_result::<Vec<ValidatorNamespaceDef<InternalName, EntityType>>, Vec<SchemaError>, _, _>();
-        if let Some(errs) = NonEmpty::from_vec(errs) {
-            Err(SchemaError::join_nonempty(errs))
-        } else {
-            Ok(ValidatorSchemaFragment(nsdefs))
-        }
+            .partition_nonempty()
+            .map(ValidatorSchemaFragment)
+            .map_err(SchemaError::join_nonempty)
     }
 }
 
@@ -155,16 +151,12 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
 ///
 /// In this representation, all common types are fully expanded, and all entity
 /// type names are fully disambiguated (fully qualified).
-#[serde_as]
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug)]
 pub struct ValidatorSchema {
     /// Map from entity type names to the [`ValidatorEntityType`] object.
-    #[serde_as(as = "Vec<(_, _)>")]
     entity_types: HashMap<EntityType, ValidatorEntityType>,
 
     /// Map from action id names to the [`ValidatorActionId`] object.
-    #[serde_as(as = "Vec<(_, _)>")]
     action_ids: HashMap<EntityUID, ValidatorActionId>,
 
     /// For easy lookup, this is a map from action name to `Entity` object
@@ -172,7 +164,6 @@ pub struct ValidatorSchema {
     /// in the `ValidatorSchema`, but not efficient to extract -- getting the
     /// `Entity` from the `ValidatorSchema` is O(N) as of this writing, but with
     /// this cache it's O(1).
-    #[serde_as(as = "Vec<(_, _)>")]
     pub(crate) actions: HashMap<EntityUID, Arc<Entity>>,
 }
 
@@ -279,6 +270,39 @@ impl ValidatorSchema {
         self.action_ids
             .get(action)
             .map(ValidatorActionId::resources)
+    }
+
+    /// Returns an iterator over every valid `RequestEnv` in the schema
+    pub fn unlinked_request_envs(
+        &self,
+        mode: ValidationMode,
+    ) -> impl Iterator<Item = RequestEnv<'_>> + '_ {
+        // For every action compute the cross product of the principal and
+        // resource applies_to sets.
+        self.action_ids()
+            .flat_map(|action| {
+                action.applies_to_principals().flat_map(|principal| {
+                    action
+                        .applies_to_resources()
+                        .map(|resource| RequestEnv::DeclaredAction {
+                            principal,
+                            action: &action.name,
+                            resource,
+                            context: &action.context,
+                            principal_slot: None,
+                            resource_slot: None,
+                        })
+                })
+            })
+            .chain(if mode.is_partial() {
+                // A partial schema might not list all actions, and may not
+                // include all principal and resource types for the listed ones.
+                // So we typecheck with a fully unknown request to handle these
+                // missing cases.
+                Some(RequestEnv::UndeclaredAction)
+            } else {
+                None
+            })
     }
 
     /// Returns an iterator over all the entity types that can be a parent of `ty`
@@ -438,7 +462,7 @@ impl ValidatorSchema {
         // available in the empty namespace, we'd probably add that here.
         for tyname in primitive_types::<Name>()
             .map(|(id, _)| Name::unqualified_name(id))
-            .chain(extensions.ext_types().cloned().map(Into::into))
+            .chain(extensions.ext_types().cloned())
         {
             if !all_defs.is_defined_as_entity(tyname.as_ref())
                 && !all_defs.is_defined_as_common(tyname.as_ref())
@@ -463,13 +487,10 @@ impl ValidatorSchema {
         // come later.)
         // This produces an intermediate form of schema fragment,
         // `ValidatorSchemaFragment<InternalName, EntityType>`.
-        let (fragments, errs) = fragments
+        let fragments: Vec<_> = fragments
             .into_iter()
             .map(|frag| frag.fully_qualify_type_references(&all_defs))
-            .partition_result::<Vec<ValidatorSchemaFragment<InternalName, EntityType>>, Vec<SchemaError>, _, _>();
-        if let Some(errs) = NonEmpty::from_vec(errs) {
-            return Err(SchemaError::join_nonempty(errs));
-        }
+            .partition_nonempty()?;
 
         // Now that all references are fully-qualified, we can build the aggregate
         // maps for common types, entity types, and actions, checking that nothing
@@ -528,7 +549,6 @@ impl ValidatorSchema {
                     .insert(name.clone());
             }
         }
-
         let mut entity_types = entity_type_fragments
             .into_iter()
             .map(|(name, entity_type)| -> Result<_> {
@@ -542,15 +562,22 @@ impl ValidatorSchema {
                 // error for any other undeclared entity types by
                 // `check_for_undeclared`.
                 let descendants = entity_children.remove(&name).unwrap_or_default();
+
                 match entity_type {
                     EntityTypeFragment::Enum(choices) => Ok((
                         name.clone(),
-                        ValidatorEntityType::new_enum(name, descendants, choices),
+                        ValidatorEntityType::new_enum(
+                            name.clone(),
+                            descendants,
+                            choices,
+                            name.loc().cloned(),
+                        ),
                     )),
                     EntityTypeFragment::Standard {
                         attributes,
                         parents: _,
                         tags,
+                        loc,
                     } => {
                         let (attributes, open_attributes) = {
                             let unresolved =
@@ -569,20 +596,22 @@ impl ValidatorSchema {
                             .transpose()?
                             .map(|unresolved| unresolved.resolve_common_type_refs(&common_types))
                             .transpose()?;
+
                         Ok((
-                            name.clone(),
+                            name.with_loc(loc.as_ref()),
                             ValidatorEntityType::new_standard(
                                 name,
                                 descendants,
                                 attributes,
                                 open_attributes,
                                 tags,
+                                loc,
                             ),
                         ))
                     }
                 }
             })
-            .collect::<Result<HashMap<_, _>>>()?;
+            .partition_nonempty()?;
 
         let mut action_children = HashMap::new();
         for (euid, action) in action_fragments.iter() {
@@ -616,10 +645,11 @@ impl ValidatorSchema {
                         context: Type::record_with_attributes(context, open_context_attributes),
                         attribute_types: action.attribute_types,
                         attributes: action.attributes,
+                        loc: action.loc,
                     },
                 ))
             })
-            .collect::<Result<HashMap<_, _>>>()?;
+            .partition_nonempty()?;
 
         // We constructed entity types and actions with child maps, but we need
         // transitively closed descendants.
@@ -880,11 +910,12 @@ impl ValidatorSchema {
             }
         }
         action_ids.iter().map(move |(action_id, action)| {
-            Entity::new_with_attr_partial_value_serialized_as_expr(
+            Entity::new_with_attr_partial_value(
                 action_id.clone(),
                 action.attributes.clone(),
+                HashSet::new(),
                 action_ancestors.remove(action_id).unwrap_or_default(),
-                BTreeMap::new(), // actions cannot have entity tags
+                [], // actions cannot have entity tags
             )
         })
     }
@@ -898,7 +929,6 @@ impl ValidatorSchema {
             TCComputation::AssumeAlreadyComputed,
             extensions,
         )
-        .map_err(Into::into)
     }
 }
 
@@ -1146,11 +1176,13 @@ impl AllDefs {
     fn entity_and_common_names(&self) -> impl Iterator<Item = &InternalName> {
         self.entity_defs.iter().chain(self.common_defs.iter())
     }
+}
 
+#[cfg(test)]
+impl AllDefs {
     /// Build an [`AllDefs`] that assumes the given fully-qualified
     /// [`InternalName`]s are defined (by the user) as entity types, and there
     /// are no defined common types or actions.
-    #[cfg(test)]
     pub(crate) fn from_entity_defs(names: impl IntoIterator<Item = InternalName>) -> Self {
         Self {
             entity_defs: names.into_iter().collect(),
@@ -1344,7 +1376,7 @@ impl<'a> CommonTypeResolver<'a> {
                     attributes: BTreeMap::from_iter(
                         attributes
                             .into_iter()
-                            .map(|(attr, attr_ty)| {
+                            .map(|(attr, attr_ty)| -> Result<_> {
                                 Ok((
                                     attr,
                                     json_schema::TypeOfAttribute {
@@ -1354,7 +1386,7 @@ impl<'a> CommonTypeResolver<'a> {
                                     },
                                 ))
                             })
-                            .collect::<Result<Vec<(_, _)>>>()?,
+                            .partition_nonempty::<Vec<_>>()?,
                     ),
                     additional_attributes,
                 }),
@@ -1580,6 +1612,85 @@ pub(crate) mod test {
         match ValidatorSchema::from_json_str(src, Extensions::all_available()) {
             Err(SchemaError::JsonDeserialization(_)) => (),
             _ => panic!("Expected JSON deserialization error due to duplicate action type."),
+        }
+    }
+
+    #[test]
+    fn test_from_schema_file_missing_parent_action() {
+        let src = json!({
+            "": {
+                "entityTypes": {
+                    "Test": {}
+                },
+                "actions": {
+                    "doTests": {
+                        "memberOf": [
+                            { "type": "Action", "id": "test1" },
+                            { "type": "Action", "id": "test2" }
+                        ]
+                    }
+                }
+            }
+        });
+        match ValidatorSchema::from_json_value(src, Extensions::all_available()) {
+            Err(SchemaError::ActionNotDefined(missing)) => {
+                assert_eq!(missing.0.len(), 2);
+            }
+            _ => panic!("Expected ActionNotDefined due to unknown actions in memberOf."),
+        }
+    }
+
+    #[test]
+    fn test_from_schema_file_undefined_types_in_common() {
+        let src = json!({
+            "": {
+                "commonTypes": {
+                    "My1": {"type": "What"},
+                    "My2": {"type": "Ev"},
+                    "My3": {"type": "Er"}
+                },
+                "entityTypes": {
+                    "Test": {}
+                },
+                "actions": {},
+            }
+        });
+        match ValidatorSchema::from_json_value(src, Extensions::all_available()) {
+            Err(SchemaError::TypeNotDefined(missing)) => {
+                assert_eq!(missing.undefined_types.len(), 3);
+            }
+            x => panic!(
+                "Expected TypeNotDefined due to unknown types in commonTypes, found: {:?}",
+                x
+            ),
+        }
+    }
+
+    #[test]
+    fn test_from_schema_file_undefined_entities_in_one_action() {
+        let src = json!({
+            "": {
+                "entityTypes": {
+                    "Test": {}
+                },
+                "actions": {
+                    "doTests": {
+                        "appliesTo": {
+                            "principalTypes": ["Usr", "Group"],
+                            "resourceTypes": ["Phoot"]
+                        }
+                    }
+                }
+            }
+        });
+        match ValidatorSchema::from_json_value(src, Extensions::all_available()) {
+            Err(SchemaError::TypeNotDefined(missing)) => {
+                assert_eq!(missing.undefined_types.len(), 3);
+            }
+            x => panic!(
+                "Expected TypeNotDefined due to unknown entities in appliesTo, found: {:?}",
+                x
+            ),
         }
     }
 
@@ -2580,7 +2691,13 @@ pub(crate) mod test {
         let view_photo = actions.entity(&action_uid);
         assert_eq!(
             view_photo.unwrap(),
-            &Entity::new_with_attr_partial_value(action_uid, [], HashSet::new(), [])
+            &Entity::new_with_attr_partial_value(
+                action_uid,
+                [],
+                HashSet::new(),
+                HashSet::new(),
+                []
+            )
         );
     }
 
@@ -2615,26 +2732,16 @@ pub(crate) mod test {
             &Entity::new_with_attr_partial_value(
                 view_photo_uid,
                 [],
-                HashSet::from([view_uid.clone(), read_uid.clone()]),
+                HashSet::new(),
+                HashSet::from([view_uid, read_uid.clone()]),
                 [],
-            )
-        );
-
-        let view_entity = actions.entity(&view_uid);
-        assert_eq!(
-            view_entity.unwrap(),
-            &Entity::new_with_attr_partial_value(
-                view_uid,
-                [],
-                HashSet::from([read_uid.clone()]),
-                []
             )
         );
 
         let read_entity = actions.entity(&read_uid);
         assert_eq!(
             read_entity.unwrap(),
-            &Entity::new_with_attr_partial_value(read_uid, [], HashSet::new(), [])
+            &Entity::new_with_attr_partial_value(read_uid, [], HashSet::new(), HashSet::new(), [])
         );
     }
 
@@ -2662,6 +2769,7 @@ pub(crate) mod test {
             &Entity::new(
                 action_uid,
                 [("attr".into(), RestrictedExpr::val("foo"))],
+                HashSet::new(),
                 HashSet::new(),
                 [],
                 Extensions::none(),
@@ -3035,7 +3143,6 @@ pub(crate) mod test {
                     .build());
         });
 
-        #[cfg(feature = "datetime")]
         {
             let src: serde_json::Value = json!({
                 "": {
@@ -3691,6 +3798,7 @@ mod test_rfc70 {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
                     .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .exactly_one_underline("entity T { bar: String };")
                     .build(),
             );
         });
@@ -3708,6 +3816,7 @@ mod test_rfc70 {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
                     .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .exactly_one_underline("entity T { bar: String };")
                     .build(),
             );
         });
@@ -3841,6 +3950,7 @@ mod test_rfc70 {
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("definition of `NS::T` illegally shadows the existing definition of `T`")
                     .help("try renaming one of the definitions, or moving `T` to a different namespace")
+                    .exactly_one_underline("entity T in T { foo: String };")
                     .build(),
             );
         });
@@ -3896,13 +4006,16 @@ mod test_rfc70 {
                 action A;
             }
         ";
+        let assertion = ExpectedErrorMessageBuilder::error("definition of `NS::Action::\"A\"` illegally shadows the existing definition of `Action::\"A\"`")
+        .help("try renaming one of the actions, or moving `Action::\"A\"` to a different namespace");
+        #[cfg(feature = "extended-schema")]
+        let assertion = assertion.exactly_one_underline("A");
+
         assert_matches!(collect_warnings(ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("definition of `NS::Action::\"A\"` illegally shadows the existing definition of `Action::\"A\"`")
-                    .help("try renaming one of the actions, or moving `Action::\"A\"` to a different namespace")
-                    .build(),
+                &assertion.build()
             );
         });
 
@@ -4889,7 +5002,7 @@ mod test_resolver {
                 (
                     "a".parse().unwrap(),
                     Type::record_with_required_attributes(
-                        std::iter::once(("foo".into(), Type::primitive_boolean())),
+                        [("foo".into(), Type::primitive_boolean())],
                         crate::types::OpenTag::ClosedAttributes
                     )
                 ),

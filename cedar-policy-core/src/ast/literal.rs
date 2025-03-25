@@ -16,7 +16,6 @@
 
 use crate::ast::{EntityUID, Integer, StaticallyTyped, Type};
 use crate::parser;
-use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::sync::Arc;
 
@@ -32,7 +31,7 @@ use std::sync::Arc;
 /// `Expr::Set`, not `Expr::Lit`.
 ///
 /// Cloning is O(1).
-#[derive(Serialize, Deserialize, Hash, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
+#[derive(Hash, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub enum Literal {
     /// Boolean value
     Bool(bool),
