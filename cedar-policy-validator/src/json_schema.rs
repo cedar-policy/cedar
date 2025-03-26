@@ -1257,7 +1257,7 @@ pub enum Type<N> {
     },
 }
 
-impl<N> Type<N> {
+    impl<N> Type<N> {
     /// Iterate over all references which occur in the type and (must or may)
     /// resolve to a common type
     pub(crate) fn common_type_references(&self) -> Box<dyn Iterator<Item = &N> + '_> {
@@ -1334,7 +1334,7 @@ impl<N> Type<N> {
         }
     }
 
-    /// Self but with a new loc
+    /// Create a new copy of self but with a difference source location
     pub fn with_loc(self, new_loc: Option<Loc>) -> Self {
         match self {
             Self::Type { ty, loc: _loc } => Self::Type {

@@ -800,8 +800,10 @@ impl ValidatorSchema {
             .clone()
             .into_iter()
             .filter(|ct| {
-                ct.clone().0.loc().is_some()
-                    && !Primitive::is_primitive(ct.0.basename().clone().into_smolstr())
+                // Only collect common types that are not primitives and have location data
+                let ct_name = ct.0.clone();
+                ct_name.loc().is_some()
+                    && !Primitive::is_primitive(ct_name.basename().clone().into_smolstr())
             })
             .map(|ct| ValidatorCommonType::new(ct.0, ct.1))
             .collect();
