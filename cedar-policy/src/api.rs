@@ -4515,6 +4515,8 @@ pub fn eval_expression(
 // These are the same tests in validator, just ensuring all the plumbing is done correctly
 #[cfg(test)]
 mod test_access {
+    use cedar_policy_core::ast;
+
     use super::*;
 
     fn schema() -> Schema {
@@ -4524,6 +4526,8 @@ mod test_access {
     "name": String,
     "state": String,
 };
+
+type T = String;
 
 type Tasks = Set<Task>;
 entity List in [Application] = {
@@ -4581,6 +4585,73 @@ action CreateList in Create appliesTo {
         assert!(principals.len() > 1);
         assert!(principals.iter().all(|ety| **ety == user));
         assert!(principals.iter().all(|ety| ety.0.loc().is_some()));
+
+        let et = ast::EntityType::EntityType(ast::Name::from_normalized_str("User").unwrap());
+        let et = schema.0.get_entity_type(&et).unwrap();
+        assert!(et.loc.as_ref().is_some());
+    }
+
+    #[cfg(feature = "extended-schema")]
+    #[test]
+    fn common_types_extended() {
+        use cool_asserts::assert_matches;
+
+        use cedar_policy_validator::{
+            types::{EntityRecordKind, Type},
+            ValidatorCommonType,
+        };
+
+        let schema = schema();
+        assert_eq!(schema.0.common_types().collect::<HashSet<_>>().len(), 3);
+        let task_type = ValidatorCommonType {
+            name: "Task".into(),
+            name_loc: None,
+            type_loc: None,
+        };
+        assert!(schema.0.common_types().contains(&task_type));
+
+        let tasks_type = ValidatorCommonType {
+            name: "Tasks".into(),
+            name_loc: None,
+            type_loc: None,
+        };
+        assert!(schema.0.common_types().contains(&tasks_type));
+        assert!(schema.0.common_types().all(|ct| ct.name_loc.is_some()));
+        assert!(schema.0.common_types().all(|ct| ct.type_loc.is_some()));
+
+        let tasks_type = ValidatorCommonType {
+            name: "T".into(),
+            name_loc: None,
+            type_loc: None,
+        };
+        assert!(schema.0.common_types().contains(&tasks_type));
+
+        let et = ast::EntityType::EntityType(ast::Name::from_normalized_str("List").unwrap());
+        let et = schema.0.get_entity_type(&et).unwrap();
+        let attrs = et.attributes();
+
+        // Assert that attributes that are resolved from common types still get source locations
+        let t = attrs.get_attr("tasks").unwrap();
+        assert!(t.loc.is_some());
+        assert_matches!(&t.attr_type, cedar_policy_validator::types::Type::Set { ref element_type } => {
+            let el = *element_type.clone().unwrap().to_owned();
+            assert_matches!(el, Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
+                assert!(attrs.get_attr("name").unwrap().loc.is_some());
+                assert!(attrs.get_attr("id").unwrap().loc.is_some());
+                assert!(attrs.get_attr("state").unwrap().loc.is_some());
+            })
+        });
+    }
+
+    #[cfg(feature = "extended-schema")]
+    #[test]
+    fn namespace_extended() {
+        let schema = schema();
+        assert_eq!(schema.0.namespaces().collect::<HashSet<_>>().len(), 1);
+        let default_namespace = schema.0.namespaces().last().unwrap();
+        assert_eq!(default_namespace.name, SmolStr::from("__cedar"));
+        assert!(default_namespace.name_loc.is_none());
+        assert!(default_namespace.def_loc.is_none())
     }
 
     #[test]
@@ -4803,6 +4874,7 @@ action CreateList in Create appliesTo {
         let principals = schema.principals().collect::<Vec<_>>();
         assert!(principals.len() > 1);
         assert!(principals.iter().all(|ety| **ety == user));
+        assert!(principals.iter().all(|ety| ety.0.loc().is_some()));
     }
 
     #[test]
@@ -4822,6 +4894,7 @@ action CreateList in Create appliesTo {
             "Foo::CoolList".parse().unwrap(),
         ]);
         assert_eq!(resources, expected);
+        assert!(resources.iter().all(|ety| ety.0.loc().is_some()));
     }
 
     #[test]
@@ -4850,6 +4923,8 @@ action CreateList in Create appliesTo {
             .unwrap()
             .cloned()
             .collect::<Vec<_>>();
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
+
         assert_eq!(got, vec!["Foo::List".parse().unwrap()]);
         let got = schema
             .resources_for_action(&create_list)
@@ -4857,6 +4932,8 @@ action CreateList in Create appliesTo {
             .cloned()
             .collect::<Vec<_>>();
         assert_eq!(got, vec!["Foo::Application".parse().unwrap()]);
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
+
         let got = schema
             .resources_for_action(&get_list)
             .unwrap()
@@ -4979,6 +5056,30 @@ action CreateList in Create appliesTo {
         assert!(retrieved_context.get("testKey").is_some());
         assert!(retrieved_context.get("numKey").is_some());
         assert!(retrieved_context.get("nonexistent").is_none());
+    }
+
+    #[cfg(feature = "extended-schema")]
+    #[test]
+    fn namespace_extended() {
+        let schema = schema();
+        assert_eq!(schema.0.namespaces().collect::<HashSet<_>>().len(), 2);
+        let default_namespace = schema
+            .0
+            .namespaces()
+            .filter(|n| n.name == SmolStr::from("__cedar"))
+            .last()
+            .unwrap();
+        assert!(default_namespace.name_loc.is_none());
+        assert!(default_namespace.def_loc.is_none());
+
+        let default_namespace = schema
+            .0
+            .namespaces()
+            .filter(|n| n.name == SmolStr::from("Foo"))
+            .last()
+            .unwrap();
+        assert!(default_namespace.name_loc.is_some());
+        assert!(default_namespace.def_loc.is_some())
     }
 }
 

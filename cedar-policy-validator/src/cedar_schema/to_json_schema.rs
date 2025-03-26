@@ -140,6 +140,7 @@ fn split_unqualified_namespace(
         let unqual = Namespace {
             name: None,
             decls: unqualified_decls,
+            loc: None,
         };
         (
             qualified.into_iter(),
@@ -213,6 +214,8 @@ impl TryFrom<Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName>
             entity_types,
             actions,
             annotations: n.annotations.into(),
+            #[cfg(feature = "extended-schema")]
+            loc: n.data.loc,
         })
     }
 }
@@ -453,6 +456,8 @@ fn convert_attr_decl(
             ty: cedar_type_to_json_type(attr.node.data.ty),
             required: attr.node.data.required,
             annotations: attr.node.annotations.into(),
+            #[cfg(feature = "extended-schema")]
+            loc: Some(attr.loc),
         },
     )
 }

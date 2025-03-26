@@ -284,6 +284,8 @@ impl From<&models::AttributeType> for types::AttributeType {
                 v.attr_type.as_ref().expect("attr_type field should exist"),
             ),
             is_required: v.is_required,
+            #[cfg(feature = "extended-schema")]
+            loc: None,
         }
     }
 }

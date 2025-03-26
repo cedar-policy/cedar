@@ -111,14 +111,14 @@ pub Schema: ASchema = {
 
 #[inline]
 Namedspace: Namespace = {
-    NAMESPACE <p: Path> "{" <decls: Annotated<Decl>*> "}"
-        => Namespace { name: Some(p), decls},
+     <l:@L> NAMESPACE <p: Path> "{" <decls: Annotated<Decl>*> "}" <r:@R> 
+        => Namespace { name: Some(p), decls, loc: Some(Loc::new(l..r, Arc::clone(src)))},
 }
 
 // Namespace := 'namespace' Path '{' {Decl} '}'
 Namespace: Annotated<Namespace> = {
     <ns: Annotated<Namedspace>> => ns,
-    <decl: Annotated<Decl>> <r:@R> => Annotated {data: Namespace {name: None, decls: vec![decl]}, annotations: Annotations::new()},
+    <l:@L> <decl: Annotated<Decl>> <r:@R> => Annotated {data: Namespace {name: None, decls: vec![decl], loc: Some(Loc::new(l..r, Arc::clone(src)))}, annotations: Annotations::new()},
 }
 
 // Decl := Entity | Action | TypeDecl

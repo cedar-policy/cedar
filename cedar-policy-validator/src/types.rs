@@ -20,6 +20,7 @@
 mod capability;
 pub use capability::*;
 mod request_env;
+use educe::Educe;
 pub use request_env::*;
 
 use itertools::Itertools;
@@ -40,6 +41,9 @@ use cedar_policy_core::{
     },
     extensions::{ExtensionFunctionLookupError, Extensions},
 };
+
+#[cfg(feature = "extended-schema")]
+use cedar_policy_core::parser::Loc;
 
 use crate::{validation_errors::LubHelp, ValidationMode};
 
@@ -1397,7 +1401,8 @@ impl EntityRecordKind {
 }
 
 /// Contains the type of a record attribute and if the attribute is required.
-#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Serialize)]
+#[derive(Ord, PartialOrd, Educe, Debug, Clone, Serialize)]
+#[educe(Eq, PartialEq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct AttributeType {
     /// The type of the attribute.
@@ -1406,6 +1411,11 @@ pub struct AttributeType {
     /// True when the attribute must be present. False if it is optional, and so
     /// may not be present in a record or entity.
     pub is_required: bool,
+    ///  Source location - if available
+    #[cfg(feature = "extended-schema")]
+    #[serde(skip)]
+    #[educe(Eq(ignore))]
+    pub loc: Option<Loc>,
 }
 
 impl AttributeType {
@@ -1415,6 +1425,19 @@ impl AttributeType {
         Self {
             attr_type,
             is_required,
+            #[cfg(feature = "extended-schema")]
+            loc: None,
+        }
+    }
+
+    #[cfg(feature = "extended-schema")]
+    /// Construct an [`AttributeType`] with some type that may be required or
+    /// optional as specified by the `is_required` parameter - includes source location
+    pub fn new_with_loc(attr_type: Type, is_required: bool, loc: Option<Loc>) -> Self {
+        Self {
+            attr_type,
+            is_required,
+            loc,
         }
     }
 
@@ -1481,6 +1504,18 @@ pub enum Primitive {
     Long,
     /// Primitive string type.
     String,
+}
+
+impl Primitive {
+    /// Check if a string is a primitive
+    #[cfg(feature = "extended-schema")]
+    pub(crate) fn is_primitive(s: SmolStr) -> bool {
+        let s = s.as_str();
+        match s {
+            "Bool" | "Long" | "String" => true,
+            _ => false,
+        }
+    }
 }
 
 // PANIC SAFETY unit tests
@@ -2714,5 +2749,11 @@ mod test {
     fn test_extension_type_display() {
         let ipaddr = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
         assert_type_display_roundtrip(&Type::extension(ipaddr));
+    }
+
+    #[test]
+    #[cfg(feature = "extended-schema")]
+    fn test_matches_name() {
+        assert!(Primitive::is_primitive(SmolStr::from("Long")))
     }
 }
