@@ -32,19 +32,21 @@ use err::{EntitySchemaConformanceError, InvalidEnumEntityError, UnexpectedEntity
 
 /// Struct used to check whether entities conform to a schema
 #[derive(Debug, Clone)]
-pub struct EntitySchemaConformanceChecker<'a, S: Schema> {
+pub struct EntitySchemaConformanceChecker<'a, S> {
     /// Schema to check conformance with
     schema: &'a S,
     /// Extensions which are active for the conformance checks
     extensions: &'a Extensions<'a>,
 }
 
-impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
+impl<'a, S> EntitySchemaConformanceChecker<'a, S> {
     /// Create a new checker
     pub fn new(schema: &'a S, extensions: &'a Extensions<'a>) -> Self {
         Self { schema, extensions }
     }
+}
 
+impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
     /// Validate an entity against the schema, returning an
     /// [`EntitySchemaConformanceError`] if it does not comply.
     pub fn validate_entity(&self, entity: &Entity) -> Result<(), EntitySchemaConformanceError> {
