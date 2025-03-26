@@ -44,7 +44,7 @@ impl ContextSchema for NullContextSchema {
 
 /// Struct used to parse context from JSON.
 #[derive(Debug, Clone)]
-pub struct ContextJsonParser<'e, 's, S: ContextSchema = NullContextSchema> {
+pub struct ContextJsonParser<'e, 's, S = NullContextSchema> {
     /// If a `schema` is present, this will inform the parsing: for instance, it
     /// will allow `__entity` and `__extn` escapes to be implicit.
     /// It will also ensure that the produced `Context` fully conforms to the
@@ -57,7 +57,7 @@ pub struct ContextJsonParser<'e, 's, S: ContextSchema = NullContextSchema> {
     extensions: &'e Extensions<'e>,
 }
 
-impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
+impl<'e, 's, S> ContextJsonParser<'e, 's, S> {
     /// Create a new `ContextJsonParser`.
     ///
     /// If a `schema` is present, this will inform the parsing: for instance, it
@@ -69,7 +69,9 @@ impl<'e, 's, S: ContextSchema> ContextJsonParser<'e, 's, S> {
     pub fn new(schema: Option<&'s S>, extensions: &'e Extensions<'e>) -> Self {
         Self { schema, extensions }
     }
+}
 
+impl<S: ContextSchema> ContextJsonParser<'_, '_, S> {
     /// Parse context JSON (in `&str` form) into a `Context` object
     pub fn from_json_str(&self, json: &str) -> Result<Context, ContextJsonDeserializationError> {
         let val =

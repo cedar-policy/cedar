@@ -51,7 +51,7 @@ impl<K: Debug + Display> TcError<K> {
 /// Error raised when `TCComputation::EnforceAlreadyComputed` finds that the
 /// TC was in fact not already computed
 #[derive(Debug, PartialEq, Eq)]
-pub struct MissingTcEdge<K: Debug + Display> {
+pub struct MissingTcEdge<K> {
     child: K,
     parent: K,
     grandparent: K,
@@ -59,12 +59,12 @@ pub struct MissingTcEdge<K: Debug + Display> {
 
 /// Error raised when enforce_dag finds that the graph is not a DAG
 #[derive(Debug, PartialEq, Eq)]
-pub struct HasCycle<K: Debug + Display> {
+pub struct HasCycle<K> {
     /// Because DAG enforcement can only be called after compute_tc/enforce_tc, a cycle will manifest as a vertex with a loop
     vertex_with_loop: K,
 }
 
-impl<K: Debug + Display> HasCycle<K> {
+impl<K> HasCycle<K> {
     /// Graph vertex that contained a loop
     pub fn vertex_with_loop(&self) -> &K {
         &self.vertex_with_loop
