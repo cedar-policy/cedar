@@ -38,6 +38,9 @@ use std::collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 
+#[cfg(feature = "extended-schema")]
+use crate::types::Primitive;
+
 use crate::{
     cedar_schema::SchemaWarning,
     json_schema,
@@ -797,9 +800,8 @@ impl ValidatorSchema {
             .clone()
             .into_iter()
             .filter(|ct| {
-                // Exclude primitives since we only want the definition locations of common types that the schema introduces
-                !matches!(ct.1.ty, Type::ExtensionType { .. })
-                    && !matches!(ct.1.ty, Type::Primitive { .. })
+                ct.clone().0.loc().is_some()
+                    && !Primitive::matches_name(ct.0.basename().clone().into_smolstr())
             })
             .map(|ct| ValidatorCommonType::new(ct.0, ct.1))
             .collect();
@@ -1503,7 +1505,8 @@ impl<'a> CommonTypeResolver<'a> {
                 ty: json_schema::TypeVariant::EntityOrCommon { type_name },
                 loc,
             } => match resolve_table.get(&type_name) {
-                Some(def) => Ok(def.clone()),
+                Some(def) => Ok(def.clone().with_loc(loc)),
+
                 None => Ok(json_schema::Type::Type {
                     ty: json_schema::TypeVariant::Entity { name: type_name },
                     loc,

@@ -4527,6 +4527,8 @@ mod test_access {
     "state": String,
 };
 
+type T = String;
+
 type Tasks = Set<Task>;
 entity List in [Application] = {
   "editors": Team,
@@ -4592,13 +4594,15 @@ action CreateList in Create appliesTo {
     #[cfg(feature = "extended-schema")]
     #[test]
     fn common_types_extended() {
+        use cool_asserts::assert_matches;
+
         use cedar_policy_validator::{
             types::{EntityRecordKind, Type},
             ValidatorCommonType,
         };
 
         let schema = schema();
-        assert_eq!(schema.0.common_types().collect::<HashSet<_>>().len(), 2);
+        assert_eq!(schema.0.common_types().collect::<HashSet<_>>().len(), 3);
         let task_type = ValidatorCommonType {
             name: "Task".into(),
             name_loc: None,
@@ -4615,6 +4619,13 @@ action CreateList in Create appliesTo {
         assert!(schema.0.common_types().all(|ct| ct.name_loc.is_some()));
         assert!(schema.0.common_types().all(|ct| ct.type_loc.is_some()));
 
+        let tasks_type = ValidatorCommonType {
+            name: "T".into(),
+            name_loc: None,
+            type_loc: None,
+        };
+        assert!(schema.0.common_types().contains(&tasks_type));
+
         let et = ast::EntityType::EntityType(ast::Name::from_normalized_str("List").unwrap());
         let et = schema.0.get_entity_type(&et).unwrap();
         let attrs = et.attributes();
@@ -4622,23 +4633,14 @@ action CreateList in Create appliesTo {
         // Assert that attributes that are resolved from common types still get source locations
         let t = attrs.get_attr("tasks").unwrap();
         assert!(t.loc.is_some());
-        match &t.attr_type {
-            cedar_policy_validator::types::Type::Set { ref element_type } => {
-                let el = *element_type.clone().unwrap().to_owned();
-                match el {
-                    Type::EntityOrRecord(e) => match e {
-                        EntityRecordKind::Record { attrs, .. } => {
-                            assert!(attrs.get_attr("name").unwrap().loc.is_some());
-                            assert!(attrs.get_attr("id").unwrap().loc.is_some());
-                            assert!(attrs.get_attr("state").unwrap().loc.is_some());
-                        }
-                        _ => panic!("Oops"),
-                    },
-                    _ => panic!("Oops"),
-                }
-            }
-            _ => panic!("Oops"),
-        }
+        assert_matches!(&t.attr_type, cedar_policy_validator::types::Type::Set { ref element_type } => {
+            let el = *element_type.clone().unwrap().to_owned();
+            assert_matches!(el, Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
+                assert!(attrs.get_attr("name").unwrap().loc.is_some());
+                assert!(attrs.get_attr("id").unwrap().loc.is_some());
+                assert!(attrs.get_attr("state").unwrap().loc.is_some());
+            })
+        });
     }
 
     #[cfg(feature = "extended-schema")]

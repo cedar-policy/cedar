@@ -47,7 +47,7 @@ pub struct InternalName {
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
     #[educe(PartialOrd(ignore))]
-    pub(crate) loc: Option<Loc>,
+    pub loc: Option<Loc>,
 }
 
 /// A shortcut for [`InternalName::unqualified_name`]

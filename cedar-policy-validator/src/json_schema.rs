@@ -1333,6 +1333,23 @@ impl<N> Type<N> {
             Self::CommonTypeRef { loc, .. } => loc.as_ref(),
         }
     }
+
+    /// Self but with a new loc
+    pub fn with_loc(self, new_loc: Option<Loc>) -> Self {
+        match self {
+            Self::Type { ty, loc: _loc } => Self::Type {
+                ty: ty,
+                loc: new_loc,
+            },
+            Self::CommonTypeRef {
+                type_name,
+                loc: _loc,
+            } => Self::CommonTypeRef {
+                type_name: type_name,
+                loc: new_loc,
+            },
+        }
+    }
 }
 
 impl Type<RawName> {

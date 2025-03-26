@@ -1506,6 +1506,17 @@ pub enum Primitive {
     String,
 }
 
+impl Primitive {
+    /// Check if a string is a primitive
+    pub(crate) fn matches_name(s: SmolStr) -> bool {
+        let s = s.as_str();
+        match s {
+            "Bool" | "Long" | "String" => true,
+            _ => false,
+        }
+    }
+}
+
 // PANIC SAFETY unit tests
 #[allow(clippy::panic)]
 // PANIC SAFETY unit tests
@@ -2737,5 +2748,10 @@ mod test {
     fn test_extension_type_display() {
         let ipaddr = Name::parse_unqualified_name("ipaddr").expect("should be a valid identifier");
         assert_type_display_roundtrip(&Type::extension(ipaddr));
+    }
+
+    #[test]
+    fn test_matches_name() {
+        assert!(Primitive::matches_name(SmolStr::from("Long")))
     }
 }
