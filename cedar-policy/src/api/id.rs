@@ -38,7 +38,7 @@ use std::str::FromStr;
 /// ```
 /// # use cedar_policy::EntityId;
 /// let id : EntityId = "my-id".parse().unwrap_or_else(|never| match never {});
-/// # assert_eq!(id.as_ref(), "my-id");
+/// # assert_eq!(<EntityId as AsRef<str>>::as_ref(&id), "my-id");
 /// ```
 ///
 /// `EntityId` does not implement `Display`, partly because it is unclear
@@ -50,6 +50,13 @@ use std::str::FromStr;
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
 pub struct EntityId(ast::Eid);
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::Eid> for EntityId {
+    fn as_ref(&self) -> &ast::Eid {
+        &self.0
+    }
+}
 
 impl EntityId {
     /// Construct an [`EntityId`] from a source string
@@ -96,6 +103,13 @@ impl AsRef<str> for EntityId {
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
 pub struct EntityTypeName(pub(crate) ast::EntityType);
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::EntityType> for EntityTypeName {
+    fn as_ref(&self) -> &ast::EntityType {
+        &self.0
+    }
+}
 
 impl EntityTypeName {
     /// Get the basename of the `EntityTypeName` (ie, with namespaces stripped).
@@ -177,6 +191,13 @@ impl From<ast::EntityType> for EntityTypeName {
 #[repr(transparent)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
 pub struct EntityUid(pub(crate) ast::EntityUID);
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::EntityUID> for EntityUid {
+    fn as_ref(&self) -> &ast::EntityUID {
+        &self.0
+    }
+}
 
 impl EntityUid {
     /// Returns the portion of the Euid that represents namespace and entity type
@@ -288,13 +309,6 @@ impl std::fmt::Display for EntityUid {
 }
 
 #[doc(hidden)]
-impl AsRef<ast::EntityUID> for EntityUid {
-    fn as_ref(&self) -> &ast::EntityUID {
-        &self.0
-    }
-}
-
-#[doc(hidden)]
 impl From<EntityUid> for ast::EntityUID {
     fn from(uid: EntityUid) -> Self {
         uid.0
@@ -327,6 +341,13 @@ impl From<ast::EntityUID> for EntityUid {
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct PolicyId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] ast::PolicyID);
 
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::PolicyID> for PolicyId {
+    fn as_ref(&self) -> &ast::PolicyID {
+        &self.0
+    }
+}
+
 impl PolicyId {
     /// Construct a [`PolicyId`] from a source string
     pub fn new(id: impl AsRef<str>) -> Self {
@@ -356,13 +377,6 @@ impl AsRef<str> for PolicyId {
 }
 
 #[doc(hidden)]
-impl AsRef<ast::PolicyID> for PolicyId {
-    fn as_ref(&self) -> &ast::PolicyID {
-        &self.0
-    }
-}
-
-#[doc(hidden)]
 impl From<PolicyId> for ast::PolicyID {
     fn from(uid: PolicyId) -> Self {
         uid.0
@@ -376,6 +390,13 @@ impl From<PolicyId> for ast::PolicyID {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct SlotId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] ast::SlotId);
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::SlotId> for SlotId {
+    fn as_ref(&self) -> &ast::SlotId {
+        &self.0
+    }
+}
 
 impl SlotId {
     /// Get the slot for `principal`

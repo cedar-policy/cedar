@@ -91,6 +91,13 @@ pub(crate) mod version {
 #[derive(Debug, Clone, PartialEq, Eq, RefCast, Hash)]
 pub struct Entity(pub(crate) ast::Entity);
 
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::Entity> for Entity {
+    fn as_ref(&self) -> &ast::Entity {
+        &self.0
+    }
+}
+
 impl Entity {
     /// Create a new `Entity` with this Uid, attributes, and parents (and no tags).
     ///
@@ -347,6 +354,13 @@ impl std::fmt::Display for Entity {
 #[repr(transparent)]
 #[derive(Debug, Clone, Default, PartialEq, Eq, RefCast)]
 pub struct Entities(pub(crate) cedar_policy_core::entities::Entities);
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<cedar_policy_core::entities::Entities> for Entities {
+    fn as_ref(&self) -> &cedar_policy_core::entities::Entities {
+        &self.0
+    }
+}
 
 use entities_errors::EntitiesError;
 
@@ -818,6 +832,13 @@ impl IntoIterator for Entities {
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
 pub struct Authorizer(authorizer::Authorizer);
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<authorizer::Authorizer> for Authorizer {
+    fn as_ref(&self) -> &authorizer::Authorizer {
+        &self.0
+    }
+}
 
 impl Default for Authorizer {
     fn default() -> Self {
@@ -1311,6 +1332,13 @@ impl From<ValidationMode> for cedar_policy_validator::ValidationMode {
 #[derive(Debug, Clone, RefCast)]
 pub struct Validator(cedar_policy_validator::Validator);
 
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<cedar_policy_validator::Validator> for Validator {
+    fn as_ref(&self) -> &cedar_policy_validator::Validator {
+        &self.0
+    }
+}
+
 impl Validator {
     /// Construct a new `Validator` to validate policies using the given
     /// `Schema`.
@@ -1364,6 +1392,25 @@ pub struct SchemaFragment {
         cedar_policy_validator::ConditionalName,
     >,
     lossless: cedar_policy_validator::json_schema::Fragment<cedar_policy_validator::RawName>,
+}
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl
+    AsRef<
+        cedar_policy_validator::ValidatorSchemaFragment<
+            cedar_policy_validator::ConditionalName,
+            cedar_policy_validator::ConditionalName,
+        >,
+    > for SchemaFragment
+{
+    fn as_ref(
+        &self,
+    ) -> &cedar_policy_validator::ValidatorSchemaFragment<
+        cedar_policy_validator::ConditionalName,
+        cedar_policy_validator::ConditionalName,
+    > {
+        &self.value
+    }
 }
 
 fn get_annotation_by_key(
@@ -1508,7 +1555,7 @@ impl SchemaFragment {
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
         ns_def
             .actions
-            .get(id.as_ref())
+            .get(<EntityId as AsRef<str>>::as_ref(id))
             .map(|a| annotations_to_pairs(&a.annotations))
     }
 
@@ -1527,7 +1574,10 @@ impl SchemaFragment {
     ) -> Option<&str> {
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
         get_annotation_by_key(
-            &ns_def.actions.get(id.as_ref())?.annotations,
+            &ns_def
+                .actions
+                .get(<EntityId as AsRef<str>>::as_ref(id))?
+                .annotations,
             annotation_key,
         )
     }
@@ -1669,6 +1719,13 @@ impl FromStr for SchemaFragment {
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
 pub struct Schema(pub(crate) cedar_policy_validator::ValidatorSchema);
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<cedar_policy_validator::ValidatorSchema> for Schema {
+    fn as_ref(&self) -> &cedar_policy_validator::ValidatorSchema {
+        &self.0
+    }
+}
 
 impl FromStr for Schema {
     type Err = CedarSchemaError;
@@ -2060,6 +2117,13 @@ pub fn confusable_string_checker<'a>(
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EntityNamespace(pub(crate) ast::Name);
 
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::Name> for EntityNamespace {
+    fn as_ref(&self) -> &ast::Name {
+        &self.0
+    }
+}
+
 /// This `FromStr` implementation requires the _normalized_ representation of the
 /// namespace. See <https://github.com/cedar-policy/rfcs/pull/9/>.
 impl FromStr for EntityNamespace {
@@ -2097,6 +2161,13 @@ impl PartialEq for PolicySet {
     }
 }
 impl Eq for PolicySet {}
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::PolicySet> for PolicySet {
+    fn as_ref(&self) -> &ast::PolicySet {
+        &self.ast
+    }
+}
 
 impl FromStr for PolicySet {
     type Err = ParseErrors;
@@ -2784,6 +2855,13 @@ impl PartialEq for Template {
 }
 impl Eq for Template {}
 
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::Template> for Template {
+    fn as_ref(&self) -> &ast::Template {
+        &self.ast
+    }
+}
+
 impl Template {
     /// Attempt to parse a [`Template`] from source.
     /// Returns an error if the input is a static policy (i.e., has no slots).
@@ -3118,6 +3196,13 @@ impl PartialEq for Policy {
     }
 }
 impl Eq for Policy {}
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::Policy> for Policy {
+    fn as_ref(&self) -> &ast::Policy {
+        &self.ast
+    }
+}
 
 impl Policy {
     /// Get the `PolicyId` of the `Template` this is linked to.
@@ -3639,6 +3724,13 @@ impl std::fmt::Display for LosslessPolicy {
 #[derive(Debug, Clone, RefCast)]
 pub struct Expression(pub(crate) ast::Expr);
 
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::Expr> for Expression {
+    fn as_ref(&self) -> &ast::Expr {
+        &self.0
+    }
+}
+
 impl Expression {
     /// Create an expression representing a literal string.
     pub fn new_string(value: String) -> Self {
@@ -3732,6 +3824,13 @@ impl FromStr for Expression {
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
 pub struct RestrictedExpression(ast::RestrictedExpr);
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::RestrictedExpr> for RestrictedExpression {
+    fn as_ref(&self) -> &ast::RestrictedExpr {
+        &self.0
+    }
+}
 
 impl RestrictedExpression {
     /// Create an expression representing a literal string.
@@ -3990,6 +4089,13 @@ impl RequestBuilder<&Schema> {
 #[derive(Debug, Clone, RefCast)]
 pub struct Request(pub(crate) ast::Request);
 
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::Request> for Request {
+    fn as_ref(&self) -> &ast::Request {
+        &self.0
+    }
+}
+
 impl Request {
     /// Create a [`RequestBuilder`]
     #[doc = include_str!("../experimental_warning.md")]
@@ -4065,6 +4171,13 @@ impl Request {
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
 pub struct Context(ast::Context);
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::Context> for Context {
+    fn as_ref(&self) -> &ast::Context {
+        &self.0
+    }
+}
 
 impl Context {
     /// Create an empty `Context`
