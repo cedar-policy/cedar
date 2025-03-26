@@ -1257,7 +1257,7 @@ pub enum Type<N> {
     },
 }
 
-    impl<N> Type<N> {
+impl<N> Type<N> {
     /// Iterate over all references which occur in the type and (must or may)
     /// resolve to a common type
     pub(crate) fn common_type_references(&self) -> Box<dyn Iterator<Item = &N> + '_> {
