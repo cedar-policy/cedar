@@ -954,11 +954,10 @@ impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
         match self {
             Self::WithUnresolved(_, ref loc) => {
                 let loc = loc.clone();
-                let with_unresolved = WithUnresolvedCommonTypeRefs::new(
+                WithUnresolvedCommonTypeRefs::new(
                     |common_type_defs| self.resolve_common_type_refs(common_type_defs).map(f),
                     loc,
-                );
-                with_unresolved
+                )
             }
             Self::WithoutUnresolved(v, loc) => {
                 WithUnresolvedCommonTypeRefs::WithoutUnresolved(f(v), loc)
@@ -1152,8 +1151,9 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
             ..
         } => {
             let loc_clone = loc.clone();
-            return Ok(WithUnresolvedCommonTypeRefs::new(
+            Ok(WithUnresolvedCommonTypeRefs::new(
                 move |common_type_defs| {
+                    #[cfg_attr(not(feature = "extended-schema"), allow(unused_variables))]
                     let loc: Option<Loc> = loc.clone();
 
                     // First check if it's a common type, because in the edge case where
@@ -1178,7 +1178,7 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
                     }
                 },
                 loc_clone,
-            ));
+            ))
         }
     }
 }
@@ -1244,7 +1244,7 @@ fn parse_record_attributes(
         })
         .collect::<crate::err::Result<Vec<_>>>()?;
 
-    return Ok(WithUnresolvedCommonTypeRefs::new(
+    Ok(WithUnresolvedCommonTypeRefs::new(
         |common_type_defs| {
             attrs_with_common_type_refs
                 .into_iter()
@@ -1264,5 +1264,5 @@ fn parse_record_attributes(
                 .map(Attributes::with_attributes)
         },
         loc,
-    ));
+    ))
 }

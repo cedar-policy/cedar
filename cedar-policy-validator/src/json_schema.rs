@@ -1337,15 +1337,12 @@ impl<N> Type<N> {
     /// Create a new copy of self but with a difference source location
     pub fn with_loc(self, new_loc: Option<Loc>) -> Self {
         match self {
-            Self::Type { ty, loc: _loc } => Self::Type {
-                ty: ty,
-                loc: new_loc,
-            },
+            Self::Type { ty, loc: _loc } => Self::Type { ty, loc: new_loc },
             Self::CommonTypeRef {
                 type_name,
                 loc: _loc,
             } => Self::CommonTypeRef {
-                type_name: type_name,
+                type_name,
                 loc: new_loc,
             },
         }
