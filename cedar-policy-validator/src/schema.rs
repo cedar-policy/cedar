@@ -801,7 +801,7 @@ impl ValidatorSchema {
             .into_iter()
             .filter(|ct| {
                 ct.clone().0.loc().is_some()
-                    && !Primitive::matches_name(ct.0.basename().clone().into_smolstr())
+                    && !Primitive::is_primitive(ct.0.basename().clone().into_smolstr())
             })
             .map(|ct| ValidatorCommonType::new(ct.0, ct.1))
             .collect();
