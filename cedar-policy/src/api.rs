@@ -1574,7 +1574,7 @@ impl SchemaFragment {
     ) -> Option<&str> {
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
         get_annotation_by_key(
-            &ns_def.actions.get(id.unescaped()).annotations,
+            &ns_def.actions.get(id.unescaped())?.annotations,
             annotation_key,
         )
     }
