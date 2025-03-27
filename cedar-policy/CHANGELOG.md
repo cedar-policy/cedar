@@ -42,6 +42,8 @@ Cedar Language Version: TBD
   according to the schema. (This joins the existing `Policy::get_valid_request_envs()`
   and `Template::get_valid_request_envs()` that return the subset of request envs that
   are valid for a particular policy or template.) (#1547)
+- Added `EntityId::unescaped()`, analogous to `EntityId::escaped()`. This is simply an
+  alias for `EntityId::as_ref()` with the `AsRef` impl that produces `&str`. (#1555)
 
 ## [4.3.3] - 2025-02-25
 
