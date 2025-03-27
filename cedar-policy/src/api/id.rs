@@ -38,14 +38,14 @@ use std::str::FromStr;
 /// ```
 /// # use cedar_policy::EntityId;
 /// let id : EntityId = "my-id".parse().unwrap_or_else(|never| match never {});
-/// # assert_eq!(<EntityId as AsRef<str>>::as_ref(&id), "my-id");
+/// # assert_eq!(id.unescaped(), "my-id");
 /// ```
 ///
 /// `EntityId` does not implement `Display`, partly because it is unclear
 /// whether `Display` should produce an escaped representation or an unescaped
 /// representation (see [#884](https://github.com/cedar-policy/cedar/issues/884)).
 /// To get an escaped representation, use `.escaped()`.
-/// To get an unescaped representation, use `.as_ref()`.
+/// To get an unescaped representation, use `.unescaped()` or `.as_ref()`.
 #[repr(transparent)]
 #[allow(clippy::module_name_repetitions)]
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, RefCast)]
@@ -70,6 +70,11 @@ impl EntityId {
     /// Get the contents of the `EntityId` as an escaped string
     pub fn escaped(&self) -> SmolStr {
         self.0.escaped()
+    }
+
+    /// Get the contents of the `EntityId` as an unescaped string
+    pub fn unescaped(&self) -> &str {
+        self.as_ref()
     }
 }
 

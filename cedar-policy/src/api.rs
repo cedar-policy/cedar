@@ -1555,7 +1555,7 @@ impl SchemaFragment {
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
         ns_def
             .actions
-            .get(<EntityId as AsRef<str>>::as_ref(id))
+            .get(id.unescaped())
             .map(|a| annotations_to_pairs(&a.annotations))
     }
 
@@ -1574,10 +1574,7 @@ impl SchemaFragment {
     ) -> Option<&str> {
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
         get_annotation_by_key(
-            &ns_def
-                .actions
-                .get(<EntityId as AsRef<str>>::as_ref(id))?
-                .annotations,
+            &ns_def.actions.get(id.unescaped()).annotations,
             annotation_key,
         )
     }

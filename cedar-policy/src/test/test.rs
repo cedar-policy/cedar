@@ -36,7 +36,7 @@ mod entity_uid_tests {
         let entity_type_name = EntityTypeName::from_str("Chess::Master")
             .expect("failed at constructing EntityTypeName");
         let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
-        assert_eq!(<EntityId as AsRef<str>>::as_ref(euid.id()), "bobby");
+        assert_eq!(euid.id().unescaped(), "bobby");
         assert_eq!(euid.type_name().to_string(), "Chess::Master");
         assert_eq!(euid.type_name().basename(), "Master");
         assert_eq!(euid.type_name().namespace(), "Chess");
@@ -50,7 +50,7 @@ mod entity_uid_tests {
         let entity_type_name =
             EntityTypeName::from_str("User").expect("failed at constructing EntityTypeName");
         let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
-        assert_eq!(<EntityId as AsRef<str>>::as_ref(euid.id()), "bobby");
+        assert_eq!(euid.id().unescaped(), "bobby");
         assert_eq!(euid.type_name().to_string(), "User");
         assert_eq!(euid.type_name().basename(), "User");
         assert_eq!(euid.type_name().namespace(), String::new());
@@ -64,7 +64,7 @@ mod entity_uid_tests {
         let entity_type_name = EntityTypeName::from_str("A::B::C::D::Z")
             .expect("failed at constructing EntityTypeName");
         let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
-        assert_eq!(<EntityId as AsRef<str>>::as_ref(euid.id()), "bobby");
+        assert_eq!(euid.id().unescaped(), "bobby");
         assert_eq!(euid.type_name().to_string(), "A::B::C::D::Z");
         assert_eq!(euid.type_name().basename(), "Z");
         assert_eq!(euid.type_name().namespace(), "A::B::C::D");
@@ -82,10 +82,7 @@ mod entity_uid_tests {
         let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
         // these are passed through (no escape interpretation):
         //   the EntityId has the literal backslash characters in it
-        assert_eq!(
-            <EntityId as AsRef<str>>::as_ref(euid.id()),
-            r"bobby\'s sister:\nVeronica"
-        );
+        assert_eq!(euid.id().unescaped(), r"bobby\'s sister:\nVeronica");
         assert_eq!(euid.type_name().to_string(), "Hockey::Master");
         assert_eq!(euid.type_name().basename(), "Master");
         assert_eq!(euid.type_name().namespace(), "Hockey");
@@ -102,10 +99,7 @@ mod entity_uid_tests {
             EntityTypeName::from_str("Test::User").expect("failed at constructing EntityTypeName");
         let euid = EntityUid::from_type_name_and_id(entity_type_name, entity_id);
         // the backslashes appear the same way in the EntityId
-        assert_eq!(
-            <EntityId as AsRef<str>>::as_ref(euid.id()),
-            r#"\ \a \b \' \" \\"#
-        );
+        assert_eq!(euid.id().unescaped(), r#"\ \a \b \' \" \\"#);
         assert_eq!(euid.type_name().to_string(), "Test::User");
     }
 
@@ -118,10 +112,7 @@ mod entity_uid_tests {
         );
         // EntityId is passed through (no escape interpretation):
         //   the EntityId has all the same literal characters in it
-        assert_eq!(
-            <EntityId as AsRef<str>>::as_ref(euid.id()),
-            r#"b'ob"by\'s sis\"ter"#
-        );
+        assert_eq!(euid.id().unescaped(), r#"b'ob"by\'s sis\"ter"#);
         assert_eq!(euid.type_name().to_string(), r"Test::User");
     }
 
@@ -139,10 +130,7 @@ mod entity_uid_tests {
         let PrincipalConstraint::Eq(euid) = policy.principal_constraint() else {
             panic!("expected `Eq` constraint");
         };
-        assert_eq!(
-            <EntityId as AsRef<str>>::as_ref(euid.id()),
-            " hi there are spaces "
-        );
+        assert_eq!(euid.id().unescaped(), " hi there are spaces ");
         assert_eq!(euid.type_name().to_string(), "A::B::C"); // expect to have been normalized
         assert_eq!(euid.type_name().basename(), "C");
         assert_eq!(euid.type_name().namespace(), "A::B");
@@ -162,7 +150,7 @@ permit(principal ==  A :: B
             panic!("expected `Eq` constraint")
         };
         assert_eq!(
-            <EntityId as AsRef<str>>::as_ref(euid.id()),
+            euid.id().unescaped(),
             " hi there are\n    spaces and\n    newlines "
         );
         assert_eq!(euid.type_name().to_string(), "A::B::C::D"); // expect to have been normalized
@@ -191,7 +179,7 @@ permit(principal ==  A :: B
     #[test]
     fn parse_euid() {
         let parsed_eid: EntityUid = r#"Test::User::"bobby""#.parse().expect("Failed to parse");
-        assert_eq!(<EntityId as AsRef<str>>::as_ref(parsed_eid.id()), r"bobby");
+        assert_eq!(parsed_eid.id().unescaped(), r"bobby");
         assert_eq!(parsed_eid.type_name().to_string(), r"Test::User");
     }
 
@@ -202,10 +190,7 @@ permit(principal ==  A :: B
         let parsed_eid: EntityUid = r#"Test::User::"b\'ob\"by""#.parse().expect("Failed to parse");
         // the escapes were interpreted:
         //   the EntityId has single-quote and double-quote characters (but no backslash characters)
-        assert_eq!(
-            <EntityId as AsRef<str>>::as_ref(parsed_eid.id()),
-            r#"b'ob"by"#
-        );
+        assert_eq!(parsed_eid.id().unescaped(), r#"b'ob"by"#);
         assert_eq!(parsed_eid.type_name().to_string(), r"Test::User");
     }
 
@@ -223,10 +208,7 @@ permit(principal ==  A :: B
         };
         // the escape was interpreted:
         //   the EntityId has both single-quote characters (but no backslash characters)
-        assert_eq!(
-            <EntityId as AsRef<str>>::as_ref(parsed_euid.id()),
-            r"b'obby's sister"
-        );
+        assert_eq!(parsed_euid.id().unescaped(), r"b'obby's sister");
         assert_eq!(parsed_euid.type_name().to_string(), r"Test::User");
     }
 
@@ -241,7 +223,7 @@ permit(principal ==  A :: B
         let PrincipalConstraint::Eq(parsed_euid) = policy.principal_constraint() else {
             panic!("Expected an Eq constraint");
         };
-        assert_eq!(<EntityId as AsRef<str>>::as_ref(parsed_euid.id()), "hi");
+        assert_eq!(parsed_euid.id().unescaped(), "hi");
         assert_eq!(parsed_euid.type_name().to_string(), "A::B::C::D::E"); // expect to have been normalized
         assert_eq!(parsed_euid.type_name().basename(), "E");
         assert_eq!(parsed_euid.type_name().namespace(), "A::B::C::D");
@@ -252,11 +234,11 @@ permit(principal ==  A :: B
     #[test]
     fn euid_roundtrip() {
         let parsed_euid: EntityUid = r#"Test::User::"b\'ob""#.parse().expect("Failed to parse");
-        assert_eq!(<EntityId as AsRef<str>>::as_ref(parsed_euid.id()), r"b'ob");
+        assert_eq!(parsed_euid.id().unescaped(), r"b'ob");
         let reparsed: EntityUid = format!("{parsed_euid}")
             .parse()
             .expect("failed to roundtrip");
-        assert_eq!(<EntityId as AsRef<str>>::as_ref(reparsed.id()), r"b'ob");
+        assert_eq!(reparsed.id().unescaped(), r"b'ob");
     }
 }
 
@@ -268,7 +250,7 @@ mod scope_constraints_tests {
         let p = Policy::from_str("permit(principal,action,resource);").unwrap();
         assert_eq!(p.principal_constraint(), PrincipalConstraint::Any);
         let euid = EntityUid::from_strs("T", "a");
-        assert_eq!(<EntityId as AsRef<str>>::as_ref(euid.id()), "a");
+        assert_eq!(euid.id().unescaped(), "a");
         assert_eq!(
             euid.type_name(),
             &EntityTypeName::from_str("T").expect("Failed to parse EntityTypeName")
