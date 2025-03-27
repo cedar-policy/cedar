@@ -39,6 +39,7 @@ macro_rules! standard_conversions {
 // standard conversions
 
 standard_conversions!(api::Entity, api::Entity, models::Entity);
+standard_conversions!(api::EntityUid, api::EntityUid, models::EntityUid);
 standard_conversions!(api::Entities, api::Entities, models::Entities);
 standard_conversions!(api::Schema, api::Schema, models::Schema);
 standard_conversions!(api::EntityTypeName, api::EntityTypeName, models::Name);
