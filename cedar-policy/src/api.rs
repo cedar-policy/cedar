@@ -1059,6 +1059,15 @@ impl PartialResponse {
         self.0.all_residuals().map(Policy::from_ast)
     }
 
+    /// Returns all unknown entities during the evaluation of the response
+    pub fn unknown_entities(&self) -> HashSet<EntityUid> {
+        let mut entity_uids = HashSet::new();
+        for policy in self.0.all_residuals() {
+            entity_uids.extend(policy.unknown_entities().into_iter().map(Into::into));
+        }
+        entity_uids
+    }
+
     /// Return the residual for a given [`PolicyId`], if it exists in the response
     pub fn get(&self, id: &PolicyId) -> Option<Policy> {
         self.0.get(id.as_ref()).map(Policy::from_ast)
@@ -3569,20 +3578,9 @@ impl Policy {
     #[cfg(feature = "partial-eval")]
     pub fn unknown_entities(&self) -> HashSet<EntityUid> {
         self.ast
-            .condition()
-            .unknowns()
-            .filter_map(
-                |ast::Unknown {
-                     name,
-                     type_annotation,
-                 }| {
-                    if matches!(type_annotation, Some(ast::Type::Entity { .. })) {
-                        EntityUid::from_str(name.as_str()).ok()
-                    } else {
-                        None
-                    }
-                },
-            )
+            .unknown_entities()
+            .into_iter()
+            .map(Into::into)
             .collect()
     }
 

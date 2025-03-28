@@ -26,6 +26,7 @@ Cedar Language Version: TBD
   edge cases, policies that previously failed to validate under strict validation
   will now pass validation, probably with an `ImpossiblePolicy` warning. (#1355,
   resolving #638)
+- Added `PartialResponse::unknown_entities` method (#1557)
 
 ### Added
 
