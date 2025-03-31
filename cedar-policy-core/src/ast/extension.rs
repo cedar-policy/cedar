@@ -403,7 +403,7 @@ impl RepresentableExtensionValue {
         func: Name,
         args: Vec<RestrictedExpr>,
     ) -> Self {
-        Self { func,  args, value }
+        Self { func, args, value }
     }
 
     /// Get the internal value

@@ -983,8 +983,8 @@ mod tests {
         ] {
             assert!(parse_duration(s).is_err());
         }
-        assert!(parse_duration(&milliseconds_to_duration(i64::MAX as i128 + 1)).is_err());
-        assert!(parse_duration(&milliseconds_to_duration(i64::MIN as i128 - 1)).is_err());
+        assert!(parse_duration(&milliseconds_to_duration(i128::from(i64::MAX) + 1)).is_err());
+        assert!(parse_duration(&milliseconds_to_duration(i128::from(i64::MIN) - 1)).is_err());
     }
 
     #[test]
@@ -1004,7 +1004,8 @@ mod tests {
             Some(
                 unix_epoch
                     .offset(
-                        parse_duration(&milliseconds_to_duration(i64::MAX as i128 - 1)).unwrap()
+                        parse_duration(&milliseconds_to_duration(i128::from(i64::MAX) - 1))
+                            .unwrap()
                     )
                     .expect("valid datetime")
             )
@@ -1017,7 +1018,8 @@ mod tests {
             Some(
                 unix_epoch
                     .offset(
-                        parse_duration(&milliseconds_to_duration(i64::MIN as i128 + 1)).unwrap()
+                        parse_duration(&milliseconds_to_duration(i128::from(i64::MIN) + 1))
+                            .unwrap()
                     )
                     .expect("valid datetime")
             )

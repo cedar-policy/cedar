@@ -315,7 +315,7 @@ mod levels_validation_tests {
         let result = validator.check_entity_deref_level(
             set.get_template(&PolicyID::from_string("policy0")).unwrap(),
             ValidationMode::default(),
-            &EntityDerefLevel { level: 0 },
+            EntityDerefLevel { level: 0 },
         );
         assert!(result.is_empty());
     }
@@ -333,7 +333,7 @@ mod levels_validation_tests {
         let result = validator.check_entity_deref_level(
             set.get_template(&PolicyID::from_string("policy0")).unwrap(),
             ValidationMode::default(),
-            &EntityDerefLevel { level: 0 },
+            EntityDerefLevel { level: 0 },
         );
         assert!(result.len() == 1);
     }
