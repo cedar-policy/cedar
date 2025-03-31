@@ -792,7 +792,10 @@ impl Entities {
     /// format. Entity visualization is best-effort and not well tested.
     /// Feel free to submit an issue if you are using this feature and would like it improved.
     pub fn to_dot_str(&self) -> String {
-        self.0.to_dot_str()
+        let mut dot_str = String::new();
+        // Writing to `dot_str` cannot fail, so `to_dot_str` will not return an `Err` result.
+        let _ = self.0.to_dot_str(&mut dot_str);
+        dot_str
     }
 }
 

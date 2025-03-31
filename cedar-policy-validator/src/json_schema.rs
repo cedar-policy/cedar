@@ -2050,6 +2050,10 @@ impl TypeVariant<ConditionalName> {
 }
 
 // Only used for serialization
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "Reference required to work with derived serde serialize implementation"
+)]
 fn is_partial_schema_default(b: &bool) -> bool {
     *b == partial_schema_default()
 }
@@ -2218,6 +2222,10 @@ impl<'a> arbitrary::Arbitrary<'a> for TypeOfAttribute<RawName> {
 }
 
 // Only used for serialization
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "Reference required to work with derived serde serialize implementation"
+)]
 fn is_record_attribute_required_default(b: &bool) -> bool {
     *b == record_attribute_required_default()
 }

@@ -320,8 +320,8 @@ impl EvaluationError {
         evaluation_errors::ExtensionFunctionExecutionError {
             extension_name,
             msg,
-            source_loc,
             advice,
+            source_loc,
         }
         .into()
     }
@@ -346,6 +346,7 @@ pub mod evaluation_errors {
     use miette::Diagnostic;
     use nonempty::NonEmpty;
     use smol_str::SmolStr;
+    use std::fmt::Write;
     use std::sync::Arc;
     use thiserror::Error;
 
@@ -429,7 +430,8 @@ pub mod evaluation_errors {
                 )
             };
             if self.exists_the_other_kind {
-                help_text.push_str(&format!(
+                let _ = write!(
+                    &mut help_text,
                     "; note that {} (not {}) named `{}` does exist",
                     if self.was_attr {
                         "a tag"
@@ -442,7 +444,7 @@ pub mod evaluation_errors {
                         "a tag"
                     },
                     self.attr_or_tag,
-                ));
+                );
             }
             Some(Box::new(help_text))
         }

@@ -496,7 +496,7 @@ impl Display for EntityDerefLevel {
 impl From<u32> for EntityDerefLevel {
     fn from(value: u32) -> Self {
         EntityDerefLevel {
-            level: value as i64,
+            level: i64::from(value),
         }
     }
 }

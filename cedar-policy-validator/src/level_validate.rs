@@ -42,7 +42,7 @@ impl Validator {
         // Only perform level validation if validation passed.
         if peekable_errors.peek().is_none() {
             let levels_errors =
-                self.check_entity_deref_level(p, mode, &EntityDerefLevel::from(max_deref_level));
+                self.check_entity_deref_level(p, mode, EntityDerefLevel::from(max_deref_level));
             (peekable_errors.chain(levels_errors), warnings)
         } else {
             (peekable_errors.chain(vec![]), warnings)
@@ -55,7 +55,7 @@ impl Validator {
         &'a self,
         t: &'a Template,
         mode: ValidationMode,
-        max_allowed_level: &EntityDerefLevel,
+        max_allowed_level: EntityDerefLevel,
     ) -> Vec<ValidationError> {
         let typechecker = Typechecker::new(&self.schema, mode);
         let type_annotated_asts = typechecker.typecheck_by_request_env(t);
@@ -90,7 +90,7 @@ impl Validator {
     /// Returns a tuple of `(actual level used, optional violation information)`
     fn check_entity_deref_level_helper(
         e: &cedar_policy_core::ast::Expr<Option<crate::types::Type>>,
-        max_allowed_level: &EntityDerefLevel,
+        max_allowed_level: EntityDerefLevel,
         policy_id: &PolicyID,
     ) -> (EntityDerefLevel, Option<ValidationError>) {
         use crate::types::{EntityRecordKind, Type};
@@ -100,7 +100,7 @@ impl Validator {
                 EntityDerefLevel { level: 0 }, //Literals can't be dereferenced
                 None,
             ),
-            ExprKind::Var(_) => (*max_allowed_level, None), //Roots start at `max_allowed_level`
+            ExprKind::Var(_) => (max_allowed_level, None), //Roots start at `max_allowed_level`
             ExprKind::Slot(_) => (EntityDerefLevel { level: 0 }, None), //Slot will be replaced by Entity literal so treat the same
             ExprKind::Unknown(_) => (
                 EntityDerefLevel { level: 0 }, //Can't dereference an unknown
@@ -143,7 +143,7 @@ impl Validator {
                                 source_loc: e.source_loc().cloned(),
                                 policy_id: policy_id.clone(),
                                 actual_level: new_level,
-                                allowed_level: *max_allowed_level,
+                                allowed_level: max_allowed_level,
                             }
                             .into(),
                         ),
@@ -205,7 +205,7 @@ impl Validator {
                                             source_loc: e.source_loc().cloned(),
                                             policy_id: policy_id.clone(),
                                             actual_level: new_level,
-                                            allowed_level: *max_allowed_level,
+                                            allowed_level: max_allowed_level,
                                         }
                                         .into(),
                                     ),
