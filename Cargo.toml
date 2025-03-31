@@ -44,8 +44,21 @@ rust-2018-idioms = "deny"
 [workspace.lints.clippy]
 nursery = { level = "warn", priority = -1 }
 # Enabling some pedantic lints incrementally
+inefficient_to_string = "warn"
+implicit_clone = "warn"
+cloned_instead_of_copied = "warn"
+format_collect = "warn"
+format_push_string = "warn"
+trivially_copy_pass_by_ref = "warn"
+large_types_passed_by_value = "warn"
 needless_pass_by_value = "warn"
+option_as_ref_cloned = "warn"
+ref_option_ref = "warn"
 ref_option = "warn"
+option_option = "warn"
+inconsistent_struct_constructor = "warn"
+cast_lossless = "warn"
+cast_possible_truncation = "warn"
 
 # These lints may be worth enforcing, but cause a lot of noise at the moment.
 use_self = "allow"
