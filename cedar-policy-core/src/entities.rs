@@ -349,6 +349,7 @@ impl Entities {
                 to_dot_id(f, &entity.uid())?;
                 write!(f, " -> ")?;
                 to_dot_id(f, &ancestor)?;
+                writeln!(f)?;
             }
         }
         writeln!(f, "}}")?;

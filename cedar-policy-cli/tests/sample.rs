@@ -1289,3 +1289,20 @@ fn test_translate_schema() {
         .assert()
         .code(0);
 }
+
+#[rstest]
+fn visualize_entities_parses_as_dot(
+    #[files("sample-data/**/entities.json")]
+    #[files("sample-data/**/entity.json")]
+    path: PathBuf,
+) {
+    let visualize = assert_cmd::Command::cargo_bin("cedar")
+        .expect("bin exists")
+        .arg("visualize")
+        .arg("--entities")
+        .arg(path)
+        .assert()
+        .code(0);
+    let visualized = std::str::from_utf8(&visualize.get_output().stdout).unwrap();
+    graphviz_rust::parse(visualized).unwrap();
+}
