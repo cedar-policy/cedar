@@ -646,19 +646,16 @@ impl From<&models::Request> for ast::Request {
 
 impl From<&ast::Request> for models::Request {
     // PANIC SAFETY: experimental feature
-    #[allow(clippy::unimplemented)]
+    #[allow(clippy::expect_used)]
     fn from(v: &ast::Request) -> Self {
         Self {
             principal: Some(models::EntityUid::from(v.principal())),
             action: Some(models::EntityUid::from(v.action())),
             resource: Some(models::EntityUid::from(v.resource())),
             context: {
-                let ctx = match v.context() {
-                    Some(ctx) => ctx,
-                    None => unimplemented!(
-                        "Requests with unknown context currently cannot be modeled in protobuf"
-                    ),
-                };
+                let ctx = v.context().expect(
+                    "Requests with unknown context currently cannot be modeled in protobuf",
+                );
                 match ctx {
                     ast::Context::Value(map) => map
                         .iter()

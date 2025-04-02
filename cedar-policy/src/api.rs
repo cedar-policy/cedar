@@ -792,7 +792,11 @@ impl Entities {
     /// format. Entity visualization is best-effort and not well tested.
     /// Feel free to submit an issue if you are using this feature and would like it improved.
     pub fn to_dot_str(&self) -> String {
-        self.0.to_dot_str()
+        let mut dot_str = String::new();
+        // PANIC SAFETY: Writing to the String `dot_str` cannot fail, so `to_dot_str` will not return an `Err` result.
+        #[allow(clippy::unwrap_used)]
+        self.0.to_dot_str(&mut dot_str).unwrap();
+        dot_str
     }
 }
 
@@ -4744,12 +4748,12 @@ action CreateList in Create appliesTo {
         let t = attrs.get_attr("tasks").unwrap();
         assert!(t.loc.is_some());
         assert_matches!(&t.attr_type, cedar_policy_validator::types::Type::Set { ref element_type } => {
-            let el = *element_type.clone().unwrap().to_owned();
+            let el = *element_type.clone().unwrap();
             assert_matches!(el, Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
                 assert!(attrs.get_attr("name").unwrap().loc.is_some());
                 assert!(attrs.get_attr("id").unwrap().loc.is_some());
                 assert!(attrs.get_attr("state").unwrap().loc.is_some());
-            })
+            });
         });
     }
 
@@ -4761,7 +4765,7 @@ action CreateList in Create appliesTo {
         let default_namespace = schema.0.namespaces().last().unwrap();
         assert_eq!(default_namespace.name, SmolStr::from("__cedar"));
         assert!(default_namespace.name_loc.is_none());
-        assert!(default_namespace.def_loc.is_none())
+        assert!(default_namespace.def_loc.is_none());
     }
 
     #[test]
@@ -5176,7 +5180,7 @@ action CreateList in Create appliesTo {
         let default_namespace = schema
             .0
             .namespaces()
-            .filter(|n| n.name == SmolStr::from("__cedar"))
+            .filter(|n| n.name == *"__cedar")
             .last()
             .unwrap();
         assert!(default_namespace.name_loc.is_none());
@@ -5185,11 +5189,11 @@ action CreateList in Create appliesTo {
         let default_namespace = schema
             .0
             .namespaces()
-            .filter(|n| n.name == SmolStr::from("Foo"))
+            .filter(|n| n.name == *"Foo")
             .last()
             .unwrap();
         assert!(default_namespace.name_loc.is_some());
-        assert!(default_namespace.def_loc.is_some())
+        assert!(default_namespace.def_loc.is_some());
     }
 }
 

@@ -303,11 +303,15 @@ impl Entities {
         entities_by_type
     }
 
-    /// Write entities into a DOT graph
-    pub fn to_dot_str(&self) -> String {
-        let mut dot_str = String::new();
+    /// Write entities into a DOT graph.  This function only returns an `Err`
+    /// result on a failing `write!` to `f`, so it is infallible if the `Write`
+    /// implementation cannot fail (e.g., `String`).
+    pub fn to_dot_str(&self, f: &mut impl std::fmt::Write) -> std::fmt::Result {
         // write prelude
-        dot_str.push_str("strict digraph {\n\tordering=\"out\"\n\tnode[shape=box]\n");
+        write!(
+            f,
+            "strict digraph {{\n\tordering=\"out\"\n\tnode[shape=box]\n"
+        )?;
 
         // From DOT language reference:
         // An ID is one of the following:
@@ -317,39 +321,39 @@ impl Entities {
         // an HTML string (<...>).
         // The best option to convert a `Name` or an `EntityUid` is to use double-quoted string.
         // The `escape_debug` method should be sufficient for our purpose.
-        fn to_dot_id(v: &impl std::fmt::Display) -> String {
-            format!("\"{}\"", v.to_string().escape_debug())
+        fn to_dot_id(f: &mut impl std::fmt::Write, v: &impl std::fmt::Display) -> std::fmt::Result {
+            write!(f, "\"{}\"", v.to_string().escape_debug())
         }
 
         // write clusters (subgraphs)
         let entities_by_type = self.get_entities_by_entity_type();
 
         for (et, entities) in entities_by_type {
-            dot_str.push_str(&format!(
-                "\tsubgraph \"cluster_{et}\" {{\n\t\tlabel={}\n",
-                to_dot_id(&et)
-            ));
+            write!(f, "\tsubgraph \"cluster_{et}\" {{\n\t\tlabel=",)?;
+            to_dot_id(f, &et)?;
+            writeln!(f)?;
             for entity in entities {
-                let euid = to_dot_id(&entity.uid());
-                let label = format!(r#"[label={}]"#, to_dot_id(&entity.uid().eid().escaped()));
-                dot_str.push_str(&format!("\t\t{euid} {label}\n"));
+                write!(f, "\t\t")?;
+                to_dot_id(f, &entity.uid())?;
+                write!(f, " [label=")?;
+                to_dot_id(f, &entity.uid().eid().escaped())?;
+                writeln!(f, "]")?;
             }
-            dot_str.push_str("\t}\n");
+            writeln!(f, "\t}}")?;
         }
 
         // adding edges
         for entity in self.iter() {
             for ancestor in entity.ancestors() {
-                dot_str.push_str(&format!(
-                    "\t{} -> {}\n",
-                    to_dot_id(&entity.uid()),
-                    to_dot_id(&ancestor)
-                ));
+                write!(f, "\t")?;
+                to_dot_id(f, &entity.uid())?;
+                write!(f, " -> ")?;
+                to_dot_id(f, &ancestor)?;
+                writeln!(f)?;
             }
         }
-
-        dot_str.push_str("}\n");
-        dot_str
+        writeln!(f, "}}")?;
+        Ok(())
     }
 }
 

@@ -125,7 +125,7 @@ impl<'a> ExtensionSchemas<'a> {
 
     /// Get all extension types that support operator overloading
     pub fn types_with_operator_overloading(&self) -> impl Iterator<Item = &Name> + '_ {
-        self.types_with_operator_overloading.iter().cloned()
+        self.types_with_operator_overloading.iter().copied()
     }
 }
 

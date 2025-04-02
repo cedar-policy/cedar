@@ -802,8 +802,7 @@ impl ValidatorSchema {
             .filter(|ct| {
                 // Only collect common types that are not primitives and have location data
                 let ct_name = ct.0.clone();
-                ct_name.loc().is_some()
-                    && !Primitive::is_primitive(ct_name.basename().clone().into_smolstr())
+                ct_name.loc().is_some() && !Primitive::is_primitive(ct_name.basename().as_ref())
             })
             .map(|ct| ValidatorCommonType::new(ct.0, ct.1))
             .collect();
@@ -1447,7 +1446,7 @@ impl<'a> CommonTypeResolver<'a> {
         }
 
         // Pop a node
-        while let Some(name) = work_set.iter().next().cloned() {
+        while let Some(name) = work_set.iter().next().copied() {
             work_set.remove(name);
             if let Some(deps) = self.graph.get(name) {
                 for dep in deps {
@@ -1475,7 +1474,7 @@ impl<'a> CommonTypeResolver<'a> {
 
         // The set of nodes that have not been added to the result
         // i.e., there are still in-coming edges and hence exists a cycle
-        let mut set: HashSet<&InternalName> = HashSet::from_iter(self.graph.keys().cloned());
+        let mut set: HashSet<&InternalName> = HashSet::from_iter(self.graph.keys().copied());
         for name in res.iter() {
             set.remove(name);
         }

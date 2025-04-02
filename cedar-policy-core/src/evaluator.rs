@@ -100,7 +100,7 @@ impl<'e> RestrictedEvaluator<'e> {
     pub fn partial_interpret(&self, expr: BorrowedRestrictedExpr<'_>) -> Result<PartialValue> {
         stack_size_check()?;
 
-        let res = self.partial_interpret_internal(&expr);
+        let res = self.partial_interpret_internal(expr);
 
         // set the returned value's source location to the same source location
         // as the input expression had.
@@ -127,10 +127,7 @@ impl<'e> RestrictedEvaluator<'e> {
     /// `partial_interpret()`.
     ///
     /// INVARIANT: If this returns a residual, the residual expression must be a valid restricted expression.
-    fn partial_interpret_internal(
-        &self,
-        expr: &BorrowedRestrictedExpr<'_>,
-    ) -> Result<PartialValue> {
+    fn partial_interpret_internal(&self, expr: BorrowedRestrictedExpr<'_>) -> Result<PartialValue> {
         match expr.as_ref().expr_kind() {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
             ExprKind::Set(items) => {

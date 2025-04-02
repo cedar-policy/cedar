@@ -1509,12 +1509,8 @@ pub enum Primitive {
 impl Primitive {
     /// Check if a string is a primitive
     #[cfg(feature = "extended-schema")]
-    pub(crate) fn is_primitive(s: SmolStr) -> bool {
-        let s = s.as_str();
-        match s {
-            "Bool" | "Long" | "String" => true,
-            _ => false,
-        }
+    pub(crate) fn is_primitive(s: &str) -> bool {
+        matches!(s, "Bool" | "Long" | "String")
     }
 }
 
@@ -2754,6 +2750,6 @@ mod test {
     #[test]
     #[cfg(feature = "extended-schema")]
     fn test_matches_name() {
-        assert!(Primitive::is_primitive(SmolStr::from("Long")))
+        assert!(Primitive::is_primitive("Long"))
     }
 }
