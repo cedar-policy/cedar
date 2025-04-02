@@ -793,8 +793,9 @@ impl Entities {
     /// Feel free to submit an issue if you are using this feature and would like it improved.
     pub fn to_dot_str(&self) -> String {
         let mut dot_str = String::new();
-        // Writing to `dot_str` cannot fail, so `to_dot_str` will not return an `Err` result.
-        let _ = self.0.to_dot_str(&mut dot_str);
+        // PANIC SAFETY: Writing to the String `dot_str` cannot fail, so `to_dot_str` will not return an `Err` result.
+        #[allow(clippy::unwrap_used)]
+        self.0.to_dot_str(&mut dot_str).unwrap();
         dot_str
     }
 }

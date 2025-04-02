@@ -430,7 +430,9 @@ pub mod evaluation_errors {
                 )
             };
             if self.exists_the_other_kind {
-                let _ = write!(
+                // PANIC SAFETY: A `write!` to a `String` cannot fail
+                #[allow(clippy::unwrap_used)]
+                write!(
                     &mut help_text,
                     "; note that {} (not {}) named `{}` does exist",
                     if self.was_attr {
@@ -444,7 +446,8 @@ pub mod evaluation_errors {
                         "a tag"
                     },
                     self.attr_or_tag,
-                );
+                )
+                .unwrap()
             }
             Some(Box::new(help_text))
         }
