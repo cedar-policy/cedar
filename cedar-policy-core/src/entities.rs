@@ -253,6 +253,11 @@ impl Entities {
         })
     }
 
+    /// Returns the length of the `Entities` object
+    pub fn len(&self) -> usize {
+        self.entities.len()
+    }
+
     /// Convert an `Entities` object into a JSON value suitable for parsing in
     /// via `EntityJsonParser`.
     ///
@@ -2077,6 +2082,20 @@ mod entities_tests {
             Entity::with_uid(EntityUID::with_eid("test_resource")),
             Entity::with_uid(EntityUID::with_eid("test")),
         )
+    }
+
+    #[test]
+    fn test_len() {
+        let (e0, e1, e2, e3) = test_entities();
+        let v = vec![e0.clone(), e1.clone(), e2.clone(), e3.clone()];
+        let es = Entities::from_entities(
+            v,
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        )
+        .expect("Failed to construct entities");
+        assert_eq!(es.len(), 4);
     }
 
     #[test]
