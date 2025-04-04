@@ -26,7 +26,6 @@ Cedar Language Version: TBD
   edge cases, policies that previously failed to validate under strict validation
   will now pass validation, probably with an `ImpossiblePolicy` warning. (#1355,
   resolving #638)
-- Added `PartialResponse::unknown_entities` method (#1557)
 
 ### Added
 
@@ -45,6 +44,8 @@ Cedar Language Version: TBD
   are valid for a particular policy or template.) (#1547)
 - Added `EntityId::unescaped()`, analogous to `EntityId::escaped()`. This is simply an
   alias for `EntityId::as_ref()` with the `AsRef` impl that produces `&str`. (#1555)
+- Added `PartialResponse::unknown_entities` method (#1557)
+- Added `Entities::num_of_entities` method (#1562, resolving #1523)
 
 ## [4.3.3] - 2025-02-25
 
