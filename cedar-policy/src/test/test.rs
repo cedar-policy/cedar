@@ -810,6 +810,36 @@ mod policy_set_tests {
             .contains(&"test_entity_type::\"unknown\"".parse().unwrap()));
     }
 
+    #[cfg(feature = "partial-eval")]
+    #[test]
+    fn partial_response_unknown_entities() {
+        let authorizer = Authorizer::new();
+        let request = Request::new(
+            EntityUid::from_strs("Test", "test"),
+            EntityUid::from_strs("Action", "a"),
+            EntityUid::from_strs("Resource", "b"),
+            Context::empty(),
+            None,
+        )
+        .unwrap();
+
+        let entities = Entities::default().partial();
+
+        let mut pset = PolicySet::new();
+        let static_policy = Policy::parse(
+            Some(PolicyId::new("id")),
+            "permit(principal,action,resource) when {principal.foo == 1};",
+        )
+        .expect("Failed to parse");
+        pset.add(static_policy).expect("Failed to add");
+
+        let response = authorizer.is_authorized_partial(&request, &pset, &entities);
+        assert_eq!(response.unknown_entities().len(), 1);
+        assert!(response
+            .unknown_entities()
+            .contains(&"Test::\"test\"".parse().unwrap()));
+    }
+
     #[test]
     fn unlink_linked_policy() {
         let template = Template::parse(

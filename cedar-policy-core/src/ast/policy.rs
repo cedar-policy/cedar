@@ -23,7 +23,11 @@ use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+    sync::Arc,
+};
 use thiserror::Error;
 
 #[cfg(feature = "wasm")]
@@ -580,6 +584,25 @@ impl Policy {
     /// Returns true if this policy is an inline policy
     pub fn is_static(&self) -> bool {
         self.link.is_none()
+    }
+
+    /// Returns all the unknown entities in the policy during evaluation
+    pub fn unknown_entities(&self) -> HashSet<EntityUID> {
+        self.condition()
+            .unknowns()
+            .filter_map(
+                |Unknown {
+                     name,
+                     type_annotation,
+                 }| {
+                    if matches!(type_annotation, Some(Type::Entity { .. })) {
+                        EntityUID::from_str(name.as_str()).ok()
+                    } else {
+                        None
+                    }
+                },
+            )
+            .collect()
     }
 }
 
