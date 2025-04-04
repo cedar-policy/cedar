@@ -18,8 +18,8 @@
 
 use crate::ast::*;
 use crate::extensions::Extensions;
-use crate::transitive_closure::{compute_tc, enforce_tc_and_dag};
-use std::collections::{hash_map, HashMap};
+use crate::transitive_closure::{compute_tc, enforce_tc_and_dag, repair_tc};
+use std::collections::{hash_map, HashMap, HashSet};
 use std::sync::Arc;
 
 /// Module for checking that entities conform with a schema
@@ -131,16 +131,30 @@ impl Entities {
         extensions: &Extensions<'_>,
     ) -> Result<Self> {
         let checker = schema.map(|schema| EntitySchemaConformanceChecker::new(schema, extensions));
+        let mut entities_touched: HashSet<EntityUID> = HashSet::new();
         for entity in collection.into_iter() {
             if let Some(checker) = checker.as_ref() {
                 checker.validate_entity(&entity)?;
             }
+            entities_touched.insert(entity.uid().clone());
             update_entity_map(&mut self.entities, entity)?;
         }
         match tc_computation {
             TCComputation::AssumeAlreadyComputed => (),
             TCComputation::EnforceAlreadyComputed => enforce_tc_and_dag(&self.entities)?,
-            TCComputation::ComputeNow => compute_tc(&mut self.entities, true)?,
+            TCComputation::ComputeNow => {
+                for entity in self.entities.values() {
+                    if !entities_touched.is_disjoint(
+                        &entity
+                            .ancestors()
+                            .map(EntityUID::clone)
+                            .collect::<HashSet<EntityUID>>(),
+                    ) {
+                        entities_touched.insert(entity.uid().clone());
+                    }
+                }
+                repair_tc(entities_touched, &mut self.entities, true)?
+            }
         };
         Ok(self)
     }
@@ -155,12 +169,14 @@ impl Entities {
         collection: impl IntoIterator<Item = EntityUID>,
         tc_computation: TCComputation,
     ) -> Result<Self> {
+        let mut entities_touched: HashSet<EntityUID> = HashSet::new();
         for uid_to_remove in collection.into_iter() {
             match self.entities.remove(&uid_to_remove) {
                 None => (),
                 Some(entity_to_remove) => {
                     for entity in self.entities.values_mut() {
                         if entity.is_descendant_of(&uid_to_remove) {
+                            entities_touched.insert(entity.uid().clone());
                             // remove any direct or indirect link between `entity` and `entity_to_remove`
                             Arc::make_mut(entity).remove_indirect_ancestor(&uid_to_remove);
                             Arc::make_mut(entity).remove_parent(&uid_to_remove);
@@ -176,7 +192,7 @@ impl Entities {
         match tc_computation {
             TCComputation::AssumeAlreadyComputed => (),
             TCComputation::EnforceAlreadyComputed => enforce_tc_and_dag(&self.entities)?,
-            TCComputation::ComputeNow => compute_tc(&mut self.entities, true)?,
+            TCComputation::ComputeNow => repair_tc(entities_touched, &mut self.entities, true)?,
         }
         Ok(self)
     }
