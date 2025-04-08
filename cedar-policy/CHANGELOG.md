@@ -45,7 +45,7 @@ Cedar Language Version: TBD
 - Added `EntityId::unescaped()`, analogous to `EntityId::escaped()`. This is simply an
   alias for `EntityId::as_ref()` with the `AsRef` impl that produces `&str`. (#1555)
 - Added `PartialResponse::unknown_entities` method (#1557)
-- Added `Entities::num_of_entities` method (#1562, resolving #1523)
+- Added `Entities::len` method (#1562, resolving #1523)
 
 ## [4.3.3] - 2025-02-25
 

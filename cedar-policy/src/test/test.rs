@@ -1389,7 +1389,7 @@ mod ancestors_tests {
         let b = Entity::new_no_attrs(b_euid.clone(), HashSet::from([a_euid.clone()]));
         let c = Entity::new_no_attrs(c_euid.clone(), HashSet::from([b_euid.clone()]));
         let es = Entities::from_entities([a, b, c], None).unwrap();
-        assert_eq!(es.num_of_entities(), 3);
+        assert_eq!(es.len(), 3);
         let ans = es.ancestors(&c_euid).unwrap().collect::<HashSet<_>>();
         assert_eq!(ans.len(), 2);
         assert!(ans.contains(&b_euid));
@@ -1512,11 +1512,11 @@ mod entity_validate_tests {
         .unwrap();
         let es = validate_entity(entity.clone(), &schema()).unwrap();
         // Note: `es` includes the action entity defined in the schema
-        assert_eq!(es.num_of_entities(), 2);
+        assert_eq!(es.len(), 2);
         let (uid, attrs, parents) = entity.into_inner();
         let es = validate_entity(Entity::new(uid, attrs, parents).unwrap(), &schema()).unwrap();
         // Note: `es` includes the action entity defined in the schema
-        assert_eq!(es.num_of_entities(), 2);
+        assert_eq!(es.len(), 2);
     }
 
     #[test]
@@ -2759,7 +2759,7 @@ mod schema_based_parsing_tests {
         let parsed = Entities::from_json_value(entitiesjson.clone(), None)
             .expect("Should parse without error");
         assert_eq!(parsed.iter().count(), 1);
-        assert_eq!(parsed.num_of_entities(), 1);
+        assert_eq!(parsed.len(), 1);
         let parsed = parsed
             .get(&EntityUid::from_strs("Employee", "12UA45"))
             .expect("that should be the employee id");
@@ -2797,7 +2797,7 @@ mod schema_based_parsing_tests {
         let parsed = Entities::from_json_value(entitiesjson, Some(&schema))
             .expect("Should parse without error");
         assert_eq!(parsed.iter().count(), 2); // Employee::"12UA45" and the one action
-        assert_eq!(parsed.num_of_entities(), 2);
+        assert_eq!(parsed.len(), 2);
         assert_eq!(
             parsed
                 .iter()
@@ -3205,7 +3205,7 @@ mod schema_based_parsing_tests {
                 .count(),
             1
         );
-        assert_eq!(parsed.num_of_entities(), 2);
+        assert_eq!(parsed.len(), 2);
         let parsed = parsed
             .get(&EntityUid::from_strs("XYZCorp::Employee", "12UA45"))
             .expect("that should be the employee type and id");
@@ -3297,7 +3297,7 @@ mod schema_based_parsing_tests {
                 .count(),
             1
         );
-        assert_eq!(parsed.num_of_entities(), 2);
+        assert_eq!(parsed.len(), 2);
 
         // "department" shouldn't be required
         let entitiesjson = json!(
@@ -3322,7 +3322,7 @@ mod schema_based_parsing_tests {
                 .count(),
             1
         );
-        assert_eq!(parsed.num_of_entities(), 2);
+        assert_eq!(parsed.len(), 2);
     }
 
     #[test]
@@ -3534,7 +3534,7 @@ mod schema_based_parsing_tests {
         let schema = Schema::from_schema_fragments([fragment]).unwrap();
         let action_entities = schema.action_entities().unwrap();
 
-        assert_eq!(action_entities.num_of_entities(), 5);
+        assert_eq!(action_entities.len(), 5);
 
         let a_euid = EntityUid::from_strs("Action", "A");
         let b_euid = EntityUid::from_strs("Action", "B");

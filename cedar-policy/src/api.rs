@@ -777,7 +777,7 @@ impl Entities {
     }
 
     /// Returns the number of `Entity`s in the `Entities`
-    pub fn num_of_entities(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.0.len()
     }
 
