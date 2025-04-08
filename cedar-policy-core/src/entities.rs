@@ -260,7 +260,7 @@ impl Entities {
 
     /// Returns `true` if the `Entities` object is empty
     pub fn is_empty(&self) -> bool {
-        self.entities.len() == 0
+        self.entities.is_empty()
     }
 
     /// Convert an `Entities` object into a JSON value suitable for parsing in

@@ -781,7 +781,7 @@ impl Entities {
         self.0.len()
     }
 
-    /// Returns the number of `Entity`s in the `Entities`
+    /// Returns true if the `Entities` contains no `Entity`s
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
