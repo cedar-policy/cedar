@@ -776,6 +776,16 @@ impl Entities {
         Some(entity.ancestors().map(EntityUid::ref_cast))
     }
 
+    /// Returns the number of `Entity`s in the `Entities`
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns true if the `Entities` contains no `Entity`s
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Dump an `Entities` object into an entities JSON file.
     ///
     /// The resulting JSON will be suitable for parsing in via
