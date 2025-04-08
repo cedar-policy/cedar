@@ -258,6 +258,11 @@ impl Entities {
         self.entities.len()
     }
 
+    /// Returns `true` if the `Entities` object is empty
+    pub fn is_empty(&self) -> bool {
+        self.entities.len() == 0
+    }
+
     /// Convert an `Entities` object into a JSON value suitable for parsing in
     /// via `EntityJsonParser`.
     ///
@@ -2096,6 +2101,20 @@ mod entities_tests {
         )
         .expect("Failed to construct entities");
         assert_eq!(es.len(), 4);
+        assert!(!es.is_empty());
+    }
+
+    #[test]
+    fn test_is_empty() {
+        let es = Entities::from_entities(
+            vec![],
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        )
+        .expect("Failed to construct entities");
+        assert_eq!(es.len(), 0);
+        assert!(es.is_empty());
     }
 
     #[test]

@@ -781,6 +781,11 @@ impl Entities {
         self.0.len()
     }
 
+    /// Returns the number of `Entity`s in the `Entities`
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Dump an `Entities` object into an entities JSON file.
     ///
     /// The resulting JSON will be suitable for parsing in via

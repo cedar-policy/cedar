@@ -1390,6 +1390,7 @@ mod ancestors_tests {
         let c = Entity::new_no_attrs(c_euid.clone(), HashSet::from([b_euid.clone()]));
         let es = Entities::from_entities([a, b, c], None).unwrap();
         assert_eq!(es.len(), 3);
+        assert!(!es.is_empty());
         let ans = es.ancestors(&c_euid).unwrap().collect::<HashSet<_>>();
         assert_eq!(ans.len(), 2);
         assert!(ans.contains(&b_euid));
