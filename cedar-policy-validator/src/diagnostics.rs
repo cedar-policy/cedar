@@ -396,6 +396,35 @@ impl ValidationError {
         }
         .into()
     }
+
+    #[cfg(feature = "level-validate")]
+    pub(crate) fn maximum_level_exceeded(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        allowed_level: validation_errors::EntityDerefLevel,
+        actual_level: validation_errors::EntityDerefLevel,
+    ) -> Self {
+        validation_errors::EntityDerefLevelViolation {
+            source_loc,
+            policy_id,
+            violation_kind:
+                validation_errors::EntityDerefLevelViolationKind::MaximumLevelExceeded {
+                    allowed_level,
+                    actual_level,
+                },
+        }
+        .into()
+    }
+
+    #[cfg(feature = "level-validate")]
+    pub(crate) fn literal_dereference_target(source_loc: Option<Loc>, policy_id: PolicyID) -> Self {
+        validation_errors::EntityDerefLevelViolation {
+            source_loc,
+            policy_id,
+            violation_kind: validation_errors::EntityDerefLevelViolationKind::LiteralDerefTarget,
+        }
+        .into()
+    }
 }
 
 /// Represents the different kinds of validation warnings and information

@@ -4210,6 +4210,7 @@ mod partial_schema {
 mod level_validation_tests {
     use crate::ValidationMode;
     use crate::{Policy, PolicySet, ValidationError, Validator};
+    use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use cool_asserts::assert_matches;
     use serde_json::json;
 
@@ -4269,12 +4270,16 @@ mod level_validation_tests {
         let validator = Validator::new(schema);
 
         let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"һenry", action, resource) when {1 > 0};"#;
+        let src = r#"permit(principal == User::"henry", action, resource) when {1 > 0};"#;
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
         let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
-        assert!(result.validation_passed());
+        assert!(
+            result.validation_passed(),
+            "{:?}",
+            miette::Report::new(result)
+        );
     }
 
     #[test]
@@ -4283,16 +4288,30 @@ mod level_validation_tests {
         let validator = Validator::new(schema);
 
         let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"һenry", action, resource) when {principal in resource.foo};"#;
+        let src = r#"permit(principal == User::"henry", action, resource) when {resource in resource.foo.profile_pic};"#;
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
-        assert!(!result.validation_passed());
-        assert_eq!(result.validation_errors().count(), 1);
-        assert_matches!(
-            result.validation_errors().next().unwrap(),
-            ValidationError::EntityDerefLevelViolation(_)
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 1);
+        assert!(
+            !result.validation_passed(),
+            "{:?}",
+            miette::Report::new(result)
+        );
+        assert_eq!(
+            result.validation_errors().count(),
+            1,
+            "{:?}",
+            miette::Report::new(result)
+        );
+        expect_err(
+            src,
+            &miette::Report::new(result),
+            &ExpectedErrorMessageBuilder::error(
+                "for policy `policy0`, the maximum allowed level 1 is violated. Actual level is 2",
+            )
+            .exactly_one_underline("resource.foo.profile_pic")
+            .build(),
         );
     }
 
@@ -4302,21 +4321,31 @@ mod level_validation_tests {
         let validator = Validator::new(schema);
 
         let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"һenry", action, resource) when {principal.profile_pic in resource.foo.profile_pic};"#;
+        let src = r#"permit(principal == User::"henry", action, resource) when {principal in resource.foo.profile_pic};"#;
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
-        assert!(!result.validation_passed());
-        assert_eq!(result.validation_errors().count(), 1);
-        let err = result.validation_errors().next().unwrap();
-        assert_matches!(err, ValidationError::EntityDerefLevelViolation(_));
-        match err {
-            ValidationError::EntityDerefLevelViolation(inner) => {
-                assert!(format!("{inner}").contains("Actual level is 2"));
-            }
-            _ => panic!("should be unreachable"),
-        };
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 1);
+        assert!(
+            !result.validation_passed(),
+            "{:?}",
+            miette::Report::new(result)
+        );
+        assert_eq!(
+            result.validation_errors().count(),
+            1,
+            "{:?}",
+            miette::Report::new(result)
+        );
+        expect_err(
+            src,
+            &miette::Report::new(result),
+            &ExpectedErrorMessageBuilder::error(
+                "for policy `policy0`, the maximum allowed level 1 is violated. Actual level is 2",
+            )
+            .exactly_one_underline("resource.foo.profile_pic")
+            .build(),
+        );
     }
 
     #[test]
@@ -4325,12 +4354,16 @@ mod level_validation_tests {
         let validator = Validator::new(schema);
 
         let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"һenry", action, resource) when { resource.foo.is_admin };"#;
+        let src = r#"permit(principal == User::"henry", action, resource) when { resource.foo.is_admin };"#;
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
         let result = validator.validate_with_level(&set, ValidationMode::default(), 2);
-        assert!(result.validation_passed());
+        assert!(
+            result.validation_passed(),
+            "{:?}",
+            miette::Report::new(result)
+        );
     }
 
     #[test]
@@ -4339,12 +4372,16 @@ mod level_validation_tests {
         let validator = Validator::new(schema);
 
         let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"һenry", action, resource) when { false && principal.is_admin };"#;
+        let src = r#"permit(principal == User::"henry", action, resource) when { false && principal.is_admin };"#;
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
         let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
-        assert!(result.validation_passed());
+        assert!(
+            result.validation_passed(),
+            "{:?}",
+            miette::Report::new(result)
+        );
     }
 
     #[test]
@@ -4353,13 +4390,22 @@ mod level_validation_tests {
         let validator = Validator::new(schema);
 
         let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"һenry", action, resource) when { principal.is_admin && false };"#;
+        let src = r#"permit(principal == User::"henry", action, resource) when { principal.is_admin && false };"#;
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
         let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
-        assert!(!result.validation_passed());
-        assert_eq!(result.validation_errors().count(), 1);
+        assert!(
+            !result.validation_passed(),
+            "{:?}",
+            miette::Report::new(result)
+        );
+        assert_eq!(
+            result.validation_errors().count(),
+            1,
+            "{:?}",
+            miette::Report::new(result)
+        );
         assert_matches!(
             result.validation_errors().next().unwrap(),
             ValidationError::EntityDerefLevelViolation(_)
@@ -4372,16 +4418,30 @@ mod level_validation_tests {
         let validator = Validator::new(schema);
 
         let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"һenry", action, resource) when { if principal == User::"henry" then true else principal in resource.foo };"#;
+        let src = r#"permit(principal == User::"henry", action, resource) when { if principal == User::"henry" then true else resource in resource.foo.profile_pic };"#;
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
-        assert!(!result.validation_passed());
-        assert_eq!(result.validation_errors().count(), 1);
-        assert_matches!(
-            result.validation_errors().next().unwrap(),
-            ValidationError::EntityDerefLevelViolation(_)
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 1);
+        assert!(
+            !result.validation_passed(),
+            "{:?}",
+            miette::Report::new(result)
+        );
+        assert_eq!(
+            result.validation_errors().count(),
+            1,
+            "{:?}",
+            miette::Report::new(result)
+        );
+        expect_err(
+            src,
+            &miette::Report::new(result),
+            &ExpectedErrorMessageBuilder::error(
+                "for policy `policy0`, the maximum allowed level 1 is violated. Actual level is 2",
+            )
+            .exactly_one_underline("resource.foo.profile_pic")
+            .build(),
         );
     }
 
@@ -4391,12 +4451,16 @@ mod level_validation_tests {
         let validator = Validator::new(schema);
 
         let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"һenry", action, resource) when { if principal == User::"henry" then true else principal in resource.foo };"#;
+        let src = r#"permit(principal == User::"henry", action, resource) when { if principal == User::"henry" then true else principal in resource.foo };"#;
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
         let result = validator.validate_with_level(&set, ValidationMode::default(), 1);
-        assert!(result.validation_passed());
+        assert!(
+            result.validation_passed(),
+            "{:?}",
+            miette::Report::new(result)
+        );
     }
 
     #[test]
@@ -4405,16 +4469,30 @@ mod level_validation_tests {
         let validator = Validator::new(schema);
 
         let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": true, "bar": resource.foo.is_admin }.bar };"#;
+        let src = r#"permit(principal == User::"henry", action, resource) when { { "foo": true, "bar": resource.foo.is_admin }.bar };"#;
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
-        assert!(!result.validation_passed());
-        assert_eq!(result.validation_errors().count(), 1);
-        assert_matches!(
-            result.validation_errors().next().unwrap(),
-            ValidationError::EntityDerefLevelViolation(_)
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 1);
+        assert!(
+            !result.validation_passed(),
+            "{:?}",
+            miette::Report::new(result)
+        );
+        assert_eq!(
+            result.validation_errors().count(),
+            1,
+            "{:?}",
+            miette::Report::new(result)
+        );
+        expect_err(
+            src,
+            &miette::Report::new(result),
+            &ExpectedErrorMessageBuilder::error(
+                "for policy `policy0`, the maximum allowed level 1 is violated. Actual level is 2",
+            )
+            .exactly_one_underline("resource.foo.is_admin")
+            .build(),
         );
     }
 
@@ -4424,12 +4502,16 @@ mod level_validation_tests {
         let validator = Validator::new(schema);
 
         let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": true, "bar": resource.foo.is_admin }.bar };"#;
+        let src = r#"permit(principal == User::"henry", action, resource) when { { "foo": true, "bar": resource.foo.is_admin }.bar };"#;
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
         let result = validator.validate_with_level(&set, ValidationMode::default(), 2);
-        assert!(result.validation_passed());
+        assert!(
+            result.validation_passed(),
+            "{:?}",
+            miette::Report::new(result)
+        );
     }
 
     #[test]
@@ -4438,12 +4520,16 @@ mod level_validation_tests {
         let validator = Validator::new(schema);
 
         let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"һenry", action, resource) when { { "foo": true, "bar": resource.foo.is_admin }.foo };"#;
+        let src = r#"permit(principal == User::"henry", action, resource) when { { "foo": resource.foo, "bar": resource.foo.is_admin }.foo.is_admin };"#;
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
 
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
-        assert!(result.validation_passed());
+        let result = validator.validate_with_level(&set, ValidationMode::default(), 2);
+        assert!(
+            result.validation_passed(),
+            "{:?}",
+            miette::Report::new(result)
+        );
     }
 }
 

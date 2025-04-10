@@ -17,9 +17,11 @@
 //! Implementation of level validation (RFC 76)
 
 use super::*;
-use cedar_policy_core::ast::{BinaryOp, PolicyID};
+use crate::types::{EntityRecordKind, RequestEnv, Type};
+use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, Literal, PolicyID};
+use smol_str::SmolStr;
 use typecheck::PolicyCheck;
-use validation_errors::{EntityDerefLevel, EntityDerefLevelViolation};
+use validation_errors::EntityDerefLevel;
 
 impl Validator {
     /// Run `validate_policy` against a single static policy or template (note
@@ -41,219 +43,316 @@ impl Validator {
 
         // Only perform level validation if validation passed.
         if peekable_errors.peek().is_none() {
-            let levels_errors =
-                self.check_entity_deref_level(p, mode, EntityDerefLevel::from(max_deref_level));
-            (peekable_errors.chain(levels_errors), warnings)
-        } else {
-            (peekable_errors.chain(vec![]), warnings)
-        }
-    }
-
-    /// Check that `t` respects `max_allowed_level`
-    /// This assumes that (strict) typechecking has passed
-    fn check_entity_deref_level<'a>(
-        &'a self,
-        t: &'a Template,
-        mode: ValidationMode,
-        max_allowed_level: EntityDerefLevel,
-    ) -> Vec<ValidationError> {
-        let typechecker = Typechecker::new(&self.schema, mode);
-        let type_annotated_asts = typechecker.typecheck_by_request_env(t);
-        let mut errs = vec![];
-        for (_, policy_check) in type_annotated_asts {
-            match policy_check {
-                PolicyCheck::Success(e) | PolicyCheck::Irrelevant(_, e) => {
-                    let res = Self::check_entity_deref_level_helper(&e, max_allowed_level, t.id());
-                    if let Some(e) = res.1 {
-                        errs.push(e)
+            let typechecker = Typechecker::new(&self.schema, mode);
+            let type_annotated_asts = typechecker.typecheck_by_request_env(p);
+            let mut level_checking_errors = HashSet::new();
+            let mut level_checker = LevelChecker {
+                policy_id: p.id(),
+                global_max_level: EntityDerefLevel::from(max_deref_level),
+                level_checking_errors: &mut level_checking_errors,
+            };
+            for (req_env, policy_check) in type_annotated_asts {
+                match policy_check {
+                    PolicyCheck::Success(e) | PolicyCheck::Irrelevant(_, e) => {
+                        level_checker.check_expr_level(&e, &req_env);
                     }
+                    // PANIC SAFETY: We only validate the level after validation passed
+                    #[allow(clippy::unreachable)]
+                    PolicyCheck::Fail(_) => unreachable!(),
                 }
-                // PANIC SAFETY: We only validate the level after validation passed
-                #[allow(clippy::unreachable)]
-                PolicyCheck::Fail(_) => unreachable!(),
             }
-        }
-        errs
-    }
-
-    fn min(
-        v: impl IntoIterator<Item = (EntityDerefLevel, Option<ValidationError>)>,
-    ) -> (EntityDerefLevel, Option<ValidationError>) {
-        let p = v.into_iter().min_by(|(l1, _), (l2, _)| l1.cmp(l2));
-        match p {
-            Some(p) => p,
-            None => (EntityDerefLevel { level: 0 }, None),
+            (peekable_errors.chain(level_checking_errors), warnings)
+        } else {
+            (peekable_errors.chain(HashSet::new()), warnings)
         }
     }
+}
 
-    /// Walk the type-annotated AST and compute the used level and possible violation
-    /// Returns a tuple of `(actual level used, optional violation information)`
-    fn check_entity_deref_level_helper(
-        e: &cedar_policy_core::ast::Expr<Option<crate::types::Type>>,
-        max_allowed_level: EntityDerefLevel,
-        policy_id: &PolicyID,
-    ) -> (EntityDerefLevel, Option<ValidationError>) {
-        use crate::types::{EntityRecordKind, Type};
-        use cedar_policy_core::ast::ExprKind;
+#[derive(Debug)]
+struct LevelChecker<'a> {
+    /// ID of the policy we're typechecking; used for associating any validation
+    /// errors with the correct policy ID
+    policy_id: &'a PolicyID,
+    global_max_level: EntityDerefLevel,
+    level_checking_errors: &'a mut HashSet<ValidationError>,
+}
+
+impl LevelChecker<'_> {
+    /// Check the level of the target of an entity dereference.
+    ///
+    /// We assume the expression has passed the typechecker, so the target of an
+    /// entity deference will be an entity type expression. If this function is
+    /// initially called on a non-entity-type expression it will return in an
+    /// `InternalInvariantViolation`.
+    ///
+    /// In order to handle attribtues access on records containing entities
+    /// (e.g., `{foo: principal}.foo.bar`), this function track an `access_path`
+    /// of record attribtues accessed by the expression. This generalizes the
+    /// precondition on `e` so that this function can be called if `e` is a
+    /// record literal with a attribute `a` such that `access_path.pop() == some(a)`
+    /// and the expression for `a` recursively satisfies the precondition.
+    /// For `{foo: principal}.foo.bar` the recursive call on `{foo: principal}`
+    /// is made with access path `[foo]`.
+    fn check_entity_deref_target_level(
+        &mut self,
+        e: &Expr<Option<Type>>,
+        local_max_level: EntityDerefLevel,
+        mut access_path: Vec<SmolStr>,
+        env: &RequestEnv<'_>,
+    ) -> EntityDerefLevel {
         match e.expr_kind() {
-            ExprKind::Lit(_) => (
-                EntityDerefLevel { level: 0 }, //Literals can't be dereferenced
-                None,
-            ),
-            ExprKind::Var(_) => (max_allowed_level, None), //Roots start at `max_allowed_level`
-            ExprKind::Slot(_) => (EntityDerefLevel { level: 0 }, None), //Slot will be replaced by Entity literal so treat the same
-            ExprKind::Unknown(_) => (
-                EntityDerefLevel { level: 0 }, //Can't dereference an unknown
-                None,
-            ),
+            ExprKind::Var(_) => EntityDerefLevel { level: 0 },
+            // A slot cannot currently appear in an entity dereference position,
+            // but, if it could, we would handle it as an entity literal.
+            ExprKind::Slot(_) => {
+                self.level_checking_errors
+                    .insert(ValidationError::literal_dereference_target(
+                        e.source_loc().cloned(),
+                        self.policy_id.clone(),
+                    ));
+                EntityDerefLevel { level: 0 }
+            }
+            ExprKind::Lit(Literal::EntityUID(euid)) => {
+                // Allow a literal if it's the current requests env action entity. This is mainly
+                // an artifact of what is convenient in the Lean implementation.
+                if Some(euid.as_ref()) != env.action_entity_uid() {
+                    self.level_checking_errors
+                        .insert(ValidationError::literal_dereference_target(
+                            e.source_loc().cloned(),
+                            self.policy_id.clone(),
+                        ));
+                }
+                EntityDerefLevel { level: 0 }
+            }
             ExprKind::If {
                 test_expr,
                 then_expr,
                 else_expr,
             } => {
-                let es = [test_expr, then_expr, else_expr];
-                let v: Vec<(EntityDerefLevel, Option<_>)> = es
-                    .iter()
-                    .map(|l| Self::check_entity_deref_level_helper(l, max_allowed_level, policy_id))
-                    .collect();
-                Self::min(v)
+                self.check_expr_level(test_expr, env);
+                let then_lvl = self.check_entity_deref_target_level(
+                    then_expr,
+                    local_max_level,
+                    access_path.clone(),
+                    env,
+                );
+                let else_lvl = self.check_entity_deref_target_level(
+                    else_expr,
+                    local_max_level,
+                    access_path,
+                    env,
+                );
+                EntityDerefLevel::max(then_lvl, else_lvl)
             }
-            ExprKind::And { left, right } | ExprKind::Or { left, right } => {
-                let es = [left, right];
-                let v: Vec<(EntityDerefLevel, Option<_>)> = es
-                    .iter()
-                    .map(|l| Self::check_entity_deref_level_helper(l, max_allowed_level, policy_id))
-                    .collect();
-                Self::min(v)
-            }
-            ExprKind::UnaryApp { arg, .. } => {
-                Self::check_entity_deref_level_helper(arg, max_allowed_level, policy_id)
-            }
-            // `In` operator decrements the LHS only
-            ExprKind::BinaryApp { op, arg1, arg2 } if op == &BinaryOp::In => {
-                let lhs = Self::check_entity_deref_level_helper(arg1, max_allowed_level, policy_id);
-                let rhs = Self::check_entity_deref_level_helper(arg2, max_allowed_level, policy_id);
-                let lhs = (lhs.0.decrement(), lhs.1);
-                let new_level = Self::min(vec![lhs, rhs]).0;
-                if new_level.level < 0 {
-                    (
-                        new_level,
-                        Some(
-                            EntityDerefLevelViolation {
-                                source_loc: e.source_loc().cloned(),
-                                policy_id: policy_id.clone(),
-                                actual_level: new_level,
-                                allowed_level: max_allowed_level,
-                            }
-                            .into(),
-                        ),
+            // We don't need to handle `HasAttr` here because it has type Boolean.
+            ExprKind::GetAttr { expr, attr } => match expr.data() {
+                Some(Type::EntityOrRecord(EntityRecordKind::Entity { .. })) => {
+                    let lvl = self.check_entity_deref_target_level(
+                        expr,
+                        local_max_level.decrement(),
+                        access_path,
+                        env,
+                    );
+                    EntityDerefLevel {
+                        level: lvl.level + 1,
+                    }
+                }
+                Some(Type::EntityOrRecord(EntityRecordKind::Record { .. })) => {
+                    // We push `attr` onto the access path so that, if the
+                    // target of the `getAttr` is a literal, we can avoid
+                    // reporting false positives for the unaccessed branches.
+                    access_path.push(attr.clone());
+                    self.check_entity_deref_target_level(
+                        expr,
+                        local_max_level.decrement(),
+                        access_path,
+                        env,
                     )
-                } else {
-                    (new_level, None)
+                }
+                // The typechecker ensures `GetAttr` only applies to entities and records. This also
+                // captures `AnyEntity` and `ActionEntity` because these types will never have any attributes.
+                _ => {
+                    self.level_checking_errors.insert(
+                        ValidationError::internal_invariant_violation(
+                            e.source_loc().cloned(),
+                            self.policy_id.clone(),
+                        ),
+                    );
+                    EntityDerefLevel { level: 0 }
+                }
+            },
+            ExprKind::BinaryApp {
+                // We don't need to handle `HasTag` or `In` here because they have type Boolean.
+                op: BinaryOp::GetTag,
+                arg1,
+                arg2,
+            } => {
+                let lvl = self.check_entity_deref_target_level(
+                    arg1,
+                    local_max_level.decrement(),
+                    access_path,
+                    env,
+                );
+                self.check_expr_level(arg2, env);
+                EntityDerefLevel {
+                    level: lvl.level + 1,
                 }
             }
-            ExprKind::BinaryApp { arg1, arg2, .. } => {
-                let es = [arg1, arg2];
-                let v: Vec<(EntityDerefLevel, Option<_>)> = es
-                    .iter()
-                    .map(|l| Self::check_entity_deref_level_helper(l, max_allowed_level, policy_id))
-                    .collect();
-                Self::min(v)
-            }
-            ExprKind::ExtensionFunctionApp { args, .. } => {
-                let v: Vec<(EntityDerefLevel, Option<_>)> = args
-                    .iter()
-                    .map(|l| Self::check_entity_deref_level_helper(l, max_allowed_level, policy_id))
-                    .collect();
-                Self::min(v)
-            }
-            ExprKind::GetAttr { expr, attr }
-                if matches!(expr.expr_kind(), ExprKind::Record(..)) =>
-            {
-                match expr.expr_kind() {
-                    ExprKind::Record(m) => {
-                        // PANIC SAFETY: Validation checked that this access is safe
-                        #[allow(clippy::unwrap_used)]
-                        Self::check_entity_deref_level_helper(
-                            m.get(attr).unwrap(),
-                            max_allowed_level,
-                            policy_id,
+            ExprKind::Record(attrs) => {
+                match access_path
+                    .pop()
+                    .and_then(|a| attrs.get_key_value(a.as_str()))
+                {
+                    Some((attr, accessed_e)) => {
+                        for (_, e) in attrs.iter().filter(|(a, _)| *a != attr) {
+                            self.check_expr_level(e, env);
+                        }
+                        self.check_entity_deref_target_level(
+                            accessed_e,
+                            local_max_level,
+                            access_path,
+                            env,
                         )
                     }
-                    // PANIC SAFETY: We just checked that this node is a Record
-                    #[allow(clippy::unreachable)]
-                    _ => unreachable!(),
-                }
-            }
-            ExprKind::GetAttr { expr, .. } | ExprKind::HasAttr { expr, .. } => match expr
-                .as_ref()
-                .data()
-            {
-                Some(ty) => {
-                    let child_level_info =
-                        Self::check_entity_deref_level_helper(expr, max_allowed_level, policy_id);
-                    match ty {
-                        Type::EntityOrRecord(EntityRecordKind::Entity { .. })
-                        | Type::EntityOrRecord(EntityRecordKind::ActionEntity { .. }) => {
-                            let child_level = child_level_info.0;
-                            let new_level = child_level.decrement();
-                            if new_level.level < 0 {
-                                (
-                                    new_level,
-                                    Some(
-                                        EntityDerefLevelViolation {
-                                            source_loc: e.source_loc().cloned(),
-                                            policy_id: policy_id.clone(),
-                                            actual_level: new_level,
-                                            allowed_level: max_allowed_level,
-                                        }
-                                        .into(),
-                                    ),
-                                )
-                            } else {
-                                (new_level, None)
-                            }
-                        }
-                        Type::EntityOrRecord(EntityRecordKind::AnyEntity) => {
-                            // AnyEntity cannot be dereferenced
-                            (EntityDerefLevel { level: 0 }, None)
-                        }
-                        _ => child_level_info,
+                    // From the `access_path` precondition, for a record
+                    // literal, the access path be non-empty and start with an
+                    // attribtue in the record literal.
+                    None => {
+                        self.level_checking_errors.insert(
+                            ValidationError::internal_invariant_violation(
+                                e.source_loc().cloned(),
+                                self.policy_id.clone(),
+                            ),
+                        );
+                        EntityDerefLevel { level: 0 }
                     }
                 }
-                // PANIC SAFETY: Validation passed, so annotating the AST will succeed
-                #[allow(clippy::unreachable)]
-                None => unreachable!("Expected type-annotated AST"),
+            }
+
+            // We only ever call this function on the target of entity
+            // derferencing expressions, so a non-entity-type expressions
+            // shouldn't be possible.
+            _ => {
+                self.level_checking_errors
+                    .insert(ValidationError::internal_invariant_violation(
+                        e.source_loc().cloned(),
+                        self.policy_id.clone(),
+                    ));
+                EntityDerefLevel { level: 0 }
+            }
+        }
+    }
+
+    fn check_expr_level(&mut self, e: &Expr<Option<crate::types::Type>>, env: &RequestEnv<'_>) {
+        match e.expr_kind() {
+            ExprKind::Lit(_) | ExprKind::Var(_) | ExprKind::Slot(_) | ExprKind::Unknown(_) => (),
+            ExprKind::If {
+                test_expr,
+                then_expr,
+                else_expr,
+            } => {
+                self.check_expr_level(test_expr, env);
+                self.check_expr_level(then_expr, env);
+                self.check_expr_level(else_expr, env);
+            }
+            ExprKind::Or { left, right } | ExprKind::And { left, right } => {
+                self.check_expr_level(left, env);
+                self.check_expr_level(right, env);
+            }
+            ExprKind::UnaryApp { arg, .. } => {
+                self.check_expr_level(arg, env);
+            }
+            ExprKind::BinaryApp {
+                op: BinaryOp::HasTag | BinaryOp::GetTag | BinaryOp::In,
+                arg1,
+                arg2,
+            } => {
+                let deref_target_lvl = self.check_entity_deref_target_level(
+                    &arg1,
+                    self.global_max_level.decrement(),
+                    Vec::new(),
+                    env,
+                );
+                if deref_target_lvl >= self.global_max_level {
+                    self.level_checking_errors
+                        .insert(ValidationError::maximum_level_exceeded(
+                            e.source_loc().cloned(),
+                            self.policy_id.clone(),
+                            self.global_max_level,
+                            EntityDerefLevel {
+                                level: deref_target_lvl.level + 1,
+                            },
+                        ));
+                }
+                self.check_expr_level(arg2, env);
+            }
+            ExprKind::BinaryApp { arg1, arg2, .. } => {
+                self.check_expr_level(arg1, env);
+                self.check_expr_level(arg2, env);
+            }
+            ExprKind::ExtensionFunctionApp { args, .. } => {
+                for arg in args.iter() {
+                    self.check_expr_level(arg, env);
+                }
+            }
+            ExprKind::HasAttr { expr, .. } | ExprKind::GetAttr { expr, .. } => match expr.data() {
+                Some(Type::EntityOrRecord(EntityRecordKind::Entity { .. })) => {
+                    let deref_target_lvl = self.check_entity_deref_target_level(
+                        &expr,
+                        self.global_max_level.decrement(),
+                        Vec::new(),
+                        env,
+                    );
+                    if deref_target_lvl >= self.global_max_level {
+                        self.level_checking_errors
+                            .insert(ValidationError::maximum_level_exceeded(
+                                e.source_loc().cloned(),
+                                self.policy_id.clone(),
+                                self.global_max_level,
+                                EntityDerefLevel {
+                                    level: deref_target_lvl.level + 1,
+                                },
+                            ));
+                    }
+                }
+                Some(Type::EntityOrRecord(EntityRecordKind::Record { .. })) => {
+                    self.check_expr_level(expr, env);
+                }
+                // The typechecker ensures `GetAttr` only applies to entities and records. This also
+                // captures `AnyEntity` and `ActionEntity` because these types will never have any attributes.
+                _ => {
+                    self.level_checking_errors.insert(
+                        ValidationError::internal_invariant_violation(
+                            e.source_loc().cloned(),
+                            self.policy_id.clone(),
+                        ),
+                    );
+                }
             },
-            ExprKind::Like { expr, .. } | ExprKind::Is { expr, .. } => {
-                Self::check_entity_deref_level_helper(expr, max_allowed_level, policy_id)
+            ExprKind::Like { expr, .. } => {
+                self.check_expr_level(&expr, env);
             }
-            ExprKind::Set(elems) => {
-                let v: Vec<(EntityDerefLevel, Option<_>)> = elems
-                    .iter()
-                    .map(|l| Self::check_entity_deref_level_helper(l, max_allowed_level, policy_id))
-                    .collect();
-                Self::min(v)
+            ExprKind::Is { expr, .. } => {
+                self.check_expr_level(&expr, env);
             }
-            ExprKind::Record(fields) => {
-                let v: Vec<(EntityDerefLevel, Option<_>)> = fields
-                    .iter()
-                    .map(|(_, l)| {
-                        Self::check_entity_deref_level_helper(l, max_allowed_level, policy_id)
-                    })
-                    .collect();
-                Self::min(v)
+            ExprKind::Set(exprs) => {
+                for e in exprs.iter() {
+                    self.check_expr_level(e, env);
+                }
+            }
+            ExprKind::Record(attrs) => {
+                for (_, e) in attrs.iter() {
+                    self.check_expr_level(e, env);
+                }
             }
             #[cfg(feature = "tolerant-ast")]
-            ExprKind::Error { .. } => (
-                EntityDerefLevel { level: 0 },
-                Some(ValidationError::InternalInvariantViolation(
-                    validation_errors::InternalInvariantViolation {
-                        source_loc: None,
-                        policy_id: policy_id.clone(),
-                    },
-                )),
-            ),
+            ExprKind::Error { .. } => {
+                self.level_checking_errors
+                    .insert(ValidationError::internal_invariant_violation(
+                        e.source_loc().cloned(),
+                        self.policy_id.clone(),
+                    ));
+            }
         }
     }
 }
@@ -262,24 +361,55 @@ impl Validator {
 mod levels_validation_tests {
     use super::*;
     use cedar_policy_core::parser;
+    use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
 
     fn get_schema() -> ValidatorSchema {
-        json_schema::Fragment::from_json_str(
-            r#"
+        json_schema::Fragment::from_json_value(serde_json::json!(
             {
                 "": {
                     "entityTypes": {
                         "User": {
-                            "memberOfTypes": ["User"]
+                            "memberOfTypes": ["User"],
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {
+                                    "user": {
+                                        "type": "Entity",
+                                        "name": "User"
+                                    },
+                                    "bool": {
+                                        "type": "Boolean"
+                                    },
+                                    "other": {
+                                        "type": "String"
+                                    },
+                                    "ip": {
+                                        "type": "Extension",
+                                        "name": "ipaddr",
+                                    },
+                                    "nested": {
+                                        "type": "Record",
+                                        "attributes" :{
+                                            "user": {
+                                                "type": "Entity",
+                                                "name": "User",
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "tags": {
+                                "type": "Entity",
+                                "name": "User"
+                            }
                         },
                         "Photo": {
                             "shape": {
                                 "type": "Record",
                                 "attributes": {
-                                    "foo": {
+                                    "user": {
                                         "type": "Entity",
                                         "name": "User",
-                                        "required": true
                                     }
                                 }
                             }
@@ -289,52 +419,468 @@ mod levels_validation_tests {
                         "view": {
                             "appliesTo": {
                                 "resourceTypes": [ "Photo" ],
-                                "principalTypes": [ "User" ]
+                                "principalTypes": [ "User" ],
+                                "context": {
+                                  "type": "Record",
+                                  "attributes": {
+                                      "user": {
+                                          "type": "Entity",
+                                          "name": "User",
+                                      },
+                                      "nested": {
+                                          "type": "Record",
+                                          "attributes" :{
+                                              "user": {
+                                                  "type": "Entity",
+                                                  "name": "User",
+                                              }
+                                          }
+                                      }
+                                  }
+                                }
                             }
                         }
                     }
                 }
             }
-        "#,
-        )
+        ))
         .expect("Schema parse error.")
         .try_into()
         .expect("Expected valid schema.")
     }
 
-    #[test]
-    fn test_levels_validation_passes() {
+    #[track_caller]
+    fn assert_fails_at_level<'a>(
+        src: &'a str,
+        underlines: impl IntoIterator<Item = &'a str>,
+        level: u32,
+        actual_level: u32,
+    ) {
         let schema = get_schema();
         let validator = Validator::new(schema);
+        let p = parser::parse_policy_or_template(None, src).unwrap();
+        let underlines = underlines.into_iter().collect::<Vec<_>>();
+        let mut errs = validator
+            .validate_policy_with_level(&p, ValidationMode::Strict, level)
+            .0
+            .collect::<Vec<_>>();
+        if errs.len() != underlines.len() {
+            let l = errs.len();
+            for e in errs {
+                println!("{:?}", miette::Report::new(e));
+            }
+            panic!(
+                "Did not see expected number of errors: {} != {}",
+                l,
+                underlines.len()
+            );
+        }
 
-        let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"һenry", action, resource) when {1 > 0};"#;
-        let p = parser::parse_policy(None, src).unwrap();
-        set.add_static(p).unwrap();
-
-        let result = validator.check_entity_deref_level(
-            set.get_template(&PolicyID::from_string("policy0")).unwrap(),
-            ValidationMode::default(),
-            EntityDerefLevel { level: 0 },
+        let msg = format!(
+            "for policy `{}`, the maximum allowed level {} is violated. Actual level is {}",
+            p.id(),
+            level,
+            actual_level,
         );
-        assert!(result.is_empty());
+
+        if underlines.len() == 1 {
+            let expected = ExpectedErrorMessageBuilder::error(&msg)
+                .exactly_one_underline(underlines[0])
+                .build();
+            expect_err(src, &miette::Report::new(errs.remove(0)), &expected);
+        } else {
+            for ul in underlines {
+                let expected = ExpectedErrorMessageBuilder::error(&msg)
+                    .exactly_one_underline(ul)
+                    .build();
+                if !errs.iter().any(|e| expected.matches(e)) {
+                    for e in errs {
+                        println!("{:?}", miette::Report::new(e));
+                    }
+                    panic!("Failed to find any error message with underlined text: {ul}");
+                }
+            }
+        }
+    }
+
+    #[track_caller]
+    fn assert_requires_level<'a>(
+        src: &'a str,
+        underlines: impl IntoIterator<Item = &'a str>,
+        level: u32,
+    ) {
+        let schema = get_schema();
+        let validator = Validator::new(schema);
+        let p = parser::parse_policy_or_template(None, src).unwrap();
+
+        // We should validate at `level`
+        let errs = validator
+            .validate_policy_with_level(&p, ValidationMode::Strict, level)
+            .0
+            .collect::<Vec<_>>();
+        if !errs.is_empty() {
+            for e in errs {
+                println!("{:?}", miette::Report::new(e));
+            }
+            panic!("Did not expect errors at level {level}");
+        }
+
+        // But not at `level - 1`
+        if level > 0 {
+            assert_fails_at_level(src, underlines, level - 1, level);
+        }
     }
 
     #[test]
-    fn test_levels_validation_fails() {
+    fn valid_at_level_zero() {
+        assert_requires_level(r#"permit(principal, action, resource);"#, [], 0);
+        assert_requires_level(
+            r#"permit(principal == User::"alice", action, resource);"#,
+            [],
+            0,
+        );
+        assert_requires_level(
+            r#"permit(principal, action == Action::"view", resource);"#,
+            [],
+            0,
+        );
+        assert_requires_level(r#"permit(principal is User, action, resource);"#, [], 0);
+        assert_requires_level(
+            r#"permit(principal, action, resource) when {1 > 0};"#,
+            [],
+            0,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { User::"alice" is User };"#,
+            [],
+            0,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { context has user };"#,
+            [],
+            0,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { context.user is User };"#,
+            [],
+            0,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { context.nested.user is User };"#,
+            [],
+            0,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { {foo: principal} has foo };"#,
+            [],
+            0,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { {foo: principal}.foo is User };"#,
+            [],
+            0,
+        );
+    }
+
+    #[test]
+    fn require_level_one() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.bool };"#,
+            [r#"principal.bool"#],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.nested.user is User };"#,
+            [r#"principal.nested.user"#],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has user};"#,
+            [r#"principal has user"#],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.hasTag("tag") && principal.getTag("tag") is User };"#,
+            [r#"principal.hasTag("tag")"#, r#"principal.getTag("tag")"#],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal in User::"other" };"#,
+            [r#"principal in User::"other""#],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal in [User::"other"] };"#,
+            [r#"principal in [User::"other"]"#],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { action in Action::"view" };"#,
+            [r#"action in Action::"view""#],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { context.user.bool };"#,
+            [r#"context.user.bool"#],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { context.nested.user.bool };"#,
+            [r#"context.nested.user.bool"#],
+            1,
+        );
+    }
+
+    #[test]
+    fn require_level_two() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.user.bool };"#,
+            [r#"principal.user.bool"#],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.nested.user.bool };"#,
+            [r#"principal.nested.user.bool"#],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.hasTag("tag") && principal.getTag("tag").bool };"#,
+            [r#"principal.getTag("tag").bool"#],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.user.hasTag("tag") && principal.user.getTag("tag") is User};"#,
+            [
+                r#"principal.user.hasTag("tag")"#,
+                r#"principal.user.getTag("tag")"#,
+            ],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { context.user.user.bool };"#,
+            [r#"context.user.user.bool"#],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { context.nested.user.nested.user.bool };"#,
+            [r#"context.nested.user.nested.user.bool"#],
+            2,
+        );
+    }
+
+    #[test]
+    fn require_level_three() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.user.hasTag("t") && principal.user.getTag("t") in resource.user};"#,
+            [r#"principal.user.getTag("t") in resource.user"#],
+            3,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.nested.user.nested.user.bool };"#,
+            [r#"principal.nested.user.nested.user.bool"#],
+            3,
+        );
+    }
+
+    #[test]
+    fn get_has_tag_arg_is_checked() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.hasTag(principal.user.other) && principal.getTag(principal["user"]["other"]) is User};"#,
+            [r#"principal.user.other"#, r#"principal["user"]["other"]"#],
+            2,
+        );
+    }
+
+    #[test]
+    fn in_arg_is_checked() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal in principal.user.user };"#,
+            [r#"principal.user.user"#],
+            2,
+        );
+    }
+
+    #[test]
+    fn if_condition_is_checked() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { if principal.user.user.bool then principal.bool else resource.user.bool };"#,
+            [r#"principal.user.user.bool"#],
+            3,
+        );
+    }
+
+    #[test]
+    fn if_checked_as_deref_target() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { (if principal.bool then principal.user else resource.user).bool };"#,
+            [r#"(if principal.bool then principal.user else resource.user).bool"#],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { (if principal.bool then principal.user else resource.user.user).bool };"#,
+            [r#"(if principal.bool then principal.user else resource.user.user).bool"#],
+            3,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { (if principal.bool then principal.user.user else resource.user).bool };"#,
+            [r#"(if principal.bool then principal.user.user else resource.user).bool"#],
+            3,
+        );
+    }
+
+    #[test]
+    fn unaccessed_record_attr_is_checked() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { {foo: principal, bar: principal.user.user.user.user}.foo.bool };"#,
+            [r#"principal.user.user.user.user"#],
+            4,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { {foo: principal, bar: principal.user.user, baz: resource.user.user}.foo.bool };"#,
+            ["principal.user.user", "resource.user.user"],
+            2,
+        );
+    }
+
+    #[test]
+    fn record_attrs_as_deref_target() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { {foo: {bar: principal}}.foo.bar is User };"#,
+            [],
+            0,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { {foo: {bar: principal}}.foo.bar.bool};"#,
+            ["{foo: {bar: principal}}.foo.bar.bool"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { {foo: principal.user}.foo.bool };"#,
+            [r#"{foo: principal.user}.foo.bool"#],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { {biz: {foo: {bar: principal.user}}.foo}.biz.bar.bool};"#,
+            ["{biz: {foo: {bar: principal.user}}.foo}.biz.bar.bool"],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { {biz: {foo: {bar: principal}.bar.user}.foo}.biz.bool};"#,
+            ["{biz: {foo: {bar: principal}.bar.user}.foo}.biz.bool"],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { {biz: {baz: {bar: {foo: principal.nested.user}.foo.nested.user}}.baz}.biz.bar.nested.user.bool };"#,
+            [
+                r#"{biz: {baz: {bar: {foo: principal.nested.user}.foo.nested.user}}.baz}.biz.bar.nested.user.bool"#,
+            ],
+            4,
+        );
+    }
+
+    #[track_caller]
+    fn assert_derefs_entity_lit<'a>(
+        src: &'a str,
+        underlines: impl IntoIterator<Item = &'a str>,
+        level: u32,
+    ) {
         let schema = get_schema();
         let validator = Validator::new(schema);
+        let p = parser::parse_policy_or_template(None, src).unwrap();
+        let underlines = underlines.into_iter().collect::<Vec<_>>();
+        let mut errs = validator
+            .validate_policy_with_level(&p, ValidationMode::Strict, level)
+            .0
+            .collect::<Vec<_>>();
+        if errs.len() != underlines.len() {
+            let l = errs.len();
+            for e in errs {
+                println!("{:?}", miette::Report::new(e));
+            }
+            panic!(
+                "Did not see expected number of errors: {} != {}",
+                l,
+                underlines.len()
+            );
+        }
 
-        let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"һenry", action, resource) when {principal in resource.foo};"#;
-        let p = parser::parse_policy(None, src).unwrap();
-        set.add_static(p).unwrap();
+        let msg = format!("for policy `{}`, entity literals are not valid targets for entity dereferencing operations at any level", p.id());
 
-        let result = validator.check_entity_deref_level(
-            set.get_template(&PolicyID::from_string("policy0")).unwrap(),
-            ValidationMode::default(),
-            EntityDerefLevel { level: 0 },
+        if underlines.len() == 1 {
+            let expected = ExpectedErrorMessageBuilder::error(&msg)
+                .exactly_one_underline(underlines[0])
+                .build();
+            expect_err(src, &miette::Report::new(errs.remove(0)), &expected);
+        } else {
+            for ul in underlines {
+                let expected = ExpectedErrorMessageBuilder::error(&msg)
+                    .exactly_one_underline(ul)
+                    .build();
+                if !errs.iter().any(|e| expected.matches(e)) {
+                    for e in errs {
+                        println!("{:?}", miette::Report::new(e));
+                    }
+                    panic!("Failed to find any error message with underlined text: {ul}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn entity_lit_deref_forbidden() {
+        assert_derefs_entity_lit(
+            r#"permit(principal, action, resource) when { User::"alice".bool }; "#,
+            [r#"User::"alice""#],
+            1,
         );
-        assert!(result.len() == 1);
+        assert_derefs_entity_lit(
+            r#"permit(principal, action, resource) when { User::"alice" has user }; "#,
+            [r#"User::"alice""#],
+            1,
+        );
+        assert_derefs_entity_lit(
+            r#"permit(principal, action, resource) when { User::"alice".hasTag("foo") }; "#,
+            [r#"User::"alice""#],
+            1,
+        );
+        assert_derefs_entity_lit(
+            r#"permit(principal, action, resource) when { User::"alice" in User::"bob"}; "#,
+            [r#"User::"alice""#],
+            1,
+        );
+        assert_derefs_entity_lit(
+            r#"permit(principal, action, resource) when { (if principal.bool then User::"alice" else principal).bool}; "#,
+            [r#"User::"alice""#],
+            1,
+        );
+        assert_derefs_entity_lit(
+            r#"permit(principal, action, resource) when { (if principal.bool then User::"alice" else User::"bob").bool}; "#,
+            [r#"User::"alice""#, r#"User::"bob""#],
+            1,
+        );
+    }
+
+    #[test]
+    fn nested_level_errors() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { [principal.bool].contains(true) };"#,
+            [r#"principal.bool"#],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { [principal.bool].contains(true) };"#,
+            [r#"principal.bool"#],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.ip.isInRange(ip("192.168.0.0/12"))};"#,
+            [r#"principal.ip.isInRange(ip("192.168.0.0/12"))"#],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.other like "*"};"#,
+            ["principal.other"],
+            1,
+        );
     }
 }

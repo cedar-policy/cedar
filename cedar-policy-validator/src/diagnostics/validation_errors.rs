@@ -530,24 +530,38 @@ impl EntityDerefLevel {
 
 /// Structure containing details about entity dereference level violation
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
-#[error("for policy `{policy_id}`, the maximum allowed level {allowed_level} is violated. Actual level is {}", (allowed_level.add(actual_level.neg())))]
+#[error("for policy `{policy_id}`, {violation_kind}")]
 pub struct EntityDerefLevelViolation {
-    /// Source location
+    /// Location of outer most dereference
     pub source_loc: Option<Loc>,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
-    /// The maximum level allowed by the schema
-    pub allowed_level: EntityDerefLevel,
-    /// The actual level this policy uses
-    pub actual_level: EntityDerefLevel,
+    /// Provides more information about the specific kind of violatoin
+    pub violation_kind: EntityDerefLevelViolationKind,
+}
+
+/// Details for specific kinds of entity deref level violations
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
+pub enum EntityDerefLevelViolationKind {
+    /// The policy exceeded the maximum allowed level
+    #[error(
+        "the maximum allowed level {allowed_level} is violated. Actual level is {actual_level}"
+    )]
+    MaximumLevelExceeded {
+        /// The maximum level allowed by the schema
+        allowed_level: EntityDerefLevel,
+        /// The actual level this policy uses
+        actual_level: EntityDerefLevel,
+    },
+    /// The policy dereferences an entity literal, which isn't allowed at any level
+    #[error(
+        "entity literals are not valid targets for entity dereferencing operations at any level"
+    )]
+    LiteralDerefTarget,
 }
 
 impl Diagnostic for EntityDerefLevelViolation {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
-
-    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        Some(Box::new("Consider increasing the level"))
-    }
 }
 
 /// The policy uses an empty set literal in a way that is forbidden
