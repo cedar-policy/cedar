@@ -67,6 +67,8 @@ pub struct Evaluator<'e> {
     entities: &'e Entities,
     /// Extensions which are active for this evaluation
     extensions: &'e Extensions<'e>,
+    /// Mapper of unknown values into concrete ones, if recognized
+    unknowns_mapper: Box<dyn Fn(&str) -> Option<Value> + 'e>,
 }
 
 /// Evaluator for "restricted" expressions. See notes on `RestrictedExpr`.
@@ -208,6 +210,20 @@ impl<'e> Evaluator<'e> {
             },
             entities,
             extensions,
+            unknowns_mapper: Box::new(|_: &str| -> Option<Value> {None}),
+        }
+    }
+
+    // Constructs an Evaluator for a given unknowns mapper function.
+    pub(crate) fn with_unknowns_mapper(self, unknowns_mapper: Box<dyn Fn(&str) -> Option<Value> + 'e>) -> Self {
+        Self {
+            principal: self.principal,
+            action: self.action,
+            resource: self.resource,
+            context: self.context,
+            entities: self.entities,
+            extensions: self.extensions,
+            unknowns_mapper: unknowns_mapper,
         }
     }
 
@@ -297,7 +313,7 @@ impl<'e> Evaluator<'e> {
                 Var::Resource => Ok(self.resource.evaluate(*v)),
                 Var::Context => Ok(self.context.clone()),
             },
-            ExprKind::Unknown(_) => Ok(PartialValue::Residual(expr.clone())),
+            ExprKind::Unknown(u) => self.unknown_to_partialvalue(u),
             ExprKind::If {
                 test_expr,
                 then_expr,
@@ -764,6 +780,24 @@ impl<'e> Evaluator<'e> {
         }
     }
 
+    // Resolve an Unknown value 
+    fn unknown_to_partialvalue(&self, u: &Unknown) -> Result<PartialValue> {
+        match (self.unknowns_mapper.as_ref()(&u.name), &u.type_annotation) {
+            // The unknowns mapper of concrete evaluation always returns None,
+            // but also the mapper might not just recognize this unknown value.
+            (None, _) => Ok(PartialValue::Residual(Expr::unknown(u.clone()))),
+            // Replace the unknown value with the concrete one found
+            (Some(v), None) => Ok(PartialValue::Value(v)),
+            (Some(v), Some(t)) => {
+                if v.type_of() == *t {
+                    Ok(PartialValue::Value(v))
+                } else {
+                    Err(EvaluationError::type_error_single(t.clone(), &v))
+                }
+            }
+        }
+    }
+
     fn eval_in(
         &self,
         uid1: &EntityUID,
@@ -903,6 +937,15 @@ impl<'e> Evaluator<'e> {
                 }
                 Dereference::Data(entity) => entity
                     .get(attr)
+                    .map(|pv| {
+                        match pv {
+                            PartialValue::Value(_) => Ok(pv.clone()),
+                            PartialValue::Residual(e) => match e.expr_kind() {
+                                ExprKind::Unknown(u) => self.unknown_to_partialvalue(u),
+                                _ => Ok(pv.clone()),
+                            }
+                        }
+                    })
                     .ok_or_else(|| {
                         EvaluationError::entity_attr_does_not_exist(
                             uid,
@@ -912,8 +955,7 @@ impl<'e> Evaluator<'e> {
                             entity.attrs_len(),
                             source_loc.cloned(),
                         )
-                    })
-                    .cloned(),
+                    })?,
             },
             PartialValue::Value(v) => {
                 // PANIC SAFETY Entity type name is fully static and a valid unqualified `Name`
