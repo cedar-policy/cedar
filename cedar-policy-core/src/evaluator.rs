@@ -780,11 +780,18 @@ impl<'e> Evaluator<'e> {
         }
     }
 
-    // Resolve an Unknown value 
+    // Never map unknowns when feature flag is not set
+    #[cfg(not(feature = "partial-eval"))]
+    #[inline(always)]
+    fn unknown_to_partialvalue(&self, u: &Unknown) -> Result<PartialValue> {
+        Ok(PartialValue::Residual(Expr::unknown(u.clone())))
+    }
+
+    // Try resolving a named Unknown into a Value
+    #[cfg(feature = "partial-eval")]
     fn unknown_to_partialvalue(&self, u: &Unknown) -> Result<PartialValue> {
         match (self.unknowns_mapper.as_ref()(&u.name), &u.type_annotation) {
-            // The unknowns mapper of concrete evaluation always returns None,
-            // but also the mapper might not just recognize this unknown value.
+            // The mapper might not recognize the unknown
             (None, _) => Ok(PartialValue::Residual(Expr::unknown(u.clone()))),
             // Replace the unknown value with the concrete one found
             (Some(v), None) => Ok(PartialValue::Value(v)),
@@ -797,7 +804,7 @@ impl<'e> Evaluator<'e> {
             }
         }
     }
-
+    
     fn eval_in(
         &self,
         uid1: &EntityUID,
