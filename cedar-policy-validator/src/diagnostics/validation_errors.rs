@@ -479,58 +479,32 @@ impl Diagnostic for HierarchyNotRespected {
     }
 }
 
-/// Represents how many entity dereferences can be applied to a node.
-#[derive(Default, Debug, Clone, Hash, Eq, PartialEq, Error, Copy, Ord, PartialOrd)]
-pub struct EntityDerefLevel {
-    /// A negative value `-n` represents `n` too many dereferences
-    pub level: i64,
-}
-
-impl Display for EntityDerefLevel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
-        write!(f, "{}", self.level)
-    }
-}
-
-impl<I: Into<i64>> From<I> for EntityDerefLevel {
-    fn from(value: I) -> Self {
-        EntityDerefLevel {
-            level: value.into(),
-        }
-    }
-}
-
-impl EntityDerefLevel {
-    /// Increment the entity deref level
-    pub fn increment(&self) -> Self {
-        (self.level + 1).into()
-    }
-}
-
 /// Structure containing details about entity dereference level violation
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
 #[error("for policy `{policy_id}`, {violation_kind}")]
+#[cfg(feature = "level-validate")]
 pub struct EntityDerefLevelViolation {
     /// Location of outer most dereference
     pub source_loc: Option<Loc>,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
-    /// Provides more information about the specific kind of violatoin
-    pub violation_kind: EntityDerefLevelViolationKind,
+    /// Provides more information about the specific kind of violation
+    pub violation_kind: EntityDerefViolationKind,
 }
 
 /// Details for specific kinds of entity deref level violations
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
-pub enum EntityDerefLevelViolationKind {
+#[cfg(feature = "level-validate")]
+pub enum EntityDerefViolationKind {
     /// The policy exceeded the maximum allowed level
     #[error(
         "the maximum allowed level {allowed_level} is violated. Actual level is {actual_level}"
     )]
     MaximumLevelExceeded {
         /// The maximum level allowed by the schema
-        allowed_level: EntityDerefLevel,
+        allowed_level: crate::level_validate::EntityDerefLevel,
         /// The actual level this policy uses
-        actual_level: EntityDerefLevel,
+        actual_level: crate::level_validate::EntityDerefLevel,
     },
     /// The policy dereferences an entity literal, which isn't allowed at any level
     #[error(

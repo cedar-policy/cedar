@@ -407,11 +407,10 @@ impl ValidationError {
         validation_errors::EntityDerefLevelViolation {
             source_loc,
             policy_id,
-            violation_kind:
-                validation_errors::EntityDerefLevelViolationKind::MaximumLevelExceeded {
-                    allowed_level,
-                    actual_level,
-                },
+            violation_kind: validation_errors::EntityDerefViolationKind::MaximumLevelExceeded {
+                allowed_level,
+                actual_level,
+            },
         }
         .into()
     }
@@ -421,7 +420,7 @@ impl ValidationError {
         validation_errors::EntityDerefLevelViolation {
             source_loc,
             policy_id,
-            violation_kind: validation_errors::EntityDerefLevelViolationKind::LiteralDerefTarget,
+            violation_kind: validation_errors::EntityDerefViolationKind::LiteralDerefTarget,
         }
         .into()
     }

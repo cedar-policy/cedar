@@ -20,8 +20,38 @@ use super::*;
 use crate::types::{EntityRecordKind, RequestEnv, Type};
 use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, Literal, PolicyID};
 use smol_str::SmolStr;
+use thiserror::Error;
 use typecheck::PolicyCheck;
-use validation_errors::EntityDerefLevel;
+
+/// Represents how many entity dereferences can be applied to a node.
+#[derive(Default, Debug, Clone, Hash, Eq, PartialEq, Error, Copy, Ord, PartialOrd)]
+pub struct EntityDerefLevel {
+    level: u32,
+}
+
+impl std::fmt::Display for EntityDerefLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        write!(f, "{}", self.level)
+    }
+}
+
+impl<I: Into<u32>> From<I> for EntityDerefLevel {
+    fn from(value: I) -> Self {
+        EntityDerefLevel {
+            level: value.into(),
+        }
+    }
+}
+
+impl EntityDerefLevel {
+    fn increment(&self) -> Self {
+        (self.level + 1).into()
+    }
+
+    fn zero() -> Self {
+        EntityDerefLevel { level: 0 }
+    }
+}
 
 impl Validator {
     /// Run `validate_policy` against a single static policy or template (note
@@ -45,11 +75,10 @@ impl Validator {
         if peekable_errors.peek().is_none() {
             let typechecker = Typechecker::new(&self.schema, mode);
             let type_annotated_asts = typechecker.typecheck_by_request_env(p);
-            let mut level_checking_errors = HashSet::new();
             let mut level_checker = LevelChecker {
                 policy_id: p.id(),
                 max_level: max_deref_level.into(),
-                level_checking_errors: &mut level_checking_errors,
+                level_checking_errors: HashSet::new(),
             };
             for (req_env, policy_check) in type_annotated_asts {
                 match policy_check {
@@ -61,7 +90,10 @@ impl Validator {
                     PolicyCheck::Fail(_) => unreachable!(),
                 }
             }
-            (peekable_errors.chain(level_checking_errors), warnings)
+            (
+                peekable_errors.chain(level_checker.level_checking_errors),
+                warnings,
+            )
         } else {
             (peekable_errors.chain(HashSet::new()), warnings)
         }
@@ -74,7 +106,7 @@ struct LevelChecker<'a> {
     /// errors with the correct policy ID
     policy_id: &'a PolicyID,
     max_level: EntityDerefLevel,
-    level_checking_errors: &'a mut HashSet<ValidationError>,
+    level_checking_errors: HashSet<ValidationError>,
 }
 
 impl LevelChecker<'_> {
@@ -100,7 +132,7 @@ impl LevelChecker<'_> {
         env: &RequestEnv<'_>,
     ) -> EntityDerefLevel {
         match e.expr_kind() {
-            ExprKind::Var(_) => 0.into(),
+            ExprKind::Var(_) => EntityDerefLevel::zero(),
             // A slot cannot currently appear in an entity dereference position,
             // but, if it could, we would handle it as an entity literal.
             ExprKind::Slot(_) => {
@@ -109,7 +141,7 @@ impl LevelChecker<'_> {
                         e.source_loc().cloned(),
                         self.policy_id.clone(),
                     ));
-                0.into()
+                EntityDerefLevel::zero()
             }
             ExprKind::Lit(Literal::EntityUID(euid)) => {
                 // Allow a literal if it's the current requests env action entity. This is mainly
@@ -121,7 +153,7 @@ impl LevelChecker<'_> {
                             self.policy_id.clone(),
                         ));
                 }
-                0.into()
+                EntityDerefLevel::zero()
             }
             ExprKind::If {
                 test_expr,
@@ -155,7 +187,7 @@ impl LevelChecker<'_> {
                             self.policy_id.clone(),
                         ),
                     );
-                    0.into()
+                    EntityDerefLevel::zero()
                 }
             },
             ExprKind::BinaryApp {
@@ -190,7 +222,7 @@ impl LevelChecker<'_> {
                                 self.policy_id.clone(),
                             ),
                         );
-                        0.into()
+                        EntityDerefLevel::zero()
                     }
                 }
             }
@@ -204,7 +236,7 @@ impl LevelChecker<'_> {
                         e.source_loc().cloned(),
                         self.policy_id.clone(),
                     ));
-                0.into()
+                EntityDerefLevel::zero()
             }
         }
     }
