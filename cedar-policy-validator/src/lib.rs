@@ -30,7 +30,6 @@
 use cedar_policy_core::ast::{Policy, PolicySet, Template};
 use serde::Serialize;
 use std::collections::HashSet;
-#[cfg(feature = "level-validate")]
 mod level_validate;
 
 mod coreschema;
@@ -129,7 +128,6 @@ impl Validator {
         )
     }
 
-    #[cfg(feature = "level-validate")]
     /// Validate all templates, links, and static policies in a policy set.
     /// If validation passes, also run level validation with `max_deref_level`
     /// (see RFC 76).
