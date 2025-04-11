@@ -520,7 +520,6 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
             cedar_policy_validator::ValidationError::InvalidEnumEntity(e) => {
                 Self::InvalidEnumEntity(e.into())
             }
-            #[cfg(feature = "level-validate")]
             cedar_policy_validator::ValidationError::EntityDerefLevelViolation(e) => {
                 Self::EntityDerefLevelViolation(e.into())
             }

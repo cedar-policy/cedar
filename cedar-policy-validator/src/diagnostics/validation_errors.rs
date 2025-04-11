@@ -31,6 +31,7 @@ use std::collections::BTreeSet;
 use cedar_policy_core::ast::{Eid, EntityType, EntityUID, Expr, ExprKind, PolicyID, Var};
 use cedar_policy_core::parser::join_with_conjunction;
 
+use crate::level_validate::EntityDerefLevel;
 use crate::types::{EntityLUB, EntityRecordKind, RequestEnv, Type};
 use crate::ValidatorSchema;
 use itertools::Itertools;
@@ -482,7 +483,6 @@ impl Diagnostic for HierarchyNotRespected {
 /// Structure containing details about entity dereference level violation
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
 #[error("for policy `{policy_id}`, {violation_kind}")]
-#[cfg(feature = "level-validate")]
 pub struct EntityDerefLevelViolation {
     /// Location of outer most dereference
     pub source_loc: Option<Loc>,
@@ -494,7 +494,6 @@ pub struct EntityDerefLevelViolation {
 
 /// Details for specific kinds of entity deref level violations
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
-#[cfg(feature = "level-validate")]
 pub enum EntityDerefViolationKind {
     /// The policy exceeded the maximum allowed level
     #[error(
@@ -502,9 +501,9 @@ pub enum EntityDerefViolationKind {
     )]
     MaximumLevelExceeded {
         /// The maximum level allowed by the schema
-        allowed_level: crate::level_validate::EntityDerefLevel,
+        allowed_level: EntityDerefLevel,
         /// The actual level this policy uses
-        actual_level: crate::level_validate::EntityDerefLevel,
+        actual_level: EntityDerefLevel,
     },
     /// The policy dereferences an entity literal, which isn't allowed at any level
     #[error("entity literals cannot be dereferenced at any level")]

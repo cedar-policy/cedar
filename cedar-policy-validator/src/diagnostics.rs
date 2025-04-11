@@ -166,7 +166,6 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidEnumEntity(#[from] validation_errors::InvalidEnumEntity),
-    #[cfg(feature = "level-validate")]
     /// If a entity dereference level was provided, the policies cannot deref
     /// more than `level` hops away from PARX
     #[error(transparent)]
@@ -397,7 +396,6 @@ impl ValidationError {
         .into()
     }
 
-    #[cfg(feature = "level-validate")]
     pub(crate) fn maximum_level_exceeded(
         source_loc: Option<Loc>,
         policy_id: PolicyID,
@@ -415,7 +413,6 @@ impl ValidationError {
         .into()
     }
 
-    #[cfg(feature = "level-validate")]
     pub(crate) fn literal_dereference_target(source_loc: Option<Loc>, policy_id: PolicyID) -> Self {
         validation_errors::EntityDerefLevelViolation {
             source_loc,
