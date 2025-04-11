@@ -174,7 +174,6 @@ pub trait CedarTestImplementation {
         mode: ValidationMode,
     ) -> TestResult<TestValidationResult>;
 
-    #[cfg(feature = "level-validate")]
     /// Custom validator entry point with level.
     fn validate_with_level(
         &self,
@@ -333,7 +332,6 @@ impl CedarTestImplementation for RustEngine {
         TestResult::Success(response)
     }
 
-    #[cfg(feature = "level-validate")]
     fn validate_with_level(
         &self,
         schema: &ValidatorSchema,

@@ -190,8 +190,6 @@ pub struct ValidateArgs {
     #[arg(long, value_enum, default_value_t = ValidationMode::Strict)]
     pub validation_mode: ValidationMode,
     /// Validate the policy at this level.
-    /// This option is experimental and will cause the CLI to exit if it was not
-    /// built with the experimental feature `level-validate` enabled.
     #[arg(long)]
     pub level: Option<u32>,
 }
@@ -894,14 +892,7 @@ pub fn validate(args: &ValidateArgs) -> CedarExitCode {
 
     let validator = Validator::new(schema);
 
-    #[cfg_attr(not(feature = "level-validate"), allow(unused_variables))]
     let result = if let Some(level) = args.level {
-        #[cfg(not(feature = "level-validate"))]
-        {
-            eprintln!("Error: arguments include the experimental option `--level`, but this executable was not built with `level-validate` experimental feature enabled");
-            return CedarExitCode::Failure;
-        }
-        #[cfg(feature = "level-validate")]
         validator.validate_with_level(&pset, mode, level)
     } else {
         validator.validate(&pset, mode)
