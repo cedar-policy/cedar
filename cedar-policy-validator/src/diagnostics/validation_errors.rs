@@ -498,7 +498,7 @@ pub struct EntityDerefLevelViolation {
 pub enum EntityDerefViolationKind {
     /// The policy exceeded the maximum allowed level
     #[error(
-        "the maximum allowed level {allowed_level} is violated. Actual level is {actual_level}"
+        "this policy requires level {actual_level}, which exceeds the maximum allowed level ({allowed_level})"
     )]
     MaximumLevelExceeded {
         /// The maximum level allowed by the schema
@@ -507,9 +507,7 @@ pub enum EntityDerefViolationKind {
         actual_level: crate::level_validate::EntityDerefLevel,
     },
     /// The policy dereferences an entity literal, which isn't allowed at any level
-    #[error(
-        "entity literals are not valid targets for entity dereferencing operations at any level"
-    )]
+    #[error("entity literals cannot be dereferenced at any level")]
     LiteralDerefTarget,
 }
 

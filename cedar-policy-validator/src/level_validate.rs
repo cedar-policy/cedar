@@ -117,9 +117,9 @@ impl LevelChecker<'_> {
     /// initially called on a non-entity-type expression it will return in an
     /// `InternalInvariantViolation`.
     ///
-    /// In order to handle attribtues access on records containing entities
+    /// In order to handle attributes access on records containing entities
     /// (e.g., `{foo: principal}.foo.bar`), this function track an `access_path`
-    /// of record attribtues accessed by the expression. This generalizes the
+    /// of record attributes accessed by the expression. This generalizes the
     /// precondition on `e` so that this function can be called if `e` is a
     /// record literal with a attribute `a` such that `access_path.pop() == some(a)`
     /// and the expression for `a` recursively satisfies the precondition.
@@ -144,7 +144,7 @@ impl LevelChecker<'_> {
                 EntityDerefLevel::zero()
             }
             ExprKind::Lit(Literal::EntityUID(euid)) => {
-                // Allow a literal if it's the current requests env action entity. This is mainly
+                // Allow a literal if it's the current request env's action entity. This is mainly
                 // an artifact of what is convenient in the Lean implementation.
                 if Some(euid.as_ref()) != env.action_entity_uid() {
                     self.level_checking_errors
@@ -462,10 +462,10 @@ mod levels_validation_tests {
         }
 
         let msg = format!(
-            "for policy `{}`, the maximum allowed level {} is violated. Actual level is {}",
+             "for policy `{}`, this policy requires level {}, which exceeds the maximum allowed level ({})",
             p.id(),
-            level,
             actual_level,
+            level,
         );
 
         if underlines.len() == 1 {
@@ -823,7 +823,10 @@ mod levels_validation_tests {
             );
         }
 
-        let msg = format!("for policy `{}`, entity literals are not valid targets for entity dereferencing operations at any level", p.id());
+        let msg = format!(
+            "for policy `{}`, entity literals cannot be dereferenced at any level",
+            p.id()
+        );
 
         if underlines.len() == 1 {
             let expected = ExpectedErrorMessageBuilder::error(&msg)

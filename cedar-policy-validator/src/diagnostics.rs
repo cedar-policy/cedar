@@ -401,8 +401,8 @@ impl ValidationError {
     pub(crate) fn maximum_level_exceeded(
         source_loc: Option<Loc>,
         policy_id: PolicyID,
-        allowed_level: validation_errors::EntityDerefLevel,
-        actual_level: validation_errors::EntityDerefLevel,
+        allowed_level: crate::level_validate::EntityDerefLevel,
+        actual_level: crate::level_validate::EntityDerefLevel,
     ) -> Self {
         validation_errors::EntityDerefLevelViolation {
             source_loc,

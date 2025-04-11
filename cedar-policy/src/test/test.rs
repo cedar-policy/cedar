@@ -4308,7 +4308,7 @@ mod level_validation_tests {
             src,
             &miette::Report::new(result),
             &ExpectedErrorMessageBuilder::error(
-                "for policy `policy0`, the maximum allowed level 1 is violated. Actual level is 2",
+                "for policy `policy0`, this policy requires level 2, which exceeds the maximum allowed level (1)",
             )
             .exactly_one_underline("resource.foo.profile_pic")
             .build(),
@@ -4341,7 +4341,7 @@ mod level_validation_tests {
             src,
             &miette::Report::new(result),
             &ExpectedErrorMessageBuilder::error(
-                "for policy `policy0`, the maximum allowed level 1 is violated. Actual level is 2",
+                "for policy `policy0`, this policy requires level 2, which exceeds the maximum allowed level (1)",
             )
             .exactly_one_underline("resource.foo.profile_pic")
             .build(),
@@ -4438,7 +4438,7 @@ mod level_validation_tests {
             src,
             &miette::Report::new(result),
             &ExpectedErrorMessageBuilder::error(
-                "for policy `policy0`, the maximum allowed level 1 is violated. Actual level is 2",
+                "for policy `policy0`, this policy requires level 2, which exceeds the maximum allowed level (1)",
             )
             .exactly_one_underline("resource.foo.profile_pic")
             .build(),
@@ -4489,7 +4489,7 @@ mod level_validation_tests {
             src,
             &miette::Report::new(result),
             &ExpectedErrorMessageBuilder::error(
-                "for policy `policy0`, the maximum allowed level 1 is violated. Actual level is 2",
+                "for policy `policy0`, this policy requires level 2, which exceeds the maximum allowed level (1)",
             )
             .exactly_one_underline("resource.foo.is_admin")
             .build(),
