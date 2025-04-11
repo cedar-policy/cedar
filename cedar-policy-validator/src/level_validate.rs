@@ -741,6 +741,16 @@ mod levels_validation_tests {
             [r#"(if principal.bool then principal.user.user else resource.user).bool"#],
             3,
         );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { (if principal.user.bool then principal.user.user else resource.user.user).bool };"#,
+            [r#"(if principal.user.bool then principal.user.user else resource.user.user).bool"#],
+            3,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { (if principal.user.user.bool then principal.user.user else resource.user.user).bool };"#,
+            ["(if principal.user.user.bool then principal.user.user else resource.user.user).bool", "principal.user.user.bool"],
+            3,
+        );
     }
 
     #[test]
@@ -754,6 +764,15 @@ mod levels_validation_tests {
             r#"permit(principal, action, resource) when { {foo: principal, bar: principal.user.user, baz: resource.user.user}.foo.bool };"#,
             ["principal.user.user", "resource.user.user"],
             2,
+        );
+    }
+
+    #[test]
+    fn unaccessed_record_is_checked() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { {foo: principal.user, bar: principal.bool} == {foo: principal.nested.user, bar: false} };"#,
+            ["principal.user", "principal.bool", "principal.nested.user"],
+            1,
         );
     }
 
