@@ -47,6 +47,12 @@ Cedar Language Version: TBD
 - Added `PartialResponse::unknown_entities` method (#1557)
 - Added `Entities::len` and `Entities::is_empty` methods (#1562, resolving #1523)
 
+### Fixed
+
+- Fixed bugs in experimental `level-validate` feature. Level validation is now
+  more permissive when checking `if` expressions (fixing #1507), and stricter when
+  checking of record literals and entity tag operations (fixing #1505 and #1503). (#1567)
+
 ## [4.3.3] - 2025-02-25
 
 ### Changed
