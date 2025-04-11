@@ -21,7 +21,6 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use std::fmt::Display;
-use std::ops::{Add, Neg};
 
 use cedar_policy_core::fuzzy_match::fuzzy_search;
 use cedar_policy_core::impl_diagnostic_from_source_loc_opt_field;
@@ -493,38 +492,18 @@ impl Display for EntityDerefLevel {
     }
 }
 
-impl From<u32> for EntityDerefLevel {
-    fn from(value: u32) -> Self {
+impl<I: Into<i64>> From<I> for EntityDerefLevel {
+    fn from(value: I) -> Self {
         EntityDerefLevel {
-            level: i64::from(value),
+            level: value.into(),
         }
-    }
-}
-
-impl Add for EntityDerefLevel {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        EntityDerefLevel {
-            level: self.level + rhs.level,
-        }
-    }
-}
-
-impl Neg for EntityDerefLevel {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        EntityDerefLevel { level: -self.level }
     }
 }
 
 impl EntityDerefLevel {
-    /// Decrement the entity deref level
-    pub fn decrement(&self) -> Self {
-        EntityDerefLevel {
-            level: self.level - 1,
-        }
+    /// Increment the entity deref level
+    pub fn increment(&self) -> Self {
+        (self.level + 1).into()
     }
 }
 

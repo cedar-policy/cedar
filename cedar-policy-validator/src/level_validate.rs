@@ -48,7 +48,7 @@ impl Validator {
             let mut level_checking_errors = HashSet::new();
             let mut level_checker = LevelChecker {
                 policy_id: p.id(),
-                global_max_level: EntityDerefLevel::from(max_deref_level),
+                max_level: max_deref_level.into(),
                 level_checking_errors: &mut level_checking_errors,
             };
             for (req_env, policy_check) in type_annotated_asts {
@@ -73,7 +73,7 @@ struct LevelChecker<'a> {
     /// ID of the policy we're typechecking; used for associating any validation
     /// errors with the correct policy ID
     policy_id: &'a PolicyID,
-    global_max_level: EntityDerefLevel,
+    max_level: EntityDerefLevel,
     level_checking_errors: &'a mut HashSet<ValidationError>,
 }
 
@@ -96,12 +96,11 @@ impl LevelChecker<'_> {
     fn check_entity_deref_target_level(
         &mut self,
         e: &Expr<Option<Type>>,
-        local_max_level: EntityDerefLevel,
         mut access_path: Vec<SmolStr>,
         env: &RequestEnv<'_>,
     ) -> EntityDerefLevel {
         match e.expr_kind() {
-            ExprKind::Var(_) => EntityDerefLevel { level: 0 },
+            ExprKind::Var(_) => 0.into(),
             // A slot cannot currently appear in an entity dereference position,
             // but, if it could, we would handle it as an entity literal.
             ExprKind::Slot(_) => {
@@ -110,7 +109,7 @@ impl LevelChecker<'_> {
                         e.source_loc().cloned(),
                         self.policy_id.clone(),
                     ));
-                EntityDerefLevel { level: 0 }
+                0.into()
             }
             ExprKind::Lit(Literal::EntityUID(euid)) => {
                 // Allow a literal if it's the current requests env action entity. This is mainly
@@ -122,7 +121,7 @@ impl LevelChecker<'_> {
                             self.policy_id.clone(),
                         ));
                 }
-                EntityDerefLevel { level: 0 }
+                0.into()
             }
             ExprKind::If {
                 test_expr,
@@ -130,44 +129,22 @@ impl LevelChecker<'_> {
                 else_expr,
             } => {
                 self.check_expr_level(test_expr, env);
-                let then_lvl = self.check_entity_deref_target_level(
-                    then_expr,
-                    local_max_level,
-                    access_path.clone(),
-                    env,
-                );
-                let else_lvl = self.check_entity_deref_target_level(
-                    else_expr,
-                    local_max_level,
-                    access_path,
-                    env,
-                );
-                EntityDerefLevel::max(then_lvl, else_lvl)
+                let then_lvl =
+                    self.check_entity_deref_target_level(then_expr, access_path.clone(), env);
+                let else_lvl = self.check_entity_deref_target_level(else_expr, access_path, env);
+                then_lvl.max(else_lvl)
             }
             // We don't need to handle `HasAttr` here because it has type Boolean.
             ExprKind::GetAttr { expr, attr } => match expr.data() {
-                Some(Type::EntityOrRecord(EntityRecordKind::Entity { .. })) => {
-                    let lvl = self.check_entity_deref_target_level(
-                        expr,
-                        local_max_level.decrement(),
-                        access_path,
-                        env,
-                    );
-                    EntityDerefLevel {
-                        level: lvl.level + 1,
-                    }
-                }
+                Some(Type::EntityOrRecord(EntityRecordKind::Entity { .. })) => self
+                    .check_entity_deref_target_level(expr, access_path, env)
+                    .increment(),
                 Some(Type::EntityOrRecord(EntityRecordKind::Record { .. })) => {
                     // We push `attr` onto the access path so that, if the
                     // target of the `getAttr` is a literal, we can avoid
                     // reporting false positives for the unaccessed branches.
                     access_path.push(attr.clone());
-                    self.check_entity_deref_target_level(
-                        expr,
-                        local_max_level.decrement(),
-                        access_path,
-                        env,
-                    )
+                    self.check_entity_deref_target_level(expr, access_path, env)
                 }
                 // The typechecker ensures `GetAttr` only applies to entities and records. This also
                 // captures `AnyEntity` and `ActionEntity` because these types will never have any attributes.
@@ -178,7 +155,7 @@ impl LevelChecker<'_> {
                             self.policy_id.clone(),
                         ),
                     );
-                    EntityDerefLevel { level: 0 }
+                    0.into()
                 }
             },
             ExprKind::BinaryApp {
@@ -187,16 +164,10 @@ impl LevelChecker<'_> {
                 arg1,
                 arg2,
             } => {
-                let lvl = self.check_entity_deref_target_level(
-                    arg1,
-                    local_max_level.decrement(),
-                    access_path,
-                    env,
-                );
+                let deref_target_level =
+                    self.check_entity_deref_target_level(arg1, access_path, env);
                 self.check_expr_level(arg2, env);
-                EntityDerefLevel {
-                    level: lvl.level + 1,
-                }
+                deref_target_level.increment()
             }
             ExprKind::Record(attrs) => {
                 match access_path
@@ -207,12 +178,7 @@ impl LevelChecker<'_> {
                         for (_, e) in attrs.iter().filter(|(a, _)| *a != attr) {
                             self.check_expr_level(e, env);
                         }
-                        self.check_entity_deref_target_level(
-                            accessed_e,
-                            local_max_level,
-                            access_path,
-                            env,
-                        )
+                        self.check_entity_deref_target_level(accessed_e, access_path, env)
                     }
                     // From the `access_path` precondition, for a record
                     // literal, the access path be non-empty and start with an
@@ -224,7 +190,7 @@ impl LevelChecker<'_> {
                                 self.policy_id.clone(),
                             ),
                         );
-                        EntityDerefLevel { level: 0 }
+                        0.into()
                     }
                 }
             }
@@ -238,7 +204,7 @@ impl LevelChecker<'_> {
                         e.source_loc().cloned(),
                         self.policy_id.clone(),
                     ));
-                EntityDerefLevel { level: 0 }
+                0.into()
             }
         }
     }
@@ -267,21 +233,14 @@ impl LevelChecker<'_> {
                 arg1,
                 arg2,
             } => {
-                let deref_target_lvl = self.check_entity_deref_target_level(
-                    &arg1,
-                    self.global_max_level.decrement(),
-                    Vec::new(),
-                    env,
-                );
-                if deref_target_lvl >= self.global_max_level {
+                let deref_target_lvl = self.check_entity_deref_target_level(&arg1, Vec::new(), env);
+                if deref_target_lvl >= self.max_level {
                     self.level_checking_errors
                         .insert(ValidationError::maximum_level_exceeded(
                             e.source_loc().cloned(),
                             self.policy_id.clone(),
-                            self.global_max_level,
-                            EntityDerefLevel {
-                                level: deref_target_lvl.level + 1,
-                            },
+                            self.max_level,
+                            deref_target_lvl.increment(),
                         ));
                 }
                 self.check_expr_level(arg2, env);
@@ -297,21 +256,15 @@ impl LevelChecker<'_> {
             }
             ExprKind::HasAttr { expr, .. } | ExprKind::GetAttr { expr, .. } => match expr.data() {
                 Some(Type::EntityOrRecord(EntityRecordKind::Entity { .. })) => {
-                    let deref_target_lvl = self.check_entity_deref_target_level(
-                        &expr,
-                        self.global_max_level.decrement(),
-                        Vec::new(),
-                        env,
-                    );
-                    if deref_target_lvl >= self.global_max_level {
+                    let deref_target_lvl =
+                        self.check_entity_deref_target_level(&expr, Vec::new(), env);
+                    if deref_target_lvl >= self.max_level {
                         self.level_checking_errors
                             .insert(ValidationError::maximum_level_exceeded(
                                 e.source_loc().cloned(),
                                 self.policy_id.clone(),
-                                self.global_max_level,
-                                EntityDerefLevel {
-                                    level: deref_target_lvl.level + 1,
-                                },
+                                self.max_level,
+                                deref_target_lvl.increment(),
                             ));
                     }
                 }
