@@ -629,6 +629,11 @@ mod levels_validation_tests {
             [r#"context.nested.user.bool"#],
             1,
         );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { Action::"view" in action };"#,
+            [r#"Action::"view" in action"#],
+            1,
+        );
     }
 
     #[test]
@@ -677,7 +682,17 @@ mod levels_validation_tests {
         );
         assert_requires_level(
             r#"permit(principal, action, resource) when { principal.nested.user.nested.user.bool };"#,
-            [r#"principal.nested.user.nested.user.bool"#],
+            ["principal.nested.user.nested.user.bool"],
+            3,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has user.user.bool && principal.user.user.bool };"#,
+            ["principal has user.user.bool", "principal.user.user.bool"],
+            3,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.hasTag("foo") && principal.getTag("foo").hasTag("bar") && principal.getTag("foo").getTag("bar").bool };"#,
+            [r#"principal.getTag("foo").getTag("bar").bool"#],
             3,
         );
     }
@@ -839,6 +854,11 @@ mod levels_validation_tests {
             1,
         );
         assert_derefs_entity_lit(
+            r#"permit(principal, action, resource) when { User::"alice" has user.user }; "#,
+            [r#"User::"alice""#],
+            2,
+        );
+        assert_derefs_entity_lit(
             r#"permit(principal, action, resource) when { User::"alice".hasTag("foo") }; "#,
             [r#"User::"alice""#],
             1,
@@ -856,6 +876,11 @@ mod levels_validation_tests {
         assert_derefs_entity_lit(
             r#"permit(principal, action, resource) when { (if principal.bool then User::"alice" else User::"bob").bool}; "#,
             [r#"User::"alice""#, r#"User::"bob""#],
+            1,
+        );
+        assert_derefs_entity_lit(
+            r#"permit(principal, action, resource) when { {foo: User::"alice", bar: User::"bob"}.foo.bool }; "#,
+            [r#"User::"alice""#],
             1,
         );
     }
