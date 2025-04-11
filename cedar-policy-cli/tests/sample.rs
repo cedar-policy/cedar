@@ -630,7 +630,6 @@ fn test_validate_samples(
     assert_eq!(exit_code, output, "{:#?}", cmd)
 }
 
-#[cfg(feature = "level-validate")]
 #[rstest]
 #[case(
     "sample-data/tiny_sandboxes/level-validation/policy-level-0.cedar",

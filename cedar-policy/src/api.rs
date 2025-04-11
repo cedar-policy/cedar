@@ -1385,7 +1385,6 @@ impl Validator {
         ValidationResult::from(self.0.validate(&pset.ast, mode.into()))
     }
 
-    #[cfg(feature = "level-validate")]
     /// Validate all policies in a policy set, collecting all validation errors
     /// found into the returned `ValidationResult`. If validation passes, run level
     /// validation (RFC 76). Each error is returned together with the policy id of the policy

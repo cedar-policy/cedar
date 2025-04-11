@@ -4206,7 +4206,6 @@ mod partial_schema {
     }
 }
 
-#[cfg(feature = "level-validate")]
 mod level_validation_tests {
     use crate::ValidationMode;
     use crate::{Policy, PolicySet, ValidationError, Validator};

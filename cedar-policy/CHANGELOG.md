@@ -29,6 +29,11 @@ Cedar Language Version: TBD
 
 ### Added
 
+- Stabilized [RFC 76](https://github.com/cedar-policy/rfcs/pull/76), removing
+  the experimental `level-validate` feature flag. That functionality is now available
+  without the feature flag. Stabilization comes with changes to fix bugs in the features.
+  Level validation is now more permissive when checking `if` expressions (fixing #1507),
+  and stricter when checking record literals and entity tag operations (fixing #1505 and #1503). (#1567)
 - Added `Entities::remove_entities()` to remove `Entity`s from an `Entities` struct (resolving #701)
 - Added `PolicySet::merge()` to merge a `PolicySet` into another `PolicySet` struct (resolving #610)
 - Implemented [RFC 53 (enumerated entity types)](https://github.com/cedar-policy/rfcs/blob/main/text/0053-enum-entities.md)  (#1377)
@@ -46,12 +51,6 @@ Cedar Language Version: TBD
   alias for `EntityId::as_ref()` with the `AsRef` impl that produces `&str`. (#1555)
 - Added `PartialResponse::unknown_entities` method (#1557)
 - Added `Entities::len` and `Entities::is_empty` methods (#1562, resolving #1523)
-
-### Fixed
-
-- Fixed bugs in experimental `level-validate` feature. Level validation is now
-  more permissive when checking `if` expressions (fixing #1507), and stricter when
-  checking record literals and entity tag operations (fixing #1505 and #1503). (#1567)
 
 ## [4.3.3] - 2025-02-25
 
