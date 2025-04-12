@@ -111,14 +111,14 @@ pub Schema: ASchema = {
 
 #[inline]
 Namedspace: Namespace = {
-    NAMESPACE <p: Path> "{" <decls: Annotated<Decl>*> "}"
-        => Namespace { name: Some(p), decls},
+     <l:@L> NAMESPACE <p: Path> "{" <decls: Annotated<Decl>*> "}" <r:@R> 
+        => Namespace { name: Some(p), decls, loc: Some(Loc::new(l..r, Arc::clone(src)))},
 }
 
 // Namespace := 'namespace' Path '{' {Decl} '}'
 Namespace: Annotated<Namespace> = {
     <ns: Annotated<Namedspace>> => ns,
-    <decl: Annotated<Decl>> <r:@R> => Annotated {data: Namespace {name: None, decls: vec![decl]}, annotations: Annotations::new()},
+    <l:@L> <decl: Annotated<Decl>> <r:@R> => Annotated {data: Namespace {name: None, decls: vec![decl], loc: Some(Loc::new(l..r, Arc::clone(src)))}, annotations: Annotations::new()},
 }
 
 // Decl := Entity | Action | TypeDecl
@@ -157,24 +157,20 @@ TypeDecl: Node<Declaration> = {
 // AppDecls := ('principal' | 'resource') ':' EntTypes [',' | ',' AppDecls]
 //          | 'context' ':' (Path | RecType) [',' | ',' AppDecls]
 AppDecls: Node<NonEmpty<Node<AppDecl>>> = {
-    <l:@L> <pr: PrincipalOrResource> ":" <ets:EntTypes> ","? <r:@R>
-        =>?
-                NonEmpty::collect(ets.into_iter()).ok_or(ParseError::User {
-                    error: UserError::EmptyList(Node::with_source_loc((), Loc::new(l..r, Arc::clone(src))))})
-                    .map(|ets|
-                        Node::with_source_loc(
-                            nonempty![Node::with_source_loc(AppDecl::PR(PRAppDecl { kind:pr, entity_tys: ets}), Loc::new(l..r, Arc::clone(src)))],
-                            Loc::new(l..r, Arc::clone(src)))),
-    <l:@L> <pr: PrincipalOrResource> ":" <ets:EntTypes> "," <r:@R> <mut ds: AppDecls>
-        =>?
-                NonEmpty::collect(ets.into_iter()).ok_or(ParseError::User {
-                    error: UserError::EmptyList(Node::with_source_loc((), Loc::new(l..r, Arc::clone(src))))})
-                    .map(|ets|
-                        {
-                            let (mut ds, _) = ds.into_inner();
-                            ds.insert(0, Node::with_source_loc(AppDecl::PR(PRAppDecl { kind:pr, entity_tys: ets}), Loc::new(l..r, Arc::clone(src))));
-                            Node::with_source_loc(ds, Loc::new(l..r, Arc::clone(src)))
-                        }),
+    <l:@L> <pr: PrincipalOrResource> ":" <ets:EntTypes> <r:@R> ","?
+        => {
+            let entity_tys: Option<NonEmpty<Path>> = NonEmpty::collect(ets.into_iter());
+            Node::with_source_loc(
+                nonempty![Node::with_source_loc(AppDecl::PR(PRAppDecl { kind:pr, entity_tys }), Loc::new(l..r, Arc::clone(src)))],
+                Loc::new(l..r, Arc::clone(src)))
+        },
+    <l:@L> <pr: PrincipalOrResource> ":" <ets:EntTypes> <r:@R> "," <mut ds: AppDecls>
+        => {
+            let (mut ds, _) = ds.into_inner();
+            let entity_tys: Option<NonEmpty<Path>> = NonEmpty::collect(ets.into_iter());
+            ds.insert(0, Node::with_source_loc(AppDecl::PR(PRAppDecl { kind:pr, entity_tys }), Loc::new(l..r, Arc::clone(src))));
+            Node::with_source_loc(ds, Loc::new(l..r, Arc::clone(src)))
+        },
     <l:@L> CONTEXT ":" <p:Path> ","? <r:@R>
         =>  Node::with_source_loc(
                 nonempty![Node::with_source_loc(AppDecl::Context(Either::Left(p)), Loc::new(l..r, Arc::clone(src)))],

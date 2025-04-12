@@ -19,105 +19,61 @@ package cedar_policy_validator;
 
 import "core.proto";
 
-message ValidatorSchema {
-    repeated EntityTypeWithTypesMap entity_types = 1;
-    repeated EntityUidWithActionIdsMap action_ids = 2;
+// the protobuf Schema message describes a complete schema.
+message Schema {
+    repeated EntityDecl entity_decls = 1;
+    repeated ActionDecl action_decls = 2;
 }
 
-// Workaround since messages can't be dictionary keys
-message EntityTypeWithTypesMap {
-    cedar_policy_core.EntityType key = 1;
-    ValidatorEntityType value = 2;
-}
-
-message EntityUidWithActionIdsMap {
-    cedar_policy_core.EntityUid key = 1;
-    ValidatorActionId value = 2;
-}
-
-message ValidatorEntityType {
-    cedar_policy_core.EntityType name = 1;
-    repeated cedar_policy_core.EntityType descendants = 2;
-    Attributes attributes = 3;
-    OpenTag open_attributes = 4;
-    Tag tags = 5;
+// the protobuf EntityDecl message contains all of the schema's
+// information about a single entity type.
+message EntityDecl {
+    cedar_policy_core.Name name = 1;
+    repeated cedar_policy_core.Name descendants = 2;
+    map<string, AttributeType> attributes = 3;
+    optional Type tags = 5;
     repeated string enum_choices = 6;
 }
 
-message ValidatorActionId {
+// the protobuf ActionDecl message contains all of the schema's
+// information about a single action.
+message ActionDecl {
     cedar_policy_core.EntityUid name = 1;
-    ValidatorApplySpec applies_to = 2;
     repeated cedar_policy_core.EntityUid descendants = 3;
-    Type context = 4;
-    Attributes attribute_types = 5;
-    // Deserialize Expr as Value
-    map<string, cedar_policy_core.Expr> attributes = 6;
-}
-
-message ValidatorApplySpec {
-    repeated cedar_policy_core.EntityType principal_apply_spec = 1;
-    repeated cedar_policy_core.EntityType resource_apply_spec = 2;
+    map<string, AttributeType> context = 4;
+    repeated cedar_policy_core.Name principal_types = 5;
+    repeated cedar_policy_core.Name resource_types = 6;
 }
 
 message Type {
     oneof data {
-        Ty ty = 1;
-        Type set_type = 2;
-        EntityRecordKind entityOrRecord = 3;
-        cedar_policy_core.Name name = 4;
+        // Primitive types
+        Prim prim = 1;
+        // Set with the specified element type
+        Type set_elem = 2;
+        // Entity type
+        cedar_policy_core.Name entity = 3;
+        // Record type
+        // Map types are not allowed inside oneof, so we can't inline the map here
+        Record record = 4;
+        // Extension type
+        cedar_policy_core.Name ext = 5;
     }
 
-    enum Ty {
-        Never = 0;
-        True = 1;
-        False = 2;
-        EmptySetType = 3;
-        Bool = 4;
-        String = 5;
-        Long = 6;
-    }
-}
-
-message EntityRecordKind {
-    oneof data {
-        Ty ty = 1;
-        Record record = 2;
-        Entity entity = 3;
-        ActionEntity actionEntity = 4;
+    enum Prim {
+        String = 0;
+        Bool = 1;
+        Long = 2;
     }
 
-    enum Ty {
-        AnyEntity = 0; // AnyEntity
-    }
     message Record {
-        Attributes attrs = 1;
-        OpenTag open_attributes = 2;
+        map<string, AttributeType> attrs = 1;
     }
-    message Entity {
-        cedar_policy_core.EntityType e = 1;
-    }
-    message ActionEntity {
-        cedar_policy_core.EntityType name = 1;
-        Attributes attrs = 2;
-    }
-}
-
-enum OpenTag {
-    OpenAttributes = 0;
-    ClosedAttributes = 1;
-}
-
-message Attributes {
-    map<string, AttributeType> attrs = 1;
 }
 
 message AttributeType {
     Type attr_type = 1;
     bool is_required = 2;
-}
-
-message Tag {
-    Type optional_type = 1;
 }
 
 enum ValidationMode {

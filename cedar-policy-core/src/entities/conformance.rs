@@ -32,19 +32,21 @@ use err::{EntitySchemaConformanceError, InvalidEnumEntityError, UnexpectedEntity
 
 /// Struct used to check whether entities conform to a schema
 #[derive(Debug, Clone)]
-pub struct EntitySchemaConformanceChecker<'a, S: Schema> {
+pub struct EntitySchemaConformanceChecker<'a, S> {
     /// Schema to check conformance with
     schema: &'a S,
     /// Extensions which are active for the conformance checks
     extensions: &'a Extensions<'a>,
 }
 
-impl<'a, S: Schema> EntitySchemaConformanceChecker<'a, S> {
+impl<'a, S> EntitySchemaConformanceChecker<'a, S> {
     /// Create a new checker
     pub fn new(schema: &'a S, extensions: &'a Extensions<'a>) -> Self {
         Self { schema, extensions }
     }
+}
 
+impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
     /// Validate an entity against the schema, returning an
     /// [`EntitySchemaConformanceError`] if it does not comply.
     pub fn validate_entity(&self, entity: &Entity) -> Result<(), EntitySchemaConformanceError> {
@@ -162,7 +164,7 @@ pub fn is_valid_enumerated_entity(
     choices
         .iter()
         .find(|id| uid.eid() == *id)
-        .ok_or(InvalidEnumEntityError {
+        .ok_or_else(|| InvalidEnumEntityError {
             uid: uid.clone(),
             choices: choices.to_vec(),
         })
@@ -183,15 +185,13 @@ pub(crate) fn validate_euid(
 }
 
 fn validate_euids_in_subexpressions<'a>(
-    exprs: impl Iterator<Item = &'a crate::ast::Expr>,
+    exprs: impl IntoIterator<Item = &'a crate::ast::Expr>,
     schema: &impl Schema,
 ) -> std::result::Result<(), InvalidEnumEntityError> {
-    exprs
-        .map(|e| match e.expr_kind() {
-            ExprKind::Lit(Literal::EntityUID(euid)) => validate_euid(schema, &euid),
-            _ => Ok(()),
-        })
-        .collect::<std::result::Result<(), _>>()
+    exprs.into_iter().try_for_each(|e| match e.expr_kind() {
+        ExprKind::Lit(Literal::EntityUID(euid)) => validate_euid(schema, euid.as_ref()),
+        _ => Ok(()),
+    })
 }
 
 /// Validate if enumerated entities in `val` are valid

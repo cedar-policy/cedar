@@ -80,7 +80,7 @@ impl<'a> Typechecker<'a> {
             schema,
             extensions: ExtensionSchemas::all_available(),
             mode,
-            unlinked_envs: Self::unlinked_request_envs(schema, mode).collect(),
+            unlinked_envs: schema.unlinked_request_envs(mode).collect(),
         }
     }
 
@@ -199,43 +199,6 @@ impl<'a> Typechecker<'a> {
                 })
             })
             .collect()
-    }
-
-    fn unlinked_request_envs(
-        schema: &ValidatorSchema,
-        mode: ValidationMode,
-    ) -> impl Iterator<Item = RequestEnv<'_>> + '_ {
-        // Gather all of the actions declared in the schema.
-        let all_actions = schema
-            .action_ids()
-            .filter_map(|a| schema.get_action_id(a.name()));
-
-        // For every action compute the cross product of the principal and
-        // resource applies_to sets.
-        all_actions
-            .flat_map(|action| {
-                action.applies_to_principals().flat_map(|principal| {
-                    action
-                        .applies_to_resources()
-                        .map(|resource| RequestEnv::DeclaredAction {
-                            principal,
-                            action: &action.name,
-                            resource,
-                            context: &action.context,
-                            principal_slot: None,
-                            resource_slot: None,
-                        })
-                })
-            })
-            .chain(if mode.is_partial() {
-                // A partial schema might not list all actions, and may not
-                // include all principal and resource types for the listed ones.
-                // So we typecheck with a fully unknown request to handle these
-                // missing cases.
-                Some(RequestEnv::UndeclaredAction)
-            } else {
-                None
-            })
     }
 
     /// Given a request environment and a template, return new environments
@@ -1898,8 +1861,6 @@ impl<'a> SingleEnvTypechecker<'a> {
                             .is_in(lhs_expr, rhs_expr),
                     );
                 }
-                let lhs_ty = lhs_expr.data().clone();
-                let rhs_ty = rhs_expr.data().clone();
                 let lhs_as_euid_lit = self.replace_action_var_with_euid(lhs);
                 let rhs_as_euid_lit = self.replace_action_var_with_euid(rhs);
                 match (lhs_as_euid_lit.expr_kind(), rhs_as_euid_lit.expr_kind()) {
@@ -1971,80 +1932,9 @@ impl<'a> SingleEnvTypechecker<'a> {
                             .is_in(lhs_expr, rhs_expr),
                     ),
                 }
-                .then_typecheck(|type_of_in, _| {
-                    if !self.mode.is_strict() {
-                        TypecheckAnswer::success(type_of_in)
-                    } else if matches!(type_of_in.data(), Some(Type::True | Type::False)) {
-                        TypecheckAnswer::success(type_of_in)
-                    } else {
-                        match (lhs_ty, rhs_ty) {
-                            (Some(lhs_ty), Some(rhs_ty)) => {
-                                match (
-                                    Self::get_as_single_entity_type(lhs_ty),
-                                    Self::get_as_single_entity_type(rhs_ty),
-                                ) {
-                                    (Some(lhs_name), Some(rhs_name)) => {
-                                        let lhs_ty_in_rhs_ty = self
-                                            .schema
-                                            .get_entity_type(&rhs_name)
-                                            .map(|ety| ety.descendants.contains(&lhs_name))
-                                            .unwrap_or(false);
-                                        // A schema may always declare that an action entity is a member of another action entity,
-                                        // regardless of their exact types (i.e., their namespaces), so we shouldn't treat it as an error.
-                                        let action_in_action =
-                                            lhs_name.is_action() && rhs_name.is_action();
-                                        if lhs_name == rhs_name
-                                            || action_in_action
-                                            || lhs_ty_in_rhs_ty
-                                        {
-                                            TypecheckAnswer::success(type_of_in)
-                                        } else {
-                                            // We could actually just return `Type::False`, but this is incurs a larger Dafny proof update.
-                                            type_errors.push(
-                                                ValidationError::hierarchy_not_respected(
-                                                    in_expr.source_loc().cloned(),
-                                                    self.policy_id.clone(),
-                                                    Some(lhs_name),
-                                                    Some(rhs_name),
-                                                ),
-                                            );
-                                            TypecheckAnswer::fail(type_of_in)
-                                        }
-                                    }
-                                    _ => {
-                                        type_errors.push(ValidationError::hierarchy_not_respected(
-                                            in_expr.source_loc().cloned(),
-                                            self.policy_id.clone(),
-                                            None,
-                                            None,
-                                        ));
-                                        TypecheckAnswer::fail(type_of_in)
-                                    }
-                                }
-                            }
-                            // An argument type is `None`, so one the arguments must have failed to typecheck already.
-                            // There's no other interesting error to report in this case.
-                            _ => TypecheckAnswer::fail(type_of_in),
-                        }
-                    }
-                })
+                .then_typecheck(|type_of_in, _| TypecheckAnswer::success(type_of_in))
             })
         })
-    }
-
-    fn get_as_single_entity_type(ty: Type) -> Option<EntityType> {
-        match ty {
-            Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => lub.into_single_entity(),
-            Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => Some(name),
-            Type::Set {
-                element_type: Some(element_type),
-            } => match *element_type {
-                Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => lub.into_single_entity(),
-                Type::EntityOrRecord(EntityRecordKind::ActionEntity { name, .. }) => Some(name),
-                _ => None,
-            },
-            _ => None,
-        }
     }
 
     // Given an expression, if that expression is a literal or the `action`
@@ -2551,6 +2441,8 @@ impl<'a> SingleEnvTypechecker<'a> {
             Ok(efunc) => {
                 let arg_tys = efunc.argument_types();
                 let ret_ty = efunc.return_type();
+                // since we mutate several times, I think readability is better if we keep a consistent pattern, rather than using Clippy's suggestion for the first block
+                #[allow(clippy::useless_let_if_seq)]
                 let mut failed = false;
                 if args.len() != arg_tys.len() {
                     type_errors.push(ValidationError::wrong_number_args(

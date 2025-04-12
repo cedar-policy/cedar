@@ -22,9 +22,6 @@ use crate::transitive_closure::{compute_tc, enforce_tc_and_dag};
 use std::collections::{hash_map, HashMap};
 use std::sync::Arc;
 
-use serde::Serialize;
-use serde_with::serde_as;
-
 /// Module for checking that entities conform with a schema
 pub mod conformance;
 /// Module for error types
@@ -44,29 +41,20 @@ use err::*;
 /// Represents an entity hierarchy, and allows looking up `Entity` objects by
 /// UID.
 //
-/// Note that `Entities` is `Serialize`, but currently this is only used for the
-/// FFI layer in DRT. All others use (and should use) the `from_json_*()` and
-/// `write_to_json()` methods as necessary.
-#[serde_as]
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+/// Note that `Entities` is not `Serialize` itself -- use either the
+/// `from_json_*()` and `write_to_json()` methods here, or the `proto` module in
+/// `cedar-policy`, which is capable of ser/de both Core types like this and
+/// `cedar-policy` types.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Entities {
-    /// Serde cannot serialize a HashMap to JSON when the key to the map cannot
-    /// be serialized to a JSON string. This is a limitation of the JSON format.
-    /// `serde_as` annotation are used to serialize the data as associative
-    /// lists instead.
-    ///
     /// Important internal invariant: for any `Entities` object that exists,
     /// the `ancestor` relation is transitively closed.
-    #[serde_as(as = "Vec<(_, _)>")]
     entities: HashMap<EntityUID, Arc<Entity>>,
 
     /// The mode flag determines whether this store functions as a partial store or
     /// as a fully concrete store.
     /// Mode::Concrete means that the store is fully concrete, and failed dereferences are an error.
     /// Mode::Partial means the store is partial, and failed dereferences result in a residual.
-    #[serde(default)]
-    #[serde(skip_deserializing)]
-    #[serde(skip_serializing)]
     mode: Mode,
 }
 
@@ -265,6 +253,16 @@ impl Entities {
         })
     }
 
+    /// Returns the length of the `Entities` object
+    pub fn len(&self) -> usize {
+        self.entities.len()
+    }
+
+    /// Returns `true` if the `Entities` object is empty
+    pub fn is_empty(&self) -> bool {
+        self.entities.is_empty()
+    }
+
     /// Convert an `Entities` object into a JSON value suitable for parsing in
     /// via `EntityJsonParser`.
     ///
@@ -315,11 +313,15 @@ impl Entities {
         entities_by_type
     }
 
-    /// Write entities into a DOT graph
-    pub fn to_dot_str(&self) -> String {
-        let mut dot_str = String::new();
+    /// Write entities into a DOT graph.  This function only returns an `Err`
+    /// result on a failing `write!` to `f`, so it is infallible if the `Write`
+    /// implementation cannot fail (e.g., `String`).
+    pub fn to_dot_str(&self, f: &mut impl std::fmt::Write) -> std::fmt::Result {
         // write prelude
-        dot_str.push_str("strict digraph {\n\tordering=\"out\"\n\tnode[shape=box]\n");
+        write!(
+            f,
+            "strict digraph {{\n\tordering=\"out\"\n\tnode[shape=box]\n"
+        )?;
 
         // From DOT language reference:
         // An ID is one of the following:
@@ -329,39 +331,39 @@ impl Entities {
         // an HTML string (<...>).
         // The best option to convert a `Name` or an `EntityUid` is to use double-quoted string.
         // The `escape_debug` method should be sufficient for our purpose.
-        fn to_dot_id(v: &impl std::fmt::Display) -> String {
-            format!("\"{}\"", v.to_string().escape_debug())
+        fn to_dot_id(f: &mut impl std::fmt::Write, v: &impl std::fmt::Display) -> std::fmt::Result {
+            write!(f, "\"{}\"", v.to_string().escape_debug())
         }
 
         // write clusters (subgraphs)
         let entities_by_type = self.get_entities_by_entity_type();
 
         for (et, entities) in entities_by_type {
-            dot_str.push_str(&format!(
-                "\tsubgraph \"cluster_{et}\" {{\n\t\tlabel={}\n",
-                to_dot_id(&et)
-            ));
+            write!(f, "\tsubgraph \"cluster_{et}\" {{\n\t\tlabel=",)?;
+            to_dot_id(f, &et)?;
+            writeln!(f)?;
             for entity in entities {
-                let euid = to_dot_id(&entity.uid());
-                let label = format!(r#"[label={}]"#, to_dot_id(&entity.uid().eid().escaped()));
-                dot_str.push_str(&format!("\t\t{euid} {label}\n"));
+                write!(f, "\t\t")?;
+                to_dot_id(f, &entity.uid())?;
+                write!(f, " [label=")?;
+                to_dot_id(f, &entity.uid().eid().escaped())?;
+                writeln!(f, "]")?;
             }
-            dot_str.push_str("\t}\n");
+            writeln!(f, "\t}}")?;
         }
 
         // adding edges
         for entity in self.iter() {
             for ancestor in entity.ancestors() {
-                dot_str.push_str(&format!(
-                    "\t{} -> {}\n",
-                    to_dot_id(&entity.uid()),
-                    to_dot_id(&ancestor)
-                ));
+                write!(f, "\t")?;
+                to_dot_id(f, &entity.uid())?;
+                write!(f, " -> ")?;
+                to_dot_id(f, &ancestor)?;
+                writeln!(f)?;
             }
         }
-
-        dot_str.push_str("}\n");
-        dot_str
+        writeln!(f, "}}")?;
+        Ok(())
     }
 }
 
@@ -516,10 +518,10 @@ pub enum TCComputation {
 #[allow(clippy::panic)]
 #[allow(clippy::cognitive_complexity)]
 mod json_parsing_tests {
-
     use super::*;
     use crate::{extensions::Extensions, test_utils::*, transitive_closure::TcError};
     use cool_asserts::assert_matches;
+    use std::collections::HashSet;
 
     #[test]
     fn simple_json_parse1() {
@@ -1900,7 +1902,7 @@ mod json_parsing_tests {
                     ),
                 ),
             ],
-            [].into_iter().collect(),
+            HashSet::new(),
             [
                 EntityUID::with_eid("parent1"),
                 EntityUID::with_eid("parent2"),
@@ -1945,7 +1947,7 @@ mod json_parsing_tests {
                 "oops".into(),
                 RestrictedExpr::record([("__entity".into(), RestrictedExpr::val("hi"))]).unwrap(),
             )],
-            [].into_iter().collect(),
+            HashSet::new(),
             [
                 EntityUID::with_eid("parent1"),
                 EntityUID::with_eid("parent2"),
@@ -2088,6 +2090,34 @@ mod entities_tests {
     }
 
     #[test]
+    fn test_len() {
+        let (e0, e1, e2, e3) = test_entities();
+        let v = vec![e0.clone(), e1.clone(), e2.clone(), e3.clone()];
+        let es = Entities::from_entities(
+            v,
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        )
+        .expect("Failed to construct entities");
+        assert_eq!(es.len(), 4);
+        assert!(!es.is_empty());
+    }
+
+    #[test]
+    fn test_is_empty() {
+        let es = Entities::from_entities(
+            vec![],
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        )
+        .expect("Failed to construct entities");
+        assert_eq!(es.len(), 0);
+        assert!(es.is_empty());
+    }
+
+    #[test]
     fn test_iter() {
         let (e0, e1, e2, e3) = test_entities();
         let v = vec![e0.clone(), e1.clone(), e2.clone(), e3.clone()];
@@ -2224,7 +2254,7 @@ mod schema_based_parsing_tests {
     use nonempty::NonEmpty;
     use serde_json::json;
     use smol_str::SmolStr;
-    use std::collections::HashSet;
+    use std::collections::{BTreeMap, HashSet};
     use std::sync::Arc;
 
     /// Mock schema impl used for most of these tests
@@ -2243,8 +2273,8 @@ mod schema_based_parsing_tests {
                 r#"Action::"view""# => Some(Arc::new(Entity::new_with_attr_partial_value(
                     action.clone(),
                     [(SmolStr::from("foo"), PartialValue::from(34))],
-                    [].into_iter().collect(),
-                    std::iter::once(r#"Action::"readOnly""#.parse().expect("valid uid")).collect(),
+                    HashSet::new(),
+                    HashSet::from([r#"Action::"readOnly""#.parse().expect("valid uid")]),
                     [],
                 ))),
                 r#"Action::"readOnly""# => Some(Arc::new(Entity::with_uid(action.clone()))),
@@ -2340,11 +2370,10 @@ mod schema_based_parsing_tests {
                         (
                             "inner3".into(),
                             AttributeType::required(SchemaType::Record {
-                                attrs: std::iter::once((
+                                attrs: BTreeMap::from([(
                                     "innerinner".into(),
                                     AttributeType::required(employee_ty()),
-                                ))
-                                .collect(),
+                                )]),
                                 open_attrs: false,
                             }),
                         ),

@@ -21,7 +21,6 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use std::fmt::Display;
-use std::ops::{Add, Neg};
 
 use cedar_policy_core::fuzzy_match::fuzzy_search;
 use cedar_policy_core::impl_diagnostic_from_source_loc_opt_field;
@@ -32,6 +31,7 @@ use std::collections::BTreeSet;
 use cedar_policy_core::ast::{Eid, EntityType, EntityUID, Expr, ExprKind, PolicyID, Var};
 use cedar_policy_core::parser::join_with_conjunction;
 
+use crate::level_validate::EntityDerefLevel;
 use crate::types::{EntityLUB, EntityRecordKind, RequestEnv, Type};
 use crate::ValidatorSchema;
 use itertools::Itertools;
@@ -464,99 +464,54 @@ impl Diagnostic for FunctionArgumentValidation {
 
 /// Structure containing details about a hierarchy not respected error
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
-#[error("for policy `{policy_id}`, operands to `in` do not respect the entity hierarchy")]
+#[error("Internal invariant violated: `HierarchyNotRespected` error should never occur. Please file an issue")]
 pub struct HierarchyNotRespected {
     /// Source location
     pub source_loc: Option<Loc>,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
-    /// LHS (descendant) of the hierarchy relationship
-    pub in_lhs: Option<EntityType>,
-    /// RHS (ancestor) of the hierarchy relationship
-    pub in_rhs: Option<EntityType>,
 }
 
 impl Diagnostic for HierarchyNotRespected {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        match (&self.in_lhs, &self.in_rhs) {
-            (Some(in_lhs), Some(in_rhs)) => Some(Box::new(format!(
-                "`{in_lhs}` cannot be a descendant of `{in_rhs}`"
-            ))),
-            _ => None,
-        }
-    }
-}
-
-/// Represents how many entity dereferences can be applied to a node.
-#[derive(Default, Debug, Clone, Hash, Eq, PartialEq, Error, Copy, Ord, PartialOrd)]
-pub struct EntityDerefLevel {
-    /// A negative value `-n` represents `n` too many dereferences
-    pub level: i64,
-}
-
-impl Display for EntityDerefLevel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
-        write!(f, "{}", self.level)
-    }
-}
-
-impl From<u32> for EntityDerefLevel {
-    fn from(value: u32) -> Self {
-        EntityDerefLevel {
-            level: value as i64,
-        }
-    }
-}
-
-impl Add for EntityDerefLevel {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        EntityDerefLevel {
-            level: self.level + rhs.level,
-        }
-    }
-}
-
-impl Neg for EntityDerefLevel {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        EntityDerefLevel { level: -self.level }
-    }
-}
-
-impl EntityDerefLevel {
-    /// Decrement the entity deref level
-    pub fn decrement(&self) -> Self {
-        EntityDerefLevel {
-            level: self.level - 1,
-        }
+        Some(Box::new("please file an issue at <https://github.com/cedar-policy/cedar/issues> including the schema and policy that caused this error"))
     }
 }
 
 /// Structure containing details about entity dereference level violation
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
-#[error("for policy `{policy_id}`, the maximum allowed level {allowed_level} is violated. Actual level is {}", (allowed_level.add(actual_level.neg())))]
+#[error("for policy `{policy_id}`, {violation_kind}")]
 pub struct EntityDerefLevelViolation {
-    /// Source location
+    /// Location of outer most dereference
     pub source_loc: Option<Loc>,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
-    /// The maximum level allowed by the schema
-    pub allowed_level: EntityDerefLevel,
-    /// The actual level this policy uses
-    pub actual_level: EntityDerefLevel,
+    /// Provides more information about the specific kind of violation
+    pub violation_kind: EntityDerefViolationKind,
+}
+
+/// Details for specific kinds of entity deref level violations
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Error)]
+pub enum EntityDerefViolationKind {
+    /// The policy exceeded the maximum allowed level
+    #[error(
+        "this policy requires level {actual_level}, which exceeds the maximum allowed level ({allowed_level})"
+    )]
+    MaximumLevelExceeded {
+        /// The maximum level allowed by the schema
+        allowed_level: EntityDerefLevel,
+        /// The actual level this policy uses
+        actual_level: EntityDerefLevel,
+    },
+    /// The policy dereferences an entity literal, which isn't allowed at any level
+    #[error("entity literals cannot be dereferenced at any level")]
+    LiteralDerefTarget,
 }
 
 impl Diagnostic for EntityDerefLevelViolation {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
-
-    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        Some(Box::new("Consider increasing the level"))
-    }
 }
 
 /// The policy uses an empty set literal in a way that is forbidden

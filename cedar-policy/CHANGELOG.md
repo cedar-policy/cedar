@@ -16,16 +16,55 @@ Cedar Language Version: TBD
 ### Changed
 
 - Changed `Entities::add_entities` and `Entities::from_entities` to ignore structurally equal entities with the same Entity UID.
+- For `protobufs` experimental feature, a number of changes to the interface and
+  the Protobuf format definitions, as we continue to iterate towards making this
+  feature stable. (#1488, #1495, #1506, #1535)
+- `datetime` is now a default feature (#1541)
+- Bump MSRV to 1.81 (#1542)
+- `HierarchyNotRespected` validation error is no longer returned (although the
+  error variant remains, to avoid a breaking change). This means that in some
+  edge cases, policies that previously failed to validate under strict validation
+  will now pass validation, probably with an `ImpossiblePolicy` warning. (#1355,
+  resolving #638)
 
 ### Added
 
 - Added `Entities::remove_entities()` to remove `Entity`s from an `Entities` struct (resolving #701)
-- Added `PolicySet::merge_policyset()` to merge a `PolicySet` into another `PolicySet` struct (resolving #610)
+- Added `PolicySet::merge()` to merge a `PolicySet` into another `PolicySet` struct (resolving #610)
 - Implemented [RFC 53 (enumerated entity types)](https://github.com/cedar-policy/rfcs/blob/main/text/0053-enum-entities.md)  (#1377)
 - Added the experimental feature `tolerant-ast` which allows certain errors to be propogated in AST expressions as an `ExprKind::Error` (#1470)
+- Added `to_cedar` functions for `PolicySet`, `Policy`, and `Template` that
+  render the policy in the human-readable Cedar syntax. These functions can be used
+  to convert JSON formatted policies into the human-readable syntax.
+- Added `Validator::schema()` to get a reference to the `Schema` even after it has been
+  consumed to construct a `Validator` (#1524)
+- Added `Schema::request_envs()` to get all of the `RequestEnv`s that are valid
+  according to the schema. (This joins the existing `Policy::get_valid_request_envs()`
+  and `Template::get_valid_request_envs()` that return the subset of request envs that
+  are valid for a particular policy or template.) (#1547)
+- Added `EntityId::unescaped()`, analogous to `EntityId::escaped()`. This is simply an
+  alias for `EntityId::as_ref()` with the `AsRef` impl that produces `&str`. (#1555)
+- Added `PartialResponse::unknown_entities` method (#1557)
+- Added `Entities::len` and `Entities::is_empty` methods (#1562, resolving #1523)
 
 ### Fixed
 
+- Fixed bugs in experimental `level-validate` feature. Level validation is now
+  more permissive when checking `if` expressions (fixing #1507), and stricter when
+  checking record literals and entity tag operations (fixing #1505 and #1503). (#1567)
+
+## [4.3.3] - 2025-02-25
+
+### Changed
+
+- Significant changes to the API for the experimental `protobufs` feature
+  (#1452, #1467, others)
+
+### Fixed
+
+- Fixed the experimental `protobufs` feature so that code depending on `cedar-policy`
+  with this feature now successfully builds, even if that code is not part of the
+  same Cargo workspace as `cedar-policy`, `cedar-policy-core`, etc (#1452).
 - Fixed a bug in the experimental `entity-manifest` feature. If an entity appears as
   both a possible value for a scope variable and an entity literal, slicing
   using entity manifests will now correctly capture all necessary attributes (#1429).
@@ -823,7 +862,8 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.3.2...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.3.3...main
+[4.3.3]: https://github.com/cedar-policy/cedar/compare/v4.3.2...v4.3.3
 [4.3.2]: https://github.com/cedar-policy/cedar/compare/v4.3.1...v4.3.2
 [4.3.1]: https://github.com/cedar-policy/cedar/compare/v4.3.0...v4.3.1
 [4.3.0]: https://github.com/cedar-policy/cedar/compare/v4.2.2...v4.3.0

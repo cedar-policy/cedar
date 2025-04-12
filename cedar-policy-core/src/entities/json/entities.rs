@@ -69,7 +69,7 @@ pub struct EntityJson {
 
 /// Struct used to parse entities from JSON.
 #[derive(Debug, Clone)]
-pub struct EntityJsonParser<'e, 's, S: Schema = NoEntitiesSchema> {
+pub struct EntityJsonParser<'e, 's, S = NoEntitiesSchema> {
     /// See comments on [`EntityJsonParser::new()`] for the interpretation and
     /// effects of this `schema` field.
     ///
@@ -87,7 +87,7 @@ pub struct EntityJsonParser<'e, 's, S: Schema = NoEntitiesSchema> {
 
 /// Schema information about a single entity can take one of these forms:
 #[derive(Debug)]
-enum EntitySchemaInfo<E: EntityTypeDescription> {
+enum EntitySchemaInfo<E> {
     /// There is no schema, i.e. we're not doing schema-based parsing. We don't
     /// have attribute type information in the schema for action entities, so
     /// these are also parsed without schema-based parsing.
@@ -97,7 +97,7 @@ enum EntitySchemaInfo<E: EntityTypeDescription> {
     NonAction(E),
 }
 
-impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
+impl<'e, 's, S> EntityJsonParser<'e, 's, S> {
     /// Create a new `EntityJsonParser`.
     ///
     /// `schema` represents a source of `Action` entities, which will be added
@@ -128,7 +128,9 @@ impl<'e, 's, S: Schema> EntityJsonParser<'e, 's, S> {
             tc_computation,
         }
     }
+}
 
+impl<S: Schema> EntityJsonParser<'_, '_, S> {
     /// Parse an entities JSON file (in [`&str`] form) into an [`Entities`] object.
     ///
     /// If the `EntityJsonParser` has a `schema`, this also adds `Action`

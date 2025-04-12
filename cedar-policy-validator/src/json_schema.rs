@@ -34,6 +34,7 @@ use serde::{
 };
 use serde_with::serde_as;
 use smol_str::{SmolStr, ToSmolStr};
+use std::hash::Hash;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
@@ -254,7 +255,7 @@ impl CommonTypeId {
     /// Make a valid [`CommonTypeId`] from this [`UnreservedId`], modifying the
     /// id if needed to avoid reserved basenames
     #[cfg(feature = "arbitrary")]
-    fn make_into_valid_common_type_id(id: UnreservedId) -> Self {
+    fn make_into_valid_common_type_id(id: &UnreservedId) -> Self {
         Self::new(id.clone()).unwrap_or_else(|_| {
             // PANIC SAFETY: `_Bool`, `_Record`, and etc are valid unreserved names.
             #[allow(clippy::unwrap_used)]
@@ -276,7 +277,7 @@ impl Display for CommonTypeId {
 impl<'a> arbitrary::Arbitrary<'a> for CommonTypeId {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         let id: UnreservedId = u.arbitrary()?;
-        Ok(CommonTypeId::make_into_valid_common_type_id(id))
+        Ok(CommonTypeId::make_into_valid_common_type_id(&id))
     }
 
     fn size_hint(depth: usize) -> (usize, Option<usize>) {
@@ -336,12 +337,17 @@ pub struct NamespaceDefinition<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
     pub annotations: Annotations,
+
+    #[cfg(feature = "extended-schema")]
+    #[serde(skip)]
+    #[educe(Eq(ignore))]
+    pub loc: Option<Loc>,
 }
 
+#[cfg(test)]
 impl<N> NamespaceDefinition<N> {
     /// Create a new [`NamespaceDefinition`] with specified entity types and
     /// actions, and no common types or annotations
-    #[cfg(test)]
     pub fn new(
         entity_types: impl IntoIterator<Item = (UnreservedId, EntityType<N>)>,
         actions: impl IntoIterator<Item = (SmolStr, ActionType<N>)>,
@@ -351,6 +357,8 @@ impl<N> NamespaceDefinition<N> {
             entity_types: entity_types.into_iter().collect(),
             actions: actions.into_iter().collect(),
             annotations: Annotations::new(),
+            #[cfg(feature = "extended-schema")]
+            loc: None,
         }
     }
 }
@@ -387,6 +395,8 @@ impl NamespaceDefinition<RawName> {
                 .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
                 .collect(),
             annotations: self.annotations,
+            #[cfg(feature = "extended-schema")]
+            loc: self.loc,
         }
     }
 }
@@ -428,6 +438,8 @@ impl NamespaceDefinition<ConditionalName> {
                 .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
                 .collect::<Result<_>>()?,
             annotations: self.annotations,
+            #[cfg(feature = "extended-schema")]
+            loc: self.loc,
         })
     }
 }
@@ -576,7 +588,8 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N
 
 /// The "standard" entity type. That is, an entity type defined by parent
 /// entity types, shape, and tags.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(PartialEq, Eq)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -802,7 +815,7 @@ pub struct ActionType<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
     pub annotations: Annotations,
-    /// Source location
+    /// Source location of the whole type
     ///
     /// (As of this writing, this is not populated when parsing from JSON.
     /// It is only populated if constructing this structure from the
@@ -810,6 +823,12 @@ pub struct ActionType<N> {
     #[serde(skip)]
     #[educe(PartialEq(ignore))]
     pub loc: Option<Loc>,
+
+    /// Source location of only the action definition
+    #[cfg(feature = "extended-schema")]
+    #[serde(skip)]
+    #[educe(PartialEq(ignore))]
+    pub(crate) defn_loc: Option<Loc>,
 }
 
 impl ActionType<RawName> {
@@ -830,6 +849,8 @@ impl ActionType<RawName> {
             }),
             annotations: self.annotations,
             loc: self.loc,
+            #[cfg(feature = "extended-schema")]
+            defn_loc: self.defn_loc,
         }
     }
 }
@@ -861,6 +882,8 @@ impl ActionType<ConditionalName> {
                 .transpose()?,
             annotations: self.annotations,
             loc: self.loc,
+            #[cfg(feature = "extended-schema")]
+            defn_loc: self.defn_loc,
         })
     }
 }
@@ -967,13 +990,22 @@ pub struct ActionEntityUID<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     ty: Option<N>,
+    #[cfg(feature = "extended-schema")]
+    #[serde(skip)]
+    /// Source location - if available
+    pub loc: Option<Loc>,
 }
 
 impl ActionEntityUID<RawName> {
     /// Create a new `ActionEntityUID<RawName>`.
     /// `ty` = `None` is shorthand for `Action`.
     pub fn new(ty: Option<RawName>, id: SmolStr) -> Self {
-        Self { id, ty }
+        Self {
+            id,
+            ty,
+            #[cfg(feature = "extended-schema")]
+            loc: None,
+        }
     }
 
     /// Given an `id`, get the [`ActionEntityUID`] representing `Action::<id>`.
@@ -981,7 +1013,21 @@ impl ActionEntityUID<RawName> {
     // This function is only available for `RawName` and not other values of `N`,
     // in order to uphold the INVARIANT on self.ty.
     pub fn default_type(id: SmolStr) -> Self {
-        Self { id, ty: None }
+        Self {
+            id,
+            ty: None,
+            #[cfg(feature = "extended-schema")]
+            loc: None,
+        }
+    }
+
+    /// Given an `id`, get the [`ActionEntityUID`] representing `Action::<id>`.
+    //
+    // This function is only available for `RawName` and not other values of `N`,
+    // in order to uphold the INVARIANT on self.ty.
+    #[cfg(feature = "extended-schema")]
+    pub fn default_type_with_loc(id: SmolStr, loc: Option<Loc>) -> Self {
+        Self { id, ty: None, loc }
     }
 }
 
@@ -1014,6 +1060,8 @@ impl ActionEntityUID<RawName> {
                     .unwrap_or_else(|| RawName::from_str("Action").expect("valid raw name"));
                 Some(raw_name.conditionally_qualify_with(ns, ReferenceType::Entity))
             },
+            #[cfg(feature = "extended-schema")]
+            loc: None,
         }
     }
 
@@ -1031,6 +1079,8 @@ impl ActionEntityUID<RawName> {
                     .unwrap_or_else(|| RawName::from_str("Action").expect("valid raw name"));
                 Some(raw_name.qualify_with(ns))
             },
+            #[cfg(feature = "extended-schema")]
+            loc: self.loc,
         }
     }
 }
@@ -1078,6 +1128,8 @@ impl ActionEntityUID<ConditionalName> {
             .map(|possibility| ActionEntityUID {
                 id: self.id.clone(),
                 ty: Some(possibility.clone()),
+                #[cfg(feature = "extended-schema")]
+                loc: None,
             })
     }
 
@@ -1088,6 +1140,8 @@ impl ActionEntityUID<ConditionalName> {
         ActionEntityUID {
             id: self.id.clone(),
             ty: self.ty.as_ref().map(|ty| ty.raw().clone()),
+            #[cfg(feature = "extended-schema")]
+            loc: None,
         }
     }
 }
@@ -1118,12 +1172,18 @@ impl From<ActionEntityUID<Name>> for EntityUID {
 
 impl TryFrom<ActionEntityUID<InternalName>> for EntityUID {
     type Error = <InternalName as TryInto<Name>>::Error;
-    fn try_from(aeuid: ActionEntityUID<InternalName>) -> std::result::Result<Self, Self::Error> {
+    fn try_from(
+        aeuid: ActionEntityUID<InternalName>,
+    ) -> std::result::Result<Self, <InternalName as TryInto<Name>>::Error> {
         let ty = Name::try_from(aeuid.ty().clone())?;
+        #[cfg(feature = "extended-schema")]
+        let loc = aeuid.loc;
+        #[cfg(not(feature = "extended-schema"))]
+        let loc = None;
         Ok(EntityUID::from_components(
             ty.into(),
             Eid::new(aeuid.id),
-            None,
+            loc,
         ))
     }
 }
@@ -1134,6 +1194,8 @@ impl From<EntityUID> for ActionEntityUID<Name> {
         ActionEntityUID {
             ty: Some(ty.into()),
             id: <Eid as AsRef<SmolStr>>::as_ref(&id).clone(),
+            #[cfg(feature = "extended-schema")]
+            loc: None,
         }
     }
 }
@@ -1269,6 +1331,20 @@ impl<N> Type<N> {
         match self {
             Self::Type { loc, .. } => loc.as_ref(),
             Self::CommonTypeRef { loc, .. } => loc.as_ref(),
+        }
+    }
+
+    /// Create a new copy of self but with a difference source location
+    pub fn with_loc(self, new_loc: Option<Loc>) -> Self {
+        match self {
+            Self::Type { ty, loc: _loc } => Self::Type { ty, loc: new_loc },
+            Self::CommonTypeRef {
+                type_name,
+                loc: _loc,
+            } => Self::CommonTypeRef {
+                type_name,
+                loc: new_loc,
+            },
         }
     }
 }
@@ -1576,15 +1652,18 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                                                     ty,
                                                     required,
                                                     annotations,
+                                                    #[cfg(feature = "extended-schema")]
+                                                    loc,
                                                 },
                                             )| {
                                                 (
                                                     k,
                                                     TypeOfAttribute {
                                                         ty: ty.into_n(),
-
                                                         required,
                                                         annotations,
+                                                        #[cfg(feature = "extended-schema")]
+                                                        loc,
                                                     },
                                                 )
                                             },
@@ -1861,15 +1940,18 @@ impl TypeVariant<RawName> {
                             ty,
                             required,
                             annotations,
+                            #[cfg(feature = "extended-schema")]
+                            loc,
                         },
                     )| {
                         (
                             attr,
                             TypeOfAttribute {
                                 ty: ty.conditionally_qualify_type_references(ns),
-
                                 required,
                                 annotations,
+                                #[cfg(feature = "extended-schema")]
+                                loc,
                             },
                         )
                     },
@@ -1944,6 +2026,8 @@ impl TypeVariant<ConditionalName> {
                                 ty,
                                 required,
                                 annotations,
+                                #[cfg(feature = "extended-schema")]
+                                loc,
                             },
                         )| {
                             Ok((
@@ -1952,6 +2036,8 @@ impl TypeVariant<ConditionalName> {
                                     ty: ty.fully_qualify_type_references(all_defs)?,
                                     required,
                                     annotations,
+                                    #[cfg(feature = "extended-schema")]
+                                    loc,
                                 },
                             ))
                         },
@@ -1964,6 +2050,10 @@ impl TypeVariant<ConditionalName> {
 }
 
 // Only used for serialization
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "Reference required to work with derived serde serialize implementation"
+)]
 fn is_partial_schema_default(b: &bool) -> bool {
     *b == partial_schema_default()
 }
@@ -1989,10 +2079,7 @@ impl<'a> arbitrary::Arbitrary<'a> for Type<RawName> {
                         attr_names
                             .into_iter()
                             .map(|attr_name| {
-                                Ok((
-                                    attr_name.into(),
-                                    u.arbitrary::<TypeOfAttribute<RawName>>()?.into(),
-                                ))
+                                Ok((attr_name.into(), u.arbitrary::<TypeOfAttribute<RawName>>()?))
                             })
                             .collect::<arbitrary::Result<_>>()?
                     };
@@ -2057,6 +2144,12 @@ pub struct TypeOfAttribute<N> {
     #[serde(default = "record_attribute_required_default")]
     #[serde(skip_serializing_if = "is_record_attribute_required_default")]
     pub required: bool,
+
+    /// Source location - if available
+    #[cfg(feature = "extended-schema")]
+    #[educe(Eq(ignore))]
+    #[serde(skip)]
+    pub loc: Option<Loc>,
 }
 
 impl TypeOfAttribute<RawName> {
@@ -2066,6 +2159,8 @@ impl TypeOfAttribute<RawName> {
 
             required: self.required,
             annotations: self.annotations,
+            #[cfg(feature = "extended-schema")]
+            loc: self.loc,
         }
     }
 
@@ -2078,6 +2173,8 @@ impl TypeOfAttribute<RawName> {
             ty: self.ty.conditionally_qualify_type_references(ns),
             required: self.required,
             annotations: self.annotations,
+            #[cfg(feature = "extended-schema")]
+            loc: self.loc,
         }
     }
 }
@@ -2097,6 +2194,8 @@ impl TypeOfAttribute<ConditionalName> {
             ty: self.ty.fully_qualify_type_references(all_defs)?,
             required: self.required,
             annotations: self.annotations,
+            #[cfg(feature = "extended-schema")]
+            loc: self.loc,
         })
     }
 }
@@ -2108,6 +2207,8 @@ impl<'a> arbitrary::Arbitrary<'a> for TypeOfAttribute<RawName> {
             ty: u.arbitrary::<Type<RawName>>()?,
             required: u.arbitrary()?,
             annotations: u.arbitrary()?,
+            #[cfg(feature = "extended-schema")]
+            loc: None,
         })
     }
 
@@ -2121,6 +2222,10 @@ impl<'a> arbitrary::Arbitrary<'a> for TypeOfAttribute<RawName> {
 }
 
 // Only used for serialization
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "Reference required to work with derived serde serialize implementation"
+)]
 fn is_record_attribute_required_default(b: &bool) -> bool {
     *b == record_attribute_required_default()
 }
@@ -2210,7 +2315,9 @@ mod test {
             at.member_of,
             Some(vec![ActionEntityUID {
                 ty: None,
-                id: "readWrite".into()
+                id: "readWrite".into(),
+                #[cfg(feature = "extended-schema")]
+                loc: None
             }])
         );
     }
@@ -3147,6 +3254,8 @@ mod test_json_roundtrip {
                         member_of: None,
                         annotations: Annotations::new(),
                         loc: None,
+                        #[cfg(feature = "extended-schema")]
+                        defn_loc: None,
                     },
                 )],
             ),
@@ -3203,6 +3312,8 @@ mod test_json_roundtrip {
                             member_of: None,
                             annotations: Annotations::new(),
                             loc: None,
+                            #[cfg(feature = "extended-schema")]
+                            defn_loc: None,
                         },
                     )],
                 ),
@@ -3789,6 +3900,8 @@ mod ord {
 }
 
 #[cfg(test)]
+// PANIC SAFETY: tests
+#[allow(clippy::indexing_slicing)]
 mod enumerated_entity_types {
     use cool_asserts::assert_matches;
 

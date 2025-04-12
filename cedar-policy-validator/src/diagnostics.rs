@@ -156,12 +156,6 @@ pub enum ValidationError {
     #[diagnostic(transparent)]
     #[error(transparent)]
     NonLitExtConstructor(#[from] validation_errors::NonLitExtConstructor),
-    /// To pass strict validation a policy cannot contain an `in` expression
-    /// where the entity type on the left might not be able to be a member of
-    /// the entity type on the right.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    HierarchyNotRespected(#[from] validation_errors::HierarchyNotRespected),
     /// Returned when an internal invariant is violated (should not happen; if
     /// this is ever returned, please file an issue)
     #[error(transparent)]
@@ -172,7 +166,6 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidEnumEntity(#[from] validation_errors::InvalidEnumEntity),
-    #[cfg(feature = "level-validate")]
     /// If a entity dereference level was provided, the policies cannot deref
     /// more than `level` hops away from PARX
     #[error(transparent)]
@@ -379,21 +372,6 @@ impl ValidationError {
         .into()
     }
 
-    pub(crate) fn hierarchy_not_respected(
-        source_loc: Option<Loc>,
-        policy_id: PolicyID,
-        in_lhs: Option<EntityType>,
-        in_rhs: Option<EntityType>,
-    ) -> Self {
-        validation_errors::HierarchyNotRespected {
-            source_loc,
-            policy_id,
-            in_lhs,
-            in_rhs,
-        }
-        .into()
-    }
-
     pub(crate) fn internal_invariant_violation(
         source_loc: Option<Loc>,
         policy_id: PolicyID,
@@ -414,6 +392,32 @@ impl ValidationError {
             source_loc,
             policy_id,
             err,
+        }
+        .into()
+    }
+
+    pub(crate) fn maximum_level_exceeded(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        allowed_level: crate::level_validate::EntityDerefLevel,
+        actual_level: crate::level_validate::EntityDerefLevel,
+    ) -> Self {
+        validation_errors::EntityDerefLevelViolation {
+            source_loc,
+            policy_id,
+            violation_kind: validation_errors::EntityDerefViolationKind::MaximumLevelExceeded {
+                allowed_level,
+                actual_level,
+            },
+        }
+        .into()
+    }
+
+    pub(crate) fn literal_dereference_target(source_loc: Option<Loc>, policy_id: PolicyID) -> Self {
+        validation_errors::EntityDerefLevelViolation {
+            source_loc,
+            policy_id,
+            violation_kind: validation_errors::EntityDerefViolationKind::LiteralDerefTarget,
         }
         .into()
     }

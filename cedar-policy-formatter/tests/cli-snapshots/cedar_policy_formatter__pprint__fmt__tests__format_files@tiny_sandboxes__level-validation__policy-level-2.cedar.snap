@@ -1,0 +1,8 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-cli/sample-data/tiny_sandboxes/level-validation/policy-level-2.cedar
+---
+@id("attr-access")
+permit (principal, action, resource)
+when { principal.manager in Group::"admins" };

@@ -335,7 +335,7 @@ mod tests {
     use super::*;
 
     use crate::ast::test_generators::*;
-    use crate::ast::{Eid, Literal, Template, Value};
+    use crate::ast::{Eid, Literal, Value};
     use crate::evaluator as eval;
     use crate::extensions::Extensions;
     use crate::parser::err::*;
@@ -347,7 +347,7 @@ mod tests {
 
     #[test]
     fn test_template_parsing() {
-        for template in all_templates().map(Template::from) {
+        for template in all_templates() {
             let id = template.id();
             let src = format!("{template}");
             let parsed =

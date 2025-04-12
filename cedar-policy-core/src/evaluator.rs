@@ -21,8 +21,6 @@ use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
 use std::collections::BTreeMap;
-#[cfg(test)]
-use std::collections::HashMap;
 use std::sync::Arc;
 
 mod err;
@@ -102,7 +100,7 @@ impl<'e> RestrictedEvaluator<'e> {
     pub fn partial_interpret(&self, expr: BorrowedRestrictedExpr<'_>) -> Result<PartialValue> {
         stack_size_check()?;
 
-        let res = self.partial_interpret_internal(&expr);
+        let res = self.partial_interpret_internal(expr);
 
         // set the returned value's source location to the same source location
         // as the input expression had.
@@ -129,10 +127,7 @@ impl<'e> RestrictedEvaluator<'e> {
     /// `partial_interpret()`.
     ///
     /// INVARIANT: If this returns a residual, the residual expression must be a valid restricted expression.
-    fn partial_interpret_internal(
-        &self,
-        expr: &BorrowedRestrictedExpr<'_>,
-    ) -> Result<PartialValue> {
+    fn partial_interpret_internal(&self, expr: BorrowedRestrictedExpr<'_>) -> Result<PartialValue> {
         match expr.as_ref().expr_kind() {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
             ExprKind::Set(items) => {
@@ -934,32 +929,6 @@ impl<'e> Evaluator<'e> {
         }
     }
 
-    /// Interpret an `Expr` in an empty `SlotEnv`. Also checks that the source
-    /// location is propagated to the result.
-    #[cfg(test)]
-    pub fn interpret_inline_policy(&self, e: &Expr) -> Result<Value> {
-        match self.partial_interpret(e, &HashMap::new())? {
-            PartialValue::Value(v) => {
-                debug_assert!(e.source_loc().is_some() == v.source_loc().is_some());
-                Ok(v)
-            }
-            PartialValue::Residual(r) => {
-                debug_assert!(e.source_loc().is_some() == r.source_loc().is_some());
-                Err(err::EvaluationError::non_value(r))
-            }
-        }
-    }
-
-    /// Evaluate an expression, potentially leaving a residual
-    #[cfg(test)]
-    pub fn partial_eval_expr(&self, p: &Expr) -> Result<Either<Value, Expr>> {
-        let env = SlotEnv::new();
-        match self.partial_interpret(p, &env)? {
-            PartialValue::Value(v) => Ok(Either::Left(v)),
-            PartialValue::Residual(r) => Ok(Either::Right(r)),
-        }
-    }
-
     /// Evaluate a binary operation between a residual expression (left) and a value (right). If despite the unknown contained in the residual, concrete result
     /// can be obtained (using the type annotation on the residual), it is returned.
     fn short_circuit_residual_and_value(
@@ -1036,12 +1005,34 @@ impl<'e> Evaluator<'e> {
             _ => None,
         }
     }
+}
 
-    // by default, Coverlay does not track coverage for lines after a line
-    // containing #[cfg(test)].
-    // we use the following sentinel to "turn back on" coverage tracking for
-    // remaining lines of this file, until the next #[cfg(test)]
-    // GRCOV_BEGIN_COVERAGE
+#[cfg(test)]
+impl Evaluator<'_> {
+    /// Interpret an `Expr` in an empty `SlotEnv`. Also checks that the source
+    /// location is propagated to the result.
+    pub fn interpret_inline_policy(&self, e: &Expr) -> Result<Value> {
+        use std::collections::HashMap;
+        match self.partial_interpret(e, &HashMap::new())? {
+            PartialValue::Value(v) => {
+                debug_assert!(e.source_loc().is_some() == v.source_loc().is_some());
+                Ok(v)
+            }
+            PartialValue::Residual(r) => {
+                debug_assert!(e.source_loc().is_some() == r.source_loc().is_some());
+                Err(err::EvaluationError::non_value(r))
+            }
+        }
+    }
+
+    /// Evaluate an expression, potentially leaving a residual
+    pub fn partial_eval_expr(&self, p: &Expr) -> Result<Either<Value, Expr>> {
+        let env = SlotEnv::new();
+        match self.partial_interpret(p, &env)? {
+            PartialValue::Value(v) => Ok(Either::Left(v)),
+            PartialValue::Residual(r) => Ok(Either::Right(r)),
+        }
+    }
 }
 
 impl std::fmt::Debug for Evaluator<'_> {
@@ -1125,6 +1116,7 @@ fn stack_size_check() -> Result<()> {
 #[allow(clippy::cognitive_complexity)]
 #[cfg(test)]
 pub(crate) mod test {
+    use std::collections::{HashMap, HashSet};
     use std::str::FromStr;
 
     use super::*;
@@ -1186,65 +1178,57 @@ pub(crate) mod test {
         let entity_no_attrs_no_parents =
             Entity::with_uid(EntityUID::with_eid("entity_no_attrs_no_parents"));
 
-        let mut entity_with_attrs = Entity::with_uid(EntityUID::with_eid("entity_with_attrs"));
-        entity_with_attrs
-            .set_attr(
-                "spoon".into(),
-                RestrictedExpr::val(787).as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
-        entity_with_attrs
-            .set_attr(
-                "fork".into(),
-                RestrictedExpr::val("spoon").as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
-        entity_with_attrs
-            .set_attr(
+        let attrs = HashMap::from([
+            ("spoon".into(), RestrictedExpr::val(787)),
+            ("fork".into(), RestrictedExpr::val("spoon")),
+            (
                 "tags".into(),
                 RestrictedExpr::set(vec![
                     RestrictedExpr::val("fun"),
                     RestrictedExpr::val("good"),
                     RestrictedExpr::val("useful"),
-                ])
-                .as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
-        entity_with_attrs
-            .set_attr(
+                ]),
+            ),
+            (
                 "address".into(),
                 RestrictedExpr::record(vec![
                     ("street".into(), RestrictedExpr::val("234 magnolia")),
                     ("town".into(), RestrictedExpr::val("barmstadt")),
                     ("country".into(), RestrictedExpr::val("amazonia")),
                 ])
-                .unwrap()
-                .as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
+                .unwrap(),
+            ),
+        ]);
+        let entity_with_attrs = Entity::new(
+            EntityUID::with_eid("entity_with_attrs"),
+            attrs.clone(),
+            HashSet::new(),
+            HashSet::new(),
+            HashMap::new(),
+            Extensions::none(),
+        )
+        .unwrap();
 
-        let mut entity_with_tags = Entity::with_uid(EntityUID::with_eid("entity_with_tags"));
-        entity_with_tags
-            .set_tag(
-                "spoon".into(),
-                RestrictedExpr::val(-121).as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
+        let tags = HashMap::from([("spoon".into(), RestrictedExpr::val(-121))]);
+        let entity_with_tags = Entity::new(
+            EntityUID::with_eid("entity_with_tags"),
+            HashMap::new(),
+            HashSet::new(),
+            HashSet::new(),
+            tags.clone(),
+            Extensions::none(),
+        )
+        .unwrap();
 
-        let mut entity_with_tags_and_attrs = entity_with_attrs.clone();
-        entity_with_tags_and_attrs.set_uid(EntityUID::with_eid("entity_with_tags_and_attrs"));
-        entity_with_tags_and_attrs
-            .set_tag(
-                "spoon".into(),
-                RestrictedExpr::val(-121).as_borrowed(),
-                Extensions::none(),
-            )
-            .unwrap();
+        let entity_with_tags_and_attrs = Entity::new(
+            EntityUID::with_eid("entity_with_tags_and_attrs"),
+            attrs,
+            HashSet::new(),
+            HashSet::new(),
+            tags,
+            Extensions::none(),
+        )
+        .unwrap();
 
         let mut child = Entity::with_uid(EntityUID::with_eid("child"));
         let mut parent = Entity::with_uid(EntityUID::with_eid("parent"));
@@ -2568,8 +2552,6 @@ pub(crate) mod test {
         );
     }
 
-    use std::collections::HashSet;
-
     #[test]
     fn large_entity_err() {
         let expr = Expr::get_attr(
@@ -2590,7 +2572,7 @@ pub(crate) mod test {
         .unwrap();
         let request = basic_request();
         let entities = Entities::from_entities(
-            std::iter::once(entity),
+            [entity],
             None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
             Extensions::none(),
@@ -3199,7 +3181,6 @@ pub(crate) mod test {
         );
     }
 
-    #[cfg(feature = "datetime")]
     #[test]
     fn interpret_datetime_extension_compares() {
         let request = basic_request();
@@ -3415,8 +3396,8 @@ pub(crate) mod test {
                     duration_constructor.clone(),
                     vec![Value::from("2h").into()]))),
             Err(EvaluationError::TypeError(TypeError { expected, actual, advice, .. })) => {
-                assert_eq!(expected, nonempty![Type::Extension { name: datetime_constructor.clone() }]);
-                assert_eq!(actual, Type::Extension { name: duration_constructor.clone() });
+                assert_eq!(expected, nonempty![Type::Extension { name: datetime_constructor }]);
+                assert_eq!(actual, Type::Extension { name: duration_constructor });
                 assert_eq!(advice, None);
         });
 
@@ -5070,8 +5051,7 @@ pub(crate) mod test {
             Either::Right(expr) => {
                 println!("{expr}");
                 assert!(expr.contains_unknown());
-                let m: HashMap<_, _> =
-                    std::iter::once(("principal".into(), Value::from(euid))).collect();
+                let m: HashMap<_, _> = HashMap::from([("principal".into(), Value::from(euid))]);
                 let new_expr = expr.substitute_typed(&m).unwrap();
                 assert_eq!(
                     e.partial_interpret(&new_expr, &HashMap::new())

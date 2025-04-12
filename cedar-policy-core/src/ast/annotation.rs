@@ -25,14 +25,9 @@ use crate::parser::Loc;
 use super::AnyId;
 
 /// Struct which holds the annotations for a policy
-#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-pub struct Annotations(
-    #[serde(default)]
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
-    BTreeMap<AnyId, Annotation>,
-);
+pub struct Annotations(BTreeMap<AnyId, Annotation>);
 
 impl std::fmt::Display for Annotations {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

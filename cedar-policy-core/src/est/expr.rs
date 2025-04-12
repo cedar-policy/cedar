@@ -711,14 +711,6 @@ impl ExprBuilder for Builder {
 }
 
 impl Expr {
-    /// Consume the `Expr`, producing a string literal if it was a string literal, otherwise returns the literal in the `Err` variant.
-    pub fn into_string_literal(self) -> Result<SmolStr, Self> {
-        match self {
-            Expr::ExprNoExt(ExprNoExt::Value(CedarValueJson::String(s))) => Ok(s),
-            _ => Err(self),
-        }
-    }
-
     /// Substitute entity literals
     pub fn sub_entity_literals(
         self,
@@ -1140,7 +1132,7 @@ impl<T: Clone> From<ast::Expr<T>> for Expr {
             #[allow(clippy::unwrap_used)]
             ast::ExprKind::Error { .. } => Builder::new()
                 .error(ParseErrors::singleton(ToASTError::new(
-                    ToASTErrorKind::ErrorNode,
+                    ToASTErrorKind::ASTErrorNode,
                     Loc::new(0..1, "AST_ERROR_NODE".into()),
                 )))
                 .unwrap(),

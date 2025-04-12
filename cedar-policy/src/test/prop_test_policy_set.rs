@@ -14,11 +14,7 @@
  * limitations under the License.
  */
 
-#![cfg(test)]
-// PANIC SAFETY unit tests
-#![allow(clippy::panic)]
-
-use super::*;
+use super::super::*;
 use proptest::prelude::*;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;

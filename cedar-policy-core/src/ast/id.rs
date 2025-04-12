@@ -106,7 +106,9 @@ impl TryFrom<Id> for UnreservedId {
     type Error = ReservedNameError;
     fn try_from(value: Id) -> Result<Self, Self::Error> {
         if value.is_reserved() {
-            Err(ReservedNameError(InternalName::unqualified_name(value)))
+            Err(ReservedNameError(InternalName::unqualified_name(
+                value, None,
+            )))
         } else {
             Ok(Self(value))
         }

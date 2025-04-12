@@ -16,10 +16,8 @@
 
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
-
 /// Represent an element in a pattern literal (the RHS of the like operation)
-#[derive(Deserialize, Serialize, Hash, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Hash, Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum PatternElem {
     /// A character literal
@@ -30,8 +28,7 @@ pub enum PatternElem {
 
 /// Represent a pattern literal (the RHS of the like operator)
 /// Also provides an implementation of the Display trait as well as a wildcard matching method.
-#[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Pattern {
     /// A vector of pattern elements
     elems: Arc<Vec<PatternElem>>,
@@ -56,6 +53,11 @@ impl Pattern {
     /// Length of elems vector
     pub fn len(&self) -> usize {
         self.elems.len()
+    }
+
+    /// Is this an empty pattern
+    pub fn is_empty(&self) -> bool {
+        self.elems.is_empty()
     }
 }
 
@@ -91,13 +93,13 @@ impl std::fmt::Display for Pattern {
 }
 
 impl PatternElem {
-    fn match_char(&self, text_char: &char) -> bool {
+    fn match_char(self, text_char: char) -> bool {
         match self {
             PatternElem::Char(c) => text_char == c,
             PatternElem::Wildcard => true,
         }
     }
-    fn is_wildcard(&self) -> bool {
+    fn is_wildcard(self) -> bool {
         matches!(self, PatternElem::Wildcard)
     }
 }
@@ -137,7 +139,7 @@ impl Pattern {
                 star_idx = j;
                 tmp_idx = i;
                 j += 1;
-            } else if j < pattern_len && pattern[j].match_char(&text[i]) {
+            } else if j < pattern_len && pattern[j].match_char(text[i]) {
                 i += 1;
                 j += 1;
             } else if contains_star {

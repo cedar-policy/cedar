@@ -91,6 +91,13 @@ pub(crate) mod version {
 #[derive(Debug, Clone, PartialEq, Eq, RefCast, Hash)]
 pub struct Entity(pub(crate) ast::Entity);
 
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::Entity> for Entity {
+    fn as_ref(&self) -> &ast::Entity {
+        &self.0
+    }
+}
+
 impl Entity {
     /// Create a new `Entity` with this Uid, attributes, and parents (and no tags).
     ///
@@ -131,7 +138,7 @@ impl Entity {
         Self(ast::Entity::new_with_attr_partial_value(
             uid.into(),
             [],
-            [].into_iter().collect(),
+            HashSet::new(),
             parents.into_iter().map(EntityUid::into).collect(),
             [],
         ))
@@ -152,7 +159,7 @@ impl Entity {
         Ok(Self(ast::Entity::new(
             uid.into(),
             attrs.into_iter().map(|(k, v)| (k.into(), v.0)),
-            [].into_iter().collect(),
+            HashSet::new(),
             parents.into_iter().map(EntityUid::into).collect(),
             tags.into_iter().map(|(k, v)| (k.into(), v.0)),
             Extensions::all_available(),
@@ -347,6 +354,13 @@ impl std::fmt::Display for Entity {
 #[repr(transparent)]
 #[derive(Debug, Clone, Default, PartialEq, Eq, RefCast)]
 pub struct Entities(pub(crate) cedar_policy_core::entities::Entities);
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<cedar_policy_core::entities::Entities> for Entities {
+    fn as_ref(&self) -> &cedar_policy_core::entities::Entities {
+        &self.0
+    }
+}
 
 use entities_errors::EntitiesError;
 
@@ -762,6 +776,16 @@ impl Entities {
         Some(entity.ancestors().map(EntityUid::ref_cast))
     }
 
+    /// Returns the number of `Entity`s in the `Entities`
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns true if the `Entities` contains no `Entity`s
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Dump an `Entities` object into an entities JSON file.
     ///
     /// The resulting JSON will be suitable for parsing in via
@@ -778,7 +802,11 @@ impl Entities {
     /// format. Entity visualization is best-effort and not well tested.
     /// Feel free to submit an issue if you are using this feature and would like it improved.
     pub fn to_dot_str(&self) -> String {
-        self.0.to_dot_str()
+        let mut dot_str = String::new();
+        // PANIC SAFETY: Writing to the String `dot_str` cannot fail, so `to_dot_str` will not return an `Err` result.
+        #[allow(clippy::unwrap_used)]
+        self.0.to_dot_str(&mut dot_str).unwrap();
+        dot_str
     }
 }
 
@@ -818,6 +846,13 @@ impl IntoIterator for Entities {
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
 pub struct Authorizer(authorizer::Authorizer);
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<authorizer::Authorizer> for Authorizer {
+    fn as_ref(&self) -> &authorizer::Authorizer {
+        &self.0
+    }
+}
 
 impl Default for Authorizer {
     fn default() -> Self {
@@ -1036,6 +1071,15 @@ impl PartialResponse {
     /// Returns every policy as a residual expression
     pub fn all_residuals(&'_ self) -> impl Iterator<Item = Policy> + '_ {
         self.0.all_residuals().map(Policy::from_ast)
+    }
+
+    /// Returns all unknown entities during the evaluation of the response
+    pub fn unknown_entities(&self) -> HashSet<EntityUid> {
+        let mut entity_uids = HashSet::new();
+        for policy in self.0.all_residuals() {
+            entity_uids.extend(policy.unknown_entities().into_iter().map(Into::into));
+        }
+        entity_uids
     }
 
     /// Return the residual for a given [`PolicyId`], if it exists in the response
@@ -1311,11 +1355,23 @@ impl From<ValidationMode> for cedar_policy_validator::ValidationMode {
 #[derive(Debug, Clone, RefCast)]
 pub struct Validator(cedar_policy_validator::Validator);
 
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<cedar_policy_validator::Validator> for Validator {
+    fn as_ref(&self) -> &cedar_policy_validator::Validator {
+        &self.0
+    }
+}
+
 impl Validator {
     /// Construct a new `Validator` to validate policies using the given
     /// `Schema`.
     pub fn new(schema: Schema) -> Self {
         Self(cedar_policy_validator::Validator::new(schema.0))
+    }
+
+    /// Get the `Schema` this `Validator` is using.
+    pub fn schema(&self) -> &Schema {
+        RefCast::ref_cast(self.0.schema())
     }
 
     /// Validate all policies in a policy set, collecting all validation errors
@@ -1359,6 +1415,25 @@ pub struct SchemaFragment {
         cedar_policy_validator::ConditionalName,
     >,
     lossless: cedar_policy_validator::json_schema::Fragment<cedar_policy_validator::RawName>,
+}
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl
+    AsRef<
+        cedar_policy_validator::ValidatorSchemaFragment<
+            cedar_policy_validator::ConditionalName,
+            cedar_policy_validator::ConditionalName,
+        >,
+    > for SchemaFragment
+{
+    fn as_ref(
+        &self,
+    ) -> &cedar_policy_validator::ValidatorSchemaFragment<
+        cedar_policy_validator::ConditionalName,
+        cedar_policy_validator::ConditionalName,
+    > {
+        &self.value
+    }
 }
 
 fn get_annotation_by_key(
@@ -1503,7 +1578,7 @@ impl SchemaFragment {
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
         ns_def
             .actions
-            .get(id.as_ref())
+            .get(id.unescaped())
             .map(|a| annotations_to_pairs(&a.annotations))
     }
 
@@ -1522,7 +1597,7 @@ impl SchemaFragment {
     ) -> Option<&str> {
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
         get_annotation_by_key(
-            &ns_def.actions.get(id.as_ref())?.annotations,
+            &ns_def.actions.get(id.unescaped())?.annotations,
             annotation_key,
         )
     }
@@ -1664,6 +1739,13 @@ impl FromStr for SchemaFragment {
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
 pub struct Schema(pub(crate) cedar_policy_validator::ValidatorSchema);
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<cedar_policy_validator::ValidatorSchema> for Schema {
+    fn as_ref(&self) -> &cedar_policy_validator::ValidatorSchema {
+        &self.0
+    }
+}
 
 impl FromStr for Schema {
     type Err = CedarSchemaError;
@@ -1837,6 +1919,14 @@ impl Schema {
         self.0
             .resources_for_action(&action.0)
             .map(|iter| iter.map(RefCast::ref_cast))
+    }
+
+    /// Returns an iterator over all the [`RequestEnv`]s that are valid
+    /// according to this schema.
+    pub fn request_envs(&self) -> impl Iterator<Item = RequestEnv> + '_ {
+        self.0
+            .unlinked_request_envs(cedar_policy_validator::ValidationMode::Strict)
+            .map(Into::into)
     }
 
     /// Returns an iterator over all the entity types that can be an ancestor of `ty`
@@ -2047,6 +2137,13 @@ pub fn confusable_string_checker<'a>(
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EntityNamespace(pub(crate) ast::Name);
 
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::Name> for EntityNamespace {
+    fn as_ref(&self) -> &ast::Name {
+        &self.0
+    }
+}
+
 /// This `FromStr` implementation requires the _normalized_ representation of the
 /// namespace. See <https://github.com/cedar-policy/rfcs/pull/9/>.
 impl FromStr for EntityNamespace {
@@ -2084,6 +2181,13 @@ impl PartialEq for PolicySet {
     }
 }
 impl Eq for PolicySet {}
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::PolicySet> for PolicySet {
+    fn as_ref(&self) -> &ast::PolicySet {
+        &self.ast
+    }
+}
 
 impl FromStr for PolicySet {
     type Err = ParseErrors;
@@ -2217,6 +2321,43 @@ impl PolicySet {
         Ok(est)
     }
 
+    /// Get the human-readable Cedar syntax representation of this policy set.
+    /// This function is primarily intended for rendering JSON policies in the
+    /// human-readable syntax, but it will also return the original policy text
+    /// (though possibly re-ordering policies within the policy set) when the
+    /// policy-set contains policies parsed from the human-readable syntax.
+    ///
+    /// This will return `None` if there are any linked policies in the policy
+    /// set because they cannot be directly rendered in Cedar syntax. It also
+    /// cannot record policy ids because these cannot be specified in the Cedar
+    /// syntax. The policies may be reordered, so parsing the resulting string
+    /// with [`PolicySet::from_str`] is likely to yield different policy id
+    /// assignments. For these reasons you should prefer serializing as JSON (or protobuf) and
+    /// only using this function to obtain a representation to display to human
+    /// users.
+    ///
+    /// This function does not format the policy according to any particular
+    /// rules.  Policy formatting can be done through the Cedar policy CLI or
+    /// the `cedar-policy-formatter` crate.
+    pub fn to_cedar(&self) -> Option<String> {
+        let policies = self
+            .policies
+            .values()
+            // We'd like to print policies in a deterministic order, so we sort
+            // before printing, hoping that the size of policy sets is fairly
+            // small.
+            .sorted_by_key(|p| AsRef::<str>::as_ref(p.id()))
+            .map(Policy::to_cedar)
+            .collect::<Option<Vec<_>>>()?;
+        let templates = self
+            .templates
+            .values()
+            .sorted_by_key(|t| AsRef::<str>::as_ref(t.id()))
+            .map(Template::to_cedar);
+
+        Some(policies.into_iter().chain(templates).join("\n\n"))
+    }
+
     /// Create a fresh empty `PolicySet`
     pub fn new() -> Self {
         Self {
@@ -2249,7 +2390,7 @@ impl PolicySet {
         T: PartialEq + Clone,
     {
         for (pid, ot) in other {
-            match renaming.get(&pid) {
+            match renaming.get(pid) {
                 Some(new_pid) => {
                     this.insert(new_pid.clone(), ot.clone());
                 }
@@ -2281,9 +2422,9 @@ impl PolicySet {
     /// the other `PolicySet` are automatically renamed to avoid conflict.
     /// This renaming is returned as a Hashmap from the old `PolicyId` to the
     /// renamed `PolicyId`.
-    pub fn merge_policyset(
+    pub fn merge(
         &mut self,
-        other: &PolicySet,
+        other: &Self,
         rename_duplicates: bool,
     ) -> Result<HashMap<PolicyId, PolicyId>, PolicySetError> {
         match self.ast.merge_policyset(&other.ast, rename_duplicates) {
@@ -2660,32 +2801,40 @@ impl RequestEnv {
     }
 }
 
-// Get valid request envs
-// This function is called by [`Template::get_valid_request_envs`] and
-// [`Policy::get_valid_request_envs`]
+#[doc(hidden)]
+impl From<cedar_policy_validator::types::RequestEnv<'_>> for RequestEnv {
+    fn from(renv: cedar_policy_validator::types::RequestEnv<'_>) -> Self {
+        match renv {
+            cedar_policy_validator::types::RequestEnv::DeclaredAction {
+                principal,
+                action,
+                resource,
+                ..
+            } => Self {
+                principal: principal.clone().into(),
+                action: action.clone().into(),
+                resource: resource.clone().into(),
+            },
+            // PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
+            #[allow(clippy::unreachable)]
+            cedar_policy_validator::types::RequestEnv::UndeclaredAction => {
+                unreachable!("used unsupported feature")
+            }
+        }
+    }
+}
+
+/// Get valid request envs for an `ast::Template`
+///
+/// This function is called by [`Template::get_valid_request_envs`] and
+/// [`Policy::get_valid_request_envs`]
 fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item = RequestEnv> {
     let tc = Typechecker::new(&s.0, cedar_policy_validator::ValidationMode::default());
     tc.typecheck_by_request_env(ast)
         .into_iter()
         .filter_map(|(env, pc)| {
             if matches!(pc, PolicyCheck::Success(_)) {
-                Some(match env {
-                    cedar_policy_validator::types::RequestEnv::DeclaredAction {
-                        principal,
-                        action,
-                        resource,
-                        ..
-                    } => RequestEnv {
-                        principal: principal.clone().into(),
-                        resource: resource.clone().into(),
-                        action: action.clone().into(),
-                    },
-                    //PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
-                    #[allow(clippy::unreachable)]
-                    cedar_policy_validator::types::RequestEnv::UndeclaredAction => {
-                        unreachable!("used unsupported feature")
-                    }
-                })
+                Some(env.into())
             } else {
                 None
             }
@@ -2725,6 +2874,13 @@ impl PartialEq for Template {
     }
 }
 impl Eq for Template {}
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::Template> for Template {
+    fn as_ref(&self) -> &ast::Template {
+        &self.ast
+    }
+}
 
 impl Template {
     /// Attempt to parse a [`Template`] from source.
@@ -2823,6 +2979,14 @@ impl Template {
                 ActionConstraint::In(ids.iter().map(|id| id.as_ref().clone().into()).collect())
             }
             ast::ActionConstraint::Eq(id) => ActionConstraint::Eq(id.as_ref().clone().into()),
+            #[cfg(feature = "tolerant-ast")]
+            ast::ActionConstraint::ErrorConstraint => {
+                // We will only have an ErrorConstraint if we are using a parser that allows Error nodes
+                // It is not recommended to evaluate an AST that allows error nodes
+                // If somehow someone tries to evaluate an AST that includes an Action constraint error, we will
+                // treat it as `Any`
+                ActionConstraint::Any
+            }
         }
     }
 
@@ -2893,9 +3057,25 @@ impl Template {
         serde_json::to_value(est).map_err(Into::into)
     }
 
-    /// Get valid [`RequestEnv`]s.
-    /// A [`RequestEnv`] is valid when the template type checks w.r.t requests
-    /// that satisfy it.
+    /// Get the human-readable Cedar syntax representation of this template.
+    /// This function is primarily intended for rendering JSON policies in the
+    /// human-readable syntax, but it will also return the original policy text
+    /// when given a policy parsed from the human-readable syntax.
+    ///
+    /// It also does not format the policy according to any particular rules.
+    /// Policy formatting can be done through the Cedar policy CLI or
+    /// the `cedar-policy-formatter` crate.
+    pub fn to_cedar(&self) -> String {
+        match &self.lossless {
+            LosslessPolicy::Est(_) => self.ast.to_string(),
+            LosslessPolicy::Text { text, .. } => text.clone(),
+        }
+    }
+
+    /// Get the valid [`RequestEnv`]s for this template, according to the schema.
+    ///
+    /// That is, all the [`RequestEnv`]s in the schema for which this template is
+    /// not trivially false.
     pub fn get_valid_request_envs(&self, s: &Schema) -> impl Iterator<Item = RequestEnv> {
         get_valid_request_envs(&self.ast, s)
     }
@@ -3037,6 +3217,13 @@ impl PartialEq for Policy {
 }
 impl Eq for Policy {}
 
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::Policy> for Policy {
+    fn as_ref(&self) -> &ast::Policy {
+        &self.ast
+    }
+}
+
 impl Policy {
     /// Get the `PolicyId` of the `Template` this is linked to.
     /// If this is a static policy, this will return `None`.
@@ -3142,6 +3329,14 @@ impl Policy {
                     .collect(),
             ),
             ast::ActionConstraint::Eq(id) => ActionConstraint::Eq(EntityUid::ref_cast(id).clone()),
+            #[cfg(feature = "tolerant-ast")]
+            ast::ActionConstraint::ErrorConstraint => {
+                // We will only have an ErrorConstraint if we are using a parser that allows Error nodes
+                // It is not recommended to evaluate an AST that allows error nodes
+                // If somehow someone tries to evaluate an AST that includes an Action constraint error, we will
+                // treat it as `Any`
+                ActionConstraint::Any
+            }
         }
     }
 
@@ -3281,9 +3476,10 @@ impl Policy {
         Self::from_est(id, est)
     }
 
-    /// Get valid [`RequestEnv`]s.
-    /// A [`RequestEnv`] is valid when the policy type checks w.r.t requests
-    /// that satisfy it.
+    /// Get the valid [`RequestEnv`]s for this policy, according to the schema.
+    ///
+    /// That is, all the [`RequestEnv`]s in the schema for which this policy is
+    /// not trivially false.
     pub fn get_valid_request_envs(&self, s: &Schema) -> impl Iterator<Item = RequestEnv> {
         get_valid_request_envs(self.ast.template(), s)
     }
@@ -3302,7 +3498,7 @@ impl Policy {
             .collect()
     }
 
-    /// Return a new policy where all occurences of key `EntityUid`s are replaced by value `EntityUid`
+    /// Return a new policy where all occurrences of key `EntityUid`s are replaced by value `EntityUid`
     /// (as a single, non-sequential substitution).
     pub fn sub_entity_literals(
         &self,
@@ -3364,25 +3560,41 @@ impl Policy {
         serde_json::to_value(est).map_err(Into::into)
     }
 
+    /// Get the human-readable Cedar syntax representation of this policy. This
+    /// function is primarily intended for rendering JSON policies in the
+    /// human-readable syntax, but it will also return the original policy text
+    /// when given a policy parsed from the human-readable syntax.
+    ///
+    /// It will return `None` for linked policies because they cannot be
+    /// directly rendered in Cedar syntax. You can instead render the unlinked
+    /// template if you do not need to preserve links. If serializing links is
+    /// important, then you will need to serialize the whole policy set
+    /// containing the template and link to JSON (or protobuf).
+    ///
+    /// It also does not format the policy according to any particular rules.
+    /// Policy formatting can be done through the Cedar policy CLI or
+    /// the `cedar-policy-formatter` crate.
+    pub fn to_cedar(&self) -> Option<String> {
+        match &self.lossless {
+            LosslessPolicy::Est(_) => Some(self.ast.to_string()),
+            LosslessPolicy::Text { text, slots } => {
+                if slots.is_empty() {
+                    Some(text.clone())
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
     /// Get all the unknown entities from the policy
     #[doc = include_str!("../experimental_warning.md")]
     #[cfg(feature = "partial-eval")]
     pub fn unknown_entities(&self) -> HashSet<EntityUid> {
         self.ast
-            .condition()
-            .unknowns()
-            .filter_map(
-                |ast::Unknown {
-                     name,
-                     type_annotation,
-                 }| {
-                    if matches!(type_annotation, Some(ast::Type::Entity { .. })) {
-                        EntityUid::from_str(name.as_str()).ok()
-                    } else {
-                        None
-                    }
-                },
-            )
+            .unknown_entities()
+            .into_iter()
+            .map(Into::into)
             .collect()
     }
 
@@ -3521,6 +3733,13 @@ impl std::fmt::Display for LosslessPolicy {
 #[derive(Debug, Clone, RefCast)]
 pub struct Expression(pub(crate) ast::Expr);
 
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::Expr> for Expression {
+    fn as_ref(&self) -> &ast::Expr {
+        &self.0
+    }
+}
+
 impl Expression {
     /// Create an expression representing a literal string.
     pub fn new_string(value: String) -> Self {
@@ -3574,10 +3793,12 @@ impl Expression {
             vec![src_expr],
         ))
     }
+}
 
+#[cfg(test)]
+impl Expression {
     /// Deconstruct an [`Expression`] to get the internal type.
     /// This function is only intended to be used internally.
-    #[cfg(test)]
     pub(crate) fn into_inner(self) -> ast::Expr {
         self.0
     }
@@ -3612,6 +3833,13 @@ impl FromStr for Expression {
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
 pub struct RestrictedExpression(ast::RestrictedExpr);
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::RestrictedExpr> for RestrictedExpression {
+    fn as_ref(&self) -> &ast::RestrictedExpr {
+        &self.0
+    }
+}
 
 impl RestrictedExpression {
     /// Create an expression representing a literal string.
@@ -3679,10 +3907,12 @@ impl RestrictedExpression {
             name.as_ref(),
         )))
     }
+}
 
+#[cfg(test)]
+impl RestrictedExpression {
     /// Deconstruct an [`RestrictedExpression`] to get the internal type.
     /// This function is only intended to be used internally.
-    #[cfg(test)]
     pub(crate) fn into_inner(self) -> ast::RestrictedExpr {
         self.0
     }
@@ -3868,6 +4098,13 @@ impl RequestBuilder<&Schema> {
 #[derive(Debug, Clone, RefCast)]
 pub struct Request(pub(crate) ast::Request);
 
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::Request> for Request {
+    fn as_ref(&self) -> &ast::Request {
+        &self.0
+    }
+}
+
 impl Request {
     /// Create a [`RequestBuilder`]
     #[doc = include_str!("../experimental_warning.md")]
@@ -3943,6 +4180,13 @@ impl Request {
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
 pub struct Context(ast::Context);
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl AsRef<ast::Context> for Context {
+    fn as_ref(&self) -> &ast::Context {
+        &self.0
+    }
+}
 
 impl Context {
     /// Create an empty `Context`
@@ -4393,6 +4637,8 @@ pub fn eval_expression(
 // These are the same tests in validator, just ensuring all the plumbing is done correctly
 #[cfg(test)]
 mod test_access {
+    use cedar_policy_core::ast;
+
     use super::*;
 
     fn schema() -> Schema {
@@ -4402,6 +4648,8 @@ mod test_access {
     "name": String,
     "state": String,
 };
+
+type T = String;
 
 type Tasks = Set<Task>;
 entity List in [Application] = {
@@ -4458,6 +4706,74 @@ action CreateList in Create appliesTo {
         let principals = schema.principals().collect::<Vec<_>>();
         assert!(principals.len() > 1);
         assert!(principals.iter().all(|ety| **ety == user));
+        assert!(principals.iter().all(|ety| ety.0.loc().is_some()));
+
+        let et = ast::EntityType::EntityType(ast::Name::from_normalized_str("User").unwrap());
+        let et = schema.0.get_entity_type(&et).unwrap();
+        assert!(et.loc.as_ref().is_some());
+    }
+
+    #[cfg(feature = "extended-schema")]
+    #[test]
+    fn common_types_extended() {
+        use cool_asserts::assert_matches;
+
+        use cedar_policy_validator::{
+            types::{EntityRecordKind, Type},
+            ValidatorCommonType,
+        };
+
+        let schema = schema();
+        assert_eq!(schema.0.common_types().collect::<HashSet<_>>().len(), 3);
+        let task_type = ValidatorCommonType {
+            name: "Task".into(),
+            name_loc: None,
+            type_loc: None,
+        };
+        assert!(schema.0.common_types().contains(&task_type));
+
+        let tasks_type = ValidatorCommonType {
+            name: "Tasks".into(),
+            name_loc: None,
+            type_loc: None,
+        };
+        assert!(schema.0.common_types().contains(&tasks_type));
+        assert!(schema.0.common_types().all(|ct| ct.name_loc.is_some()));
+        assert!(schema.0.common_types().all(|ct| ct.type_loc.is_some()));
+
+        let tasks_type = ValidatorCommonType {
+            name: "T".into(),
+            name_loc: None,
+            type_loc: None,
+        };
+        assert!(schema.0.common_types().contains(&tasks_type));
+
+        let et = ast::EntityType::EntityType(ast::Name::from_normalized_str("List").unwrap());
+        let et = schema.0.get_entity_type(&et).unwrap();
+        let attrs = et.attributes();
+
+        // Assert that attributes that are resolved from common types still get source locations
+        let t = attrs.get_attr("tasks").unwrap();
+        assert!(t.loc.is_some());
+        assert_matches!(&t.attr_type, cedar_policy_validator::types::Type::Set { ref element_type } => {
+            let el = *element_type.clone().unwrap();
+            assert_matches!(el, Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
+                assert!(attrs.get_attr("name").unwrap().loc.is_some());
+                assert!(attrs.get_attr("id").unwrap().loc.is_some());
+                assert!(attrs.get_attr("state").unwrap().loc.is_some());
+            });
+        });
+    }
+
+    #[cfg(feature = "extended-schema")]
+    #[test]
+    fn namespace_extended() {
+        let schema = schema();
+        assert_eq!(schema.0.namespaces().collect::<HashSet<_>>().len(), 1);
+        let default_namespace = schema.0.namespaces().last().unwrap();
+        assert_eq!(default_namespace.name, SmolStr::from("__cedar"));
+        assert!(default_namespace.name_loc.is_none());
+        assert!(default_namespace.def_loc.is_none());
     }
 
     #[test]
@@ -4477,6 +4793,7 @@ action CreateList in Create appliesTo {
             "CoolList".parse().unwrap(),
         ]);
         assert_eq!(resources, expected);
+        assert!(resources.iter().all(|ety| ety.0.loc().is_some()));
     }
 
     #[test]
@@ -4490,6 +4807,7 @@ action CreateList in Create appliesTo {
             .cloned()
             .collect::<Vec<_>>();
         assert_eq!(got, vec!["User".parse().unwrap()]);
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
         assert!(schema.principals_for_action(&delete_user).is_none());
     }
 
@@ -4506,12 +4824,14 @@ action CreateList in Create appliesTo {
             .cloned()
             .collect::<Vec<_>>();
         assert_eq!(got, vec!["List".parse().unwrap()]);
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
         let got = schema
             .resources_for_action(&create_list)
             .unwrap()
             .cloned()
             .collect::<Vec<_>>();
         assert_eq!(got, vec!["Application".parse().unwrap()]);
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
         let got = schema
             .resources_for_action(&get_list)
             .unwrap()
@@ -4521,6 +4841,7 @@ action CreateList in Create appliesTo {
             got,
             HashSet::from(["List".parse().unwrap(), "CoolList".parse().unwrap()])
         );
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
         assert!(schema.principals_for_action(&delete_user).is_none());
     }
 
@@ -4533,6 +4854,7 @@ action CreateList in Create appliesTo {
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
+        assert!(parents.iter().all(|ety| ety.0.loc().is_some()));
         let expected = HashSet::from(["Team".parse().unwrap(), "Application".parse().unwrap()]);
         assert_eq!(parents, expected);
         let parents = schema
@@ -4540,6 +4862,7 @@ action CreateList in Create appliesTo {
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
+        assert!(parents.iter().all(|ety| ety.0.loc().is_some()));
         let expected = HashSet::from(["Application".parse().unwrap()]);
         assert_eq!(parents, expected);
         assert!(schema.ancestors(&"Foo".parse().unwrap()).is_none());
@@ -4548,6 +4871,7 @@ action CreateList in Create appliesTo {
             .unwrap()
             .cloned()
             .collect::<HashSet<_>>();
+        assert!(parents.iter().all(|ety| ety.0.loc().is_some()));
         let expected = HashSet::from([]);
         assert_eq!(parents, expected);
     }
@@ -4560,6 +4884,8 @@ action CreateList in Create appliesTo {
             .into_iter()
             .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
             .collect::<HashSet<EntityUid>>();
+        #[cfg(feature = "extended-schema")]
+        assert!(groups.iter().all(|ety| ety.0.loc().is_some()));
         assert_eq!(groups, expected);
     }
 
@@ -4585,6 +4911,8 @@ action CreateList in Create appliesTo {
         .map(|ty| format!("Action::\"{ty}\"").parse().unwrap())
         .collect::<HashSet<EntityUid>>();
         assert_eq!(actions, expected);
+        #[cfg(feature = "extended-schema")]
+        assert!(actions.iter().all(|ety| ety.0.loc().is_some()));
     }
 
     #[test]
@@ -4668,6 +4996,7 @@ action CreateList in Create appliesTo {
         let principals = schema.principals().collect::<Vec<_>>();
         assert!(principals.len() > 1);
         assert!(principals.iter().all(|ety| **ety == user));
+        assert!(principals.iter().all(|ety| ety.0.loc().is_some()));
     }
 
     #[test]
@@ -4687,6 +5016,7 @@ action CreateList in Create appliesTo {
             "Foo::CoolList".parse().unwrap(),
         ]);
         assert_eq!(resources, expected);
+        assert!(resources.iter().all(|ety| ety.0.loc().is_some()));
     }
 
     #[test]
@@ -4715,6 +5045,8 @@ action CreateList in Create appliesTo {
             .unwrap()
             .cloned()
             .collect::<Vec<_>>();
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
+
         assert_eq!(got, vec!["Foo::List".parse().unwrap()]);
         let got = schema
             .resources_for_action(&create_list)
@@ -4722,6 +5054,8 @@ action CreateList in Create appliesTo {
             .cloned()
             .collect::<Vec<_>>();
         assert_eq!(got, vec!["Foo::Application".parse().unwrap()]);
+        assert!(got.iter().all(|ety| ety.0.loc().is_some()));
+
         let got = schema
             .resources_for_action(&get_list)
             .unwrap()
@@ -4844,6 +5178,30 @@ action CreateList in Create appliesTo {
         assert!(retrieved_context.get("testKey").is_some());
         assert!(retrieved_context.get("numKey").is_some());
         assert!(retrieved_context.get("nonexistent").is_none());
+    }
+
+    #[cfg(feature = "extended-schema")]
+    #[test]
+    fn namespace_extended() {
+        let schema = schema();
+        assert_eq!(schema.0.namespaces().collect::<HashSet<_>>().len(), 2);
+        let default_namespace = schema
+            .0
+            .namespaces()
+            .filter(|n| n.name == *"__cedar")
+            .last()
+            .unwrap();
+        assert!(default_namespace.name_loc.is_none());
+        assert!(default_namespace.def_loc.is_none());
+
+        let default_namespace = schema
+            .0
+            .namespaces()
+            .filter(|n| n.name == *"Foo")
+            .last()
+            .unwrap();
+        assert!(default_namespace.name_loc.is_some());
+        assert!(default_namespace.def_loc.is_some());
     }
 }
 
