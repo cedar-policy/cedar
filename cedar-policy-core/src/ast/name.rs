@@ -418,27 +418,21 @@ impl FromStr for Name {
 
 lazy_static::lazy_static! {
     // PANIC SAFETY: this is a valid regex
-    static ref ID_REGEX: Regex = Regex::new(r"^[_a-zA-Z][_a-zA-Z0-9]*(?:::[_a-zA-Z][_a-zA-Z0-9]*)*$").unwrap();
-    // All Cedar's reserved keywords
-    static ref RESERVED: HashSet<&'static str> =
+    static ref VALID_NAME_REGEX: Regex = Regex::new(r"^[_a-zA-Z][_a-zA-Z0-9]*(?:::[_a-zA-Z][_a-zA-Z0-9]*)*$").unwrap();
+    // All of Cedar's reserved keywords for identifiers.
+    // Notice this is only a subset of all reserved keywords.
+    static ref RESERVED_IDS: HashSet<&'static str> =
         vec![
             "true",
             "false",
             "if",
-            "permit",
-            "forbid",
-            "when",
-            "unless",
-            "in",
-            "has",
-            "like",
-            "is",
             "then",
             "else",
-            "principal",
-            "action",
-            "resource",
-            "context",
+            "in",
+            "is",
+            "like",
+            "has",
+            // Can only be used in [`InternalName`]
             "__cedar"
         ]
         .into_iter()
@@ -447,7 +441,7 @@ lazy_static::lazy_static! {
 
 impl FromNormalizedStr for Name {
     fn from_normalized_str(s: &str) -> Result<Self, ParseErrors> {
-        if ID_REGEX.is_match(s) && !s.split("::").any(|s| RESERVED.contains(s)) {
+        if VALID_NAME_REGEX.is_match(s) && !s.split("::").any(|s| RESERVED_IDS.contains(s)) {
             let path_parts: Vec<&str> = s.split("::").collect();
             if let Some((last, prefix)) = path_parts.split_last() {
                 return Ok(Self(InternalName::new(
@@ -702,6 +696,28 @@ mod test {
 
         for n in ["__cedarr", "A::_cedar", "A::___cedar::B"] {
             assert!(!InternalName::from_normalized_str(n).unwrap().is_reserved());
+        }
+    }
+
+    #[test]
+    fn test_name_identifier_intersection() {
+        let not_reserved_for_ids = [
+            "permit",
+            "forbid",
+            "when",
+            "unless",
+            "principal",
+            "action",
+            "resource",
+            "context",
+        ];
+
+        for id in not_reserved_for_ids {
+            assert!(Name::from_normalized_str(&format!("A::{id}")).is_ok());
+        }
+
+        for id in RESERVED_IDS.iter() {
+            assert!(Name::from_normalized_str(&format!("A::{id}")).is_err());
         }
     }
 }
