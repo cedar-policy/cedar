@@ -5,6 +5,8 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## Unreleased
 
+## 4.4.0
+
 ### Added
 
 - Added `json-to-cedar` direction to `translate-policy` command. (#1510, resolving #461)

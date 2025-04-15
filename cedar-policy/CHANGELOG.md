@@ -19,18 +19,18 @@ Cedar Language Version: 4.3
 
 ### Added
 
-- Stabilized [RFC 76](https://github.com/cedar-policy/rfcs/pull/76), removing
+- Stabilized [RFC 76](https://github.com/cedar-policy/rfcs/blob/main/text/0076-entity-slice-validation.md), removing
   the experimental `level-validate` feature flag. That functionality is now available
   without the feature flag. Stabilization comes with changes to fix bugs in the features.
   Level validation is now more permissive when checking `if` expressions (fixing #1507),
   and stricter when checking record literals and entity tag operations (fixing #1505 and #1503). (#1567)
 - Implemented [RFC 53 (enumerated entity types)](https://github.com/cedar-policy/rfcs/blob/main/text/0053-enum-entities.md)  (#1377)
-- Stabilized [RFC 80 (`datetime` extension)](https://github.com/strongdm/cedar-rfcs/blob/datetime-rfc/text/0080-datetime-extension.md), making `datetime` a deafult feature. (#1541)
+- Stabilized [RFC 80 (`datetime` extension)](https://github.com/cedar-policy/rfcs/blob/main/text/0080-datetime-extension.md), making `datetime` a default feature. (#1541)
 - Added `Entities::remove_entities()` to remove `Entity`s from an `Entities` struct (#1453, resolving #701)
 - Added `PolicySet::merge()` to merge a `PolicySet` into another `PolicySet` struct (#1476, resolving #610)
 - Added `to_cedar` functions for `PolicySet`, `Policy`, and `Template` that
-  render the policy in the human-readable Cedar syntax. These functions can be used
-  to convert JSON formatted policies into the human-readable syntax (#1510, resolving #461)
+  render the policy in the Cedar syntax. These functions can be used to convert
+  JSON formatted policies into the human-readable syntax (#1510, resolving #461)
 - Added `Validator::schema()` to get a reference to the `Schema` even after it has been
   consumed to construct a `Validator` (#1524)
 - Added `Schema::request_envs()` to get all of the `RequestEnv`s that are valid
