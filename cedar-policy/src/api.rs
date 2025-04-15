@@ -697,7 +697,7 @@ impl Entities {
     ///   "parents": [{"type":"Group","id":"admin"}]
     /// },
     /// {
-    ///   "uid": {"type":"Groupd","id":"admin"},
+    ///   "uid": {"type":"Group","id":"admin"},
     ///   "attrs": {},
     ///   "parents": []
     /// }
@@ -2916,15 +2916,15 @@ impl Template {
 
     /// Get an annotation value of this `Template`.
     /// If the annotation is present without an explicit value (e.g., `@annotation`),
-    /// then this function returns `Some("")`. It returns `None` only when the
-    /// annotation is not present.
+    /// then this function returns `Some("")`. Returns `None` when the
+    /// annotation is not present or when `key` is not a valid annotation identifier.
     pub fn annotation(&self, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .annotation(&key.as_ref().parse().ok()?)
             .map(AsRef::as_ref)
     }
 
-    /// Iterate through annotation data of this `Template` as key-value pairs
+    /// Iterate through annotation data of this `Template` as key-value pairs.
     /// Annotations which do not have an explicit value (e.g., `@annotation`),
     /// are included in the iterator with the value `""`.
     pub fn annotations(&self) -> impl Iterator<Item = (&str, &str)> {
@@ -3255,17 +3255,17 @@ impl Policy {
         self.ast.effect()
     }
 
-    /// Get an annotation value of this template-linked or static policy
+    /// Get an annotation value of this template-linked or static policy.
     /// If the annotation is present without an explicit value (e.g., `@annotation`),
-    /// then this function returns `Some("")`. It returns `None` only when the
-    /// annotation is not present.
+    /// then this function returns `Some("")`. Returns `None` when the
+    /// annotation is not present or when `key` is not a valid annotations identifier.
     pub fn annotation(&self, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .annotation(&key.as_ref().parse().ok()?)
             .map(AsRef::as_ref)
     }
 
-    /// Iterate through annotation data of this template-linked or static policy
+    /// Iterate through annotation data of this template-linked or static policy.
     /// Annotations which do not have an explicit value (e.g., `@annotation`),
     /// are included in the iterator with the value `""`.
     pub fn annotations(&self) -> impl Iterator<Item = (&str, &str)> {

@@ -352,6 +352,7 @@ mod context_creation_errors {
 }
 
 /// Error subtypes for [`ValidationError`].
+///
 /// Errors are primarily documented on their variants in [`ValidationError`].
 pub mod validation_errors;
 
@@ -528,12 +529,15 @@ impl From<cedar_policy_validator::ValidationError> for ValidationError {
 }
 
 /// Error subtypes for [`ValidationWarning`].
+///
 /// Validation warnings are primarily documented on their variants in [`ValidationWarning`].
 pub mod validation_warnings;
 
 /// Represents the different kinds of validation warnings and information
-/// specific to that warning. Marked as `non_exhaustive` to allow adding
-/// additional warnings in the future as a non-breaking change.
+/// specific to that warning.
+///
+/// Marked as `non_exhaustive` to allow adding additional warnings in the future
+/// as a non-breaking change.
 #[derive(Debug, Clone, Error, Diagnostic)]
 #[non_exhaustive]
 pub enum ValidationWarning {
@@ -884,6 +888,7 @@ impl ParseErrors {
 }
 
 /// Errors that can occur when parsing policies or expressions.
+///
 /// Marked as `non_exhaustive` to support adding additional error information
 /// in the future without a major version bump.
 #[derive(Debug, Diagnostic, Error, RefCast)]

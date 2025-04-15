@@ -42,8 +42,8 @@ use crate::{
 };
 use crate::{ValidationResult, Validator};
 
-/// Data structure storing what data is needed
-/// based on the the [`RequestType`].
+/// Data structure storing what data is needed based on the the [`RequestType`].
+///
 /// For each request type, the [`EntityManifest`] stores
 /// a [`RootAccessTrie`] of data to retrieve.
 ///
@@ -94,9 +94,9 @@ impl Display for EntityRoot {
     }
 }
 
-/// A [`RootAccessTrie`] is a trie describing a set of
-/// data paths to retrieve. Each edge in the trie
-/// is either a record or entity dereference.
+/// A trie describing a set of data paths to retrieve.
+///
+/// Each edge in the trie is either a record or entity dereference.
 ///
 /// If an entity or record field does not exist in the backing store,
 /// it is safe to stop loading data at that point.
