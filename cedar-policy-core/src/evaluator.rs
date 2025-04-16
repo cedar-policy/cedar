@@ -973,6 +973,30 @@ impl<'e> Evaluator<'e> {
                     None
                 }
             }
+            // We detect sets being checked for contains*, and short-circuit to false if the set is empty
+            (
+                BinaryOp::Contains | BinaryOp::ContainsAll | BinaryOp::ContainsAny,
+                ValueKind::Set(set),
+                _,
+            ) => match set {
+                Set { fast: Some(h), .. } => {
+                    if h.is_empty() {
+                        Some(false.into())
+                    } else {
+                        None
+                    }
+                }
+                Set {
+                    fast: None,
+                    authoritative,
+                } => {
+                    if authoritative.is_empty() {
+                        Some(false.into())
+                    } else {
+                        None
+                    }
+                }
+            },
             _ => None,
         }
     }
