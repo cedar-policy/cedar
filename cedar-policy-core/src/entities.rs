@@ -2281,6 +2281,68 @@ mod entities_tests {
         // as the only link was through D
         assert!(!f.is_descendant_of(&bid));
     }
+
+    #[test]
+    fn test_upsert_entities() {
+        // Original Hierarchy
+        // F -> A
+        // F -> D -> A, D -> B, D -> C
+        // F -> E -> C
+        let aid = EntityUID::with_eid("A");
+        let a = Entity::with_uid(aid.clone());
+        let bid = EntityUID::with_eid("B");
+        let b = Entity::with_uid(bid.clone());
+        let cid = EntityUID::with_eid("C");
+        let c = Entity::with_uid(cid.clone());
+        let did = EntityUID::with_eid("D");
+        let mut d = Entity::with_uid(did.clone());
+        let eid = EntityUID::with_eid("E");
+        let mut e = Entity::with_uid(eid.clone());
+        let fid = EntityUID::with_eid("F");
+        let mut f = Entity::with_uid(fid.clone());
+        f.add_parent(aid.clone());
+        f.add_parent(did.clone());
+        f.add_parent(eid.clone());
+        d.add_parent(aid.clone());
+        d.add_parent(bid.clone());
+        d.add_parent(cid.clone());
+        e.add_parent(cid.clone());
+
+        let mut f_updated = Entity::with_uid(fid.clone());
+        f_updated.add_parent(cid.clone());
+
+        let gid = EntityUID::with_eid("G");
+        let mut g = Entity::with_uid(gid.clone());
+        g.add_parent(fid.clone());
+
+        let updates = vec![f_updated, g].into_iter().map(Arc::new).collect::<Vec<_>>();
+        // Construct original hierarchy
+        let entities = Entities::from_entities(
+            vec![a, b, c, d, e, f],
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        )
+        .expect("Failed to construct entities")
+        // Apply updates
+        .upsert_entities(updates, None::<&NoEntitiesSchema>, TCComputation::ComputeNow, &Extensions::all_available())
+        .expect("Failed to remove entities");
+        // Post-Update Hierarchy
+        // G -> F -> C
+        // D -> A, D -> B, D -> C
+        // E -> C
+
+        let g = entities.entity(&gid).unwrap();
+        let f = entities.entity(&fid).unwrap();
+
+        // Assert the existence of these edges in the hierarchy
+        assert!(f.is_descendant_of(&cid));
+        assert!(g.is_descendant_of(&cid));
+        assert!(g.is_descendant_of(&fid));
+
+        // Assert that there is no longer an edge from F to E
+        assert!(!f.is_descendant_of(&eid));
+    }
 }
 
 // PANIC SAFETY: Unit Test Code
