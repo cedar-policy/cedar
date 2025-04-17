@@ -973,6 +973,18 @@ impl<'e> Evaluator<'e> {
                     None
                 }
             }
+            // Optimize contains* checks by resolving to false if the set is an empty set and the left hand side is unknown
+            (
+                BinaryOp::Contains | BinaryOp::ContainsAll | BinaryOp::ContainsAny,
+                ValueKind::Set(set),
+                ExprKind::Unknown(Unknown { .. }),
+            ) => {
+                if set.is_empty() {
+                    Some(false.into())
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }
