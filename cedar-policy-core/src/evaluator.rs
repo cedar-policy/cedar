@@ -973,7 +973,7 @@ impl<'e> Evaluator<'e> {
                     None
                 }
             }
-            // We detect sets being checked for contains*, and short-circuit to false if the set is empty
+            // Optimize contains* checks by resolving to false if the set is an empty set and the left hand side is unknown
             (
                 BinaryOp::Contains | BinaryOp::ContainsAll | BinaryOp::ContainsAny,
                 ValueKind::Set(set),
