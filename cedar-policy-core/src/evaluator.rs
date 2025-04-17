@@ -977,7 +977,6 @@ impl<'e> Evaluator<'e> {
             (
                 BinaryOp::Contains | BinaryOp::ContainsAll | BinaryOp::ContainsAny,
                 ValueKind::Set(set),
-                _,
             ) => match set {
                 Set { fast: Some(h), .. } => {
                     if h.is_empty() {
@@ -995,6 +994,7 @@ impl<'e> Evaluator<'e> {
                     } else {
                         None
                     }
+                ExprKind::Unknown(Unknown { .. }),
                 }
             },
             _ => None,
