@@ -977,26 +977,14 @@ impl<'e> Evaluator<'e> {
             (
                 BinaryOp::Contains | BinaryOp::ContainsAll | BinaryOp::ContainsAny,
                 ValueKind::Set(set),
-            ) => match set {
-                Set { fast: Some(h), .. } => {
-                    if h.is_empty() {
-                        Some(false.into())
-                    } else {
-                        None
-                    }
-                }
-                Set {
-                    fast: None,
-                    authoritative,
-                } => {
-                    if authoritative.is_empty() {
-                        Some(false.into())
-                    } else {
-                        None
-                    }
                 ExprKind::Unknown(Unknown { .. }),
+            ) => {
+                if set.is_empty() {
+                    Some(false.into())
+                } else {
+                    None
                 }
-            },
+            }
             _ => None,
         }
     }
