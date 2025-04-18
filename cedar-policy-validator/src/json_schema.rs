@@ -235,12 +235,6 @@ impl CommonTypeId {
         }
     }
 
-    /// Create a [`CommonTypeId`] based on an [`UnreservedId`] but do not check
-    /// if the latter is valid or not
-    pub fn unchecked(id: UnreservedId) -> Self {
-        Self(id)
-    }
-
     // Test if this id is a reserved JSON schema keyword.
     // Issues:
     // https://github.com/cedar-policy/cedar/issues/1070
@@ -360,87 +354,6 @@ impl<N> NamespaceDefinition<N> {
             #[cfg(feature = "extended-schema")]
             loc: None,
         }
-    }
-}
-
-impl NamespaceDefinition<RawName> {
-    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
-    pub fn conditionally_qualify_type_references(
-        self,
-        ns: Option<&InternalName>,
-    ) -> NamespaceDefinition<ConditionalName> {
-        NamespaceDefinition {
-            common_types: self
-                .common_types
-                .into_iter()
-                .map(|(k, v)| {
-                    (
-                        k,
-                        CommonType {
-                            ty: v.ty.conditionally_qualify_type_references(ns),
-                            annotations: v.annotations,
-                            loc: v.loc,
-                        },
-                    )
-                })
-                .collect(),
-            entity_types: self
-                .entity_types
-                .into_iter()
-                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
-                .collect(),
-            actions: self
-                .actions
-                .into_iter()
-                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
-                .collect(),
-            annotations: self.annotations,
-            #[cfg(feature = "extended-schema")]
-            loc: self.loc,
-        }
-    }
-}
-
-impl NamespaceDefinition<ConditionalName> {
-    /// Convert this [`NamespaceDefinition<ConditionalName>`] into a
-    /// [`NamespaceDefinition<InternalName>`] by fully-qualifying all typenames
-    /// that appear anywhere in any definitions.
-    ///
-    /// `all_defs` needs to contain the full set of all fully-qualified typenames
-    /// and actions that are defined in the schema (in all schema fragments).
-    pub fn fully_qualify_type_references(
-        self,
-        all_defs: &AllDefs,
-    ) -> Result<NamespaceDefinition<InternalName>> {
-        Ok(NamespaceDefinition {
-            common_types: self
-                .common_types
-                .into_iter()
-                .map(|(k, v)| {
-                    Ok((
-                        k,
-                        CommonType {
-                            ty: v.ty.fully_qualify_type_references(all_defs)?,
-                            annotations: v.annotations,
-                            loc: v.loc,
-                        },
-                    ))
-                })
-                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
-            entity_types: self
-                .entity_types
-                .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
-            actions: self
-                .actions
-                .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<Result<_>>()?,
-            annotations: self.annotations,
-            #[cfg(feature = "extended-schema")]
-            loc: self.loc,
-        })
     }
 }
 
@@ -621,84 +534,6 @@ impl<N> From<StandardEntityType<N>> for EntityType<N> {
     }
 }
 
-impl EntityType<RawName> {
-    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
-    pub fn conditionally_qualify_type_references(
-        self,
-        ns: Option<&InternalName>,
-    ) -> EntityType<ConditionalName> {
-        let Self {
-            kind,
-            annotations,
-            loc,
-        } = self;
-        match kind {
-            EntityTypeKind::Enum { choices } => EntityType {
-                kind: EntityTypeKind::Enum { choices },
-                annotations,
-                loc,
-            },
-            EntityTypeKind::Standard(ty) => EntityType {
-                kind: EntityTypeKind::Standard(StandardEntityType {
-                    member_of_types: ty
-                        .member_of_types
-                        .into_iter()
-                        .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // Only entity, not common, here for now; see #1064
-                        .collect(),
-                    shape: ty.shape.conditionally_qualify_type_references(ns),
-                    tags: ty
-                        .tags
-                        .map(|ty| ty.conditionally_qualify_type_references(ns)),
-                }),
-                annotations,
-                loc,
-            },
-        }
-    }
-}
-
-impl EntityType<ConditionalName> {
-    /// Convert this [`EntityType<ConditionalName>`] into an
-    /// [`EntityType<InternalName>`] by fully-qualifying all typenames that
-    /// appear anywhere in any definitions.
-    ///
-    /// `all_defs` needs to contain the full set of all fully-qualified typenames
-    /// and actions that are defined in the schema (in all schema fragments).
-    pub fn fully_qualify_type_references(
-        self,
-        all_defs: &AllDefs,
-    ) -> std::result::Result<EntityType<InternalName>, TypeNotDefinedError> {
-        let Self {
-            kind,
-            annotations,
-            loc,
-        } = self;
-        Ok(match kind {
-            EntityTypeKind::Enum { choices } => EntityType {
-                kind: EntityTypeKind::Enum { choices },
-                annotations,
-                loc,
-            },
-            EntityTypeKind::Standard(ty) => EntityType {
-                kind: EntityTypeKind::Standard(StandardEntityType {
-                    member_of_types: ty
-                        .member_of_types
-                        .into_iter()
-                        .map(|cname| cname.resolve(all_defs))
-                        .collect::<std::result::Result<_, _>>()?,
-                    shape: ty.shape.fully_qualify_type_references(all_defs)?,
-                    tags: ty
-                        .tags
-                        .map(|ty| ty.fully_qualify_type_references(all_defs))
-                        .transpose()?,
-                }),
-                annotations,
-                loc,
-            },
-        })
-    }
-}
-
 /// Declaration of entity or record attributes, or of an action context.
 /// These share a JSON format.
 ///
@@ -831,63 +666,6 @@ pub struct ActionType<N> {
     pub(crate) defn_loc: Option<Loc>,
 }
 
-impl ActionType<RawName> {
-    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
-    pub fn conditionally_qualify_type_references(
-        self,
-        ns: Option<&InternalName>,
-    ) -> ActionType<ConditionalName> {
-        ActionType {
-            attributes: self.attributes,
-            applies_to: self
-                .applies_to
-                .map(|applyspec| applyspec.conditionally_qualify_type_references(ns)),
-            member_of: self.member_of.map(|v| {
-                v.into_iter()
-                    .map(|aeuid| aeuid.conditionally_qualify_type_references(ns))
-                    .collect()
-            }),
-            annotations: self.annotations,
-            loc: self.loc,
-            #[cfg(feature = "extended-schema")]
-            defn_loc: self.defn_loc,
-        }
-    }
-}
-
-impl ActionType<ConditionalName> {
-    /// Convert this [`ActionType<ConditionalName>`] into an
-    /// [`ActionType<InternalName>`] by fully-qualifying all typenames that
-    /// appear anywhere in any definitions.
-    ///
-    /// `all_defs` needs to contain the full set of all fully-qualified typenames
-    /// and actions that are defined in the schema (in all schema fragments).
-    pub fn fully_qualify_type_references(
-        self,
-        all_defs: &AllDefs,
-    ) -> Result<ActionType<InternalName>> {
-        Ok(ActionType {
-            attributes: self.attributes,
-            applies_to: self
-                .applies_to
-                .map(|applyspec| applyspec.fully_qualify_type_references(all_defs))
-                .transpose()?,
-            member_of: self
-                .member_of
-                .map(|v| {
-                    v.into_iter()
-                        .map(|aeuid| aeuid.fully_qualify_type_references(all_defs))
-                        .collect::<std::result::Result<_, ActionNotDefinedError>>()
-                })
-                .transpose()?,
-            annotations: self.annotations,
-            loc: self.loc,
-            #[cfg(feature = "extended-schema")]
-            defn_loc: self.defn_loc,
-        })
-    }
-}
-
 /// The apply spec specifies what principals and resources an action can be used
 /// with.  This specification can either be done through containing to entity
 /// types.
@@ -913,55 +691,6 @@ pub struct ApplySpec<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "AttributesOrContext::is_empty_record")]
     pub context: AttributesOrContext<N>,
-}
-
-impl ApplySpec<RawName> {
-    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
-    pub fn conditionally_qualify_type_references(
-        self,
-        ns: Option<&InternalName>,
-    ) -> ApplySpec<ConditionalName> {
-        ApplySpec {
-            resource_types: self
-                .resource_types
-                .into_iter()
-                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // Only entity, not common, here for now; see #1064
-                .collect(),
-            principal_types: self
-                .principal_types
-                .into_iter()
-                .map(|rname| rname.conditionally_qualify_with(ns, ReferenceType::Entity)) // Only entity, not common, here for now; see #1064
-                .collect(),
-            context: self.context.conditionally_qualify_type_references(ns),
-        }
-    }
-}
-
-impl ApplySpec<ConditionalName> {
-    /// Convert this [`ApplySpec<ConditionalName>`] into an
-    /// [`ApplySpec<InternalName>`] by fully-qualifying all typenames that
-    /// appear anywhere in any definitions.
-    ///
-    /// `all_defs` needs to contain the full set of all fully-qualified typenames
-    /// and actions that are defined in the schema (in all schema fragments).
-    pub fn fully_qualify_type_references(
-        self,
-        all_defs: &AllDefs,
-    ) -> std::result::Result<ApplySpec<InternalName>, TypeNotDefinedError> {
-        Ok(ApplySpec {
-            resource_types: self
-                .resource_types
-                .into_iter()
-                .map(|cname| cname.resolve(all_defs))
-                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
-            principal_types: self
-                .principal_types
-                .into_iter()
-                .map(|cname| cname.resolve(all_defs))
-                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
-            context: self.context.fully_qualify_type_references(all_defs)?,
-        })
-    }
 }
 
 /// Represents the [`cedar_policy_core::ast::EntityUID`] of an action
@@ -1164,12 +893,6 @@ impl ActionEntityUID<InternalName> {
     }
 }
 
-impl From<ActionEntityUID<Name>> for EntityUID {
-    fn from(aeuid: ActionEntityUID<Name>) -> Self {
-        EntityUID::from_components(aeuid.ty().clone().into(), Eid::new(aeuid.id), None)
-    }
-}
-
 impl TryFrom<ActionEntityUID<InternalName>> for EntityUID {
     type Error = <InternalName as TryInto<Name>>::Error;
     fn try_from(
@@ -1185,18 +908,6 @@ impl TryFrom<ActionEntityUID<InternalName>> for EntityUID {
             Eid::new(aeuid.id),
             loc,
         ))
-    }
-}
-
-impl From<EntityUID> for ActionEntityUID<Name> {
-    fn from(euid: EntityUID) -> Self {
-        let (ty, id) = euid.components();
-        ActionEntityUID {
-            ty: Some(ty.into()),
-            id: <Eid as AsRef<SmolStr>>::as_ref(&id).clone(),
-            #[cfg(feature = "extended-schema")]
-            loc: None,
-        }
     }
 }
 
@@ -1281,36 +992,6 @@ impl<N> Type<N> {
             } => Box::new(std::iter::once(type_name)),
             Type::CommonTypeRef { type_name, .. } => Box::new(std::iter::once(type_name)),
             _ => Box::new(std::iter::empty()),
-        }
-    }
-
-    /// Is this [`Type`] an extension type, or does it contain one
-    /// (recursively)? Returns `None` if this is a `CommonTypeRef` or
-    /// `EntityOrCommon` because we can't easily check the type of a common type
-    /// reference, accounting for namespaces, without first converting to a
-    /// [`crate::types::Type`].
-    pub fn is_extension(&self) -> Option<bool> {
-        match self {
-            Self::Type {
-                ty: TypeVariant::Extension { .. },
-                ..
-            } => Some(true),
-            Self::Type {
-                ty: TypeVariant::Set { element },
-                ..
-            } => element.is_extension(),
-            Self::Type {
-                ty: TypeVariant::Record(RecordType { attributes, .. }),
-                ..
-            } => attributes
-                .values()
-                .try_fold(false, |a, e| match e.ty.is_extension() {
-                    Some(true) => Some(true),
-                    Some(false) => Some(a),
-                    None => None,
-                }),
-            Self::Type { .. } => Some(false),
-            Self::CommonTypeRef { .. } => None,
         }
     }
 
@@ -1761,12 +1442,6 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
     }
 }
 
-impl<N> From<TypeVariant<N>> for Type<N> {
-    fn from(ty: TypeVariant<N>) -> Self {
-        Self::Type { ty, loc: None }
-    }
-}
-
 /// Represents the type-level information about a record type.
 ///
 /// The parameter `N` is the type of entity type names and common type names in
@@ -1800,45 +1475,6 @@ impl<N> RecordType<N> {
     /// Is this [`RecordType`] an empty record?
     pub fn is_empty_record(&self) -> bool {
         self.additional_attributes == partial_schema_default() && self.attributes.is_empty()
-    }
-}
-
-impl RecordType<RawName> {
-    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
-    pub fn conditionally_qualify_type_references(
-        self,
-        ns: Option<&InternalName>,
-    ) -> RecordType<ConditionalName> {
-        RecordType {
-            attributes: self
-                .attributes
-                .into_iter()
-                .map(|(k, v)| (k, v.conditionally_qualify_type_references(ns)))
-                .collect(),
-            additional_attributes: self.additional_attributes,
-        }
-    }
-}
-
-impl RecordType<ConditionalName> {
-    /// Convert this [`RecordType<ConditionalName>`] into a
-    /// [`RecordType<InternalName>`] by fully-qualifying all typenames that
-    /// appear anywhere in any definitions.
-    ///
-    /// `all_defs` needs to contain the full set of all fully-qualified typenames
-    /// and actions that are defined in the schema (in all schema fragments).
-    pub fn fully_qualify_type_references(
-        self,
-        all_defs: &AllDefs,
-    ) -> std::result::Result<RecordType<InternalName>, TypeNotDefinedError> {
-        Ok(RecordType {
-            attributes: self
-                .attributes
-                .into_iter()
-                .map(|(k, v)| Ok((k, v.fully_qualify_type_references(all_defs)?)))
-                .collect::<std::result::Result<_, TypeNotDefinedError>>()?,
-            additional_attributes: self.additional_attributes,
-        })
     }
 }
 
@@ -2162,41 +1798,6 @@ impl TypeOfAttribute<RawName> {
             #[cfg(feature = "extended-schema")]
             loc: self.loc,
         }
-    }
-
-    /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
-    pub fn conditionally_qualify_type_references(
-        self,
-        ns: Option<&InternalName>,
-    ) -> TypeOfAttribute<ConditionalName> {
-        TypeOfAttribute {
-            ty: self.ty.conditionally_qualify_type_references(ns),
-            required: self.required,
-            annotations: self.annotations,
-            #[cfg(feature = "extended-schema")]
-            loc: self.loc,
-        }
-    }
-}
-
-impl TypeOfAttribute<ConditionalName> {
-    /// Convert this [`TypeOfAttribute<ConditionalName>`] into a
-    /// [`TypeOfAttribute<InternalName>`] by fully-qualifying all typenames that
-    /// appear anywhere in any definitions.
-    ///
-    /// `all_defs` needs to contain the full set of all fully-qualified typenames
-    /// and actions that are defined in the schema (in all schema fragments).
-    pub fn fully_qualify_type_references(
-        self,
-        all_defs: &AllDefs,
-    ) -> std::result::Result<TypeOfAttribute<InternalName>, TypeNotDefinedError> {
-        Ok(TypeOfAttribute {
-            ty: self.ty.fully_qualify_type_references(all_defs)?,
-            required: self.required,
-            annotations: self.annotations,
-            #[cfg(feature = "extended-schema")]
-            loc: self.loc,
-        })
     }
 }
 

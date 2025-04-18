@@ -64,34 +64,6 @@ pub struct ValidatorActionId {
 }
 
 impl ValidatorActionId {
-    /// Construct a new `ValidatorActionId`.
-    ///
-    /// This constructor assumes that `descendants` has TC already computed.
-    /// That is, caller is responsible for TC.
-    pub fn new(
-        name: EntityUID,
-        principal_entity_types: impl IntoIterator<Item = ast::EntityType>,
-        resource_entity_types: impl IntoIterator<Item = ast::EntityType>,
-        descendants: impl IntoIterator<Item = EntityUID>,
-        context: Type,
-        attribute_types: Attributes,
-        attributes: BTreeMap<SmolStr, PartialValue>,
-        loc: Option<Loc>,
-    ) -> Self {
-        Self {
-            name,
-            applies_to: ValidatorApplySpec::new(
-                principal_entity_types.into_iter().collect(),
-                resource_entity_types.into_iter().collect(),
-            ),
-            descendants: descendants.into_iter().collect(),
-            context,
-            attribute_types,
-            attributes,
-            loc,
-        }
-    }
-
     /// The name of the action
     pub fn name(&self) -> &EntityUID {
         &self.name

@@ -278,30 +278,7 @@ impl TryFrom<json_schema::Fragment<RawName>> for ValidatorSchema {
 }
 
 impl ValidatorSchema {
-    /// Construct a new `ValidatorSchema` from a set of `ValidatorEntityType`s and `ValidatorActionId`s
-    pub fn new(
-        entity_types: impl IntoIterator<Item = ValidatorEntityType>,
-        action_ids: impl IntoIterator<Item = ValidatorActionId>,
-    ) -> Self {
-        let entity_types = entity_types
-            .into_iter()
-            .map(|ety| (ety.name().clone(), ety))
-            .collect();
-        let action_ids = action_ids
-            .into_iter()
-            .map(|id| (id.name().clone(), id))
-            .collect();
-        Self::new_from_maps(
-            entity_types,
-            action_ids,
-            #[cfg(feature = "extended-schema")]
-            HashSet::new(),
-            #[cfg(feature = "extended-schema")]
-            HashSet::new(),
-        )
-    }
-
-    /// for internal use: version of `new()` which takes the maps directly, rather than constructing them.
+    /// Construct a new `ValidatorSchema` from `ValidatorEntityType`s and `ValidatorActionId`s
     ///
     /// This function constructs the `actions` cache.
     fn new_from_maps(
@@ -819,18 +796,14 @@ impl ValidatorSchema {
             action_children.into_keys(),
             common_types.into_values(),
         )?;
-        #[cfg(not(feature = "extended-schema"))]
-        let validator_schema = Ok(ValidatorSchema::new_from_maps(entity_types, action_ids));
-        #[cfg(feature = "extended-schema")]
-        let validator_schema = Ok(ValidatorSchema::new_from_maps(
+        Ok(ValidatorSchema::new_from_maps(
             entity_types,
             action_ids,
             #[cfg(feature = "extended-schema")]
             common_type_validators,
             #[cfg(feature = "extended-schema")]
             validator_namespaces,
-        ));
-        validator_schema
+        ))
     }
 
     /// Check that all entity types and actions referenced in the schema are in
