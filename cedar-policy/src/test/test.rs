@@ -6859,7 +6859,7 @@ mod version_tests {
 
     #[test]
     fn test_lang_version() {
-        assert_eq!(get_lang_version().to_string(), "4.2.0");
+        assert_eq!(get_lang_version().to_string(), "4.3.0");
     }
 }
 
