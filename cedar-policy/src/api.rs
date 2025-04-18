@@ -479,6 +479,37 @@ impl Entities {
         )?))
     }
 
+    /// Updates or adds all of the [`Entity`]s in the collection to this [`Entities`]
+    /// structure, re-computing the transitive closure.
+    ///
+    /// If a `schema` is provided, this method will ensure that the added
+    /// entities fully conform to the schema -- for instance, it will error if
+    /// attributes have the wrong types (e.g., string instead of integer), or if
+    /// required attributes are missing or superfluous attributes are provided.
+    /// (This method will not add action entities from the `schema`.)
+    ///
+    /// Re-computing the transitive closure can be expensive, so it is advised
+    /// to not call this method in a loop.
+    /// ## Errors
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
+    pub fn upsert_entities(
+        self,
+        entities: impl IntoIterator<Item = Entity>,
+        schema: Option<&Schema>,
+    ) -> Result<Self, EntitiesError> {
+        Ok(Self(
+            self.0.upsert_entities(
+                entities.into_iter().map(|e| Arc::new(e.0)),
+                schema
+                    .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
+                    .as_ref(),
+                cedar_policy_core::entities::TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )?,
+        ))
+    }
+
     /// Parse an entities JSON file (in [&str] form) and add them into this
     /// [`Entities`] structure, re-computing the transitive closure
     ///

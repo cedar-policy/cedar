@@ -41,6 +41,7 @@ Cedar Language Version: 4.3
   alias for `EntityId::as_ref()` with the `AsRef` impl that produces `&str`. (#1555)
 - Added `PartialResponse::unknown_entities` method (#1557)
 - Added `Entities::len` and `Entities::is_empty` methods (#1562, resolving #1523)
+- Added `Entities::upsert_entities()` to add or update `Entity`s in an `Entities` struct (resolving #1479)
 
 ### Changed
 
