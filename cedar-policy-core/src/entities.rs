@@ -2315,7 +2315,10 @@ mod entities_tests {
         let mut g = Entity::with_uid(gid.clone());
         g.add_parent(fid.clone());
 
-        let updates = vec![f_updated, g].into_iter().map(Arc::new).collect::<Vec<_>>();
+        let updates = vec![f_updated, g]
+            .into_iter()
+            .map(Arc::new)
+            .collect::<Vec<_>>();
         // Construct original hierarchy
         let entities = Entities::from_entities(
             vec![a, b, c, d, e, f],
@@ -2325,7 +2328,12 @@ mod entities_tests {
         )
         .expect("Failed to construct entities")
         // Apply updates
-        .upsert_entities(updates, None::<&NoEntitiesSchema>, TCComputation::ComputeNow, &Extensions::all_available())
+        .upsert_entities(
+            updates,
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            &Extensions::all_available(),
+        )
         .expect("Failed to remove entities");
         // Post-Update Hierarchy
         // G -> F -> C
