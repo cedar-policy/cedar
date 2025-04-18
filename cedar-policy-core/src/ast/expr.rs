@@ -630,6 +630,10 @@ impl Expr {
     ///
     /// Ignores unmapped unknowns.
     /// Ignores type annotations on unknowns.
+    /// Note that there might be "undiscovered unknowns" in the Expr, which
+    /// this function does not notice if evaluation of this Expr did not
+    /// traverse all entities and attributes during evaluation, leading to
+    /// this function only substituting one unknown at a time.
     pub fn substitute(&self, definitions: &HashMap<SmolStr, Value>) -> Expr {
         match self.substitute_general::<UntypedSubstitution>(definitions) {
             Ok(e) => e,
@@ -641,6 +645,10 @@ impl Expr {
     ///
     /// Ignores unmapped unknowns.
     /// Errors if the substituted value does not match the type annotation on the unknown.
+    /// Note that there might be "undiscovered unknowns" in the Expr, which
+    /// this function does not notice if evaluation of this Expr did not
+    /// traverse all entities and attributes during evaluation, leading to
+    /// this function only substituting one unknown at a time.
     pub fn substitute_typed(
         &self,
         definitions: &HashMap<SmolStr, Value>,
