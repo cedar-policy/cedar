@@ -10,6 +10,7 @@ edition.workspace = true
 repository.workspace = true
 
 [dependencies]
+anyhow = "1.0.98"
 cedar-policy-core = { version = "=4.4.0", path = "../cedar-policy-core" }
 cedar-policy-validator = { version = "=4.4.0", path = "../cedar-policy-validator" }
 serde = "1.0.219"
