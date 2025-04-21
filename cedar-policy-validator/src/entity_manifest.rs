@@ -16,6 +16,7 @@
 
 //! Entity Manifest definition and static analysis.
 
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
@@ -299,14 +300,17 @@ impl EntityManifest {
 }
 
 /// Union two tries by combining the fields.
-fn union_fields(first: &Fields, second: &Fields) -> Fields {
-    let mut res = first.clone();
+fn union_fields_mut(first: &mut Fields, second: Fields) {
     for (key, value) in second {
-        res.entry(key.clone())
-            .and_modify(|existing| existing.union_mut(value))
-            .or_insert_with(|| value.clone());
+        match first.entry(key) {
+            Entry::Occupied(mut occupied) => {
+                occupied.get_mut().union_mut(*value);
+            }
+            Entry::Vacant(vacant) => {
+                vacant.insert(value);
+            }
+        }
     }
-    res
 }
 
 impl AccessPath {
@@ -364,18 +368,22 @@ impl RootAccessTrie {
 impl RootAccessTrie {
     /// Union two [`RootAccessTrie`]s together.
     /// The new trie requests the data from both of the original.
-    pub fn union(mut self, other: &Self) -> Self {
+    pub fn union(mut self, other: Self) -> Self {
         self.union_mut(other);
         self
     }
 
     /// Like [`RootAccessTrie::union`], but modifies the current trie.
-    pub fn union_mut(&mut self, other: &Self) {
-        for (key, value) in &other.trie {
-            self.trie
-                .entry(key.clone())
-                .and_modify(|existing| existing.union_mut(value))
-                .or_insert_with(|| value.clone());
+    pub fn union_mut(&mut self, other: Self) {
+        for (key, value) in other.trie {
+            match self.trie.entry(key) {
+                Entry::Occupied(mut occupied) => {
+                    occupied.get_mut().union_mut(value);
+                }
+                Entry::Vacant(vacant) => {
+                    vacant.insert(value);
+                }
+            }
         }
     }
 }
@@ -389,15 +397,15 @@ impl Default for RootAccessTrie {
 impl AccessTrie {
     /// Union two [`AccessTrie`]s together.
     /// The new trie requests the data from both of the original.
-    pub fn union(mut self, other: &Self) -> Self {
+    pub fn union(mut self, other: Self) -> Self {
         self.union_mut(other);
         self
     }
 
     /// Like [`AccessTrie::union`], but modifies the current trie.
-    pub fn union_mut(&mut self, other: &Self) {
-        self.children = union_fields(&self.children, &other.children);
-        self.ancestors_trie.union_mut(&other.ancestors_trie);
+    pub fn union_mut(&mut self, other: Self) {
+        union_fields_mut(&mut self.children, other.children);
+        self.ancestors_trie.union_mut(other.ancestors_trie);
         self.is_ancestor = self.is_ancestor || other.is_ancestor;
     }
 
@@ -435,11 +443,11 @@ impl Default for AccessTrie {
 /// The policies must validate against the schema in strict mode,
 /// otherwise an error is returned.
 pub fn compute_entity_manifest(
-    schema: &ValidatorSchema,
+    schema: ValidatorSchema,
     policies: &PolicySet,
 ) -> Result<EntityManifest, EntityManifestError> {
     // first, run strict validation to ensure there are no errors
-    let validator = Validator::new(schema.clone());
+    let validator = Validator::new(schema);
     let validation_res = validator.validate(policies, ValidationMode::Strict);
     if !validation_res.validation_passed() {
         return Err(EntityManifestError::Validation(validation_res));
@@ -447,10 +455,10 @@ pub fn compute_entity_manifest(
 
     let mut manifest: HashMap<RequestType, RootAccessTrie> = HashMap::new();
 
+    let typechecker = Typechecker::new(validator.schema(), ValidationMode::Strict);
     // now, for each policy we add the data it requires to the manifest
     for policy in policies.policies() {
         // typecheck the policy and get all the request environments
-        let typechecker = Typechecker::new(schema, ValidationMode::Strict);
         let request_envs = typechecker.typecheck_by_request_env(policy.template());
         for (request_env, policy_check) in request_envs {
             let new_primary_slice = match policy_check {
@@ -474,10 +482,14 @@ pub fn compute_entity_manifest(
             let request_type = request_env
                 .to_request_type()
                 .ok_or(PartialRequestError {})?;
-            manifest
-                .entry(request_type)
-                .and_modify(|existing| existing.union_mut(&new_primary_slice))
-                .or_insert(new_primary_slice);
+            match manifest.entry(request_type) {
+                Entry::Occupied(mut occupied) => {
+                    occupied.get_mut().union_mut(new_primary_slice);
+                }
+                Entry::Vacant(vacant) => {
+                    vacant.insert(new_primary_slice);
+                }
+            }
         }
     }
 
@@ -486,7 +498,7 @@ pub fn compute_entity_manifest(
     Ok(EntityManifest {
         per_action: manifest,
     }
-    .to_typed(schema)
+    .to_typed(validator.schema())
     .unwrap())
 }
 
@@ -525,8 +537,8 @@ fn entity_manifest_from_expr(
             else_expr,
         } => Ok(entity_manifest_from_expr(test_expr)?
             .empty_paths()
-            .union(&entity_manifest_from_expr(then_expr)?)
-            .union(&entity_manifest_from_expr(else_expr)?)),
+            .union(entity_manifest_from_expr(then_expr)?)
+            .union(entity_manifest_from_expr(else_expr)?)),
         ExprKind::And { left, right }
         | ExprKind::Or { left, right }
         | ExprKind::BinaryApp {
@@ -535,7 +547,7 @@ fn entity_manifest_from_expr(
             arg2: right,
         } => Ok(entity_manifest_from_expr(left)?
             .empty_paths()
-            .union(&entity_manifest_from_expr(right)?.empty_paths())),
+            .union(entity_manifest_from_expr(right)?.empty_paths())),
         ExprKind::UnaryApp { op, arg } => {
             match op {
                 // these unary ops are on primitive types, so they are simple
@@ -597,7 +609,7 @@ fn entity_manifest_from_expr(
             // these operations do equality checks.
             Ok(arg1_res
                 .full_type_required(ty1)
-                .union(&arg2_res.full_type_required(ty2))
+                .union(arg2_res.full_type_required(ty2))
                 .empty_paths())
         }
         ExprKind::BinaryApp {
@@ -617,7 +629,7 @@ fn entity_manifest_from_expr(
             let mut res = EntityManifestAnalysisResult::default();
 
             for arg in args.iter() {
-                res = res.union(&entity_manifest_from_expr(arg)?);
+                res = res.union(entity_manifest_from_expr(arg)?);
             }
             Ok(res)
         }
@@ -636,7 +648,7 @@ fn entity_manifest_from_expr(
             for expr in &**contents {
                 let content = entity_manifest_from_expr(expr)?;
 
-                res = res.union(&content);
+                res = res.union(content);
             }
 
             // now, wrap result in a set
@@ -652,7 +664,7 @@ fn entity_manifest_from_expr(
                 let res = entity_manifest_from_expr(child_expr)?;
                 record_contents.insert(key.clone(), Box::new(res.resulting_paths));
 
-                global_trie = global_trie.union(&res.global_trie);
+                global_trie = global_trie.union(res.global_trie);
             }
 
             Ok(EntityManifestAnalysisResult {
@@ -740,7 +752,8 @@ when {
 
         let schema = schema();
 
-        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest =
+            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
         let expected_rust = EntityManifest {
             per_action: HashMap::from([(
                 RequestType {
@@ -820,7 +833,8 @@ when {
 
         let schema = schema();
 
-        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest =
+            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
           "perAction": [
@@ -874,7 +888,8 @@ action Read appliesTo {
         .unwrap()
         .0;
 
-        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest =
+            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
           "perAction": [
@@ -979,7 +994,8 @@ action Read appliesTo {
         .unwrap()
         .0;
 
-        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest =
+            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
           "perAction": [
@@ -1112,7 +1128,8 @@ action Read appliesTo {
         .unwrap()
         .0;
 
-        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest =
+            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
           "perAction": [
@@ -1212,7 +1229,8 @@ action BeSad appliesTo {
         .unwrap()
         .0;
 
-        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest =
+            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
           "perAction": [
@@ -1309,7 +1327,8 @@ action Hello appliesTo {
         .unwrap()
         .0;
 
-        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest =
+            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
           "perAction": [
@@ -1423,7 +1442,8 @@ when {
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
 
-        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest =
+            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
         let expected = serde_json::json! ( {
           "perAction": [
             [
@@ -1550,7 +1570,8 @@ when {
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
 
-        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest =
+            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
         let expected = serde_json::json! ( {
           "perAction": [
             [

@@ -411,7 +411,8 @@ when {
 
         let schema = schema();
 
-        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest =
+            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
 
         let entities_json = serde_json::json!(
             [
@@ -462,7 +463,8 @@ when {
 
         let schema = schema();
 
-        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest =
+            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
 
         let entities_json = serde_json::json!(
             [
@@ -517,7 +519,8 @@ when {
 
         let schema = schema();
 
-        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest =
+            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
 
         let entities_json = serde_json::json!(
             [
@@ -563,7 +566,8 @@ when {
 
         let schema = schema_with_hierarchy();
 
-        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest =
+            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
 
         let entities_json = serde_json::json!(
             [
@@ -638,7 +642,8 @@ when {
 
         let schema = schema_with_hierarchy();
 
-        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest =
+            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
 
         let entities_json = serde_json::json!(
             [
@@ -713,7 +718,8 @@ action Read appliesTo {
         .unwrap()
         .0;
 
-        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest =
+            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
 
         let entities_json = serde_json::json!(
             [
@@ -820,7 +826,8 @@ action Read appliesTo {
         .unwrap()
         .0;
 
-        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest =
+            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
 
         let entities_json = serde_json::json!(
             [
@@ -925,7 +932,8 @@ action BeSad appliesTo {
         .unwrap()
         .0;
 
-        let entity_manifest = compute_entity_manifest(&schema, &pset).expect("Should succeed");
+        let entity_manifest =
+            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
         assert_eq!(entity_manifest, entity_manifest);
     }
 
@@ -942,7 +950,7 @@ action BeSad appliesTo {
         let pset = parser::parse_policyset(
             r#"permit(principal in User::"oliver", action, resource) when { User::"oliver".name == "oliver" };"#,
         ).unwrap();
-        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
         expect_entity_slice_to(
             entities_json.clone(),
             entities_json.clone(),
@@ -954,7 +962,7 @@ action BeSad appliesTo {
         let pset = parser::parse_policyset(
             r#"permit(principal in User::"oliver", action, resource) when { principal.name == "oliver" };"#,
         ).unwrap();
-        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
         expect_entity_slice_to(
             entities_json.clone(),
             entities_json.clone(),
@@ -966,7 +974,7 @@ action BeSad appliesTo {
         let pset = parser::parse_policyset(
             r#"permit(principal in User::"oliver", action, resource) when { principal.name == User::"oliver".name };"#,
         ).unwrap();
-        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
         expect_entity_slice_to(entities_json.clone(), entities_json, &schema, &manifest);
     }
 
@@ -1000,7 +1008,7 @@ action Read appliesTo {
             };"#,
         )
         .unwrap();
-        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
         let entities_json = serde_json::json!([{
             "uid" : { "type" : "User", "id" : "oliver"},
             "parents": [],
@@ -1057,7 +1065,7 @@ action Read appliesTo {
         let pset = parser::parse_policyset(
             r#"permit(principal in User::"oliver", action, resource) when { principal.foo == User::"oliver".bar };"#,
         ).unwrap();
-        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
         expect_entity_slice_to(entities_json.clone(), entities_json, &schema, &manifest);
     }
 
@@ -1096,7 +1104,7 @@ action Read appliesTo {
         let pset = parser::parse_policyset(
             r#"permit(principal in User::"oliver", action, resource) when { principal.foo.bar == User::"oliver".foo.baz };"#,
         ).unwrap();
-        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
         expect_entity_slice_to(entities_json.clone(), entities_json, &schema, &manifest);
     }
 
@@ -1130,7 +1138,7 @@ action Read appliesTo {
         let pset = parser::parse_policyset(
             r#"permit(principal in Group::"oliver", action, resource) when {User::"oliver".name == "oliver"};"#,
         ).unwrap();
-        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
         expect_entity_slice_to(
             entities_json.clone(),
             entities_json.clone(),
@@ -1142,7 +1150,7 @@ action Read appliesTo {
         let pset = parser::parse_policyset(
             r#"permit(principal, action, resource) when { User::"oliver" in Group::"oliver" && principal.name == "oliver"};"#,
         ).unwrap();
-        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
         expect_entity_slice_to(
             entities_json.clone(),
             entities_json.clone(),
@@ -1154,7 +1162,7 @@ action Read appliesTo {
         let pset = parser::parse_policyset(
             r#"permit(principal, action, resource) when { User::"oliver" in Group::"oliver" && principal in Group::"oliver" };"#,
         ).unwrap();
-        let manifest = compute_entity_manifest(&schema, &pset).unwrap();
+        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
         expect_entity_slice_to(
             entities_json,
             serde_json::json!([{

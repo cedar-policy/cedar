@@ -302,7 +302,7 @@ pub(crate) fn load_entities(
 
     // finally, convert the loaded entities into a Cedar Entities store
     match Entities::from_entities(
-        entities.values().cloned(),
+        entities.into_values(),
         None::<&NoEntitiesSchema>,
         TCComputation::AssumeAlreadyComputed,
         Extensions::all_available(),
