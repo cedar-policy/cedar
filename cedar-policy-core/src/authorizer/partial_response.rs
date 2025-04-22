@@ -17,15 +17,25 @@
 use std::collections::HashMap;
 
 use either::Either;
-use smol_str::SmolStr;
 use std::sync::Arc;
 
 use super::{
-    err::{ConcretizationError, ReauthorizationError},
-    Annotations, AuthorizationError, Authorizer, Context, Decision, Effect, EntityUIDEntry, Expr,
-    Policy, PolicySet, PolicySetError, Request, Response, Value,
+    Annotations, AuthorizationError, Decision, Effect, EntityUIDEntry, Expr,
+    Policy, Request, Response, 
 };
-use crate::{ast::PolicyID, entities::Entities, evaluator::{EvaluationError, Evaluator}};
+use crate::{ast::PolicyID, evaluator::EvaluationError};
+
+#[cfg(feature = "partial-eval")]
+use smol_str::SmolStr;
+
+#[cfg(feature = "partial-eval")]
+use crate::{evaluator::Evaluator, entities::Entities};
+
+#[cfg(feature = "partial-eval")]
+use super::{
+    err::{ConcretizationError, ReauthorizationError},
+    Context, PolicySet, PolicySetError, Authorizer, Value,
+};
 
 type PolicyComponents<'a> = (Effect, &'a PolicyID, &'a Arc<Expr>, &'a Arc<Annotations>);
 
@@ -65,6 +75,7 @@ pub struct PartialResponse {
     /// The trivial `false` expression, used for materializing a residual for non-satisfied policies
     false_expr: Arc<Expr>,
     /// The request associated with the partial response
+    #[cfg(feature = "partial-eval")]
     request: Arc<Request>,
 }
 
@@ -79,7 +90,7 @@ impl PartialResponse {
         false_forbids: impl IntoIterator<Item = (PolicyID, (ErrorState, Arc<Annotations>))>,
         residual_forbids: impl IntoIterator<Item = (PolicyID, (Arc<Expr>, Arc<Annotations>))>,
         errors: impl IntoIterator<Item = AuthorizationError>,
-        request: Arc<Request>,
+        _request: Arc<Request>,
     ) -> Self {
         Self {
             satisfied_permits: true_permits.into_iter().collect(),
@@ -91,7 +102,8 @@ impl PartialResponse {
             errors: errors.into_iter().collect(),
             true_expr: Arc::new(Expr::val(true)),
             false_expr: Arc::new(Expr::val(false)),
-            request,
+            #[cfg(feature = "partial-eval")]
+            request: _request,
         }
     }
 
@@ -311,6 +323,7 @@ impl PartialResponse {
     }
 
     /// Attempt to re-authorize this response given a mapping from unknowns to values
+    #[cfg(feature = "partial-eval")]
     pub fn reauthorize(
         &self,
         mapping: &HashMap<SmolStr, Value>,
@@ -329,6 +342,7 @@ impl PartialResponse {
         Ok(auth.is_authorized_core_internal(eval, new_request, &policyset))
     }
 
+    #[cfg(feature = "partial-eval")]
     fn all_residual_policies(&self) -> Result<PolicySet, PolicySetError> {
         PolicySet::try_from_iter(
             self.all_permit_residuals()
@@ -345,6 +359,7 @@ impl PartialResponse {
         )
     }
 
+    #[cfg(feature = "partial-eval")]
     fn concretize_request(
         &self,
         mapping: &HashMap<SmolStr, Value>,
@@ -408,6 +423,7 @@ impl PartialResponse {
 }
 
 impl EntityUIDEntry {
+    #[cfg(feature = "partial-eval")]
     fn concretize(
         &self,
         key: &str,
@@ -545,11 +561,13 @@ mod test {
         }
     }
 
+    use crate::authorizer::{
+        ActionConstraint, PrincipalConstraint, ResourceConstraint, Context,
+    };
+
+    #[cfg(feature = "partial-eval")]
     use crate::{
-        authorizer::{
-            ActionConstraint, EntityUID, PrincipalConstraint, ResourceConstraint, RestrictedExpr,
-            Unknown,
-        },
+        authorizer::{EntityUID, RestrictedExpr, Unknown},
         extensions::Extensions,
         parser::parse_policyset,
         FromNormalizedStr,
@@ -761,6 +779,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "partial-eval")]
     fn reauthorize() {
         let policies = parse_policyset(
             r#"
@@ -768,7 +787,7 @@ mod test {
                 principal == NS::"a" && resource == NS::"b"
             };
             forbid(principal, action, resource) when {
-                context.b
+                context.c && context.d == 10
             };
         "#,
         )
@@ -776,8 +795,12 @@ mod test {
 
         let context_unknown = Context::from_pairs(
             [(
-                "b".into(),
-                RestrictedExpr::unknown(Unknown::new_untyped("b")),
+                "c".into(),
+                RestrictedExpr::unknown(Unknown::new_untyped("c")),
+            ),
+            (
+                "d".into(),
+                RestrictedExpr::unknown(Unknown::new_untyped("d")),
             )],
             Extensions::all_available(),
         )
@@ -807,22 +830,19 @@ mod test {
             .unwrap();
 
         assert_eq!(
-            response_with_concrete_resource
-                .definitely_satisfied()
-                .next()
-                .unwrap()
-                .effect(),
-            Effect::Permit
+            response_with_concrete_resource.get(&PolicyID::from_string("policy0")).map(|p| p.effect()),
+            Some(Effect::Permit)
         );
 
         let response_with_concrete_context_attr = response_with_concrete_resource
             .reauthorize(
-                &HashMap::from([("b".into(), true.into())]),
+                &HashMap::from([("c".into(), true.into()), ("d".into(), 10.into())]),
                 &authorizer,
                 &entities,
             )
             .unwrap();
 
+        // Expected result, as the presence of context.c == true && context.d == 10 makes the deny policy apply
         assert_eq!(
             response_with_concrete_context_attr.decision(),
             Some(Decision::Deny)

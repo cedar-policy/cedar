@@ -20,6 +20,7 @@ use crate::ast::*;
 use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
+#[cfg(feature = "partial-eval")]
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -68,6 +69,7 @@ pub struct Evaluator<'e> {
     /// Extensions which are active for this evaluation
     extensions: &'e Extensions<'e>,
     /// Mapper of unknown values into concrete ones, if recognized
+    #[cfg(feature = "partial-eval")]
     unknowns_mapper: Box<dyn Fn(&str) -> Option<Value> + 'e>,
 }
 
@@ -210,11 +212,13 @@ impl<'e> Evaluator<'e> {
             },
             entities,
             extensions,
+            #[cfg(feature = "partial-eval")]
             unknowns_mapper: Box::new(|_: &str| -> Option<Value> {None}),
         }
     }
 
     // Constructs an Evaluator for a given unknowns mapper function.
+    #[cfg(feature = "partial-eval")]
     pub(crate) fn with_unknowns_mapper(self, unknowns_mapper: Box<dyn Fn(&str) -> Option<Value> + 'e>) -> Self {
         Self {
             principal: self.principal,
@@ -1131,6 +1135,7 @@ impl Value {
     }
 
     /// Convert the `Value` to a Record, or throw a type error if it's not a Record.
+    #[cfg(feature = "partial-eval")]
     pub(crate) fn get_as_record(&self) -> Result<&Arc<BTreeMap<SmolStr, Value>>> {
         match &self.value {
             ValueKind::Record(rec) => Ok(rec),
