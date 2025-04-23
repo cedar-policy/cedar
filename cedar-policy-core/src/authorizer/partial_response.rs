@@ -20,8 +20,8 @@ use either::Either;
 use std::sync::Arc;
 
 use super::{
-    Annotations, AuthorizationError, Decision, Effect, EntityUIDEntry, Expr,
-    Policy, Request, Response, 
+    Annotations, AuthorizationError, Decision, Effect, EntityUIDEntry, Expr, Policy, Request,
+    Response,
 };
 use crate::{ast::PolicyID, evaluator::EvaluationError};
 
@@ -29,12 +29,12 @@ use crate::{ast::PolicyID, evaluator::EvaluationError};
 use smol_str::SmolStr;
 
 #[cfg(feature = "partial-eval")]
-use crate::{evaluator::Evaluator, entities::Entities};
+use crate::{entities::Entities, evaluator::Evaluator};
 
 #[cfg(feature = "partial-eval")]
 use super::{
     err::{ConcretizationError, ReauthorizationError},
-    Context, PolicySet, PolicySetError, Authorizer, Value,
+    Authorizer, Context, PolicySet, PolicySetError, Value,
 };
 
 type PolicyComponents<'a> = (Effect, &'a PolicyID, &'a Arc<Expr>, &'a Arc<Annotations>);
@@ -333,12 +333,11 @@ impl PartialResponse {
         let policyset = self.all_residual_policies()?;
         let new_request = self.concretize_request(mapping)?;
         // Although this function takes a HashMap, keep the internal mapping function generic
-        let unknowns_mapper = |unknown_name: &str| -> Option<Value> {
-            mapping.get(unknown_name).cloned()
-        };
+        let unknowns_mapper =
+            |unknown_name: &str| -> Option<Value> { mapping.get(unknown_name).cloned() };
         // Construct an evaluator resolving these specific unknown mappings
-        let eval = Evaluator::new(new_request.clone(), es, auth.extensions).
-            with_unknowns_mapper(Box::new(unknowns_mapper));
+        let eval = Evaluator::new(new_request.clone(), es, auth.extensions)
+            .with_unknowns_mapper(Box::new(unknowns_mapper));
         Ok(auth.is_authorized_core_internal(eval, new_request, &policyset))
     }
 
@@ -561,9 +560,7 @@ mod test {
         }
     }
 
-    use crate::authorizer::{
-        ActionConstraint, PrincipalConstraint, ResourceConstraint, Context,
-    };
+    use crate::authorizer::{ActionConstraint, Context, PrincipalConstraint, ResourceConstraint};
 
     #[cfg(feature = "partial-eval")]
     use crate::{
@@ -794,14 +791,16 @@ mod test {
         .unwrap();
 
         let context_unknown = Context::from_pairs(
-            [(
-                "c".into(),
-                RestrictedExpr::unknown(Unknown::new_untyped("c")),
-            ),
-            (
-                "d".into(),
-                RestrictedExpr::unknown(Unknown::new_untyped("d")),
-            )],
+            [
+                (
+                    "c".into(),
+                    RestrictedExpr::unknown(Unknown::new_untyped("c")),
+                ),
+                (
+                    "d".into(),
+                    RestrictedExpr::unknown(Unknown::new_untyped("d")),
+                ),
+            ],
             Extensions::all_available(),
         )
         .unwrap();
@@ -830,7 +829,9 @@ mod test {
             .unwrap();
 
         assert_eq!(
-            response_with_concrete_resource.get(&PolicyID::from_string("policy0")).map(|p| p.effect()),
+            response_with_concrete_resource
+                .get(&PolicyID::from_string("policy0"))
+                .map(|p| p.effect()),
             Some(Effect::Permit)
         );
 

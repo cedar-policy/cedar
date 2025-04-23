@@ -213,13 +213,16 @@ impl<'e> Evaluator<'e> {
             entities,
             extensions,
             #[cfg(feature = "partial-eval")]
-            unknowns_mapper: Box::new(|_: &str| -> Option<Value> {None}),
+            unknowns_mapper: Box::new(|_: &str| -> Option<Value> { None }),
         }
     }
 
     // Constructs an Evaluator for a given unknowns mapper function.
     #[cfg(feature = "partial-eval")]
-    pub(crate) fn with_unknowns_mapper(self, unknowns_mapper: Box<dyn Fn(&str) -> Option<Value> + 'e>) -> Self {
+    pub(crate) fn with_unknowns_mapper(
+        self,
+        unknowns_mapper: Box<dyn Fn(&str) -> Option<Value> + 'e>,
+    ) -> Self {
         Self {
             principal: self.principal,
             action: self.action,
@@ -808,7 +811,7 @@ impl<'e> Evaluator<'e> {
             }
         }
     }
-    
+
     fn eval_in(
         &self,
         uid1: &EntityUID,
@@ -948,14 +951,12 @@ impl<'e> Evaluator<'e> {
                 }
                 Dereference::Data(entity) => entity
                     .get(attr)
-                    .map(|pv| {
-                        match pv {
-                            PartialValue::Value(_) => Ok(pv.clone()),
-                            PartialValue::Residual(e) => match e.expr_kind() {
-                                ExprKind::Unknown(u) => self.unknown_to_partialvalue(u),
-                                _ => Ok(pv.clone()),
-                            }
-                        }
+                    .map(|pv| match pv {
+                        PartialValue::Value(_) => Ok(pv.clone()),
+                        PartialValue::Residual(e) => match e.expr_kind() {
+                            ExprKind::Unknown(u) => self.unknown_to_partialvalue(u),
+                            _ => Ok(pv.clone()),
+                        },
                     })
                     .ok_or_else(|| {
                         EvaluationError::entity_attr_does_not_exist(
