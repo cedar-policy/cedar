@@ -42,6 +42,28 @@ use std::sync::Arc;
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum RawCedarValueJson {
+    /// JSON bool => Cedar bool
+    Bool(bool),
+    /// JSON int => Cedar long (64-bit signed integer)
+    Long(i64),
+    /// JSON string => Cedar string
+    String(#[cfg_attr(feature = "wasm", tsify(type = "string"))] SmolStr),
+    /// JSON list => Cedar set; can contain any `CedarValueJson`s, even
+    /// heterogeneously
+    Set(Vec<RawCedarValueJson>),
+    /// JSON object => Cedar record; must have string keys, but values
+    /// can be any `CedarValueJson`s, even heterogeneously
+    Record(
+        #[cfg_attr(feature = "wasm", tsify(type = "{ [key: string]: CedarValueJson }"))]
+        RawJsonRecord,
+    ),
+    /// JSON null, which is never valid, but we put this here in order to
+    /// provide a better error message.
+    Null,
+}
 /// The canonical JSON representation of a Cedar value.
 /// Many Cedar values have a natural one-to-one mapping to and from JSON values.
 /// Cedar values of some types, like entity references or extension values,
@@ -50,7 +72,7 @@ extern crate tsify;
 ///
 /// For example, this is the JSON format for attribute values expected by
 /// `EntityJsonParser`, when schema-based parsing is not used.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -104,13 +126,75 @@ pub enum CedarValueJson {
     Null,
 }
 
-/// Structure representing a Cedar record in JSON
+impl<'de> Deserialize<'de> for CedarValueJson {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let v: RawCedarValueJson = RawCedarValueJson::deserialize(deserializer)?;
+        Ok(v.into())
+    }
+}
+
+impl From<RawCedarValueJson> for CedarValueJson {
+    fn from(value: RawCedarValueJson) -> Self {
+        match value {
+            RawCedarValueJson::Bool(b) => Self::Bool(b),
+            RawCedarValueJson::Long(l) => Self::Long(l),
+            RawCedarValueJson::Null => Self::Null,
+            RawCedarValueJson::Record(r) => {
+                let values = &r.values;
+                if values.len() == 1 {
+                    if let Some(RawCedarValueJson::Record(r)) = values.get("__extn") {
+                        if r.values.len() == 2 {
+                            if let Some(RawCedarValueJson::String(fn_name)) = r.values.get("fn") {
+                                if let Some(arg) = r.values.get("arg") {
+                                    return Self::ExtnEscape {
+                                        __extn: FnAndArg {
+                                            ext_fn: fn_name.clone(),
+                                            arg: Box::new(arg.clone().into()),
+                                        },
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
+                Self::Record(r.into())
+            }
+            RawCedarValueJson::Set(s) => Self::Set(s.into_iter().map(Into::into).collect()),
+            RawCedarValueJson::String(s) => Self::String(s),
+        }
+    }
+}
+
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct JsonRecord {
+pub struct RawJsonRecord {
     /// Cedar records must have string keys, but values can be any
     /// `CedarValueJson`s, even heterogeneously
     #[serde_as(as = "serde_with::MapPreventDuplicates<_, _>")]
+    #[serde(flatten)]
+    values: BTreeMap<SmolStr, RawCedarValueJson>,
+}
+
+impl From<RawJsonRecord> for JsonRecord {
+    fn from(value: RawJsonRecord) -> Self {
+        JsonRecord {
+            values: value
+                .values
+                .into_iter()
+                .map(|(k, v)| (k, v.into()))
+                .collect(),
+        }
+    }
+}
+
+/// Structure representing a Cedar record in JSON
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct JsonRecord {
+    /// Cedar records must have string keys, but values can be any
+    /// `CedarValueJson`s, even heterogeneously
     #[serde(flatten)]
     values: BTreeMap<SmolStr, CedarValueJson>,
 }
