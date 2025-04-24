@@ -542,7 +542,7 @@ when {
         expect_entity_slice_to(
             entities_json,
             expected_entities_json,
-            &validator.schema(),
+            validator.schema(),
             &entity_manifest,
         );
     }
