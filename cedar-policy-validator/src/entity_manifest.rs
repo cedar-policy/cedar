@@ -443,11 +443,10 @@ impl Default for AccessTrie {
 /// The policies must validate against the schema in strict mode,
 /// otherwise an error is returned.
 pub fn compute_entity_manifest(
-    schema: ValidatorSchema,
+    validator: &Validator,
     policies: &PolicySet,
 ) -> Result<EntityManifest, EntityManifestError> {
     // first, run strict validation to ensure there are no errors
-    let validator = Validator::new(schema);
     let validation_res = validator.validate(policies, ValidationMode::Strict);
     if !validation_res.validation_passed() {
         return Err(EntityManifestError::Validation(validation_res));
@@ -750,10 +749,9 @@ when {
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
 
-        let schema = schema();
+        let validator = Validator::new(schema());
 
-        let entity_manifest =
-            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
         let expected_rust = EntityManifest {
             per_action: HashMap::from([(
                 RequestType {
@@ -819,7 +817,8 @@ when {
             ]
           ]
         });
-        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
+        let expected_manifest =
+            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
         assert_eq!(entity_manifest, expected_rust);
     }
@@ -831,10 +830,9 @@ when {
             parse_policy(None, "permit(principal, action, resource);").expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
 
-        let schema = schema();
+        let validator = Validator::new(schema());
 
-        let entity_manifest =
-            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
           "perAction": [
@@ -854,7 +852,8 @@ when {
             ]
           ]
         });
-        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
+        let expected_manifest =
+            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -887,9 +886,9 @@ action Read appliesTo {
         )
         .unwrap()
         .0;
+        let validator = Validator::new(schema);
 
-        let entity_manifest =
-            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
           "perAction": [
@@ -954,7 +953,8 @@ action Read appliesTo {
             ]
           ]
         });
-        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
+        let expected_manifest =
+            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -993,9 +993,9 @@ action Read appliesTo {
         )
         .unwrap()
         .0;
+        let validator = Validator::new(schema);
 
-        let entity_manifest =
-            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
           "perAction": [
@@ -1067,7 +1067,8 @@ action Read appliesTo {
             ]
           ]
             });
-        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
+        let expected_manifest =
+            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -1127,9 +1128,9 @@ action Read appliesTo {
         )
         .unwrap()
         .0;
+        let validator = Validator::new(schema);
 
-        let entity_manifest =
-            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
           "perAction": [
@@ -1185,7 +1186,8 @@ action Read appliesTo {
             ]
           ]
         });
-        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
+        let expected_manifest =
+            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -1228,9 +1230,9 @@ action BeSad appliesTo {
         )
         .unwrap()
         .0;
+        let validator = Validator::new(schema);
 
-        let entity_manifest =
-            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
           "perAction": [
@@ -1286,7 +1288,8 @@ action BeSad appliesTo {
             ]
           ]
         });
-        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
+        let expected_manifest =
+            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -1326,9 +1329,9 @@ action Hello appliesTo {
         )
         .unwrap()
         .0;
+        let validator = Validator::new(schema);
 
-        let entity_manifest =
-            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
         let expected = serde_json::json!(
         {
           "perAction": [
@@ -1420,7 +1423,8 @@ action Hello appliesTo {
             ]
           ]
         });
-        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
+        let expected_manifest =
+            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -1428,7 +1432,7 @@ action Hello appliesTo {
     fn test_entity_manifest_with_if() {
         let mut pset = PolicySet::new();
 
-        let schema = document_fields_schema();
+        let validator = Validator::new(document_fields_schema());
 
         let policy = parse_policy(
             None,
@@ -1442,8 +1446,7 @@ when {
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
 
-        let entity_manifest =
-            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
         let expected = serde_json::json! ( {
           "perAction": [
             [
@@ -1540,7 +1543,8 @@ when {
           ]
         }
         );
-        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
+        let expected_manifest =
+            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -1548,7 +1552,7 @@ when {
     fn test_entity_manifest_if_literal_record() {
         let mut pset = PolicySet::new();
 
-        let schema = document_fields_schema();
+        let validator = Validator::new(document_fields_schema());
 
         let policy = parse_policy(
             None,
@@ -1570,8 +1574,7 @@ when {
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
 
-        let entity_manifest =
-            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
         let expected = serde_json::json! ( {
           "perAction": [
             [
@@ -1646,7 +1649,8 @@ when {
           ]
         }
         );
-        let expected_manifest = EntityManifest::from_json_value(expected, &schema).unwrap();
+        let expected_manifest =
+            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
     }
 }

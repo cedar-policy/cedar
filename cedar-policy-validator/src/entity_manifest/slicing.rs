@@ -255,7 +255,7 @@ mod entity_slice_tests {
         parser::{self, parse_policy},
     };
 
-    use crate::{entity_manifest::compute_entity_manifest, CoreSchema, ValidatorSchema};
+    use crate::{entity_manifest::compute_entity_manifest, CoreSchema, Validator, ValidatorSchema};
 
     use super::*;
 
@@ -409,10 +409,8 @@ when {
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
 
-        let schema = schema();
-
-        let entity_manifest =
-            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
+        let validator = Validator::new(schema());
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
 
         let entities_json = serde_json::json!(
             [
@@ -448,7 +446,7 @@ when {
         expect_entity_slice_to(
             entities_json,
             expected_entities_json,
-            &schema,
+            validator.schema(),
             &entity_manifest,
         );
     }
@@ -461,10 +459,9 @@ when {
             parse_policy(None, "permit(principal, action, resource);").expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
 
-        let schema = schema();
+        let validator = Validator::new(schema());
 
-        let entity_manifest =
-            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
 
         let entities_json = serde_json::json!(
             [
@@ -505,7 +502,7 @@ when {
         expect_entity_slice_to(
             entities_json,
             expected_entities_json,
-            &schema,
+            validator.schema(),
             &entity_manifest,
         );
     }
@@ -517,10 +514,9 @@ when {
             parse_policy(None, "permit(principal, action, resource);").expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
 
-        let schema = schema();
+        let validator = Validator::new(schema());
 
-        let entity_manifest =
-            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
 
         let entities_json = serde_json::json!(
             [
@@ -546,7 +542,7 @@ when {
         expect_entity_slice_to(
             entities_json,
             expected_entities_json,
-            &schema,
+            &validator.schema(),
             &entity_manifest,
         );
     }
@@ -564,10 +560,9 @@ when {
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
 
-        let schema = schema_with_hierarchy();
+        let validator = Validator::new(schema_with_hierarchy());
 
-        let entity_manifest =
-            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
 
         let entities_json = serde_json::json!(
             [
@@ -620,7 +615,7 @@ when {
         expect_entity_slice_to(
             entities_json,
             expected_entities_json,
-            &schema,
+            validator.schema(),
             &entity_manifest,
         );
     }
@@ -640,10 +635,9 @@ when {
         .expect("should succeed");
         pset.add(policy.into()).expect("should succeed");
 
-        let schema = schema_with_hierarchy();
+        let validator = Validator::new(schema_with_hierarchy());
 
-        let entity_manifest =
-            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
 
         let entities_json = serde_json::json!(
             [
@@ -681,7 +675,7 @@ when {
         expect_entity_slice_to(
             entities_json,
             expected_entities_json,
-            &schema,
+            validator.schema(),
             &entity_manifest,
         );
     }
@@ -717,9 +711,9 @@ action Read appliesTo {
         )
         .unwrap()
         .0;
+        let validator = Validator::new(schema);
 
-        let entity_manifest =
-            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
 
         let entities_json = serde_json::json!(
             [
@@ -764,7 +758,7 @@ action Read appliesTo {
         expect_entity_slice_to(
             entities_json,
             expected_entities_json,
-            &schema,
+            validator.schema(),
             &entity_manifest,
         );
     }
@@ -825,9 +819,9 @@ action Read appliesTo {
         )
         .unwrap()
         .0;
+        let validator = Validator::new(schema);
 
-        let entity_manifest =
-            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
 
         let entities_json = serde_json::json!(
             [
@@ -887,7 +881,7 @@ action Read appliesTo {
         expect_entity_slice_to(
             entities_json,
             expected_entities_json,
-            &schema,
+            validator.schema(),
             &entity_manifest,
         );
     }
@@ -931,15 +925,15 @@ action BeSad appliesTo {
         )
         .unwrap()
         .0;
+        let validator = Validator::new(schema);
 
-        let entity_manifest =
-            compute_entity_manifest(schema.clone(), &pset).expect("Should succeed");
+        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
         assert_eq!(entity_manifest, entity_manifest);
     }
 
     #[test]
     fn test_slice_with_entity_alias() {
-        let schema = schema();
+        let validator = Validator::new(schema());
         let entities_json = serde_json::json!([{
             "uid" : { "type" : "User", "id" : "oliver"},
             "parents": [],
@@ -950,11 +944,11 @@ action BeSad appliesTo {
         let pset = parser::parse_policyset(
             r#"permit(principal in User::"oliver", action, resource) when { User::"oliver".name == "oliver" };"#,
         ).unwrap();
-        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
+        let manifest = compute_entity_manifest(&validator, &pset).unwrap();
         expect_entity_slice_to(
             entities_json.clone(),
             entities_json.clone(),
-            &schema,
+            validator.schema(),
             &manifest,
         );
 
@@ -962,11 +956,11 @@ action BeSad appliesTo {
         let pset = parser::parse_policyset(
             r#"permit(principal in User::"oliver", action, resource) when { principal.name == "oliver" };"#,
         ).unwrap();
-        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
+        let manifest = compute_entity_manifest(&validator, &pset).unwrap();
         expect_entity_slice_to(
             entities_json.clone(),
             entities_json.clone(),
-            &schema,
+            validator.schema(),
             &manifest,
         );
 
@@ -974,8 +968,13 @@ action BeSad appliesTo {
         let pset = parser::parse_policyset(
             r#"permit(principal in User::"oliver", action, resource) when { principal.name == User::"oliver".name };"#,
         ).unwrap();
-        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
-        expect_entity_slice_to(entities_json.clone(), entities_json, &schema, &manifest);
+        let manifest = compute_entity_manifest(&validator, &pset).unwrap();
+        expect_entity_slice_to(
+            entities_json.clone(),
+            entities_json,
+            validator.schema(),
+            &manifest,
+        );
     }
 
     #[test]
@@ -1008,7 +1007,8 @@ action Read appliesTo {
             };"#,
         )
         .unwrap();
-        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
+        let validator = Validator::new(schema);
+        let manifest = compute_entity_manifest(&validator, &pset).unwrap();
         let entities_json = serde_json::json!([{
             "uid" : { "type" : "User", "id" : "oliver"},
             "parents": [],
@@ -1029,7 +1029,7 @@ action Read appliesTo {
                 "bar": "bar",
             }
         }]);
-        expect_entity_slice_to(entities_json, expected_json, &schema, &manifest);
+        expect_entity_slice_to(entities_json, expected_json, validator.schema(), &manifest);
     }
 
     #[test]
@@ -1065,8 +1065,14 @@ action Read appliesTo {
         let pset = parser::parse_policyset(
             r#"permit(principal in User::"oliver", action, resource) when { principal.foo == User::"oliver".bar };"#,
         ).unwrap();
-        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
-        expect_entity_slice_to(entities_json.clone(), entities_json, &schema, &manifest);
+        let validator = Validator::new(schema);
+        let manifest = compute_entity_manifest(&validator, &pset).unwrap();
+        expect_entity_slice_to(
+            entities_json.clone(),
+            entities_json,
+            validator.schema(),
+            &manifest,
+        );
     }
 
     #[test]
@@ -1104,8 +1110,14 @@ action Read appliesTo {
         let pset = parser::parse_policyset(
             r#"permit(principal in User::"oliver", action, resource) when { principal.foo.bar == User::"oliver".foo.baz };"#,
         ).unwrap();
-        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
-        expect_entity_slice_to(entities_json.clone(), entities_json, &schema, &manifest);
+        let validator = Validator::new(schema);
+        let manifest = compute_entity_manifest(&validator, &pset).unwrap();
+        expect_entity_slice_to(
+            entities_json.clone(),
+            entities_json,
+            validator.schema(),
+            &manifest,
+        );
     }
 
     #[test]
@@ -1133,16 +1145,17 @@ action Read appliesTo {
             "parents": [ { "type" : "Group", "id" : "oliver"}, ],
             "attrs": { "name": "oliver" }
         }]);
+        let validator = Validator::new(schema);
 
         // The `principal` alias needs to load ancestors, but the lit alias does not. Slicing still needs to load ancestors
         let pset = parser::parse_policyset(
             r#"permit(principal in Group::"oliver", action, resource) when {User::"oliver".name == "oliver"};"#,
         ).unwrap();
-        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
+        let manifest = compute_entity_manifest(&validator, &pset).unwrap();
         expect_entity_slice_to(
             entities_json.clone(),
             entities_json.clone(),
-            &schema,
+            validator.schema(),
             &manifest,
         );
 
@@ -1150,11 +1163,11 @@ action Read appliesTo {
         let pset = parser::parse_policyset(
             r#"permit(principal, action, resource) when { User::"oliver" in Group::"oliver" && principal.name == "oliver"};"#,
         ).unwrap();
-        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
+        let manifest = compute_entity_manifest(&validator, &pset).unwrap();
         expect_entity_slice_to(
             entities_json.clone(),
             entities_json.clone(),
-            &schema,
+            validator.schema(),
             &manifest,
         );
 
@@ -1162,7 +1175,7 @@ action Read appliesTo {
         let pset = parser::parse_policyset(
             r#"permit(principal, action, resource) when { User::"oliver" in Group::"oliver" && principal in Group::"oliver" };"#,
         ).unwrap();
-        let manifest = compute_entity_manifest(schema.clone(), &pset).unwrap();
+        let manifest = compute_entity_manifest(&validator, &pset).unwrap();
         expect_entity_slice_to(
             entities_json,
             serde_json::json!([{
@@ -1170,7 +1183,7 @@ action Read appliesTo {
                 "parents": [ { "type" : "Group", "id" : "oliver"}, ],
                 "attrs": {}
             }]),
-            &schema,
+            validator.schema(),
             &manifest,
         );
     }

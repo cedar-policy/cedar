@@ -5213,9 +5213,9 @@ action CreateList in Create appliesTo {
 #[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "entity-manifest")]
 pub fn compute_entity_manifest(
-    schema: &Schema,
+    validator: &Validator,
     pset: &PolicySet,
 ) -> Result<EntityManifest, EntityManifestError> {
-    entity_manifest::compute_entity_manifest(schema.0.clone(), &pset.ast)
+    entity_manifest::compute_entity_manifest(&validator.0, &pset.ast)
         .map_err(std::convert::Into::into)
 }
