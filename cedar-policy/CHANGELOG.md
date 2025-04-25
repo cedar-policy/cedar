@@ -13,6 +13,13 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ## [Unreleased]
 Cedar Language Version: TBD
 
+### Changed
+
+- Changed experimental `entity-manifest` function `compute_entity_manifest` to
+  accept an `&Validator` instead of `&Schema`. Callers can construct a `Validator`
+  from a schema with `Validator::new` afterwhich a reference to the original
+  schema can be retrieved using `Validator::schema`. (#1584)
+
 ## [4.4.0] - Coming soon
 
 Cedar Language Version: 4.3
