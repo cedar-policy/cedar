@@ -566,21 +566,14 @@ fn entity_manifest_from_expr(
         }
         ExprKind::BinaryApp {
             op:
-                BinaryOp::Eq
+                op @ (BinaryOp::Eq
                 | BinaryOp::In
                 | BinaryOp::Contains
                 | BinaryOp::ContainsAll
-                | BinaryOp::ContainsAny,
+                | BinaryOp::ContainsAny),
             arg1,
             arg2,
         } => {
-            // TODO Is there more elegant way to bind op using rust pattern matching?
-            // PANIC SAFETY: Matched a binary app above, so expr must still be a binary app.
-            #[allow(clippy::panic)]
-            let ExprKind::BinaryApp { op, .. } = expr.expr_kind() else {
-                panic!("Matched above");
-            };
-
             // First, find the data paths for each argument
             let mut arg1_res = entity_manifest_from_expr(arg1)?;
             let arg2_res = entity_manifest_from_expr(arg2)?;
