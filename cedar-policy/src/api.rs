@@ -873,6 +873,45 @@ impl IntoIterator for Entities {
     }
 }
 
+#[cfg(test)]
+mod test_entities_api {
+    use std::collections::HashSet;
+
+    use super::Entity;
+    use super::Entities;
+    use super::EntityUid;
+
+    #[test]
+    fn test_upsert_entities() {
+        let e1 = Entity::new_no_attrs(
+            EntityUid::from_strs("User", "alice"),
+            HashSet::new()
+        );
+        let e1_uid = e1.uid();
+        let e2 = Entity::new_no_attrs(
+            EntityUid::from_strs("User", "bob"),
+            HashSet::new(),
+        );
+        let e2_uid = e2.uid();
+        let e1_updated = Entity::new_no_attrs(
+            EntityUid::from_strs("User", "alice"),
+            HashSet::from([e2.uid()]),
+        );
+        let mut entities = Entities::empty();
+        entities = entities.upsert_entities(vec![e1], None).unwrap();
+        assert_eq!(entities.len(), 1);
+        entities = entities.upsert_entities(vec![e2], None).unwrap();
+        assert_eq!(entities.len(), 2);
+        assert!(!entities.is_ancestor_of(&e2_uid, &e1_uid));
+
+        entities = entities.upsert_entities(vec![e1_updated], None).unwrap();
+        assert_eq!(entities.len(), 2);
+        assert!(entities.is_ancestor_of(&e2_uid, &e1_uid));
+    }
+
+
+}
+
 /// Authorizer object, which provides responses to authorization queries
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
@@ -5249,3 +5288,4 @@ pub fn compute_entity_manifest(
 ) -> Result<EntityManifest, EntityManifestError> {
     entity_manifest::compute_entity_manifest(&schema.0, &pset.ast).map_err(std::convert::Into::into)
 }
+
