@@ -347,7 +347,11 @@ pub fn perform_integration_test(
         // now check that entity slicing arrives at the same decision
         #[cfg(feature = "entity-manifest")]
         if should_validate {
-            let entity_manifest = compute_entity_manifest(schema, policies).expect("test failed");
+            let entity_manifest = compute_entity_manifest(
+                &cedar_policy_validator::Validator::new(schema.clone()),
+                policies,
+            )
+            .expect("test failed");
             let entity_slice = entity_manifest
                 .slice_entities(entities, &request)
                 .expect("test failed");

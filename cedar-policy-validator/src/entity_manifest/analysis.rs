@@ -57,11 +57,11 @@ impl EntityManifestAnalysisResult {
     /// Union two [`EntityManifestAnalysisResult`]s together,
     /// keeping the paths from both global tries and concatenating
     /// the resulting paths.
-    pub fn union(mut self, other: &Self) -> Self {
-        self.global_trie = self.global_trie.union(&other.global_trie);
+    pub fn union(mut self, other: Self) -> Self {
+        self.global_trie = self.global_trie.union(other.global_trie);
         self.resulting_paths = WrappedAccessPaths::Union(
             Box::new(self.resulting_paths),
-            Box::new(other.resulting_paths.clone()),
+            Box::new(other.resulting_paths),
         );
         self
     }
@@ -117,7 +117,7 @@ impl EntityManifestAnalysisResult {
         let mut paths = Default::default();
         std::mem::swap(&mut self.resulting_paths, &mut paths);
 
-        self.global_trie = self.global_trie.union(&paths.full_type_required(ty));
+        self.global_trie = self.global_trie.union(paths.full_type_required(ty));
 
         self
     }
@@ -173,7 +173,7 @@ impl WrappedAccessPaths {
                             .remove(attr)
                             .unwrap_or_else(|| panic!("Missing field {attr} in record literal"));
 
-                        res = res.union(&field.full_type_required(&attr_ty.attr_type));
+                        res = res.union(field.full_type_required(&attr_ty.attr_type));
                     }
 
                     res
@@ -202,7 +202,7 @@ impl WrappedAccessPaths {
             WrappedAccessPaths::Empty => RootAccessTrie::new(),
             WrappedAccessPaths::Union(left, right) => left
                 .full_type_required(ty)
-                .union(&right.full_type_required(ty)),
+                .union(right.full_type_required(ty)),
         }
     }
 
@@ -225,7 +225,7 @@ impl RootAccessTrie {
                 let mut leaf = AccessTrie::new();
                 leaf.is_ancestor = is_ancestor;
                 leaf.ancestors_trie = ancestors_trie.clone();
-                self.add_access_path(access_path, &leaf);
+                self.add_access_path(access_path, leaf);
             }
             WrappedAccessPaths::RecordLiteral(record) => {
                 for field in record.values() {
@@ -243,11 +243,11 @@ impl RootAccessTrie {
         }
     }
 
-    pub(crate) fn add_access_path(&mut self, access_path: &AccessPath, leaf_trie: &AccessTrie) {
+    pub(crate) fn add_access_path(&mut self, access_path: &AccessPath, leaf_trie: AccessTrie) {
         // could be more efficient by mutating self
         // instead we use the existing union function.
-        let other_trie = access_path.to_root_access_trie_with_leaf(leaf_trie.clone());
-        self.union_mut(&other_trie)
+        let other_trie = access_path.to_root_access_trie_with_leaf(leaf_trie);
+        self.union_mut(other_trie)
     }
 }
 
