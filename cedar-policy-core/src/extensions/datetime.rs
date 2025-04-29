@@ -330,7 +330,8 @@ impl From<DateTime> for RepresentableExtensionValue {
 
 impl From<NaiveDateTime> for DateTime {
     fn from(value: NaiveDateTime) -> Self {
-        let delta = value - NaiveDateTime::UNIX_EPOCH;
+        let delta = chrono::DateTime::from_naive_utc_and_offset(value, chrono::Utc)
+            - chrono::DateTime::UNIX_EPOCH;
         Self {
             epoch: delta.num_milliseconds(),
         }
