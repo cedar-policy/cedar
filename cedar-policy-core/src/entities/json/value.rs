@@ -146,7 +146,7 @@ impl From<RawCedarValueJson> for CedarValueJson {
                 if values.len() == 1 {
                     match values.iter().map(|(k, v)| (k.as_str(), v)).collect_vec()[..] {
                         [("__extn", RawCedarValueJson::Record(r))] => {
-                            if r.values.len() == 2 {
+                            if r.values.len() >= 2 {
                                 if let Some(RawCedarValueJson::String(fn_name)) = r.values.get("fn")
                                 {
                                     if let Some(arg) = r.values.get("arg") {
@@ -164,7 +164,7 @@ impl From<RawCedarValueJson> for CedarValueJson {
                             return Self::ExprEscape { __expr: s.clone() };
                         }
                         [("__entity", RawCedarValueJson::Record(r))] => {
-                            if r.values.len() == 2 {
+                            if r.values.len() >= 2 {
                                 if let Some(RawCedarValueJson::String(ty)) = r.values.get("type") {
                                     if let Some(RawCedarValueJson::String(id)) = r.values.get("id")
                                     {
