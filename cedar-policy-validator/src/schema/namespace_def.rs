@@ -34,7 +34,10 @@ use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
 use smol_str::{SmolStr, ToSmolStr};
 
-use super::{internal_name_to_entity_type, AllDefs, ValidatorApplySpec, ValidatorType};
+use super::{
+    internal_name_to_entity_type, AllDefs, TypeFieldCompatibilityBehavior, ValidatorApplySpec,
+    ValidatorType,
+};
 use crate::{
     err::{schema_errors::*, SchemaError},
     json_schema::{self, CommonTypeId, EntityTypeKind},
@@ -1042,7 +1045,17 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
     schema_ty: json_schema::Type<InternalName>,
     extensions: &Extensions<'_>,
     loc: Option<Loc>,
+    type_field_compat: TypeFieldCompatibilityBehavior,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<ValidatorType>> {
+    // We didn't error on unknown fields in schema types when parsing from JSON
+    // to maintain compatibility with older schema. Now we know if we need to
+    // error or not.
+    if let (TypeFieldCompatibilityBehavior::DenyUnknownFields, Some(unknown_field)) =
+        (type_field_compat, schema_ty.unknown_field())
+    {
+        return Err(JsonDeserializationError::new((*unknown_field).into(), None).into());
+    }
+
     match schema_ty {
         json_schema::Type::Type {
             ty: json_schema::TypeVariant::String,
@@ -1080,19 +1093,21 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
         json_schema::Type::Type {
             ty: json_schema::TypeVariant::Set { element },
             ..
-        } => Ok(
-            try_jsonschema_type_into_validator_type(*element, extensions, loc)?.map(|vt| {
-                ValidatorType {
-                    ty: Type::set(vt.ty),
-                    #[cfg(feature = "extended-schema")]
-                    loc: vt.loc,
-                }
-            }),
-        ),
+        } => Ok(try_jsonschema_type_into_validator_type(
+            *element,
+            extensions,
+            loc,
+            type_field_compat,
+        )?
+        .map(|vt| ValidatorType {
+            ty: Type::set(vt.ty),
+            #[cfg(feature = "extended-schema")]
+            loc: vt.loc,
+        })),
         json_schema::Type::Type {
             ty: json_schema::TypeVariant::Record(rty),
             ..
-        } => try_record_type_into_validator_type(rty, extensions, loc),
+        } => try_record_type_into_validator_type(rty, extensions, loc, type_field_compat),
         json_schema::Type::Type {
             ty: json_schema::TypeVariant::Entity { name },
             ..
@@ -1190,6 +1205,7 @@ pub(crate) fn try_record_type_into_validator_type(
     rty: json_schema::RecordType<InternalName>,
     extensions: &Extensions<'_>,
     loc: Option<Loc>,
+    type_field_compat: TypeFieldCompatibilityBehavior,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<ValidatorType>> {
     if cfg!(not(feature = "partial-validate")) && rty.additional_attributes {
         Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
@@ -1198,22 +1214,24 @@ pub(crate) fn try_record_type_into_validator_type(
         let attr_loc = loc.clone();
         #[cfg(not(feature = "extended-schema"))]
         let attr_loc = None;
-        Ok(
-            parse_record_attributes(rty.attributes.into_iter(), extensions, attr_loc)?.map(
-                move |attrs| ValidatorType {
-                    ty: Type::record_with_attributes(
-                        attrs,
-                        if rty.additional_attributes {
-                            OpenTag::OpenAttributes
-                        } else {
-                            OpenTag::ClosedAttributes
-                        },
-                    ),
-                    #[cfg(feature = "extended-schema")]
-                    loc,
+        Ok(parse_record_attributes(
+            rty.attributes.into_iter(),
+            extensions,
+            attr_loc,
+            type_field_compat,
+        )?
+        .map(move |attrs| ValidatorType {
+            ty: Type::record_with_attributes(
+                attrs,
+                if rty.additional_attributes {
+                    OpenTag::OpenAttributes
+                } else {
+                    OpenTag::ClosedAttributes
                 },
             ),
-        )
+            #[cfg(feature = "extended-schema")]
+            loc,
+        }))
     }
 }
 
@@ -1226,6 +1244,7 @@ fn parse_record_attributes(
     attrs: impl IntoIterator<Item = (SmolStr, json_schema::TypeOfAttribute<InternalName>)>,
     extensions: &Extensions<'_>,
     loc: Option<Loc>,
+    type_field_compat: TypeFieldCompatibilityBehavior,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Attributes>> {
     let attrs_with_common_type_refs = attrs
         .into_iter()
@@ -1237,7 +1256,12 @@ fn parse_record_attributes(
             Ok((
                 attr,
                 (
-                    try_jsonschema_type_into_validator_type(ty.ty.clone(), extensions, loc)?,
+                    try_jsonschema_type_into_validator_type(
+                        ty.ty.clone(),
+                        extensions,
+                        loc,
+                        type_field_compat,
+                    )?,
                     ty.required,
                 ),
             ))

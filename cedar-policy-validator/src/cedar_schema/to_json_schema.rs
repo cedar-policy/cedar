@@ -113,6 +113,7 @@ pub fn cedar_type_to_json_type(ty: Node<Type>) -> json_schema::Type<RawName> {
     json_schema::Type::Type {
         ty: variant,
         loc: Some(ty.loc),
+        unknown_field: None,
     }
 }
 
@@ -424,6 +425,7 @@ fn convert_attr_decls(
             additional_attributes: false,
         }),
         loc: Some(attrs.loc),
+        unknown_field: None,
     })
 }
 
@@ -435,6 +437,7 @@ fn convert_context_decl(
         Either::Left(p) => json_schema::Type::CommonTypeRef {
             loc: Some(p.loc().clone()),
             type_name: p.into(),
+            unknown_field: None,
         },
         Either::Right(attrs) => json_schema::Type::Type {
             ty: json_schema::TypeVariant::Record(json_schema::RecordType {
@@ -442,6 +445,7 @@ fn convert_context_decl(
                 additional_attributes: false,
             }),
             loc: Some(attrs.loc),
+            unknown_field: None,
         },
     })
 }

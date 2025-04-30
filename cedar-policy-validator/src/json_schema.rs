@@ -28,7 +28,7 @@ use educe::Educe;
 use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
 use serde::{
-    de::{MapAccess, Visitor},
+    de::{Error, MapAccess, Visitor},
     ser::SerializeMap,
     Deserialize, Deserializer, Serialize, Serializer,
 };
@@ -751,6 +751,7 @@ impl<N> From<RecordType<N>> for AttributesOrContext<N> {
         Self(Type::Type {
             ty: TypeVariant::Record(rty),
             loc: None,
+            unknown_field: None,
         })
     }
 }
@@ -1200,6 +1201,22 @@ impl From<EntityUID> for ActionEntityUID<Name> {
     }
 }
 
+/// Holds the name of an unexpected fields we saw while parsing JSON together
+/// with a slice containing the names of fields which were expected. Used to
+/// delay error reporting until after serde_json parsing, allowing for
+/// runtime-configurable behavior on unexpected fields.
+#[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Clone, Copy)]
+pub struct UnknownField {
+    unknown_field: &'static str,
+    expected: &'static [&'static str],
+}
+
+impl Into<serde_json::Error> for UnknownField {
+    fn into(self) -> serde_json::Error {
+        serde_json::Error::unknown_field(self.unknown_field, self.expected)
+    }
+}
+
 /// A restricted version of the [`crate::types::Type`] enum containing only the types
 /// which are exposed to users.
 ///
@@ -1232,6 +1249,13 @@ pub enum Type<N> {
         #[educe(PartialEq(ignore))]
         #[educe(PartialOrd(ignore))]
         loc: Option<Loc>,
+        /// Tracks if an unknown field was encountered while parsing this type.
+        /// This may be reported later depending on backwards compatibility
+        /// mode. In order to be more compatible with schema written prior to
+        /// Cedar 3.0, we accepted unknown fields in some positions in types in
+        /// the schema.
+        #[serde(skip)]
+        unknown_field: Option<UnknownField>,
     },
     /// Reference to a common type
     ///
@@ -1254,6 +1278,15 @@ pub enum Type<N> {
         #[educe(PartialEq(ignore))]
         #[educe(PartialOrd(ignore))]
         loc: Option<Loc>,
+        /// Tracks if an unknown field was encountered while parsing this type.
+        /// This may be reported later depending on backwards compatibility
+        /// mode. In order to be more compatible with schema written prior to
+        /// Cedar 3.0, we accepted unknown fields in some positions in types in
+        /// the schema.
+        #[serde(skip)]
+        #[educe(PartialEq(ignore))]
+        #[educe(PartialOrd(ignore))]
+        unknown_field: Option<UnknownField>,
     },
 }
 
@@ -1337,14 +1370,33 @@ impl<N> Type<N> {
     /// Create a new copy of self but with a difference source location
     pub fn with_loc(self, new_loc: Option<Loc>) -> Self {
         match self {
-            Self::Type { ty, loc: _loc } => Self::Type { ty, loc: new_loc },
+            Self::Type {
+                ty,
+                loc: _loc,
+                unknown_field: unknown_fields,
+            } => Self::Type {
+                ty,
+                loc: new_loc,
+                unknown_field: unknown_fields,
+            },
             Self::CommonTypeRef {
                 type_name,
                 loc: _loc,
+                unknown_field: unknown_fields,
             } => Self::CommonTypeRef {
                 type_name,
                 loc: new_loc,
+                unknown_field: unknown_fields,
             },
+        }
+    }
+
+    /// Did this type, or any nested type, contain an unknown field.
+    pub fn unknown_field(&self) -> Option<&UnknownField> {
+        match self {
+            Type::Type { unknown_field, .. } | Type::CommonTypeRef { unknown_field, .. } => {
+                unknown_field.as_ref()
+            }
         }
     }
 }
@@ -1356,26 +1408,46 @@ impl Type<RawName> {
         ns: Option<&InternalName>,
     ) -> Type<ConditionalName> {
         match self {
-            Self::Type { ty, loc } => Type::Type {
+            Self::Type {
+                ty,
+                loc,
+                unknown_field: unknown_fields,
+            } => Type::Type {
                 ty: ty.conditionally_qualify_type_references(ns),
                 loc,
+                unknown_field: unknown_fields,
             },
-            Self::CommonTypeRef { type_name, loc } => Type::CommonTypeRef {
+            Self::CommonTypeRef {
+                type_name,
+                loc,
+                unknown_field: unknown_fields,
+            } => Type::CommonTypeRef {
                 type_name: type_name.conditionally_qualify_with(ns, ReferenceType::Common),
                 loc,
+                unknown_field: unknown_fields,
             },
         }
     }
 
     fn into_n<N: From<RawName>>(self) -> Type<N> {
         match self {
-            Self::Type { ty, loc } => Type::Type {
+            Self::Type {
+                ty,
+                loc,
+                unknown_field: unknown_fields,
+            } => Type::Type {
                 ty: ty.into_n(),
                 loc,
+                unknown_field: unknown_fields,
             },
-            Self::CommonTypeRef { type_name, loc } => Type::CommonTypeRef {
+            Self::CommonTypeRef {
+                type_name,
+                loc,
+                unknown_field: unknown_fields,
+            } => Type::CommonTypeRef {
                 type_name: type_name.into(),
                 loc,
+                unknown_field: unknown_fields,
             },
         }
     }
@@ -1392,13 +1464,23 @@ impl Type<ConditionalName> {
         all_defs: &AllDefs,
     ) -> std::result::Result<Type<InternalName>, TypeNotDefinedError> {
         match self {
-            Self::Type { ty, loc } => Ok(Type::Type {
+            Self::Type {
+                ty,
+                loc,
+                unknown_field: unknown_fields,
+            } => Ok(Type::Type {
                 ty: ty.fully_qualify_type_references(all_defs)?,
                 loc,
+                unknown_field: unknown_fields,
             }),
-            Self::CommonTypeRef { type_name, loc } => Ok(Type::CommonTypeRef {
+            Self::CommonTypeRef {
+                type_name,
+                loc,
+                unknown_field: unknown_fields,
+            } => Ok(Type::CommonTypeRef {
                 type_name: type_name.resolve(all_defs)?,
                 loc,
+                unknown_field: unknown_fields,
             }),
         }
     }
@@ -1577,66 +1659,52 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                 remaining_fields.remove(&TypeField);
                 // Used to generate the appropriate serde error if a field is present
                 // when it is not expected.
-                let error_if_fields = |fs: &[TypeFields],
-                                       expected: &'static [&'static str]|
-                 -> std::result::Result<(), M::Error> {
+                let get_unknown_field = |fs: &[TypeFields],
+                                         expected: &'static [&'static str]|
+                 -> Option<UnknownField> {
                     for f in fs {
                         if remaining_fields.contains(f) {
-                            return Err(serde::de::Error::unknown_field(f.as_str(), expected));
+                            return Some(UnknownField {
+                                unknown_field: f.as_str(),
+                                expected,
+                            });
                         }
                     }
-                    Ok(())
+                    None
                 };
-                let error_if_any_fields = || -> std::result::Result<(), M::Error> {
-                    error_if_fields(&[Element, Attributes, AdditionalAttributes, Name], &[])
+                let error_if_any_fields = || -> Option<UnknownField> {
+                    get_unknown_field(&[Element, Attributes, AdditionalAttributes, Name], &[])
                 };
                 match s.as_str() {
-                    "String" => {
-                        error_if_any_fields()?;
-                        Ok(Type::Type {
-                            ty: TypeVariant::String,
+                    "String" => Ok(Type::Type {
+                        ty: TypeVariant::String,
+                        loc: None,
+                        unknown_field: error_if_any_fields(),
+                    }),
+                    "Long" => Ok(Type::Type {
+                        ty: TypeVariant::Long,
+                        loc: None,
+                        unknown_field: error_if_any_fields(),
+                    }),
+                    "Boolean" => Ok(Type::Type {
+                        ty: TypeVariant::Boolean,
+                        loc: None,
+                        unknown_field: error_if_any_fields(),
+                    }),
+                    "Set" => match element {
+                        Some(element) => Ok(Type::Type {
+                            ty: TypeVariant::Set {
+                                element: Box::new(element),
+                            },
                             loc: None,
-                        })
-                    }
-                    "Long" => {
-                        error_if_any_fields()?;
-                        Ok(Type::Type {
-                            ty: TypeVariant::Long,
-                            loc: None,
-                        })
-                    }
-                    "Boolean" => {
-                        error_if_any_fields()?;
-                        Ok(Type::Type {
-                            ty: TypeVariant::Boolean,
-                            loc: None,
-                        })
-                    }
-                    "Set" => {
-                        error_if_fields(
-                            &[Attributes, AdditionalAttributes, Name],
-                            &[type_field_name!(Element)],
-                        )?;
-
-                        match element {
-                            Some(element) => Ok(Type::Type {
-                                ty: TypeVariant::Set {
-                                    element: Box::new(element),
-                                },
-                                loc: None,
-                            }),
-                            None => Err(serde::de::Error::missing_field(Element.as_str())),
-                        }
-                    }
+                            unknown_field: get_unknown_field(
+                                &[Attributes, AdditionalAttributes, Name],
+                                &[type_field_name!(Element)],
+                            ),
+                        }),
+                        None => Err(serde::de::Error::missing_field(Element.as_str())),
+                    },
                     "Record" => {
-                        error_if_fields(
-                            &[Element, Name],
-                            &[
-                                type_field_name!(Attributes),
-                                type_field_name!(AdditionalAttributes),
-                            ],
-                        )?;
-
                         if let Some(attributes) = attributes {
                             let additional_attributes =
                                 additional_attributes.unwrap_or_else(partial_schema_default);
@@ -1672,88 +1740,84 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
                                     additional_attributes,
                                 }),
                                 loc: None,
+                                unknown_field: get_unknown_field(
+                                    &[Element, Name],
+                                    &[
+                                        type_field_name!(Attributes),
+                                        type_field_name!(AdditionalAttributes),
+                                    ],
+                                ),
                             })
                         } else {
                             Err(serde::de::Error::missing_field(Attributes.as_str()))
                         }
                     }
-                    "Entity" => {
-                        error_if_fields(
-                            &[Element, Attributes, AdditionalAttributes],
-                            &[type_field_name!(Name)],
-                        )?;
-                        match name {
-                            Some(name) => Ok(Type::Type {
-                                ty: TypeVariant::Entity {
-                                    name: RawName::from_normalized_str(&name)
-                                        .map_err(|err| {
-                                            serde::de::Error::custom(format!(
-                                                "invalid entity type `{name}`: {err}"
-                                            ))
-                                        })?
-                                        .into(),
-                                },
-                                loc: None,
-                            }),
-                            None => Err(serde::de::Error::missing_field(Name.as_str())),
-                        }
-                    }
-                    "EntityOrCommon" => {
-                        error_if_fields(
-                            &[Element, Attributes, AdditionalAttributes],
-                            &[type_field_name!(Name)],
-                        )?;
-                        match name {
-                            Some(name) => Ok(Type::Type {
-                                ty: TypeVariant::EntityOrCommon {
-                                    type_name: RawName::from_normalized_str(&name)
-                                        .map_err(|err| {
-                                            serde::de::Error::custom(format!(
-                                                "invalid entity or common type `{name}`: {err}"
-                                            ))
-                                        })?
-                                        .into(),
-                                },
-                                loc: None,
-                            }),
-                            None => Err(serde::de::Error::missing_field(Name.as_str())),
-                        }
-                    }
-                    "Extension" => {
-                        error_if_fields(
-                            &[Element, Attributes, AdditionalAttributes],
-                            &[type_field_name!(Name)],
-                        )?;
-
-                        match name {
-                            Some(name) => Ok(Type::Type {
-                                ty: TypeVariant::Extension {
-                                    name: UnreservedId::from_normalized_str(&name).map_err(
-                                        |err| {
-                                            serde::de::Error::custom(format!(
-                                                "invalid extension type `{name}`: {err}"
-                                            ))
-                                        },
-                                    )?,
-                                },
-                                loc: None,
-                            }),
-                            None => Err(serde::de::Error::missing_field(Name.as_str())),
-                        }
-                    }
-                    type_name => {
-                        error_if_any_fields()?;
-                        Ok(Type::CommonTypeRef {
-                            type_name: N::from(RawName::from_normalized_str(type_name).map_err(
-                                |err| {
-                                    serde::de::Error::custom(format!(
-                                        "invalid common type `{type_name}`: {err}"
-                                    ))
-                                },
-                            )?),
+                    "Entity" => match name {
+                        Some(name) => Ok(Type::Type {
+                            ty: TypeVariant::Entity {
+                                name: RawName::from_normalized_str(&name)
+                                    .map_err(|err| {
+                                        serde::de::Error::custom(format!(
+                                            "invalid entity type `{name}`: {err}"
+                                        ))
+                                    })?
+                                    .into(),
+                            },
                             loc: None,
-                        })
-                    }
+                            unknown_field: get_unknown_field(
+                                &[Element, Attributes, AdditionalAttributes],
+                                &[type_field_name!(Name)],
+                            ),
+                        }),
+                        None => Err(serde::de::Error::missing_field(Name.as_str())),
+                    },
+                    "EntityOrCommon" => match name {
+                        Some(name) => Ok(Type::Type {
+                            ty: TypeVariant::EntityOrCommon {
+                                type_name: RawName::from_normalized_str(&name)
+                                    .map_err(|err| {
+                                        serde::de::Error::custom(format!(
+                                            "invalid entity or common type `{name}`: {err}"
+                                        ))
+                                    })?
+                                    .into(),
+                            },
+                            loc: None,
+                            unknown_field: get_unknown_field(
+                                &[Element, Attributes, AdditionalAttributes],
+                                &[type_field_name!(Name)],
+                            ),
+                        }),
+                        None => Err(serde::de::Error::missing_field(Name.as_str())),
+                    },
+                    "Extension" => match name {
+                        Some(name) => Ok(Type::Type {
+                            ty: TypeVariant::Extension {
+                                name: UnreservedId::from_normalized_str(&name).map_err(|err| {
+                                    serde::de::Error::custom(format!(
+                                        "invalid extension type `{name}`: {err}"
+                                    ))
+                                })?,
+                            },
+                            loc: None,
+                            unknown_field: get_unknown_field(
+                                &[Element, Attributes, AdditionalAttributes],
+                                &[type_field_name!(Name)],
+                            ),
+                        }),
+                        None => Err(serde::de::Error::missing_field(Name.as_str())),
+                    },
+                    type_name => Ok(Type::CommonTypeRef {
+                        type_name: N::from(RawName::from_normalized_str(type_name).map_err(
+                            |err| {
+                                serde::de::Error::custom(format!(
+                                    "invalid common type `{type_name}`: {err}"
+                                ))
+                            },
+                        )?),
+                        loc: None,
+                        unknown_field: error_if_any_fields(),
+                    }),
                 }
             }
             None => Err(serde::de::Error::missing_field(TypeField.as_str())),
@@ -1763,7 +1827,11 @@ impl<'de, N: Deserialize<'de> + From<RawName>> TypeVisitor<N> {
 
 impl<N> From<TypeVariant<N>> for Type<N> {
     fn from(ty: TypeVariant<N>) -> Self {
-        Self::Type { ty, loc: None }
+        Self::Type {
+            ty,
+            loc: None,
+            unknown_field: None,
+        }
     }
 }
 
@@ -2104,6 +2172,7 @@ impl<'a> arbitrary::Arbitrary<'a> for Type<RawName> {
                 n => panic!("bad index: {n}"),
             },
             loc: None,
+            unknown_field: None,
         })
     }
     fn size_hint(_depth: usize) -> (usize, Option<usize>) {
@@ -2269,7 +2338,8 @@ mod test {
                     attributes: BTreeMap::new(),
                     additional_attributes: false
                 }),
-                loc: None
+                loc: None,
+                unknown_field: None,
             }),
         );});
     }
@@ -2288,7 +2358,8 @@ mod test {
                     attributes: BTreeMap::new(),
                     additional_attributes: false
                 }),
-                loc: None
+                loc: None,
+                unknown_field: None,
             }),
         );});
     }
@@ -2594,6 +2665,7 @@ mod test {
                         "attributes": {
                           "foo": {
                             "type": "Record",
+                            "attributes": {},
                             // Parsing should fail here when `element` is not expected instead of failing later on `"bar"`
                             "element": { "type": "Long" }
                           },
@@ -3229,6 +3301,7 @@ mod test_json_roundtrip {
                                     additional_attributes: false,
                                 }),
                                 loc: None,
+                                unknown_field: None,
                             }),
                             tags: None,
                         }),
@@ -3249,6 +3322,7 @@ mod test_json_roundtrip {
                                     additional_attributes: false,
                                 }),
                                 loc: None,
+                                unknown_field: None,
                             }),
                         }),
                         member_of: None,
@@ -3280,6 +3354,7 @@ mod test_json_roundtrip {
                                         additional_attributes: false,
                                     }),
                                     loc: None,
+                                    unknown_field: None,
                                 }),
                                 tags: None,
                             }),
@@ -3307,6 +3382,7 @@ mod test_json_roundtrip {
                                         additional_attributes: false,
                                     }),
                                     loc: None,
+                                    unknown_field: None,
                                 }),
                             }),
                             member_of: None,
@@ -3890,11 +3966,13 @@ mod ord {
         set.insert(Type::Type {
             ty: TypeVariant::String,
             loc: None,
+            unknown_field: None,
         });
         let mut set: BTreeSet<Type<InternalName>> = BTreeSet::default();
         set.insert(Type::Type {
             ty: TypeVariant::String,
             loc: None,
+            unknown_field: None,
         });
     }
 }

@@ -589,11 +589,11 @@ namespace Baz {action "Foo" appliesTo {
             assert_matches!(&repo.shape, json_schema::AttributesOrContext(json_schema::Type::Type { ty: json_schema::TypeVariant::Record(json_schema::RecordType {
                 attributes,
                 additional_attributes: false,
-            }), loc: Some(_) }) => {
+            }), loc: Some(_), unknown_field: None }) => {
                 let expected =
                     json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                         type_name: "UserGroup".parse().unwrap(),
-                    }, loc: None};
+                    }, loc: None, unknown_field: None,};
                 let attribute = attributes.get(group).unwrap_or_else(|| panic!("No attribute `{group}`"));
                 assert_has_type(attribute, &expected);
             });
@@ -606,20 +606,20 @@ namespace Baz {action "Foo" appliesTo {
         assert_matches!(&issue.shape, json_schema::AttributesOrContext(json_schema::Type::Type { ty: json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
-        }), loc: Some(_) }) => {
+        }), loc: Some(_), unknown_field: None }) => {
             let attribute = attributes.get("repo").expect("No `repo`");
             assert_has_type(
                 attribute,
                 &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "Repository".parse().unwrap(),
-                }, loc: None },
+                }, loc: None, unknown_field: None, },
             );
             let attribute = attributes.get("reporter").expect("No `repo`");
             assert_has_type(
                 attribute,
                 &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "User".parse().unwrap(),
-                }, loc: None },
+                }, loc: None, unknown_field: None, },
             );
         });});
         assert_matches!(github
@@ -632,10 +632,10 @@ namespace Baz {action "Foo" appliesTo {
             assert_matches!(&org.shape, json_schema::AttributesOrContext(json_schema::Type::Type { ty: json_schema::TypeVariant::Record(json_schema::RecordType {
                 attributes,
                 additional_attributes: false,
-            }), loc: Some(_) }) => {
+            }), loc: Some(_), unknown_field: None }) => {
                 let expected = json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "UserGroup".parse().unwrap(),
-                }, loc: None };
+                }, loc: None, unknown_field: None, };
                 let attribute = attributes.get(group).unwrap_or_else(|| panic!("No attribute `{group}`"));
                 assert_has_type(attribute, &expected);
             });
@@ -695,20 +695,20 @@ namespace Baz {action "Foo" appliesTo {
         assert_matches!(&user.shape, json_schema::AttributesOrContext(json_schema::Type::Type { ty: json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
-        }), loc: Some(_) }) => {
+        }), loc: Some(_), unknown_field: None }) => {
             assert_has_type(
                 attributes.get("personalGroup").unwrap(),
                 &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "Group".parse().unwrap(),
-                }, loc: None }, // we do expect a `loc`, but `assert_has_type()` will ignore the mismatch in presence of `loc`. We have separate tests for the correctness of `loc`s coming from the Cedar schema syntax in a test module called `preserves_source_locations`.
+                }, loc: None, unknown_field: None }, // we do expect a `loc`, but `assert_has_type()` will ignore the mismatch in presence of `loc`. We have separate tests for the correctness of `loc`s coming from the Cedar schema syntax in a test module called `preserves_source_locations`.
             );
             assert_has_type(
                 attributes.get("blocked").unwrap(),
                 &json_schema::Type::Type { ty: json_schema::TypeVariant::Set {
                     element: Box::new(json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                         type_name: "User".parse().unwrap(),
-                    }, loc: None }), // we do expect a `loc`, but `assert_has_type()` will ignore the mismatch in presence of `loc`. We have separate tests for the correctness of `loc`s coming from the Cedar schema syntax in a test module called `preserves_source_locations`.
-                }, loc: None },
+                    }, loc: None, unknown_field: None }), // we do expect a `loc`, but `assert_has_type()` will ignore the mismatch in presence of `loc`. We have separate tests for the correctness of `loc`s coming from the Cedar schema syntax in a test module called `preserves_source_locations`.
+                }, loc: None, unknown_field: None, },
             );
         });});
         assert_matches!(doccloud
@@ -722,12 +722,12 @@ namespace Baz {action "Foo" appliesTo {
         assert_matches!(&group.shape, json_schema::AttributesOrContext(json_schema::Type::Type { ty: json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
-        }), loc: Some(_) }) => {
+        }), loc: Some(_), unknown_field: None, }) => {
             assert_has_type(
                 attributes.get("owner").unwrap(),
                 &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "User".parse().unwrap(),
-                }, loc: None },
+                }, loc: None, unknown_field: None, },
             );
         });});
         assert_matches!(doccloud
@@ -738,42 +738,43 @@ namespace Baz {action "Foo" appliesTo {
         assert_matches!(&document.shape, json_schema::AttributesOrContext(json_schema::Type::Type { ty: json_schema::TypeVariant::Record(json_schema::RecordType {
             attributes,
             additional_attributes: false,
-        }), loc: Some(_) }) => {
+        }), loc: Some(_), unknown_field: None, }) => {
             assert_has_type(
                 attributes.get("owner").unwrap(),
                 &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "User".parse().unwrap(),
-                }, loc: None },
+                }, loc: None, unknown_field: None, },
             );
             assert_has_type(
                 attributes.get("isPrivate").unwrap(),
                 &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "Bool".parse().unwrap(),
-                }, loc: None },
+                }, loc: None, unknown_field: None, },
             );
             assert_has_type(
                 attributes.get("publicAccess").unwrap(),
                 &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "String".parse().unwrap(),
-                }, loc: None },
+                }, loc: None, unknown_field: None, },
             );
             assert_has_type(
                 attributes.get("viewACL").unwrap(),
                 &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "DocumentShare".parse().unwrap(),
-                }, loc: None },
+                }, loc: None, unknown_field: None, },
             );
             assert_has_type(
                 attributes.get("modifyACL").unwrap(),
                 &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "DocumentShare".parse().unwrap(),
-                }, loc: None },
+                }, loc: None, unknown_field: None }
+                ,
             );
             assert_has_type(
                 attributes.get("manageACL").unwrap(),
                 &json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon {
                     type_name: "DocumentShare".parse().unwrap(),
-                }, loc: None },
+                }, loc: None, unknown_field: None },
             );
         });});
         assert_matches!(doccloud
@@ -915,7 +916,7 @@ namespace Baz {action "Foo" appliesTo {
             additional_attributes: false,
         }), ..}) => {
             assert_matches!(attributes.get("tag"), Some(json_schema::TypeOfAttribute { ty, required: true, .. }) => {
-                assert_matches!(&ty, json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon { type_name }, loc: Some(loc) } => {
+                assert_matches!(&ty, json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon { type_name }, loc: Some(loc), unknown_field: None } => {
                     assert_eq!(type_name, &"AWS::Tag".parse().unwrap());
                     assert_matches!(loc.snippet(), Some("AWS::Tag"));
                 });
@@ -1511,12 +1512,12 @@ mod translator_tests {
             additional_attributes: false,
         }), ..}) => {
             assert_matches!(attributes.get("name"), Some(json_schema::TypeOfAttribute { ty, required: true, .. }) => {
-                assert_matches!(ty, json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon { type_name }, loc: Some(_) } => {
+                assert_matches!(ty, json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon { type_name }, loc: Some(_), unknown_field: None } => {
                     assert_eq!(&type_name.to_string(), "id");
                 });
             });
             assert_matches!(attributes.get("email"), Some(json_schema::TypeOfAttribute { ty, required: true, .. }) => {
-                assert_matches!(ty, json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon { type_name }, loc: Some(_) } => {
+                assert_matches!(ty, json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon { type_name }, loc: Some(_), unknown_field: None } => {
                     assert_eq!(&type_name.to_string(), "email_address");
                 });
             });
@@ -2720,7 +2721,7 @@ mod entity_tags {
         assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
             assert!(warnings.is_empty());
             assert_matches!(frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap(), EntityType { kind: EntityTypeKind::Standard(entity_type), ..} => {
-            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type{ty: json_schema::TypeVariant::EntityOrCommon { type_name }, loc: Some(loc)}) => {
+            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type{ty: json_schema::TypeVariant::EntityOrCommon { type_name }, loc: Some(loc), unknown_field: None}) => {
                 assert_eq!(&format!("{type_name}"), "String");
                 assert_matches!(loc.snippet(), Some("String"));
             });
@@ -2730,8 +2731,8 @@ mod entity_tags {
         assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
             assert!(warnings.is_empty());
             assert_matches!(frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap(), EntityType { kind: EntityTypeKind::Standard(entity_type), ..} => {
-            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type{ ty: json_schema::TypeVariant::Set { element }, loc: Some(set_loc)}) => {
-                assert_matches!(&**element, json_schema::Type::Type{ ty: json_schema::TypeVariant::EntityOrCommon { type_name }, loc: Some(elt_loc)} => {
+            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type{ ty: json_schema::TypeVariant::Set { element }, loc: Some(set_loc), unknown_field: None}) => {
+                assert_matches!(&**element, json_schema::Type::Type{ ty: json_schema::TypeVariant::EntityOrCommon { type_name }, loc: Some(elt_loc), unknown_field: None} => {
                     assert_eq!(&format!("{type_name}"), "String");
                     assert_matches!(set_loc.snippet(), Some("Set<String>"));
                     assert_matches!(elt_loc.snippet(), Some("String"));
@@ -2743,9 +2744,9 @@ mod entity_tags {
         assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
             assert!(warnings.is_empty());
             assert_matches!(frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap(), EntityType { kind: EntityTypeKind::Standard(entity_type), ..} => {
-            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type{ ty: json_schema::TypeVariant::Record(rty), loc: Some(rec_loc)}) => {
+            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type{ ty: json_schema::TypeVariant::Record(rty), loc: Some(rec_loc), unknown_field: None}) => {
                 assert_matches!(rty.attributes.get("foo"), Some(json_schema::TypeOfAttribute { ty, required, .. }) => {
-                    assert_matches!(ty, json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon { type_name }, loc: Some(foo_loc) } => {
+                    assert_matches!(ty, json_schema::Type::Type { ty: json_schema::TypeVariant::EntityOrCommon { type_name }, loc: Some(foo_loc), unknown_field: None } => {
                         assert_eq!(&format!("{type_name}"), "String");
                         assert_matches!(rec_loc.snippet(), Some("{ foo: String }"));
                         assert_matches!(foo_loc.snippet(), Some("String"));
@@ -2759,7 +2760,7 @@ mod entity_tags {
         assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
             assert!(warnings.is_empty());
             assert_matches!(frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap(), EntityType { kind: EntityTypeKind::Standard(entity_type), ..} => {
-            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type{ ty: json_schema::TypeVariant::EntityOrCommon { type_name }, loc: Some(loc)}) => {
+            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type{ ty: json_schema::TypeVariant::EntityOrCommon { type_name }, loc: Some(loc), unknown_field: None}) => {
                 assert_eq!(&format!("{type_name}"), "T");
                 assert_matches!(loc.snippet(), Some("T"));
             });
@@ -2769,7 +2770,7 @@ mod entity_tags {
         assert_matches!(collect_warnings(json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())), Ok((frag, warnings)) => {
             assert!(warnings.is_empty());
             assert_matches!(frag.0.get(&None).unwrap().entity_types.get(&"E".parse().unwrap()).unwrap(), EntityType { kind: EntityTypeKind::Standard(entity_type), ..} => {
-            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type{ ty: json_schema::TypeVariant::EntityOrCommon { type_name }, loc: Some(loc)}) => {
+            assert_matches!(&entity_type.tags, Some(json_schema::Type::Type{ ty: json_schema::TypeVariant::EntityOrCommon { type_name }, loc: Some(loc), unknown_field: None}) => {
                 assert_eq!(&format!("{type_name}"), "E");
                 assert_matches!(loc.snippet(), Some("E"));
             });
