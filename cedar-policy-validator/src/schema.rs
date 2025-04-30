@@ -510,6 +510,45 @@ impl ValidatorSchema {
         )
     }
 
+    /// Construct a [`ValidatorSchema`] from a JSON value in the appropriate
+    /// shape.
+    pub fn from_json_value_ignore_unknown_type_fields(
+        json: serde_json::Value,
+        extensions: &Extensions<'_>,
+    ) -> Result<Self> {
+        Self::from_schema_frag(
+            json_schema::Fragment::<RawName>::from_json_value_ignore_unknown_type_fields(json)?,
+            ActionBehavior::default(),
+            extensions,
+        )
+    }
+
+    /// Construct a [`ValidatorSchema`] from a string containing JSON in the
+    /// appropriate shape.
+    pub fn from_json_str_ignore_unknown_type_fields(
+        json: &str,
+        extensions: &Extensions<'_>,
+    ) -> Result<Self> {
+        Self::from_schema_frag(
+            json_schema::Fragment::<RawName>::from_json_str_ignore_unknown_type_fields(json)?,
+            ActionBehavior::default(),
+            extensions,
+        )
+    }
+
+    /// Construct a [`ValidatorSchema`] directly from a file containing JSON
+    /// in the appropriate shape.
+    pub fn from_json_file_ignore_unknown_type_fields(
+        file: impl std::io::Read,
+        extensions: &Extensions<'_>,
+    ) -> Result<Self> {
+        Self::from_schema_frag(
+            json_schema::Fragment::<RawName>::from_json_file_ignore_unknown_type_fields(file)?,
+            ActionBehavior::default(),
+            extensions,
+        )
+    }
+
     /// Construct a [`ValidatorSchema`] directly from a file containing the
     /// Cedar schema syntax.
     pub fn from_cedarschema_file<'a>(

@@ -161,18 +161,48 @@ impl Fragment<RawName> {
     /// Create a [`Fragment`] from a string containing JSON (which should
     /// be an object of the appropriate shape).
     pub fn from_json_str(json: &str) -> Result<Self> {
-        serde_json::from_str(json).map_err(|e| JsonDeserializationError::new(e, Some(json)).into())
+        let fragment = Self::from_json_str_ignore_unknown_type_fields(json)?;
+        fragment.check_unknown_type_fields()?;
+        Ok(fragment)
     }
 
     /// Create a [`Fragment`] from a JSON value (which should be an object
     /// of the appropriate shape).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self> {
-        serde_json::from_value(json).map_err(|e| JsonDeserializationError::new(e, None).into())
+        let fragment = Self::from_json_value_ignore_unknown_type_fields(json)?;
+        fragment.check_unknown_type_fields()?;
+        Ok(fragment)
     }
 
     /// Create a [`Fragment`] directly from a file containing a JSON object.
     pub fn from_json_file(file: impl std::io::Read) -> Result<Self> {
+        let fragment = Self::from_json_file_ignore_unknown_type_fields(file)?;
+        fragment.check_unknown_type_fields()?;
+        Ok(fragment)
+    }
+
+    /// Create a [`Fragment`] from a string containing JSON (which should
+    /// be an object of the appropriate shape).
+    pub fn from_json_str_ignore_unknown_type_fields(json: &str) -> Result<Self> {
+        serde_json::from_str(json).map_err(|e| JsonDeserializationError::new(e, Some(json)).into())
+    }
+
+    /// Create a [`Fragment`] from a JSON value (which should be an object
+    /// of the appropriate shape).
+    pub fn from_json_value_ignore_unknown_type_fields(json: serde_json::Value) -> Result<Self> {
+        serde_json::from_value(json).map_err(|e| JsonDeserializationError::new(e, None).into())
+    }
+
+    /// Create a [`Fragment`] directly from a file containing a JSON object.
+    pub fn from_json_file_ignore_unknown_type_fields(file: impl std::io::Read) -> Result<Self> {
         serde_json::from_reader(file).map_err(|e| JsonDeserializationError::new(e, None).into())
+    }
+
+    fn check_unknown_type_fields(&self) -> Result<()> {
+        for ns in self.0.values() {
+            ns.check_unknown_type_fields()?;
+        }
+        Ok(())
     }
 
     /// Parse the schema (in the Cedar schema syntax) from a string
@@ -363,6 +393,21 @@ impl<N> NamespaceDefinition<N> {
     }
 }
 
+impl<N> NamespaceDefinition<N> {
+    pub fn check_unknown_type_fields(&self) -> Result<()> {
+        for cty in self.common_types.values() {
+            cty.ty.check_unknown_type_fields()?;
+        }
+        for ety in self.entity_types.values() {
+            ety.check_unknown_type_fields()?;
+        }
+        for a in self.actions.values() {
+            a.check_unknown_type_fields()?;
+        }
+        Ok(())
+    }
+}
+
 impl NamespaceDefinition<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
@@ -490,6 +535,18 @@ pub struct EntityType<N> {
     #[serde(skip)]
     #[educe(PartialEq(ignore))]
     pub loc: Option<Loc>,
+}
+
+impl<N> EntityType<N> {
+    fn check_unknown_type_fields(&self) -> Result<()> {
+        if let EntityTypeKind::Standard(ety) = &self.kind {
+            ety.shape.0.check_unknown_type_fields()?;
+            if let Some(tags) = &ety.tags {
+                tags.check_unknown_type_fields()?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N> {
@@ -830,6 +887,15 @@ pub struct ActionType<N> {
     #[serde(skip)]
     #[educe(PartialEq(ignore))]
     pub(crate) defn_loc: Option<Loc>,
+}
+
+impl<N> ActionType<N> {
+    fn check_unknown_type_fields(&self) -> Result<()> {
+        if let Some(applies_to) = &self.applies_to {
+            applies_to.context.0.check_unknown_type_fields()?;
+        }
+        Ok(())
+    }
 }
 
 impl ActionType<RawName> {
@@ -1392,11 +1458,30 @@ impl<N> Type<N> {
     }
 
     /// Did this type, or any nested type, contain an unknown field.
-    pub fn unknown_field(&self) -> Option<&UnknownField> {
+    pub fn check_unknown_type_fields(&self) -> Result<()> {
         match self {
-            Type::Type { unknown_field, .. } | Type::CommonTypeRef { unknown_field, .. } => {
-                unknown_field.as_ref()
+            Type::Type {
+                unknown_field: Some(unknown_field),
+                ..
             }
+            | Type::CommonTypeRef {
+                unknown_field: Some(unknown_field),
+                ..
+            } => Err(JsonDeserializationError::new((*unknown_field).into(), None).into()),
+            Type::Type {
+                ty: TypeVariant::Record(rty),
+                ..
+            } => {
+                for aty in rty.attributes.values() {
+                    aty.ty.check_unknown_type_fields()?;
+                }
+                Ok(())
+            }
+            Type::Type {
+                ty: TypeVariant::Set { element },
+                ..
+            } => element.check_unknown_type_fields(),
+            _ => Ok(()),
         }
     }
 }

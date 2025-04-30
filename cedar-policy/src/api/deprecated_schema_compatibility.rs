@@ -11,7 +11,7 @@ impl SchemaFragment {
     #[deprecated(since = "4.5.0", note = "use `SchemaFragment::from_json_str` instead")]
     pub fn from_deprecated_json_str(src: &str) -> Result<Self, SchemaError> {
         let lossless =
-            cedar_policy_validator::json_schema::Fragment::from_deprecated_schema_json_str(src)?;
+            cedar_policy_validator::json_schema::Fragment::from_json_str_ignore_unknown_type_fields(src)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
@@ -26,7 +26,7 @@ impl SchemaFragment {
         note = "use `SchemaFragment::from_json_value` instead"
     )]
     pub fn from_deprecated_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
-        let lossless = cedar_policy_validator::json_schema::Fragment::from_json_value(json)?;
+        let lossless = cedar_policy_validator::json_schema::Fragment::from_json_value_ignore_unknown_type_fields(json)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
@@ -39,7 +39,7 @@ impl SchemaFragment {
     /// instead.
     #[deprecated(since = "4.5.0", note = "use `SchemaFragment::from_json_file` instead")]
     pub fn from_deprecated_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
-        let lossless = cedar_policy_validator::json_schema::Fragment::from_json_file(file)?;
+        let lossless = cedar_policy_validator::json_schema::Fragment::from_json_file_ignore_unknown_type_fields(file)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
@@ -55,7 +55,7 @@ impl Schema {
     #[deprecated(since = "4.5.0", note = "use `Schema::from_json_str` instead")]
     pub fn from_deprecated_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
         Ok(Self(
-            cedar_policy_validator::ValidatorSchema::from_deprecated_json_value(
+            cedar_policy_validator::ValidatorSchema::from_json_value_ignore_unknown_type_fields(
                 json,
                 Extensions::all_available(),
             )?,
@@ -68,7 +68,7 @@ impl Schema {
     #[deprecated(since = "4.5.0", note = "use `Schema::from_json_value` instead")]
     pub fn from_deprecated_json_str(json: &str) -> Result<Self, SchemaError> {
         Ok(Self(
-            cedar_policy_validator::ValidatorSchema::from_deprecated_json_str(
+            cedar_policy_validator::ValidatorSchema::from_json_str_ignore_unknown_type_fields(
                 json,
                 Extensions::all_available(),
             )?,
@@ -82,7 +82,7 @@ impl Schema {
     #[deprecated(since = "4.5.0", note = "use `Schema::from_json_file` instead")]
     pub fn from_deprecated_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         Ok(Self(
-            cedar_policy_validator::ValidatorSchema::from_deprecated_json_file(
+            cedar_policy_validator::ValidatorSchema::from_json_file_ignore_unknown_type_fields(
                 file,
                 Extensions::all_available(),
             )?,
@@ -99,16 +99,22 @@ mod test {
 
     use crate::Schema;
 
-    use cedar_policy_deprecated_schema_compatibility as cedar2;
+    #[track_caller]
+    fn assert_err_standard_and_compatibility_layer(schema: serde_json::Value, err: &str) {
+        expect_err(
+            "",
+            &Report::new(Schema::from_json_value(schema.clone()).unwrap_err()),
+            &ExpectedErrorMessageBuilder::error(err).build(),
+        );
+        expect_err(
+            "",
+            &Report::new(Schema::from_deprecated_json_value(schema.clone()).unwrap_err()),
+            &ExpectedErrorMessageBuilder::error(err).build(),
+        );
+    }
 
     #[track_caller]
-    fn assert_err_cedar_2_and_compatibility_layer(schema: serde_json::Value, err: &str) {
-        assert_eq!(
-            cedar2::Schema::from_json_value(schema.clone())
-                .unwrap_err()
-                .to_string(),
-            format!("JSON Schema file could not be parsed: {err}")
-        );
+    fn assert_err_compatibility_layer(schema: serde_json::Value, err: &str) {
         expect_err(
             "",
             &Report::new(Schema::from_deprecated_json_value(schema.clone()).unwrap_err()),

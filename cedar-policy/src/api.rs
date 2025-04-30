@@ -30,8 +30,8 @@ use cedar_policy_validator::entity_manifest;
 pub use cedar_policy_validator::entity_manifest::{
     AccessTrie, EntityManifest, EntityRoot, Fields, RootAccessTrie,
 };
-use cedar_policy_validator::{json_schema, TypeFieldCompatibilityBehavior};
 use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
+use cedar_policy_validator::{json_schema, TypeFieldCompatibilityBehavior};
 pub use id::*;
 
 #[cfg(feature = "deprecated-schema-compatibility")]
@@ -1776,7 +1776,7 @@ impl Schema {
             cedar_policy_validator::ValidatorSchema::from_schema_fragments(
                 fragments.into_iter().map(|f| f.value),
                 Extensions::all_available(),
-                TypeFieldCompatibilityBehavior::DenyUnknownFields
+                TypeFieldCompatibilityBehavior::DenyUnknownFields,
             )?,
         ))
     }
