@@ -99,9 +99,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.97"
+version = "1.0.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcfed56ad506cb2c684a14971b8861fdc3baaaae314b9e5f9bb532cbe3ba7a4f"
+checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
 
 [[package]]
 name = "arbitrary"
@@ -260,6 +260,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "525046617d8376e3db1deffb079e91cef90a89fc3ca5c185bbf8c9ecdd15cd5c"
 dependencies = [
  "shlex",
+]
+
+[[package]]
+name = "cedar-partial-evaluation"
+version = "4.4.0"
+dependencies = [
+ "anyhow",
+ "cedar-policy-core",
+ "cedar-policy-validator",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "smol_str",
 ]
 
 [[package]]
