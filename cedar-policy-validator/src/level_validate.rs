@@ -689,6 +689,14 @@ mod levels_validation_tests {
             [r#"principal.user.other"#, r#"principal["user"]["other"]"#],
             2,
         );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.hasTag(principal.user.user.other) && principal.getTag(principal.user["user"]["other"]).bool};"#,
+            [
+                r#"principal.user.user.other"#,
+                r#"principal.user["user"]["other"]"#,
+            ],
+            3,
+        );
     }
 
     #[test]
@@ -701,10 +709,29 @@ mod levels_validation_tests {
     }
 
     #[test]
-    fn if_condition_is_checked() {
+    fn top_level_if_is_checked() {
         assert_requires_level(
             r#"permit(principal, action, resource) when { if principal.user.user.bool then principal.bool else resource.user.bool };"#,
             [r#"principal.user.user.bool"#],
+            3,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { if principal.bool then principal.bool else resource.user.user.bool };"#,
+            [r#"resource.user.user.bool"#],
+            3,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { if principal.bool then principal.user.user.bool else resource.user.bool };"#,
+            [r#"principal.user.user.bool"#],
+            3,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { if context.user.user.user.bool then resource.user.user.bool else principal.user.user.bool };"#,
+            [
+                "context.user.user.user.bool",
+                "principal.user.user.bool",
+                "principal.user.user.bool",
+            ],
             3,
         );
     }
@@ -776,6 +803,12 @@ mod levels_validation_tests {
         assert_requires_level(
             r#"permit(principal, action, resource) when { {foo: principal.user}.foo.bool };"#,
             [r#"{foo: principal.user}.foo.bool"#],
+            2,
+        );
+        assert_fails_at_level(
+            r#"permit(principal, action, resource) when { {foo: principal.user}.foo.bool };"#,
+            ["{foo: principal.user}.foo.bool"],
+            0,
             2,
         );
         assert_requires_level(
@@ -900,8 +933,8 @@ mod levels_validation_tests {
             1,
         );
         assert_requires_level(
-            r#"permit(principal, action, resource) when { [principal.bool].contains(true) };"#,
-            [r#"principal.bool"#],
+            r#"permit(principal, action, resource) when { [context.user.user, principal.user].containsAny([resource.user]) };"#,
+            ["context.user.user", "principal.user", "resource.user"],
             1,
         );
         assert_requires_level(
@@ -910,9 +943,35 @@ mod levels_validation_tests {
             1,
         );
         assert_requires_level(
+            r#"permit(principal, action, resource) when { ip("192.168.0.0").isInRange(principal.ip) };"#,
+            [r#"principal.ip"#],
+            1,
+        );
+        assert_requires_level(
             r#"permit(principal, action, resource) when { principal.other like "*"};"#,
             ["principal.other"],
             1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { ! ( principal.bool )};"#,
+            ["principal.bool"],
+            1,
+        );
+    }
+
+    #[test]
+    fn fails_at_much_lower_level() {
+        assert_fails_at_level(
+            r#"permit(principal, action, resource) when { principal.user.user.user.user.user.bool };"#,
+            ["principal.user.user.user.user.user.bool"],
+            0,
+            6,
+        );
+        assert_fails_at_level(
+            r#"permit(principal, action, resource) when { principal.user.user.user.user.user.bool };"#,
+            ["principal.user.user.user.user.user.bool"],
+            2,
+            6,
         );
     }
 }

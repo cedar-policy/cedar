@@ -2219,7 +2219,113 @@ mod schema_based_parsing_tests {
         assert!(parents.is_empty());
     }
 
-    /// Simple test that exercises a variety of attribute types for single entities
+    // This function tests that additional attributes are allowed somewhere in
+    // the entity JSON representations
+    #[test]
+    fn additional_json_attributes() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            r#"
+        entity A {
+          d? : decimal,
+          e? : B,
+          r? : {d : decimal},
+        };
+        entity B;
+        action a appliesTo {
+          principal: A,
+          resource: A,
+        };
+        "#,
+        )
+        .unwrap();
+
+        assert_matches!(Entity::from_json_value(json!({
+            "uid": { "type": "A", "🥝" : "🍌", "id": "" },
+            "attrs": {
+                "d": {
+                    "🤷" : "🙅",
+                    "fn" : "decimal",
+                    "arg" : "1.0",
+                }
+            },
+            "parents": [],
+        }
+        ), Some(&schema)), Ok(e) => {
+            assert_matches!(e.attr("d"), Some(Ok(EvalResult::ExtensionValue(_))));
+        });
+
+        assert_matches!(Entity::from_json_value(json!({
+            "uid": { "type": "A", "🥝" : "🍌", "id": "" },
+            "attrs": {
+                "d": {
+                    "__extn" : {
+                        "🤷" : "🙅",
+                        "fn" : "decimal",
+                        "arg" : "1.0",
+                    }
+                }
+            },
+            "parents": [],
+        }
+        ), Some(&schema)), Ok(e) => {
+            assert_matches!(e.attr("d"), Some(Ok(EvalResult::ExtensionValue(_))));
+        });
+
+        assert_matches!(Entity::from_json_value(json!({
+            "uid": { "type": "A", "🥝" : "🍌", "id": "" },
+            "attrs": {
+                "e": {
+                    "🤷" : "🙅",
+                    "type" : "B",
+                    "id" : "",
+                }
+            },
+            "parents": [],
+        }
+        ), Some(&schema)), Ok(e) => {
+            assert_matches!(e.attr("e"), Some(Ok(EvalResult::EntityUid(_))));
+        });
+
+        assert_matches!(Entity::from_json_value(json!({
+            "uid": { "type": "A", "🥝" : "🍌", "id": "" },
+            "attrs": {
+                "e": {
+                    "__entity" : {
+                        "🤷" : "🙅",
+                        "type" : "B",
+                        "id" : "",
+                    }
+                }
+            },
+            "parents": [],
+        }
+        ), Some(&schema)), Ok(e) => {
+            assert_matches!(e.attr("e"), Some(Ok(EvalResult::EntityUid(_))));
+        });
+
+        assert_matches!(Entity::from_json_value(json!({
+            "uid": { "type": "A", "🥝" : "🍌", "id": "" },
+            "attrs": {
+                "r": {
+                    "d": {
+                    "__extn" : {
+                        "🤷" : "🙅",
+                        "fn" : "decimal",
+                        "arg" : "1.0",
+                    }
+                    },
+                }
+            },
+            "parents": [],
+        }
+        ), Some(&schema)), Ok(e) => {
+            assert_matches!(e.attr("r"), Some(Ok(EvalResult::Record(r))) => {
+                assert_matches!(r.get("d"), Some(EvalResult::ExtensionValue(_)));
+            });
+        });
+    }
+
+    /// Simple test that exercises a variety of attribute types for single entities
     #[test]
     fn single_attr_types() {
         let schema = Schema::from_json_value(json!(
@@ -4206,7 +4312,6 @@ mod partial_schema {
     }
 }
 
-#[cfg(feature = "level-validate")]
 mod level_validation_tests {
     use crate::ValidationMode;
     use crate::{Policy, PolicySet, ValidationError, Validator};
@@ -6860,7 +6965,7 @@ mod version_tests {
 
     #[test]
     fn test_lang_version() {
-        assert_eq!(get_lang_version().to_string(), "4.2.0");
+        assert_eq!(get_lang_version().to_string(), "4.3.0");
     }
 }
 

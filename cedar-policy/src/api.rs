@@ -72,7 +72,7 @@ pub(crate) mod version {
         static ref SDK_VERSION: Version = env!("CARGO_PKG_VERSION").parse().unwrap();
         // Cedar language version
         // The patch version field may be unnecessary
-        static ref LANG_VERSION: Version = Version::new(4, 2, 0);
+        static ref LANG_VERSION: Version = Version::new(4, 3, 0);
     }
     /// Get the Cedar SDK Semantic Versioning version
     #[allow(clippy::module_name_repetitions)]
@@ -697,7 +697,7 @@ impl Entities {
     ///   "parents": [{"type":"Group","id":"admin"}]
     /// },
     /// {
-    ///   "uid": {"type":"Groupd","id":"admin"},
+    ///   "uid": {"type":"Group","id":"admin"},
     ///   "attrs": {},
     ///   "parents": []
     /// }
@@ -1385,7 +1385,6 @@ impl Validator {
         ValidationResult::from(self.0.validate(&pset.ast, mode.into()))
     }
 
-    #[cfg(feature = "level-validate")]
     /// Validate all policies in a policy set, collecting all validation errors
     /// found into the returned `ValidationResult`. If validation passes, run level
     /// validation (RFC 76). Each error is returned together with the policy id of the policy
@@ -2917,15 +2916,15 @@ impl Template {
 
     /// Get an annotation value of this `Template`.
     /// If the annotation is present without an explicit value (e.g., `@annotation`),
-    /// then this function returns `Some("")`. It returns `None` only when the
-    /// annotation is not present.
+    /// then this function returns `Some("")`. Returns `None` when the
+    /// annotation is not present or when `key` is not a valid annotation identifier.
     pub fn annotation(&self, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .annotation(&key.as_ref().parse().ok()?)
             .map(AsRef::as_ref)
     }
 
-    /// Iterate through annotation data of this `Template` as key-value pairs
+    /// Iterate through annotation data of this `Template` as key-value pairs.
     /// Annotations which do not have an explicit value (e.g., `@annotation`),
     /// are included in the iterator with the value `""`.
     pub fn annotations(&self) -> impl Iterator<Item = (&str, &str)> {
@@ -3256,17 +3255,17 @@ impl Policy {
         self.ast.effect()
     }
 
-    /// Get an annotation value of this template-linked or static policy
+    /// Get an annotation value of this template-linked or static policy.
     /// If the annotation is present without an explicit value (e.g., `@annotation`),
-    /// then this function returns `Some("")`. It returns `None` only when the
-    /// annotation is not present.
+    /// then this function returns `Some("")`. Returns `None` when the
+    /// annotation is not present or when `key` is not a valid annotations identifier.
     pub fn annotation(&self, key: impl AsRef<str>) -> Option<&str> {
         self.ast
             .annotation(&key.as_ref().parse().ok()?)
             .map(AsRef::as_ref)
     }
 
-    /// Iterate through annotation data of this template-linked or static policy
+    /// Iterate through annotation data of this template-linked or static policy.
     /// Annotations which do not have an explicit value (e.g., `@annotation`),
     /// are included in the iterator with the value `""`.
     pub fn annotations(&self) -> impl Iterator<Item = (&str, &str)> {
@@ -5214,8 +5213,9 @@ action CreateList in Create appliesTo {
 #[doc = include_str!("../experimental_warning.md")]
 #[cfg(feature = "entity-manifest")]
 pub fn compute_entity_manifest(
-    schema: &Schema,
+    validator: &Validator,
     pset: &PolicySet,
 ) -> Result<EntityManifest, EntityManifestError> {
-    entity_manifest::compute_entity_manifest(&schema.0, &pset.ast).map_err(std::convert::Into::into)
+    entity_manifest::compute_entity_manifest(&validator.0, &pset.ast)
+        .map_err(std::convert::Into::into)
 }
