@@ -14,9 +14,16 @@
  * limitations under the License.
  */
 
-use std::collections::HashMap;
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    sync::Arc,
+};
 
-use cedar_policy_core::{entities::EntityUidJson, jsonvalue::JsonValueWithNoDuplicateKeys};
+use cedar_policy_core::{
+    ast::{EntityUID, Value},
+    entities::EntityUidJson,
+    jsonvalue::JsonValueWithNoDuplicateKeys,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
@@ -26,7 +33,7 @@ use smol_str::SmolStr;
 #[serde(transparent)]
 pub struct DeduplicatedMap {
     #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
-    pub map: HashMap<SmolStr, JsonValueWithNoDuplicateKeys>
+    pub map: HashMap<SmolStr, JsonValueWithNoDuplicateKeys>,
 }
 
 /// Serde JSON format for a single entity
@@ -54,12 +61,27 @@ pub struct EntityJson {
     tags: Option<DeduplicatedMap>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartialEntity {
+    pub uid: EntityUID,
+    pub attrs: Option<BTreeMap<SmolStr, Value>>,
+    pub ancestors: Option<HashSet<EntityUID>>,
+    pub tags: Option<BTreeMap<SmolStr, Value>>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PartialEntities {
+    /// Important internal invariant: for any `Entities` object that exists,
+    /// the `ancestor` relation is transitively closed.
+    entities: HashMap<EntityUID, Arc<PartialEntity>>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::EntityJson;
 
     #[test]
-    fn basic () {
+    fn basic() {
         let json = serde_json::json!(
             {
                 "uid" : {
@@ -69,6 +91,6 @@ mod tests {
                 "tags" : null,
             }
         );
-        let ejson : EntityJson = serde_json::from_value(json).expect("should parse");
-     }
+        let ejson: EntityJson = serde_json::from_value(json).expect("should parse");
+    }
 }

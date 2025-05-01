@@ -7,7 +7,7 @@ use smol_str::SmolStr;
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
 #[derive(Debug, Clone)]
-pub struct Request {
+pub struct PartialRequest {
     /// Principal associated with the request
     pub principal: Option<EntityUID>,
 
@@ -22,9 +22,15 @@ pub struct Request {
     pub context: Option<Arc<BTreeMap<SmolStr, Value>>>,
 }
 
-impl Request {
-    pub(crate) fn find_request_env<'s>(&self, schema: &'s ValidatorSchema) -> anyhow::Result<RequestEnv<'s>> {
-        schema.unlinked_request_envs(ValidationMode::Strict).find(|env| env.action_entity_uid().unwrap() == &self.action).ok_or(anyhow::anyhow!("cannot find matching request environment"))
+impl PartialRequest {
+    pub(crate) fn find_request_env<'s>(
+        &self,
+        schema: &'s ValidatorSchema,
+    ) -> anyhow::Result<RequestEnv<'s>> {
+        schema
+            .unlinked_request_envs(ValidationMode::Strict)
+            .find(|env| env.action_entity_uid().unwrap() == &self.action)
+            .ok_or(anyhow::anyhow!("cannot find matching request environment"))
     }
 
     pub(crate) fn validate_request(&self, schema: &ValidatorSchema) -> anyhow::Result<()> {
