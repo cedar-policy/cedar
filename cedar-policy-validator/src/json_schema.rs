@@ -181,6 +181,22 @@ impl Fragment<RawName> {
         Ok(fragment)
     }
 
+    /// Check that none of the `json_schema::Type`s used in this schema contain
+    /// unknown fields. We perform this check after initial parsing because we
+    /// need to support a backwards compatible parsing mode (see, e.g.,
+    /// `from_json_ignore_unknown_type_fields` below). We do this check here
+    /// instead of when converting from `json_schema::Type` to the main `Type`
+    /// enum because that conversion happens only when constructing a
+    /// `ValidatorSchema` from a `ValidatorSchemaFragment`, but this error
+    /// should be reported on initial construction of a
+    /// `ValidatorSchemaFragment` to maintain the same public API.
+    fn check_unknown_type_fields(&self) -> Result<()> {
+        for ns in self.0.values() {
+            ns.check_unknown_type_fields()?;
+        }
+        Ok(())
+    }
+
     /// Create a [`Fragment`] from a string containing JSON (which should
     /// be an object of the appropriate shape).
     pub fn from_json_str_ignore_unknown_type_fields(json: &str) -> Result<Self> {
@@ -196,13 +212,6 @@ impl Fragment<RawName> {
     /// Create a [`Fragment`] directly from a file containing a JSON object.
     pub fn from_json_file_ignore_unknown_type_fields(file: impl std::io::Read) -> Result<Self> {
         serde_json::from_reader(file).map_err(|e| JsonDeserializationError::new(e, None).into())
-    }
-
-    fn check_unknown_type_fields(&self) -> Result<()> {
-        for ns in self.0.values() {
-            ns.check_unknown_type_fields()?;
-        }
-        Ok(())
     }
 
     /// Parse the schema (in the Cedar schema syntax) from a string

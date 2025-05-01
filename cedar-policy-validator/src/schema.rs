@@ -76,18 +76,6 @@ pub enum ActionBehavior {
     PermitAttributes,
 }
 
-/// Defines how to handle unexpected fields in schema type definitions. For
-/// backwards compatibility, we need to support a schema parsing mode where we
-/// accept these.
-#[derive(Debug, Eq, PartialEq, Copy, Clone, Default)]
-pub enum TypeFieldCompatibilityBehavior {
-    /// Unknown fields in schema types result in a schema parsing error.
-    #[default]
-    DenyUnknownFields,
-    /// Unknown fields in schema types are silently ignored.
-    AllowUnknownFields,
-}
-
 /// A `ValidatorSchemaFragment` consists of any number (even 0) of
 /// `ValidatorNamespaceDef`s.
 #[derive(Debug, Clone)]
@@ -277,7 +265,6 @@ impl TryFrom<json_schema::NamespaceDefinition<RawName>> for ValidatorSchema {
         ValidatorSchema::from_schema_fragments(
             [ValidatorSchemaFragment::from_namespaces([nsd.try_into()?])],
             Extensions::all_available(),
-            TypeFieldCompatibilityBehavior::DenyUnknownFields,
         )
     }
 }
@@ -286,11 +273,7 @@ impl TryFrom<json_schema::Fragment<RawName>> for ValidatorSchema {
     type Error = SchemaError;
 
     fn try_from(frag: json_schema::Fragment<RawName>) -> Result<ValidatorSchema> {
-        ValidatorSchema::from_schema_fragments(
-            [frag.try_into()?],
-            Extensions::all_available(),
-            TypeFieldCompatibilityBehavior::DenyUnknownFields,
-        )
+        ValidatorSchema::from_schema_fragments([frag.try_into()?], Extensions::all_available())
     }
 }
 
@@ -590,7 +573,6 @@ impl ValidatorSchema {
                 extensions,
             )?],
             extensions,
-            TypeFieldCompatibilityBehavior::DenyUnknownFields,
         )
     }
 
@@ -598,7 +580,6 @@ impl ValidatorSchema {
     pub fn from_schema_fragments(
         fragments: impl IntoIterator<Item = ValidatorSchemaFragment<ConditionalName, ConditionalName>>,
         extensions: &Extensions<'_>,
-        type_field_compat: TypeFieldCompatibilityBehavior,
     ) -> Result<ValidatorSchema> {
         let mut fragments = fragments
             .into_iter()
@@ -769,7 +750,6 @@ impl ValidatorSchema {
                                 attributes.0,
                                 extensions,
                                 attr_loc,
-                                type_field_compat,
                             )?;
                             Self::record_attributes_or_none(
                                 unresolved.resolve_common_type_refs(&common_types)?,
@@ -783,12 +763,7 @@ impl ValidatorSchema {
                         let tags = tags
                             .map(|tags| {
                                 let tags_loc = tags.loc().cloned();
-                                try_jsonschema_type_into_validator_type(
-                                    tags,
-                                    extensions,
-                                    tags_loc,
-                                    type_field_compat,
-                                )
+                                try_jsonschema_type_into_validator_type(tags, extensions, tags_loc)
                             })
                             .transpose()?
                             .map(|unresolved| unresolved.resolve_common_type_refs(&common_types))
@@ -829,7 +804,6 @@ impl ValidatorSchema {
                         action.context,
                         extensions,
                         context_loc,
-                        TypeFieldCompatibilityBehavior::DenyUnknownFields,
                     )?;
                     Self::record_attributes_or_none(
                         unresolved.resolve_common_type_refs(&common_types)?,
@@ -1177,7 +1151,6 @@ impl TryInto<ValidatorSchema> for NamespaceDefinitionWithActionAttributes<RawNam
                 )?,
             ])],
             Extensions::all_available(),
-            TypeFieldCompatibilityBehavior::DenyUnknownFields,
         )
     }
 }
@@ -1658,7 +1631,6 @@ impl<'a> CommonTypeResolver<'a> {
                 substituted_ty,
                 extensions,
                 substituted_ty_loc,
-                TypeFieldCompatibilityBehavior::DenyUnknownFields,
             )?;
             let validator_type = validator_type.resolve_common_type_refs(&HashMap::new())?;
 
@@ -2366,15 +2338,11 @@ pub(crate) mod test {
             InternalName::from_str("Bar").unwrap(),
         ]);
         let schema_ty = schema_ty.fully_qualify_type_references(&all_defs).unwrap();
-        let ty: ValidatorType = try_jsonschema_type_into_validator_type(
-            schema_ty,
-            Extensions::all_available(),
-            None,
-            TypeFieldCompatibilityBehavior::DenyUnknownFields,
-        )
-        .expect("Error converting schema type to type.")
-        .resolve_common_type_refs(&HashMap::new())
-        .unwrap();
+        let ty: ValidatorType =
+            try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available(), None)
+                .expect("Error converting schema type to type.")
+                .resolve_common_type_refs(&HashMap::new())
+                .unwrap();
         assert_eq!(ty.ty, Type::named_entity_reference_from_str("NS::Foo"));
     }
 
@@ -2400,15 +2368,11 @@ pub(crate) mod test {
             InternalName::from_str("Foo").unwrap(),
         ]);
         let schema_ty = schema_ty.fully_qualify_type_references(&all_defs).unwrap();
-        let ty: ValidatorType = try_jsonschema_type_into_validator_type(
-            schema_ty,
-            Extensions::all_available(),
-            None,
-            TypeFieldCompatibilityBehavior::DenyUnknownFields,
-        )
-        .expect("Error converting schema type to type.")
-        .resolve_common_type_refs(&HashMap::new())
-        .unwrap();
+        let ty: ValidatorType =
+            try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available(), None)
+                .expect("Error converting schema type to type.")
+                .resolve_common_type_refs(&HashMap::new())
+                .unwrap();
         assert_eq!(ty.ty, Type::named_entity_reference_from_str("NS::Foo"));
     }
 
@@ -2439,15 +2403,11 @@ pub(crate) mod test {
         let schema_ty = schema_ty.conditionally_qualify_type_references(None);
         let all_defs = AllDefs::from_entity_defs([InternalName::from_str("Foo").unwrap()]);
         let schema_ty = schema_ty.fully_qualify_type_references(&all_defs).unwrap();
-        let ty: ValidatorType = try_jsonschema_type_into_validator_type(
-            schema_ty,
-            Extensions::all_available(),
-            None,
-            TypeFieldCompatibilityBehavior::DenyUnknownFields,
-        )
-        .expect("Error converting schema type to type.")
-        .resolve_common_type_refs(&HashMap::new())
-        .unwrap();
+        let ty: ValidatorType =
+            try_jsonschema_type_into_validator_type(schema_ty, Extensions::all_available(), None)
+                .expect("Error converting schema type to type.")
+                .resolve_common_type_refs(&HashMap::new())
+                .unwrap();
         assert_eq!(ty.ty, Type::closed_record_with_attributes(None));
     }
 
@@ -2487,12 +2447,8 @@ pub(crate) mod test {
 
     #[test]
     fn schema_no_fragments() {
-        let schema = ValidatorSchema::from_schema_fragments(
-            [],
-            Extensions::all_available(),
-            TypeFieldCompatibilityBehavior::DenyUnknownFields,
-        )
-        .unwrap();
+        let schema =
+            ValidatorSchema::from_schema_fragments([], Extensions::all_available()).unwrap();
         assert!(schema.entity_types.is_empty());
         assert!(schema.action_ids.is_empty());
     }
@@ -2782,7 +2738,6 @@ pub(crate) mod test {
         let schema = ValidatorSchema::from_schema_fragments(
             [fragment1, fragment2],
             Extensions::all_available(),
-            TypeFieldCompatibilityBehavior::DenyUnknownFields,
         )
         .unwrap();
 
@@ -2824,7 +2779,6 @@ pub(crate) mod test {
         let schema = ValidatorSchema::from_schema_fragments(
             [fragment1, fragment2],
             Extensions::all_available(),
-            TypeFieldCompatibilityBehavior::DenyUnknownFields,
         );
 
         // should error because schema fragments have duplicate types

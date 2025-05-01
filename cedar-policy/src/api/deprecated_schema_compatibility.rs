@@ -100,123 +100,13 @@ mod test {
     use crate::Schema;
 
     #[track_caller]
-    fn assert_err_standard_and_compatibility_layer(schema: serde_json::Value, err: &str) {
+    fn assert_ok_deprecated_and_err_standard(schema: serde_json::Value, err: &str) {
+        Schema::from_deprecated_json_value(schema.clone()).unwrap();
         expect_err(
             "",
             &Report::new(Schema::from_json_value(schema.clone()).unwrap_err()),
             &ExpectedErrorMessageBuilder::error(err).build(),
         );
-        expect_err(
-            "",
-            &Report::new(Schema::from_deprecated_json_value(schema.clone()).unwrap_err()),
-            &ExpectedErrorMessageBuilder::error(err).build(),
-        );
-    }
-
-    #[track_caller]
-    fn assert_err_compatibility_layer(schema: serde_json::Value, err: &str) {
-        expect_err(
-            "",
-            &Report::new(Schema::from_deprecated_json_value(schema.clone()).unwrap_err()),
-            &ExpectedErrorMessageBuilder::error(err).build(),
-        );
-    }
-
-    #[test]
-    fn extra_field_in_namespace() {
-        assert_err_cedar_2_and_compatibility_layer(
-            json!({
-                "ns": {
-                    "entityTypes": {},
-                    "actions": {},
-                    "commonTypes": {},
-                    "foo": {},
-                }
-            }),
-            "unknown field `foo`, expected one of `commonTypes`, `entityTypes`, `actions`",
-        );
-    }
-
-    #[test]
-    fn extra_field_in_entity_type() {
-        assert_err_cedar_2_and_compatibility_layer(
-            json!({
-                "ns": {
-                    "entityTypes": {
-                        "User": {
-                            "foo": {},
-                        }
-                    },
-                    "actions": {},
-                }
-            }),
-            "unknown field `foo`, expected `memberOfTypes` or `shape`",
-        );
-    }
-
-    #[test]
-    fn extra_field_in_action() {
-        assert_err_cedar_2_and_compatibility_layer(
-            json!({
-                "ns": {
-                    "entityTypes": {
-                    },
-                    "actions": {
-                        "act": {
-                            "foo": {}
-                        },
-                    },
-                }
-            }),
-            "unknown field `foo`, expected one of `attributes`, `appliesTo`, `memberOf`",
-        );
-    }
-
-    #[test]
-    fn extra_field_in_applies_to() {
-        assert_err_cedar_2_and_compatibility_layer(
-            json!({
-                "ns": {
-                    "entityTypes": { },
-                    "actions": {
-                        "act": {
-                            "appliesTo": {
-                                "principalTypes": [],
-                                "resourceTypes": [],
-                                "foo": {},
-                            }
-                        },
-                    },
-                }
-            }),
-            "unknown field `foo`, expected one of `resourceTypes`, `principalTypes`, `context`",
-        );
-    }
-
-    #[test]
-    fn extra_field_in_entity_shape() {
-        assert_err_cedar_2_and_compatibility_layer(
-            json!({
-                "ns": {
-                    "entityTypes": {
-                        "User": {
-                            "shape": {
-                                "type": "Record",
-                                "foo": {},
-                                "attributes": {},
-                            },
-                        }
-                    },
-                    "actions": {},
-                }
-            }),
-            "unknown field `foo`, expected `memberOfTypes` or `shape`",
-        );
-    }
-
-    fn assert_parses_cedar_2_and_compatibility_layer(schema: serde_json::Value) {
-        cedar2::Schema::from_json_value(schema.clone()).unwrap();
-        Schema::from_deprecated_json_value(schema.clone()).unwrap();
     }
 
     fn schema_with_attribute(attr_ty: serde_json::Value) -> serde_json::Value {
@@ -239,61 +129,238 @@ mod test {
 
     #[test]
     fn extra_fields_in_long() {
-        assert_parses_cedar_2_and_compatibility_layer(schema_with_attribute(json!({
-            "type": "Long",
-            "name": "my_long",
-        })));
-        assert_parses_cedar_2_and_compatibility_layer(schema_with_attribute(json!({
-            "type": "Long",
-            "element": "thing",
-        })));
-        assert_parses_cedar_2_and_compatibility_layer(schema_with_attribute(json!({
-            "type": "Long",
-            "attributes": "bar",
-        })));
-        assert_parses_cedar_2_and_compatibility_layer(schema_with_attribute(json!({
-            "type": "Long",
-            "additional_attributes": "bar",
-        })));
+        assert_ok_deprecated_and_err_standard(
+            schema_with_attribute(json!({
+                "type": "Long",
+                "name": "my_long",
+            })),
+            "unknown field `name`, there are no fields",
+        );
+        assert_ok_deprecated_and_err_standard(
+            schema_with_attribute(json!({
+                "type": "Long",
+                "element": "thing",
+            })),
+            "unknown field `element`, there are no fields",
+        );
+        assert_ok_deprecated_and_err_standard(
+            schema_with_attribute(json!({
+                "type": "Long",
+                "attributes": "bar",
+            })),
+            "unknown field `attributes`, there are no fields",
+        );
+        assert_ok_deprecated_and_err_standard(
+            schema_with_attribute(json!({
+                "type": "Long",
+                "additional_attributes": "bar",
+            })),
+            "unknown field `additional_attributes`, there are no fields",
+        );
     }
 
     #[test]
     fn extra_fields_in_bool() {
-        assert_parses_cedar_2_and_compatibility_layer(schema_with_attribute(json!({
-            "type": "Boolean",
-            "name": "my_long",
-        })));
-        assert_parses_cedar_2_and_compatibility_layer(schema_with_attribute(json!({
-            "type": "Boolean",
-            "element": "thing",
-        })));
-        assert_parses_cedar_2_and_compatibility_layer(schema_with_attribute(json!({
-            "type": "Boolean",
-            "attributes": "bar",
-        })));
-        assert_parses_cedar_2_and_compatibility_layer(schema_with_attribute(json!({
-            "type": "Boolean",
-            "additional_attributes": "bar",
-        })));
+        assert_ok_deprecated_and_err_standard(
+            schema_with_attribute(json!({
+                "type": "Boolean",
+                "name": "my_long",
+            })),
+            " unknown field `name`, there are no fields",
+        );
+        assert_ok_deprecated_and_err_standard(
+            schema_with_attribute(json!({
+                "type": "Boolean",
+                "element": "thing",
+            })),
+            " unknown field `element`, there are no fields",
+        );
+        assert_ok_deprecated_and_err_standard(
+            schema_with_attribute(json!({
+                "type": "Boolean",
+                "attributes": "bar",
+            })),
+            " unknown field `attributes`, there are no fields",
+        );
+        assert_ok_deprecated_and_err_standard(
+            schema_with_attribute(json!({
+                "type": "Boolean",
+                "additional_attributes": "bar",
+            })),
+            "unknown field `additional_attributes`, there are no fields",
+        );
     }
 
     #[test]
     fn extra_fields_in_string() {
-        assert_parses_cedar_2_and_compatibility_layer(schema_with_attribute(json!({
-            "type": "String",
-            "name": "my_long",
-        })));
-        assert_parses_cedar_2_and_compatibility_layer(schema_with_attribute(json!({
-            "type": "String",
-            "element": "thing",
-        })));
-        assert_parses_cedar_2_and_compatibility_layer(schema_with_attribute(json!({
-            "type": "String",
-            "attributes": "bar",
-        })));
-        assert_parses_cedar_2_and_compatibility_layer(schema_with_attribute(json!({
-            "type": "String",
-            "additional_attributes": "bar",
-        })));
+        assert_ok_deprecated_and_err_standard(
+            schema_with_attribute(json!({
+                "type": "String",
+                "name": "my_long",
+            })),
+            "unknown field `name`, there are no fields",
+        );
+        assert_ok_deprecated_and_err_standard(
+            schema_with_attribute(json!({
+                "type": "String",
+                "element": "thing",
+            })),
+            "unknown field `element`, there are no fields",
+        );
+        assert_ok_deprecated_and_err_standard(
+            schema_with_attribute(json!({
+                "type": "String",
+                "attributes": "bar",
+            })),
+            "unknown field `attributes`, there are no fields",
+        );
+        assert_ok_deprecated_and_err_standard(
+            schema_with_attribute(json!({
+                "type": "String",
+                "additional_attributes": "bar",
+            })),
+            "unknown field `additional_attributes`, there are no fields",
+        );
+    }
+
+    #[test]
+    fn extra_fields_in_set() {
+        assert_ok_deprecated_and_err_standard(
+            schema_with_attribute(json!({
+                "type": "Set",
+                "element": {"type": "Long"},
+                "name": "my_long",
+            })),
+            "unknown field `name`, there are no fields",
+        );
+        assert_ok_deprecated_and_err_standard(
+            schema_with_attribute(json!({
+                "type": "Set",
+                "element": {"type": "Long", "name": "my_long"},
+            })),
+            "unknown field `name`, there are no fields",
+        );
+        assert_ok_deprecated_and_err_standard(
+            schema_with_attribute(json!({
+                "type": "Long",
+                "element": {"type": "Long"},
+                "attributes": "bar",
+            })),
+            "unknown field `attributes`, there are no fields",
+        );
+        assert_ok_deprecated_and_err_standard(
+            schema_with_attribute(json!({
+                "type": "Long",
+                "element": {"type": "Long"},
+                "additional_attributes": "bar",
+            })),
+            "unknown field `additional_attributes`, there are no fields",
+        );
+    }
+
+    #[track_caller]
+    fn assert_err_deprecated_and_standard(schema: serde_json::Value, err: &str) {
+        expect_err(
+            "",
+            &Report::new(Schema::from_json_value(schema.clone()).unwrap_err()),
+            &ExpectedErrorMessageBuilder::error(err).build(),
+        );
+        expect_err(
+            "",
+            &Report::new(Schema::from_deprecated_json_value(schema.clone()).unwrap_err()),
+            &ExpectedErrorMessageBuilder::error(err).build(),
+        );
+    }
+
+    #[test]
+    fn extra_field_in_namespace() {
+        assert_err_deprecated_and_standard(
+            json!({
+                "ns": {
+                    "entityTypes": {},
+                    "actions": {},
+                    "commonTypes": {},
+                    "foo": {},
+                }
+            }),
+            "unknown field `foo`, expected one of `commonTypes`, `entityTypes`, `actions`",
+        );
+    }
+
+    #[test]
+    fn extra_field_in_entity_type() {
+        assert_err_deprecated_and_standard(
+            json!({
+                "ns": {
+                    "entityTypes": {
+                        "User": {
+                            "foo": {},
+                        }
+                    },
+                    "actions": {},
+                }
+            }),
+            "unknown field `foo`, expected `memberOfTypes` or `shape`",
+        );
+    }
+
+    #[test]
+    fn extra_field_in_action() {
+        assert_err_deprecated_and_standard(
+            json!({
+                "ns": {
+                    "entityTypes": {
+                    },
+                    "actions": {
+                        "act": {
+                            "foo": {}
+                        },
+                    },
+                }
+            }),
+            "unknown field `foo`, expected one of `attributes`, `appliesTo`, `memberOf`",
+        );
+    }
+
+    #[test]
+    fn extra_field_in_applies_to() {
+        assert_err_deprecated_and_standard(
+            json!({
+                "ns": {
+                    "entityTypes": { },
+                    "actions": {
+                        "act": {
+                            "appliesTo": {
+                                "principalTypes": [],
+                                "resourceTypes": [],
+                                "foo": {},
+                            }
+                        },
+                    },
+                }
+            }),
+            "unknown field `foo`, expected one of `resourceTypes`, `principalTypes`, `context`",
+        );
+    }
+
+    #[test]
+    fn extra_field_in_entity_shape() {
+        assert_err_deprecated_and_standard(
+            json!({
+                "ns": {
+                    "entityTypes": {
+                        "User": {
+                            "shape": {
+                                "type": "Record",
+                                "foo": {},
+                                "attributes": {},
+                            },
+                        }
+                    },
+                    "actions": {},
+                }
+            }),
+            "unknown field `foo`, expected `memberOfTypes` or `shape`",
+        );
     }
 }
