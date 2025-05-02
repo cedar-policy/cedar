@@ -20,7 +20,7 @@ Cedar Language Version: TBD
   from a schema with `Validator::new` afterwhich a reference to the original
   schema can be retrieved using `Validator::schema`. (#1584)
 
-## [4.4.0] - Coming soon
+## [4.4.0] - 2025-04-23
 
 Cedar Language Version: 4.3
 
