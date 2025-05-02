@@ -192,4 +192,7 @@ impl TCNode<EntityType> for ValidatorEntityType {
     fn has_edge_to(&self, e: &EntityType) -> bool {
         self.descendants.contains(e)
     }
+
+    // No-op as schema based TCs do not update
+    fn reset_edges(&mut self) {}
 }

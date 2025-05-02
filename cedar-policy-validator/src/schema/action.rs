@@ -176,6 +176,9 @@ impl TCNode<EntityUID> for ValidatorActionId {
     fn has_edge_to(&self, e: &EntityUID) -> bool {
         self.descendants.contains(e)
     }
+
+    // No-op as schema based TCs do not update
+    fn reset_edges(&mut self) {}
 }
 
 /// The principals and resources that an action can be applied to.
