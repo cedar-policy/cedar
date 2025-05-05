@@ -222,10 +222,7 @@ impl<'e> Evaluator<'e> {
 
     // Constructs an Evaluator for a given unknowns mapper function.
     #[cfg(feature = "partial-eval")]
-    pub(crate) fn with_unknowns_mapper(
-        self,
-        unknowns_mapper: UnknownsMapper<'e>,
-    ) -> Self {
+    pub(crate) fn with_unknowns_mapper(self, unknowns_mapper: UnknownsMapper<'e>) -> Self {
         Self {
             principal: self.principal,
             action: self.action,

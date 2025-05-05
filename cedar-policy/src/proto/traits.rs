@@ -19,7 +19,7 @@ pub trait Protobuf: Sized {
     /// Encode into protobuf format. Returns a freshly-allocated buffer containing binary data.
     fn encode(&self) -> Vec<u8>;
     /// Decode the binary data in `buf`, producing something of type `Self`
-    /// 
+    ///
     /// # Errors
     ///
     /// Will return a `prost::DecodeError` when the input buffer not contain a
