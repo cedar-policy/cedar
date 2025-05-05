@@ -62,6 +62,10 @@ wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 tolerant-ast = ["cedar-policy-core/tolerant-ast",  "cedar-policy-validator/tolerant-ast", "cedar-policy-formatter/tolerant-ast"]
 extended-schema = ["cedar-policy-validator/extended-schema"]
 
+# Not experimental but rather a feature for supporting deprecated parsing
+# behavior. API is stable, but hopefully will be removed in a future release.
+deprecated-schema-compat= []
+
 [lib]
 # cdylib required for wasm
 crate-type = ["rlib", "cdylib"]

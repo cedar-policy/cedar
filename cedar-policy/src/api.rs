@@ -34,6 +34,9 @@ use cedar_policy_validator::json_schema;
 use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;
 
+#[cfg(feature = "deprecated-schema-compat")]
+mod deprecated_schema_compat;
+
 mod err;
 pub use err::*;
 
