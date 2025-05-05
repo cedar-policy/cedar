@@ -73,7 +73,7 @@ pub struct PartialEntity {
 pub struct PartialEntities {
     /// Important internal invariant: for any `Entities` object that exists,
     /// the `ancestor` relation is transitively closed.
-    entities: HashMap<EntityUID, Arc<PartialEntity>>,
+    pub(crate) entities: HashMap<EntityUID, Arc<PartialEntity>>,
 }
 
 #[cfg(test)]

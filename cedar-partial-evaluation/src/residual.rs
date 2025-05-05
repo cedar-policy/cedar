@@ -15,6 +15,16 @@ pub enum Residual {
     Error(Type),
 }
 
+impl TryFrom<Residual> for Value {
+    type Error = ();
+    fn try_from(value: Residual) -> std::result::Result<Self, Self::Error> {
+        match value {
+            Residual::Concrete { value, .. } => Ok(value),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ResidualKind {
     /// Variable
