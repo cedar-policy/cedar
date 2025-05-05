@@ -46,6 +46,147 @@ mod names {
     }
 }
 
+/// Apply a `UnaryOp` to `arg` of type `Value`
+pub fn unary_app(op: UnaryOp, arg: Value, loc: Option<&Loc>) -> Result<Value> {
+    match op {
+        UnaryOp::Not => match arg.get_as_bool()? {
+            true => Ok(false.into()),
+            false => Ok(true.into()),
+        },
+        UnaryOp::Neg => {
+            let i = arg.get_as_long()?;
+            match i.checked_neg() {
+                Some(v) => Ok(v.into()),
+                None => Err(IntegerOverflowError::UnaryOp(UnaryOpOverflowError {
+                    op,
+                    arg,
+                    source_loc: loc.cloned(),
+                })
+                .into()),
+            }
+        }
+        UnaryOp::IsEmpty => {
+            let s = arg.get_as_set()?;
+            Ok(s.is_empty().into())
+        }
+    }
+}
+
+/// Evaluate binary relations (i.e., `BinaryOp::Eq`, `BinaryOp::Less`, and `BinaryOp::LessEq`)
+pub fn binary_relation(
+    op: BinaryOp,
+    arg1: Value,
+    arg2: Value,
+    extensions: &Extensions<'_>,
+) -> Result<Value> {
+    match op {
+        BinaryOp::Eq => Ok((arg1 == arg2).into()),
+        // comparison and arithmetic operators, which only work on Longs
+        BinaryOp::Less | BinaryOp::LessEq => {
+            let long_op = if matches!(op, BinaryOp::Less) {
+                |x, y| x < y
+            } else {
+                |x, y| x <= y
+            };
+            let ext_op = if matches!(op, BinaryOp::Less) {
+                |x, y| x < y
+            } else {
+                |x, y| x <= y
+            };
+            match (arg1.value_kind(), arg2.value_kind()) {
+                (ValueKind::Lit(Literal::Long(x)), ValueKind::Lit(Literal::Long(y))) => {
+                    Ok(long_op(x, y).into())
+                }
+                (ValueKind::ExtensionValue(x), ValueKind::ExtensionValue(y))
+                    if x.supports_operator_overloading()
+                        && y.supports_operator_overloading()
+                        && x.typename() == y.typename() =>
+                {
+                    Ok(ext_op(x, y).into())
+                }
+                // throw type errors
+                (ValueKind::Lit(Literal::Long(_)), _) => {
+                    Err(EvaluationError::type_error_single(Type::Long, &arg2))
+                }
+                (_, ValueKind::Lit(Literal::Long(_))) => {
+                    Err(EvaluationError::type_error_single(Type::Long, &arg1))
+                }
+                (ValueKind::ExtensionValue(x), _) if x.supports_operator_overloading() => {
+                    Err(EvaluationError::type_error_single(
+                        Type::Extension { name: x.typename() },
+                        &arg2,
+                    ))
+                }
+                (_, ValueKind::ExtensionValue(y)) if y.supports_operator_overloading() => {
+                    Err(EvaluationError::type_error_single(
+                        Type::Extension { name: y.typename() },
+                        &arg1,
+                    ))
+                }
+                _ => {
+                    let expected_types = valid_comparison_op_types(extensions);
+                    Err(EvaluationError::type_error_with_advice(
+                        expected_types.clone(),
+                        &arg1,
+                        format!(
+                            "Only types {} support comparison",
+                            expected_types.into_iter().sorted().join(", ")
+                        ),
+                    ))
+                }
+            }
+        }
+        // PANIC SAFETY `op` is checked to be one of the above
+        #[allow(clippy::unreachable)]
+        _ => {
+            unreachable!("Should have already checked that op was one of these")
+        }
+    }
+}
+
+/// Evaluate binary arithmetic operations (i.e., `BinaryOp::Add`, `BinaryOp::Sub`, and `BinaryOp::Mul`)
+pub fn binary_arith(op: BinaryOp, arg1: Value, arg2: Value, loc: Option<&Loc>) -> Result<Value> {
+    let i1 = arg1.get_as_long()?;
+    let i2 = arg2.get_as_long()?;
+    match op {
+        BinaryOp::Add => match i1.checked_add(i2) {
+            Some(sum) => Ok(sum.into()),
+            None => Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
+                op,
+                arg1,
+                arg2,
+                source_loc: loc.cloned(),
+            })
+            .into()),
+        },
+        BinaryOp::Sub => match i1.checked_sub(i2) {
+            Some(diff) => Ok(diff.into()),
+            None => Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
+                op,
+                arg1,
+                arg2,
+                source_loc: loc.cloned(),
+            })
+            .into()),
+        },
+        BinaryOp::Mul => match i1.checked_mul(i2) {
+            Some(prod) => Ok(prod.into()),
+            None => Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
+                op,
+                arg1,
+                arg2,
+                source_loc: loc.cloned(),
+            })
+            .into()),
+        },
+        // PANIC SAFETY `op` is checked to be one of the above
+        #[allow(clippy::unreachable)]
+        _ => {
+            unreachable!("Should have already checked that op was one of these")
+        }
+    }
+}
+
 /// Evaluator object.
 ///
 /// Conceptually keeps the evaluation environment as part of its internal state,
@@ -379,28 +520,7 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::UnaryApp { op, arg } => match self.partial_interpret(arg, slots)? {
-                PartialValue::Value(arg) => match op {
-                    UnaryOp::Not => match arg.get_as_bool()? {
-                        true => Ok(false.into()),
-                        false => Ok(true.into()),
-                    },
-                    UnaryOp::Neg => {
-                        let i = arg.get_as_long()?;
-                        match i.checked_neg() {
-                            Some(v) => Ok(v.into()),
-                            None => Err(IntegerOverflowError::UnaryOp(UnaryOpOverflowError {
-                                op: *op,
-                                arg,
-                                source_loc: loc.cloned(),
-                            })
-                            .into()),
-                        }
-                    }
-                    UnaryOp::IsEmpty => {
-                        let s = arg.get_as_set()?;
-                        Ok(s.is_empty().into())
-                    }
-                },
+                PartialValue::Value(arg) => unary_app(*op, arg, loc).map(Into::into),
                 // NOTE, there was a bug here found during manual review. (I forgot to wrap in unary_app call)
                 // Could be a nice target for fault injection
                 PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::unary_app(*op, r))),
@@ -435,113 +555,11 @@ impl<'e> Evaluator<'e> {
                     }
                 };
                 match op {
-                    BinaryOp::Eq => Ok((arg1 == arg2).into()),
-                    // comparison and arithmetic operators, which only work on Longs
-                    BinaryOp::Less | BinaryOp::LessEq => {
-                        let long_op = if matches!(op, BinaryOp::Less) {
-                            |x, y| x < y
-                        } else {
-                            |x, y| x <= y
-                        };
-                        let ext_op = if matches!(op, BinaryOp::Less) {
-                            |x, y| x < y
-                        } else {
-                            |x, y| x <= y
-                        };
-                        match (arg1.value_kind(), arg2.value_kind()) {
-                            (
-                                ValueKind::Lit(Literal::Long(x)),
-                                ValueKind::Lit(Literal::Long(y)),
-                            ) => Ok(long_op(x, y).into()),
-                            (ValueKind::ExtensionValue(x), ValueKind::ExtensionValue(y))
-                                if x.supports_operator_overloading()
-                                    && y.supports_operator_overloading()
-                                    && x.typename() == y.typename() =>
-                            {
-                                Ok(ext_op(x, y).into())
-                            }
-                            // throw type errors
-                            (ValueKind::Lit(Literal::Long(_)), _) => {
-                                Err(EvaluationError::type_error_single(Type::Long, &arg2))
-                            }
-                            (_, ValueKind::Lit(Literal::Long(_))) => {
-                                Err(EvaluationError::type_error_single(Type::Long, &arg1))
-                            }
-                            (ValueKind::ExtensionValue(x), _)
-                                if x.supports_operator_overloading() =>
-                            {
-                                Err(EvaluationError::type_error_single(
-                                    Type::Extension { name: x.typename() },
-                                    &arg2,
-                                ))
-                            }
-                            (_, ValueKind::ExtensionValue(y))
-                                if y.supports_operator_overloading() =>
-                            {
-                                Err(EvaluationError::type_error_single(
-                                    Type::Extension { name: y.typename() },
-                                    &arg1,
-                                ))
-                            }
-                            _ => {
-                                let expected_types = valid_comparison_op_types(self.extensions);
-                                Err(EvaluationError::type_error_with_advice(
-                                    expected_types.clone(),
-                                    &arg1,
-                                    format!(
-                                        "Only types {} support comparison",
-                                        expected_types.into_iter().sorted().join(", ")
-                                    ),
-                                ))
-                            }
-                        }
+                    BinaryOp::Eq | BinaryOp::Less | BinaryOp::LessEq => {
+                        binary_relation(*op, arg1, arg2, self.extensions).map(Into::into)
                     }
                     BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
-                        let i1 = arg1.get_as_long()?;
-                        let i2 = arg2.get_as_long()?;
-                        match op {
-                            BinaryOp::Add => match i1.checked_add(i2) {
-                                Some(sum) => Ok(sum.into()),
-                                None => {
-                                    Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
-                                        op: *op,
-                                        arg1,
-                                        arg2,
-                                        source_loc: loc.cloned(),
-                                    })
-                                    .into())
-                                }
-                            },
-                            BinaryOp::Sub => match i1.checked_sub(i2) {
-                                Some(diff) => Ok(diff.into()),
-                                None => {
-                                    Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
-                                        op: *op,
-                                        arg1,
-                                        arg2,
-                                        source_loc: loc.cloned(),
-                                    })
-                                    .into())
-                                }
-                            },
-                            BinaryOp::Mul => match i1.checked_mul(i2) {
-                                Some(prod) => Ok(prod.into()),
-                                None => {
-                                    Err(IntegerOverflowError::BinaryOp(BinaryOpOverflowError {
-                                        op: *op,
-                                        arg1,
-                                        arg2,
-                                        source_loc: loc.cloned(),
-                                    })
-                                    .into())
-                                }
-                            },
-                            // PANIC SAFETY `op` is checked to be one of the above
-                            #[allow(clippy::unreachable)]
-                            _ => {
-                                unreachable!("Should have already checked that op was one of these")
-                            }
-                        }
+                        binary_arith(*op, arg1, arg2, loc).map(Into::into)
                     }
                     // hierarchy membership operator; see note on `BinaryOp::In`
                     BinaryOp::In => {
