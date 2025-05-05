@@ -43,13 +43,21 @@ pub trait TCNode<K> {
     /// Return true when their is an edge between this node and the node with
     /// key `k`.
     fn has_edge_to(&self, k: &K) -> bool;
+
+    /// Resets edges to base
+    fn reset_edges(&mut self);
+
+    /// Retrieves an iterator for direct edges out of this node.
+    fn direct_edges(&self) -> Box<dyn Iterator<Item = &K> + '_> {
+        self.out_edges()
+    }
 }
 
 /// Given Graph as a map from keys with type `K` to implementations of `TCNode`
 /// with type `V`, compute the transitive closure of the hierarchy. In case of
 /// error, the result contains an error structure `Err<K>` which contains the
 /// keys (with type `K`) for the nodes in the graph which caused the error.
-/// If `enforce_dag` then also check that the heirarchy is a DAG
+/// If `enforce_dag` then also check that the hierarchy is a DAG
 pub fn compute_tc<K, V>(nodes: &mut HashMap<K, V>, enforce_dag: bool) -> Result<(), K>
 where
     K: Clone + Eq + Hash + Debug + Display,
@@ -81,6 +89,7 @@ where
         add_ancestors_to_set(node, nodes, this_node_ancestors);
     }
     for node in nodes.values_mut() {
+        node.reset_edges();
         // PANIC SAFETY All nodes in `ancestors` came from `nodes`
         #[allow(clippy::expect_used)]
         for ancestor_uid in ancestors
@@ -144,11 +153,11 @@ where
     K: Clone + Eq + Hash,
     V: TCNode<K>,
 {
-    for ancestor_uid in node.out_edges() {
-        if ancestors.insert(ancestor_uid.clone()) {
+    for parent_uid in node.direct_edges() {
+        if ancestors.insert(parent_uid.clone()) {
             // discovered a new ancestor, so add the ancestors of `ancestor` as
             // well
-            if let Some(ancestor) = hierarchy.get(ancestor_uid) {
+            if let Some(ancestor) = hierarchy.get(parent_uid) {
                 add_ancestors_to_set(ancestor, hierarchy, ancestors);
             }
         }
@@ -188,9 +197,9 @@ mod tests {
     fn basic() {
         // start with A -> B -> C
         let mut a = Entity::with_uid(EntityUID::with_eid("A"));
-        a.add_indirect_ancestor(EntityUID::with_eid("B"));
+        a.add_parent(EntityUID::with_eid("B"));
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
-        b.add_indirect_ancestor(EntityUID::with_eid("C"));
+        b.add_parent(EntityUID::with_eid("C"));
         let c = Entity::with_uid(EntityUID::with_eid("C"));
         let mut entities = HashMap::from([
             (a.uid().clone(), a),
@@ -220,9 +229,9 @@ mod tests {
         // same as basic(), but we put the entities in the map in the reverse
         // order, which shouldn't make a difference
         let mut a = Entity::with_uid(EntityUID::with_eid("A"));
-        a.add_indirect_ancestor(EntityUID::with_eid("B"));
+        a.add_parent(EntityUID::with_eid("B"));
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
-        b.add_indirect_ancestor(EntityUID::with_eid("C"));
+        b.add_parent(EntityUID::with_eid("C"));
         let c = Entity::with_uid(EntityUID::with_eid("C"));
         let mut entities = HashMap::from([
             (c.uid().clone(), c),
@@ -251,13 +260,13 @@ mod tests {
     fn deeper() {
         // start with A -> B -> C -> D -> E
         let mut a = Entity::with_uid(EntityUID::with_eid("A"));
-        a.add_indirect_ancestor(EntityUID::with_eid("B"));
+        a.add_parent(EntityUID::with_eid("B"));
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
-        b.add_indirect_ancestor(EntityUID::with_eid("C"));
+        b.add_parent(EntityUID::with_eid("C"));
         let mut c = Entity::with_uid(EntityUID::with_eid("C"));
-        c.add_indirect_ancestor(EntityUID::with_eid("D"));
+        c.add_parent(EntityUID::with_eid("D"));
         let mut d = Entity::with_uid(EntityUID::with_eid("D"));
-        d.add_indirect_ancestor(EntityUID::with_eid("E"));
+        d.add_parent(EntityUID::with_eid("E"));
         let e = Entity::with_uid(EntityUID::with_eid("E"));
         let mut entities = HashMap::from([
             (a.uid().clone(), a),
@@ -294,13 +303,13 @@ mod tests {
         // even when we aren't processing the entities in hierarchy order.)
         // start with foo -> bar -> baz -> ham -> eggs
         let mut foo = Entity::with_uid(EntityUID::with_eid("foo"));
-        foo.add_indirect_ancestor(EntityUID::with_eid("bar"));
+        foo.add_parent(EntityUID::with_eid("bar"));
         let mut bar = Entity::with_uid(EntityUID::with_eid("bar"));
-        bar.add_indirect_ancestor(EntityUID::with_eid("baz"));
+        bar.add_parent(EntityUID::with_eid("baz"));
         let mut baz = Entity::with_uid(EntityUID::with_eid("baz"));
-        baz.add_indirect_ancestor(EntityUID::with_eid("ham"));
+        baz.add_parent(EntityUID::with_eid("ham"));
         let mut ham = Entity::with_uid(EntityUID::with_eid("ham"));
-        ham.add_indirect_ancestor(EntityUID::with_eid("eggs"));
+        ham.add_parent(EntityUID::with_eid("eggs"));
         let eggs = Entity::with_uid(EntityUID::with_eid("eggs"));
         let mut entities = HashMap::from([
             (ham.uid().clone(), ham),
@@ -338,13 +347,13 @@ mod tests {
         //   \
         //     D -> E
         let mut a = Entity::with_uid(EntityUID::with_eid("A"));
-        a.add_indirect_ancestor(EntityUID::with_eid("B"));
-        a.add_indirect_ancestor(EntityUID::with_eid("D"));
+        a.add_parent(EntityUID::with_eid("B"));
+        a.add_parent(EntityUID::with_eid("D"));
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
-        b.add_indirect_ancestor(EntityUID::with_eid("C"));
+        b.add_parent(EntityUID::with_eid("C"));
         let c = Entity::with_uid(EntityUID::with_eid("C"));
         let mut d = Entity::with_uid(EntityUID::with_eid("D"));
-        d.add_indirect_ancestor(EntityUID::with_eid("E"));
+        d.add_parent(EntityUID::with_eid("E"));
         let e = Entity::with_uid(EntityUID::with_eid("E"));
         let mut entities = HashMap::from([
             (a.uid().clone(), a),
@@ -383,20 +392,20 @@ mod tests {
         //   \        /
         //     F -> G
         let mut a = Entity::with_uid(EntityUID::with_eid("A"));
-        a.add_indirect_ancestor(EntityUID::with_eid("B"));
-        a.add_indirect_ancestor(EntityUID::with_eid("F"));
+        a.add_parent(EntityUID::with_eid("B"));
+        a.add_parent(EntityUID::with_eid("F"));
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
-        b.add_indirect_ancestor(EntityUID::with_eid("C"));
-        b.add_indirect_ancestor(EntityUID::with_eid("D"));
+        b.add_parent(EntityUID::with_eid("C"));
+        b.add_parent(EntityUID::with_eid("D"));
         let c = Entity::with_uid(EntityUID::with_eid("C"));
         let mut d = Entity::with_uid(EntityUID::with_eid("D"));
-        d.add_indirect_ancestor(EntityUID::with_eid("E"));
+        d.add_parent(EntityUID::with_eid("E"));
         let mut e = Entity::with_uid(EntityUID::with_eid("E"));
-        e.add_indirect_ancestor(EntityUID::with_eid("H"));
+        e.add_parent(EntityUID::with_eid("H"));
         let mut f = Entity::with_uid(EntityUID::with_eid("F"));
-        f.add_indirect_ancestor(EntityUID::with_eid("G"));
+        f.add_parent(EntityUID::with_eid("G"));
         let mut g = Entity::with_uid(EntityUID::with_eid("G"));
-        g.add_indirect_ancestor(EntityUID::with_eid("E"));
+        g.add_parent(EntityUID::with_eid("E"));
         let h = Entity::with_uid(EntityUID::with_eid("H"));
         let mut entities = HashMap::from([
             (a.uid().clone(), a),
@@ -447,17 +456,17 @@ mod tests {
         //   \   /
         //     D --> F
         let mut a = Entity::with_uid(EntityUID::with_eid("A"));
-        a.add_indirect_ancestor(EntityUID::with_eid("B"));
-        a.add_indirect_ancestor(EntityUID::with_eid("C"));
-        a.add_indirect_ancestor(EntityUID::with_eid("D"));
+        a.add_parent(EntityUID::with_eid("B"));
+        a.add_parent(EntityUID::with_eid("C"));
+        a.add_parent(EntityUID::with_eid("D"));
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
-        b.add_indirect_ancestor(EntityUID::with_eid("C"));
-        b.add_indirect_ancestor(EntityUID::with_eid("E"));
+        b.add_parent(EntityUID::with_eid("C"));
+        b.add_parent(EntityUID::with_eid("E"));
         let mut c = Entity::with_uid(EntityUID::with_eid("C"));
-        c.add_indirect_ancestor(EntityUID::with_eid("E"));
+        c.add_parent(EntityUID::with_eid("E"));
         let mut d = Entity::with_uid(EntityUID::with_eid("D"));
-        d.add_indirect_ancestor(EntityUID::with_eid("C"));
-        d.add_indirect_ancestor(EntityUID::with_eid("F"));
+        d.add_parent(EntityUID::with_eid("C"));
+        d.add_parent(EntityUID::with_eid("F"));
         let e = Entity::with_uid(EntityUID::with_eid("E"));
         let f = Entity::with_uid(EntityUID::with_eid("F"));
         let mut entities = HashMap::from([
@@ -498,16 +507,16 @@ mod tests {
         //   \
         //     F -> G
         let mut a = Entity::with_uid(EntityUID::with_eid("A"));
-        a.add_indirect_ancestor(EntityUID::with_eid("F"));
+        a.add_parent(EntityUID::with_eid("F"));
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
-        b.add_indirect_ancestor(EntityUID::with_eid("C"));
+        b.add_parent(EntityUID::with_eid("C"));
         let c = Entity::with_uid(EntityUID::with_eid("C"));
         let mut d = Entity::with_uid(EntityUID::with_eid("D"));
-        d.add_indirect_ancestor(EntityUID::with_eid("E"));
+        d.add_parent(EntityUID::with_eid("E"));
         let mut e = Entity::with_uid(EntityUID::with_eid("E"));
-        e.add_indirect_ancestor(EntityUID::with_eid("H"));
+        e.add_parent(EntityUID::with_eid("H"));
         let mut f = Entity::with_uid(EntityUID::with_eid("F"));
-        f.add_indirect_ancestor(EntityUID::with_eid("G"));
+        f.add_parent(EntityUID::with_eid("G"));
         let g = Entity::with_uid(EntityUID::with_eid("G"));
         let h = Entity::with_uid(EntityUID::with_eid("H"));
         let mut entities = HashMap::from([
@@ -557,9 +566,9 @@ mod tests {
         //
         // A -> B -> B
         let mut a = Entity::with_uid(EntityUID::with_eid("A"));
-        a.add_indirect_ancestor(EntityUID::with_eid("B"));
+        a.add_parent(EntityUID::with_eid("B"));
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
-        b.add_indirect_ancestor(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("B"));
         let mut entities = HashMap::from([(a.uid().clone(), a), (b.uid().clone(), b)]);
         // computing TC should succeed without panicking, infinitely recursing, etc
         compute_tc_internal(&mut entities);
@@ -599,12 +608,12 @@ mod tests {
         //        /
         // A -> B -> C -> A
         let mut a = Entity::with_uid(EntityUID::with_eid("A"));
-        a.add_indirect_ancestor(EntityUID::with_eid("B"));
+        a.add_parent(EntityUID::with_eid("B"));
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
-        b.add_indirect_ancestor(EntityUID::with_eid("C"));
-        b.add_indirect_ancestor(EntityUID::with_eid("D"));
+        b.add_parent(EntityUID::with_eid("C"));
+        b.add_parent(EntityUID::with_eid("D"));
         let mut c = Entity::with_uid(EntityUID::with_eid("C"));
-        c.add_indirect_ancestor(EntityUID::with_eid("A"));
+        c.add_parent(EntityUID::with_eid("A"));
         let d = Entity::with_uid(EntityUID::with_eid("D"));
         let mut entities = HashMap::from([
             (a.uid().clone(), a),
@@ -660,20 +669,20 @@ mod tests {
         //   \
         //     F -> G
         let mut a = Entity::with_uid(EntityUID::with_eid("A"));
-        a.add_indirect_ancestor(EntityUID::with_eid("F"));
+        a.add_parent(EntityUID::with_eid("F"));
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
-        b.add_indirect_ancestor(EntityUID::with_eid("C"));
-        let mut c = Entity::with_uid(EntityUID::with_eid("C"));
-        c.add_indirect_ancestor(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let mut c: Entity = Entity::with_uid(EntityUID::with_eid("C"));
+        c.add_parent(EntityUID::with_eid("B"));
         let mut d = Entity::with_uid(EntityUID::with_eid("D"));
-        d.add_indirect_ancestor(EntityUID::with_eid("E"));
+        d.add_parent(EntityUID::with_eid("E"));
         let mut e = Entity::with_uid(EntityUID::with_eid("E"));
-        e.add_indirect_ancestor(EntityUID::with_eid("H"));
+        e.add_parent(EntityUID::with_eid("H"));
         let mut f = Entity::with_uid(EntityUID::with_eid("F"));
-        f.add_indirect_ancestor(EntityUID::with_eid("G"));
+        f.add_parent(EntityUID::with_eid("G"));
         let g = Entity::with_uid(EntityUID::with_eid("G"));
         let mut h = Entity::with_uid(EntityUID::with_eid("H"));
-        h.add_indirect_ancestor(EntityUID::with_eid("D"));
+        h.add_parent(EntityUID::with_eid("D"));
         let mut entities = HashMap::from([
             (a.uid().clone(), a),
             (b.uid().clone(), b),
@@ -719,19 +728,19 @@ mod tests {
         //    ^               |
         //    |___------------
         let mut a = Entity::with_uid(EntityUID::with_eid("A"));
-        a.add_indirect_ancestor(EntityUID::with_eid("B"));
+        a.add_parent(EntityUID::with_eid("B"));
         let mut b = Entity::with_uid(EntityUID::with_eid("B"));
-        b.add_indirect_ancestor(EntityUID::with_eid("C"));
+        b.add_parent(EntityUID::with_eid("C"));
         let mut c = Entity::with_uid(EntityUID::with_eid("C"));
-        c.add_indirect_ancestor(EntityUID::with_eid("E"));
+        c.add_parent(EntityUID::with_eid("E"));
         let mut d = Entity::with_uid(EntityUID::with_eid("D"));
-        d.add_indirect_ancestor(EntityUID::with_eid("A"));
-        d.add_indirect_ancestor(EntityUID::with_eid("B"));
-        d.add_indirect_ancestor(EntityUID::with_eid("F"));
+        d.add_parent(EntityUID::with_eid("A"));
+        d.add_parent(EntityUID::with_eid("B"));
+        d.add_parent(EntityUID::with_eid("F"));
         let mut e = Entity::with_uid(EntityUID::with_eid("E"));
-        e.add_indirect_ancestor(EntityUID::with_eid("D"));
+        e.add_parent(EntityUID::with_eid("D"));
         let mut f = Entity::with_uid(EntityUID::with_eid("F"));
-        f.add_indirect_ancestor(EntityUID::with_eid("E"));
+        f.add_parent(EntityUID::with_eid("E"));
         let mut entities = HashMap::from([
             (a.uid().clone(), a),
             (b.uid().clone(), b),
@@ -752,5 +761,67 @@ mod tests {
             Err(TcError::HasCycle(_)) => (), // Every vertex is in a cycle
             Err(_) => panic!("Unexpected error in enforce_dag_from_tc"),
         }
+    }
+
+    #[test]
+    fn updated() {
+        // start with A -> B -> C
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let c = Entity::with_uid(EntityUID::with_eid("C"));
+        let mut entities = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+        ]);
+        // currently doesn't pass TC enforcement
+        assert!(enforce_tc(&entities).is_err());
+        // compute TC
+        compute_tc_internal(&mut entities);
+        let a = &entities[&EntityUID::with_eid("A")];
+        let b = &entities[&EntityUID::with_eid("B")];
+        let c = &entities[&EntityUID::with_eid("C")];
+        // should have added the A -> C edge
+        assert!(a.has_edge_to(&EntityUID::with_eid("C")));
+        // but we shouldn't have added other edges, like B -> A or C -> A
+        assert!(!b.has_edge_to(&EntityUID::with_eid("A")));
+        assert!(!c.has_edge_to(&EntityUID::with_eid("A")));
+        // now it should pass TC enforcement
+        assert!(enforce_tc(&entities).is_ok());
+        // passes cycle check after TC enforcement
+        assert!(enforce_dag_from_tc(&entities).is_ok());
+        // D doesn't exist yet
+        assert!(!a.has_edge_to(&EntityUID::with_eid("D")));
+
+        // change from B -> C to B -> D
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("D"));
+        let d = Entity::with_uid(EntityUID::with_eid("D"));
+        entities.insert(b.uid().clone(), b);
+        entities.insert(d.uid().clone(), d);
+
+        // currently doesn't pass TC enforcement
+        assert!(enforce_tc(&entities).is_err());
+        // compute TC
+        compute_tc_internal(&mut entities);
+        let a = &entities[&EntityUID::with_eid("A")];
+        let b = &entities[&EntityUID::with_eid("B")];
+        let c = &entities[&EntityUID::with_eid("C")];
+        let d = &entities[&EntityUID::with_eid("D")];
+        // should have added the A -> D edge
+        assert!(a.has_edge_to(&EntityUID::with_eid("D")));
+        // should not have the A -> C edge
+        assert!(!a.has_edge_to(&EntityUID::with_eid("C")));
+        assert!(!b.has_edge_to(&EntityUID::with_eid("C")));
+        // but we shouldn't have added other edges, like B -> A or C -> A
+        assert!(!b.has_edge_to(&EntityUID::with_eid("A")));
+        assert!(!c.has_edge_to(&EntityUID::with_eid("A")));
+        assert!(!d.has_edge_to(&EntityUID::with_eid("A")));
+        // now it should pass TC enforcement
+        assert!(enforce_tc(&entities).is_ok());
+        // passes cycle check after TC enforcement
+        assert!(enforce_dag_from_tc(&entities).is_ok());
     }
 }

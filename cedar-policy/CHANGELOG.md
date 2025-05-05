@@ -13,6 +13,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 ## [Unreleased]
 Cedar Language Version: TBD
 
+### Added
+
+- Added `Entities::upsert_entities()` to add or update `Entity`s in an `Entities` struct (resolving #1479)
+
 ### Changed
 
 - Changed experimental `entity-manifest` function `compute_entity_manifest` to
@@ -20,7 +24,7 @@ Cedar Language Version: TBD
   from a schema with `Validator::new` afterwhich a reference to the original
   schema can be retrieved using `Validator::schema`. (#1584)
 
-## [4.4.0] - Coming soon
+## [4.4.0] - 2025-04-23
 
 Cedar Language Version: 4.3
 
