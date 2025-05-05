@@ -338,7 +338,7 @@ impl PartialResponse {
         // Construct an evaluator resolving these specific unknown mappings
         let eval = Evaluator::new(new_request.clone(), es, auth.extensions)
             .with_unknowns_mapper(Box::new(unknowns_mapper));
-        Ok(auth.is_authorized_core_internal(eval, new_request, &policyset))
+        Ok(auth.is_authorized_core_internal(&eval, new_request, &policyset))
     }
 
     #[cfg(feature = "partial-eval")]
