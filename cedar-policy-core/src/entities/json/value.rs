@@ -32,6 +32,7 @@ use crate::{
     entities::Name,
 };
 use either::Either;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use serde_with::{DeserializeAs, SerializeAs};
@@ -42,6 +43,26 @@ use std::sync::Arc;
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(untagged)]
+enum RawCedarValueJson {
+    /// JSON bool => Cedar bool
+    Bool(bool),
+    /// JSON int => Cedar long (64-bit signed integer)
+    Long(i64),
+    /// JSON string => Cedar string
+    String(SmolStr),
+    /// JSON list => Cedar set; can contain any `RawCedarValueJson`s, even
+    /// heterogeneously
+    Set(Vec<RawCedarValueJson>),
+    /// JSON object => Cedar record; must have string keys, but values
+    /// can be any `RawCedarValueJson`s, even heterogeneously
+    Record(RawJsonRecord),
+    /// JSON null, which is never valid, but we put this here in order to
+    /// provide a better error message.
+    Null,
+}
+
 /// The canonical JSON representation of a Cedar value.
 /// Many Cedar values have a natural one-to-one mapping to and from JSON values.
 /// Cedar values of some types, like entity references or extension values,
@@ -50,7 +71,7 @@ extern crate tsify;
 ///
 /// For example, this is the JSON format for attribute values expected by
 /// `EntityJsonParser`, when schema-based parsing is not used.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
@@ -104,13 +125,97 @@ pub enum CedarValueJson {
     Null,
 }
 
-/// Structure representing a Cedar record in JSON
+impl<'de> Deserialize<'de> for CedarValueJson {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let v: RawCedarValueJson = RawCedarValueJson::deserialize(deserializer)?;
+        Ok(v.into())
+    }
+}
+
+impl From<RawCedarValueJson> for CedarValueJson {
+    fn from(value: RawCedarValueJson) -> Self {
+        match value {
+            RawCedarValueJson::Bool(b) => Self::Bool(b),
+            RawCedarValueJson::Long(l) => Self::Long(l),
+            RawCedarValueJson::Null => Self::Null,
+            RawCedarValueJson::Record(r) => {
+                let values = &r.values;
+                if values.len() == 1 {
+                    match values.iter().map(|(k, v)| (k.as_str(), v)).collect_vec()[..] {
+                        [("__extn", RawCedarValueJson::Record(r))] => {
+                            if r.values.len() >= 2 {
+                                if let Some(RawCedarValueJson::String(fn_name)) = r.values.get("fn")
+                                {
+                                    if let Some(arg) = r.values.get("arg") {
+                                        return Self::ExtnEscape {
+                                            __extn: FnAndArg {
+                                                ext_fn: fn_name.clone(),
+                                                arg: Box::new(arg.clone().into()),
+                                            },
+                                        };
+                                    }
+                                }
+                            }
+                        }
+                        [("__expr", RawCedarValueJson::String(s))] => {
+                            return Self::ExprEscape { __expr: s.clone() };
+                        }
+                        [("__entity", RawCedarValueJson::Record(r))] => {
+                            if r.values.len() >= 2 {
+                                if let Some(RawCedarValueJson::String(ty)) = r.values.get("type") {
+                                    if let Some(RawCedarValueJson::String(id)) = r.values.get("id")
+                                    {
+                                        return Self::EntityEscape {
+                                            __entity: TypeAndId {
+                                                entity_type: ty.clone(),
+                                                id: id.clone(),
+                                            },
+                                        };
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                Self::Record(r.into())
+            }
+            RawCedarValueJson::Set(s) => Self::Set(s.into_iter().map(Into::into).collect()),
+            RawCedarValueJson::String(s) => Self::String(s),
+        }
+    }
+}
+
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct JsonRecord {
+struct RawJsonRecord {
     /// Cedar records must have string keys, but values can be any
     /// `CedarValueJson`s, even heterogeneously
     #[serde_as(as = "serde_with::MapPreventDuplicates<_, _>")]
+    #[serde(flatten)]
+    values: BTreeMap<SmolStr, RawCedarValueJson>,
+}
+
+impl From<RawJsonRecord> for JsonRecord {
+    fn from(value: RawJsonRecord) -> Self {
+        JsonRecord {
+            values: value
+                .values
+                .into_iter()
+                .map(|(k, v)| (k, v.into()))
+                .collect(),
+        }
+    }
+}
+
+/// Structure representing a Cedar record in JSON
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct JsonRecord {
+    /// Cedar records must have string keys, but values can be any
+    /// `CedarValueJson`s, even heterogeneously
     #[serde(flatten)]
     values: BTreeMap<SmolStr, CedarValueJson>,
 }
