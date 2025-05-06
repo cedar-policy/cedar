@@ -16,6 +16,10 @@ Cedar Language Version: TBD
 ### Added
 
 - Added `Entities::upsert_entities()` to add or update `Entity`s in an `Entities` struct (resolving #1479)
+- Added schema parsing functions to improve compatibility with JSON schema originally writing for versions 2.5.0
+  and earlier. These functions will ignore unrecognized keys in some positions where they are currently an error,
+  matching the behavior of earlier versions.  This is intended help some users migrate to the current 4.0 schema
+  format. The new functions are deprecated and placed behind the `deprecated-schema-compat` feature. (#1600)
 
 ### Changed
 
