@@ -437,6 +437,10 @@ impl Set {
             // both sets are in fast form, ie, they only contain literals.
             // Fast hashset-based implementation.
             (Some(ls1), Some(ls2)) => ls1.is_subset(ls2.as_ref()),
+            // `self` contains non-literal(s), `other` is all-literal.
+            // The invariant about `Set::fast` should allow us to conclude that
+            // the result is `false`
+            (None, Some(_)) => false,
             // one or both sets are in slow form, ie, contain a non-literal.
             // Fallback to slow implementation.
             _ => self.authoritative.is_subset(&other.authoritative),
