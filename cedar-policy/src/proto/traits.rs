@@ -22,7 +22,7 @@ pub trait Protobuf: Sized {
     ///
     /// # Errors
     ///
-    /// Will return a `prost::DecodeError` when the input buffer not contain a
+    /// Will return a `prost::DecodeError` when the input buffer does not contain a
     /// valid Protobuf message.
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, prost::DecodeError>;
 }
