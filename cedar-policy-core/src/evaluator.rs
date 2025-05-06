@@ -100,8 +100,8 @@ fn unary_op_overflow_error(op: UnaryOp, arg: Value, loc: Option<&Loc>) -> Evalua
 /// Evaluate binary relations (i.e., `BinaryOp::Eq`, `BinaryOp::Less`, and `BinaryOp::LessEq`)
 pub fn binary_relation(
     op: BinaryOp,
-    arg1: Value,
-    arg2: Value,
+    arg1: &Value,
+    arg2: &Value,
     extensions: &Extensions<'_>,
 ) -> (res: Result<Value>)
     requires (op@ is Eq || op@ is Less || op@ is LessEq)
@@ -153,28 +153,28 @@ pub fn binary_relation(
                 }
                 // throw type errors
                 (ValueKind::Lit(Literal::Long(_)), _) => {
-                    Err(EvaluationError::type_error_single(Type::Long, &arg2))
+                    Err(EvaluationError::type_error_single(Type::Long, arg2))
                 }
                 (_, ValueKind::Lit(Literal::Long(_))) => {
-                    Err(EvaluationError::type_error_single(Type::Long, &arg1))
+                    Err(EvaluationError::type_error_single(Type::Long, arg1))
                 }
                 (ValueKind::ExtensionValue(x), _) if x.supports_operator_overloading() => {
                     Err(EvaluationError::type_error_single(
                         Type::Extension { name: x.typename() },
-                        &arg2,
+                        arg2,
                     ))
                 }
                 (_, ValueKind::ExtensionValue(y)) if y.supports_operator_overloading() => {
                     Err(EvaluationError::type_error_single(
                         Type::Extension { name: y.typename() },
-                        &arg1,
+                        arg1,
                     ))
                 }
                 _ => {
                     let expected_types = valid_comparison_op_types(extensions);
                     // Err(EvaluationError::type_error_with_advice(
                     //     expected_types.clone(),
-                    //     &arg1,
+                    //     arg1,
                     //     format!(
                     //         "Only types {} support comparison",
                     //         expected_types.into_iter().sorted().join(", ")
@@ -183,7 +183,7 @@ pub fn binary_relation(
                     // Verus doesn't like the `format!` so we just use a different type error
                     Err(EvaluationError::type_error(
                         expected_types,
-                        &arg1
+                        arg1
                     ))
                 }
             }
@@ -681,7 +681,7 @@ impl<'e> Evaluator<'e> {
                 };
                 match op {
                     BinaryOp::Eq | BinaryOp::Less | BinaryOp::LessEq => {
-                        binary_relation(*op, arg1, arg2, self.extensions).map(Into::into)
+                        binary_relation(*op, &arg1, &arg2, self.extensions).map(Into::into)
                     }
                     BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
                         binary_arith(*op, arg1, arg2, loc).map(Into::into)

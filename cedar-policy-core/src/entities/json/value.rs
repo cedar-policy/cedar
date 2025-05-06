@@ -429,12 +429,12 @@ impl CedarValueJson {
     ///
     /// Only throws errors in two cases:
     /// 1. `value` is (or contains) a record with a reserved key such as
-    ///     "__entity"
+    ///    "__entity"
     /// 2. `value` is (or contains) an extension value, and the argument to the
-    ///     extension constructor that produced that extension value can't
-    ///     itself be converted to `CedarJsonValue`. (Either because that
-    ///     argument falls into one of these two cases itself, or because the
-    ///     argument is a nontrivial residual.)
+    ///    extension constructor that produced that extension value can't
+    ///    itself be converted to `CedarJsonValue`. (Either because that
+    ///    argument falls into one of these two cases itself, or because the
+    ///    argument is a nontrivial residual.)
     pub fn from_value(value: Value) -> Result<Self, JsonSerializationError> {
         Self::from_valuekind(value.value)
     }
