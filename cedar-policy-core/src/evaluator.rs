@@ -136,7 +136,7 @@ pub fn binary_relation(
                 }
             }
         }
-        // PANIC SAFETY `op` is checked to be one of the above
+        // PANIC SAFETY `op` is checked by the caller
         #[allow(clippy::unreachable)]
         _ => {
             unreachable!("Should have already checked that op was one of these")
@@ -179,7 +179,7 @@ pub fn binary_arith(op: BinaryOp, arg1: Value, arg2: Value, loc: Option<&Loc>) -
             })
             .into()),
         },
-        // PANIC SAFETY `op` is checked to be one of the above
+        // PANIC SAFETY `op` is checked by the caller
         #[allow(clippy::unreachable)]
         _ => {
             unreachable!("Should have already checked that op was one of these")
