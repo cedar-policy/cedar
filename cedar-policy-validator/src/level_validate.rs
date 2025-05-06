@@ -44,7 +44,7 @@ impl<I: Into<u32>> From<I> for EntityDerefLevel {
 }
 
 impl EntityDerefLevel {
-    fn increment(&self) -> Self {
+    fn increment(self) -> Self {
         (self.level + 1).into()
     }
 
@@ -265,7 +265,7 @@ impl LevelChecker<'_> {
                 arg1,
                 arg2,
             } => {
-                let deref_target_lvl = self.check_entity_deref_target_level(&arg1, Vec::new(), env);
+                let deref_target_lvl = self.check_entity_deref_target_level(arg1, Vec::new(), env);
                 if deref_target_lvl >= self.max_level {
                     self.level_checking_errors
                         .insert(ValidationError::maximum_level_exceeded(
@@ -289,7 +289,7 @@ impl LevelChecker<'_> {
             ExprKind::HasAttr { expr, .. } | ExprKind::GetAttr { expr, .. } => match expr.data() {
                 Some(Type::EntityOrRecord(EntityRecordKind::Entity { .. })) => {
                     let deref_target_lvl =
-                        self.check_entity_deref_target_level(&expr, Vec::new(), env);
+                        self.check_entity_deref_target_level(expr, Vec::new(), env);
                     if deref_target_lvl >= self.max_level {
                         self.level_checking_errors
                             .insert(ValidationError::maximum_level_exceeded(
@@ -315,10 +315,10 @@ impl LevelChecker<'_> {
                 }
             },
             ExprKind::Like { expr, .. } => {
-                self.check_expr_level(&expr, env);
+                self.check_expr_level(expr, env);
             }
             ExprKind::Is { expr, .. } => {
-                self.check_expr_level(&expr, env);
+                self.check_expr_level(expr, env);
             }
             ExprKind::Set(exprs) => {
                 for e in exprs.iter() {

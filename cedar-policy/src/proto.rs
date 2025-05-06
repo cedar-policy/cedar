@@ -20,7 +20,8 @@ pub mod models {
         #![allow(
             missing_docs,
             clippy::doc_markdown,
-            clippy::derive_partial_eq_without_eq
+            clippy::derive_partial_eq_without_eq,
+            clippy::module_name_repetitions
         )]
         include!(concat!(env!("OUT_DIR"), "/cedar_policy_core.rs"));
     }

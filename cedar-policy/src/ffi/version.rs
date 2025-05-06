@@ -4,6 +4,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use crate::api;
 
 /// Get language version of Cedar
+#[allow(clippy::module_name_repetitions)]
 #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "getCedarLangVersion"))]
 pub fn get_lang_version() -> String {
     let version = api::version::get_lang_version();
@@ -11,6 +12,7 @@ pub fn get_lang_version() -> String {
 }
 
 /// Get SDK version of Cedar
+#[allow(clippy::module_name_repetitions)]
 pub fn get_sdk_version() -> String {
     let version = api::version::get_sdk_version();
     format!("{version}")
