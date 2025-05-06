@@ -19,14 +19,16 @@ use educe::Educe;
 use itertools::Itertools;
 use miette::Diagnostic;
 use ref_cast::RefCast;
+use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::ToSmolStr;
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
 use thiserror::Error;
 
-use crate::parser::err::{ParseError, ParseErrors, ToASTError};
+use crate::parser::err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::Loc;
 use crate::FromNormalizedStr;
 
@@ -414,7 +416,45 @@ impl FromStr for Name {
     }
 }
 
+// PANIC SAFETY: this is a valid Regex pattern
+#[allow(clippy::unwrap_used)]
+static VALID_NAME_REGEX: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new("^[_a-zA-Z][_a-zA-Z0-9]*(?:::[_a-zA-Z][_a-zA-Z0-9]*)*$").unwrap()
+});
+// All of Cedar's reserved keywords for identifiers.
+// Notice this is only a subset of all reserved keywords.
+static RESERVED_IDS: std::sync::LazyLock<HashSet<&'static str>> = std::sync::LazyLock::new(|| {
+    vec![
+        "true", "false", "if", "then", "else", "in", "is", "like", "has",
+        // Can only be used in [`InternalName`]
+        "__cedar",
+    ]
+    .into_iter()
+    .collect()
+});
+
 impl FromNormalizedStr for Name {
+    fn from_normalized_str(s: &str) -> Result<Self, ParseErrors> {
+        if !VALID_NAME_REGEX.is_match(s) {
+            return Err(Self::parse_err_from_str(s));
+        }
+
+        let path_parts: Vec<&str> = s.split("::").collect();
+        if path_parts.iter().any(|s| RESERVED_IDS.contains(s)) {
+            return Err(Self::parse_err_from_str(s));
+        }
+
+        if let Some((last, prefix)) = path_parts.split_last() {
+            Ok(Self(InternalName::new(
+                Id::new_unchecked(*last),
+                prefix.iter().map(|part| Id::new_unchecked(*part)),
+                Some(Loc::new(0..(s.len()), s.into())),
+            )))
+        } else {
+            Err(Self::parse_err_from_str(s))
+        }
+    }
+
     fn describe_self() -> &'static str {
         "Name"
     }
@@ -486,6 +526,31 @@ impl Name {
     /// Get the source location
     pub fn loc(&self) -> Option<&Loc> {
         self.0.loc()
+    }
+
+    fn parse_err_from_str(s: &str) -> ParseErrors {
+        match Self::from_str(s) {
+            Err(parse_err) => parse_err,
+            Ok(parsed) => {
+                let normalized_src = parsed.to_string();
+                let diff_byte = s
+                    .bytes()
+                    .zip(normalized_src.bytes())
+                    .enumerate()
+                    .find(|(_, (b0, b1))| b0 != b1)
+                    .map(|(idx, _)| idx)
+                    .unwrap_or_else(|| s.len().min(normalized_src.len()));
+
+                ParseErrors::singleton(ParseError::ToAST(ToASTError::new(
+                    ToASTErrorKind::NonNormalizedString {
+                        kind: Self::describe_self(),
+                        src: s.to_string(),
+                        normalized_src,
+                    },
+                    Loc::new(diff_byte, s.into()),
+                )))
+            }
+        }
     }
 }
 
@@ -640,6 +705,28 @@ mod test {
 
         for n in ["__cedarr", "A::_cedar", "A::___cedar::B"] {
             assert!(!InternalName::from_normalized_str(n).unwrap().is_reserved());
+        }
+    }
+
+    #[test]
+    fn test_name_identifier_intersection() {
+        let not_reserved_for_ids = [
+            "permit",
+            "forbid",
+            "when",
+            "unless",
+            "principal",
+            "action",
+            "resource",
+            "context",
+        ];
+
+        for id in not_reserved_for_ids {
+            assert!(Name::from_normalized_str(&format!("A::{id}")).is_ok());
+        }
+
+        for id in RESERVED_IDS.iter() {
+            assert!(Name::from_normalized_str(&format!("A::{id}")).is_err());
         }
     }
 }

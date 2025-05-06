@@ -38,14 +38,14 @@ use thiserror::Error;
 ///   - bool, int, and string literals
 ///   - literal EntityUIDs such as User::"alice"
 ///   - extension function calls, where the arguments must be other things
-///       on this list
+///     on this list
 ///   - set and record literals, where the values must be other things on
-///       this list
+///     this list
 ///
 /// That means the following are not allowed in "restricted" expressions:
 ///   - `principal`, `action`, `resource`, `context`
 ///   - builtin operators and functions, including `.`, `in`, `has`, `like`,
-///       `.contains()`
+///     `.contains()`
 ///   - if-then-else expressions
 ///
 /// These restrictions represent the expressions that are allowed to appear as
