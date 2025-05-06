@@ -416,28 +416,22 @@ impl FromStr for Name {
     }
 }
 
-lazy_static::lazy_static! {
-    // PANIC SAFETY: this is a valid regex
-    static ref VALID_NAME_REGEX: Regex = Regex::new(r"^[_a-zA-Z][_a-zA-Z0-9]*(?:::[_a-zA-Z][_a-zA-Z0-9]*)*$").unwrap();
-    // All of Cedar's reserved keywords for identifiers.
-    // Notice this is only a subset of all reserved keywords.
-    static ref RESERVED_IDS: HashSet<&'static str> =
-        vec![
-            "true",
-            "false",
-            "if",
-            "then",
-            "else",
-            "in",
-            "is",
-            "like",
-            "has",
-            // Can only be used in [`InternalName`]
-            "__cedar"
-        ]
-        .into_iter()
-        .collect();
-}
+// PANIC SAFETY: this is a valid Regex pattern
+#[allow(clippy::unwrap_used)]
+static VALID_NAME_REGEX: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new("^[_a-zA-Z][_a-zA-Z0-9]*(?:::[_a-zA-Z][_a-zA-Z0-9]*)*$").unwrap()
+});
+// All of Cedar's reserved keywords for identifiers.
+// Notice this is only a subset of all reserved keywords.
+static RESERVED_IDS: std::sync::LazyLock<HashSet<&'static str>> = std::sync::LazyLock::new(|| {
+    vec![
+        "true", "false", "if", "then", "else", "in", "is", "like", "has",
+        // Can only be used in [`InternalName`]
+        "__cedar",
+    ]
+    .into_iter()
+    .collect()
+});
 
 impl FromNormalizedStr for Name {
     fn from_normalized_str(s: &str) -> Result<Self, ParseErrors> {
