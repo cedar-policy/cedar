@@ -236,6 +236,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "builtin"
+version = "0.1.0"
+source = "git+https://github.com/verus-lang/verus?branch=main#f894e505a1c89dd36fe9eb01b51dc0b89e29c6a1"
+
+[[package]]
+name = "builtin_macros"
+version = "0.1.0"
+source = "git+https://github.com/verus-lang/verus?branch=main#f894e505a1c89dd36fe9eb01b51dc0b89e29c6a1"
+dependencies = [
+ "prettyplease_verus",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.101",
+ "syn_verus",
+ "synstructure",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -319,6 +337,8 @@ name = "cedar-policy-core"
 version = "4.4.0"
 dependencies = [
  "arbitrary",
+ "builtin",
+ "builtin_macros",
  "chrono",
  "cool_asserts",
  "educe",
@@ -340,6 +360,7 @@ dependencies = [
  "stacker",
  "thiserror",
  "tsify",
+ "vstd",
  "wasm-bindgen",
 ]
 
@@ -1620,6 +1641,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "prettyplease_verus"
+version = "0.2.29"
+source = "git+https://github.com/verus-lang/verus?branch=main#f894e505a1c89dd36fe9eb01b51dc0b89e29c6a1"
+dependencies = [
+ "proc-macro2",
+ "syn_verus",
+]
+
+[[package]]
 name = "proc-macro-crate"
 version = "3.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2157,6 +2187,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "state_machines_macros"
+version = "0.1.0"
+source = "git+https://github.com/verus-lang/verus?branch=main#f894e505a1c89dd36fe9eb01b51dc0b89e29c6a1"
+dependencies = [
+ "indexmap 1.9.3",
+ "proc-macro2",
+ "quote",
+ "syn_verus",
+]
+
+[[package]]
 name = "string_cache"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2215,6 +2256,27 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "syn_verus"
+version = "2.0.96"
+source = "git+https://github.com/verus-lang/verus?branch=main#f894e505a1c89dd36fe9eb01b51dc0b89e29c6a1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "synstructure"
+version = "0.13.0"
+source = "git+https://github.com/mystor/synstructure.git?rev=1079497eb2bea252433dac53afe41291d8779641#1079497eb2bea252433dac53afe41291d8779641"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.101",
+ "unicode-xid",
 ]
 
 [[package]]
@@ -2486,6 +2548,16 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "vstd"
+version = "0.1.0"
+source = "git+https://github.com/verus-lang/verus?branch=main#f894e505a1c89dd36fe9eb01b51dc0b89e29c6a1"
+dependencies = [
+ "builtin",
+ "builtin_macros",
+ "state_machines_macros",
+]
 
 [[package]]
 name = "wait-timeout"

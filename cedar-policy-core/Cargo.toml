@@ -29,6 +29,9 @@ arbitrary = { version = "1", features = ["derive"], optional = true }
 miette = { version = "7.6.0", features = ["serde"] }
 nonempty = { version = "0.10.0", features = ["serialize"] }
 educe = "0.6.0"
+builtin = { git = "https://github.com/verus-lang/verus", branch = "main" }
+builtin_macros = { git = "https://github.com/verus-lang/verus", branch = "main" }
+vstd = { git = "https://github.com/verus-lang/verus", branch = "main" }
 
 # decimal extension requires regex
 regex = { version = "1.8", features = ["unicode"], optional = true }
@@ -68,3 +71,6 @@ miette = { version = "7.6.0", features = ["fancy"] }
 
 [lints]
 workspace = true
+
+[package.metadata.verus]
+verify = true
