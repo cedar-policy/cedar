@@ -92,14 +92,14 @@ impl Authorizer {
         entities: &Entities,
     ) -> PartialResponse {
         let eval = Evaluator::new(q.clone(), entities, self.extensions);
-        self.is_authorized_core_internal(eval, q, pset)
+        self.is_authorized_core_internal(&eval, q, pset)
     }
 
     /// The same as is_authorized_core, but for any Evaluator.
     /// A PartialResponse caller constructs its own evaluator, with an unknown mapper function.
     pub(crate) fn is_authorized_core_internal(
         &self,
-        eval: Evaluator<'_>,
+        eval: &Evaluator<'_>,
         q: Request,
         pset: &PolicySet,
     ) -> PartialResponse {

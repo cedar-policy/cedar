@@ -539,6 +539,11 @@ pub struct PolicySet {
 
 impl PolicySet {
     /// Parse a [`PolicySet`] into a [`crate::PolicySet`]
+    ///
+    /// # Errors
+    ///
+    /// Will return errors if any of the policies, templates or template links
+    /// in [`PolicySet`] cannot be parsed or added to the [`crate::PolicySet`].
     pub fn parse(self) -> Result<crate::PolicySet, Vec<miette::Report>> {
         let mut errs = Vec::new();
         // Parse static policies

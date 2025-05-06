@@ -37,6 +37,9 @@ use smol_str::SmolStr;
 
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 
+#[cfg(feature = "partial-eval")]
+type UnknownsMapper<'e> = Box<dyn Fn(&str) -> Option<Value> + 'e>;
+
 // PANIC SAFETY `Name`s in here are valid `Name`s
 #[allow(clippy::expect_used)]
 mod names {
@@ -70,7 +73,7 @@ pub struct Evaluator<'e> {
     extensions: &'e Extensions<'e>,
     /// Mapper of unknown values into concrete ones, if recognized
     #[cfg(feature = "partial-eval")]
-    unknowns_mapper: Box<dyn Fn(&str) -> Option<Value> + 'e>,
+    unknowns_mapper: UnknownsMapper<'e>,
 }
 
 /// Evaluator for "restricted" expressions. See notes on `RestrictedExpr`.
@@ -219,10 +222,7 @@ impl<'e> Evaluator<'e> {
 
     // Constructs an Evaluator for a given unknowns mapper function.
     #[cfg(feature = "partial-eval")]
-    pub(crate) fn with_unknowns_mapper(
-        self,
-        unknowns_mapper: Box<dyn Fn(&str) -> Option<Value> + 'e>,
-    ) -> Self {
+    pub(crate) fn with_unknowns_mapper(self, unknowns_mapper: UnknownsMapper<'e>) -> Self {
         Self {
             principal: self.principal,
             action: self.action,
@@ -230,7 +230,7 @@ impl<'e> Evaluator<'e> {
             context: self.context,
             entities: self.entities,
             extensions: self.extensions,
-            unknowns_mapper: unknowns_mapper,
+            unknowns_mapper,
         }
     }
 
