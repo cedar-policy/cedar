@@ -1,10 +1,10 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use cedar_policy_core::{
-    ast::{self, Expr, ExprKind, Literal, PartialValue, Set, Value, ValueKind, Var},
+    ast::{self, BinaryOp, Expr, ExprKind, PartialValue, Set, Value, ValueKind, Var},
     extensions::Extensions,
 };
-use cedar_policy_validator::types::{Primitive, Type};
+use cedar_policy_validator::types::Type;
 
 use crate::{
     entities::PartialEntities,
@@ -226,7 +226,277 @@ impl<'e> Evaluator<'e> {
                     (
                         Residual::Concrete { value: v1, .. },
                         Residual::Concrete { value: v2, .. },
-                    ) => todo!(),
+                    ) => match op {
+                        BinaryOp::Eq | BinaryOp::Less | BinaryOp::LessEq => {
+                            if let Ok(v) = cedar_policy_core::evaluator::binary_relation(
+                                *op,
+                                v1.clone(),
+                                v2.clone(),
+                                self.extensions,
+                            ) {
+                                Residual::Concrete {
+                                    value: v.into(),
+                                    ty,
+                                }
+                            } else {
+                                Residual::Error(ty.clone())
+                            }
+                        }
+                        BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
+                            if let Ok(v) = cedar_policy_core::evaluator::binary_arith(
+                                *op,
+                                v1.clone(),
+                                v2.clone(),
+                                None,
+                            ) {
+                                Residual::Concrete {
+                                    value: v.into(),
+                                    ty,
+                                }
+                            } else {
+                                Residual::Error(ty.clone())
+                            }
+                        }
+                        BinaryOp::In => {
+                            if let Ok(uid1) = v1.get_as_entity() {
+                                if let Ok(uid2) = v2.get_as_entity() {
+                                    if uid1 == uid2 {
+                                        Residual::Concrete {
+                                            value: true.into(),
+                                            ty,
+                                        }
+                                    } else {
+                                        if let Some(entity) = self.entities.entities.get(uid1) {
+                                            if let Some(ancestors) = &entity.ancestors {
+                                                Residual::Concrete {
+                                                    value: ancestors.contains(uid2).into(),
+                                                    ty,
+                                                }
+                                            } else {
+                                                Residual::Partial {
+                                                    kind: ResidualKind::BinaryApp {
+                                                        op: *op,
+                                                        arg1: Arc::new(arg1),
+                                                        arg2: Arc::new(arg2),
+                                                    },
+                                                    ty,
+                                                }
+                                            }
+                                        } else {
+                                            Residual::Partial {
+                                                kind: ResidualKind::BinaryApp {
+                                                    op: *op,
+                                                    arg1: Arc::new(arg1),
+                                                    arg2: Arc::new(arg2),
+                                                },
+                                                ty,
+                                            }
+                                        }
+                                    }
+                                } else if let Ok(s) = v2.get_as_set() {
+                                    if let Ok(uids) = s
+                                        .iter()
+                                        .map(Value::get_as_entity)
+                                        .collect::<std::result::Result<Vec<_>, _>>()
+                                    {
+                                        for uid2 in uids {
+                                            if uid1 == uid2 {
+                                                return Residual::Concrete {
+                                                    value: true.into(),
+                                                    ty,
+                                                };
+                                            } else {
+                                                if let Some(entity) =
+                                                    self.entities.entities.get(uid1)
+                                                {
+                                                    if let Some(ancestors) = &entity.ancestors {
+                                                        if ancestors.contains(uid2) {
+                                                            return Residual::Concrete {
+                                                                value: true.into(),
+                                                                ty,
+                                                            };
+                                                        }
+                                                    } else {
+                                                        return Residual::Partial {
+                                                            kind: ResidualKind::BinaryApp {
+                                                                op: *op,
+                                                                arg1: Arc::new(arg1),
+                                                                arg2: Arc::new(arg2),
+                                                            },
+                                                            ty,
+                                                        };
+                                                    }
+                                                } else {
+                                                    return Residual::Partial {
+                                                        kind: ResidualKind::BinaryApp {
+                                                            op: *op,
+                                                            arg1: Arc::new(arg1),
+                                                            arg2: Arc::new(arg2),
+                                                        },
+                                                        ty,
+                                                    };
+                                                }
+                                            }
+                                        }
+                                        Residual::Concrete {
+                                            value: false.into(),
+                                            ty,
+                                        }
+                                    } else {
+                                        Residual::Error(ty.clone())
+                                    }
+                                } else {
+                                    Residual::Error(ty.clone())
+                                }
+                            } else {
+                                Residual::Error(ty.clone())
+                            }
+                        }
+                        BinaryOp::GetTag => {
+                            if let Ok(uid) = v1.get_as_entity() {
+                                if let Ok(tag) = v2.get_as_string() {
+                                    if let Some(entity) = self.entities.entities.get(uid) {
+                                        if let Some(tags) = &entity.tags {
+                                            if let Some(v) = tags.get(tag) {
+                                                Residual::Concrete {
+                                                    value: v.clone(),
+                                                    ty,
+                                                }
+                                            } else {
+                                                Residual::Error(ty.clone())
+                                            }
+                                        } else {
+                                            Residual::Partial {
+                                                kind: ResidualKind::BinaryApp {
+                                                    op: *op,
+                                                    arg1: Arc::new(arg1),
+                                                    arg2: Arc::new(arg2),
+                                                },
+                                                ty,
+                                            }
+                                        }
+                                    } else {
+                                        Residual::Partial {
+                                            kind: ResidualKind::BinaryApp {
+                                                op: *op,
+                                                arg1: Arc::new(arg1),
+                                                arg2: Arc::new(arg2),
+                                            },
+                                            ty,
+                                        }
+                                    }
+                                } else {
+                                    Residual::Error(ty.clone())
+                                }
+                            } else {
+                                Residual::Error(ty.clone())
+                            }
+                        }
+                        BinaryOp::HasTag => {
+                            if let Ok(uid) = v1.get_as_entity() {
+                                if let Ok(tag) = v2.get_as_string() {
+                                    if let Some(entity) = self.entities.entities.get(uid) {
+                                        if let Some(tags) = &entity.tags {
+                                            Residual::Concrete {
+                                                value: tags.contains_key(tag).into(),
+                                                ty,
+                                            }
+                                        } else {
+                                            Residual::Partial {
+                                                kind: ResidualKind::BinaryApp {
+                                                    op: *op,
+                                                    arg1: Arc::new(arg1),
+                                                    arg2: Arc::new(arg2),
+                                                },
+                                                ty,
+                                            }
+                                        }
+                                    } else {
+                                        Residual::Partial {
+                                            kind: ResidualKind::BinaryApp {
+                                                op: *op,
+                                                arg1: Arc::new(arg1),
+                                                arg2: Arc::new(arg2),
+                                            },
+                                            ty,
+                                        }
+                                    }
+                                } else {
+                                    Residual::Error(ty.clone())
+                                }
+                            } else {
+                                Residual::Error(ty.clone())
+                            }
+                        }
+                        BinaryOp::Contains => match &v1.value {
+                            ValueKind::Set(Set { fast: Some(h), .. }) => Residual::Concrete {
+                                value: match v2.try_as_lit() {
+                                    Some(lit) => (h.contains(lit)).into(),
+                                    None => false.into(),
+                                },
+                                ty,
+                            },
+                            ValueKind::Set(Set {
+                                fast: None,
+                                authoritative,
+                            }) => Residual::Concrete {
+                                value: (authoritative.contains(v2)).into(),
+                                ty,
+                            },
+                            _ => Residual::Error(ty.clone()),
+                        },
+                        BinaryOp::ContainsAll | BinaryOp::ContainsAny => {
+                            match (v1.get_as_set(), v2.get_as_set()) {
+                                (Ok(arg1_set), Ok(arg2_set)) => {
+                                    match (&arg1_set.fast, &arg2_set.fast) {
+                                        (Some(arg1_set), Some(arg2_set)) => {
+                                            // both sets are in fast form, ie, they only contain literals.
+                                            // Fast hashset-based implementation.
+                                            match op {
+                                                BinaryOp::ContainsAll => {
+                                                    Residual::Concrete { value: (arg2_set.is_subset(arg1_set)).into(), ty}
+                                                }
+                                                BinaryOp::ContainsAny => {
+                                                    Residual::Concrete { value: (!arg1_set.is_disjoint(arg2_set)).into(), ty}
+                                                }
+                                                // PANIC SAFETY `op` is checked to be one of these two above
+                                                #[allow(clippy::unreachable)]
+                                                _ => unreachable!(
+                                                    "Should have already checked that op was one of these"
+                                                ),
+                                            }
+                                        }
+                                        (_, _) => {
+                                            // one or both sets are in slow form, ie, contain a non-literal.
+                                            // Fallback to slow implementation.
+                                            match op {
+                                                BinaryOp::ContainsAll => {
+                                                    let is_subset = arg2_set
+                                                        .authoritative
+                                                        .iter()
+                                                        .all(|item| arg1_set.authoritative.contains(item));
+                                                    Residual::Concrete {value: is_subset.into(), ty}
+                                                }
+                                                BinaryOp::ContainsAny => {
+                                                    let not_disjoint = arg1_set
+                                                        .authoritative
+                                                        .iter()
+                                                        .any(|item| arg2_set.authoritative.contains(item));
+                                                    Residual::Concrete {value: not_disjoint.into(), ty}
+                                                }
+                                                // PANIC SAFETY `op` is checked to be one of these two above
+                                                #[allow(clippy::unreachable)]
+                                                _ => unreachable!(
+                                                    "Should have already checked that op was one of these"
+                                                ),
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => Residual::Error(ty),
+                            }
+                        }
+                    },
                     (Residual::Error(_), _) => Residual::Error(ty),
                     (_, Residual::Error(_)) => Residual::Error(ty),
                     (_, _) => Residual::Partial {
@@ -376,7 +646,13 @@ impl<'e> Evaluator<'e> {
                 let arg = self.interpret(arg);
                 match &arg {
                     Residual::Concrete { value, .. } => {
-                        todo!()
+                        if let Ok(v) =
+                            cedar_policy_core::evaluator::unary_app(*op, value.clone(), None)
+                        {
+                            Residual::Concrete { value: v, ty }
+                        } else {
+                            Residual::Error(ty.clone())
+                        }
                     }
                     Residual::Partial { .. } => Residual::Partial {
                         kind: ResidualKind::UnaryApp {

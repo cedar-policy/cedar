@@ -1138,7 +1138,7 @@ impl Value {
 
     /// Convert the `Value` to a String, or throw a type error if it's not a
     /// String.
-    pub(crate) fn get_as_string(&self) -> Result<&SmolStr> {
+    pub fn get_as_string(&self) -> Result<&SmolStr> {
         match &self.value {
             ValueKind::Lit(Literal::String(s)) => Ok(s),
             _ => Err(EvaluationError::type_error_single(Type::String, self)),
@@ -1146,7 +1146,7 @@ impl Value {
     }
 
     /// Convert the `Value` to a Set, or throw a type error if it's not a Set.
-    pub(crate) fn get_as_set(&self) -> Result<&Set> {
+    pub fn get_as_set(&self) -> Result<&Set> {
         match &self.value {
             ValueKind::Set(set) => Ok(set),
             _ => Err(EvaluationError::type_error_single(Type::Set, self)),
@@ -1164,7 +1164,7 @@ impl Value {
 
     /// Convert the `Value` to an Entity, or throw a type error if it's not a
     /// Entity.
-    pub(crate) fn get_as_entity(&self) -> Result<&EntityUID> {
+    pub fn get_as_entity(&self) -> Result<&EntityUID> {
         match &self.value {
             ValueKind::Lit(Literal::EntityUID(uid)) => Ok(uid.as_ref()),
             _ => Err(EvaluationError::type_error_single(
