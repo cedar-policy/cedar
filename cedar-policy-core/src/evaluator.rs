@@ -78,8 +78,8 @@ pub fn unary_app(op: UnaryOp, arg: Value, loc: Option<&Loc>) -> Result<Value> {
 /// Evaluate binary relations (i.e., `BinaryOp::Eq`, `BinaryOp::Less`, and `BinaryOp::LessEq`)
 pub fn binary_relation(
     op: BinaryOp,
-    arg1: Value,
-    arg2: Value,
+    arg1: &Value,
+    arg2: &Value,
     extensions: &Extensions<'_>,
 ) -> Result<Value> {
     match op {
@@ -109,28 +109,28 @@ pub fn binary_relation(
                 }
                 // throw type errors
                 (ValueKind::Lit(Literal::Long(_)), _) => {
-                    Err(EvaluationError::type_error_single(Type::Long, &arg2))
+                    Err(EvaluationError::type_error_single(Type::Long, arg2))
                 }
                 (_, ValueKind::Lit(Literal::Long(_))) => {
-                    Err(EvaluationError::type_error_single(Type::Long, &arg1))
+                    Err(EvaluationError::type_error_single(Type::Long, arg1))
                 }
                 (ValueKind::ExtensionValue(x), _) if x.supports_operator_overloading() => {
                     Err(EvaluationError::type_error_single(
                         Type::Extension { name: x.typename() },
-                        &arg2,
+                        arg2,
                     ))
                 }
                 (_, ValueKind::ExtensionValue(y)) if y.supports_operator_overloading() => {
                     Err(EvaluationError::type_error_single(
                         Type::Extension { name: y.typename() },
-                        &arg1,
+                        arg1,
                     ))
                 }
                 _ => {
                     let expected_types = valid_comparison_op_types(extensions);
                     Err(EvaluationError::type_error_with_advice(
                         expected_types.clone(),
-                        &arg1,
+                        arg1,
                         format!(
                             "Only types {} support comparison",
                             expected_types.into_iter().sorted().join(", ")
@@ -556,7 +556,7 @@ impl<'e> Evaluator<'e> {
                 };
                 match op {
                     BinaryOp::Eq | BinaryOp::Less | BinaryOp::LessEq => {
-                        binary_relation(*op, arg1, arg2, self.extensions).map(Into::into)
+                        binary_relation(*op, &arg1, &arg2, self.extensions).map(Into::into)
                     }
                     BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
                         binary_arith(*op, arg1, arg2, loc).map(Into::into)
