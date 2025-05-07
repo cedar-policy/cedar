@@ -22,7 +22,7 @@ use std::{
 use cedar_policy_core::{
     ast::{EntityUID, Value},
     entities::EntityUidJson,
-    jsonvalue::JsonValueWithNoDuplicateKeys,
+    jsonvalue::JsonValueWithNoDuplicateKeys, transitive_closure::TCNode,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -67,6 +67,12 @@ pub struct PartialEntity {
     pub attrs: Option<BTreeMap<SmolStr, Value>>,
     pub ancestors: Option<HashSet<EntityUID>>,
     pub tags: Option<BTreeMap<SmolStr, Value>>,
+}
+
+impl PartialEntity {
+    pub(crate) fn add_ancestor(&mut self, uid: EntityUID) {
+        self.ancestors.as_mut().expect("should not be unknown").insert(uid);
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
