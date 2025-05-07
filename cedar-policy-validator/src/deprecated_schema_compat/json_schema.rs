@@ -132,8 +132,10 @@ pub enum SchemaType {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "type")]
 // This annotation exists in 2.5.x and prior 2.x versions of the JSON schema
-// structs but doesn't actually deny (all) unknown fields here. Supporting this
-// behavior is the primary motivation in module.
+// structs but doesn't actually deny (all) unknown fields here. Supporting
+// unknown fields is the primary motivation of this module, so leaving this
+// feels a bit odd, but we specifically want to support the same 2.5.x behavior
+// around unknown fields, so we should leave this as is unless we have a reason not to.
 #[serde(deny_unknown_fields)]
 pub enum SchemaTypeVariant {
     String,
