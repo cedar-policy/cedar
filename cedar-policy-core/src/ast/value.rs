@@ -547,6 +547,50 @@ impl Set {
     pub fn iter(&self) -> impl Iterator<Item = &Value> {
         self.authoritative.iter()
     }
+
+    /// Subset test
+    pub fn is_subset(&self, other: &Set) -> bool {
+        match (&self.fast, &other.fast) {
+            // both sets are in fast form, ie, they only contain literals.
+            // Fast hashset-based implementation.
+            (Some(ls1), Some(ls2)) => ls1.is_subset(ls2.as_ref()),
+            // `self` contains non-literal(s), `other` is all-literal.
+            // The invariant about `Set::fast` should allow us to conclude that
+            // the result is `false`
+            (None, Some(_)) => false,
+            // one or both sets are in slow form, ie, contain a non-literal.
+            // Fallback to slow implementation.
+            _ => self.authoritative.is_subset(&other.authoritative),
+        }
+    }
+
+    /// Disjointness test
+    pub fn is_disjoint(&self, other: &Set) -> bool {
+        match (&self.fast, &other.fast) {
+            // both sets are in fast form, ie, they only contain literals.
+            // Fast hashset-based implementation.
+            (Some(ls1), Some(ls2)) => ls1.is_disjoint(ls2.as_ref()),
+            // one or both sets are in slow form, ie, contain a non-literal.
+            // Fallback to slow implementation.
+            _ => self.authoritative.is_disjoint(&other.authoritative),
+        }
+    }
+
+    /// Membership test
+    pub fn contains(&self, value: &Value) -> bool {
+        match (&self.fast, &value.value) {
+            // both sets are in fast form, ie, they only contain literals.
+            // Fast hashset-based implementation.
+            (Some(ls), ValueKind::Lit(lit)) => ls.contains(lit),
+            // Set is all-literal but `value` is not a literal
+            // The invariant about `Set::fast` should allow us to conclude that
+            // the result is `false`
+            (Some(_), _) => false,
+            // Set contains a non-literal
+            // Fallback to slow implementation.
+            _ => self.authoritative.contains(value),
+        }
+    }
 }
 
 impl FromIterator<Value> for Set {
