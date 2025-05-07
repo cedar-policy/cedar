@@ -1100,8 +1100,8 @@ mod from_str_parse_err {
 
     use miette::Report;
 
-    use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use crate::{Schema, SchemaFragment};
+    use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
 
     #[test]
     #[allow(deprecated)]
@@ -1118,5 +1118,4 @@ mod from_str_parse_err {
             &ExpectedErrorMessageBuilder::error("expected value at line 1 column 1").help("this API was expecting a schema in the JSON format; did you mean to use a different function, which expects the Cedar schema format?").build(),
         );
     }
-
 }
