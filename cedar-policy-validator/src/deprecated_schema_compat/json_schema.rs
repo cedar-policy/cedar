@@ -20,7 +20,7 @@
 //! Do not make changes to this file without careful consideration. It exist to
 //! provide compatibility with version 2.5.x, so changes should not result in
 //! any new errors being reported. Specifically, it provides a parsing mode that
-//! ignores (some) unrecognized fields, so we should change it to report these
+//! ignores (some) unrecognized fields, so we not should change it to report these
 //! as errors.  We also do not need to update these definitions to support new
 //! features.
 
