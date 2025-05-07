@@ -48,7 +48,7 @@ pub struct NamespaceDefinition {
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     #[serde(rename = "commonTypes")]
     pub common_types: HashMap<CommonTypeId, SchemaType>,
-    // Key changed from `SmolStr` in 2.5.0 to `UnreserveId` to avoid excess code duplication
+    // Key changed from `SmolStr` in 2.5.0 to `UnreservedId` to avoid excess code duplication
     #[serde(rename = "entityTypes")]
     #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
     pub entity_types: HashMap<UnreservedId, EntityType>,
