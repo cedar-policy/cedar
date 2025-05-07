@@ -1,8 +1,7 @@
-use std::{collections::BTreeMap, fmt::Result, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc};
 
 use cedar_policy_core::{
     ast::{self, BinaryOp, EntityType, Expr, Name, Pattern, UnaryOp, Value, Var},
-    evaluator::{evaluation_errors::NonValueError, EvaluationError},
     expr_builder::ExprBuilder,
 };
 use cedar_policy_validator::types::Type;

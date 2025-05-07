@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use cedar_policy_core::{
-    ast::{self, BinaryOp, Expr, ExprKind, PartialValue, Set, Value, ValueKind, Var},
+    ast::{self, BinaryOp, EntityUID, Expr, ExprKind, PartialValue, Set, Value, ValueKind, Var},
     extensions::Extensions,
 };
 use cedar_policy_validator::types::Type;
@@ -20,8 +20,11 @@ pub struct Evaluator<'e> {
 }
 
 impl<'e> Evaluator<'e> {
-    pub fn interpret(&self, e: &Expr<Type>) -> Residual {
-        let ty = e.data().clone();
+    pub fn interpret(&self, e: &Expr<Option<Type>>) -> Residual {
+        let ty = e
+            .data()
+            .clone()
+            .expect("type checked should provide a type");
         match e.expr_kind() {
             ExprKind::Lit(l) => Residual::Concrete {
                 value: l.clone().into(),
@@ -32,9 +35,9 @@ impl<'e> Evaluator<'e> {
                 ty,
             },
             ExprKind::Var(Var::Principal) => {
-                if let Some(principal) = &self.request.principal {
+                if let Ok(principal) = EntityUID::try_from(self.request.principal.clone()) {
                     Residual::Concrete {
-                        value: principal.clone().into(),
+                        value: principal.into(),
                         ty,
                     }
                 } else {
@@ -45,9 +48,9 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::Var(Var::Resource) => {
-                if let Some(resource) = &self.request.resource {
+                if let Ok(resource) = EntityUID::try_from(self.request.resource.clone()) {
                     Residual::Concrete {
-                        value: resource.clone().into(),
+                        value: resource.into(),
                         ty,
                     }
                 } else {
@@ -230,8 +233,8 @@ impl<'e> Evaluator<'e> {
                         BinaryOp::Eq | BinaryOp::Less | BinaryOp::LessEq => {
                             if let Ok(v) = cedar_policy_core::evaluator::binary_relation(
                                 *op,
-                                v1.clone(),
-                                v2.clone(),
+                                v1,
+                                v2,
                                 self.extensions,
                             ) {
                                 Residual::Concrete {
