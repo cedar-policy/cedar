@@ -1094,3 +1094,29 @@ mod invalid_names_detected {
         );
     }
 }
+
+#[cfg(test)]
+mod from_str_parse_err {
+
+    use miette::Report;
+
+    use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
+    use crate::{Schema, SchemaFragment};
+
+    #[test]
+    #[allow(deprecated)]
+    fn from_cedar_schema_str_err() {
+        let src = "entity User;";
+        expect_err(
+            src,
+            &Report::new(Schema::from_deprecated_json_str(src).unwrap_err()),
+            &ExpectedErrorMessageBuilder::error("expected value at line 1 column 1").help("this API was expecting a schema in the JSON format; did you mean to use a different function, which expects the Cedar schema format?").build(),
+        );
+        expect_err(
+            src,
+            &Report::new(SchemaFragment::from_deprecated_json_str(src).unwrap_err()),
+            &ExpectedErrorMessageBuilder::error("expected value at line 1 column 1").help("this API was expecting a schema in the JSON format; did you mean to use a different function, which expects the Cedar schema format?").build(),
+        );
+    }
+
+}
