@@ -32,8 +32,13 @@ use super::{
     ExpressionConstructionError, PartialValue, RestrictedExpr, Unknown, Value, ValueKind, Var,
 };
 
+use vstd::prelude::*;
+
+verus! {
+
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
 #[derive(Debug, Clone)]
+#[verifier::external_derive(Clone)]
 pub struct Request {
     /// Principal associated with the request
     pub(crate) principal: EntityUIDEntry,
@@ -49,8 +54,11 @@ pub struct Request {
     pub(crate) context: Option<Context>,
 }
 
+
+
 /// Represents the principal type, resource type, and action UID.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[verifier::external_derive]
 #[serde(rename_all = "camelCase")]
 pub struct RequestType {
     /// Principal type
@@ -81,6 +89,8 @@ pub enum EntityUIDEntry {
         /// Source location associated with the `EntityUIDEntry`, if any
         loc: Option<Loc>,
     },
+}
+
 }
 
 impl EntityUIDEntry {

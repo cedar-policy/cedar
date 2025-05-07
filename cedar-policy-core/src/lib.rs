@@ -17,7 +17,7 @@
 //! Implementation of the Cedar parser and evaluation engine in Rust.
 #![warn(missing_docs)]
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
-
+#[cfg_attr(verus_keep_ghost, forbid(unsafe_code))]
 #[macro_use]
 extern crate lalrpop_util;
 
@@ -36,6 +36,8 @@ pub mod fuzzy_match;
 pub mod jsonvalue;
 pub mod parser;
 pub mod transitive_closure;
+
+pub mod verus_utils;
 
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_utils;

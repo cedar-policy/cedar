@@ -30,6 +30,10 @@ use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::Loc;
 use crate::FromNormalizedStr;
 
+use vstd::prelude::*;
+
+verus! {
+
 /// Represents the name of an entity type, function, etc.
 /// The name may include namespaces.
 /// Clone is O(1).
@@ -48,6 +52,8 @@ pub struct InternalName {
     #[educe(Hash(ignore))]
     #[educe(PartialOrd(ignore))]
     pub(crate) loc: Option<Loc>,
+}
+
 }
 
 /// A shortcut for [`InternalName::unqualified_name`]
@@ -373,15 +379,20 @@ mod vars_test {
     }
 }
 
+verus! {
+
 /// A new type which indicates that the contained [`InternalName`] does not
 /// contain reserved `__cedar`, as specified by RFC 52.
 /// This represents names which are legal for end-users to _define_, while
 /// [`InternalName`] represents names which are legal for end-users to
 /// _reference_.
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, RefCast)]
+#[verifier::external_derive(Serialize)]
 #[repr(transparent)]
 #[serde(transparent)]
 pub struct Name(pub(crate) InternalName);
+
+}
 
 impl From<UnreservedId> for Name {
     fn from(value: UnreservedId) -> Self {

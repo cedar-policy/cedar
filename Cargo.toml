@@ -34,8 +34,10 @@ repository = "https://github.com/cedar-policy/cedar"
 # We actually deny all rustc warnings in CI, but it's clearer if we explicitly
 # "deny" here even if setting to "warn" has the same effect.
 [workspace.lints.rust]
-unsafe_code = "forbid"
-unexpected_cfgs = { level = 'deny', check-cfg = ['cfg(kani)', 'cfg(fuzzing)'] }
+# Certain ghost Verus constructs (`spec const`s, `assume_specification`s require `unsafe`). We can forbid unsafe in ghost-erased 
+# code via `#[cfg_attr(verus_keep_ghost, forbid(unsafe_code))]` at the crate root instead.
+# unsafe_code = "forbid"
+unexpected_cfgs = { level = 'deny', check-cfg = ['cfg(kani)', 'cfg(fuzzing)', 'cfg(verus_keep_ghost)'] } 
 missing_debug_implementations = "deny"
 rust-2018-idioms = "deny"
 

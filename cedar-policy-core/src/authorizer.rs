@@ -39,6 +39,10 @@ pub use err::{AuthorizationError, ConcretizationError, ReauthorizationError};
 pub use partial_response::ErrorState;
 pub use partial_response::PartialResponse;
 
+use vstd::prelude::*;
+
+verus! {
+
 /// Authorizer
 #[derive(Clone)] // `Debug` implemented manually below
 pub struct Authorizer {
@@ -47,6 +51,8 @@ pub struct Authorizer {
     /// Error-handling behavior of this `Authorizer`
     error_handling: ErrorHandling,
 }
+
+
 
 /// Describes the possible Cedar error-handling modes.
 /// We currently only have one mode: [`ErrorHandling::Skip`].
@@ -65,6 +71,8 @@ impl Default for ErrorHandling {
     }
 }
 
+}
+
 impl Authorizer {
     /// Create a new `Authorizer`
     pub fn new() -> Self {
@@ -74,12 +82,16 @@ impl Authorizer {
         }
     }
 
+    verus! {
+
     /// Returns an authorization response for `q` with respect to the given `Slice`.
     ///
     /// The language spec and formal model give a precise definition of how this is
     /// computed.
     pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> Response {
         self.is_authorized_core(q, pset, entities).concretize()
+    }
+
     }
 
     /// Returns an authorization response for `q` with respect to the given `Slice`.

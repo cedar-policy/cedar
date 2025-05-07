@@ -21,7 +21,13 @@ use crate::{parser::err::ParseErrors, FromNormalizedStr};
 
 use super::{InternalName, ReservedNameError};
 
+#[allow(unused_imports)]
+use crate::verus_utils;
+use vstd::prelude::*;
+
 const RESERVED_ID: &str = "__cedar";
+
+verus! {
 
 /// Identifiers. Anything in `Id` should be a valid identifier, this means it
 /// does not contain, for instance, spaces or characters like '+'; and also is
@@ -30,7 +36,10 @@ const RESERVED_ID: &str = "__cedar";
 //
 // For now, internally, `Id`s are just owned `SmolString`s.
 #[derive(Serialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
+#[verifier::external_derive(Serialize)]
 pub struct Id(SmolStr);
+
+}
 
 impl Id {
     /// Create a new `Id` from a `String`, where it is the caller's

@@ -32,6 +32,8 @@ use std::str::FromStr;
 use std::sync::Arc;
 use thiserror::Error;
 
+use vstd::prelude::*;
+
 #[cfg(feature = "tolerant-ast")]
 static ERROR_NAME: std::sync::LazyLock<Name> =
     std::sync::LazyLock::new(|| Name(InternalName::from(Id::new_unchecked("EntityTypeError"))));
@@ -52,6 +54,7 @@ static ENTITY_UID_ERROR_STR: &str = "EntityUID::Error";
 /// The entity type that Actions must have
 pub static ACTION_ENTITY_TYPE: &str = "Action";
 
+verus! {
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 /// Entity type - can be an error type when 'tolerant-ast' feature is enabled
@@ -61,6 +64,8 @@ pub enum EntityType {
     #[cfg(feature = "tolerant-ast")]
     /// Represents an error node of an entity that failed to parse
     ErrorEntityType,
+}
+
 }
 
 impl<'de> Deserialize<'de> for EntityType {
@@ -191,10 +196,14 @@ impl std::fmt::Display for EntityType {
     }
 }
 
+verus! {
+
 /// Unique ID for an entity. These represent entities in the AST.
 #[derive(Educe, Serialize, Deserialize, Debug, Clone)]
 #[serde(rename = "EntityUID")]
 #[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[verifier::external_derive]
+#[verifier::external_body]
 pub struct EntityUIDImpl {
     /// Typename of the entity
     ty: EntityType,
@@ -208,15 +217,19 @@ pub struct EntityUIDImpl {
     loc: Option<Loc>,
 }
 
+
 /// Unique ID for an entity. These represent entities in the AST.
 #[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[verifier::external_derive]
 pub enum EntityUID {
     /// Unique ID for an entity. These represent entities in the AST
     EntityUID(EntityUIDImpl),
     #[cfg(feature = "tolerant-ast")]
     /// Represents the ID of an error that failed to parse
     Error,
+}
+
 }
 
 impl<'de> Deserialize<'de> for EntityUID {

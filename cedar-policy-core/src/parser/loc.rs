@@ -16,15 +16,23 @@
 
 use std::sync::Arc;
 
+use vstd::prelude::*;
+
+verus! {
+
 /// Represents a source location: index/range, and a reference to the source
 /// code which that index/range indexes into
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[verifier::external_derive]
+#[verifier::external_body]
 pub struct Loc {
     /// `SourceSpan` indicating a specific source code location or range
     pub span: miette::SourceSpan,
 
     /// Original source code (which the above source span indexes into)
     pub src: Arc<str>,
+}
+
 }
 
 impl Loc {
