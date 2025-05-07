@@ -64,7 +64,7 @@ extended-schema = ["cedar-policy-validator/extended-schema"]
 # Not exactly experimental but rather a feature for supporting deprecated
 # parsing behavior. API is stable, but hopefully will be removed in a future
 # release.
-deprecated-schema-compat= []
+deprecated-schema-compat = []
 
 [lib]
 # cdylib required for wasm
