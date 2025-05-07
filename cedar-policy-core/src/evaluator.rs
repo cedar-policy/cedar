@@ -586,65 +586,25 @@ impl<'e> Evaluator<'e> {
                         }
                     }
                     // contains, which works on Sets
-                    BinaryOp::Contains => match arg1.value {
-                        ValueKind::Set(Set { fast: Some(h), .. }) => match arg2.try_as_lit() {
-                            Some(lit) => Ok((h.contains(lit)).into()),
-                            None => Ok(false.into()), // we know it doesn't contain a non-literal
-                        },
-                        ValueKind::Set(Set {
-                            fast: None,
-                            authoritative,
-                        }) => Ok((authoritative.contains(&arg2)).into()),
-                        _ => Err(EvaluationError::type_error_single(Type::Set, &arg1)),
-                    },
-                    // ContainsAll and ContainsAny, which work on Sets
-                    BinaryOp::ContainsAll | BinaryOp::ContainsAny => {
+                    BinaryOp::Contains => {
+                        if let Ok(s) = arg1.get_as_set() {
+                            Ok(s.contains(&arg2).into())
+                        } else {
+                            Err(EvaluationError::type_error_single(Type::Set, &arg1))
+                        }
+                    }
+                    // ContainsAll, which works on Sets
+                    BinaryOp::ContainsAll => {
                         let arg1_set = arg1.get_as_set()?;
                         let arg2_set = arg2.get_as_set()?;
-                        match (&arg1_set.fast, &arg2_set.fast) {
-                            (Some(arg1_set), Some(arg2_set)) => {
-                                // both sets are in fast form, ie, they only contain literals.
-                                // Fast hashset-based implementation.
-                                match op {
-                                    BinaryOp::ContainsAll => {
-                                        Ok((arg2_set.is_subset(arg1_set)).into())
-                                    }
-                                    BinaryOp::ContainsAny => {
-                                        Ok((!arg1_set.is_disjoint(arg2_set)).into())
-                                    }
-                                    // PANIC SAFETY `op` is checked to be one of these two above
-                                    #[allow(clippy::unreachable)]
-                                    _ => unreachable!(
-                                        "Should have already checked that op was one of these"
-                                    ),
-                                }
-                            }
-                            (_, _) => {
-                                // one or both sets are in slow form, ie, contain a non-literal.
-                                // Fallback to slow implementation.
-                                match op {
-                                    BinaryOp::ContainsAll => {
-                                        let is_subset = arg2_set
-                                            .authoritative
-                                            .iter()
-                                            .all(|item| arg1_set.authoritative.contains(item));
-                                        Ok(is_subset.into())
-                                    }
-                                    BinaryOp::ContainsAny => {
-                                        let not_disjoint = arg1_set
-                                            .authoritative
-                                            .iter()
-                                            .any(|item| arg2_set.authoritative.contains(item));
-                                        Ok(not_disjoint.into())
-                                    }
-                                    // PANIC SAFETY `op` is checked to be one of these two above
-                                    #[allow(clippy::unreachable)]
-                                    _ => unreachable!(
-                                        "Should have already checked that op was one of these"
-                                    ),
-                                }
-                            }
-                        }
+
+                        Ok((arg2_set.is_subset(arg1_set)).into())
+                    }
+                    // ContainsAny, which works on Sets
+                    BinaryOp::ContainsAny => {
+                        let arg1_set = arg1.get_as_set()?;
+                        let arg2_set = arg2.get_as_set()?;
+                        Ok((!arg1_set.is_disjoint(arg2_set)).into())
                     }
                     // GetTag and HasTag, which require an Entity on the left and a String on the right
                     BinaryOp::GetTag | BinaryOp::HasTag => {
