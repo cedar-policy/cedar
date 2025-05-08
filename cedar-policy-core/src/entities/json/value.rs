@@ -660,7 +660,12 @@ impl<'e> ValueParser<'e> {
                     match ctx() {
                         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                             Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::type_mismatch(uid, attr, err),
+                                EntitySchemaConformanceError::type_mismatch(
+                                    uid,
+                                    attr,
+                                    crate::entities::conformance::err::AttrOrTag::Attr,
+                                    err,
+                                ),
                             ))
                         }
                         ctx => Err(JsonDeserializationError::type_mismatch(ctx, err)),
@@ -729,7 +734,12 @@ impl<'e> ValueParser<'e> {
                     match ctx() {
                         JsonDeserializationErrorContext::EntityAttribute { uid, attr } => {
                             Err(JsonDeserializationError::EntitySchemaConformance(
-                                EntitySchemaConformanceError::type_mismatch(uid, attr, err),
+                                EntitySchemaConformanceError::type_mismatch(
+                                    uid,
+                                    attr,
+                                    crate::entities::conformance::err::AttrOrTag::Attr,
+                                    err,
+                                ),
                             ))
                         }
                         ctx => Err(JsonDeserializationError::type_mismatch(ctx, err)),
