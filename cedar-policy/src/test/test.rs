@@ -1403,6 +1403,7 @@ mod ancestors_tests {
 /// schema-based parsing.
 mod entity_validate_tests {
     use super::*;
+    use cedar_policy_core::entities::conformance::err::EntitySchemaConformanceError;
     use cool_asserts::assert_matches;
     use entities::err::EntitiesError;
     use serde_json::json;
@@ -2188,6 +2189,57 @@ action "g" appliesTo {
           }
         "#;
         assert_matches!(Entity::from_json_str(entity_str, Some(&schema)), Ok(_));
+    }
+
+    #[test]
+    fn from_entities_tags() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            "
+            entity E tags String;
+            action a appliesTo {
+              principal: [E],
+              resource: [E],
+            };
+        ",
+        )
+        .unwrap();
+        let entity = Entity::new_with_tags(
+            r#"E::"""#.parse().unwrap(),
+            std::iter::empty(),
+            std::iter::empty(),
+            std::iter::once(("".to_owned(), RestrictedExpression::new_long(42))),
+        )
+        .unwrap();
+        assert_matches!(
+            Entities::from_entities([entity], Some(&schema)),
+            Err(EntitiesError::InvalidEntity(
+                EntitySchemaConformanceError::TypeMismatch(_)
+            ))
+        );
+
+        let (schema, _) = Schema::from_cedarschema_str(
+            "
+            entity E;
+            action a appliesTo {
+              principal: [E],
+              resource: [E],
+            };
+        ",
+        )
+        .unwrap();
+        let entity = Entity::new_with_tags(
+            r#"E::"""#.parse().unwrap(),
+            std::iter::empty(),
+            std::iter::empty(),
+            std::iter::once(("".to_owned(), RestrictedExpression::new_long(42))),
+        )
+        .unwrap();
+        assert_matches!(
+            Entities::from_entities([entity], Some(&schema)),
+            Err(EntitiesError::InvalidEntity(
+                EntitySchemaConformanceError::UnexpectedEntityTag(_)
+            ))
+        );
     }
 }
 
