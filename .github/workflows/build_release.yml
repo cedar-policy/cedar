@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  build_release_binaries:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-13
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        run: rustup update stable && rustup default stable
+      - name: Install protobuf (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get install protobuf-compiler
+      - name: Install protobuf (macOS)
+        if: startsWith(matrix.os, 'macos')
+        run: brew install protobuf
+      - name: Build release binaries
+        run: cargo build --release --all-features
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cedar-${{matrix.target}}
+          path: ./target/release/cedar

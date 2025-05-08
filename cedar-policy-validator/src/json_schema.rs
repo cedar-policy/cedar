@@ -989,7 +989,7 @@ pub struct ActionEntityUID<N> {
     #[serde(rename = "type")]
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    ty: Option<N>,
+    pub ty: Option<N>,
     #[cfg(feature = "extended-schema")]
     #[serde(skip)]
     /// Source location - if available
