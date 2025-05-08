@@ -45,6 +45,7 @@ mod rbac;
 mod schema;
 pub use schema::err::*;
 pub use schema::*;
+mod deprecated_schema_compat;
 pub mod json_schema;
 mod str_checks;
 pub use str_checks::confusable_string_checks;
