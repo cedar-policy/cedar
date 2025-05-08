@@ -36,7 +36,7 @@ verus! {
 //
 // For now, internally, `Id`s are just owned `SmolString`s.
 #[derive(Serialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
-#[verifier::external_derive(Serialize)]
+#[verifier::external_derive]
 pub struct Id(SmolStr);
 
 }

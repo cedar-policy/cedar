@@ -41,6 +41,7 @@ verus! {
 /// This type may contain any name valid for use internally, including names
 /// with reserved `__cedar` components (and also names without `__cedar`).
 #[derive(Educe, Debug, Clone)]
+#[verifier::external_derive]
 #[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct InternalName {
     /// Basename
@@ -387,7 +388,7 @@ verus! {
 /// [`InternalName`] represents names which are legal for end-users to
 /// _reference_.
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, RefCast)]
-#[verifier::external_derive(Serialize)]
+#[verifier::external_derive]
 #[repr(transparent)]
 #[serde(transparent)]
 pub struct Name(pub(crate) InternalName);

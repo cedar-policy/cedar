@@ -38,6 +38,10 @@ pub use json::{
 use conformance::EntitySchemaConformanceChecker;
 use err::*;
 
+use vstd::prelude::*;
+
+verus! {
+
 /// Represents an entity hierarchy, and allows looking up `Entity` objects by
 /// UID.
 //
@@ -46,6 +50,8 @@ use err::*;
 /// `cedar-policy`, which is capable of ser/de both Core types like this and
 /// `cedar-policy` types.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[verifier::external_derive]
+#[verifier::external_body]
 pub struct Entities {
     /// Important internal invariant: for any `Entities` object that exists,
     /// the `ancestor` relation is transitively closed.
@@ -56,6 +62,8 @@ pub struct Entities {
     /// Mode::Concrete means that the store is fully concrete, and failed dereferences are an error.
     /// Mode::Partial means the store is partial, and failed dereferences result in a residual.
     mode: Mode,
+}
+
 }
 
 impl Entities {
@@ -443,18 +451,21 @@ fn update_entity_map(
     Ok(())
 }
 
-impl IntoIterator for Entities {
-    type Item = Entity;
+// NOTE: commented out because of Verus bug https://github.com/verus-lang/verus/issues/1627
+// not required to compile/verify `cedar-policy-core`, but required to compile the other crates
+// uncomment when the issue is fixed!
+// impl IntoIterator for Entities {
+//     type Item = Entity;
 
-    type IntoIter = std::iter::Map<
-        std::collections::hash_map::IntoValues<EntityUID, Arc<Entity>>,
-        fn(Arc<Entity>) -> Entity,
-    >;
+//     type IntoIter = std::iter::Map<
+//         std::collections::hash_map::IntoValues<EntityUID, Arc<Entity>>,
+//         fn(Arc<Entity>) -> Entity,
+//     >;
 
-    fn into_iter(self) -> Self::IntoIter {
-        self.entities.into_values().map(Arc::unwrap_or_clone)
-    }
-}
+//     fn into_iter(self) -> Self::IntoIter {
+//         self.entities.into_values().map(Arc::unwrap_or_clone)
+//     }
+// }
 
 impl std::fmt::Display for Entities {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

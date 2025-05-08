@@ -24,8 +24,13 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::{borrow::Borrow, sync::Arc};
 use thiserror::Error;
 
+use vstd::prelude::*;
+
+verus! {
+
 /// Represents a set of `Policy`s
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[verifier::external_derive]
 pub struct PolicySet {
     /// `templates` contains all bodies of policies in the `PolicySet`.
     /// A body is either:
@@ -44,6 +49,8 @@ pub struct PolicySet {
     /// There is a key `t` iff `templates` contains the key `t`. The value of `t` will be a (possibly empty)
     /// set of every `p` in `links` s.t. `p.template().id() == t`.
     template_to_links_map: HashMap<PolicyID, HashSet<PolicyID>>,
+}
+
 }
 
 /// A Policy Set that contains less rich information than `PolicySet`.

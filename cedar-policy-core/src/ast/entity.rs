@@ -56,6 +56,7 @@ pub static ACTION_ENTITY_TYPE: &str = "Action";
 
 verus! {
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
+#[verifier::external_derive]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 /// Entity type - can be an error type when 'tolerant-ast' feature is enabled
 pub enum EntityType {

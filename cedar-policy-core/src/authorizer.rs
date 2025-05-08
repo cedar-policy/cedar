@@ -45,6 +45,7 @@ verus! {
 
 /// Authorizer
 #[derive(Clone)] // `Debug` implemented manually below
+#[verifier::external_derive]
 pub struct Authorizer {
     /// Cedar `Extension`s which will be used during requests to this `Authorizer`
     extensions: &'static Extensions<'static>,
@@ -664,13 +665,18 @@ mod test {
     }
 }
 
+verus! {
+
 /// Authorization response returned from the `Authorizer`
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[verifier::external_derive]
 pub struct Response {
     /// Authorization decision
     pub decision: Decision,
     /// Diagnostics providing more information on how this decision was reached
     pub diagnostics: Diagnostics,
+}
+
 }
 
 /// Policy evaluation response returned from the `Authorizer`.

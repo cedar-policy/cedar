@@ -38,7 +38,7 @@ verus! {
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
 #[derive(Debug, Clone)]
-#[verifier::external_derive(Clone)]
+#[verifier::external_derive]
 pub struct Request {
     /// Principal associated with the request
     pub(crate) principal: EntityUIDEntry,
@@ -73,6 +73,7 @@ pub struct RequestType {
 /// It may either be a concrete EUID
 /// or an unknown in the case of partial evaluation
 #[derive(Debug, Clone)]
+#[verifier::external_derive]
 pub enum EntityUIDEntry {
     /// A concrete EntityUID
     Known {
