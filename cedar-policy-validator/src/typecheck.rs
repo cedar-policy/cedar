@@ -143,34 +143,52 @@ impl<'a> Typechecker<'a> {
         t: &'b Template,
     ) -> Vec<(RequestEnv<'b>, PolicyCheck)> {
         self.apply_typecheck_fn_by_request_env(t, |request_env, policy_id, expr| {
-            let mut type_errors = Vec::new();
-            let single_env_typechecker = SingleEnvTypechecker {
-                schema: self.schema,
-                extensions: self.extensions,
-                mode: self.mode,
-                policy_id,
-                request_env,
-            };
-            let empty_prior_capability = CapabilitySet::new();
-            let ans = single_env_typechecker.expect_type(
-                &empty_prior_capability,
-                expr,
-                Type::primitive_boolean(),
-                &mut type_errors,
-                |_| None,
-            );
-
-            let is_false = ans.contains_type(&Type::singleton_boolean(false));
-            match (is_false, ans.typechecked(), ans.into_typed_expr()) {
-                (false, true, None) => PolicyCheck::Fail(type_errors),
-                (false, true, Some(e)) => PolicyCheck::Success(e),
-                (false, false, _) => PolicyCheck::Fail(type_errors),
-                (true, _, Some(e)) => PolicyCheck::Irrelevant(type_errors, e),
-                // PANIC SAFETY: `is_false` implies `e` has a type implies `Some(e)`.
-                #[allow(clippy::unreachable)]
-                (true, _, None) => unreachable!(),
-            }
+            self.single_env_typechecking(request_env, policy_id, expr)
         })
+    }
+
+    fn single_env_typechecking<'b>(
+        &self,
+        request_env: &RequestEnv<'b>,
+        policy_id: &PolicyID,
+        expr: &Expr,
+    ) -> PolicyCheck {
+        let mut type_errors = Vec::new();
+        let single_env_typechecker = SingleEnvTypechecker {
+            schema: self.schema,
+            extensions: self.extensions,
+            mode: self.mode,
+            policy_id,
+            request_env,
+        };
+        let empty_prior_capability = CapabilitySet::new();
+        let ans = single_env_typechecker.expect_type(
+            &empty_prior_capability,
+            expr,
+            Type::primitive_boolean(),
+            &mut type_errors,
+            |_| None,
+        );
+
+        let is_false = ans.contains_type(&Type::singleton_boolean(false));
+        match (is_false, ans.typechecked(), ans.into_typed_expr()) {
+            (false, true, None) => PolicyCheck::Fail(type_errors),
+            (false, true, Some(e)) => PolicyCheck::Success(e),
+            (false, false, _) => PolicyCheck::Fail(type_errors),
+            (true, _, Some(e)) => PolicyCheck::Irrelevant(type_errors, e),
+            // PANIC SAFETY: `is_false` implies `e` has a type implies `Some(e)`.
+            #[allow(clippy::unreachable)]
+            (true, _, None) => unreachable!(),
+        }
+    }
+
+    /// Type check a `Template` by a single request environment
+    pub fn typecheck_by_single_request_env<'b>(
+        &'b self,
+        t: &'b Template,
+        request_env: &RequestEnv<'b>,
+    ) -> PolicyCheck {
+        self.single_env_typechecking(request_env, t.id(), &t.condition())
     }
 
     /// Apply `typecheck_fn` to the given policy in every schema-defined request
