@@ -1190,7 +1190,7 @@ mod tests {
             "permit(principal,",
             "unexpected end of input",
             "",
-            "expected identifier",
+            "expected `)` or identifier",
         );
         assert_labeled_span(
             "permit(principal,action,",
