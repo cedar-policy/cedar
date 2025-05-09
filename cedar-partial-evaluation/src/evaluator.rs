@@ -14,9 +14,9 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Evaluator<'e> {
-    request: PartialRequest,
-    entities: &'e PartialEntities,
-    extensions: &'e Extensions<'e>,
+    pub(crate) request: PartialRequest,
+    pub(crate) entities: &'e PartialEntities,
+    pub(crate) extensions: &'e Extensions<'e>,
 }
 
 impl<'e> Evaluator<'e> {
