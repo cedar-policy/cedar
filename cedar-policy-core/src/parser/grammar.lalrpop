@@ -84,7 +84,8 @@ match {
 }
 
 Comma<E>: Vec<E> = {
-    <e:E?> => e.into_iter().collect(),
+    => vec![],
+    <e:E> ","? => vec![e],
     <mut es:(<E> ",")+> <e:E> ","? => {
         es.push(e);
         es
