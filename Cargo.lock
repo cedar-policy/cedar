@@ -263,6 +263,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "cedar-partial-evaluation"
+version = "4.4.0"
+dependencies = [
+ "anyhow",
+ "cedar-policy-core",
+ "cedar-policy-validator",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "smol_str",
+]
+
+[[package]]
 name = "cedar-policy"
 version = "4.4.0"
 dependencies = [
