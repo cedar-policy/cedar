@@ -43,6 +43,22 @@ impl Annotations {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+    /// Format the annotations using a given level of base indentation
+    pub fn fmt_indented(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        base_indentation: usize,
+    ) -> std::fmt::Result {
+        let base_indent = " ".repeat(base_indentation);
+        for (k, v) in &self.0 {
+            if let Some(anno) = v {
+                writeln!(f, "{base_indent}@{k}({anno})")?
+            } else {
+                writeln!(f, "{base_indent}@{k}")?
+            }
+        }
+        Ok(())
+    }
 }
 
 impl From<Annotations> for ast::Annotations {
@@ -69,14 +85,7 @@ impl From<ast::Annotations> for Annotations {
 
 impl std::fmt::Display for Annotations {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (k, v) in &self.0 {
-            if let Some(anno) = v {
-                writeln!(f, "@{k}({anno})")?
-            } else {
-                writeln!(f, "@{k}")?
-            }
-        }
-        Ok(())
+        self.fmt_indented(f, 0)
     }
 }
 

@@ -1,0 +1,35 @@
+entity TopLevel = {
+  "obj": {
+    "nestedStr": String
+  }
+};
+
+namespace EmptyNs {
+}
+
+namespace Ns {
+  type Bar = {
+    "obj": {
+      "nestedLong": Long,
+      "nestedObj": {
+        "nestedStr": String
+      }
+    },
+    "setWithAnonymousType": Set<{
+      "key": String,
+      "val": String
+    }>
+  };
+
+  entity Resource = {
+    "bar": Bar
+  };
+
+  entity User;
+
+  action "get" appliesTo {
+    principal: [User],
+    resource: [Resource],
+    context: {}
+  };
+}
