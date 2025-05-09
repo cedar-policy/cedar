@@ -15,7 +15,11 @@
  */
 
 #[cfg(feature = "tolerant-ast")]
-use super::expr_allows_errors::AstExprErrorKind;
+use {
+    super::expr_allows_errors::AstExprErrorKind, crate::parser::err::ToASTError,
+    crate::parser::err::ToASTErrorKind,
+};
+
 use crate::{
     ast::*,
     expr_builder::{self, ExprBuilder as _},
@@ -395,6 +399,116 @@ impl<T> Expr<T> {
             ExprKind::Record(_) => Some(Type::Record),
             #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => None,
+        }
+    }
+
+    /// Converts an `Expr<V>` to `B::Expr` using the provided builder.
+    ///
+    /// Preserves source location information and recursively transforms each expression node.
+    /// Note: Data may be cloned if the source expression is retained elsewhere.
+    pub fn into_expr<V, B: expr_builder::ExprBuilder>(expr: Expr<V>) -> B::Expr
+    where
+        V: Clone,
+    {
+        let source_loc = expr.source_loc().cloned();
+        match expr.into_expr_kind() {
+            ExprKind::Lit(lit) => B::new().with_maybe_source_loc(source_loc.as_ref()).val(lit),
+            ExprKind::Var(var) => B::new().with_maybe_source_loc(source_loc.as_ref()).var(var),
+            ExprKind::Slot(slot) => B::new()
+                .with_maybe_source_loc(source_loc.as_ref())
+                .slot(slot),
+            ExprKind::Unknown(u) => B::new()
+                .with_maybe_source_loc(source_loc.as_ref())
+                .unknown(u),
+            ExprKind::If {
+                test_expr,
+                then_expr,
+                else_expr,
+            } => B::new().with_maybe_source_loc(source_loc.as_ref()).ite(
+                Expr::<V>::into_expr::<V, B>(Arc::unwrap_or_clone(test_expr)),
+                Expr::<V>::into_expr::<V, B>(Arc::unwrap_or_clone(then_expr)),
+                Expr::<V>::into_expr::<V, B>(Arc::unwrap_or_clone(else_expr)),
+            ),
+            ExprKind::And { left, right } => {
+                B::new().with_maybe_source_loc(source_loc.as_ref()).and(
+                    Expr::<V>::into_expr::<V, B>(Arc::unwrap_or_clone(left)),
+                    Expr::<V>::into_expr::<V, B>(Arc::unwrap_or_clone(right)),
+                )
+            }
+            ExprKind::Or { left, right } => B::new().with_maybe_source_loc(source_loc.as_ref()).or(
+                Expr::<V>::into_expr::<V, B>(Arc::unwrap_or_clone(left)),
+                Expr::<V>::into_expr::<V, B>(Arc::unwrap_or_clone(right)),
+            ),
+            ExprKind::UnaryApp { op, arg } => {
+                let arg = Expr::<V>::into_expr::<V, B>(Arc::unwrap_or_clone(arg));
+                B::new()
+                    .with_maybe_source_loc(source_loc.as_ref())
+                    .unary_app(op, arg)
+            }
+            ExprKind::BinaryApp { op, arg1, arg2 } => {
+                let arg1 = Expr::<V>::into_expr::<V, B>(Arc::unwrap_or_clone(arg1));
+                let arg2 = Expr::<V>::into_expr::<V, B>(Arc::unwrap_or_clone(arg2));
+                B::new()
+                    .with_maybe_source_loc(source_loc.as_ref())
+                    .binary_app(op, arg1, arg2)
+            }
+            ExprKind::ExtensionFunctionApp { fn_name, args } => {
+                let args = Arc::unwrap_or_clone(args)
+                    .into_iter()
+                    .map(|e| Expr::<V>::into_expr::<V, B>(e));
+                B::new()
+                    .with_maybe_source_loc(source_loc.as_ref())
+                    .call_extension_fn(fn_name, args)
+            }
+            ExprKind::GetAttr { expr, attr } => B::new()
+                .with_maybe_source_loc(source_loc.as_ref())
+                .get_attr(
+                    Expr::<V>::into_expr::<V, B>(Arc::unwrap_or_clone(expr)),
+                    attr,
+                ),
+            ExprKind::HasAttr { expr, attr } => B::new()
+                .with_maybe_source_loc(source_loc.as_ref())
+                .has_attr(
+                    Expr::<V>::into_expr::<V, B>(Arc::unwrap_or_clone(expr)),
+                    attr,
+                ),
+            ExprKind::Like { expr, pattern } => {
+                B::new().with_maybe_source_loc(source_loc.as_ref()).like(
+                    Expr::<V>::into_expr::<V, B>(Arc::unwrap_or_clone(expr)),
+                    pattern,
+                )
+            }
+            ExprKind::Is { expr, entity_type } => B::new()
+                .with_maybe_source_loc(source_loc.as_ref())
+                .is_entity_type(
+                    Expr::<V>::into_expr::<V, B>(Arc::unwrap_or_clone(expr)),
+                    entity_type,
+                ),
+            ExprKind::Set(set) => B::new().with_maybe_source_loc(source_loc.as_ref()).set(
+                Arc::unwrap_or_clone(set)
+                    .into_iter()
+                    .map(|e| Expr::<V>::into_expr::<V, B>(e)),
+            ),
+            // PANIC SAFETY: `map` is a map, so it will not have duplicates keys, so the `record` constructor cannot error.
+            #[allow(clippy::unwrap_used)]
+            ExprKind::Record(map) => B::new()
+                .with_maybe_source_loc(source_loc.as_ref())
+                .record(
+                    Arc::unwrap_or_clone(map)
+                        .into_iter()
+                        .map(|(k, v)| (k, Expr::<V>::into_expr::<V, B>(v))),
+                )
+                .unwrap(),
+            #[cfg(feature = "tolerant-ast")]
+            // PANIC SAFETY: error type is Infallible so can never happen
+            #[allow(clippy::unwrap_used)]
+            ExprKind::Error { .. } => B::new()
+                .with_maybe_source_loc(source_loc.as_ref())
+                .error(ParseErrors::singleton(ToASTError::new(
+                    ToASTErrorKind::ASTErrorNode,
+                    Loc::new(0..1, "AST_ERROR_NODE".into()),
+                )))
+                .unwrap(),
         }
     }
 }
@@ -793,7 +907,11 @@ impl<T: Clone> std::fmt::Display for Expr<T> {
         // To avoid code duplication between pretty-printers for AST Expr and EST Expr,
         // we just convert to EST and use the EST pretty-printer.
         // Note that converting AST->EST is lossless and infallible.
-        write!(f, "{}", crate::est::Expr::from(self.clone()))
+        write!(
+            f,
+            "{}",
+            &Expr::<T>::into_expr::<T, crate::est::Builder>(self.clone())
+        )
     }
 }
 
@@ -801,7 +919,11 @@ impl<T: Clone> BoundedDisplay for Expr<T> {
     fn fmt(&self, f: &mut impl std::fmt::Write, n: Option<usize>) -> std::fmt::Result {
         // Like the `std::fmt::Display` impl, we convert to EST and use the EST
         // pretty-printer. Note that converting AST->EST is lossless and infallible.
-        BoundedDisplay::fmt(&crate::est::Expr::from(self.clone()), f, n)
+        BoundedDisplay::fmt(
+            &Expr::<T>::into_expr::<T, crate::est::Builder>(self.clone()),
+            f,
+            n,
+        )
     }
 }
 
@@ -860,7 +982,11 @@ impl std::fmt::Display for Unknown {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Like the Display impl for Expr, we delegate to the EST pretty-printer,
         // to avoid code duplication
-        write!(f, "{}", crate::est::Expr::from(Expr::unknown(self.clone())))
+        write!(
+            f,
+            "{}",
+            Expr::<()>::into_expr::<(), crate::est::Builder>(Expr::unknown(self.clone()))
+        )
     }
 }
 
@@ -1288,7 +1414,8 @@ pub mod expression_construction_errors {
     }
 }
 
-/// A new type wrapper around `Expr` that provides `Eq` and `Hash`
+/// A
+/// new type wrapper around `Expr` that provides `Eq` and `Hash`
 /// implementations that ignore any source information or other generic data
 /// used to annotate the `Expr`.
 #[derive(Eq, Debug, Clone)]
