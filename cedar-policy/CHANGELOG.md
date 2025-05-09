@@ -28,6 +28,8 @@ Cedar Language Version: TBD
   `PolicySet`, `Policy`, and `Template`. These APIs don't retain source code information, trading detailed error
   reporting for reduced memory usage and faster parsing. The feature is only intended for use with raw parsing
   APIs, as regular parsing performance is degraded when the `raw-parsing` feature is enabled.
+- Implemented [RFC 71 (trailing commas)](https://github.com/cedar-policy/rfcs/blob/main/text/0071-trailing-commas.md)
+  for Cedar policy files. (#1606)
 
 ### Changed
 

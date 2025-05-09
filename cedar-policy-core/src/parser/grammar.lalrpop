@@ -86,7 +86,7 @@ match {
 
 Comma<E>: Vec<E> = {
     <e:E?> => e.into_iter().collect(),
-    <mut es:(<E> ",")+> <e:E> => {
+    <mut es:(<E> ",")+> <e:E> ","? => {
         es.push(e);
         es
     },
