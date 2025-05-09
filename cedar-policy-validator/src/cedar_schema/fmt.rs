@@ -30,34 +30,43 @@ use cedar_policy_core::{ast::InternalName, impl_diagnostic_from_method_on_nonemp
 /// Number of spaces of indentation per level in the Cedarschema file
 pub const NUM_INDENTATION_SPACES: usize = 2;
 
+/// Helper struct to indent Cedarschema files with `NUM_INDENTATION_SPACES` spaces at each level.
+struct BaseIndentation(String);
+
+impl BaseIndentation {
+    /// Do not use any base indentation.
+    fn none() -> Self {
+        BaseIndentation(String::new())
+    }
+
+    /// Indent base using `NUM_INDENTATION_SPACES` more than current self.
+    fn next(&self) -> Self {
+        BaseIndentation(" ".repeat(self.len() + NUM_INDENTATION_SPACES))
+    }
+
+    /// Get the length of how many spaces are used for the base indentation
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl Display for BaseIndentation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
 /// Support for formatting with a given base indentation (spaces) that should be applied after newlines.
 trait IndentedDisplay {
     fn fmt_indented(
         &self,
         f: &mut std::fmt::Formatter<'_>,
-        base_indentation: usize,
+        base_indentation: &BaseIndentation,
     ) -> std::fmt::Result;
 }
 
-/// Display Annotations (from the est package) with a given base indentation
-struct IndentedAnnotations<'a>(&'a cedar_policy_core::est::Annotations, usize);
-
-impl Display for IndentedAnnotations<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let base_indent = " ".repeat(self.1);
-        for (k, v) in &self.0 .0 {
-            if let Some(anno) = v {
-                writeln!(f, "{base_indent}@{k}({anno})")?
-            } else {
-                writeln!(f, "{base_indent}@{k}")?
-            }
-        }
-        Ok(())
-    }
-}
-
 /// Display a type supporting indentation with the given amount of base indentation
-struct Indented<'a, T: IndentedDisplay>(&'a T, usize);
+struct Indented<'a, T: IndentedDisplay>(&'a T, &'a BaseIndentation);
 
 impl<T: IndentedDisplay> Display for Indented<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -75,13 +84,13 @@ impl<N: Display> Display for json_schema::Fragment<N> {
                     f,
                     "{}namespace {ns} {{\n{}}}",
                     def.annotations,
-                    Indented(def, NUM_INDENTATION_SPACES)
+                    Indented(def, &BaseIndentation::none().next())
                 )?,
             }
 
             // extra newline to separate namespaces
             if i < (self.0.len() - 1) {
-                write!(f, "\n")?
+                writeln!(f)?
             }
         }
         Ok(())
@@ -90,7 +99,7 @@ impl<N: Display> Display for json_schema::Fragment<N> {
 
 impl<N: Display> Display for json_schema::NamespaceDefinition<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.fmt_indented(f, 0)
+        self.fmt_indented(f, &BaseIndentation::none())
     }
 }
 
@@ -98,48 +107,46 @@ impl<N: Display> IndentedDisplay for json_schema::NamespaceDefinition<N> {
     fn fmt_indented(
         &self,
         f: &mut std::fmt::Formatter<'_>,
-        base_indentation: usize,
+        base_indentation: &BaseIndentation,
     ) -> std::fmt::Result {
         let total_len = self.common_types.len() + self.entity_types.len() + self.actions.len();
 
-        let base_indent = " ".repeat(base_indentation);
-
         for (i, (n, ty)) in self.common_types.iter().enumerate() {
+            ty.annotations.fmt_indented(f, base_indentation.len())?;
             writeln!(
                 f,
-                "{}{base_indent}type {n} = {};",
-                IndentedAnnotations(&ty.annotations, base_indentation),
+                "{base_indentation}type {n} = {};",
                 Indented(&ty.ty, base_indentation)
             )?;
 
             if i < (total_len - 1) {
                 // only skip writing an extra newline if this is the last of all items
-                write!(f, "\n")?
+                writeln!(f)?
             }
         }
         for (i, (n, ty)) in self.entity_types.iter().enumerate() {
+            ty.annotations.fmt_indented(f, base_indentation.len())?;
             writeln!(
                 f,
-                "{}{base_indent}entity {n}{};",
-                IndentedAnnotations(&ty.annotations, base_indentation),
+                "{base_indentation}entity {n}{};",
                 Indented(ty, base_indentation)
             )?;
 
             if self.common_types.len() + i < (total_len - 1) {
-                write!(f, "\n")?
+                writeln!(f)?
             }
         }
         for (i, (n, a)) in self.actions.iter().enumerate() {
+            a.annotations.fmt_indented(f, base_indentation.len())?;
             writeln!(
                 f,
-                "{}{base_indent}action \"{}\"{};",
-                IndentedAnnotations(&a.annotations, base_indentation),
+                "{base_indentation}action \"{}\"{};",
                 n.escape_debug(),
                 Indented(a, base_indentation)
             )?;
 
             if self.common_types.len() + self.entity_types.len() + i < (total_len - 1) {
-                write!(f, "\n")?
+                writeln!(f)?
             }
         }
         Ok(())
@@ -148,7 +155,7 @@ impl<N: Display> IndentedDisplay for json_schema::NamespaceDefinition<N> {
 
 impl<N: Display> Display for json_schema::Type<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.fmt_indented(f, 0)
+        self.fmt_indented(f, &BaseIndentation::none())
     }
 }
 
@@ -156,7 +163,7 @@ impl<N: Display> IndentedDisplay for json_schema::Type<N> {
     fn fmt_indented(
         &self,
         f: &mut std::fmt::Formatter<'_>,
-        base_indentation: usize,
+        base_indentation: &BaseIndentation,
     ) -> std::fmt::Result {
         match self {
             json_schema::Type::Type { ty, .. } => match ty {
@@ -182,25 +189,27 @@ impl<N: Display> IndentedDisplay for json_schema::RecordType<N> {
     fn fmt_indented(
         &self,
         f: &mut std::fmt::Formatter<'_>,
-        base_indentation: usize,
+        base_indentation: &BaseIndentation,
     ) -> std::fmt::Result {
         // Record members are indented two spaces more than the base
-        let member_indentation = base_indentation + NUM_INDENTATION_SPACES;
-        let member_indent = " ".repeat(member_indentation);
+        let member_indentation = base_indentation.next();
 
         // Don't write a newline here, as there might not be attributes, and then we want just "{}"
         write!(f, "{{")?;
         for (i, (n, ty)) in self.attributes.iter().enumerate() {
             if i == 0 {
-                write!(f, "\n")?;
+                writeln!(f)?;
             }
+            ty.annotations.fmt_indented(f, member_indentation.len())?;
             writeln!(
                 f,
-                "{}{member_indent}\"{}\"{}: {}{}",
-                IndentedAnnotations(&ty.annotations, member_indentation),
+                "{member_indentation}\"{}\"{}: {}{}",
                 n.escape_debug(),
                 if ty.required { "" } else { "?" },
-                Indented(&ty.ty, member_indentation),
+                Indented(&ty.ty, &member_indentation),
+                // TODO: Always print trailing commas when
+                // https://github.com/cedar-policy/rfcs/blob/main/text/0071-trailing-commas.md
+                // has been implemented
                 if i < (self.attributes.len() - 1) {
                     ","
                 } else {
@@ -208,8 +217,7 @@ impl<N: Display> IndentedDisplay for json_schema::RecordType<N> {
                 }
             )?;
         }
-        let base_indent = " ".repeat(base_indentation);
-        write!(f, "{base_indent}}}")?;
+        write!(f, "{base_indentation}}}")?;
         Ok(())
     }
 }
@@ -227,7 +235,7 @@ fn fmt_non_empty_slice<T: Display>(
 
 impl<N: Display> Display for json_schema::EntityType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.fmt_indented(f, 0)
+        self.fmt_indented(f, &BaseIndentation::none())
     }
 }
 
@@ -235,7 +243,7 @@ impl<N: Display> IndentedDisplay for json_schema::EntityType<N> {
     fn fmt_indented(
         &self,
         f: &mut std::fmt::Formatter<'_>,
-        base_indentation: usize,
+        base_indentation: &BaseIndentation,
     ) -> std::fmt::Result {
         match &self.kind {
             json_schema::EntityTypeKind::Standard(ty) => ty.fmt_indented(f, base_indentation),
@@ -253,7 +261,7 @@ impl<N: Display> IndentedDisplay for json_schema::EntityType<N> {
 
 impl<N: Display> Display for json_schema::StandardEntityType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.fmt_indented(f, 0)
+        self.fmt_indented(f, &BaseIndentation::none())
     }
 }
 
@@ -261,7 +269,7 @@ impl<N: Display> IndentedDisplay for json_schema::StandardEntityType<N> {
     fn fmt_indented(
         &self,
         f: &mut std::fmt::Formatter<'_>,
-        base_indentation: usize,
+        base_indentation: &BaseIndentation,
     ) -> std::fmt::Result {
         if let Some(non_empty) = self.member_of_types.split_first() {
             write!(f, " in ")?;
@@ -284,7 +292,7 @@ impl<N: Display> IndentedDisplay for json_schema::StandardEntityType<N> {
 
 impl<N: Display> Display for json_schema::ActionType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.fmt_indented(f, 0)
+        self.fmt_indented(f, &BaseIndentation::none())
     }
 }
 
@@ -292,7 +300,7 @@ impl<N: Display> IndentedDisplay for json_schema::ActionType<N> {
     fn fmt_indented(
         &self,
         f: &mut std::fmt::Formatter<'_>,
-        base_indentation: usize,
+        base_indentation: &BaseIndentation,
     ) -> std::fmt::Result {
         if let Some(parents) = self.member_of.as_ref().and_then(|refs| refs.split_first()) {
             write!(f, " in ")?;
@@ -311,7 +319,7 @@ impl<N: Display> IndentedDisplay for json_schema::ActionType<N> {
                 }
                 // Both list are non empty
                 (Some(ps), Some(rs)) => {
-                    let member_indent = " ".repeat(base_indentation + NUM_INDENTATION_SPACES);
+                    let member_indent = base_indentation.next();
                     write!(f, " appliesTo {{")?;
                     write!(f, "\n{member_indent}principal: ")?;
                     fmt_non_empty_slice(f, ps)?;
@@ -319,8 +327,7 @@ impl<N: Display> IndentedDisplay for json_schema::ActionType<N> {
                     fmt_non_empty_slice(f, rs)?;
                     write!(f, ",\n{member_indent}context: {}", &spec.context.0)?;
 
-                    let base_indent = " ".repeat(base_indentation);
-                    write!(f, "\n{base_indent}}}")?;
+                    write!(f, "\n{base_indentation}}}")?;
                 }
             }
         }
