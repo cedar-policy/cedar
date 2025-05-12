@@ -125,11 +125,57 @@ pub fn parse_ejson(e: EntityJson, schema: &ValidatorSchema) -> anyhow::Result<Pa
         })
         .transpose()?;
 
+    let ancestors = e
+        .parents
+        .map(|parents| {
+            parents
+                .into_iter()
+                .map(|parent| {
+                    Ok(
+                        parent.into_euid(|| JsonDeserializationErrorContext::EntityParents {
+                            uid: uid.clone(),
+                        })?,
+                    )
+                })
+                .collect::<anyhow::Result<HashSet<_>>>()
+        })
+        .transpose()?;
+
+    let tags = e
+        .tags
+        .map(|m| {
+            m.map
+                .into_iter()
+                .map(|(k, v)| {
+                    if let Some(ty) = core_schema.entity_type(uid.entity_type()) {
+                        Ok((
+                            k.clone(),
+                            eval.interpret(
+                                vparser
+                                    .val_into_restricted_expr(
+                                        v.into(),
+                                        ty.tag_type().as_ref(),
+                                        || JsonDeserializationErrorContext::EntityAttribute {
+                                            uid: uid.clone(),
+                                            attr: k.clone(),
+                                        },
+                                    )?
+                                    .as_borrowed(),
+                            )?,
+                        ))
+                    } else {
+                        Err(anyhow::anyhow!("unknown entity type"))
+                    }
+                })
+                .collect::<anyhow::Result<BTreeMap<_, _>>>()
+        })
+        .transpose()?;
+
     Ok(PartialEntity {
         uid,
         attrs,
-        ancestors: todo!(),
-        tags: todo!(),
+        ancestors,
+        tags,
     })
 }
 
@@ -207,6 +253,32 @@ impl PartialEntity {
     }
 }
 
+// Validate if parents are well-formed
+// i.e., if parents of any parent of a `PartialEntity` should not be unknown
+// This ensures that we can always compute a TC for entities with concrete
+// parents
+pub(crate) fn validate_parents(entities: &HashMap<EntityUID, PartialEntity>) -> anyhow::Result<()> {
+    for e in entities.values() {
+        match e.ancestors.as_ref() {
+            Some(ancestors) => {
+                for ancestor in ancestors {
+                    if let Some(ancestor_entity) = entities.get(ancestor) {
+                        if ancestor_entity.ancestors.is_none() {
+                            return Err(anyhow::anyhow!(
+                                "{} has invalid ancestor {}",
+                                e.uid,
+                                ancestor
+                            ));
+                        }
+                    }
+                }
+            }
+            None => {}
+        }
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PartialEntities {
     /// Important internal invariant: for any `Entities` object that exists,
@@ -217,6 +289,25 @@ pub struct PartialEntities {
 impl PartialEntities {
     pub(crate) fn compute_tc(&mut self) -> anyhow::Result<()> {
         Ok(compute_tc(&mut self.entities, true)?)
+    }
+
+    pub fn from_json_value(
+        value: serde_json::Value,
+        schema: &ValidatorSchema,
+    ) -> anyhow::Result<Self> {
+        let entities: Vec<EntityJson> = serde_json::from_value(value)
+            .map_err(|e| anyhow::anyhow!("failed to parse entities: {}", e))?;
+        let mut partial_entities = PartialEntities::default();
+        for e in entities {
+            let partial_entity = parse_ejson(e, schema)?;
+            partial_entity.validate(schema)?;
+            partial_entities
+                .entities
+                .insert(partial_entity.uid.clone(), partial_entity);
+        }
+        validate_parents(&partial_entities.entities)?;
+        partial_entities.compute_tc()?;
+        Ok(partial_entities)
     }
 }
 
@@ -237,7 +328,7 @@ mod tests {
                 "tags" : null,
             }
         );
-        let ejson: EntityJson = serde_json::from_value(json).expect("should parse");
+        let _: EntityJson = serde_json::from_value(json).expect("should parse");
     }
 
     #[test]
