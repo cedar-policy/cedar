@@ -14,10 +14,38 @@
  * limitations under the License.
  */
 
+//! Extra utilties for Verus verification
+
 use smol_str::SmolStr;
-/// Extra utilties for Verus verification
-///
+
+#[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
+
+
+
+// Specification macros
+
+macro_rules! clone_spec_for {
+    ($type:ty) => {
+        verus! {
+            pub assume_specification[ <$type as Clone>::clone ](this: &$type) -> (other: $type)
+                ensures this@ == other@;
+        }
+    };
+}
+pub(crate) use clone_spec_for;
+
+macro_rules! empty_clone_spec_for {
+    ($type:ty) => {
+        verus! {
+            pub assume_specification[ <$type as Clone>::clone ](this: &$type) -> (other: $type);
+        }
+    };
+}
+pub(crate) use empty_clone_spec_for;
+
+
+
 
 // Specifications for external types
 

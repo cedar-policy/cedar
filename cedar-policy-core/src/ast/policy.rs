@@ -32,6 +32,9 @@ use thiserror::Error;
 
 use vstd::prelude::*;
 
+#[macro_use]
+use crate::verus_utils::*;
+
 #[cfg(feature = "wasm")]
 extern crate tsify;
 

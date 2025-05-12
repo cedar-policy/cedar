@@ -571,7 +571,7 @@ impl PolicySet {
 
     verus! {
 
-    // /// Like `PolicySet::policies()` but explicit about the value type for Verus
+    /// Like `PolicySet::policies()` but explicit about the value type for Verus
     #[verifier::external_body]
     pub fn policies_iter(&self) -> std::collections::hash_map::Values<'_, PolicyID, Policy> {
         self.links.values()
