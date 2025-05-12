@@ -19,6 +19,8 @@ use std::collections::HashMap;
 use either::Either;
 use std::sync::Arc;
 
+use vstd::prelude::*;
+
 use super::{
     Annotations, AuthorizationError, Decision, Effect, EntityUIDEntry, Expr, Policy, Request,
     Response,
@@ -49,12 +51,15 @@ pub enum ErrorState {
     Error,
 }
 
+verus! {
+
 /// A partially evaluated authorization response.
 /// Splits the results into several categories: satisfied, false, and residual for each policy effect.
 /// Also tracks all the errors that were encountered during evaluation.
 /// This structure currently has to own all of the `PolicyID` objects due to the [`Self::reauthorize`]
 /// method. If [`PolicySet`] could borrow its PolicyID/contents then this whole structured could be borrowed.
 #[derive(Debug, Clone)]
+#[verifier::external_derive]
 pub struct PartialResponse {
     /// All of the [`Effect::Permit`] policies that were satisfied
     pub satisfied_permits: HashMap<PolicyID, Arc<Annotations>>,
@@ -78,6 +83,8 @@ pub struct PartialResponse {
     #[cfg(feature = "partial-eval")]
     request: Arc<Request>,
 }
+
+} // verus!
 
 impl PartialResponse {
     /// Create a partial response from each of the policy result categories
@@ -107,10 +114,14 @@ impl PartialResponse {
         }
     }
 
+    verus! {
+
     /// Convert this response into a concrete evaluation response.
     /// All residuals are treated as errors
     pub fn concretize(self) -> Response {
         self.into()
+    }
+
     }
 
     /// Attempt to reach a partial decision; the presence of residuals may result in returning [`None`],

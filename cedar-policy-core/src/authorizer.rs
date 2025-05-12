@@ -93,7 +93,7 @@ impl Authorizer {
         self.is_authorized_core(q, pset, entities).concretize()
     }
 
-    }
+
 
     /// Returns an authorization response for `q` with respect to the given `Slice`.
     /// Partial Evaluation of is_authorized
@@ -107,6 +107,7 @@ impl Authorizer {
         let eval = Evaluator::new(q.clone(), entities, self.extensions);
         self.is_authorized_core_internal(&eval, q, pset)
     }
+
 
     /// The same as is_authorized_core, but for any Evaluator.
     /// A PartialResponse caller constructs its own evaluator, with an unknown mapper function.
@@ -124,7 +125,8 @@ impl Authorizer {
         let mut residual_forbids = vec![];
         let mut errors = vec![];
 
-        for p in pset.policies() {
+        // Verus doesn't support iterators for `PolicySet` here
+        for p in iter: pset.policies_iter() {
             let (id, annotations) = (p.id().clone(), p.annotations_arc().clone());
             match eval.partial_evaluate(p) {
                 Ok(Either::Left(satisfied)) => match (satisfied, p.effect()) {
@@ -178,6 +180,9 @@ impl Authorizer {
             Arc::new(q),
         )
     }
+
+
+    } // verus!
 }
 
 impl Default for Authorizer {

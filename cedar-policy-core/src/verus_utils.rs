@@ -25,6 +25,7 @@ verus! {
 
 #[verifier::external_type_specification]
 #[verifier::external_body]
+#[derive(Debug)]
 pub struct ExSmolStr(SmolStr);
 
 pub assume_specification [<SmolStr as Clone>::clone](s: &SmolStr) -> (res: SmolStr)

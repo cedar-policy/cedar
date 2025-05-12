@@ -30,6 +30,8 @@ use std::{
 };
 use thiserror::Error;
 
+use vstd::prelude::*;
+
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
@@ -399,6 +401,8 @@ fn describe_arity_error(
     }
 }
 
+verus! {
+
 /// A Policy that contains:
 ///   - a pointer to its template
 ///   - a link ID (unless it's a static policy)
@@ -407,6 +411,7 @@ fn describe_arity_error(
 /// Policies are not serializable (due to the pointer), and can be serialized
 /// by converting to/from LiteralPolicy
 #[derive(Debug, Clone, Eq, PartialEq)]
+#[verifier::external_derive]
 pub struct Policy {
     /// Reference to the template
     template: Arc<Template>,
@@ -421,6 +426,8 @@ pub struct Policy {
     /// The constructor `new` is only visible in this module,
     /// so it is the responsibility of callers to maintain
     values: HashMap<SlotId, EntityUID>,
+}
+
 }
 
 impl Policy {
@@ -1871,9 +1878,14 @@ impl std::fmt::Display for StaticPolicy {
     }
 }
 
+verus! {
+
 /// A unique identifier for a policy statement
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+#[verifier::external_derive]
 pub struct PolicyID(SmolStr);
+
+} // verus!
 
 impl PolicyID {
     /// Create a PolicyID from a string or string-like

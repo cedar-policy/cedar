@@ -569,6 +569,16 @@ impl PolicySet {
         self.links.values()
     }
 
+    verus! {
+
+    // /// Like `PolicySet::policies()` but explicit about the value type for Verus
+    #[verifier::external_body]
+    pub fn policies_iter(&self) -> std::collections::hash_map::Values<'_, PolicyID, Policy> {
+        self.links.values()
+    }
+
+    }
+
     /// Consume the `PolicySet`, producing an iterator of all the policies in it
     pub fn into_policies(self) -> impl Iterator<Item = Policy> {
         self.links.into_values()

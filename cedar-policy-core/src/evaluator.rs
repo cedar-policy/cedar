@@ -35,6 +35,8 @@ use itertools::{Either, Itertools};
 use nonempty::nonempty;
 use smol_str::SmolStr;
 
+use vstd::prelude::verus;
+
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 
 #[cfg(feature = "partial-eval")]
@@ -190,6 +192,8 @@ pub fn binary_arith(op: BinaryOp, arg1: Value, arg2: Value, loc: Option<&Loc>) -
     }
 }
 
+verus! {
+
 /// Evaluator object.
 ///
 /// Conceptually keeps the evaluation environment as part of its internal state,
@@ -216,6 +220,9 @@ pub struct Evaluator<'e> {
     #[cfg(feature = "partial-eval")]
     unknowns_mapper: UnknownsMapper<'e>,
 }
+
+
+} // verus!
 
 /// Evaluator for "restricted" expressions. See notes on `RestrictedExpr`.
 #[derive(Debug)]
@@ -340,9 +347,12 @@ pub(crate) fn valid_comparison_op_types(extensions: &Extensions<'_>) -> nonempty
 }
 
 impl<'e> Evaluator<'e> {
+    verus! {
+
     /// Create a fresh `Evaluator` for the given `request`, which uses the given
     /// `Entities` to resolve entity references. Use the given `Extension`s when
     /// evaluating.
+    #[verifier::external_body]
     pub fn new(q: Request, entities: &'e Entities, extensions: &'e Extensions<'e>) -> Self {
         Self {
             principal: q.principal,
@@ -360,6 +370,8 @@ impl<'e> Evaluator<'e> {
             unknowns_mapper: Box::new(|_: &str| -> Option<Value> { None }),
         }
     }
+
+    } // verus!
 
     // Constructs an Evaluator for a given unknowns mapper function.
     #[cfg(feature = "partial-eval")]
