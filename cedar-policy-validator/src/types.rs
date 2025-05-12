@@ -522,7 +522,7 @@ impl Type {
     ///
     /// TODO(#437): Handling of `Unknown`s is not yet complete and doesn't
     /// properly behave according to the above description, as of this writing.
-    pub(crate) fn typecheck_partial_value(
+    pub fn typecheck_partial_value(
         &self,
         value: &PartialValue,
         extensions: &Extensions<'_>,

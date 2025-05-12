@@ -19,6 +19,9 @@ pub fn tpe(
     if !p.is_static() {
         return Err(anyhow!("policy must be static"));
     }
+    if request.validate_request(schema).is_err() {
+        return Err(anyhow!("request is not valid"));
+    }
     let env = request.find_request_env(schema)?;
     let tc = Typechecker::new(schema, cedar_policy_validator::ValidationMode::Strict);
     let t = p.template();
