@@ -19,12 +19,29 @@ use std::{
     sync::Arc,
 };
 
+use anyhow::Ok;
+use cedar_policy_core::entities::{
+    conformance::{
+        err::{EntitySchemaConformanceError, UnexpectedEntityTypeError},
+        validate_euid,
+    },
+    EntityTypeDescription,
+};
+use cedar_policy_core::{
+    ast::PartialValue,
+    entities::{conformance::EntitySchemaConformanceChecker, Schema},
+};
 use cedar_policy_core::{
     ast::{EntityUID, Value},
-    entities::EntityUidJson,
+    entities::{
+        json::{err::JsonDeserializationErrorContext, ValueParser},
+        EntityUidJson,
+    },
+    evaluator::RestrictedEvaluator,
+    extensions::Extensions,
     jsonvalue::JsonValueWithNoDuplicateKeys,
-    transitive_closure::TCNode,
 };
+use cedar_policy_validator::{CoreSchema, ValidatorSchema};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
@@ -70,12 +87,97 @@ pub struct PartialEntity {
     pub tags: Option<BTreeMap<SmolStr, Value>>,
 }
 
+pub fn parse_ejson(e: EntityJson, schema: &ValidatorSchema) -> anyhow::Result<PartialEntity> {
+    //TODO: parse action
+    let uid = e
+        .uid
+        .into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
+    let core_schema = CoreSchema::new(schema);
+    let vparser = ValueParser::new(Extensions::all_available());
+    let eval = RestrictedEvaluator::new(Extensions::all_available());
+    let attrs = e
+        .attrs
+        .map(|m| {
+            m.map
+                .into_iter()
+                .map(|(k, v)| {
+                    if let Some(ty) = core_schema.entity_type(uid.entity_type()) {
+                        Ok((
+                            k.clone(),
+                            eval.interpret(
+                                vparser
+                                    .val_into_restricted_expr(
+                                        v.into(),
+                                        ty.attr_type(&k).as_ref(),
+                                        || JsonDeserializationErrorContext::EntityAttribute {
+                                            uid: uid.clone(),
+                                            attr: k.clone(),
+                                        },
+                                    )?
+                                    .as_borrowed(),
+                            )?,
+                        ))
+                    } else {
+                        Err(anyhow::anyhow!("unknown entity type"))
+                    }
+                })
+                .collect::<anyhow::Result<BTreeMap<_, _>>>()
+        })
+        .transpose()?;
+
+    Ok(PartialEntity {
+        uid,
+        attrs,
+        ancestors: todo!(),
+        tags: todo!(),
+    })
+}
+
 impl PartialEntity {
     pub(crate) fn add_ancestor(&mut self, uid: EntityUID) {
         self.ancestors
             .as_mut()
             .expect("should not be unknown")
             .insert(uid);
+    }
+
+    pub(crate) fn validate(&self, schema: &ValidatorSchema) -> anyhow::Result<()> {
+        //TODO: validate action
+        let core_schema = CoreSchema::new(schema);
+        let uid = &self.uid;
+        let etype = uid.entity_type();
+
+        validate_euid(&core_schema, uid)
+            .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
+        let schema_etype = core_schema.entity_type(etype).ok_or_else(|| {
+            let suggested_types = core_schema
+                .entity_types_with_basename(&etype.name().basename())
+                .collect();
+            UnexpectedEntityTypeError {
+                uid: uid.clone(),
+                suggested_types,
+            }
+        })?;
+        let checker =
+            EntitySchemaConformanceChecker::new(&core_schema, Extensions::all_available());
+        if let Some(ancestors) = &self.ancestors {
+            checker.validate_entity_ancestors(uid, ancestors.into_iter(), &schema_etype)?;
+        }
+        if let Some(attrs) = &self.attrs {
+            let attrs: BTreeMap<_, PartialValue> = attrs
+                .into_iter()
+                .map(|(a, v)| (a.clone(), v.clone().into()))
+                .collect();
+            checker.validate_entity_attributes(uid, attrs.iter(), &schema_etype)?;
+        }
+        if let Some(tags) = &self.tags {
+            let tags: BTreeMap<_, PartialValue> = tags
+                .into_iter()
+                .map(|(a, v)| (a.clone(), v.clone().into()))
+                .collect();
+            checker.validate_tags(uid, tags.iter(), &schema_etype)?;
+        }
+        Ok(())
     }
 }
 
