@@ -63,18 +63,16 @@ impl PartialRequest {
     pub(crate) fn validate_request(&self, schema: &ValidatorSchema) -> anyhow::Result<()> {
         let env = self.find_request_env(schema)?;
         let core_schema = CoreSchema::new(schema);
-        if let std::result::Result::Ok(principal) = self.principal.clone().try_into() {
-            validate_euid(&core_schema, &principal)?;
+        if let Some(action_id) = schema.get_action_id(&self.action) {
+            if !action_id.is_applicable_principal_type(&self.principal.ty) {
+                return Err(anyhow::anyhow!("principal type not applicable"));
+            }
+            if !action_id.is_applicable_resource_type(&self.resource.ty) {
+                return Err(anyhow::anyhow!("resource type not applicable"));
+            }
+            Ok(())
+        } else {
+            return Err(anyhow::anyhow!("action not found"));
         }
-        if let std::result::Result::Ok(resource) = self.resource.clone().try_into() {
-            validate_euid(&core_schema, &resource)?;
-        }
-        if env.action_entity_uid() != Some(&self.action) {
-            return Err(anyhow::anyhow!("action entity uid does not match"));
-        }
-        if let Some(context) = &self.context {
-            todo!()
-        }
-        Ok(())
     }
 }
