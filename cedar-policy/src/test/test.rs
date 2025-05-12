@@ -2207,6 +2207,14 @@ action "g" appliesTo {
             r#"E::"""#.parse().unwrap(),
             std::iter::empty(),
             std::iter::empty(),
+            std::iter::once(("".to_owned(), RestrictedExpression::new_string("".into()))),
+        )
+        .unwrap();
+        assert_matches!(Entities::from_entities([entity], Some(&schema)), Ok(_));
+        let entity = Entity::new_with_tags(
+            r#"E::"""#.parse().unwrap(),
+            std::iter::empty(),
+            std::iter::empty(),
             std::iter::once(("".to_owned(), RestrictedExpression::new_long(42))),
         )
         .unwrap();
@@ -2227,6 +2235,14 @@ action "g" appliesTo {
         ",
         )
         .unwrap();
+        let entity = Entity::new_with_tags(
+            r#"E::"""#.parse().unwrap(),
+            std::iter::empty(),
+            std::iter::empty(),
+            std::iter::empty(),
+        )
+        .unwrap();
+        assert_matches!(Entities::from_entities([entity], Some(&schema)), Ok(_),);
         let entity = Entity::new_with_tags(
             r#"E::"""#.parse().unwrap(),
             std::iter::empty(),
