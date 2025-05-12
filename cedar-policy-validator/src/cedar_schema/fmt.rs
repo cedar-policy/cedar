@@ -27,12 +27,70 @@ use thiserror::Error;
 use crate::{json_schema, RawName};
 use cedar_policy_core::{ast::InternalName, impl_diagnostic_from_method_on_nonempty_field};
 
+/// Number of spaces of indentation per level in the Cedarschema file
+pub const NUM_INDENTATION_SPACES: usize = 2;
+
+/// Helper struct to indent Cedarschema files with `NUM_INDENTATION_SPACES` spaces at each level.
+struct BaseIndentation(String);
+
+impl BaseIndentation {
+    /// Do not use any base indentation.
+    fn none() -> Self {
+        BaseIndentation(String::new())
+    }
+
+    /// Indent base using `NUM_INDENTATION_SPACES` more than current self.
+    fn next(&self) -> Self {
+        BaseIndentation(" ".repeat(self.len() + NUM_INDENTATION_SPACES))
+    }
+
+    /// Get the length of how many spaces are used for the base indentation
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl Display for BaseIndentation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Support for formatting with a given base indentation (spaces) that should be applied after newlines.
+trait IndentedDisplay {
+    fn fmt_indented(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        base_indentation: &BaseIndentation,
+    ) -> std::fmt::Result;
+}
+
+/// Display a type supporting indentation with the given amount of base indentation
+struct Indented<'a, T: IndentedDisplay>(&'a T, &'a BaseIndentation);
+
+impl<T: IndentedDisplay> Display for Indented<'_, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt_indented(f, self.1)
+    }
+}
+
 impl<N: Display> Display for json_schema::Fragment<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (ns, def) in &self.0 {
+        for (i, (ns, def)) in self.0.iter().enumerate() {
             match ns {
-                None => write!(f, "{def}")?,
-                Some(ns) => write!(f, "{}namespace {ns} {{\n{}}}\n", def.annotations, def)?,
+                // Invariant: NamespaceDefinition always prints a newline in the end
+                None => def.fmt(f)?,
+                Some(ns) => writeln!(
+                    f,
+                    "{}namespace {ns} {{\n{}}}",
+                    def.annotations,
+                    Indented(def, &BaseIndentation::none().next())
+                )?,
+            }
+
+            // extra newline to separate namespaces
+            if i < (self.0.len() - 1) {
+                writeln!(f)?
             }
         }
         Ok(())
@@ -41,14 +99,55 @@ impl<N: Display> Display for json_schema::Fragment<N> {
 
 impl<N: Display> Display for json_schema::NamespaceDefinition<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (n, ty) in &self.common_types {
-            writeln!(f, "{}type {n} = {};", ty.annotations, ty.ty)?
+        self.fmt_indented(f, &BaseIndentation::none())
+    }
+}
+
+impl<N: Display> IndentedDisplay for json_schema::NamespaceDefinition<N> {
+    fn fmt_indented(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        base_indentation: &BaseIndentation,
+    ) -> std::fmt::Result {
+        let total_len = self.common_types.len() + self.entity_types.len() + self.actions.len();
+
+        for (i, (n, ty)) in self.common_types.iter().enumerate() {
+            ty.annotations.fmt_indented(f, base_indentation.len())?;
+            writeln!(
+                f,
+                "{base_indentation}type {n} = {};",
+                Indented(&ty.ty, base_indentation)
+            )?;
+
+            if i < (total_len - 1) {
+                // only skip writing an extra newline if this is the last of all items
+                writeln!(f)?
+            }
         }
-        for (n, ty) in &self.entity_types {
-            writeln!(f, "{}entity {n}{};", ty.annotations, ty)?
+        for (i, (n, ty)) in self.entity_types.iter().enumerate() {
+            ty.annotations.fmt_indented(f, base_indentation.len())?;
+            writeln!(
+                f,
+                "{base_indentation}entity {n}{};",
+                Indented(ty, base_indentation)
+            )?;
+
+            if self.common_types.len() + i < (total_len - 1) {
+                writeln!(f)?
+            }
         }
-        for (n, a) in &self.actions {
-            writeln!(f, "{}action \"{}\"{};", a.annotations, n.escape_debug(), a)?
+        for (i, (n, a)) in self.actions.iter().enumerate() {
+            a.annotations.fmt_indented(f, base_indentation.len())?;
+            writeln!(
+                f,
+                "{base_indentation}action \"{}\"{};",
+                n.escape_debug(),
+                Indented(a, base_indentation)
+            )?;
+
+            if self.common_types.len() + self.entity_types.len() + i < (total_len - 1) {
+                writeln!(f)?
+            }
         }
         Ok(())
     }
@@ -56,6 +155,16 @@ impl<N: Display> Display for json_schema::NamespaceDefinition<N> {
 
 impl<N: Display> Display for json_schema::Type<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.fmt_indented(f, &BaseIndentation::none())
+    }
+}
+
+impl<N: Display> IndentedDisplay for json_schema::Type<N> {
+    fn fmt_indented(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        base_indentation: &BaseIndentation,
+    ) -> std::fmt::Result {
         match self {
             json_schema::Type::Type { ty, .. } => match ty {
                 json_schema::TypeVariant::Boolean => write!(f, "__cedar::Bool"),
@@ -65,8 +174,10 @@ impl<N: Display> Display for json_schema::Type<N> {
                 }
                 json_schema::TypeVariant::Extension { name } => write!(f, "__cedar::{name}"),
                 json_schema::TypeVariant::Long => write!(f, "__cedar::Long"),
-                json_schema::TypeVariant::Record(rty) => write!(f, "{rty}"),
-                json_schema::TypeVariant::Set { element } => write!(f, "Set < {element} >"),
+                json_schema::TypeVariant::Record(rty) => rty.fmt_indented(f, base_indentation),
+                json_schema::TypeVariant::Set { element } => {
+                    write!(f, "Set<{}>", Indented(element.as_ref(), base_indentation))
+                } // It is possible to do Set<{"foo": String}>
                 json_schema::TypeVariant::String => write!(f, "__cedar::String"),
             },
             json_schema::Type::CommonTypeRef { type_name, .. } => write!(f, "{type_name}"),
@@ -74,23 +185,39 @@ impl<N: Display> Display for json_schema::Type<N> {
     }
 }
 
-impl<N: Display> Display for json_schema::RecordType<N> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<N: Display> IndentedDisplay for json_schema::RecordType<N> {
+    fn fmt_indented(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        base_indentation: &BaseIndentation,
+    ) -> std::fmt::Result {
+        // Record members are indented two spaces more than the base
+        let member_indentation = base_indentation.next();
+
+        // Don't write a newline here, as there might not be attributes, and then we want just "{}"
         write!(f, "{{")?;
         for (i, (n, ty)) in self.attributes.iter().enumerate() {
-            write!(
+            if i == 0 {
+                writeln!(f)?;
+            }
+            ty.annotations.fmt_indented(f, member_indentation.len())?;
+            writeln!(
                 f,
-                "{}\"{}\"{}: {}",
-                ty.annotations,
+                "{member_indentation}\"{}\"{}: {}{}",
                 n.escape_debug(),
                 if ty.required { "" } else { "?" },
-                ty.ty
+                Indented(&ty.ty, &member_indentation),
+                // TODO: Always print trailing commas when
+                // https://github.com/cedar-policy/rfcs/blob/main/text/0071-trailing-commas.md
+                // has been implemented
+                if i < (self.attributes.len() - 1) {
+                    ","
+                } else {
+                    ""
+                }
             )?;
-            if i < (self.attributes.len() - 1) {
-                writeln!(f, ", ")?;
-            }
         }
-        write!(f, "}}")?;
+        write!(f, "{base_indentation}}}")?;
         Ok(())
     }
 }
@@ -108,8 +235,18 @@ fn fmt_non_empty_slice<T: Display>(
 
 impl<N: Display> Display for json_schema::EntityType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.fmt_indented(f, &BaseIndentation::none())
+    }
+}
+
+impl<N: Display> IndentedDisplay for json_schema::EntityType<N> {
+    fn fmt_indented(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        base_indentation: &BaseIndentation,
+    ) -> std::fmt::Result {
         match &self.kind {
-            json_schema::EntityTypeKind::Standard(ty) => ty.fmt(f),
+            json_schema::EntityTypeKind::Standard(ty) => ty.fmt_indented(f, base_indentation),
             json_schema::EntityTypeKind::Enum { choices } => write!(
                 f,
                 " enum [{}]",
@@ -124,6 +261,16 @@ impl<N: Display> Display for json_schema::EntityType<N> {
 
 impl<N: Display> Display for json_schema::StandardEntityType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.fmt_indented(f, &BaseIndentation::none())
+    }
+}
+
+impl<N: Display> IndentedDisplay for json_schema::StandardEntityType<N> {
+    fn fmt_indented(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        base_indentation: &BaseIndentation,
+    ) -> std::fmt::Result {
         if let Some(non_empty) = self.member_of_types.split_first() {
             write!(f, " in ")?;
             fmt_non_empty_slice(f, non_empty)?;
@@ -132,7 +279,7 @@ impl<N: Display> Display for json_schema::StandardEntityType<N> {
         let ty = &self.shape;
         // Don't print `= { }`
         if !ty.is_empty_record() {
-            write!(f, " = {ty}")?;
+            write!(f, " = {}", Indented(&ty.0, base_indentation))?;
         }
 
         if let Some(tags) = &self.tags {
@@ -145,6 +292,16 @@ impl<N: Display> Display for json_schema::StandardEntityType<N> {
 
 impl<N: Display> Display for json_schema::ActionType<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.fmt_indented(f, &BaseIndentation::none())
+    }
+}
+
+impl<N: Display> IndentedDisplay for json_schema::ActionType<N> {
+    fn fmt_indented(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        base_indentation: &BaseIndentation,
+    ) -> std::fmt::Result {
         if let Some(parents) = self.member_of.as_ref().and_then(|refs| refs.split_first()) {
             write!(f, " in ")?;
             fmt_non_empty_slice(f, parents)?;
@@ -162,13 +319,15 @@ impl<N: Display> Display for json_schema::ActionType<N> {
                 }
                 // Both list are non empty
                 (Some(ps), Some(rs)) => {
+                    let member_indent = base_indentation.next();
                     write!(f, " appliesTo {{")?;
-                    write!(f, "\n  principal: ")?;
+                    write!(f, "\n{member_indent}principal: ")?;
                     fmt_non_empty_slice(f, ps)?;
-                    write!(f, ",\n  resource: ")?;
+                    write!(f, ",\n{member_indent}resource: ")?;
                     fmt_non_empty_slice(f, rs)?;
-                    write!(f, ",\n  context: {}", &spec.context.0)?;
-                    write!(f, "\n}}")?;
+                    write!(f, ",\n{member_indent}context: {}", &spec.context.0)?;
+
+                    write!(f, "\n{base_indentation}}}")?;
                 }
             }
         }
@@ -531,5 +690,22 @@ namespace TinyTodo {
         );
 
         assert_eq!(expected_roundtrip, roundtrip_json,);
+    }
+
+    #[test]
+    fn test_formatting_roundtrip() {
+        use crate::json_schema::Fragment;
+        let test_schema_str =
+            std::fs::read_to_string("src/cedar_schema/testfiles/example.cedarschema")
+                .expect("missing test schema");
+        println!("{}", test_schema_str);
+
+        let (f, _) = Fragment::from_cedarschema_str(&test_schema_str, Extensions::all_available())
+            .expect("test schema is valid");
+        // assert test schema file is already formatted
+        assert_eq!(
+            f.to_cedarschema().expect("test schema can be displayed"),
+            test_schema_str,
+        )
     }
 }

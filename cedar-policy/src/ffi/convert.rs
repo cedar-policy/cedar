@@ -495,7 +495,16 @@ mod test {
         assert_matches!(result, SchemaToTextAnswer::Success { text, warnings:_ } => {
             assert_eq!(
                 &text,
-                "entity User = {\"name\": __cedar::String};\naction \"sendMessage\" appliesTo {\n  principal: [User],\n  resource: [User],\n  context: {}\n};\n"
+                r#"entity User = {
+  "name": __cedar::String
+};
+
+action "sendMessage" appliesTo {
+  principal: [User],
+  resource: [User],
+  context: {}
+};
+"#
             );
         });
     }
