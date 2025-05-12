@@ -167,12 +167,12 @@ action Delete appliesTo {
         PartialEntities {
             entities: HashMap::from_iter([(
                 uid.clone(),
-                Arc::new(PartialEntity {
+                PartialEntity {
                     uid,
                     attrs: Some(BTreeMap::new()),
                     ancestors: Some(HashSet::new()),
                     tags: None,
-                }),
+                },
             )]),
         }
     }

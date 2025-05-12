@@ -14,19 +14,9 @@
  * limitations under the License.
  */
 
-use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    sync::Arc,
-};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use anyhow::Ok;
-use cedar_policy_core::entities::{
-    conformance::{
-        err::{EntitySchemaConformanceError, UnexpectedEntityTypeError},
-        validate_euid,
-    },
-    EntityTypeDescription,
-};
 use cedar_policy_core::{
     ast::PartialValue,
     entities::{conformance::EntitySchemaConformanceChecker, Schema},
@@ -40,6 +30,16 @@ use cedar_policy_core::{
     evaluator::RestrictedEvaluator,
     extensions::Extensions,
     jsonvalue::JsonValueWithNoDuplicateKeys,
+};
+use cedar_policy_core::{
+    entities::{
+        conformance::{
+            err::{EntitySchemaConformanceError, UnexpectedEntityTypeError},
+            validate_euid,
+        },
+        EntityTypeDescription,
+    },
+    transitive_closure::{compute_tc, TCNode},
 };
 use cedar_policy_validator::{CoreSchema, ValidatorSchema};
 use serde::{Deserialize, Serialize};
@@ -133,6 +133,32 @@ pub fn parse_ejson(e: EntityJson, schema: &ValidatorSchema) -> anyhow::Result<Pa
     })
 }
 
+impl TCNode<EntityUID> for PartialEntity {
+    fn add_edge_to(&mut self, k: EntityUID) {
+        self.add_ancestor(k);
+    }
+
+    fn get_key(&self) -> EntityUID {
+        self.uid.clone()
+    }
+
+    fn has_edge_to(&self, k: &EntityUID) -> bool {
+        match self.ancestors.as_ref() {
+            Some(ancestors) => ancestors.contains(k),
+            None => false,
+        }
+    }
+
+    fn out_edges(&self) -> Box<dyn Iterator<Item = &EntityUID> + '_> {
+        match self.ancestors.as_ref() {
+            Some(ancestors) => Box::new(ancestors.iter()),
+            None => Box::new(std::iter::empty()),
+        }
+    }
+
+    fn reset_edges(&mut self) {}
+}
+
 impl PartialEntity {
     pub(crate) fn add_ancestor(&mut self, uid: EntityUID) {
         self.ancestors
@@ -185,12 +211,20 @@ impl PartialEntity {
 pub struct PartialEntities {
     /// Important internal invariant: for any `Entities` object that exists,
     /// the `ancestor` relation is transitively closed.
-    pub(crate) entities: HashMap<EntityUID, Arc<PartialEntity>>,
+    pub(crate) entities: HashMap<EntityUID, PartialEntity>,
+}
+
+impl PartialEntities {
+    pub(crate) fn compute_tc(&mut self) -> anyhow::Result<()> {
+        Ok(compute_tc(&mut self.entities, true)?)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::EntityJson;
+    use std::collections::HashSet;
+
+    use super::{EntityJson, PartialEntities, PartialEntity};
 
     #[test]
     fn basic() {
@@ -204,5 +238,108 @@ mod tests {
             }
         );
         let ejson: EntityJson = serde_json::from_value(json).expect("should parse");
+    }
+
+    #[test]
+    fn tc_computation() {
+        let a = PartialEntity {
+            uid: r#"E::"a""#.parse().unwrap(),
+            attrs: None,
+            ancestors: Some(HashSet::from_iter([
+                r#"E::"b""#.parse().unwrap(),
+                r#"E::"c""#.parse().unwrap(),
+            ])),
+            tags: None,
+        };
+        let b = PartialEntity {
+            uid: r#"E::"b""#.parse().unwrap(),
+            attrs: None,
+            ancestors: Some(HashSet::from_iter([r#"E::"d""#.parse().unwrap()])),
+            tags: None,
+        };
+        let c = PartialEntity {
+            uid: r#"E::"c""#.parse().unwrap(),
+            attrs: None,
+            ancestors: Some(HashSet::from_iter([r#"E::"e""#.parse().unwrap()])),
+            tags: None,
+        };
+        let e = PartialEntity {
+            uid: r#"E::"e""#.parse().unwrap(),
+            attrs: None,
+            ancestors: Some(HashSet::from_iter([r#"E::"f""#.parse().unwrap()])),
+            tags: None,
+        };
+        let x = PartialEntity {
+            uid: r#"E::"x""#.parse().unwrap(),
+            attrs: None,
+            ancestors: None,
+            tags: None,
+        };
+        let mut entities = PartialEntities {
+            entities: vec![a, b, c, e, x]
+                .into_iter()
+                .map(|e| (e.uid.clone(), e))
+                .collect(),
+        };
+        entities.compute_tc().expect("should compute tc");
+        assert_eq!(
+            entities
+                .entities
+                .get(&r#"E::"a""#.parse().unwrap())
+                .as_ref()
+                .unwrap()
+                .ancestors
+                .clone()
+                .unwrap(),
+            HashSet::from_iter([
+                r#"E::"b""#.parse().unwrap(),
+                r#"E::"c""#.parse().unwrap(),
+                r#"E::"d""#.parse().unwrap(),
+                r#"E::"e""#.parse().unwrap(),
+                r#"E::"f""#.parse().unwrap()
+            ])
+        );
+        assert_eq!(
+            entities
+                .entities
+                .get(&r#"E::"b""#.parse().unwrap())
+                .as_ref()
+                .unwrap()
+                .ancestors
+                .clone()
+                .unwrap(),
+            HashSet::from_iter([r#"E::"d""#.parse().unwrap(),])
+        );
+        assert_eq!(
+            entities
+                .entities
+                .get(&r#"E::"c""#.parse().unwrap())
+                .as_ref()
+                .unwrap()
+                .ancestors
+                .clone()
+                .unwrap(),
+            HashSet::from_iter([r#"E::"e""#.parse().unwrap(), r#"E::"f""#.parse().unwrap()])
+        );
+        assert_eq!(
+            entities
+                .entities
+                .get(&r#"E::"e""#.parse().unwrap())
+                .as_ref()
+                .unwrap()
+                .ancestors
+                .clone()
+                .unwrap(),
+            HashSet::from_iter([r#"E::"f""#.parse().unwrap()])
+        );
+        assert_eq!(
+            entities
+                .entities
+                .get(&r#"E::"x""#.parse().unwrap())
+                .as_ref()
+                .unwrap()
+                .ancestors,
+            None
+        );
     }
 }

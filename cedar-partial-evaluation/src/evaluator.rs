@@ -564,7 +564,7 @@ impl<'e> Evaluator<'e> {
                         ..
                     } => {
                         if let Some(entity) = self.entities.entities.get(uid.as_ref()) {
-                            if let Some(attrs) = &entity.as_ref().attrs {
+                            if let Some(attrs) = &entity.attrs {
                                 if let Some(val) = attrs.get(attr) {
                                     return Residual::Concrete {
                                         value: val.clone(),
@@ -617,7 +617,7 @@ impl<'e> Evaluator<'e> {
                         ..
                     } => {
                         if let Some(entity) = self.entities.entities.get(uid.as_ref()) {
-                            if let Some(attrs) = &entity.as_ref().attrs {
+                            if let Some(attrs) = &entity.attrs {
                                 return Residual::Concrete {
                                     value: attrs.contains_key(attr).into(),
                                     ty,
