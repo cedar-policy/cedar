@@ -199,6 +199,7 @@ verus! {
 /// Conceptually keeps the evaluation environment as part of its internal state,
 /// because we will be repeatedly invoking the evaluator on every policy in a
 /// Slice.
+#[verifier::external_body]
 pub struct Evaluator<'e> {
     /// `Principal` for the current request
     principal: EntityUIDEntry,

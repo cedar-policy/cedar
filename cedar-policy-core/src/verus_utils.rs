@@ -18,13 +18,11 @@
 
 use smol_str::SmolStr;
 
-#[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
-
-
 
 // Specification macros
 
+#[allow(unused_macros)]
 macro_rules! clone_spec_for {
     ($type:ty) => {
         verus! {
@@ -33,8 +31,10 @@ macro_rules! clone_spec_for {
         }
     };
 }
+#[allow(unused_imports)]
 pub(crate) use clone_spec_for;
 
+#[allow(unused_macros)]
 macro_rules! empty_clone_spec_for {
     ($type:ty) => {
         verus! {
@@ -42,10 +42,8 @@ macro_rules! empty_clone_spec_for {
         }
     };
 }
+#[allow(unused_imports)]
 pub(crate) use empty_clone_spec_for;
-
-
-
 
 // Specifications for external types
 

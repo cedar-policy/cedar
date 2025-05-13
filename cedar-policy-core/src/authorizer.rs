@@ -111,6 +111,7 @@ impl Authorizer {
 
     /// The same as is_authorized_core, but for any Evaluator.
     /// A PartialResponse caller constructs its own evaluator, with an unknown mapper function.
+    #[verifier::external_body]
     pub(crate) fn is_authorized_core_internal(
         &self,
         eval: &Evaluator<'_>,
@@ -699,8 +700,12 @@ pub struct EvaluationResponse {
     pub forbid_residuals: PolicySet,
 }
 
+verus! {
+
 /// Diagnostics providing more information on how a `Decision` was reached
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[verifier::external_derive]
+#[verifier::external_body]
 pub struct Diagnostics {
     /// `PolicyID`s of the policies that contributed to the decision. If no
     /// policies applied to the request, this set will be empty.
@@ -708,6 +713,8 @@ pub struct Diagnostics {
     /// List of errors that occurred
     pub errors: Vec<AuthorizationError>,
 }
+
+} // verus!
 
 impl Response {
     /// Create a new `Response`
@@ -723,11 +730,14 @@ impl Response {
     }
 }
 
+verus! {
+
 /// Decision returned from the `Authorizer`
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
+#[verifier::external_derive]
 pub enum Decision {
     /// The `Authorizer` determined that the request should be allowed
     Allow,
@@ -737,3 +747,5 @@ pub enum Decision {
     /// the policies.
     Deny,
 }
+
+} // verus!

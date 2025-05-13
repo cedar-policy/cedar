@@ -197,14 +197,14 @@ impl std::fmt::Display for EntityType {
     }
 }
 
-verus! {
+// verus! {
 
 /// Unique ID for an entity. These represent entities in the AST.
 #[derive(Educe, Serialize, Deserialize, Debug, Clone)]
 #[serde(rename = "EntityUID")]
 #[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[verifier::external_derive]
-#[verifier::external_body]
+// #[verifier::external_derive]
+// #[verifier::external_body]
 pub struct EntityUIDImpl {
     /// Typename of the entity
     ty: EntityType,
@@ -218,20 +218,20 @@ pub struct EntityUIDImpl {
     loc: Option<Loc>,
 }
 
-
 /// Unique ID for an entity. These represent entities in the AST.
 #[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[verifier::external_derive]
+// #[verifier::external_derive]
+// #[verifier::external_body]
 pub enum EntityUID {
     /// Unique ID for an entity. These represent entities in the AST
     EntityUID(EntityUIDImpl),
-    #[cfg(feature = "tolerant-ast")]
+    #[cfg(feature = "tolerant-ast")] // Pratap: can ignore this feature at least initially
     /// Represents the ID of an error that failed to parse
     Error,
 }
 
-}
+// } // verus!
 
 impl<'de> Deserialize<'de> for EntityUID {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

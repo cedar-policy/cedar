@@ -39,6 +39,8 @@ use self::extension_initialization_errors::{
     FuncMultiplyDefinedError, MultipleConstructorsSameSignatureError,
 };
 
+use vstd::prelude::*;
+
 lazy_static::lazy_static! {
     static ref ALL_AVAILABLE_EXTENSION_OBJECTS: Vec<Extension> = vec![
         #[cfg(feature = "ipaddr")]
@@ -60,11 +62,14 @@ lazy_static::lazy_static! {
     };
 }
 
+verus! {
+
 /// Holds data on all the Extensions which are active for a given evaluation.
 ///
 /// This structure is intentionally not `Clone` because we can use it entirely
 /// by reference.
 #[derive(Debug)]
+#[verifier::external_body]
 pub struct Extensions<'a> {
     /// the actual extensions
     extensions: &'a [Extension],
@@ -78,6 +83,8 @@ pub struct Extensions<'a> {
     /// a unique return type.
     single_arg_constructors: HashMap<&'a SchemaType, &'a ExtensionFunction>,
 }
+
+} // verus!
 
 impl Extensions<'static> {
     /// Get a new `Extensions` containing data on all the available extensions.

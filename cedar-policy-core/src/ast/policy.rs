@@ -83,11 +83,15 @@ cfg_tolerant_ast! {
     });
 }
 
+verus! {
+
 /// Top level structure for a policy template.
 /// Contains both the AST for template, and the list of open slots in the template.
 ///
 /// Note that this "template" may have no slots, in which case this `Template` represents a static policy
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
+#[verifier::external_derive]
+#[verifier::external_body]
 pub struct Template {
     body: TemplateBody,
     /// INVARIANT (slot cache correctness): This Vec must contain _all_ of the open slots in `body`
@@ -96,6 +100,8 @@ pub struct Template {
     /// Note that `slots` may be empty, in which case this `Template` represents a static policy
     slots: Vec<Slot>,
 }
+
+} // verus!
 
 impl From<Template> for TemplateBody {
     fn from(val: Template) -> Self {
@@ -415,6 +421,7 @@ verus! {
 /// by converting to/from LiteralPolicy
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[verifier::external_derive]
+#[verifier::external_body]
 pub struct Policy {
     /// Reference to the template
     template: Arc<Template>,

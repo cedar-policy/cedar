@@ -60,6 +60,7 @@ verus! {
 /// method. If [`PolicySet`] could borrow its PolicyID/contents then this whole structured could be borrowed.
 #[derive(Debug, Clone)]
 #[verifier::external_derive]
+#[verifier::external_body]
 pub struct PartialResponse {
     /// All of the [`Effect::Permit`] policies that were satisfied
     pub satisfied_permits: HashMap<PolicyID, Arc<Annotations>>,

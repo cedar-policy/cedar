@@ -32,12 +32,15 @@ use super::{
     ExpressionConstructionError, PartialValue, RestrictedExpr, Unknown, Value, ValueKind, Var,
 };
 
+use crate::verus_utils::*;
 use vstd::prelude::*;
 
 verus! {
 
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
 #[derive(Debug, Clone)]
+#[verifier::external_body]
+#[verifier::external_derive]
 pub struct Request {
     /// Principal associated with the request
     pub(crate) principal: EntityUIDEntry,
@@ -53,11 +56,13 @@ pub struct Request {
     pub(crate) context: Option<Context>,
 }
 
+empty_clone_spec_for!(Request);
 
 
 /// Represents the principal type, resource type, and action UID.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[verifier::external_derive]
+#[verifier::external_body]
 #[serde(rename_all = "camelCase")]
 pub struct RequestType {
     /// Principal type
@@ -68,10 +73,14 @@ pub struct RequestType {
     pub resource: EntityType,
 }
 
+
+} // verus!
+
 /// An entry in a request for a Entity UID.
 /// It may either be a concrete EUID
 /// or an unknown in the case of partial evaluation
 #[derive(Debug, Clone)]
+#[verifier::external_derive]
 pub enum EntityUIDEntry {
     /// A concrete EntityUID
     Known {
@@ -88,8 +97,6 @@ pub enum EntityUIDEntry {
         /// Source location associated with the `EntityUIDEntry`, if any
         loc: Option<Loc>,
     },
-}
-
 }
 
 impl EntityUIDEntry {

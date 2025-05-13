@@ -37,6 +37,7 @@ pub mod jsonvalue;
 pub mod parser;
 pub mod transitive_closure;
 
+pub mod spec;
 pub mod verus_utils;
 
 #[cfg(any(test, feature = "test-util"))]
