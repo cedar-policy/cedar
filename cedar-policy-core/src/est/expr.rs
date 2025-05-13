@@ -1129,7 +1129,7 @@ fn display_cedarvaluejson(
         } => {
             // search for the name and callstyle
             let style = Extensions::all_available().all_funcs().find_map(|f| {
-                if &f.name().to_string() == ext_fn {
+                if &f.name().to_smolstr() == ext_fn {
                     Some(f.style())
                 } else {
                     None
@@ -1439,7 +1439,7 @@ impl BoundedDisplay for ExtFuncCall {
         };
         // search for the name and callstyle
         let style = Extensions::all_available().all_funcs().find_map(|ext_fn| {
-            if &ext_fn.name().to_string() == fn_name {
+            if &ext_fn.name().to_smolstr() == fn_name {
                 Some(ext_fn.style())
             } else {
                 None

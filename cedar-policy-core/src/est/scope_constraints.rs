@@ -22,7 +22,7 @@ use crate::entities::json::{
 };
 use crate::parser::err::parse_errors;
 use serde::{Deserialize, Serialize};
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -672,7 +672,7 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
             }
             ast::PrincipalOrResourceConstraint::IsIn(entity_type, euid) => {
                 PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
-                    entity_type: entity_type.to_string().into(),
+                    entity_type: entity_type.to_smolstr(),
                     in_entity: Some(match euid {
                         ast::EntityReference::EUID(e) => PrincipalOrResourceInConstraint::Entity {
                             entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
@@ -685,7 +685,7 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
             }
             ast::PrincipalOrResourceConstraint::Is(entity_type) => {
                 PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
-                    entity_type: entity_type.to_string().into(),
+                    entity_type: entity_type.to_smolstr(),
                     in_entity: None,
                 })
             }
@@ -719,7 +719,7 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
             }
             ast::PrincipalOrResourceConstraint::IsIn(entity_type, euid) => {
                 ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
-                    entity_type: entity_type.to_string().into(),
+                    entity_type: entity_type.to_smolstr(),
                     in_entity: Some(match euid {
                         ast::EntityReference::EUID(e) => PrincipalOrResourceInConstraint::Entity {
                             entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
@@ -732,7 +732,7 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
             }
             ast::PrincipalOrResourceConstraint::Is(entity_type) => {
                 ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
-                    entity_type: entity_type.to_string().into(),
+                    entity_type: entity_type.to_smolstr(),
                     in_entity: None,
                 })
             }

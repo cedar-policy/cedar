@@ -286,7 +286,7 @@ impl From<EntityUID> for TypeAndId {
     fn from(euid: EntityUID) -> TypeAndId {
         let (entity_type, eid) = euid.components();
         TypeAndId {
-            entity_type: entity_type.to_string().into(),
+            entity_type: entity_type.to_smolstr(),
             id: AsRef::<str>::as_ref(&eid).into(),
         }
     }
@@ -295,7 +295,7 @@ impl From<EntityUID> for TypeAndId {
 impl From<&EntityUID> for TypeAndId {
     fn from(euid: &EntityUID) -> TypeAndId {
         TypeAndId {
-            entity_type: euid.entity_type().to_string().into(),
+            entity_type: euid.entity_type().to_smolstr(),
             id: AsRef::<str>::as_ref(&euid.eid()).into(),
         }
     }
@@ -382,7 +382,7 @@ impl CedarValueJson {
                 #[allow(clippy::indexing_slicing)]
                 1 => Ok(Self::ExtnEscape {
                     __extn: FnAndArg {
-                        ext_fn: fn_name.to_string().into(),
+                        ext_fn: fn_name.to_smolstr(),
                         arg: Box::new(CedarValueJson::from_expr(
                             // assuming the invariant holds for `expr`, it must also hold here
                             BorrowedRestrictedExpr::new_unchecked(

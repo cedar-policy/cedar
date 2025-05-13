@@ -22,7 +22,7 @@ use crate::extensions::Extensions;
 use crate::parser::Loc;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use thiserror::Error;
@@ -93,7 +93,7 @@ impl EntityUIDEntry {
                 Value::new(Arc::unwrap_or_clone(Arc::clone(euid)), loc.clone()).into()
             }
             EntityUIDEntry::Unknown { ty: None, loc } => {
-                Expr::unknown(Unknown::new_untyped(var.to_string()))
+                Expr::unknown(Unknown::new_untyped(var.to_smolstr()))
                     .with_maybe_source_loc(loc.clone())
                     .into()
             }
@@ -101,7 +101,7 @@ impl EntityUIDEntry {
                 ty: Some(known_type),
                 loc,
             } => Expr::unknown(Unknown::new_with_type(
-                var.to_string(),
+                var.to_smolstr(),
                 super::Type::Entity {
                     ty: known_type.clone(),
                 },

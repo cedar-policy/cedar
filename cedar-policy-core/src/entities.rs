@@ -96,7 +96,7 @@ impl Entities {
                 Mode::Concrete => Dereference::NoSuchEntity,
                 #[cfg(feature = "partial-eval")]
                 Mode::Partial => Dereference::Residual(Expr::unknown(Unknown::new_with_type(
-                    format!("{uid}"),
+                    smol_str::format_smolstr!("{uid}"),
                     Type::Entity {
                         ty: uid.entity_type().clone(),
                     },
