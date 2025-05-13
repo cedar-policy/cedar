@@ -857,15 +857,24 @@ impl ParseErrors {
     pub(crate) fn transpose<T>(
         i: impl IntoIterator<Item = Result<T, ParseErrors>>,
     ) -> Result<Vec<T>, Self> {
-        let mut errs = vec![];
-        let oks: Vec<_> = i
-            .into_iter()
-            .filter_map(|r| r.map_err(|e| errs.push(e)).ok())
-            .collect();
-        if let Some(combined_errs) = Self::flatten(errs) {
-            Err(combined_errs)
-        } else {
+        let iter = i.into_iter();
+        let (lower, upper) = iter.size_hint();
+        let capacity = upper.unwrap_or(lower);
+
+        let mut oks = Vec::with_capacity(capacity);
+        let mut errs = Vec::new();
+    
+        for r in iter {
+            match r {
+                Ok(v) => oks.push(v),
+                Err(e) => errs.push(e),
+            }
+        }
+    
+        if errs.is_empty() {
             Ok(oks)
+        } else {
+            Err(Self::flatten(errs).unwrap())
         }
     }
 }
