@@ -102,7 +102,7 @@ impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
         // Ensure that all required attributes for `etype` are actually
         // included in `entity`
         for required_attr in schema_etype.required_attrs() {
-            if attrs.get(&required_attr).is_none() {
+            if !attrs.contains_key(&required_attr) {
                 return Err(EntitySchemaConformanceError::missing_entity_attr(
                     uid.clone(),
                     required_attr,
@@ -194,7 +194,7 @@ impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
                 }
             }
         }
-        for (_, val) in &tags {
+        for val in tags.values() {
             validate_euids_in_partial_value(self.schema, val)
                 .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
         }
