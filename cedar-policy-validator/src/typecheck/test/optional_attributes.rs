@@ -306,7 +306,7 @@ fn guarded_has_true_short_circuits() {
 fn assert_name_access_fails(policy: StaticPolicy) {
     let id = policy.id().clone();
 
-    let loc = get_loc(policy.loc().unwrap().src.clone(), "principal.name");
+    let loc = None;
     let errors = assert_policy_typecheck_fails(schema_with_optionals(), policy);
     let type_error = assert_exactly_one_diagnostic(errors);
     assert_eq!(

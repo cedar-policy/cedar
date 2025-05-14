@@ -22,26 +22,17 @@ use std::sync::Arc;
 pub struct Loc {
     /// `SourceSpan` indicating a specific source code location or range
     pub span: miette::SourceSpan,
-
-    /// Original source code (which the above source span indexes into)
-    pub src: Arc<str>,
 }
 
 impl Loc {
     /// Create a new `Loc`
-    pub fn new(span: impl Into<miette::SourceSpan>, src: Arc<str>) -> Self {
-        Self {
-            span: span.into(),
-            src,
-        }
+    pub fn new(span: impl Into<miette::SourceSpan>) -> Self {
+        Self { span: span.into() }
     }
 
     /// Create a new `Loc` with the same source code but a different span
     pub fn span(&self, span: impl Into<miette::SourceSpan>) -> Self {
-        Self {
-            span: span.into(),
-            src: Arc::clone(&self.src),
-        }
+        Self { span: span.into() }
     }
 
     /// Get the index representing the start of the source span
@@ -58,7 +49,7 @@ impl Loc {
     /// internally consistent (its `SourceSpan` isn't a valid index into its
     /// `src`)
     pub fn snippet(&self) -> Option<&str> {
-        self.src.get(self.start()..self.end())
+        None
     }
 }
 
@@ -81,8 +72,7 @@ impl miette::SourceCode for Loc {
         context_lines_before: usize,
         context_lines_after: usize,
     ) -> Result<Box<dyn miette::SpanContents<'a> + 'a>, miette::MietteError> {
-        self.src
-            .read_span(span, context_lines_before, context_lines_after)
+        Err(miette::MietteError::OutOfBounds)
     }
 }
 
@@ -93,7 +83,6 @@ impl miette::SourceCode for &Loc {
         context_lines_before: usize,
         context_lines_after: usize,
     ) -> Result<Box<dyn miette::SpanContents<'a> + 'a>, miette::MietteError> {
-        self.src
-            .read_span(span, context_lines_before, context_lines_after)
+        Err(miette::MietteError::OutOfBounds)
     }
 }

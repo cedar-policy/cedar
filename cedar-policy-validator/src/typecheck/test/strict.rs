@@ -105,7 +105,7 @@ fn assert_types_must_match(
     hint: LubHelp,
     context: LubContext,
 ) {
-    let loc = get_loc(e.source_loc().unwrap().src.clone(), snippet);
+    let loc = None;
     assert_strict_type_error(
         schema,
         env,
@@ -384,10 +384,7 @@ fn empty_set_literal() {
             &q,
             &Expr::from_str(src).unwrap(),
             Type::any_set(),
-            ValidationError::empty_set_forbidden(
-                Some(Loc::new(0..2, Arc::from(src))),
-                expr_id_placeholder(),
-            ),
+            ValidationError::empty_set_forbidden(Some(Loc::new(0..2)), expr_id_placeholder()),
         )
     })
 }
@@ -402,10 +399,7 @@ fn ext_struct_non_lit() {
             &q,
             &Expr::from_str(src).unwrap(),
             Type::extension("ipaddr".parse().unwrap()),
-            ValidationError::non_lit_ext_constructor(
-                Some(Loc::new(0..30, Arc::from(src))),
-                expr_id_placeholder(),
-            ),
+            ValidationError::non_lit_ext_constructor(Some(Loc::new(0..30)), expr_id_placeholder()),
         )
     });
 
@@ -417,10 +411,7 @@ fn ext_struct_non_lit() {
             &q,
             &Expr::from_str(src).unwrap(),
             Type::extension("decimal".parse().unwrap()),
-            ValidationError::non_lit_ext_constructor(
-                Some(Loc::new(0..39, Arc::from(src))),
-                expr_id_placeholder(),
-            ),
+            ValidationError::non_lit_ext_constructor(Some(Loc::new(0..39)), expr_id_placeholder()),
         )
     })
 }

@@ -305,9 +305,7 @@ impl Diagnostic for NotValue {
     }
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        match self {
-            Self::NotValue { loc } => loc.as_ref().map(|loc| &loc.src as &dyn miette::SourceCode),
-        }
+        None
     }
 }
 

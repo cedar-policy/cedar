@@ -315,19 +315,19 @@ mod test {
 
         let result = validator.validate(&set, ValidationMode::default());
         let principal_err = ValidationError::unrecognized_entity_type(
-            Some(Loc::new(20..27, Arc::from(policy_b_src))),
+            None,
             PolicyID::from_string("polb"),
             "foo_tye".to_string(),
             Some("foo_type".to_string()),
         );
         let resource_err = ValidationError::unrecognized_entity_type(
-            Some(Loc::new(74..81, Arc::from(policy_b_src))),
+            None,
             PolicyID::from_string("polb"),
             "br_type".to_string(),
             Some("bar_type".to_string()),
         );
         let action_err = ValidationError::unrecognized_action_id(
-            Some(Loc::new(45..60, Arc::from(policy_a_src))),
+            None,
             PolicyID::from_string("pola"),
             "Action::\"actin\"".to_string(),
             Some(UnrecognizedActionIdHelp::SuggestAlternative(

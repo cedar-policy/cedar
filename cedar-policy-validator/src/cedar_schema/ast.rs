@@ -398,7 +398,7 @@ mod test {
     use super::*;
 
     fn loc() -> Loc {
-        Loc::new((1, 1), Arc::from("foo"))
+        Loc::new((1, 1))
     }
 
     // Ensure the iterators over [`Path`]s return most significant names first

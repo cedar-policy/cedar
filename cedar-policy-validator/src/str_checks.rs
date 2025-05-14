@@ -286,7 +286,7 @@ mod test {
         assert_eq!(
             warning,
             &ValidationWarning::mixed_script_string(
-                Some(Loc::new(64..94, Arc::from(src))),
+                Some(Loc::new(64..94,)),
                 PolicyID::from_string("test"),
                 r#"*_һello"#
             )
@@ -315,7 +315,7 @@ mod test {
         assert_eq!(
             warning,
             &ValidationWarning::bidi_chars_strings(
-                Some(Loc::new(90..131, Arc::from(src))),
+                Some(Loc::new(90..131,)),
                 PolicyID::from_string("test"),
                 r#"user‮ ⁦&& principal.is_admin⁩ ⁦"#
             )

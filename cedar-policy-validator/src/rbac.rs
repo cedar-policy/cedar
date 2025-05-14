@@ -1321,7 +1321,7 @@ mod test {
             &validator,
             &policy,
             &[ValidationError::invalid_action_application(
-                Some(Loc::new(0..43, Arc::from(src))),
+                Some(Loc::new(0..43)),
                 PolicyID::from_string("policy0"),
                 false,
                 false,
@@ -1337,19 +1337,19 @@ mod test {
             &policy,
             &[
                 ValidationError::unrecognized_entity_type(
-                    Some(Loc::new(27..30, Arc::from(src))),
+                    Some(Loc::new(27..30)),
                     PolicyID::from_string("policy0"),
                     "faz".into(),
                     Some("baz".into()),
                 ),
                 ValidationError::unrecognized_entity_type(
-                    Some(Loc::new(20..23, Arc::from(src))),
+                    Some(Loc::new(20..23)),
                     PolicyID::from_string("policy0"),
                     "biz".into(),
                     Some("baz".into()),
                 ),
                 ValidationError::invalid_action_application(
-                    Some(Loc::new(0..55, Arc::from(src))),
+                    Some(Loc::new(0..55)),
                     PolicyID::from_string("policy0"),
                     false,
                     false,
@@ -1365,7 +1365,7 @@ mod test {
             &validator,
             &policy,
             &[ValidationError::invalid_action_application(
-                Some(Loc::new(0..57, Arc::from(src))),
+                Some(Loc::new(0..57)),
                 PolicyID::from_string("policy0"),
                 false,
                 false,
@@ -1405,7 +1405,7 @@ mod test {
             &validator,
             &policy,
             &[ValidationError::invalid_action_application(
-                Some(Loc::new(0..43, Arc::from(src))),
+                Some(Loc::new(0..43)),
                 PolicyID::from_string("policy0"),
                 false,
                 false,
@@ -1420,7 +1420,7 @@ mod test {
             &validator,
             &policy,
             &[ValidationError::invalid_action_application(
-                Some(Loc::new(0..57, Arc::from(src))),
+                Some(Loc::new(0..57)),
                 PolicyID::from_string("policy0"),
                 false,
                 false,
@@ -1436,19 +1436,19 @@ mod test {
             &policy,
             &[
                 ValidationError::unrecognized_entity_type(
-                    Some(Loc::new(45..48, Arc::from(src))),
+                    Some(Loc::new(45..48)),
                     PolicyID::from_string("policy0"),
                     "faz".into(),
                     Some("baz".into()),
                 ),
                 ValidationError::unrecognized_entity_type(
-                    Some(Loc::new(38..41, Arc::from(src))),
+                    Some(Loc::new(38..41)),
                     PolicyID::from_string("policy0"),
                     "biz".into(),
                     Some("baz".into()),
                 ),
                 ValidationError::invalid_action_application(
-                    Some(Loc::new(0..55, Arc::from(src))),
+                    Some(Loc::new(0..55)),
                     PolicyID::from_string("policy0"),
                     false,
                     false,

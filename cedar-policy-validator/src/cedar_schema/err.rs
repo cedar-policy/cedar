@@ -663,7 +663,7 @@ pub const NO_PR_HELP_MSG: &str =
 
 impl Diagnostic for NoPrincipalOrResource {
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.name_loc.src as &dyn miette::SourceCode)
+        None
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
@@ -758,7 +758,7 @@ pub mod schema_warnings {
             // just have to pick one; we assume `entity_loc` and `common_loc`
             // have the same source code.
             // if that isn't true we'll have a confusing underline.
-            Some(&self.entity_loc.src as _)
+            None
         }
 
         fn severity(&self) -> Option<miette::Severity> {

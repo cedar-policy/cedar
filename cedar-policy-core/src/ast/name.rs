@@ -448,7 +448,7 @@ impl FromNormalizedStr for Name {
             Ok(Self(InternalName::new(
                 Id::new_unchecked(*last),
                 prefix.iter().map(|part| Id::new_unchecked(*part)),
-                Some(Loc::new(0..(s.len()), s.into())),
+                Some(Loc::new(0..(s.len()))),
             )))
         } else {
             Err(Self::parse_err_from_str(s))
@@ -547,7 +547,7 @@ impl Name {
                         src: s.to_string(),
                         normalized_src,
                     },
-                    Loc::new(diff_byte, s.into()),
+                    Loc::new(diff_byte),
                 )))
             }
         }
@@ -574,7 +574,7 @@ impl From<ReservedNameError> for ParseError {
                 Some(loc) => loc.clone(),
                 None => {
                     let name_str = value.0.to_string();
-                    Loc::new(0..(name_str.len()), name_str.into())
+                    Loc::new(0..(name_str.len()))
                 }
             },
         ))

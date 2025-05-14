@@ -46,12 +46,7 @@ pub fn expr_id_placeholder() -> PolicyID {
 /// in `src` to fail fast in tests.
 #[track_caller]
 pub fn get_loc(src: impl AsRef<str>, snippet: impl AsRef<str>) -> Option<Loc> {
-    let start = src
-        .as_ref()
-        .find(snippet.as_ref())
-        .expect("Snippet does not exist in source!");
-    let end = start + snippet.as_ref().len();
-    Some(Loc::new(start..end, src.as_ref().into()))
+    None
 }
 
 impl ValidationError {

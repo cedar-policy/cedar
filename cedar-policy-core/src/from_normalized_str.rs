@@ -56,7 +56,7 @@ pub trait FromNormalizedStr: FromStr<Err = ParseErrors> + Display {
                     src: s.to_string(),
                     normalized_src,
                 },
-                Loc::new(diff_byte, s.into()),
+                Loc::new(diff_byte),
             ))))
         }
     }
