@@ -20,6 +20,8 @@ Cedar Language Version: TBD
   and earlier. These functions will ignore unrecognized keys in some positions where they are currently an error,
   matching the behavior of earlier versions.  This is intended help some users migrate to the current 4.0 schema
   format. The new functions are deprecated and placed behind the `deprecated-schema-compat` feature. (#1600)
+- Implemented [RFC 71 (trailing commas)](https://github.com/cedar-policy/rfcs/blob/main/text/0071-trailing-commas.md)
+  for Cedar policy files. (#1606)
 
 ### Changed
 
