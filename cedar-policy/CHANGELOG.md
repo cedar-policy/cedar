@@ -20,6 +20,8 @@ Cedar Language Version: TBD
   and earlier. These functions will ignore unrecognized keys in some positions where they are currently an error,
   matching the behavior of earlier versions.  This is intended help some users migrate to the current 4.0 schema
   format. The new functions are deprecated and placed behind the `deprecated-schema-compat` feature. (#1600)
+- `Expression::new_duration`, `Expression::new_datetime`, `RestrictedExpression::new_duration`,
+   and `RestrictedExpression::new_datetime` (#1614)
 
 ### Changed
 
@@ -27,6 +29,9 @@ Cedar Language Version: TBD
   accept an `&Validator` instead of `&Schema`. Callers can construct a `Validator`
   from a schema with `Validator::new` afterwhich a reference to the original
   schema can be retrieved using `Validator::schema`. (#1584)
+
+### Fixed
+- Apply entity conformance checking to tags (#1604)
 
 ## [4.4.0] - 2025-04-23
 

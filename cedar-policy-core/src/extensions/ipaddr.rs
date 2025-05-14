@@ -176,7 +176,7 @@ impl std::str::FromStr for IPAddr {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Return Err if the input is too long
-        if s.bytes().len() > IP_STR_REP_MAX_LEN as usize {
+        if s.len() > IP_STR_REP_MAX_LEN as usize {
             return Err(format!(
                 "error parsing IP address from string `{s}`: string length is too large"
             ));
