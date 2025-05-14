@@ -5401,8 +5401,12 @@ mod decimal_ip_constructors {
                 assert_eq!(fn_name, &("ip".parse().unwrap()));
                 assert_eq!(args.as_ref().len(), 1);
                 let arg = args.first().unwrap();
-                assert_matches!(arg.expr_kind(),
-                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "10.10.10.10");
+                assert_matches!(
+                    arg.expr_kind(),
+                    ast::ExprKind::Lit(ast::Literal::String(s)) => {
+                        assert_eq!(s.as_str(), "10.10.10.10");
+                    },
+                );
             }
         );
     }
@@ -5415,8 +5419,12 @@ mod decimal_ip_constructors {
                 assert_eq!(fn_name, &("decimal".parse().unwrap()));
                 assert_eq!(args.as_ref().len(), 1);
                 let arg = args.first().unwrap();
-                assert_matches!(arg.expr_kind(),
-                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "1234.1234");
+                assert_matches!(
+                    arg.expr_kind(),
+                    ast::ExprKind::Lit(ast::Literal::String(s)) => {
+                        assert_eq!(s.as_str(), "1234.1234");
+                    },
+                );
             }
         );
     }
@@ -5429,8 +5437,12 @@ mod decimal_ip_constructors {
                 assert_eq!(fn_name, &("decimal".parse().unwrap()));
                 assert_eq!(args.as_ref().len(), 1);
                 let arg = args.first().unwrap();
-                assert_matches!(arg.expr_kind(),
-                ast::ExprKind::Lit(ast::Literal::String(s)) => s.as_str() == "1234.1234");
+                assert_matches!(
+                    arg.expr_kind(),
+                    ast::ExprKind::Lit(ast::Literal::String(s)) => {
+                        assert_eq!(s.as_str(), "1234.1234");
+                    },
+                );
             }
         );
     }
@@ -5438,8 +5450,12 @@ mod decimal_ip_constructors {
     #[test]
     fn valid_decimal() {
         let decimal = Expression::new_decimal("1234.1234");
-        assert_matches!(evaluate_empty(&decimal),
-         Ok(EvalResult::ExtensionValue(s)) => s == "1234.1234");
+        assert_matches!(
+            evaluate_empty(&decimal),
+            Ok(EvalResult::ExtensionValue(s)) => {
+                assert_eq!(s, r#"decimal("1234.1234")"#);
+            },
+        );
     }
 
     #[test]
@@ -5448,6 +5464,120 @@ mod decimal_ip_constructors {
         assert_matches!(evaluate_empty(&decimal),
             Err(EvaluationError::FailedExtensionFunctionExecution(e)) => {
                 assert_eq!(e.extension_name(), "decimal");
+            }
+        );
+    }
+
+    #[test]
+    fn expr_datetime_constructor() {
+        let datetime = Expression::new_datetime("2025-05-14T17:18:00.000Z");
+        assert_matches!(datetime.into_inner().expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("datetime".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(
+                    arg.expr_kind(),
+                    ast::ExprKind::Lit(ast::Literal::String(s)) => {
+                        assert_eq!(s.as_str(), "2025-05-14T17:18:00.000Z");
+                    },
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn rexpr_datetime_constructor() {
+        let datetime = RestrictedExpression::new_datetime("2025-05-14T17:18:00.000Z");
+        assert_matches!(datetime.into_inner().expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("datetime".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(
+                    arg.expr_kind(),
+                    ast::ExprKind::Lit(ast::Literal::String(s)) => {
+                        assert_eq!(s.as_str(), "2025-05-14T17:18:00.000Z");
+                    },
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn valid_datetime() {
+        let datetime = Expression::new_datetime("2025-05-14T17:18:00.000Z");
+        assert_matches!(
+            evaluate_empty(&datetime),
+            Ok(EvalResult::ExtensionValue(s)) => {
+                assert_eq!(s, r#"datetime("2025-05-14T17:18:00.000Z")"#);
+            },
+        );
+    }
+
+    #[test]
+    fn invalid_datetime() {
+        let datetime = Expression::new_datetime("1/1/70");
+        assert_matches!(evaluate_empty(&datetime),
+            Err(EvaluationError::FailedExtensionFunctionExecution(e)) => {
+                assert_eq!(e.extension_name(), "datetime");
+            }
+        );
+    }
+
+    #[test]
+    fn expr_duration_constructor() {
+        let duration = Expression::new_duration("1d");
+        assert_matches!(duration.into_inner().expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("duration".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(
+                    arg.expr_kind(),
+                    ast::ExprKind::Lit(ast::Literal::String(s)) => {
+                        assert_eq!(s.as_str(), "1d");
+                    },
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn rexpr_duration_constructor() {
+        let duration = RestrictedExpression::new_duration("2025-05-14T17:18:00.000Z");
+        assert_matches!(duration.into_inner().expr_kind(),
+            ast::ExprKind::ExtensionFunctionApp { fn_name, args} => {
+                assert_eq!(fn_name, &("duration".parse().unwrap()));
+                assert_eq!(args.as_ref().len(), 1);
+                let arg = args.first().unwrap();
+                assert_matches!(
+                    arg.expr_kind(),
+                    ast::ExprKind::Lit(ast::Literal::String(s)) => {
+                        assert_eq!(s.as_str(), "2025-05-14T17:18:00.000Z");
+                    },
+                );
+            }
+        );
+    }
+
+    #[test]
+    fn valid_duration() {
+        let duration = Expression::new_duration("1d");
+        assert_matches!(
+            evaluate_empty(&duration),
+            Ok(EvalResult::ExtensionValue(s)) => {
+                assert_eq!(s, r#"duration("1d")"#);
+            },
+        );
+    }
+
+    #[test]
+    fn invalid_duration() {
+        let duration = Expression::new_duration("twenty-four hours");
+        assert_matches!(evaluate_empty(&duration),
+            Err(EvaluationError::FailedExtensionFunctionExecution(e)) => {
+                assert_eq!(e.extension_name(), "duration");
             }
         );
     }
