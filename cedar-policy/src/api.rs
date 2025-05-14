@@ -3826,6 +3826,28 @@ impl Expression {
             vec![src_expr],
         ))
     }
+
+    /// Create an expression representing a particular instant of time.
+    /// This function does not perform error checking on the source string,
+    /// it creates an expression that calls the `datetime` constructor.
+    pub fn new_datetime(src: impl AsRef<str>) -> Self {
+        let src_expr = ast::Expr::val(src.as_ref());
+        Self(ast::Expr::call_extension_fn(
+            datetime_extension_name(),
+            vec![src_expr],
+        ))
+    }
+
+    /// Create an expression representing a duration of time.
+    /// This function does not perform error checking on the source string,
+    /// it creates an expression that calls the `datetime` constructor.
+    pub fn new_duration(src: impl AsRef<str>) -> Self {
+        let src_expr = ast::Expr::val(src.as_ref());
+        Self(ast::Expr::call_extension_fn(
+            duration_extension_name(),
+            vec![src_expr],
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -3933,6 +3955,28 @@ impl RestrictedExpression {
         ))
     }
 
+    /// Create an expression representing a particular instant of time.
+    /// This function does not perform error checking on the source string,
+    /// it creates an expression that calls the `datetime` constructor.
+    pub fn new_datetime(src: impl AsRef<str>) -> Self {
+        let src_expr = ast::RestrictedExpr::val(src.as_ref());
+        Self(ast::RestrictedExpr::call_extension_fn(
+            datetime_extension_name(),
+            [src_expr],
+        ))
+    }
+
+    /// Create an expression representing a duration of time.
+    /// This function does not perform error checking on the source string,
+    /// it creates an expression that calls the `datetime` constructor.
+    pub fn new_duration(src: impl AsRef<str>) -> Self {
+        let src_expr = ast::RestrictedExpr::val(src.as_ref());
+        Self(ast::RestrictedExpr::call_extension_fn(
+            duration_extension_name(),
+            [src_expr],
+        ))
+    }
+
     /// Create an unknown expression
     #[cfg(feature = "partial-eval")]
     pub fn new_unknown(name: impl AsRef<str>) -> Self {
@@ -3961,6 +4005,18 @@ fn ip_extension_name() -> ast::Name {
     // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
     #[allow(clippy::unwrap_used)]
     ast::Name::unqualified_name("ip".parse().unwrap())
+}
+
+fn datetime_extension_name() -> ast::Name {
+    // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
+    #[allow(clippy::unwrap_used)]
+    ast::Name::unqualified_name("datetime".parse().unwrap())
+}
+
+fn duration_extension_name() -> ast::Name {
+    // PANIC SAFETY: This is a constant and is known to be safe, verified by a test
+    #[allow(clippy::unwrap_used)]
+    ast::Name::unqualified_name("duration".parse().unwrap())
 }
 
 impl FromStr for RestrictedExpression {
