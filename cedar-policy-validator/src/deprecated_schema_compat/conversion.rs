@@ -214,11 +214,9 @@ impl TryFrom<compat::SchemaTypeVariant> for TypeVariant<RawName> {
                 additional_attributes,
             }),
             compat::SchemaTypeVariant::Entity { name } => Self::Entity {
-                name: RawName::from_normalized_str(&name)
-                    .map_err(|err| {
-                        serde::de::Error::custom(format!("invalid entity type `{name}`: {err}"))
-                    })?
-                    .into(),
+                name: RawName::from_normalized_str(&name).map_err(|err| {
+                    serde::de::Error::custom(format!("invalid entity type `{name}`: {err}"))
+                })?,
             },
             compat::SchemaTypeVariant::Extension { name } => Self::Extension {
                 name: UnreservedId::from_normalized_str(&name).map_err(|err| {

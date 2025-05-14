@@ -39,7 +39,7 @@ pub struct SchemaFragment(
     pub  HashMap<SmolStr, NamespaceDefinition>,
 );
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde_as]
 #[serde(deny_unknown_fields)]
 pub struct NamespaceDefinition {
@@ -56,7 +56,7 @@ pub struct NamespaceDefinition {
     pub actions: HashMap<SmolStr, ActionType>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EntityType {
     // Key changed from `SmolStr` in 2.5.0 to `RawName` to avoid excess code duplication
@@ -67,7 +67,7 @@ pub struct EntityType {
     pub shape: AttributesOrContext,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct AttributesOrContext(pub SchemaType);
 
@@ -80,7 +80,7 @@ impl Default for AttributesOrContext {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ActionType {
     #[serde(default)]
@@ -93,7 +93,7 @@ pub struct ActionType {
     pub member_of: Option<Vec<ActionEntityUID>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ApplySpec {
     // Key changed from `SmolStr` in 2.5.0 to `RawName` to avoid excess code duplication
@@ -108,7 +108,7 @@ pub struct ApplySpec {
     pub context: AttributesOrContext,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ActionEntityUID {
     pub id: SmolStr,
