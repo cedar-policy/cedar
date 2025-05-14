@@ -2043,17 +2043,11 @@ impl Node<Option<cst::Name>> {
     // so it's fine to return an `Option` instead of a `Result`.
     fn maybe_to_var(&self) -> Option<ast::Var> {
         let name = self.as_inner()?;
-
-        let ident = match ParseErrors::transpose(name.path.iter().map(|id| id.to_valid_ident())) {
-            Ok(path) => {
-                if !path.is_empty() {
-                    // The path should be empty for a variable
-                    None
-                } else {
-                    name.name.as_inner()
-                }
-            }
-            Err(_) => None,
+        let ident = if name.path.is_empty() {
+            name.name.as_inner()
+        } else {
+            // The path should be empty for a variable
+            None
         }?;
 
         match ident {
