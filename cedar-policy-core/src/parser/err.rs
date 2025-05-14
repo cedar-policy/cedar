@@ -863,14 +863,14 @@ impl ParseErrors {
 
         let mut oks = Vec::with_capacity(capacity);
         let mut errs = Vec::new();
-    
+
         for r in iter {
             match r {
                 Ok(v) => oks.push(v),
                 Err(e) => errs.push(e),
             }
         }
-    
+
         if errs.is_empty() {
             Ok(oks)
         } else {
