@@ -16,5 +16,4 @@
 
 //! This module contains a partial specification for Cedar in Verus.
 
-mod spec_ast;
-pub use spec_ast::*;
+pub mod spec_ast;
