@@ -20,6 +20,7 @@ smol_str = "0.3.2"
 
 [features]
 tolerant-ast = ["cedar-policy-core/tolerant-ast"]
+experimental = ["tolerant-ast"]
 
 [lints]
 workspace = true
