@@ -39,7 +39,7 @@ pub struct SchemaFragment(
     pub  HashMap<SmolStr, NamespaceDefinition>,
 );
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde_as]
 #[serde(deny_unknown_fields)]
 pub struct NamespaceDefinition {
@@ -80,7 +80,7 @@ impl Default for AttributesOrContext {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ActionType {
     #[serde(default)]
