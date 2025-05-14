@@ -874,6 +874,8 @@ impl ParseErrors {
         if errs.is_empty() {
             Ok(oks)
         } else {
+            // PANIC SAFETY: `errs` is not empty so `flatten` will return `Some(..)`
+            #[allow(clippy::unwrap_used)]
             Err(Self::flatten(errs).unwrap())
         }
     }
