@@ -203,7 +203,7 @@ mod test_utils {
             &Report::new(Schema::from_json_value(in_context).unwrap_err()),
             &ExpectedErrorMessageBuilder::error(err).build(),
         );
-        let in_common = schema_with_common_type(ty.clone());
+        let in_common = schema_with_common_type(ty);
         Schema::from_deprecated_json_value(in_common.clone()).unwrap();
         expect_err(
             "",
@@ -217,13 +217,13 @@ mod test_utils {
     pub(crate) fn assert_type_json_ok_deprecated_and_standard(ty: serde_json::Value) {
         let in_entity_attr = schema_with_entity_attribute(ty.clone());
         Schema::from_deprecated_json_value(in_entity_attr.clone()).unwrap();
-        Schema::from_json_value(in_entity_attr.clone()).unwrap();
+        Schema::from_json_value(in_entity_attr).unwrap();
         let in_context = schema_with_context_attribute(ty.clone());
         Schema::from_deprecated_json_value(in_context.clone()).unwrap();
-        Schema::from_json_value(in_context.clone()).unwrap();
-        let in_common = schema_with_common_type(ty.clone());
+        Schema::from_json_value(in_context).unwrap();
+        let in_common = schema_with_common_type(ty);
         Schema::from_deprecated_json_value(in_common.clone()).unwrap();
-        Schema::from_json_value(in_common.clone()).unwrap();
+        Schema::from_json_value(in_common).unwrap();
     }
 
     #[track_caller]
@@ -237,7 +237,7 @@ mod test_utils {
         assert_schema_json_err_deprecated_and_standard(in_entity_attr, current_err, deprecated_err);
         let in_context = schema_with_context_attribute(ty.clone());
         assert_schema_json_err_deprecated_and_standard(in_context, current_err, deprecated_err);
-        let in_common = schema_with_common_type(ty.clone());
+        let in_common = schema_with_common_type(ty);
         assert_schema_json_err_deprecated_and_standard(in_common, current_err, deprecated_err);
     }
 
@@ -255,7 +255,7 @@ mod test_utils {
         );
         expect_err(
             "",
-            &Report::new(Schema::from_deprecated_json_value(schema.clone()).unwrap_err()),
+            &Report::new(Schema::from_deprecated_json_value(schema).unwrap_err()),
             deprecated_err,
         );
     }

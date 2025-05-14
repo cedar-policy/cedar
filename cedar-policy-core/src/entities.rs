@@ -2134,7 +2134,7 @@ mod entities_tests {
     #[test]
     fn test_len() {
         let (e0, e1, e2, e3) = test_entities();
-        let v = vec![e0.clone(), e1.clone(), e2.clone(), e3.clone()];
+        let v = vec![e0, e1, e2, e3];
         let es = Entities::from_entities(
             v,
             None::<&NoEntitiesSchema>,
@@ -2301,10 +2301,10 @@ mod entities_tests {
         let fid = EntityUID::with_eid("F");
         let mut f = Entity::with_uid(fid.clone());
         f.add_parent(aid.clone());
-        f.add_parent(did.clone());
+        f.add_parent(did);
         f.add_parent(eid.clone());
-        d.add_parent(aid.clone());
-        d.add_parent(bid.clone());
+        d.add_parent(aid);
+        d.add_parent(bid);
         d.add_parent(cid.clone());
         e.add_parent(cid.clone());
 
@@ -2332,7 +2332,7 @@ mod entities_tests {
             updates,
             None::<&NoEntitiesSchema>,
             TCComputation::ComputeNow,
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )
         .expect("Failed to remove entities");
         // Post-Update Hierarchy

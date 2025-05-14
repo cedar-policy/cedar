@@ -233,18 +233,18 @@ impl PartialEntity {
         let checker =
             EntitySchemaConformanceChecker::new(&core_schema, Extensions::all_available());
         if let Some(ancestors) = &self.ancestors {
-            checker.validate_entity_ancestors(uid, ancestors.into_iter(), &schema_etype)?;
+            checker.validate_entity_ancestors(uid, ancestors.iter(), &schema_etype)?;
         }
         if let Some(attrs) = &self.attrs {
             let attrs: BTreeMap<_, PartialValue> = attrs
-                .into_iter()
+                .iter()
                 .map(|(a, v)| (a.clone(), v.clone().into()))
                 .collect();
             checker.validate_entity_attributes(uid, attrs.iter(), &schema_etype)?;
         }
         if let Some(tags) = &self.tags {
             let tags: BTreeMap<_, PartialValue> = tags
-                .into_iter()
+                .iter()
                 .map(|(a, v)| (a.clone(), v.clone().into()))
                 .collect();
             checker.validate_tags(uid, tags.iter(), &schema_etype)?;
@@ -259,21 +259,18 @@ impl PartialEntity {
 // parents
 pub(crate) fn validate_parents(entities: &HashMap<EntityUID, PartialEntity>) -> anyhow::Result<()> {
     for e in entities.values() {
-        match e.ancestors.as_ref() {
-            Some(ancestors) => {
-                for ancestor in ancestors {
-                    if let Some(ancestor_entity) = entities.get(ancestor) {
-                        if ancestor_entity.ancestors.is_none() {
-                            return Err(anyhow::anyhow!(
-                                "{} has invalid ancestor {}",
-                                e.uid,
-                                ancestor
-                            ));
-                        }
+        if let Some(ancestors) = e.ancestors.as_ref() {
+            for ancestor in ancestors {
+                if let Some(ancestor_entity) = entities.get(ancestor) {
+                    if ancestor_entity.ancestors.is_none() {
+                        return Err(anyhow::anyhow!(
+                            "{} has invalid ancestor {}",
+                            e.uid,
+                            ancestor
+                        ));
                     }
                 }
             }
-            None => {}
         }
     }
     Ok(())

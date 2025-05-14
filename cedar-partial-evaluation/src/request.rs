@@ -119,7 +119,7 @@ impl PartialRequest {
             }
             Ok(())
         } else {
-            return Err(anyhow::anyhow!("action not found"));
+            Err(anyhow::anyhow!("action not found"))
         }
     }
 }

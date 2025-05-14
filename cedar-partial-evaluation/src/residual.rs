@@ -177,7 +177,7 @@ impl TryFrom<Residual> for Expr {
                             map.as_ref()
                                 .clone()
                                 .into_iter()
-                                .map(|(k, v)| Ok((k.clone(), v.try_into()?)))
+                                .map(|(k, v)| Ok((k, v.try_into()?)))
                                 .collect::<std::result::Result<Vec<(_, _)>, _>>()?,
                         )
                         .expect("should succeed")),

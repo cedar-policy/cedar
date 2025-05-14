@@ -147,9 +147,9 @@ impl<'a> Typechecker<'a> {
         })
     }
 
-    fn single_env_typechecking<'b>(
+    fn single_env_typechecking(
         &self,
-        request_env: &RequestEnv<'b>,
+        request_env: &RequestEnv<'_>,
         policy_id: &PolicyID,
         expr: &Expr,
     ) -> PolicyCheck {
@@ -1041,7 +1041,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                         }
                         // For `AnyEntity` we don't know anything about what
                         // entity type it could be, so we just return `Bool`.
-                        Some(Type::EntityOrRecord(EntityRecordKind::AnyEntity { .. })) => {
+                        Some(Type::EntityOrRecord(EntityRecordKind::AnyEntity)) => {
                             TypecheckAnswer::success(
                                 ExprBuilder::with_data(Some(Type::primitive_boolean()))
                                     .with_same_source_loc(e)
