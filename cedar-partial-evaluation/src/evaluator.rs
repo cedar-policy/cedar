@@ -645,6 +645,8 @@ impl<'e> Evaluator<'e> {
             }
             ExprKind::Unknown { .. } => unreachable!("we should not unexpect unknowns"),
             ExprKind::Slot(_) => unimplemented!("we should not unexpect slot for now"),
+            #[cfg(feature = "tolerant-ast")]
+            ExprKind::Error { .. } => Residual::Error(ty),
             ExprKind::UnaryApp { op, arg } => {
                 let arg = self.interpret(arg);
                 match &arg {
