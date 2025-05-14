@@ -54,6 +54,8 @@ impl PartialRequest {
         &self,
         schema: &'s ValidatorSchema,
     ) -> anyhow::Result<RequestEnv<'s>> {
+        // PANIC SAFETY: strict validation should produce concrete action entity uid
+        #[allow(clippy::unwrap_used)]
         schema
             .unlinked_request_envs(ValidationMode::Strict)
             .find(|env| {

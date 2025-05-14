@@ -207,6 +207,8 @@ impl TCNode<EntityUID> for PartialEntity {
 
 impl PartialEntity {
     pub(crate) fn add_ancestor(&mut self, uid: EntityUID) {
+        // PANIC SAFETY: this method should be only called on entities that have known ancestors
+        #[allow(clippy::expect_used)]
         self.ancestors
             .as_mut()
             .expect("should not be unknown")

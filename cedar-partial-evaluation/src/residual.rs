@@ -172,6 +172,8 @@ impl TryFrom<Residual> for Expr {
                         left.as_ref().clone().try_into()?,
                         right.as_ref().clone().try_into()?,
                     )),
+                    // PANIC SAFETY: record construction should succeed
+                    #[allow(clippy::expect_used)]
                     ResidualKind::Record(map) => Ok(builder
                         .record(
                             map.as_ref()

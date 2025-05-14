@@ -21,6 +21,8 @@ pub struct Evaluator<'e> {
 
 impl Evaluator<'_> {
     pub fn interpret(&self, e: &Expr<Option<Type>>) -> Residual {
+        // PANIC SAFETY: the validator should produce expressions with types
+        #[allow(clippy::expect_used)]
         let ty = e
             .data()
             .clone()
@@ -633,8 +635,12 @@ impl Evaluator<'_> {
                     Residual::Error(_) => Residual::Error(ty),
                 }
             }
+            // PANIC SAFETY: TPE does not expect explicit unknowns in policies
+            #[allow(clippy::unreachable)]
             ExprKind::Unknown { .. } => unreachable!("we should not unexpect unknowns"),
-            ExprKind::Slot(_) => unimplemented!("we should not unexpect slot for now"),
+            // PANIC SAFETY: TPE currently only works on static policies
+            #[allow(clippy::unreachable)]
+            ExprKind::Slot(_) => unreachable!("we should not unexpect slot for now"),
             #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => Residual::Error(ty),
             ExprKind::UnaryApp { op, arg } => {
