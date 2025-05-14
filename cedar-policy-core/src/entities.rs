@@ -2537,7 +2537,7 @@ mod schema_based_parsing_tests {
                     "work_ip",
                     "trust_score",
                 ]
-                .map(SmolStr::new)
+                .map(SmolStr::new_static)
                 .into_iter(),
             )
         }
@@ -3731,7 +3731,7 @@ mod schema_based_parsing_tests {
             fn required_attrs(&self) -> Box<dyn Iterator<Item = SmolStr>> {
                 Box::new(
                     ["isFullTime", "department", "manager"]
-                        .map(SmolStr::new)
+                        .map(SmolStr::new_static)
                         .into_iter(),
                 )
             }
