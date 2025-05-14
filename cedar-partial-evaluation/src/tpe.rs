@@ -9,8 +9,8 @@ use crate::{
     entities::PartialEntities, evaluator::Evaluator, request::PartialRequest, residual::Residual,
 };
 
-/// Type-aware partial-evaluation
-pub fn tpe(
+/// Type-aware partial-evaluation on a single policy
+pub fn tpe_policy(
     p: &Policy,
     request: &PartialRequest,
     es: &PartialEntities,
@@ -71,7 +71,7 @@ mod tests {
         residual::Residual,
     };
 
-    use super::tpe;
+    use super::tpe_policy;
 
     fn rfc_policies() -> PolicySet {
         parse_policyset(
@@ -184,7 +184,7 @@ action Delete appliesTo {
         let entities = rfc_entities();
         let residuals: Vec<Residual> = policies
             .policies()
-            .map(|p| tpe(p, &request, &entities, &schema))
+            .map(|p| tpe_policy(p, &request, &entities, &schema))
             .collect::<Result<Vec<Residual>>>()
             .unwrap();
         for residual in residuals {

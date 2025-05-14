@@ -23,7 +23,7 @@ pub struct PartialEntityUID {
 
 impl TryFrom<PartialEntityUID> for EntityUID {
     type Error = ();
-    fn try_from(value: PartialEntityUID) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: PartialEntityUID) -> std::result::Result<EntityUID, ()> {
         if let Some(eid) = value.eid {
             std::result::Result::Ok(EntityUID::from_components(value.ty, eid, None))
         } else {
