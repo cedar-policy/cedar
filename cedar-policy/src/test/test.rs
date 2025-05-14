@@ -2207,7 +2207,10 @@ action "g" appliesTo {
             r#"E::"""#.parse().unwrap(),
             std::iter::empty(),
             std::iter::empty(),
-            std::iter::once(("".to_owned(), RestrictedExpression::new_string("".into()))),
+            std::iter::once((
+                String::new(),
+                RestrictedExpression::new_string(String::new()),
+            )),
         )
         .unwrap();
         assert_matches!(Entities::from_entities([entity], Some(&schema)), Ok(_));
@@ -2215,7 +2218,7 @@ action "g" appliesTo {
             r#"E::"""#.parse().unwrap(),
             std::iter::empty(),
             std::iter::empty(),
-            std::iter::once(("".to_owned(), RestrictedExpression::new_long(42))),
+            std::iter::once((String::new(), RestrictedExpression::new_long(42))),
         )
         .unwrap();
         assert_matches!(
@@ -2247,7 +2250,7 @@ action "g" appliesTo {
             r#"E::"""#.parse().unwrap(),
             std::iter::empty(),
             std::iter::empty(),
-            std::iter::once(("".to_owned(), RestrictedExpression::new_long(42))),
+            std::iter::once((String::new(), RestrictedExpression::new_long(42))),
         )
         .unwrap();
         assert_matches!(
@@ -2292,7 +2295,7 @@ mod schema_based_parsing_tests {
     #[test]
     fn additional_json_attributes() {
         let (schema, _) = Schema::from_cedarschema_str(
-            r#"
+            r"
         entity A {
           d? : decimal,
           e? : B,
@@ -2303,7 +2306,7 @@ mod schema_based_parsing_tests {
           principal: A,
           resource: A,
         };
-        "#,
+        ",
         )
         .unwrap();
 
@@ -5866,7 +5869,7 @@ mod policy_set_est_tests {
             .is_err()
         {
             panic!("Should have exactly one");
-        };
+        }
     }
 
     #[test]

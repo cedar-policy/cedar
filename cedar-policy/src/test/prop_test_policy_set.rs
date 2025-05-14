@@ -107,7 +107,7 @@ impl PolicySetModel {
                     Entry::Vacant(_) => {
                         panic!("template to link map should have Vec for existing template")
                     }
-                };
+                }
                 assert!(!self.link_to_template_map.contains_key(policy_name));
                 self.link_to_template_map
                     .insert(policy_name.to_owned(), template_name.clone());
@@ -175,7 +175,7 @@ impl PolicySetModel {
                     Entry::Vacant(_) => {
                         panic!("template to link map should have Vec for existing template")
                     }
-                };
+                }
             }
             Self::remove_policy_name(&mut self.link_names, policy_id);
         }
@@ -272,7 +272,7 @@ fn string_to_policy_set_ops(s: &str) {
             }
             PolicySetOp::Link => my_policy_set.link(&format!("policy{policy_n}")),
             PolicySetOp::Unlink => my_policy_set.unlink(&format!("policy{policy_n}")),
-        };
+        }
 
         my_policy_set.check_equiv();
     }
