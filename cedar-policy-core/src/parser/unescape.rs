@@ -19,13 +19,13 @@ use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::NonEmpty;
 use rustc_lexer::unescape::{unescape_str, EscapeError};
-use smol_str::SmolStr;
+use smol_str::{SmolStr, SmolStrBuilder};
 use std::ops::Range;
 use thiserror::Error;
 
 /// Unescape a string following Cedar's string escape rules
 pub fn to_unescaped_string(s: &str) -> Result<SmolStr, NonEmpty<UnescapeError>> {
-    let mut unescaped_str = String::new();
+    let mut unescaped_str = SmolStrBuilder::new();
     let mut errs = Vec::new();
     let mut callback = |range, r| match r {
         Ok(c) => unescaped_str.push(c),
@@ -42,7 +42,7 @@ pub fn to_unescaped_string(s: &str) -> Result<SmolStr, NonEmpty<UnescapeError>> 
             tail: tails.iter().cloned().collect_vec(),
         })
     } else {
-        Ok(unescaped_str.into())
+        Ok(unescaped_str.finish())
     }
 }
 
