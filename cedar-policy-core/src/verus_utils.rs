@@ -16,6 +16,8 @@
 
 //! Extra utilties for Verus verification
 
+#![allow(missing_debug_implementations)] // vstd types Seq/Set/Map don't impl Debug
+
 use smol_str::SmolStr;
 
 use vstd::prelude::*;
@@ -56,5 +58,30 @@ pub struct ExSmolStr(SmolStr);
 
 pub assume_specification [<SmolStr as Clone>::clone](s: &SmolStr) -> (res: SmolStr)
 ensures res == s;
+
+}
+
+// Helper data structures (should be in vstd)
+
+verus! {
+
+/// A statically finite set (backed internally by a `Seq`)
+/// needed due to https://verus-lang.zulipchat.com/#narrow/channel/399078-help/topic/Recursive.20structure.20with.20vstd.20.60Set.60/with/518139335
+/// should eventually be replaced with the vstd finite set from https://github.com/verus-lang/verus/tree/jonh/sets-typed-finite
+/// but that branch doesn't build yet
+#[verifier::accept_recursive_types(T)]
+pub struct FiniteSet<T> {
+    s: Seq<T>,
+}
+
+impl<T> FiniteSet<T> {
+    #[verifier::type_invariant]
+    pub closed spec fn no_duplicates(self) -> bool {
+        self.s.no_duplicates()
+    }
+
+}
+
+
 
 }

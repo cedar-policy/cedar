@@ -93,7 +93,6 @@ impl Authorizer {
     ///
     /// The language spec and formal model give a precise definition of how this is
     /// computed.
-    #[verifier::external_body]
     pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> Response {
         let eval = Evaluator::new(q.clone(), entities, self.extensions);
 

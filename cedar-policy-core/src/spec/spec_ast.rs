@@ -19,6 +19,7 @@
 #![allow(missing_debug_implementations)] // vstd types Seq/Set/Map don't impl Debug
 #![allow(missing_docs)] // just for now
 
+pub use crate::verus_utils::*;
 pub use vstd::{map::*, prelude::*, seq::*, set::*};
 
 verus! {
@@ -53,7 +54,7 @@ pub type Attr = Seq<char>;
 
 pub enum Value {
     Prim(Prim),
-    // Set(Set<Value>), // fails due to https://verus-lang.zulipchat.com/#narrow/channel/399078-help/topic/Recursive.20structure.20with.20vstd.20.60Set.60/with/518139335
+    Set(FiniteSet<Value>), // TODO switch to vstd finite set when it lands
     Record(Map<Attr, Value>),
     // Ext(Ext) // TODO(Pratap): extensions
 }

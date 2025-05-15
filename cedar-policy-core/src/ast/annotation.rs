@@ -24,10 +24,18 @@ use crate::parser::Loc;
 
 use super::AnyId;
 
+use vstd::prelude::*;
+
+verus! {
+
 /// Struct which holds the annotations for a policy
 #[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[verifier::external_derive]
+#[verifier::external_body]
 pub struct Annotations(BTreeMap<AnyId, Annotation>);
+
+}
 
 impl std::fmt::Display for Annotations {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

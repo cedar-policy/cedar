@@ -515,9 +515,14 @@ impl Policy {
         self.template.annotations()
     }
 
+    verus! {
+
     /// Get [`Arc`] owning annotation data.
+    #[verifier::external_body]
     pub fn annotations_arc(&self) -> &Arc<Annotations> {
         self.template.annotations_arc()
+    }
+
     }
 
     /// Get the principal constraint for this policy.
@@ -572,9 +577,14 @@ impl Policy {
         &self.values
     }
 
+    verus! {
+
     /// Get the ID of this policy.
+    #[verifier::external_body]
     pub fn id(&self) -> &PolicyID {
         self.link.as_ref().unwrap_or_else(|| self.template.id())
+    }
+
     }
 
     /// Clone this policy or instance with a new ID
@@ -1894,6 +1904,8 @@ verus! {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 #[verifier::external_derive]
 pub struct PolicyID(SmolStr);
+
+empty_clone_spec_for!(PolicyID);
 
 } // verus!
 
