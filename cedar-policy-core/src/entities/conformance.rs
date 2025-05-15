@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use super::{json::err::TypeMismatchError, EntityTypeDescription, Schema, SchemaType};
 use super::{Eid, EntityUID, Literal};
@@ -47,22 +47,167 @@ impl<'a, S> EntitySchemaConformanceChecker<'a, S> {
 }
 
 impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
+    /// Validate an action
+    pub fn validate_action(&self, action: &Entity) -> Result<(), EntitySchemaConformanceError> {
+        let uid = action.uid();
+        let schema_action = self
+            .schema
+            .action(uid)
+            .ok_or_else(|| EntitySchemaConformanceError::undeclared_action(uid.clone()))?;
+        // check that the action exactly matches the schema's definition
+        if !action.deep_eq(&schema_action) {
+            return Err(EntitySchemaConformanceError::action_declaration_mismatch(
+                uid.clone(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Validate ancestors of an entity
+    pub fn validate_entity_ancestors<'a>(
+        &self,
+        uid: &EntityUID,
+        ancestors: impl Iterator<Item = &'a EntityUID>,
+        schema_etype: &impl EntityTypeDescription,
+    ) -> Result<(), EntitySchemaConformanceError> {
+        // For each ancestor that actually appears in `entity`, ensure the
+        // ancestor type is allowed by the schema
+        for ancestor_euid in ancestors {
+            validate_euid(self.schema, ancestor_euid)
+                .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
+            let ancestor_type = ancestor_euid.entity_type();
+            if schema_etype.allowed_parent_types().contains(ancestor_type) {
+                // note that `allowed_parent_types()` was transitively
+                // closed, so it's actually `allowed_ancestor_types()`
+                //
+                // thus, the check passes in this case
+            } else {
+                return Err(EntitySchemaConformanceError::invalid_ancestor_type(
+                    uid.clone(),
+                    ancestor_type.clone(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Validate attributes of an entity
+    pub fn validate_entity_attributes<'a>(
+        &self,
+        uid: &EntityUID,
+        attrs: impl Iterator<Item = (&'a SmolStr, &'a PartialValue)>,
+        schema_etype: &impl EntityTypeDescription,
+    ) -> Result<(), EntitySchemaConformanceError> {
+        let attrs: HashMap<&SmolStr, &PartialValue> = attrs.collect();
+        // Ensure that all required attributes for `etype` are actually
+        // included in `entity`
+        for required_attr in schema_etype.required_attrs() {
+            if !attrs.contains_key(&required_attr) {
+                return Err(EntitySchemaConformanceError::missing_entity_attr(
+                    uid.clone(),
+                    required_attr,
+                ));
+            }
+        }
+        // For each attribute that actually appears in `entity`, ensure it
+        // complies with the schema
+        for (attr, val) in attrs {
+            match schema_etype.attr_type(attr) {
+                None => {
+                    // `None` indicates the attribute shouldn't exist -- see
+                    // docs on the `attr_type()` trait method
+                    if !schema_etype.open_attributes() {
+                        return Err(EntitySchemaConformanceError::unexpected_entity_attr(
+                            uid.clone(),
+                            attr.clone(),
+                        ));
+                    }
+                }
+                Some(expected_ty) => {
+                    // typecheck: ensure that the entity attribute value matches
+                    // the expected type
+                    match typecheck_value_against_schematype(val, &expected_ty, self.extensions) {
+                        Ok(()) => {} // typecheck passes
+                        Err(TypecheckError::TypeMismatch(err)) => {
+                            return Err(EntitySchemaConformanceError::type_mismatch(
+                                uid.clone(),
+                                attr.clone(),
+                                err::AttrOrTag::Attr,
+                                err,
+                            ));
+                        }
+                        Err(TypecheckError::ExtensionFunctionLookup(err)) => {
+                            return Err(EntitySchemaConformanceError::extension_function_lookup(
+                                uid.clone(),
+                                attr.clone(),
+                                err::AttrOrTag::Attr,
+                                err,
+                            ));
+                        }
+                    }
+                }
+            }
+            validate_euids_in_partial_value(self.schema, val)
+                .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
+        }
+        Ok(())
+    }
+
+    /// Validate tags of an entity
+    pub fn validate_tags<'a>(
+        &self,
+        uid: &EntityUID,
+        tags: impl Iterator<Item = (&'a SmolStr, &'a PartialValue)>,
+        schema_etype: &impl EntityTypeDescription,
+    ) -> Result<(), EntitySchemaConformanceError> {
+        let tags: HashMap<&SmolStr, &PartialValue> = tags.collect();
+        match schema_etype.tag_type() {
+            None => {
+                if let Some((k, _)) = tags.iter().next() {
+                    return Err(EntitySchemaConformanceError::unexpected_entity_tag(
+                        uid.clone(),
+                        k.to_string(),
+                    ));
+                }
+            }
+            Some(expected_ty) => {
+                for (tag, val) in &tags {
+                    match typecheck_value_against_schematype(val, &expected_ty, self.extensions) {
+                        Ok(()) => {} // typecheck passes
+                        Err(TypecheckError::TypeMismatch(err)) => {
+                            return Err(EntitySchemaConformanceError::type_mismatch(
+                                uid.clone(),
+                                tag.to_string(),
+                                err::AttrOrTag::Tag,
+                                err,
+                            ));
+                        }
+                        Err(TypecheckError::ExtensionFunctionLookup(err)) => {
+                            return Err(EntitySchemaConformanceError::extension_function_lookup(
+                                uid.clone(),
+                                tag.to_string(),
+                                err::AttrOrTag::Tag,
+                                err,
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        for val in tags.values() {
+            validate_euids_in_partial_value(self.schema, val)
+                .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
+        }
+        Ok(())
+    }
+
     /// Validate an entity against the schema, returning an
     /// [`EntitySchemaConformanceError`] if it does not comply.
     pub fn validate_entity(&self, entity: &Entity) -> Result<(), EntitySchemaConformanceError> {
         let uid = entity.uid();
         let etype = uid.entity_type();
         if etype.is_action() {
-            let schema_action = self
-                .schema
-                .action(uid)
-                .ok_or_else(|| EntitySchemaConformanceError::undeclared_action(uid.clone()))?;
-            // check that the action exactly matches the schema's definition
-            if !entity.deep_eq(&schema_action) {
-                return Err(EntitySchemaConformanceError::action_declaration_mismatch(
-                    uid.clone(),
-                ));
-            }
+            self.validate_action(entity)?;
         } else {
             validate_euid(self.schema, uid)
                 .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
@@ -76,81 +221,10 @@ impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
                     suggested_types,
                 }
             })?;
-            // Ensure that all required attributes for `etype` are actually
-            // included in `entity`
-            for required_attr in schema_etype.required_attrs() {
-                if entity.get(&required_attr).is_none() {
-                    return Err(EntitySchemaConformanceError::missing_entity_attr(
-                        uid.clone(),
-                        required_attr,
-                    ));
-                }
-            }
-            // For each attribute that actually appears in `entity`, ensure it
-            // complies with the schema
-            for (attr, val) in entity.attrs() {
-                match schema_etype.attr_type(attr) {
-                    None => {
-                        // `None` indicates the attribute shouldn't exist -- see
-                        // docs on the `attr_type()` trait method
-                        if !schema_etype.open_attributes() {
-                            return Err(EntitySchemaConformanceError::unexpected_entity_attr(
-                                uid.clone(),
-                                attr.clone(),
-                            ));
-                        }
-                    }
-                    Some(expected_ty) => {
-                        // typecheck: ensure that the entity attribute value matches
-                        // the expected type
-                        match typecheck_value_against_schematype(val, &expected_ty, self.extensions)
-                        {
-                            Ok(()) => {} // typecheck passes
-                            Err(TypecheckError::TypeMismatch(err)) => {
-                                return Err(EntitySchemaConformanceError::type_mismatch(
-                                    uid.clone(),
-                                    attr.clone(),
-                                    err,
-                                ));
-                            }
-                            Err(TypecheckError::ExtensionFunctionLookup(err)) => {
-                                return Err(
-                                    EntitySchemaConformanceError::extension_function_lookup(
-                                        uid.clone(),
-                                        attr.clone(),
-                                        err,
-                                    ),
-                                );
-                            }
-                        }
-                    }
-                }
-                validate_euids_in_partial_value(self.schema, val)
-                    .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
-            }
-            // For each ancestor that actually appears in `entity`, ensure the
-            // ancestor type is allowed by the schema
-            for ancestor_euid in entity.ancestors() {
-                validate_euid(self.schema, ancestor_euid)
-                    .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
-                let ancestor_type = ancestor_euid.entity_type();
-                if schema_etype.allowed_parent_types().contains(ancestor_type) {
-                    // note that `allowed_parent_types()` was transitively
-                    // closed, so it's actually `allowed_ancestor_types()`
-                    //
-                    // thus, the check passes in this case
-                } else {
-                    return Err(EntitySchemaConformanceError::invalid_ancestor_type(
-                        uid.clone(),
-                        ancestor_type.clone(),
-                    ));
-                }
-            }
 
-            for (_, val) in entity.tags() {
-                validate_euids_in_partial_value(self.schema, val)
-                    .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
-            }
+            self.validate_entity_attributes(uid, entity.attrs(), &schema_etype)?;
+            self.validate_entity_ancestors(uid, entity.ancestors(), &schema_etype)?;
+            self.validate_tags(uid, entity.tags(), &schema_etype)?;
         }
         Ok(())
     }
@@ -172,10 +246,7 @@ pub fn is_valid_enumerated_entity(
 }
 
 /// Validate if `euid` is valid, provided that it's of an enumerated type
-pub(crate) fn validate_euid(
-    schema: &impl Schema,
-    euid: &EntityUID,
-) -> Result<(), InvalidEnumEntityError> {
+pub fn validate_euid(schema: &impl Schema, euid: &EntityUID) -> Result<(), InvalidEnumEntityError> {
     if let Some(desc) = schema.entity_type(euid.entity_type()) {
         if let Some(choices) = desc.enum_entity_eids() {
             is_valid_enumerated_entity(&Vec::from(choices), euid)?;

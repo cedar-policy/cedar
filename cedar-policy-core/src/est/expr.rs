@@ -29,8 +29,6 @@ use crate::extensions::Extensions;
 use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
 use crate::parser::cst_to_ast;
 use crate::parser::err::ParseErrors;
-#[cfg(feature = "tolerant-ast")]
-use crate::parser::err::{ToASTError, ToASTErrorKind};
 use crate::parser::Node;
 use crate::parser::{cst, Loc};
 use itertools::Itertools;
@@ -1064,82 +1062,6 @@ impl Expr {
     }
 }
 
-// PANIC SAFETY: See comment on `unwrap`
-#[allow(clippy::fallible_impl_from)]
-impl<T: Clone> From<ast::Expr<T>> for Expr {
-    fn from(expr: ast::Expr<T>) -> Expr {
-        match expr.into_expr_kind() {
-            ast::ExprKind::Lit(lit) => lit.into(),
-            ast::ExprKind::Var(var) => var.into(),
-            ast::ExprKind::Slot(slot) => slot.into(),
-            ast::ExprKind::Unknown(u) => Builder::new().unknown(u),
-            ast::ExprKind::If {
-                test_expr,
-                then_expr,
-                else_expr,
-            } => Builder::new().ite(
-                Arc::unwrap_or_clone(test_expr).into(),
-                Arc::unwrap_or_clone(then_expr).into(),
-                Arc::unwrap_or_clone(else_expr).into(),
-            ),
-            ast::ExprKind::And { left, right } => Builder::new().and(
-                Arc::unwrap_or_clone(left).into(),
-                Arc::unwrap_or_clone(right).into(),
-            ),
-            ast::ExprKind::Or { left, right } => Builder::new().or(
-                Arc::unwrap_or_clone(left).into(),
-                Arc::unwrap_or_clone(right).into(),
-            ),
-            ast::ExprKind::UnaryApp { op, arg } => {
-                let arg = Arc::unwrap_or_clone(arg).into();
-                Builder::new().unary_app(op, arg)
-            }
-            ast::ExprKind::BinaryApp { op, arg1, arg2 } => {
-                let arg1 = Arc::unwrap_or_clone(arg1).into();
-                let arg2 = Arc::unwrap_or_clone(arg2).into();
-                Builder::new().binary_app(op, arg1, arg2)
-            }
-            ast::ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                let args = Arc::unwrap_or_clone(args).into_iter().map(Into::into);
-                Builder::new().call_extension_fn(fn_name, args)
-            }
-            ast::ExprKind::GetAttr { expr, attr } => {
-                Builder::new().get_attr(Arc::unwrap_or_clone(expr).into(), attr)
-            }
-            ast::ExprKind::HasAttr { expr, attr } => {
-                Builder::new().has_attr(Arc::unwrap_or_clone(expr).into(), attr)
-            }
-            ast::ExprKind::Like { expr, pattern } => {
-                Builder::new().like(Arc::unwrap_or_clone(expr).into(), pattern)
-            }
-            ast::ExprKind::Is { expr, entity_type } => {
-                Builder::new().is_entity_type(Arc::unwrap_or_clone(expr).into(), entity_type)
-            }
-            ast::ExprKind::Set(set) => {
-                Builder::new().set(Arc::unwrap_or_clone(set).into_iter().map(Into::into))
-            }
-            // PANIC SAFETY: `map` is a map, so it will not have duplicates keys, so the `record` constructor cannot error.
-            #[allow(clippy::unwrap_used)]
-            ast::ExprKind::Record(map) => Builder::new()
-                .record(
-                    Arc::unwrap_or_clone(map)
-                        .into_iter()
-                        .map(|(k, v)| (k, v.into())),
-                )
-                .unwrap(),
-            #[cfg(feature = "tolerant-ast")]
-            // PANIC SAFETY: error type is Infallible so can never happen
-            #[allow(clippy::unwrap_used)]
-            ast::ExprKind::Error { .. } => Builder::new()
-                .error(ParseErrors::singleton(ToASTError::new(
-                    ToASTErrorKind::ASTErrorNode,
-                    Loc::new(0..1, "AST_ERROR_NODE".into()),
-                )))
-                .unwrap(),
-        }
-    }
-}
-
 impl From<ast::Literal> for Expr {
     fn from(lit: ast::Literal) -> Expr {
         Builder::new().val(lit)
@@ -1207,7 +1129,7 @@ fn display_cedarvaluejson(
         } => {
             // search for the name and callstyle
             let style = Extensions::all_available().all_funcs().find_map(|f| {
-                if &f.name().to_string() == ext_fn {
+                if &f.name().to_smolstr() == ext_fn {
                     Some(f.style())
                 } else {
                     None
@@ -1517,7 +1439,7 @@ impl BoundedDisplay for ExtFuncCall {
         };
         // search for the name and callstyle
         let style = Extensions::all_available().all_funcs().find_map(|ext_fn| {
-            if &ext_fn.name().to_string() == fn_name {
+            if &ext_fn.name().to_smolstr() == fn_name {
                 Some(ext_fn.style())
             } else {
                 None
@@ -1629,7 +1551,9 @@ mod test {
 
     #[test]
     fn display_and_bounded_display() {
-        let expr = Expr::from(parse_expr(r#"[100, [3, 4, 5], -20, "foo"]"#).unwrap());
+        let expr = parse_expr(r#"[100, [3, 4, 5], -20, "foo"]"#)
+            .unwrap()
+            .into_expr::<Builder>();
         assert_eq!(format!("{expr}"), r#"[100, [3, 4, 5], (-20), "foo"]"#);
         assert_eq!(
             BoundedToString::to_string(&expr, None),
@@ -1650,17 +1574,16 @@ mod test {
         assert_eq!(BoundedToString::to_string(&expr, Some(1)), r#"[100, ..]"#);
         assert_eq!(BoundedToString::to_string(&expr, Some(0)), r#"[..]"#);
 
-        let expr = Expr::from(
-            parse_expr(
-                r#"{
+        let expr = parse_expr(
+            r#"{
             a: 12,
             b: [3, 4, true],
             c: -20,
             "hello ∞ world": "∂µß≈¥"
         }"#,
-            )
-            .unwrap(),
-        );
+        )
+        .unwrap()
+        .into_expr::<Builder>();
         assert_eq!(
             format!("{expr}"),
             r#"{"a": 12, "b": [3, 4, true], "c": (-20), "hello ∞ world": "∂µß≈¥"}"#

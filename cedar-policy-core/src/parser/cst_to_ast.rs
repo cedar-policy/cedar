@@ -50,7 +50,7 @@ use crate::fuzzy_match::fuzzy_search_limited;
 use itertools::{Either, Itertools};
 use nonempty::nonempty;
 use nonempty::NonEmpty;
-use smol_str::{SmolStr, ToSmolStr};
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 use std::mem;
@@ -110,11 +110,12 @@ impl Node<Option<cst::Policies>> {
     ) -> Result<impl Iterator<Item = (ast::PolicyID, &Node<Option<cst::Policy>>)>> {
         let policies = self.try_as_inner()?;
 
-        Ok(policies
-            .0
-            .iter()
-            .enumerate()
-            .map(|(count, node)| (ast::PolicyID::from_string(format!("policy{count}")), node)))
+        Ok(policies.0.iter().enumerate().map(|(count, node)| {
+            (
+                ast::PolicyID::from_smolstr(format_smolstr!("policy{count}")),
+                node,
+            )
+        }))
     }
 
     /// convert `cst::Policies` to `ast::PolicySet`
@@ -673,7 +674,8 @@ impl Node<Option<cst::Ident>> {
             cst::Ident::Invalid(i) => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidIdentifier(i.clone()))
                 .into()),
-            _ => Ok(ast::Id::new_unchecked(format!("{ident}"))),
+            cst::Ident::Ident(i) => Ok(ast::Id::new_unchecked(i.clone())),
+            _ => Ok(ast::Id::new_unchecked(ident.to_smolstr())),
         }
     }
 
@@ -689,7 +691,8 @@ impl Node<Option<cst::Ident>> {
             cst::Ident::Invalid(i) => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidIdentifier(i.clone()))
                 .into()),
-            _ => Ok(ast::AnyId::new_unchecked(format!("{ident}"))),
+            cst::Ident::Ident(i) => Ok(ast::AnyId::new_unchecked(i.clone())),
+            _ => Ok(ast::AnyId::new_unchecked(ident.to_smolstr())),
         }
     }
 
@@ -2043,17 +2046,11 @@ impl Node<Option<cst::Name>> {
     // so it's fine to return an `Option` instead of a `Result`.
     fn maybe_to_var(&self) -> Option<ast::Var> {
         let name = self.as_inner()?;
-
-        let ident = match ParseErrors::transpose(name.path.iter().map(|id| id.to_valid_ident())) {
-            Ok(path) => {
-                if !path.is_empty() {
-                    // The path should be empty for a variable
-                    None
-                } else {
-                    name.name.as_inner()
-                }
-            }
-            Err(_) => None,
+        let ident = if name.path.is_empty() {
+            name.name.as_inner()
+        } else {
+            // The path should be empty for a variable
+            None
         }?;
 
         match ident {

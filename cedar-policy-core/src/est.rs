@@ -379,7 +379,7 @@ impl From<ast::Template> for Policy {
 
 impl<T: Clone> From<ast::Expr<T>> for Clause {
     fn from(expr: ast::Expr<T>) -> Clause {
-        Clause::When(expr.into())
+        Clause::When(expr.into_expr::<Builder>())
     }
 }
 
