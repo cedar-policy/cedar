@@ -85,15 +85,83 @@ impl Authorizer {
 
     verus! {
 
+    /// Rewrite of original `Authorizer::is_authorized`, simplified to avoid partial evaluation and inline
+    /// all of the processing logic from `is_authorized_core_internal` and `PartialResponse::concretize`,
+    /// to make verification with Verus more feasible
+    /// -----
     /// Returns an authorization response for `q` with respect to the given `Slice`.
     ///
     /// The language spec and formal model give a precise definition of how this is
     /// computed.
+    #[verifier::external_body]
     pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> Response {
-        self.is_authorized_core(q, pset, entities).concretize()
+        let eval = Evaluator::new(q.clone(), entities, self.extensions);
+
+        // logic from `Authorizer::is_authorized_core_internal()``
+        let mut true_permits = vec![];
+        let mut true_forbids = vec![];
+        let mut false_permits = vec![];
+        let mut false_forbids = vec![];
+        let mut errors = vec![];
+
+        for p in iter: pset.policies_iter() {
+            let (id, annotations) = (p.id().clone(), p.annotations_arc().clone());
+            match eval.evaluate(p) {
+                Ok(satisfied) => match (satisfied, p.effect()) {
+                    (true, Effect::Permit) => true_permits.push((id, annotations)),
+                    (true, Effect::Forbid) => true_forbids.push((id, annotations)),
+                    (false, Effect::Permit) => {
+                        false_permits.push((id, (ErrorState::NoError, annotations)))
+                    }
+                    (false, Effect::Forbid) => {
+                        false_forbids.push((id, (ErrorState::NoError, annotations)))
+                    }
+                },
+                Err(e) => {
+                    errors.push(AuthorizationError::PolicyEvaluationError {
+                        id: id.clone(),
+                        error: e,
+                    });
+                    let satisfied = match self.error_handling {
+                        ErrorHandling::Skip => false,
+                    };
+                    match (satisfied, p.effect()) {
+                        (true, Effect::Permit) => true_permits.push((id, annotations)),
+                        (true, Effect::Forbid) => true_forbids.push((id, annotations)),
+                        (false, Effect::Permit) => {
+                            false_permits.push((id, (ErrorState::Error, annotations)))
+                        }
+                        (false, Effect::Forbid) => {
+                            false_forbids.push((id, (ErrorState::Error, annotations)))
+                        }
+                    }
+                }
+            }
+        }
+
+        let partial_response = PartialResponse::new(
+            true_permits,
+            false_permits,
+            vec![], // no residual permits
+            true_forbids,
+            false_forbids,
+            vec![], // no residual forbids
+            errors,
+            Arc::new(q),
+        );
+
+        partial_response.concretize()
     }
 
+    } // verus!
 
+    // /// Returns an authorization response for `q` with respect to the given `Slice`.
+    // ///
+    // /// The language spec and formal model give a precise definition of how this is
+    // /// computed.
+    // pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> Response {
+    //     self.is_authorized_core(q, pset, entities).concretize()
+    // }
 
     /// Returns an authorization response for `q` with respect to the given `Slice`.
     /// Partial Evaluation of is_authorized
@@ -108,10 +176,8 @@ impl Authorizer {
         self.is_authorized_core_internal(&eval, q, pset)
     }
 
-
     /// The same as is_authorized_core, but for any Evaluator.
     /// A PartialResponse caller constructs its own evaluator, with an unknown mapper function.
-    #[verifier::external_body]
     pub(crate) fn is_authorized_core_internal(
         &self,
         eval: &Evaluator<'_>,
@@ -127,7 +193,7 @@ impl Authorizer {
         let mut errors = vec![];
 
         // Verus doesn't support iterators for `PolicySet` here
-        for p in iter: pset.policies_iter() {
+        for p in pset.policies() {
             let (id, annotations) = (p.id().clone(), p.annotations_arc().clone());
             match eval.partial_evaluate(p) {
                 Ok(Either::Left(satisfied)) => match (satisfied, p.effect()) {
@@ -181,9 +247,6 @@ impl Authorizer {
             Arc::new(q),
         )
     }
-
-
-    } // verus!
 }
 
 impl Default for Authorizer {
