@@ -24,3 +24,6 @@ experimental = ["tolerant-ast"]
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+cool_asserts = "2.0.3"

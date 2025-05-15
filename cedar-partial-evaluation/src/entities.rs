@@ -312,12 +312,42 @@ impl PartialEntities {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::collections::{BTreeMap, HashMap, HashSet};
 
-    use super::{EntityJson, PartialEntities, PartialEntity};
+    use cedar_policy_core::{
+        ast::{EntityUID, Value},
+        extensions::Extensions,
+    };
+    use cedar_policy_validator::ValidatorSchema;
+    use cool_asserts::assert_matches;
+
+    use super::{parse_ejson, validate_parents, EntityJson, PartialEntities, PartialEntity};
+
+    #[track_caller]
+    fn basic_schema() -> ValidatorSchema {
+        ValidatorSchema::from_cedarschema_str(
+            r#"
+        entity A {
+            a? : String,
+            b? : Long,
+            c? : {"x" : Bool}
+        } tags Long;
+         action a appliesTo {
+           principal : A,
+           resource : A
+         };
+        "#,
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0
+    }
 
     #[test]
     fn basic() {
+        let schema = basic_schema();
+        // unlike the existing JSON format, absence of `tags` or `tags` being
+        // `null` means unknown tags, as opposed to empty tags
         let json = serde_json::json!(
             {
                 "uid" : {
@@ -327,7 +357,91 @@ mod tests {
                 "tags" : null,
             }
         );
-        let _: EntityJson = serde_json::from_value(json).expect("should parse");
+        let ejson: EntityJson = serde_json::from_value(json).expect("should parse");
+        assert_matches!(parse_ejson(ejson, &schema), Ok(e) => {
+            assert_eq!(e, PartialEntity { uid: r#"A::"""#.parse().unwrap(), attrs: None, ancestors: None, tags: None });
+        });
+
+        // empty tags need to be specified explicitly
+        let schema = basic_schema();
+        let json = serde_json::json!(
+            {
+                "uid" : {
+                    "type" : "A",
+                    "id" : "",
+                },
+                "tags" : {},
+            }
+        );
+        let ejson: EntityJson = serde_json::from_value(json).expect("should parse");
+        assert_matches!(parse_ejson(ejson, &schema), Ok(e) => {
+            assert_eq!(e, PartialEntity { uid: r#"A::"""#.parse().unwrap(), attrs: None, ancestors: None, tags: Some(BTreeMap::default()) });
+        });
+
+        let schema = basic_schema();
+        let json = serde_json::json!(
+            {
+                "uid" : {
+                    "type" : "A",
+                    "id" : "",
+                },
+                "parents" : [],
+                "attrs" : {},
+                "tags" : {},
+            }
+        );
+        let ejson: EntityJson = serde_json::from_value(json).expect("should parse");
+        assert_matches!(parse_ejson(ejson, &schema), Ok(e) => {
+            assert_eq!(e, PartialEntity { uid: r#"A::"""#.parse().unwrap(), attrs: Some(BTreeMap::new()), ancestors: Some(HashSet::default()), tags: Some(BTreeMap::default()) });
+        });
+
+        let schema = basic_schema();
+        let json = serde_json::json!(
+            {
+                "uid" : {
+                    "type" : "A",
+                    "id" : "",
+                },
+                "parents" : [],
+                "attrs" : {
+                    "b" : 1,
+                    "c" : {"x": false},
+                },
+                "tags" : {},
+            }
+        );
+        let ejson: EntityJson = serde_json::from_value(json).expect("should parse");
+        assert_matches!(parse_ejson(ejson, &schema), Ok(e) => {
+            assert_eq!(e, PartialEntity { uid: r#"A::"""#.parse().unwrap(), attrs: Some(BTreeMap::from_iter([("b".into(), 1.into()), ("c".into(), Value::record(std::iter::once(("x", false)), None)
+            )])), ancestors: Some(HashSet::default()), tags: Some(BTreeMap::default()) });
+        });
+    }
+
+    #[test]
+    fn invalid_hierarchy() {
+        let uid_a: EntityUID = r#"A::"a""#.parse().unwrap();
+        let uid_b: EntityUID = r#"A::"b""#.parse().unwrap();
+        assert!(validate_parents(&HashMap::from_iter([
+            (
+                uid_a.clone(),
+                PartialEntity {
+                    uid: uid_a,
+                    ancestors: Some(HashSet::from_iter([uid_b.clone()])),
+                    attrs: None,
+                    tags: None
+                }
+            ),
+            (
+                uid_b.clone(),
+                PartialEntity {
+                    uid: uid_b,
+                    ancestors: None,
+                    attrs: None,
+                    tags: None
+                }
+            )
+        ]))
+        .is_err())
     }
 
     #[test]

@@ -269,6 +269,7 @@ dependencies = [
  "anyhow",
  "cedar-policy-core",
  "cedar-policy-validator",
+ "cool_asserts",
  "serde",
  "serde_json",
  "serde_with",
