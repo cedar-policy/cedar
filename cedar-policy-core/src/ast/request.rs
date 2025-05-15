@@ -80,7 +80,6 @@ pub struct RequestType {
 /// It may either be a concrete EUID
 /// or an unknown in the case of partial evaluation
 #[derive(Debug, Clone)]
-#[verifier::external_derive]
 pub enum EntityUIDEntry {
     /// A concrete EntityUID
     Known {
