@@ -1,26 +1,47 @@
 use anyhow::anyhow;
-use cedar_policy_core::{ast::Policy, extensions::Extensions};
+use cedar_policy_core::{ast::Policy, entities::TCComputation, extensions::Extensions};
 use cedar_policy_validator::{
     typecheck::{PolicyCheck, Typechecker},
     ValidatorSchema,
 };
 
 use crate::{
-    entities::PartialEntities, evaluator::Evaluator, request::PartialRequest, residual::Residual,
+    entities::{validate_parents, PartialEntities},
+    evaluator::Evaluator,
+    request::PartialRequest,
+    residual::Residual,
 };
 
 /// Type-aware partial-evaluation on a single policy
 pub fn tpe_policy(
     p: &Policy,
     request: &PartialRequest,
-    es: &PartialEntities,
+    es: &mut PartialEntities,
     schema: &ValidatorSchema,
+    tc: TCComputation,
 ) -> anyhow::Result<Residual> {
     if !p.is_static() {
         return Err(anyhow!("policy must be static"));
     }
     if request.validate_request(schema).is_err() {
         return Err(anyhow!("request is not valid"));
+    }
+    for e in es.entities.values() {
+        if e.validate(schema).is_err() {
+            return Err(anyhow!("entity {} is not valid", e.uid));
+        }
+    }
+    match tc {
+        TCComputation::ComputeNow => {
+            if let Err(errs) = validate_parents(&es.entities) {
+                return Err(anyhow!("invalid hierarchy : {errs:#?}"));
+            }
+            es.compute_tc()?;
+        }
+        TCComputation::EnforceAlreadyComputed => {
+            //TODO: implement this
+        }
+        TCComputation::AssumeAlreadyComputed => {}
     }
     let env = request.find_request_env(schema)?;
     let tc = Typechecker::new(schema, cedar_policy_validator::ValidationMode::Strict);
@@ -60,6 +81,7 @@ mod tests {
     use anyhow::Result;
     use cedar_policy_core::{
         ast::{Eid, EntityUID, Expr, PolicySet},
+        entities::TCComputation,
         extensions::Extensions,
         parser::parse_policyset,
     };
@@ -181,10 +203,18 @@ action Delete appliesTo {
         let policies = rfc_policies();
         let schema = rfc_schema();
         let request = rfc_request();
-        let entities = rfc_entities();
+        let mut entities = rfc_entities();
         let residuals: Vec<Residual> = policies
             .policies()
-            .map(|p| tpe_policy(p, &request, &entities, &schema))
+            .map(|p| {
+                tpe_policy(
+                    p,
+                    &request,
+                    &mut entities,
+                    &schema,
+                    TCComputation::AssumeAlreadyComputed,
+                )
+            })
             .collect::<Result<Vec<Residual>>>()
             .unwrap();
         for residual in residuals {
