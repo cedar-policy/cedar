@@ -427,7 +427,7 @@ impl Node<Option<cst::Policy>> {
                         slot.clone(),
                         if is_when { "when" } else { "unless" },
                     ),
-                    slot.loc.or_else(|| self.loc.clone()),
+                    slot.loc.or_else(|| c.loc.clone()),
                 )
                 .into()
             });
@@ -545,7 +545,7 @@ impl cst::PolicyImpl {
         let mut vars = self.variables.iter();
         let maybe_principal = if let Some(scope1) = vars.next() {
             end_of_last_var = scope1.loc.as_ref().map(|loc| loc.end()).or(end_of_last_var);
-            scope1.to_principal_constraint(TolerantAstSetting::NotTolerant)
+            scope1.to_principal_constraint(TolerantAstSetting::Tolerant)
         } else {
             let effect_span = self
                 .effect
@@ -560,7 +560,7 @@ impl cst::PolicyImpl {
         };
         let maybe_action = if let Some(scope2) = vars.next() {
             end_of_last_var = scope2.loc.as_ref().map(|loc| loc.end()).or(end_of_last_var);
-            scope2.to_action_constraint(TolerantAstSetting::NotTolerant)
+            scope2.to_action_constraint(TolerantAstSetting::Tolerant)
         } else {
             let effect_span = self
                 .effect
@@ -574,7 +574,7 @@ impl cst::PolicyImpl {
             .into())
         };
         let maybe_resource = if let Some(scope3) = vars.next() {
-            scope3.to_resource_constraint(TolerantAstSetting::NotTolerant)
+            scope3.to_resource_constraint(TolerantAstSetting::Tolerant)
         } else {
             let effect_span = self
                 .effect

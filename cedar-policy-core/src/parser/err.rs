@@ -82,7 +82,7 @@ pub struct ToASTError {
 // Construct `labels` and `source_code` based on the `loc` in this
 // struct; and everything else forwarded directly to `kind`.
 impl Diagnostic for ToASTError {
-    impl_diagnostic_from_source_loc_field!(loc);
+    impl_diagnostic_from_source_loc_opt_field!(loc);
 
     fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         self.kind.code()

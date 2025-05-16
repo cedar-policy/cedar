@@ -21,14 +21,13 @@
 macro_rules! impl_diagnostic_from_source_loc_field {
     ( $i:ident ) => {
         fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-            self.$i.as_ref().map(|l| &l.src as &dyn miette::SourceCode)
+            Some(&self.$i.src as &dyn miette::SourceCode)
         }
 
         fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-            self.$i.as_ref().map(|l| {
-                Box::new(std::iter::once(miette::LabeledSpan::underline(l.span)))
-                    as Box<dyn Iterator<Item = miette::LabeledSpan> + '_>
-            })
+            Some(Box::new(std::iter::once(miette::LabeledSpan::underline(
+                self.$i.span,
+            ))) as _)
         }
     };
 }
