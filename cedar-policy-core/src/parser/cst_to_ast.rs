@@ -1441,7 +1441,7 @@ impl Node<Option<cst::Relation>> {
                 let maybe_target = target.to_expr::<Build>();
                 let maybe_field = Ok(match field.to_has_rhs::<Build>()? {
                     Either::Left(s) => nonempty![s],
-                    Either::Right(ids) => ids.map(|id| id.to_smolstr()),
+                    Either::Right(ids) => ids.map(|id| id.into_smolstr()),
                 });
                 let (target, field) = flatten_tuple_2(maybe_target, maybe_field)?;
                 Ok(ExprOrSpecial::Expr {
@@ -1816,7 +1816,7 @@ impl Node<Option<cst::Member>> {
                 Ok((
                     Build::new()
                         .with_maybe_source_loc(self.loc.as_ref())
-                        .get_attr(head, id.to_smolstr()),
+                        .get_attr(head, id.into_smolstr()),
                     rest,
                 ))
             }
@@ -1903,8 +1903,8 @@ impl Node<Option<cst::Member>> {
                                 Build::new()
                                     .with_maybe_source_loc(var_loc.as_ref())
                                     .var(var),
-                                id.to_smolstr(),
-                            ),
+                            id.into_smolstr(),
+                        ),
                         rest,
                     )
                 }
@@ -1913,7 +1913,7 @@ impl Node<Option<cst::Member>> {
                     return Err(self
                         .to_ast_err(ToASTErrorKind::InvalidAccess {
                             lhs: name,
-                            field: f.to_smolstr(),
+                            field: f.clone().into_smolstr(),
                         })
                         .into());
                 }
