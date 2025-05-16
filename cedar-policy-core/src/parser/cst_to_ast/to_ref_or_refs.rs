@@ -34,8 +34,8 @@ use crate::parser::{
 trait RefKind: Sized {
     fn err_str() -> &'static str;
     fn create_single_ref(e: EntityUID) -> Result<Self>;
-    fn create_multiple_refs(loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self>;
-    fn create_slot(loc: &Loc) -> Result<Self>;
+    fn create_multiple_refs(loc: Option<&Loc>) -> Result<fn(Vec<EntityUID>) -> Self>;
+    fn create_slot(loc: Option<&Loc>) -> Result<Self>;
     #[cfg(feature = "tolerant-ast")]
     fn error_node() -> Self;
 }
@@ -50,24 +50,24 @@ impl RefKind for SingleEntity {
         Ok(SingleEntity(e))
     }
 
-    fn create_multiple_refs(loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self> {
+    fn create_multiple_refs(loc: Option<&Loc>) -> Result<fn(Vec<EntityUID>) -> Self> {
         Err(ToASTError::new(
             ToASTErrorKind::wrong_entity_argument_one_expected(
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Set,
             ),
-            loc.clone(),
+            loc.cloned(),
         )
         .into())
     }
 
-    fn create_slot(loc: &Loc) -> Result<Self> {
+    fn create_slot(loc: Option<&Loc>) -> Result<Self> {
         Err(ToASTError::new(
             ToASTErrorKind::wrong_entity_argument_one_expected(
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Template,
             ),
-            loc.clone(),
+            loc.cloned(),
         )
         .into())
     }
@@ -82,22 +82,22 @@ impl RefKind for EntityReference {
         "an entity uid or matching template slot"
     }
 
-    fn create_slot(loc: &Loc) -> Result<Self> {
-        Ok(EntityReference::Slot(Some(loc.clone())))
+    fn create_slot(loc: Option<&Loc>) -> Result<Self> {
+        Ok(EntityReference::Slot(loc.cloned()))
     }
 
     fn create_single_ref(e: EntityUID) -> Result<Self> {
         Ok(EntityReference::euid(Arc::new(e)))
     }
 
-    fn create_multiple_refs(loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self> {
+    fn create_multiple_refs(loc: Option<&Loc>) -> Result<fn(Vec<EntityUID>) -> Self> {
         Err(ToASTError::new(
             ToASTErrorKind::wrong_entity_argument_two_expected(
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Template,
                 err::parse_errors::Ref::Set,
             ),
-            loc.clone(),
+            loc.cloned(),
         )
         .into())
     }
@@ -119,14 +119,14 @@ impl RefKind for OneOrMultipleRefs {
         "an entity uid or set of entity uids"
     }
 
-    fn create_slot(loc: &Loc) -> Result<Self> {
+    fn create_slot(loc: Option<&Loc>) -> Result<Self> {
         Err(ToASTError::new(
             ToASTErrorKind::wrong_entity_argument_two_expected(
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Set,
                 err::parse_errors::Ref::Template,
             ),
-            loc.clone(),
+            loc.cloned(),
         )
         .into())
     }
@@ -135,7 +135,7 @@ impl RefKind for OneOrMultipleRefs {
         Ok(OneOrMultipleRefs::Single(e))
     }
 
-    fn create_multiple_refs(_loc: &Loc) -> Result<fn(Vec<EntityUID>) -> Self> {
+    fn create_multiple_refs(_loc: Option<&Loc>) -> Result<fn(Vec<EntityUID>) -> Self> {
         fn create_multiple_refs(es: Vec<EntityUID>) -> OneOrMultipleRefs {
             OneOrMultipleRefs::Multiple(es)
         }
@@ -240,7 +240,7 @@ impl Node<Option<cst::Primary>> {
                 // it's the wrong slot. This avoids getting an error
                 // `found ?action instead of ?action` when `action` doesn't
                 // support slots.
-                let slot_ref = T::create_slot(&self.loc)?;
+                let slot_ref = T::create_slot(self.loc.as_ref())?;
                 let slot = s.try_as_inner()?;
                 if slot.matches(var) {
                     Ok(slot_ref)
@@ -297,7 +297,7 @@ impl Node<Option<cst::Primary>> {
             cst::Primary::EList(lst) => {
                 // Calling `create_multiple_refs` first so that we error
                 // immediately if we see a set when we don't expect one.
-                let create_multiple_refs = T::create_multiple_refs(&self.loc)?;
+                let create_multiple_refs = T::create_multiple_refs(self.loc.as_ref())?;
                 let v = match tolerant_setting {
                     TolerantAstSetting::NotTolerant => {
                         ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref(var)))?

@@ -112,7 +112,7 @@ pub fn cedar_type_to_json_type(ty: Node<Type>) -> json_schema::Type<RawName> {
     };
     json_schema::Type::Type {
         ty: variant,
-        loc: Some(ty.loc),
+        loc: ty.loc,
     }
 }
 
@@ -163,7 +163,7 @@ fn convert_namespace(
         .map(|p| {
             let internal_name = RawName::from(p.clone()).qualify_with(None); // namespace names are always written already-fully-qualified in the Cedar schema syntax
             Name::try_from(internal_name)
-                .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), p.loc().clone()))
+                .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), p.loc().cloned()))
         })
         .transpose()?;
     let def = namespace.try_into()?;
@@ -203,7 +203,7 @@ impl TryFrom<Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName>
                     CommonType {
                         ty: cedar_type_to_json_type(decl.data.node.def),
                         annotations: decl.annotations.into(),
-                        loc: Some(decl.data.loc),
+                        loc: decl.data.loc,
                     },
                 ))
             })
@@ -231,7 +231,7 @@ fn convert_action_decl(
     } = a.data.node;
     // Create the internal type from the 'applies_to' clause and 'member_of'
     let applies_to = app_decls
-        .map(|decls| convert_app_decls(&names.first().node, &names.first().loc, decls))
+        .map(|decls| convert_app_decls(&names.first().node, names.first().loc.as_ref(), decls))
         .transpose()?
         .unwrap_or_else(|| json_schema::ApplySpec {
             resource_types: vec![],
@@ -246,7 +246,7 @@ fn convert_action_decl(
             applies_to: Some(applies_to.clone()),
             member_of: member_of.clone(),
             annotations: a.annotations.clone().into(),
-            loc: Some(a.data.loc.clone()),
+            loc: a.data.loc.clone(),
             #[cfg(feature = "extended-schema")]
             defn_loc: Some(name.loc),
         };
@@ -264,7 +264,7 @@ fn convert_qual_name(qn: Node<QualName>) -> json_schema::ActionEntityUID<RawName
 /// * `name_loc` - The location of that first name
 fn convert_app_decls(
     name: &SmolStr,
-    name_loc: &Loc,
+    name_loc: Option<&Loc>,
     decls: Node<NonEmpty<Node<AppDecl>>>,
 ) -> Result<json_schema::ApplySpec<RawName>, ToJsonSchemaErrors> {
     // Split AppDecl's into context/principal/resource decls
@@ -288,7 +288,7 @@ fn convert_app_decls(
                     .into());
                 }
                 None => {
-                    context = Some(Node::with_source_loc(
+                    context = Some(Node::with_maybe_source_loc(
                         convert_context_decl(context_decl),
                         loc,
                     ));
@@ -316,12 +316,15 @@ fn convert_app_decls(
                 }
                 None => match entity_tys {
                     None => {
-                        return Err(
-                            ToJsonSchemaError::empty_principal(name, name_loc.clone(), loc).into(),
+                        return Err(ToJsonSchemaError::empty_principal(
+                            name,
+                            name_loc.cloned(),
+                            loc,
                         )
+                        .into())
                     }
                     Some(entity_tys) => {
-                        principal_types = Some(Node::with_source_loc(
+                        principal_types = Some(Node::with_maybe_source_loc(
                             entity_tys.iter().map(|n| n.clone().into()).collect(),
                             loc,
                         ))
@@ -347,11 +350,11 @@ fn convert_app_decls(
                 None => match entity_tys {
                     None => {
                         return Err(
-                            ToJsonSchemaError::empty_resource(name, name_loc.clone(), loc).into(),
+                            ToJsonSchemaError::empty_resource(name, name_loc.cloned(), loc).into(),
                         )
                     }
                     Some(entity_tys) => {
-                        resource_types = Some(Node::with_source_loc(
+                        resource_types = Some(Node::with_maybe_source_loc(
                             entity_tys.iter().map(|n| n.clone().into()).collect(),
                             loc,
                         ))
@@ -363,10 +366,10 @@ fn convert_app_decls(
     Ok(json_schema::ApplySpec {
         resource_types: resource_types
             .map(|node| node.node)
-            .ok_or_else(|| ToJsonSchemaError::no_resource(&name, name_loc.clone()))?,
+            .ok_or_else(|| ToJsonSchemaError::no_resource(&name, name_loc.cloned()))?,
         principal_types: principal_types
             .map(|node| node.node)
-            .ok_or_else(|| ToJsonSchemaError::no_principal(&name, name_loc.clone()))?,
+            .ok_or_else(|| ToJsonSchemaError::no_principal(&name, name_loc.cloned()))?,
         context: context.map(|c| c.node).unwrap_or_default(),
     })
 }
@@ -401,7 +404,7 @@ fn convert_entity_decl(
             }
         },
         annotations: e.annotations.into(),
-        loc: Some(e.data.loc.clone()),
+        loc: e.data.loc,
     };
 
     // Then map over all of the bound names
@@ -423,7 +426,7 @@ fn convert_attr_decls(
             attributes: attrs.node.into_iter().map(convert_attr_decl).collect(),
             additional_attributes: false,
         }),
-        loc: Some(attrs.loc),
+        loc: attrs.loc,
     })
 }
 
@@ -433,7 +436,7 @@ fn convert_context_decl(
 ) -> json_schema::AttributesOrContext<RawName> {
     json_schema::AttributesOrContext(match decl {
         Either::Left(p) => json_schema::Type::CommonTypeRef {
-            loc: Some(p.loc().clone()),
+            loc: p.loc().cloned(),
             type_name: p.into(),
         },
         Either::Right(attrs) => json_schema::Type::Type {
@@ -441,7 +444,7 @@ fn convert_context_decl(
                 attributes: attrs.node.into_iter().map(convert_attr_decl).collect(),
                 additional_attributes: false,
             }),
-            loc: Some(attrs.loc),
+            loc: attrs.loc,
         },
     })
 }
@@ -505,7 +508,7 @@ impl NamespaceRecord {
             .map(|n| {
                 let internal_name = RawName::from(n.clone()).qualify_with(None); // namespace names are already fully-qualified
                 Name::try_from(internal_name)
-                    .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), n.loc().clone()))
+                    .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), n.loc().cloned()))
             })
             .transpose()?;
         let (entities, actions, types) = partition_decls(&namespace.decls);
@@ -533,7 +536,7 @@ impl NamespaceRecord {
         let record = NamespaceRecord {
             entities,
             common_types,
-            loc: namespace.name.as_ref().map(|n| n.loc().clone()),
+            loc: namespace.name.as_ref().and_then(|n| n.loc()).cloned(),
         };
 
         Ok((ns, record))

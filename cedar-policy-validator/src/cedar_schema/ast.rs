@@ -57,8 +57,8 @@ pub fn deduplicate_annotations<T>(
         if let Some((old_key, _)) = unique_annotations.get_key_value(&key) {
             return Err(UserError::DuplicateAnnotations(
                 key.node,
-                Node::with_source_loc((), old_key.loc.clone()),
-                Node::with_source_loc((), key.loc),
+                Node::with_maybe_source_loc((), old_key.loc.clone()),
+                Node::with_maybe_source_loc((), key.loc),
             ));
         } else {
             unique_annotations.insert(key, value);
@@ -70,7 +70,7 @@ pub fn deduplicate_annotations<T>(
             .into_iter()
             .map(|(key, value)| {
                 let (val, loc) = match value {
-                    Some(n) => (Some(n.node), Some(n.loc)),
+                    Some(n) => (Some(n.node), n.loc),
                     None => (None, None),
                 };
                 (key.node, Annotation::with_optional_value(val, loc))
@@ -112,8 +112,8 @@ impl Path {
     }
 
     /// Source [`Loc`] of this [`Path`]
-    pub fn loc(&self) -> &Loc {
-        &self.0.loc
+    pub fn loc(&self) -> Option<&Loc> {
+        self.0.loc.as_ref()
     }
 
     /// Consume the [`Path`] and get an owned iterator over the elements. Most significant name first
@@ -123,7 +123,7 @@ impl Path {
         self.0
             .node
             .into_iter()
-            .map(move |x| Node::with_source_loc(x, loc.clone()))
+            .map(move |x| Node::with_maybe_source_loc(x, loc.clone()))
     }
 
     /// Get the base type name as well as the (potentially empty) prefix
@@ -139,11 +139,7 @@ impl Path {
 
 impl From<Path> for InternalName {
     fn from(value: Path) -> Self {
-        InternalName::new(
-            value.0.node.basename,
-            value.0.node.namespace,
-            Some(value.0.loc),
-        )
+        InternalName::new(value.0.node.basename, value.0.node.namespace, value.0.loc)
     }
 }
 

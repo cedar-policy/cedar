@@ -181,7 +181,7 @@ impl TryFrom<cst::Policy> for Policy {
         let maybe_annotations = policy.get_ast_annotations(|v, l| {
             Some(Annotation {
                 val: v?,
-                loc: Some(l.clone()),
+                loc: l.cloned(),
             })
         });
         let maybe_conditions = ParseErrors::transpose(policy.conds.into_iter().map(|node| {

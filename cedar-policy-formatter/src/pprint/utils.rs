@@ -64,9 +64,10 @@ pub fn get_trailing_comment_doc_from_str<'src>(
 }
 
 fn get_token_at_start<'a, 'src>(
-    span: miette::SourceSpan,
+    span: Option<miette::SourceSpan>,
     tokens: &'a mut [WrappedToken<'src>],
 ) -> Option<&'a mut WrappedToken<'src>> {
+    let span = span?;
     tokens
         .as_mut()
         .iter_mut()
@@ -74,59 +75,64 @@ fn get_token_at_start<'a, 'src>(
 }
 
 pub fn get_comment_at_start<'src>(
-    span: miette::SourceSpan,
+    span: Option<miette::SourceSpan>,
     tokens: &mut [WrappedToken<'src>],
 ) -> Option<Comment<'src>> {
     Some(get_token_at_start(span, tokens)?.consume_comment())
 }
 
 pub fn get_leading_comment_at_start<'src>(
-    span: miette::SourceSpan,
+    span: Option<miette::SourceSpan>,
     tokens: &mut [WrappedToken<'src>],
 ) -> Option<Vec<&'src str>> {
     Some(get_token_at_start(span, tokens)?.consume_leading_comment())
 }
 
 fn get_token_after_end<'a, 'src>(
-    span: miette::SourceSpan,
+    span: Option<miette::SourceSpan>,
     tokens: &'a mut [WrappedToken<'src>],
 ) -> Option<&'a mut WrappedToken<'src>> {
+    let span = span?;
     let end = span.offset() + span.len();
     tokens.iter_mut().find_or_first(|t| t.span.start >= end)
 }
 
 fn get_token_at_end<'a, 'src>(
-    span: miette::SourceSpan,
+    span: Option<miette::SourceSpan>,
     tokens: &'a mut [WrappedToken<'src>],
 ) -> Option<&'a mut WrappedToken<'src>> {
+    let span = span?;
     let end = span.offset() + span.len();
     tokens.iter_mut().find(|t| t.span.end == end)
 }
 
 pub fn get_comment_at_end<'src>(
-    span: miette::SourceSpan,
+    span: Option<miette::SourceSpan>,
     tokens: &mut [WrappedToken<'src>],
 ) -> Option<Comment<'src>> {
     Some(get_token_at_end(span, tokens)?.consume_comment())
 }
 
 pub fn get_comment_after_end<'src>(
-    span: miette::SourceSpan,
+    span: Option<miette::SourceSpan>,
     tokens: &mut [WrappedToken<'src>],
 ) -> Option<Comment<'src>> {
     Some(get_token_after_end(span, tokens)?.consume_comment())
 }
 
 pub fn get_comment_in_range<'src>(
-    span: miette::SourceSpan,
+    span: Option<miette::SourceSpan>,
     tokens: &mut [WrappedToken<'src>],
-) -> Vec<Comment<'src>> {
-    tokens
-        .iter_mut()
-        .skip_while(|t| t.span.start < span.offset())
-        .take_while(|t| t.span.end <= span.offset() + span.len())
-        .map(|t| t.consume_comment())
-        .collect()
+) -> Option<Vec<Comment<'src>>> {
+    let span = span?;
+    Some(
+        tokens
+            .iter_mut()
+            .skip_while(|t| t.span.start < span.offset())
+            .take_while(|t| t.span.end <= span.offset() + span.len())
+            .map(|t| t.consume_comment())
+            .collect(),
+    )
 }
 
 /// Wrap an `RcDoc` with comments. If there is a leading comment, then this

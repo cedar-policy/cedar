@@ -55,13 +55,13 @@ pub enum UserError {
 
 impl UserError {
     // Extract a primary source span locating the error.
-    pub(crate) fn primary_source_span(&self) -> SourceSpan {
+    pub(crate) fn primary_source_span(&self) -> Option<SourceSpan> {
         match self {
-            Self::EmptyList(n) => n.loc.span,
-            Self::StringEscape(n) => n.loc.span,
-            Self::ReservedIdentifierUsed(n) => n.loc.span,
+            Self::EmptyList(n) => n.loc.as_ref().map(|loc| loc.span),
+            Self::StringEscape(n) => n.loc.as_ref().map(|loc| loc.span),
+            Self::ReservedIdentifierUsed(n) => n.loc.as_ref().map(|loc| loc.span),
             // use the first occurrence as the primary source span
-            Self::DuplicateAnnotations(_, n, _) => n.loc.span,
+            Self::DuplicateAnnotations(_, n, _) => n.loc.as_ref().map(|loc| loc.span),
         }
     }
 }
@@ -139,17 +139,19 @@ impl ParseError {
 
 impl ParseError {
     /// Extract a primary source span locating the error.
-    pub fn primary_source_span(&self) -> SourceSpan {
+    pub fn primary_source_span(&self) -> Option<SourceSpan> {
         match &self.err {
-            OwnedRawParseError::InvalidToken { location } => SourceSpan::from(*location),
-            OwnedRawParseError::UnrecognizedEof { location, .. } => SourceSpan::from(*location),
+            OwnedRawParseError::InvalidToken { location } => Some(SourceSpan::from(*location)),
+            OwnedRawParseError::UnrecognizedEof { location, .. } => {
+                Some(SourceSpan::from(*location))
+            }
             OwnedRawParseError::UnrecognizedToken {
                 token: (token_start, _, token_end),
                 ..
-            } => SourceSpan::from(*token_start..*token_end),
+            } => Some(SourceSpan::from(*token_start..*token_end)),
             OwnedRawParseError::ExtraToken {
                 token: (token_start, _, token_end),
-            } => SourceSpan::from(*token_start..*token_end),
+            } => Some(SourceSpan::from(*token_start..*token_end)),
             OwnedRawParseError::User { error } => error.primary_source_span(),
         }
     }
@@ -184,34 +186,43 @@ impl Diagnostic for ParseError {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         let primary_source_span = self.primary_source_span();
         match &self.err {
-            OwnedRawParseError::InvalidToken { .. } => Some(Box::new(std::iter::once(
-                LabeledSpan::underline(primary_source_span),
-            ))),
+            OwnedRawParseError::InvalidToken { .. } => primary_source_span
+                .map(|span| Box::new(std::iter::once(LabeledSpan::underline(span))) as _),
             OwnedRawParseError::UnrecognizedEof { expected, .. } => {
-                Some(Box::new(std::iter::once(LabeledSpan::new_with_span(
-                    expected_to_string(expected, &SCHEMA_TOKEN_CONFIG),
-                    primary_source_span,
-                ))))
+                primary_source_span.map(|span| {
+                    Box::new(std::iter::once(LabeledSpan::new_with_span(
+                        expected_to_string(expected, &SCHEMA_TOKEN_CONFIG),
+                        span,
+                    ))) as _
+                })
             }
             OwnedRawParseError::UnrecognizedToken { expected, .. } => {
-                Some(Box::new(std::iter::once(LabeledSpan::new_with_span(
-                    expected_to_string(expected, &SCHEMA_TOKEN_CONFIG),
-                    primary_source_span,
-                ))))
+                primary_source_span.map(|span| {
+                    Box::new(std::iter::once(LabeledSpan::new_with_span(
+                        expected_to_string(expected, &SCHEMA_TOKEN_CONFIG),
+                        span,
+                    ))) as _
+                })
             }
-            OwnedRawParseError::ExtraToken { .. } => Some(Box::new(std::iter::once(
-                LabeledSpan::underline(primary_source_span),
-            ))),
+            OwnedRawParseError::ExtraToken { .. } => primary_source_span
+                .map(|span| Box::new(std::iter::once(LabeledSpan::underline(span))) as _),
             OwnedRawParseError::User {
                 error: UserError::DuplicateAnnotations(_, n1, n2),
-            } => Some(Box::new(
-                std::iter::once(n1.loc.span)
-                    .chain(std::iter::once(n2.loc.span))
-                    .map(LabeledSpan::underline),
-            )),
-            OwnedRawParseError::User { .. } => Some(Box::new(std::iter::once(
-                LabeledSpan::underline(primary_source_span),
-            ))),
+            } => {
+                let spans: Vec<_> = [&n1.loc, &n2.loc]
+                    .into_iter()
+                    .filter_map(|opt_loc| opt_loc.as_ref())
+                    .map(|loc| LabeledSpan::underline(loc.span))
+                    .collect();
+
+                if spans.is_empty() {
+                    None
+                } else {
+                    Some(Box::new(spans.into_iter()))
+                }
+            }
+            OwnedRawParseError::User { .. } => primary_source_span
+                .map(|span| Box::new(std::iter::once(LabeledSpan::underline(span))) as _),
         }
     }
 }
@@ -439,7 +450,11 @@ pub enum ToJsonSchemaError {
 }
 
 impl ToJsonSchemaError {
-    pub(crate) fn duplicate_context(name: &impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
+    pub(crate) fn duplicate_context(
+        name: &impl ToSmolStr,
+        loc1: Option<Loc>,
+        loc2: Option<Loc>,
+    ) -> Self {
         Self::DuplicateContext(DuplicateContext {
             name: name.to_smolstr(),
             loc1,
@@ -447,7 +462,11 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn duplicate_decls(decl: &impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
+    pub(crate) fn duplicate_decls(
+        decl: &impl ToSmolStr,
+        loc1: Option<Loc>,
+        loc2: Option<Loc>,
+    ) -> Self {
         Self::DuplicateDeclarations(DuplicateDeclarations {
             decl: decl.to_smolstr(),
             loc1,
@@ -467,7 +486,11 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn duplicate_principal(name: &impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
+    pub(crate) fn duplicate_principal(
+        name: &impl ToSmolStr,
+        loc1: Option<Loc>,
+        loc2: Option<Loc>,
+    ) -> Self {
         Self::DuplicatePrincipalOrResource(DuplicatePrincipalOrResource {
             name: name.to_smolstr(),
             kind: PR::Principal,
@@ -476,7 +499,11 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn duplicate_resource(name: &impl ToSmolStr, loc1: Loc, loc2: Loc) -> Self {
+    pub(crate) fn duplicate_resource(
+        name: &impl ToSmolStr,
+        loc1: Option<Loc>,
+        loc2: Option<Loc>,
+    ) -> Self {
         Self::DuplicatePrincipalOrResource(DuplicatePrincipalOrResource {
             name: name.to_smolstr(),
             kind: PR::Resource,
@@ -485,7 +512,7 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn no_principal(name: &impl ToSmolStr, name_loc: Loc) -> Self {
+    pub(crate) fn no_principal(name: &impl ToSmolStr, name_loc: Option<Loc>) -> Self {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Principal,
             name: name.to_smolstr(),
@@ -494,7 +521,7 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn no_resource(name: &impl ToSmolStr, name_loc: Loc) -> Self {
+    pub(crate) fn no_resource(name: &impl ToSmolStr, name_loc: Option<Loc>) -> Self {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Resource,
             name: name.to_smolstr(),
@@ -503,7 +530,11 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn empty_principal(name: &impl ToSmolStr, name_loc: Loc, loc: Loc) -> Self {
+    pub(crate) fn empty_principal(
+        name: &impl ToSmolStr,
+        name_loc: Option<Loc>,
+        loc: Option<Loc>,
+    ) -> Self {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Principal,
             name: name.to_smolstr(),
@@ -512,7 +543,11 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn empty_resource(name: &impl ToSmolStr, name_loc: Loc, loc: Loc) -> Self {
+    pub(crate) fn empty_resource(
+        name: &impl ToSmolStr,
+        name_loc: Option<Loc>,
+        loc: Option<Loc>,
+    ) -> Self {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Resource,
             name: name.to_smolstr(),
@@ -521,14 +556,14 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn reserved_name(name: &impl ToSmolStr, loc: Loc) -> Self {
+    pub(crate) fn reserved_name(name: &impl ToSmolStr, loc: Option<Loc>) -> Self {
         Self::ReservedName(ReservedName {
             name: name.to_smolstr(),
             loc,
         })
     }
 
-    pub(crate) fn reserved_keyword(keyword: &impl ToSmolStr, loc: Loc) -> Self {
+    pub(crate) fn reserved_keyword(keyword: &impl ToSmolStr, loc: Option<Loc>) -> Self {
         Self::ReservedSchemaKeyword(ReservedSchemaKeyword {
             keyword: keyword.to_smolstr(),
             loc,
@@ -540,7 +575,7 @@ impl ToJsonSchemaError {
 #[error("this uses a reserved schema keyword: `{keyword}`")]
 pub struct ReservedSchemaKeyword {
     keyword: SmolStr,
-    loc: Loc,
+    loc: Option<Loc>,
 }
 
 impl Diagnostic for ReservedSchemaKeyword {
@@ -555,7 +590,7 @@ impl Diagnostic for ReservedSchemaKeyword {
 #[error("use of the reserved `__cedar` namespace")]
 pub struct ReservedName {
     name: SmolStr,
-    loc: Loc,
+    loc: Option<Loc>,
 }
 
 impl Diagnostic for ReservedName {
@@ -572,7 +607,7 @@ impl Diagnostic for ReservedName {
 #[error("unknown type name: `{name}`")]
 pub struct UnknownTypeName {
     name: SmolStr,
-    loc: Loc,
+    loc: Option<Loc>,
 }
 
 impl Diagnostic for UnknownTypeName {
@@ -592,8 +627,8 @@ impl Diagnostic for UnknownTypeName {
 pub struct DuplicatePrincipalOrResource {
     name: SmolStr,
     kind: PR,
-    loc1: Loc,
-    loc2: Loc,
+    loc1: Option<Loc>,
+    loc2: Option<Loc>,
 }
 
 impl Diagnostic for DuplicatePrincipalOrResource {
@@ -609,8 +644,8 @@ impl Diagnostic for DuplicatePrincipalOrResource {
 #[error("duplicate context declaration in action `{name}`")]
 pub struct DuplicateContext {
     name: SmolStr,
-    loc1: Loc,
-    loc2: Loc,
+    loc1: Option<Loc>,
+    loc2: Option<Loc>,
 }
 
 impl Diagnostic for DuplicateContext {
@@ -626,8 +661,8 @@ impl Diagnostic for DuplicateContext {
 #[error("`{decl}` is declared twice")]
 pub struct DuplicateDeclarations {
     decl: SmolStr,
-    loc1: Loc,
-    loc2: Loc,
+    loc1: Option<Loc>,
+    loc2: Option<Loc>,
 }
 
 impl Diagnostic for DuplicateDeclarations {
@@ -644,7 +679,7 @@ pub struct NoPrincipalOrResource {
     name: SmolStr,
     missing_or_empty: MissingOrEmpty,
     /// Loc of the action name
-    name_loc: Loc,
+    name_loc: Option<Loc>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -654,7 +689,7 @@ enum MissingOrEmpty {
     /// The declaration was present but defined as `[]`
     Empty {
         /// `Loc` of the declaration
-        loc: Loc,
+        loc: Option<Loc>,
     },
 }
 
@@ -663,26 +698,34 @@ pub const NO_PR_HELP_MSG: &str =
 
 impl Diagnostic for NoPrincipalOrResource {
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.name_loc.src as &dyn miette::SourceCode)
+        self.name_loc
+            .as_ref()
+            .map(|l| &l.src as &dyn miette::SourceCode)
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         match &self.missing_or_empty {
-            MissingOrEmpty::Missing => {
-                // just the action name
-                Some(Box::new(std::iter::once(miette::LabeledSpan::underline(
-                    self.name_loc.span,
-                ))))
-            }
+            MissingOrEmpty::Missing => self.name_loc.as_ref().map(|loc| {
+                Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span))) as _
+            }),
             MissingOrEmpty::Empty { loc } => {
                 // also underline the bad declaration
-                let action_name = miette::LabeledSpan::new_with_span(
-                    Some("for this action".into()),
-                    self.name_loc.span,
-                );
-                let decl =
-                    miette::LabeledSpan::new_with_span(Some("must not be `[]`".into()), loc.span);
-                Some(Box::new([action_name, decl].into_iter()))
+                let action_name = self.name_loc.as_ref().map(|loc| {
+                    miette::LabeledSpan::new_with_span(Some("for this action".into()), loc.span)
+                });
+                let decl = loc.as_ref().map(|loc| {
+                    miette::LabeledSpan::new_with_span(Some("must not be `[]`".into()), loc.span)
+                });
+                let spans: Vec<_> = [action_name, decl]
+                    .into_iter()
+                    .filter_map(|span| span)
+                    .collect();
+
+                if spans.is_empty() {
+                    None
+                } else {
+                    Some(Box::new(spans.into_iter()))
+                }
             }
         }
     }
@@ -721,7 +764,7 @@ pub mod schema_warnings {
     #[error("The name `{name}` shadows a builtin Cedar name. You'll have to refer to the builtin as `__cedar::{name}`.")]
     pub struct ShadowsBuiltinWarning {
         pub(crate) name: SmolStr,
-        pub(crate) loc: Loc,
+        pub(crate) loc: Option<Loc>,
     }
 
     impl Diagnostic for ShadowsBuiltinWarning {
@@ -741,24 +784,32 @@ pub mod schema_warnings {
     #[error("The common type name {name} shadows an entity name")]
     pub struct ShadowsEntityWarning {
         pub(crate) name: SmolStr,
-        pub(crate) entity_loc: Loc,
-        pub(crate) common_loc: Loc,
+        pub(crate) entity_loc: Option<Loc>,
+        pub(crate) common_loc: Option<Loc>,
     }
 
     impl Diagnostic for ShadowsEntityWarning {
         fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-            Some(Box::new(
-                std::iter::once(&self.entity_loc)
-                    .chain(std::iter::once(&self.common_loc))
-                    .map(miette::LabeledSpan::underline),
-            ))
+            let spans: Vec<_> = [&self.entity_loc, &self.common_loc]
+                .into_iter()
+                .filter_map(|loc| loc.as_ref())
+                .map(miette::LabeledSpan::underline)
+                .collect();
+
+            if spans.is_empty() {
+                None
+            } else {
+                Some(Box::new(spans.into_iter()))
+            }
         }
 
         fn source_code(&self) -> Option<&dyn miette::SourceCode> {
             // just have to pick one; we assume `entity_loc` and `common_loc`
             // have the same source code.
             // if that isn't true we'll have a confusing underline.
-            Some(&self.entity_loc.src as _)
+            self.entity_loc
+                .as_ref()
+                .map(|loc| &loc.src as &dyn miette::SourceCode)
         }
 
         fn severity(&self) -> Option<miette::Severity> {

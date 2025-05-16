@@ -33,12 +33,20 @@ pub struct Node<T> {
     #[educe(PartialEq(ignore))]
     #[educe(PartialOrd(ignore))]
     #[educe(Hash(ignore))]
-    pub loc: Loc,
+    pub loc: Option<Loc>,
 }
 
 impl<T> Node<T> {
     /// Create a new Node with the given source location
     pub fn with_source_loc(node: T, loc: Loc) -> Self {
+        Node {
+            node,
+            loc: Some(loc),
+        }
+    }
+
+    /// Create a new Node with optional source location
+    pub fn with_maybe_source_loc(node: T, loc: Option<Loc>) -> Self {
         Node { node, loc }
     }
 
@@ -67,7 +75,7 @@ impl<T> Node<T> {
     }
 
     /// Consume the `Node`, yielding the node and attached source info.
-    pub fn into_inner(self) -> (T, Loc) {
+    pub fn into_inner(self) -> (T, Option<Loc>) {
         (self.node, self.loc)
     }
 
@@ -161,16 +169,16 @@ impl<T> Node<Option<T>> {
     /// if no main data or if `f` returns `None`.
     pub fn apply<F, R>(&self, f: F) -> Option<R>
     where
-        F: FnOnce(&T, &Loc) -> Option<R>,
+        F: FnOnce(&T, Option<&Loc>) -> Option<R>,
     {
-        f(self.node.as_ref()?, &self.loc)
+        f(self.node.as_ref()?, self.loc.as_ref())
     }
 
     /// Apply the function `f` to the main data and `Loc`, consuming them.
     /// Returns `None` if no main data or if `f` returns `None`.
     pub fn into_apply<F, R>(self, f: F) -> Option<R>
     where
-        F: FnOnce(T, Loc) -> Option<R>,
+        F: FnOnce(T, Option<Loc>) -> Option<R>,
     {
         f(self.node?, self.loc)
     }
