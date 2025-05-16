@@ -578,13 +578,11 @@ impl<'a> SingleEnvTypechecker<'a> {
                 ans_left.then_typecheck(|typ_left, capability_left| {
                     match typ_left.data() {
                         // LHS argument is false, so short circuit the `&&` to `False` _without_
-                        // typechecking the RHS.  We still need to build an annotated `&&` with
-                        // some RHS, so we use a literal `true`. The `&&` expression typechecks
-                        // with an empty capability rather than the capability of the lhs.
+                        // typechecking the RHS.
                         Some(Type::False) => TypecheckAnswer::success(
                             ExprBuilder::with_data(Some(Type::False))
                                 .with_same_source_loc(e)
-                                .and(typ_left, ExprBuilder::new().val(true)),
+                                .val(false),
                         ),
                         _ => {
                             // Similar to the `then` branch of an `if`
@@ -673,15 +671,11 @@ impl<'a> SingleEnvTypechecker<'a> {
                 );
                 ans_left.then_typecheck(|ty_expr_left, capability_left| match ty_expr_left.data() {
                     // LHS argument is true, so short circuit the `|| to `True` _without_
-                    // typechecking the RHS. We still need to build an annotated `||` with
-                    // some RHS, so we use a literal `true`.  Contrary to `&&`, we keep a
-                    // capability  when short circuiting `||`. The left operand is `true`,
-                    // so its capability is maintained. The right operand is not evaluated,
-                    // so its capability is not considered.
+                    // typechecking the RHS.
                     Some(Type::True) => TypecheckAnswer::success_with_capability(
                         ExprBuilder::with_data(Some(Type::True))
                             .with_same_source_loc(e)
-                            .or(ty_expr_left, ExprBuilder::new().val(true)),
+                            .val(true),
                         capability_left,
                     ),
                     _ => {
