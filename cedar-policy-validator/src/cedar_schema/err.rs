@@ -716,10 +716,7 @@ impl Diagnostic for NoPrincipalOrResource {
                 let decl = loc.as_ref().map(|loc| {
                     miette::LabeledSpan::new_with_span(Some("must not be `[]`".into()), loc.span)
                 });
-                let spans: Vec<_> = [action_name, decl]
-                    .into_iter()
-                    .flatten()
-                    .collect();
+                let spans: Vec<_> = [action_name, decl].into_iter().flatten().collect();
 
                 if spans.is_empty() {
                     None

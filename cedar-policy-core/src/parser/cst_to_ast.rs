@@ -1903,8 +1903,8 @@ impl Node<Option<cst::Member>> {
                                 Build::new()
                                     .with_maybe_source_loc(var_loc.as_ref())
                                     .var(var),
-                            id.into_smolstr(),
-                        ),
+                                id.into_smolstr(),
+                            ),
                         rest,
                     )
                 }
