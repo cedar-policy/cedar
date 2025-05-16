@@ -577,12 +577,10 @@ impl<'a> SingleEnvTypechecker<'a> {
                 );
                 ans_left.then_typecheck(|typ_left, capability_left| {
                     match typ_left.data() {
-                        // LHS argument is false, so short circuit the `&&` to `False` _without_
-                        // typechecking the RHS.
+                        // LHS argument is false, so short circuit the `&&` to
+                        // `False` _without_ typechecking the RHS.
                         Some(Type::False) => TypecheckAnswer::success(
-                            ExprBuilder::with_data(Some(Type::False))
-                                .with_same_source_loc(e)
-                                .val(false),
+                            typ_left.with_maybe_source_loc(e.source_loc().cloned()),
                         ),
                         _ => {
                             // Similar to the `then` branch of an `if`
@@ -670,12 +668,11 @@ impl<'a> SingleEnvTypechecker<'a> {
                     |_| None,
                 );
                 ans_left.then_typecheck(|ty_expr_left, capability_left| match ty_expr_left.data() {
-                    // LHS argument is true, so short circuit the `|| to `True` _without_
-                    // typechecking the RHS.
+                    // LHS argument is true, so short circuit the `|| to `True`
+                    // _without_ typechecking the RHS. Contrary to `&&`, we
+                    // keep a capability  when short circuiting `||`.
                     Some(Type::True) => TypecheckAnswer::success_with_capability(
-                        ExprBuilder::with_data(Some(Type::True))
-                            .with_same_source_loc(e)
-                            .val(true),
+                        ty_expr_left.with_maybe_source_loc(e.source_loc().cloned()),
                         capability_left,
                     ),
                     _ => {
