@@ -282,11 +282,11 @@ pub(crate) fn validate_parents(entities: &HashMap<EntityUID, PartialEntity>) -> 
 pub struct PartialEntities {
     /// Important internal invariant: for any `Entities` object that exists,
     /// the `ancestor` relation is transitively closed.
-    pub(crate) entities: HashMap<EntityUID, PartialEntity>,
+    pub entities: HashMap<EntityUID, PartialEntity>,
 }
 
 impl PartialEntities {
-    pub(crate) fn compute_tc(&mut self) -> anyhow::Result<()> {
+    pub fn compute_tc(&mut self) -> anyhow::Result<()> {
         Ok(compute_tc(&mut self.entities, true)?)
     }
 
