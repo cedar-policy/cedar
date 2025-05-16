@@ -2380,7 +2380,7 @@ mod test {
         let expected_error = <ExprWithErrsBuilder as ExprBuilder>::new()
             .error(ParseErrors::singleton(ToASTError::new(
                 ToASTErrorKind::ASTErrorNode,
-                Loc::new(0..1, "ASTErrorNode".into()),
+                Some(Loc::new(0..1, "ASTErrorNode".into())),
             )))
             .unwrap();
 
