@@ -106,11 +106,16 @@ impl Doc for Node<Option<VariableDef>> {
 impl Doc for Node<Option<Cond>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let cond = self.as_inner()?;
-        let lb_comment =
-            get_comment_after_end(cond.cond.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?;
-        let rb_comment = get_comment_at_end(self.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?;
-        let cond_comment =
-            get_comment_at_start(cond.cond.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?;
+        let lb_comment = get_comment_after_end(
+            cond.cond.loc.as_ref().map(|loc| loc.span),
+            &mut context.tokens,
+        )?;
+        let rb_comment =
+            get_comment_at_end(self.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?;
+        let cond_comment = get_comment_at_start(
+            cond.cond.loc.as_ref().map(|loc| loc.span),
+            &mut context.tokens,
+        )?;
 
         let rb_doc = add_comment(RcDoc::text("}"), rb_comment, RcDoc::nil());
         let cond_doc = cond.cond.to_doc(context)?;
@@ -227,7 +232,8 @@ impl Doc for Node<Option<Or>> {
         let es: Vec<_> = std::iter::once(initial).chain(extended.iter()).collect();
         let mut d: RcDoc<'_> = RcDoc::nil();
         for e in es.iter().take(es.len() - 1) {
-            let op_comment = get_comment_after_end(e.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?;
+            let op_comment =
+                get_comment_after_end(e.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?;
             d = d
                 .append(e.to_doc(context))
                 .append(RcDoc::space())
@@ -247,7 +253,8 @@ impl Doc for Node<Option<And>> {
         let es: Vec<_> = std::iter::once(initial).chain(extended.iter()).collect();
         let mut d: RcDoc<'_> = RcDoc::nil();
         for e in es.iter().take(es.len() - 1) {
-            let op_comment = get_comment_after_end(e.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?;
+            let op_comment =
+                get_comment_after_end(e.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?;
             d = d
                 .append(e.to_doc(context))
                 .append(RcDoc::space())
@@ -292,7 +299,10 @@ impl Doc for Node<Option<Relation>> {
                     .append(RcDoc::line())
                     .append(add_comment(
                         RcDoc::text("has"),
-                        get_comment_after_end(target.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?,
+                        get_comment_after_end(
+                            target.loc.as_ref().map(|loc| loc.span),
+                            &mut context.tokens,
+                        )?,
                         RcDoc::nil(),
                     ))
                     .append(RcDoc::line())
@@ -305,7 +315,10 @@ impl Doc for Node<Option<Relation>> {
                     .append(RcDoc::line())
                     .append(add_comment(
                         RcDoc::text("like"),
-                        get_comment_after_end(target.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?,
+                        get_comment_after_end(
+                            target.loc.as_ref().map(|loc| loc.span),
+                            &mut context.tokens,
+                        )?,
                         RcDoc::nil(),
                     ))
                     .append(RcDoc::line())
@@ -322,7 +335,10 @@ impl Doc for Node<Option<Relation>> {
                     .append(RcDoc::space())
                     .append(add_comment(
                         RcDoc::text("is"),
-                        get_comment_after_end(target.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?,
+                        get_comment_after_end(
+                            target.loc.as_ref().map(|loc| loc.span),
+                            &mut context.tokens,
+                        )?,
                         RcDoc::nil(),
                     ))
                     .append(RcDoc::space())

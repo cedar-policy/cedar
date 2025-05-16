@@ -68,10 +68,10 @@ macro_rules! impl_diagnostic_from_two_source_loc_fields {
 
         fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
             let spans: Vec<_> = [&self.$i, &self.$j]
-            .into_iter()
-            .filter_map(|loc| loc.as_ref())
-            .map(|loc| miette::LabeledSpan::underline(loc.span))
-            .collect();
+                .into_iter()
+                .filter_map(|loc| loc.as_ref())
+                .map(|loc| miette::LabeledSpan::underline(loc.span))
+                .collect();
 
             if spans.is_empty() {
                 None
