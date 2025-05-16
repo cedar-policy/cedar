@@ -110,7 +110,7 @@ General documentation for Cedar is available at [docs.cedarpolicy.com](https://d
 Generated documentation for the latest version of the Rust crates can be accessed
 [on docs.rs](https://docs.rs/cedar-policy).
 
-If you're looking to integrate Cedar into a production system, please be sure the read the [security best practices](https://docs.cedarpolicy.com/other/security.html)
+If you're looking to integrate Cedar into a production system, please be sure to read the [security best practices](https://docs.cedarpolicy.com/other/security.html)
 
 ## Building
 
