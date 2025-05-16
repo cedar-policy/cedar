@@ -121,83 +121,84 @@ pub enum ResidualKind {
 }
 
 /// Conversion from `Residual` to `Expr` so that we can use the concrete evaluator for re-authorization
-impl TryFrom<Residual> for Expr {
-    type Error = ();
-
-    fn try_from(value: Residual) -> std::result::Result<Expr, Self::Error> {
+impl From<Residual> for Expr {
+    fn from(value: Residual) -> Expr {
         match value {
             Residual::Partial { kind, .. } => {
                 let builder: ast::ExprBuilder<()> = ExprBuilder::with_data(());
                 match kind {
-                    ResidualKind::And { left, right } => Ok(builder.and(
-                        left.as_ref().clone().try_into()?,
-                        right.as_ref().clone().try_into()?,
-                    )),
-                    ResidualKind::BinaryApp { op, arg1, arg2 } => Ok(builder.binary_app(
+                    ResidualKind::And { left, right } => {
+                        builder.and(left.as_ref().clone().into(), right.as_ref().clone().into())
+                    }
+                    ResidualKind::BinaryApp { op, arg1, arg2 } => builder.binary_app(
                         op,
-                        arg1.as_ref().clone().try_into()?,
-                        arg2.as_ref().clone().try_into()?,
-                    )),
-                    ResidualKind::ExtensionFunctionApp { fn_name, args } => Ok(builder
+                        arg1.as_ref().clone().into(),
+                        arg2.as_ref().clone().into(),
+                    ),
+                    ResidualKind::ExtensionFunctionApp { fn_name, args } => builder
                         .call_extension_fn(
                             fn_name,
                             args.as_ref()
                                 .clone()
                                 .into_iter()
-                                .map(|arg| arg.try_into())
-                                .collect::<std::result::Result<Vec<_>, _>>()?,
-                        )),
+                                .map(|arg| arg.into())
+                                .collect::<Vec<_>>(),
+                        ),
                     ResidualKind::GetAttr { expr, attr } => {
-                        Ok(builder.get_attr(expr.as_ref().clone().try_into()?, attr))
+                        builder.get_attr(expr.as_ref().clone().into(), attr)
                     }
                     ResidualKind::HasAttr { expr, attr } => {
-                        Ok(builder.has_attr(expr.as_ref().clone().try_into()?, attr))
+                        builder.has_attr(expr.as_ref().clone().into(), attr)
                     }
                     ResidualKind::If {
                         test_expr,
                         then_expr,
                         else_expr,
-                    } => Ok(builder.ite(
-                        test_expr.as_ref().clone().try_into()?,
-                        then_expr.as_ref().clone().try_into()?,
-                        else_expr.as_ref().clone().try_into()?,
-                    )),
+                    } => builder.ite(
+                        test_expr.as_ref().clone().into(),
+                        then_expr.as_ref().clone().into(),
+                        else_expr.as_ref().clone().into(),
+                    ),
                     ResidualKind::Is { expr, entity_type } => {
-                        Ok(builder.is_entity_type(expr.as_ref().clone().try_into()?, entity_type))
+                        builder.is_entity_type(expr.as_ref().clone().into(), entity_type)
                     }
                     ResidualKind::Like { expr, pattern } => {
-                        Ok(builder.like(expr.as_ref().clone().try_into()?, pattern))
+                        builder.like(expr.as_ref().clone().into(), pattern)
                     }
-                    ResidualKind::Or { left, right } => Ok(builder.or(
-                        left.as_ref().clone().try_into()?,
-                        right.as_ref().clone().try_into()?,
-                    )),
+                    ResidualKind::Or { left, right } => {
+                        builder.or(left.as_ref().clone().into(), right.as_ref().clone().into())
+                    }
                     // PANIC SAFETY: record construction should succeed
                     #[allow(clippy::expect_used)]
-                    ResidualKind::Record(map) => Ok(builder
+                    ResidualKind::Record(map) => builder
                         .record(
                             map.as_ref()
                                 .clone()
                                 .into_iter()
-                                .map(|(k, v)| Ok((k, v.try_into()?)))
-                                .collect::<std::result::Result<Vec<(_, _)>, _>>()?,
+                                .map(|(k, v)| (k, v.into()))
+                                .collect::<Vec<(_, _)>>(),
                         )
-                        .expect("should succeed")),
-                    ResidualKind::Set(set) => Ok(builder.set(
+                        .expect("should succeed"),
+                    ResidualKind::Set(set) => builder.set(
                         set.as_ref()
                             .clone()
                             .into_iter()
-                            .map(|v| v.try_into())
-                            .collect::<std::result::Result<Vec<_>, _>>()?,
-                    )),
+                            .map(|v| v.into())
+                            .collect::<Vec<_>>(),
+                    ),
                     ResidualKind::UnaryApp { op, arg } => {
-                        Ok(builder.unary_app(op, arg.as_ref().clone().try_into()?))
+                        builder.unary_app(op, arg.as_ref().clone().into())
                     }
-                    ResidualKind::Var(v) => Ok(builder.var(v)),
+                    ResidualKind::Var(v) => builder.var(v),
                 }
             }
-            Residual::Concrete { value, .. } => Ok(value.into()),
-            Residual::Error(_) => Err(()),
+            Residual::Concrete { value, .. } => value.into(),
+            Residual::Error(_) => {
+                let builder: ast::ExprBuilder<()> = ExprBuilder::with_data(());
+                // PANIC SAFETY: `error` is a valid `Name`
+                #[allow(clippy::unwrap_used)]
+                builder.call_extension_fn("error".parse().unwrap(), std::iter::empty())
+            }
         }
     }
 }
