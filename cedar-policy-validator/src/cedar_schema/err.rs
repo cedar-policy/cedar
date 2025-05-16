@@ -24,8 +24,7 @@ use std::{
 
 use cedar_policy_core::{
     ast::AnyId,
-    impl_diagnostic_from_source_loc_opt_field, impl_diagnostic_from_two_source_loc_fields,
-    impl_diagnostic_from_two_source_loc_opt_fields,
+    impl_diagnostic_from_source_loc_opt_field, impl_diagnostic_from_two_source_loc_opt_fields,
     parser::{
         err::{expected_to_string, ExpectedTokenConfig},
         unescape::UnescapeError,
@@ -632,7 +631,7 @@ pub struct DuplicatePrincipalOrResource {
 }
 
 impl Diagnostic for DuplicatePrincipalOrResource {
-    impl_diagnostic_from_two_source_loc_fields!(loc1, loc2);
+    impl_diagnostic_from_two_source_loc_opt_fields!(loc1, loc2);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         let msg = format!("Actions may only have a single {kind} declaration, but a {kind} declaration may specify a list of entity types like `{kind}: [X, Y, Z]`", kind=self.kind);
@@ -649,7 +648,7 @@ pub struct DuplicateContext {
 }
 
 impl Diagnostic for DuplicateContext {
-    impl_diagnostic_from_two_source_loc_fields!(loc1, loc2);
+    impl_diagnostic_from_two_source_loc_opt_fields!(loc1, loc2);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(
@@ -666,7 +665,7 @@ pub struct DuplicateDeclarations {
 }
 
 impl Diagnostic for DuplicateDeclarations {
-    impl_diagnostic_from_two_source_loc_fields!(loc1, loc2);
+    impl_diagnostic_from_two_source_loc_opt_fields!(loc1, loc2);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

@@ -16,24 +16,6 @@
 
 /// Macro which implements the `.labels()` and `.source_code()` methods of
 /// `miette::Diagnostic` by using the parameter `$i` which must be the name
-/// of a field of type `Loc`
-#[macro_export]
-macro_rules! impl_diagnostic_from_source_loc_field {
-    ( $i:ident ) => {
-        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-            Some(&self.$i.src as &dyn miette::SourceCode)
-        }
-
-        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-            Some(Box::new(std::iter::once(miette::LabeledSpan::underline(
-                self.$i.span,
-            ))) as _)
-        }
-    };
-}
-
-/// Macro which implements the `.labels()` and `.source_code()` methods of
-/// `miette::Diagnostic` by using the parameter `$i` which must be the name
 /// of a field of type `Option<Loc>`
 #[macro_export]
 macro_rules! impl_diagnostic_from_source_loc_opt_field {
@@ -48,35 +30,6 @@ macro_rules! impl_diagnostic_from_source_loc_opt_field {
             self.$($id).+
                 .as_ref()
                 .map(|loc| Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span))) as _)
-        }
-    };
-}
-
-/// Macro which implements the `.labels()` and `.source_code()` methods of
-/// `miette::Diagnostic` by using the parameters `$i` and `$j` which must be
-/// names of fields of type `Loc`.
-/// Both locations will be underlined. It is assumed they have the same `src`.
-#[macro_export]
-macro_rules! impl_diagnostic_from_two_source_loc_fields {
-    ( $i:ident, $j:ident ) => {
-        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-            // use the `src` from the first location and assume it is the same
-            // as the `src` from the second location
-            self.$i.as_ref().map(|l| &l.src as &dyn miette::SourceCode)
-        }
-
-        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-            let spans: Vec<_> = [&self.$i, &self.$j]
-                .into_iter()
-                .filter_map(|loc| loc.as_ref())
-                .map(|loc| miette::LabeledSpan::underline(loc.span))
-                .collect();
-
-            if spans.is_empty() {
-                None
-            } else {
-                Some(Box::new(spans.into_iter()))
-            }
         }
     };
 }
