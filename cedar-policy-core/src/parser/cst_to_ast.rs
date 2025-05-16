@@ -368,7 +368,7 @@ impl Node<Option<cst::Policy>> {
             // The source parsed as a template, but not a static policy
             Ok(Err(ast::UnexpectedSlotError::FoundSlot(slot))) => Err(ToASTError::new(
                 ToASTErrorKind::expected_static_policy(slot.clone()),
-                slot.loc.unwrap_or_else(|| self.loc.clone()),
+                slot.loc.or_else(|| self.loc.clone()),
             )
             .into()),
             // The source failed to parse completely. If the parse errors include
@@ -380,7 +380,7 @@ impl Node<Option<cst::Policy>> {
                         ParseError::ToAST(err) => match err.kind() {
                             ToASTErrorKind::SlotsInConditionClause(inner) => Some(ToASTError::new(
                                 ToASTErrorKind::expected_static_policy(inner.slot.clone()),
-                                err.source_loc().clone(),
+                                err.source_loc().cloned(),
                             )),
                             _ => None,
                         },
@@ -404,7 +404,7 @@ impl Node<Option<cst::Policy>> {
         let policy = match policy {
             cst::Policy::Policy(policy_impl) => policy_impl,
             cst::Policy::PolicyError => {
-                return Ok(ast::Template::error(id, Some(self.loc.clone())));
+                return Ok(ast::Template::error(id, self.loc.clone()));
             }
         };
         // convert effect
@@ -412,7 +412,7 @@ impl Node<Option<cst::Policy>> {
 
         // convert annotations
         let maybe_annotations = policy.get_ast_annotations(|value, loc| {
-            ast::Annotation::with_optional_value(value, Some(loc.clone()))
+            ast::Annotation::with_optional_value(value, loc.cloned())
         });
 
         // convert scope
@@ -427,7 +427,7 @@ impl Node<Option<cst::Policy>> {
                         slot.clone(),
                         if is_when { "when" } else { "unless" },
                     ),
-                    slot.loc.unwrap_or_else(|| c.loc.clone()),
+                    slot.loc.or_else(|| self.loc.clone()),
                 )
                 .into()
             });
@@ -447,7 +447,7 @@ impl Node<Option<cst::Policy>> {
             action,
             resource,
             conds,
-            &self.loc,
+            self.loc.as_ref(),
         ))
     }
 }
@@ -540,35 +540,50 @@ impl cst::PolicyImpl {
     ) -> Result<(PrincipalConstraint, ActionConstraint, ResourceConstraint)> {
         // Tracks where the last variable in the scope ended. We'll point to
         // this position to indicate where to fill in vars if we're missing one.
-        let mut end_of_last_var = self.effect.loc.end();
+        let mut end_of_last_var = self.effect.loc.as_ref().map(|loc| loc.end());
 
         let mut vars = self.variables.iter();
         let maybe_principal = if let Some(scope1) = vars.next() {
-            end_of_last_var = scope1.loc.end();
-            scope1.to_principal_constraint(TolerantAstSetting::Tolerant)
+            end_of_last_var = scope1.loc.as_ref().map(|loc| loc.end()).or(end_of_last_var);
+            scope1.to_principal_constraint(TolerantAstSetting::NotTolerant)
         } else {
+            let effect_span = self
+                .effect
+                .loc
+                .as_ref()
+                .and_then(|loc| end_of_last_var.map(|end| loc.span(end)));
             Err(ToASTError::new(
                 ToASTErrorKind::MissingScopeVariable(ast::Var::Principal),
-                self.effect.loc.span(end_of_last_var),
+                effect_span,
             )
             .into())
         };
         let maybe_action = if let Some(scope2) = vars.next() {
-            end_of_last_var = scope2.loc.end();
-            scope2.to_action_constraint(TolerantAstSetting::Tolerant)
+            end_of_last_var = scope2.loc.as_ref().map(|loc| loc.end()).or(end_of_last_var);
+            scope2.to_action_constraint(TolerantAstSetting::NotTolerant)
         } else {
+            let effect_span = self
+                .effect
+                .loc
+                .as_ref()
+                .and_then(|loc| end_of_last_var.map(|end| loc.span(end)));
             Err(ToASTError::new(
                 ToASTErrorKind::MissingScopeVariable(ast::Var::Action),
-                self.effect.loc.span(end_of_last_var),
+                effect_span,
             )
             .into())
         };
         let maybe_resource = if let Some(scope3) = vars.next() {
-            scope3.to_resource_constraint(TolerantAstSetting::Tolerant)
+            scope3.to_resource_constraint(TolerantAstSetting::NotTolerant)
         } else {
+            let effect_span = self
+                .effect
+                .loc
+                .as_ref()
+                .and_then(|loc| end_of_last_var.map(|end| loc.span(end)));
             Err(ToASTError::new(
                 ToASTErrorKind::MissingScopeVariable(ast::Var::Resource),
-                self.effect.loc.span(end_of_last_var),
+                effect_span,
             )
             .into())
         };
@@ -1315,7 +1330,7 @@ impl Node<Option<cst::Expr>> {
             cst::Expr::ErrorExpr => {
                 let e = ToASTError::new(ToASTErrorKind::CSTErrorNode, self.loc.clone());
                 return Ok(ExprOrSpecial::Expr {
-                    expr: convert_expr_error_to_parse_error::<Build>(e.into(), Some(&self.loc))?,
+                    expr: convert_expr_error_to_parse_error::<Build>(e.into(), self.loc.as_ref())?,
                     loc: self.loc.clone(),
                 });
             }
@@ -2324,7 +2339,7 @@ fn construct_name(path: Vec<ast::Id>, id: ast::Id, loc: Option<Loc>) -> ast::Int
     ast::InternalName {
         id,
         path: Arc::new(path),
-        loc: loc,
+        loc,
     }
 }
 

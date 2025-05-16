@@ -718,7 +718,7 @@ impl Diagnostic for NoPrincipalOrResource {
                 });
                 let spans: Vec<_> = [action_name, decl]
                     .into_iter()
-                    .filter_map(|span| span)
+                    .flatten()
                     .collect();
 
                 if spans.is_empty() {

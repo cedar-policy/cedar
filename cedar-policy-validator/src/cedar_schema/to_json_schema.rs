@@ -248,7 +248,7 @@ fn convert_action_decl(
             annotations: a.annotations.clone().into(),
             loc: a.data.loc.clone(),
             #[cfg(feature = "extended-schema")]
-            defn_loc: Some(name.loc),
+            defn_loc: name.loc,
         };
         (name.node, ty)
     }))
@@ -460,7 +460,7 @@ fn convert_attr_decl(
             required: attr.node.data.required,
             annotations: attr.node.annotations.into(),
             #[cfg(feature = "extended-schema")]
-            loc: Some(attr.loc),
+            loc: attr.loc,
         },
     )
 }
