@@ -23,14 +23,11 @@ use std::{
 };
 
 use cedar_policy_core::{
-    ast::AnyId,
-    impl_diagnostic_from_source_loc_field, impl_diagnostic_from_two_source_loc_fields,
-    impl_diagnostic_from_two_source_loc_opt_fields,
-    parser::{
+    ast::AnyId, impl_diagnostic_from_source_loc_opt_field, impl_diagnostic_from_two_source_loc_fields, impl_diagnostic_from_two_source_loc_opt_fields, parser::{
         err::{expected_to_string, ExpectedTokenConfig},
         unescape::UnescapeError,
         Loc, Node,
-    },
+    }
 };
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
@@ -579,7 +576,7 @@ pub struct ReservedSchemaKeyword {
 }
 
 impl Diagnostic for ReservedSchemaKeyword {
-    impl_diagnostic_from_source_loc_field!(loc);
+    impl_diagnostic_from_source_loc_opt_field!(loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new("Keywords such as `entity`, `extension`, `set` and `record` cannot be used as common type names"))
@@ -594,7 +591,7 @@ pub struct ReservedName {
 }
 
 impl Diagnostic for ReservedName {
-    impl_diagnostic_from_source_loc_field!(loc);
+    impl_diagnostic_from_source_loc_opt_field!(loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(
@@ -611,7 +608,7 @@ pub struct UnknownTypeName {
 }
 
 impl Diagnostic for UnknownTypeName {
-    impl_diagnostic_from_source_loc_field!(loc);
+    impl_diagnostic_from_source_loc_opt_field!(loc);
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         let msg = format!(
@@ -747,7 +744,7 @@ impl Diagnostic for DuplicateNamespace {
 
 /// Error subtypes for [`SchemaWarning`]
 pub mod schema_warnings {
-    use cedar_policy_core::{impl_diagnostic_from_source_loc_field, parser::Loc};
+    use cedar_policy_core::{impl_diagnostic_from_source_loc_opt_field, parser::Loc};
     use miette::Diagnostic;
     use smol_str::SmolStr;
     use thiserror::Error;
@@ -765,7 +762,7 @@ pub mod schema_warnings {
     }
 
     impl Diagnostic for ShadowsBuiltinWarning {
-        impl_diagnostic_from_source_loc_field!(loc);
+        impl_diagnostic_from_source_loc_opt_field!(loc);
 
         fn severity(&self) -> Option<miette::Severity> {
             Some(miette::Severity::Warning)

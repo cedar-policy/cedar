@@ -123,7 +123,7 @@ impl<T: std::error::Error> std::error::Error for Node<T> {
 
 // impl Diagnostic by taking `labels()` and `source_code()` from .loc and everything else from .node
 impl<T: Diagnostic> Diagnostic for Node<T> {
-    impl_diagnostic_from_source_loc_field!(loc);
+    impl_diagnostic_from_source_loc_opt_field!(loc);
 
     fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         self.node.code()
