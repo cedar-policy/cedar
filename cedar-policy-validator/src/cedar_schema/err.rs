@@ -23,11 +23,14 @@ use std::{
 };
 
 use cedar_policy_core::{
-    ast::AnyId, impl_diagnostic_from_source_loc_opt_field, impl_diagnostic_from_two_source_loc_fields, impl_diagnostic_from_two_source_loc_opt_fields, parser::{
+    ast::AnyId,
+    impl_diagnostic_from_source_loc_opt_field, impl_diagnostic_from_two_source_loc_fields,
+    impl_diagnostic_from_two_source_loc_opt_fields,
+    parser::{
         err::{expected_to_string, ExpectedTokenConfig},
         unescape::UnescapeError,
         Loc, Node,
-    }
+    },
 };
 use lalrpop_util as lalr;
 use lazy_static::lazy_static;
