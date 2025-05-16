@@ -570,13 +570,10 @@ impl From<ReservedNameError> for ParseError {
     fn from(value: ReservedNameError) -> Self {
         ParseError::ToAST(ToASTError::new(
             value.clone().into(),
-            match value.0.loc {
-                loc @ Some(_) => loc,
-                None => {
-                    let name_str = value.0.to_string();
-                    Some(Loc::new(0..(name_str.len()), name_str.into()))
-                }
-            },
+            value.0.loc.clone().or_else(|| {
+                let name_str = value.0.to_string();
+                Some(Loc::new(0..(name_str.len()), name_str.into()))
+            }),
         ))
     }
 }
