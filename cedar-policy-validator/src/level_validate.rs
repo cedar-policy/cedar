@@ -974,4 +974,62 @@ mod levels_validation_tests {
             6,
         );
     }
+
+    #[test]
+    fn short_circuiting_checks_evaluated_expr() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { (principal.bool || true) || true};"#,
+            ["principal.bool"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { (principal.bool && false) && false};"#,
+            ["principal.bool"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { if (principal.bool && false) then true else false };"#,
+            ["principal.bool"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { if (principal.bool && false) then true else false };"#,
+            ["principal.bool"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { if true then principal.bool else false };"#,
+            ["principal.bool"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { if false then true else principal.bool };"#,
+            ["principal.bool"],
+            1,
+        );
+    }
+
+    #[test]
+    fn short_circuiting_skips_unevaluated_expr() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { true || principal.bool};"#,
+            [],
+            0,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { false && principal.bool};"#,
+            [],
+            0,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { if false then principal.bool else false };"#,
+            [],
+            0,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { if true then true else principal.bool };"#,
+            [],
+            0,
+        );
+    }
 }
