@@ -22,6 +22,9 @@ Cedar Language Version: TBD
   format. The new functions are deprecated and placed behind the `deprecated-schema-compat` feature. (#1600)
 - `Expression::new_duration`, `Expression::new_datetime`, `RestrictedExpression::new_duration`,
    and `RestrictedExpression::new_datetime` (#1614)
+- Added a function to be able to split a policy set parsed from a large file into its component static policies
+  and templates. The relevant functions are `policy_set_text_to_parts` which can be used from wasm, and 
+  `PolicySet::to_string_representations` in `api.rs`, which returns a `StringifiedPolicySet`.
 
 ### Changed
 

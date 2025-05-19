@@ -20,12 +20,54 @@
 
 use super::utils::JsonValueWithNoDuplicateKeys;
 use super::{DetailedError, Policy, Schema, Template};
+use crate::api::{PolicySet, StringifiedPolicySet};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
+
+/// Takes a large PolicySet represented as string and return the policies
+/// and templates split into vecs and sorted by id.
+#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "policySetTextToParts"))]
+pub fn policy_set_text_to_parts(policy_set_str: &str) -> PolicySetTextToPartsAnswer {
+    let parsed_ps: Result<PolicySet, _> = PolicySet::from_str(policy_set_str);
+    match parsed_ps {
+        Ok(policy_set) => {
+            if let Some(StringifiedPolicySet {
+                policies,
+                policy_templates,
+            }) = policy_set.to_string_representations()
+            {
+                PolicySetTextToPartsAnswer::Success {
+                    policies,
+                    policy_templates,
+                }
+            } else {
+                // This should never happen due to the nature of the input but we cover it
+                // just in case, to future-proof the interface
+                PolicySetTextToPartsAnswer::Failure {
+                    errors: vec![DetailedError {
+                        message: String::from(
+                            "Policy set input contained template linked policies",
+                        ),
+                        help: None,
+                        code: None,
+                        url: None,
+                        severity: None,
+                        source_locations: vec![],
+                        related: vec![],
+                    }],
+                }
+            }
+        }
+        Err(e) => PolicySetTextToPartsAnswer::Failure {
+            errors: vec![(&e).into()],
+        },
+    }
+}
 
 /// Return the Cedar (textual) representation of a policy.
 #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "policyToText"))]
@@ -154,6 +196,28 @@ pub enum PolicyToTextAnswer {
     Success {
         /// Cedar format policy
         text: String,
+    },
+    /// Represents a failed call (e.g., because the input is ill-formed)
+    Failure {
+        /// Errors
+        errors: Vec<DetailedError>,
+    },
+}
+
+/// Result of converting a policyset as a string into its Cedar
+/// format components
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+pub enum PolicySetTextToPartsAnswer {
+    /// Represents a successful call
+    Success {
+        /// Cedar format policies
+        policies: Vec<String>,
+        /// Cedar format policy templates
+        policy_templates: Vec<String>,
     },
     /// Represents a failed call (e.g., because the input is ill-formed)
     Failure {
@@ -506,6 +570,24 @@ action "sendMessage" appliesTo {
 };
 "#
             );
+        });
+    }
+
+    #[test]
+    fn policy_set_to_text_to_parts() {
+        let policy_set_str = r#"
+            permit(principal, action, resource)
+            when { principal has "Email" && principal.Email == "a@a.com" };
+            
+            permit(principal in UserGroup::"DeathRowRecords", action == Action::"pop", resource);
+
+            permit(principal in ?principal, action, resource);
+        "#;
+
+        let result = policy_set_text_to_parts(policy_set_str);
+        assert_matches!(result, PolicySetTextToPartsAnswer::Success { policies, policy_templates } => {
+            assert_eq!(policies.len(), 2);
+            assert_eq!(policy_templates.len(), 1);
         });
     }
 }

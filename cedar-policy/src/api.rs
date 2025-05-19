@@ -2195,6 +2195,17 @@ impl std::fmt::Display for EntityNamespace {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+/// A struct representing a PolicySet as a series of strings for ser/de.
+/// A PolicySet that contains template-linked policies cannot be
+/// represented as this struct.
+pub struct StringifiedPolicySet {
+    /// The static policies in the set
+    pub policies: Vec<String>,
+    /// The policy templates in the set
+    pub policy_templates: Vec<String>,
+}
+
 /// Represents a set of `Policy`s
 #[derive(Debug, Clone, Default)]
 pub struct PolicySet {
@@ -2373,6 +2384,37 @@ impl PolicySet {
     /// rules.  Policy formatting can be done through the Cedar policy CLI or
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> Option<String> {
+        if let Some(StringifiedPolicySet {
+            policies,
+            policy_templates,
+        }) = self.to_string_representations()
+        {
+            let policies_as_vec = policies
+                .into_iter()
+                .chain(policy_templates)
+                .collect::<Vec<_>>();
+            return Some(policies_as_vec.join("\n\n"));
+        };
+        None
+    }
+
+    /// Get the human-readable Cedar syntax representation of this policy set,
+    /// as a vec of strings. This function is useful to break up a large cedar
+    /// file containing many policies into individual policies.
+    ///
+    /// This will return `None` if there are any linked policies in the policy
+    /// set because they cannot be directly rendered in Cedar syntax. It also
+    /// cannot record policy ids because these cannot be specified in the Cedar
+    /// syntax. The policies may be reordered, so parsing the resulting string
+    /// with [`PolicySet::from_str`] is likely to yield different policy id
+    /// assignments. For these reasons you should prefer serializing as JSON (or protobuf) and
+    /// only using this function to obtain a representation to display to human
+    /// users.
+    ///
+    /// This function does not format the policy according to any particular
+    /// rules.  Policy formatting can be done through the Cedar policy CLI or
+    /// the `cedar-policy-formatter` crate.
+    pub fn to_string_representations(&self) -> Option<StringifiedPolicySet> {
         let policies = self
             .policies
             .values()
@@ -2382,13 +2424,17 @@ impl PolicySet {
             .sorted_by_key(|p| AsRef::<str>::as_ref(p.id()))
             .map(Policy::to_cedar)
             .collect::<Option<Vec<_>>>()?;
-        let templates = self
+        let policy_templates = self
             .templates
             .values()
             .sorted_by_key(|t| AsRef::<str>::as_ref(t.id()))
-            .map(Template::to_cedar);
+            .map(Template::to_cedar)
+            .collect_vec();
 
-        Some(policies.into_iter().chain(templates).join("\n\n"))
+        Some(StringifiedPolicySet {
+            policies,
+            policy_templates,
+        })
     }
 
     /// Create a fresh empty `PolicySet`
