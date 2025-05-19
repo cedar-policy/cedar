@@ -2385,7 +2385,10 @@ impl PolicySet {
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> Option<String> {
         match self.to_string_representations() {
-            Some(StringifiedPolicySet { policies, policy_templates }) => {
+            Some(StringifiedPolicySet {
+                policies,
+                policy_templates,
+            }) => {
                 let policies_as_vec = policies
                     .into_iter()
                     .chain(policy_templates)
