@@ -2196,8 +2196,8 @@ impl std::fmt::Display for EntityNamespace {
 }
 
 #[derive(Debug, Clone, Default)]
-/// A struct representing a PolicySet as a series of strings for ser/de.
-/// A PolicySet that contains template-linked policies cannot be
+/// A struct representing a `PolicySet` as a series of strings for ser/de.
+/// A `PolicySet` that contains template-linked policies cannot be
 /// represented as this struct.
 pub struct StringifiedPolicySet {
     /// The static policies in the set
