@@ -23,6 +23,8 @@ use smol_str::SmolStr;
 use std::sync::Arc;
 use thiserror::Error;
 
+use vstd::prelude::*;
+
 // How many attrs or tags will we store in an error before cutting off for performance reason
 const TOO_MANY_ATTRS: usize = 5;
 
@@ -753,3 +755,10 @@ pub mod evaluation_errors {
 
 /// Type alias for convenience
 pub type Result<T> = std::result::Result<T, EvaluationError>;
+
+verus! {
+
+/// hack because Verus can't support `EvaluationError`
+pub type VerusResultHack<T> = std::result::Result<T, ()>;
+
+} // verus!

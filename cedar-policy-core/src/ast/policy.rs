@@ -229,10 +229,15 @@ impl Template {
         self.body.loc()
     }
 
+    verus! {
+
     /// Get the `Effect` (`Permit` or `Deny`) of this template
+    #[verifier::external_body]
     pub fn effect(&self) -> Effect {
         self.body.effect()
     }
+
+    } // verus!
 
     /// Get data from an annotation.
     pub fn annotation(&self, key: &AnyId) -> Option<&Annotation> {
@@ -500,10 +505,15 @@ impl Policy {
         Arc::clone(&self.template)
     }
 
+    verus! {
+
     /// Get the effect (forbid or permit) of this policy.
+    #[verifier::external_body]
     pub fn effect(&self) -> Effect {
         self.template.effect()
     }
+
+    } // verus!
 
     /// Get data from an annotation.
     pub fn annotation(&self, key: &AnyId) -> Option<&Annotation> {
@@ -983,10 +993,14 @@ impl From<StaticPolicy> for Arc<Template> {
     }
 }
 
+verus! {
+
 /// Policy datatype. This is used for both templates (in which case it contains
 /// slots) and static policies (in which case it contains zero slots).
 #[derive(Educe, Clone, Debug)]
 #[educe(PartialEq, Eq, Hash)]
+#[verifier::external_body]
+#[verifier::external_derive]
 pub struct TemplateBodyImpl {
     /// ID of this policy
     id: PolicyID,
@@ -1019,8 +1033,11 @@ pub struct TemplateBodyImpl {
     non_scope_constraints: Arc<Expr>,
 }
 
+} // verus!
+
 /// Policy datatype. This is used for both templates (in which case it contains
 /// slots) and static policies (in which case it contains zero slots).
+// TODO: Verus can't handle the feature-flag-gated variants
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
 pub enum TemplateBody {
     /// Represents a valid template body
@@ -1944,17 +1961,22 @@ impl arbitrary::Arbitrary<'_> for PolicyID {
     }
 }
 
+verus! {
+
 /// the Effect of a policy
 #[derive(Serialize, Deserialize, Hash, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[verifier::external_derive]
 pub enum Effect {
     /// this is a Permit policy
     Permit,
     /// this is a Forbid policy
     Forbid,
+}
+
 }
 
 impl std::fmt::Display for Effect {

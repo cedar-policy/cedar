@@ -21,6 +21,7 @@ use smol_str::SmolStr;
 use thiserror::Error;
 
 /// Errors that can occur during authorization
+// TODO: Verus can't handle this enum for some reason
 #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
 pub enum AuthorizationError {
     /// An error occurred when evaluating a policy.

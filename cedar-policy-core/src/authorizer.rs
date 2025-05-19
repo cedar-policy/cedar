@@ -101,11 +101,11 @@ impl Authorizer {
         let mut true_forbids = vec![];
         let mut false_permits = vec![];
         let mut false_forbids = vec![];
-        let mut errors = vec![];
+        // let mut errors = vec![];
 
         for p in iter: pset.policies_iter() {
             let (id, annotations) = (p.id().clone(), p.annotations_arc().clone());
-            match eval.evaluate(p) {
+            match eval.evaluate_verus(p) {
                 Ok(satisfied) => match (satisfied, p.effect()) {
                     (true, Effect::Permit) => true_permits.push((id, annotations)),
                     (true, Effect::Forbid) => true_forbids.push((id, annotations)),
@@ -117,10 +117,11 @@ impl Authorizer {
                     }
                 },
                 Err(e) => {
-                    errors.push(AuthorizationError::PolicyEvaluationError {
-                        id: id.clone(),
-                        error: e,
-                    });
+                    // TODO add back errors when we can handle them
+                    // errors.push(AuthorizationError::PolicyEvaluationError {
+                    //     id: id.clone(),
+                    //     error: e,
+                    // });
                     let satisfied = match self.error_handling {
                         ErrorHandling::Skip => false,
                     };
@@ -138,18 +139,19 @@ impl Authorizer {
             }
         }
 
-        let partial_response = PartialResponse::new(
+        let partial_response = PartialResponse::new_no_residuals(
             true_permits,
             false_permits,
-            vec![], // no residual permits
+            // vec![], // no residual permits
             true_forbids,
             false_forbids,
-            vec![], // no residual forbids
-            errors,
+            // vec![], // no residual forbids
+            // vec![], // errors, // TODO ignoring errors for now due to Verus limitations
             Arc::new(q),
         );
 
         partial_response.concretize()
+
     }
 
     } // verus!

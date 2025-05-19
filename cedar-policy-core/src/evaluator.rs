@@ -388,6 +388,23 @@ impl<'e> Evaluator<'e> {
         }
     }
 
+    verus! {
+
+    /// Duplicate of `evaluate()` but throwing away the error type since Verus currently cannot
+    /// handle it.
+    /// Evaluate the given `Policy`, returning either a bool or an error.
+    /// The bool indicates whether the policy applies, ie, "is satisfied" for the
+    /// current `request`.
+    /// This is _different than_ "if the current `request` should be allowed" --
+    /// it doesn't consider whether we're processing a `Permit` policy or a
+    /// `Forbid` policy.
+    #[verifier::external_body]
+    pub fn evaluate_verus(&self, p: &Policy) -> VerusResultHack<bool> {
+        self.evaluate(p).map_err(|_| ())
+    }
+
+    }
+
     /// Evaluate the given `Policy`, returning either a bool or an error.
     /// The bool indicates whether the policy applies, ie, "is satisfied" for the
     /// current `request`.

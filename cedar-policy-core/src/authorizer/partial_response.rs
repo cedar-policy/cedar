@@ -41,17 +41,18 @@ use super::{
 
 type PolicyComponents<'a> = (Effect, &'a PolicyID, &'a Arc<Expr>, &'a Arc<Annotations>);
 
+verus! {
+
 /// Enum representing whether a policy is not satisfied due to
 /// evaluating to `false`, or because it errored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[verifier::external_derive]
 pub enum ErrorState {
     /// The policy did not error
     NoError,
     /// The policy did error
     Error,
 }
-
-verus! {
 
 /// A partially evaluated authorization response.
 /// Splits the results into several categories: satisfied, false, and residual for each policy effect.
@@ -116,6 +117,34 @@ impl PartialResponse {
     }
 
     verus! {
+
+    /// Create a partial response from each of the policy result categories
+    /// Rewritten to avoid `impl IntoIterator` which Verus cannot handle, and remove arguments
+    /// not used in verus version
+    /// TODO: add errors back when we can handle them in Verus
+    #[allow(clippy::too_many_arguments)]
+    #[verifier::external_body]
+    pub fn new_no_residuals(
+        true_permits: Vec<(PolicyID, Arc<Annotations>)>,
+        false_permits: Vec<(PolicyID, (ErrorState, Arc<Annotations>))>,
+        // residual_permits: Vec<(PolicyID, (Arc<Expr>, Arc<Annotations>))>,
+        true_forbids: Vec<(PolicyID, Arc<Annotations>)>,
+        false_forbids: Vec<(PolicyID, (ErrorState, Arc<Annotations>))>,
+        // residual_forbids: Vec<(PolicyID, (Arc<Expr>, Arc<Annotations>))>,
+        // errors: Vec<AuthorizationError>,
+        request: Arc<Request>,
+    ) -> Self {
+        Self::new(
+            true_permits,
+            false_permits,
+            vec![], // no residual permits
+            true_forbids,
+            false_forbids,
+            vec![], // no residual forbids
+            vec![], // errors, // TODO ignoring errors for now due to Verus limitations
+            request,
+        )
+    }
 
     /// Convert this response into a concrete evaluation response.
     /// All residuals are treated as errors
