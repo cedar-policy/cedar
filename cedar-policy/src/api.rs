@@ -2384,18 +2384,16 @@ impl PolicySet {
     /// rules.  Policy formatting can be done through the Cedar policy CLI or
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> Option<String> {
-        if let Some(StringifiedPolicySet {
-            policies,
-            policy_templates,
-        }) = self.to_string_representations()
-        {
-            let policies_as_vec = policies
-                .into_iter()
-                .chain(policy_templates)
-                .collect::<Vec<_>>();
-            return Some(policies_as_vec.join("\n\n"));
-        };
-        None
+        match self.to_string_representations() {
+            Some(StringifiedPolicySet { policies, policy_templates }) => {
+                let policies_as_vec = policies
+                    .into_iter()
+                    .chain(policy_templates)
+                    .collect::<Vec<_>>();
+                Some(policies_as_vec.join("\n\n"))
+            }
+            None => None,
+        }
     }
 
     /// Get the human-readable Cedar syntax representation of this policy set,
