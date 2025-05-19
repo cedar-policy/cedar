@@ -757,7 +757,7 @@ when {
                         EntityRoot::Var(Var::Principal),
                         AccessTrie {
                             children: HashMap::from([(
-                                SmolStr::new("name"),
+                                SmolStr::new_static("name"),
                                 Box::new(AccessTrie {
                                     children: HashMap::new(),
                                     ancestors_trie: RootAccessTrie::new(),

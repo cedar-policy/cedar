@@ -29,6 +29,7 @@ Cedar Language Version: TBD
   accept an `&Validator` instead of `&Schema`. Callers can construct a `Validator`
   from a schema with `Validator::new` afterwhich a reference to the original
   schema can be retrieved using `Validator::schema`. (#1584)
+- Bumped MSRV to 1.82 (#1611)
 
 ### Fixed
 - Apply entity conformance checking to tags (#1604)

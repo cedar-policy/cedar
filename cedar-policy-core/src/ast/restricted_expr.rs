@@ -761,7 +761,7 @@ mod test {
                         }
                         .into()
                     ),
-                    Loc::new(0..32, Arc::from(str))
+                    Some(Loc::new(0..32, Arc::from(str)))
                 )))
             )),
         )

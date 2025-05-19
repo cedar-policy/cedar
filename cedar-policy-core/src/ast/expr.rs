@@ -480,7 +480,7 @@ impl<T> Expr<T> {
             ExprKind::Error { .. } => builder
                 .error(ParseErrors::singleton(ToASTError::new(
                     ToASTErrorKind::ASTErrorNode,
-                    Loc::new(0..1, "AST_ERROR_NODE".into()),
+                    Some(Loc::new(0..1, "AST_ERROR_NODE".into())),
                 )))
                 .unwrap(),
         }

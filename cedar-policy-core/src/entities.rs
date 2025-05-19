@@ -37,6 +37,8 @@ pub use json::{
 
 use conformance::EntitySchemaConformanceChecker;
 use err::*;
+#[cfg(feature = "partial-eval")]
+use smol_str::ToSmolStr;
 
 /// Represents an entity hierarchy, and allows looking up `Entity` objects by
 /// UID.
@@ -96,7 +98,7 @@ impl Entities {
                 Mode::Concrete => Dereference::NoSuchEntity,
                 #[cfg(feature = "partial-eval")]
                 Mode::Partial => Dereference::Residual(Expr::unknown(Unknown::new_with_type(
-                    format!("{uid}"),
+                    uid.to_smolstr(),
                     Type::Entity {
                         ty: uid.entity_type().clone(),
                     },
@@ -2535,7 +2537,7 @@ mod schema_based_parsing_tests {
                     "work_ip",
                     "trust_score",
                 ]
-                .map(SmolStr::new)
+                .map(SmolStr::new_static)
                 .into_iter(),
             )
         }
@@ -3729,7 +3731,7 @@ mod schema_based_parsing_tests {
             fn required_attrs(&self) -> Box<dyn Iterator<Item = SmolStr>> {
                 Box::new(
                     ["isFullTime", "department", "manager"]
-                        .map(SmolStr::new)
+                        .map(SmolStr::new_static)
                         .into_iter(),
                 )
             }
