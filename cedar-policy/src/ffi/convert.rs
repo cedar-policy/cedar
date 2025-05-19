@@ -29,17 +29,17 @@ use wasm_bindgen::prelude::wasm_bindgen;
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
-/// Takes a large PolicySet represented as string and return the policies
+/// Takes a PolicySet represented as string and return the policies
 /// and templates split into vecs and sorted by id.
 #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "policySetTextToParts"))]
-pub fn policy_set_text_to_parts(policy_set_str: &str) -> PolicySetTextToPartsAnswer {
-    let parsed_ps: Result<PolicySet, _> = PolicySet::from_str(policy_set_str);
+pub fn policy_set_text_to_parts(policyset_str: &str) -> PolicySetTextToPartsAnswer {
+    let parsed_ps: Result<PolicySet, _> = PolicySet::from_str(policyset_str);
     match parsed_ps {
         Ok(policy_set) => {
             if let Some(StringifiedPolicySet {
                 policies,
                 policy_templates,
-            }) = policy_set.to_string_representations()
+            }) = policy_set.stringify()
             {
                 PolicySetTextToPartsAnswer::Success {
                     policies,
@@ -586,20 +586,16 @@ action "sendMessage" appliesTo {
 
     #[test]
     fn test_policy_set_text_to_parts_parse_failure() {
-        // Arrange
         let invalid_input = "This is not a valid PolicySet string";
 
-        // Act
         let result = policy_set_text_to_parts(invalid_input);
 
-        // Assert
-        match result {
-            PolicySetTextToPartsAnswer::Failure { errors } => {
-                assert_eq!(errors.len(), 1);
-                // You might want to check more specifics about the error here,
-                // depending on what your FromStr implementation returns
-            }
-            _ => panic!("Expected Failure, but got Success"),
-        }
+        assert_matches!(result, PolicySetTextToPartsAnswer::Failure { errors } => {
+            assert_exactly_one_error(
+                &errors,
+                "unexpected token `is`",
+                None,
+            );
+        });
     }
 }

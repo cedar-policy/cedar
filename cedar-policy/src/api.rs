@@ -2199,7 +2199,7 @@ impl std::fmt::Display for EntityNamespace {
 /// A struct representing a `PolicySet` as a series of strings for ser/de.
 /// A `PolicySet` that contains template-linked policies cannot be
 /// represented as this struct.
-pub struct StringifiedPolicySet {
+pub(crate) struct StringifiedPolicySet {
     /// The static policies in the set
     pub policies: Vec<String>,
     /// The policy templates in the set
@@ -2384,7 +2384,7 @@ impl PolicySet {
     /// rules.  Policy formatting can be done through the Cedar policy CLI or
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> Option<String> {
-        match self.to_string_representations() {
+        match self.stringify() {
             Some(StringifiedPolicySet {
                 policies,
                 policy_templates,
@@ -2409,13 +2409,13 @@ impl PolicySet {
     /// syntax. The policies may be reordered, so parsing the resulting string
     /// with [`PolicySet::from_str`] is likely to yield different policy id
     /// assignments. For these reasons you should prefer serializing as JSON (or protobuf) and
-    /// only using this function to obtain a representation to display to human
-    /// users.
+    /// only using this function to obtain a compact cedar representation,
+    /// perhaps for storage purposes.
     ///
     /// This function does not format the policy according to any particular
     /// rules.  Policy formatting can be done through the Cedar policy CLI or
     /// the `cedar-policy-formatter` crate.
-    pub fn to_string_representations(&self) -> Option<StringifiedPolicySet> {
+    pub(crate) fn stringify(&self) -> Option<StringifiedPolicySet> {
         let policies = self
             .policies
             .values()
