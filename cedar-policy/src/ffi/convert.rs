@@ -49,17 +49,10 @@ pub fn policy_set_text_to_parts(policy_set_str: &str) -> PolicySetTextToPartsAns
                 // This should never happen due to the nature of the input but we cover it
                 // just in case, to future-proof the interface
                 PolicySetTextToPartsAnswer::Failure {
-                    errors: vec![DetailedError {
-                        message: String::from(
-                            "Policy set input contained template linked policies",
-                        ),
-                        help: None,
-                        code: None,
-                        url: None,
-                        severity: None,
-                        source_locations: vec![],
-                        related: vec![],
-                    }],
+                    errors: vec![DetailedError::from_str(
+                        "Policy set input contained template linked policies",
+                    )
+                    .unwrap_or_default()],
                 }
             }
         }
@@ -589,5 +582,24 @@ action "sendMessage" appliesTo {
             assert_eq!(policies.len(), 2);
             assert_eq!(policy_templates.len(), 1);
         });
+    }
+
+    #[test]
+    fn test_policy_set_text_to_parts_parse_failure() {
+        // Arrange
+        let invalid_input = "This is not a valid PolicySet string";
+
+        // Act
+        let result = policy_set_text_to_parts(invalid_input);
+
+        // Assert
+        match result {
+            PolicySetTextToPartsAnswer::Failure { errors } => {
+                assert_eq!(errors.len(), 1);
+                // You might want to check more specifics about the error here,
+                // depending on what your FromStr implementation returns
+            }
+            _ => panic!("Expected Failure, but got Success"),
+        }
     }
 }
