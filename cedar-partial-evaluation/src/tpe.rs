@@ -222,3 +222,210 @@ action Delete appliesTo {
         }
     }
 }
+
+#[cfg(test)]
+mod tinytodo {
+    use std::{collections::BTreeMap, sync::Arc};
+
+    use cedar_policy_core::{
+        ast::{Eid, Expr, PolicySet},
+        entities::TCComputation,
+        extensions::Extensions,
+        parser::parse_policyset,
+    };
+    use cedar_policy_validator::ValidatorSchema;
+    use serde_json::json;
+
+    use crate::{
+        entities::PartialEntities,
+        request::{PartialEntityUID, PartialRequest},
+        residual::Residual,
+    };
+
+    use super::tpe_policy;
+
+    #[track_caller]
+    fn schema() -> ValidatorSchema {
+        ValidatorSchema::from_cedarschema_str(
+            r#"type Task = {
+    "id": Long,
+    "name": String,
+    "state": String,
+};
+
+type Tasks = Set<Task>;
+entity List in [Application] = {
+  "editors": Team,
+  "name": String,
+  "owner": User,
+  "readers": Team,
+  "tasks": Tasks,
+};
+entity Application enum ["TinyTodo"];
+entity User in [Team, Application] = {
+  "joblevel": Long,
+  "location": String,
+};
+entity Team in [Team, Application];
+
+action DeleteList, GetList, UpdateList appliesTo {
+  principal: [User],
+  resource: [List]
+};
+action CreateList, GetLists appliesTo {
+  principal: [User],
+  resource: [Application]
+};
+action CreateTask, UpdateTask, DeleteTask appliesTo {
+  principal: [User],
+  resource: [List]
+};
+action EditShare appliesTo {
+  principal: [User],
+  resource: [List]
+};"#,
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0
+    }
+
+    #[track_caller]
+    fn policies() -> PolicySet {
+        parse_policyset(
+            r#"
+        // Policy 0: Any User can create a list and see what lists they own
+permit (
+    principal,
+    action in [Action::"CreateList", Action::"GetLists"],
+    resource == Application::"TinyTodo"
+);
+
+// Policy 1: A User can perform any action on a List they own
+permit (
+  principal,
+  action,
+  resource is List
+)
+when { resource.owner == principal };
+
+// Policy 2: A User can see a List if they are either a reader or editor
+permit (
+    principal,
+    action == Action::"GetList",
+    resource
+)
+when { principal in resource.readers || principal in resource.editors };
+
+// Policy 3: A User can update a List and its tasks if they are an editor
+permit (
+    principal,
+    action in
+        [Action::"UpdateList",
+         Action::"CreateTask",
+         Action::"UpdateTask",
+         Action::"DeleteTask"],
+    resource
+)
+when { principal in resource.editors };
+
+// Policy 4: Admins can perform any action on any resource
+// @id("admin-omnipotence")
+// permit (
+//    principal in Team::"admin",
+//    action,
+//    resource in Application::"TinyTodo"
+// );
+// 
+// Policy 5: Interns may not create new task lists
+// forbid (
+//     principal in Team::"interns",
+//     action == Action::"CreateList",
+//     resource == Application::"TinyTodo"
+// );
+//
+// Policy 6: No access if not high rank and at location DEF, 
+// or at resource's owner's location
+// forbid(
+//     principal,
+//     action,
+//     resource is List
+// ) unless {
+//     principal.joblevel > 6 && principal.location like "DEF*" ||
+//     principal.location == resource.owner.location
+// };
+        "#,
+        )
+        .unwrap()
+    }
+
+    #[track_caller]
+    fn partial_request() -> PartialRequest {
+        PartialRequest {
+            principal: PartialEntityUID {
+                ty: "User".parse().unwrap(),
+                eid: Some(Eid::new("aaron")),
+            },
+            action: r#"Action::"GetList""#.parse().unwrap(),
+            resource: PartialEntityUID {
+                ty: "List".parse().unwrap(),
+                eid: None,
+            },
+            context: Some(Arc::new(BTreeMap::new())),
+        }
+    }
+
+    #[track_caller]
+    fn partial_entities() -> PartialEntities {
+        PartialEntities::from_json_value(
+            json!([
+                {
+                    "uid" : {
+                        "type" : "User",
+                        "id" : "aaron"
+                    },
+                    "parents" : [{"type": "Application", "id": "TinyTodo"}],
+                },
+                // We need actions explicitly in the entity
+                // TODO: fix actions parsing
+                /*
+                {
+                    "uid" : {
+                        "type" : "Action",
+                        "id": "GetList",
+                        "parents" : [],
+                        "attributes" : {},
+                        "tags" : {},
+                    }
+                }
+                */
+            ]),
+            &schema(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn run() {
+        let policies = policies();
+        let schema = schema();
+        let request = partial_request();
+        let mut entities = partial_entities();
+        let residuals: Vec<Residual> = policies
+            .policies()
+            .map(|p| {
+                tpe_policy(
+                    p,
+                    &request,
+                    &mut entities,
+                    &schema,
+                    TCComputation::AssumeAlreadyComputed,
+                )
+            })
+            .collect::<anyhow::Result<Vec<Residual>>>()
+            .unwrap();
+        for residual in residuals {
+            println!("{}", Expr::try_from(residual).unwrap());
+        }
+    }
+}
