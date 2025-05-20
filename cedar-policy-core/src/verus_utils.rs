@@ -19,8 +19,11 @@
 #![allow(missing_debug_implementations)] // vstd types Seq/Set/Map don't impl Debug
 
 use smol_str::SmolStr;
-
+use std::collections::HashSet;
+use std::hash::Hash;
 use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+use vstd::std_specs::hash::*;
 
 // Specification macros
 
@@ -83,5 +86,32 @@ impl<T> FiniteSet<T> {
 }
 
 
+}
+
+// Helper functions (should be in vstd)
+
+verus! {
+
+#[verifier::external_body]
+pub fn hash_set_from_vec<T: Eq + Hash>(vec: Vec<T>) -> (hset: HashSet<T>)
+{
+    HashSet::from_iter(vec)
+}
+
+#[verifier::external_body]
+pub fn vec_is_empty<T>(v: &Vec<T>) -> (res: bool)
+    ensures
+        res <==> v@.len() == 0
+{
+    v.is_empty()
+}
+
+// #[cfg(verus_keep_ghost)]
+// pub assume_specification<T, A: std::alloc::Allocator>[ Vec::<T>::is_empty ](
+//     v: &Vec<T, A>,
+// ) -> (res: bool)
+//     ensures
+//         res <==> v@.len() == 0,
+// ;
 
 }

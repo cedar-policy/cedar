@@ -39,6 +39,7 @@ pub use err::{AuthorizationError, ConcretizationError, ReauthorizationError};
 pub use partial_response::ErrorState;
 pub use partial_response::PartialResponse;
 
+use crate::verus_utils::*;
 use vstd::prelude::*;
 
 verus! {
@@ -93,29 +94,28 @@ impl Authorizer {
     ///
     /// The language spec and formal model give a precise definition of how this is
     /// computed.
-    pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> Response {
+    pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> (response: Response) {
         let eval = Evaluator::new(q.clone(), entities, self.extensions);
 
         // logic from `Authorizer::is_authorized_core_internal()``
-        let mut true_permits = vec![];
-        let mut true_forbids = vec![];
-        let mut false_permits = vec![];
-        let mut false_forbids = vec![];
+        let mut satisfied_permits = vec![];
+        let mut satisfied_forbids = vec![];
         // let mut errors = vec![];
 
         let policies_iter = pset.policies_iter();
         for p in policies_iter {
-            let (id, annotations) = (p.id().clone(), p.annotations_arc().clone());
+            let id = p.id().clone();
             match eval.evaluate_verus(p) {
                 Ok(satisfied) => match (satisfied, p.effect()) {
-                    (true, Effect::Permit) => true_permits.push((id, annotations)),
-                    (true, Effect::Forbid) => true_forbids.push((id, annotations)),
-                    (false, Effect::Permit) => {
-                        false_permits.push((id, (ErrorState::NoError, annotations)))
-                    }
-                    (false, Effect::Forbid) => {
-                        false_forbids.push((id, (ErrorState::NoError, annotations)))
-                    }
+                    (true, Effect::Permit) => satisfied_permits.push(id),
+                    (true, Effect::Forbid) => satisfied_forbids.push(id),
+                    _ => {},
+                    // (false, Effect::Permit) => {
+                    //     false_permits.push((id, (ErrorState::NoError, annotations)))
+                    // }
+                    // (false, Effect::Forbid) => {
+                    //     false_forbids.push((id, (ErrorState::NoError, annotations)))
+                    // }
                 },
                 Err(e) => {
                     // TODO add back errors when we can handle them
@@ -127,32 +127,34 @@ impl Authorizer {
                         ErrorHandling::Skip => false,
                     };
                     match (satisfied, p.effect()) {
-                        (true, Effect::Permit) => true_permits.push((id, annotations)),
-                        (true, Effect::Forbid) => true_forbids.push((id, annotations)),
-                        (false, Effect::Permit) => {
-                            false_permits.push((id, (ErrorState::Error, annotations)))
-                        }
-                        (false, Effect::Forbid) => {
-                            false_forbids.push((id, (ErrorState::Error, annotations)))
-                        }
+                        (true, Effect::Permit) => satisfied_permits.push(id),
+                        (true, Effect::Forbid) => satisfied_forbids.push(id),
+                        _ => {},
+                        // (false, Effect::Permit) => {
+                        //     false_permits.push((id, (ErrorState::Error, annotations)))
+                        // }
+                        // (false, Effect::Forbid) => {
+                        //     false_forbids.push((id, (ErrorState::Error, annotations)))
+                        // }
                     }
                 }
             }
         }
 
-        let partial_response = PartialResponse::new_no_residuals(
-            true_permits,
-            false_permits,
-            // vec![], // no residual permits
-            true_forbids,
-            false_forbids,
-            // vec![], // no residual forbids
-            // vec![], // errors, // TODO ignoring errors for now due to Verus limitations
-            Arc::new(q),
-        );
-
-        partial_response.concretize()
-
+        let response = if !vec_is_empty(&satisfied_permits) && vec_is_empty(&satisfied_forbids) {
+            Response::new_no_errors(
+                Decision::Allow,
+                hash_set_from_vec(satisfied_permits),
+                // errors
+            )
+        } else {
+            Response::new_no_errors(
+                Decision::Deny,
+                hash_set_from_vec(satisfied_forbids),
+                // errors
+            )
+        };
+        response
     }
 
     } // verus!
@@ -792,6 +794,22 @@ impl Response {
             decision,
             diagnostics: Diagnostics { reason, errors },
         }
+    }
+
+    verus! {
+
+    /// Create a new `Response`
+    #[verifier::external_body]
+    pub fn new_no_errors(
+        decision: Decision,
+        reason: HashSet<PolicyID>,
+    ) -> Self {
+        Response {
+            decision,
+            diagnostics: Diagnostics { reason, errors: vec![] },
+        }
+    }
+
     }
 }
 

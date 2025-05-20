@@ -25,6 +25,7 @@ use std::{borrow::Borrow, sync::Arc};
 use thiserror::Error;
 
 use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
 use vstd::std_specs::hash::*;
 
 verus! {
