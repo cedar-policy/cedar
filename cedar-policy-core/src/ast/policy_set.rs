@@ -25,6 +25,7 @@ use std::{borrow::Borrow, sync::Arc};
 use thiserror::Error;
 
 use vstd::prelude::*;
+use vstd::std_specs::hash::*;
 
 verus! {
 
@@ -573,7 +574,12 @@ impl PolicySet {
 
     /// Like `PolicySet::policies()` but explicit about the value type for Verus
     #[verifier::external_body]
-    pub fn policies_iter(&self) -> std::collections::hash_map::Values<'_, PolicyID, Policy> {
+    pub fn policies_iter(&self) -> (policies: std::collections::hash_map::Values<'_, PolicyID, Policy>)
+        ensures ({
+            let (policies_idx, _) = policies@;
+            policies_idx == 0 // TODO connect to self.view() once implemented
+        })
+    {
         self.links.values()
     }
 

@@ -103,7 +103,8 @@ impl Authorizer {
         let mut false_forbids = vec![];
         // let mut errors = vec![];
 
-        for p in iter: pset.policies_iter() {
+        let policies_iter = pset.policies_iter();
+        for p in policies_iter {
             let (id, annotations) = (p.id().clone(), p.annotations_arc().clone());
             match eval.evaluate_verus(p) {
                 Ok(satisfied) => match (satisfied, p.effect()) {
