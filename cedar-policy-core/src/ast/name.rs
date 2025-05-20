@@ -49,7 +49,7 @@ pub struct InternalName {
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
     #[educe(PartialOrd(ignore))]
-    pub(crate) loc: Option<Loc>,
+    pub(crate) loc: Option<Box<Loc>>,
 }
 
 /// A shortcut for [`InternalName::unqualified_name`]
@@ -75,7 +75,7 @@ impl TryFrom<InternalName> for Id {
 
 impl InternalName {
     /// A full constructor for [`InternalName`]
-    pub fn new(basename: Id, path: impl IntoIterator<Item = Id>, loc: Option<Loc>) -> Self {
+    pub fn new(basename: Id, path: impl IntoIterator<Item = Id>, loc: Option<Box<Loc>>) -> Self {
         Self {
             id: basename,
             path: Arc::new(path.into_iter().collect()),
@@ -84,7 +84,7 @@ impl InternalName {
     }
 
     /// Create an [`InternalName`] with no path (no namespaces).
-    pub fn unqualified_name(id: Id, loc: Option<Loc>) -> Self {
+    pub fn unqualified_name(id: Id, loc: Option<Box<Loc>>) -> Self {
         Self {
             id,
             path: Arc::new(vec![]),
@@ -113,7 +113,7 @@ impl InternalName {
     pub fn type_in_namespace(
         basename: Id,
         namespace: InternalName,
-        loc: Option<Loc>,
+        loc: Option<Box<Loc>>,
     ) -> InternalName {
         let mut path = Arc::unwrap_or_clone(namespace.path);
         path.push(namespace.id);
@@ -122,7 +122,7 @@ impl InternalName {
 
     /// Get the source location
     pub fn loc(&self) -> Option<&Loc> {
-        self.loc.as_ref()
+        self.loc.as_deref()
     }
 
     /// Get the basename of the [`InternalName`] (ie, with namespaces stripped).
@@ -356,7 +356,7 @@ pub struct Slot {
     /// Source location, if available
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
-    pub loc: Option<Loc>,
+    pub loc: Option<Box<Loc>>,
 }
 
 #[cfg(test)]
@@ -448,7 +448,7 @@ impl FromNormalizedStr for Name {
             Ok(Self(InternalName::new(
                 Id::new_unchecked(*last),
                 prefix.iter().map(|part| Id::new_unchecked(*part)),
-                Some(Loc::new(0..(s.len()), s.into())),
+                Some(Box::new(Loc::new(0..(s.len()), s.into()))),
             )))
         } else {
             Err(Self::parse_err_from_str(s))
@@ -547,7 +547,7 @@ impl Name {
                         src: s.to_string(),
                         normalized_src,
                     },
-                    Some(Loc::new(diff_byte, s.into())),
+                    Some(Box::new(Loc::new(diff_byte, s.into()))),
                 )))
             }
         }
@@ -572,7 +572,7 @@ impl From<ReservedNameError> for ParseError {
             value.clone().into(),
             value.0.loc.clone().or_else(|| {
                 let name_str = value.0.to_string();
-                Some(Loc::new(0..(name_str.len()), name_str.into()))
+                Some(Box::new(Loc::new(0..(name_str.len()), name_str.into())))
             }),
         ))
     }

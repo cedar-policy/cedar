@@ -87,7 +87,7 @@ impl RestrictedExpr {
     }
 
     /// Return the `RestrictedExpr`, but with the new `source_loc` (or `None`).
-    pub fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+    pub fn with_maybe_source_loc(self, source_loc: Option<Box<Loc>>) -> Self {
         Self(self.0.with_maybe_source_loc(source_loc))
     }
 

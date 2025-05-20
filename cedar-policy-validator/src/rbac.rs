@@ -55,7 +55,7 @@ impl Validator {
                         Ok(_) => {}
                         Err(err) => {
                             return Some(ValidationError::invalid_enum_entity(
-                                e.loc().cloned(),
+                                e.loc().as_deref().map(|loc| Box::new(loc.clone())),
                                 template.id().clone(),
                                 err,
                             ));
@@ -87,7 +87,7 @@ impl Validator {
                 let suggested_entity_type =
                     fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
                 Some(ValidationError::unrecognized_entity_type(
-                    name.loc().cloned(),
+                    name.loc().as_deref().map(|loc| Box::new(loc.clone())),
                     template.id().clone(),
                     actual_entity_type,
                     suggested_entity_type,
@@ -111,7 +111,7 @@ impl Validator {
             let entity_type = euid.entity_type();
             if entity_type.is_action() && !self.schema.is_known_action_id(euid) {
                 Some(ValidationError::unrecognized_action_id(
-                    euid.loc().cloned(),
+                    euid.loc().as_deref().map(|loc| Box::new(loc.clone())),
                     template.id().clone(),
                     euid.to_string(),
                     unrecognized_action_id_help(euid, &self.schema),
@@ -305,7 +305,7 @@ impl Validator {
             self.check_if_in_fixes_resource(resource_constraint, action_constraint);
 
         Some(ValidationError::invalid_action_application(
-            source_loc.cloned(),
+            source_loc.as_deref().map(|loc| Box::new(loc.clone())),
             policy_id.clone(),
             would_in_fix_principal,
             would_in_fix_resource,
@@ -1192,7 +1192,7 @@ mod test {
                 .1
                 .collect::<Vec<ValidationWarning>>(),
             vec![ValidationWarning::impossible_policy(
-                policy.loc().cloned(),
+                policy.loc().as_deref().map(|loc| Box::new(loc.clone())),
                 policy.id().clone()
             )],
             "Unexpected validation warnings."

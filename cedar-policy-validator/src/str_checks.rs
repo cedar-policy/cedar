@@ -52,13 +52,13 @@ pub fn confusable_string_checks<'a>(
 fn permissable_str(loc: Option<&Loc>, policy_id: &PolicyID, s: &str) -> Option<ValidationWarning> {
     if s.chars().any(is_bidi_char) {
         Some(ValidationWarning::bidi_chars_strings(
-            loc.cloned(),
+            loc.as_deref().map(|loc| Box::new(loc.clone())),
             policy_id.clone(),
             s.to_string(),
         ))
     } else if !s.is_single_script() {
         Some(ValidationWarning::mixed_script_string(
-            loc.cloned(),
+            loc.as_deref().map(|loc| Box::new(loc.clone())),
             policy_id.clone(),
             s.to_string(),
         ))
@@ -74,7 +74,7 @@ fn permissable_ident(
 ) -> Option<ValidationWarning> {
     if s.chars().any(is_bidi_char) {
         Some(ValidationWarning::bidi_chars_identifier(
-            loc.cloned(),
+            loc.as_deref().map(|loc| Box::new(loc.clone())),
             policy_id.clone(),
             s,
         ))
@@ -83,14 +83,14 @@ fn permissable_ident(
         .find(|c| *c != ' ' && !c.is_ascii_graphic() && !c.identifier_allowed())
     {
         Some(ValidationWarning::confusable_identifier(
-            loc.cloned(),
+            loc.as_deref().map(|loc| Box::new(loc.clone())),
             policy_id.clone(),
             s,
             c,
         ))
     } else if !s.is_single_script() {
         Some(ValidationWarning::mixed_script_identifier(
-            loc.cloned(),
+            loc.as_deref().map(|loc| Box::new(loc.clone())),
             policy_id.clone(),
             s,
         ))

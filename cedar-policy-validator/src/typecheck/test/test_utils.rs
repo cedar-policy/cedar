@@ -42,10 +42,10 @@ pub fn expr_id_placeholder() -> PolicyID {
 }
 
 /// Get `Loc` corresponding to `snippet` in `src`. Returns an option because we
-/// always want an `Option<Loc>` instead of a `Loc`. Panics if `snippet` is not
+/// always want an `Option<Box<Loc>>` instead of a `Loc`. Panics if `snippet` is not
 /// in `src` to fail fast in tests.
 #[track_caller]
-pub fn get_loc(src: impl AsRef<str>, snippet: impl AsRef<str>) -> Option<Loc> {
+pub fn get_loc(src: impl AsRef<str>, snippet: impl AsRef<str>) -> Option<Box<Loc>> {
     let start = src
         .as_ref()
         .find(snippet.as_ref())
@@ -58,7 +58,7 @@ impl ValidationError {
     /// Testing utility for an unexpected type error when exactly one type was
     /// expected.
     pub(crate) fn expected_type(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         expected: Type,
         actual: Type,

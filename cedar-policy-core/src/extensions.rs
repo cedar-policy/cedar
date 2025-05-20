@@ -161,7 +161,7 @@ impl<'a> Extensions<'a> {
         self.functions.get(name).copied().ok_or_else(|| {
             FuncDoesNotExistError {
                 name: name.clone(),
-                source_loc: name.loc().cloned(),
+                source_loc: name.loc().as_deref().map(|loc| Box::new(loc.clone())),
             }
             .into()
         })
@@ -244,11 +244,11 @@ pub enum ExtensionFunctionLookupError {
 impl ExtensionFunctionLookupError {
     pub(crate) fn source_loc(&self) -> Option<&Loc> {
         match self {
-            Self::FuncDoesNotExist(e) => e.source_loc.as_ref(),
+            Self::FuncDoesNotExist(e) => e.source_loc.as_deref(),
         }
     }
 
-    pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+    pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Box<Loc>>) -> Self {
         match self {
             Self::FuncDoesNotExist(e) => {
                 Self::FuncDoesNotExist(extension_function_lookup_errors::FuncDoesNotExistError {
@@ -278,7 +278,7 @@ pub mod extension_function_lookup_errors {
         /// Name of the function that doesn't exist
         pub(crate) name: Name,
         /// Source location
-        pub(crate) source_loc: Option<Loc>,
+        pub(crate) source_loc: Option<Box<Loc>>,
     }
 
     impl Diagnostic for FuncDoesNotExistError {

@@ -36,7 +36,7 @@ use thiserror::Error;
 #[error("for policy `{policy_id}`, string `\"{string}\"` contains mixed scripts")]
 pub struct MixedScriptString {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: Option<Box<Loc>>,
     /// Policy ID where the warning occurred
     pub policy_id: PolicyID,
     /// String containing mixed scripts
@@ -53,7 +53,7 @@ impl Diagnostic for MixedScriptString {
 #[error("for policy `{policy_id}`, string `\"{string}\"` contains BIDI control characters")]
 pub struct BidiCharsInString {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: Option<Box<Loc>>,
     /// Policy ID where the warning occurred
     pub policy_id: PolicyID,
     /// String containing BIDI control characters
@@ -70,7 +70,7 @@ impl Diagnostic for BidiCharsInString {
 #[error("for policy `{policy_id}`, identifier `{id}` contains BIDI control characters")]
 pub struct BidiCharsInIdentifier {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: Option<Box<Loc>>,
     /// Policy ID where the warning occurred
     pub policy_id: PolicyID,
     /// Identifier containing BIDI control characters
@@ -87,7 +87,7 @@ impl Diagnostic for BidiCharsInIdentifier {
 #[error("for policy `{policy_id}`, identifier `{id}` contains mixed scripts")]
 pub struct MixedScriptIdentifier {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: Option<Box<Loc>>,
     /// Policy ID where the warning occurred
     pub policy_id: PolicyID,
     /// Identifier containing mixed scripts
@@ -107,7 +107,7 @@ impl Diagnostic for MixedScriptIdentifier {
 )]
 pub struct ConfusableIdentifier {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: Option<Box<Loc>>,
     /// Policy ID where the warning occurred
     pub policy_id: PolicyID,
     /// Identifier containing confusable characters
@@ -126,7 +126,7 @@ impl Diagnostic for ConfusableIdentifier {
 #[error("for policy `{policy_id}`, policy is impossible: the policy expression evaluates to false for all valid requests")]
 pub struct ImpossiblePolicy {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: Option<Box<Loc>>,
     /// Policy ID where the warning occurred
     pub policy_id: PolicyID,
 }

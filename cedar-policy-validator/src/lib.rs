@@ -404,7 +404,7 @@ mod test {
             r#"permit(principal == some_namespace::User::"Alice", action, resource in ?resource);"#,
         )
         .expect("Parse Error");
-        let loc = t.loc().cloned();
+        let loc = t.loc().as_deref().map(|loc| Box::new(loc.clone()));
         set.add_template(t)
             .expect("Template already present in PolicySet");
 

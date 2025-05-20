@@ -33,12 +33,12 @@ pub struct Node<T> {
     #[educe(PartialEq(ignore))]
     #[educe(PartialOrd(ignore))]
     #[educe(Hash(ignore))]
-    pub loc: Option<Loc>,
+    pub loc: Option<Box<Loc>>,
 }
 
 impl<T> Node<T> {
     /// Create a new Node with the given source location
-    pub fn with_source_loc(node: T, loc: Loc) -> Self {
+    pub fn with_source_loc(node: T, loc: Box<Loc>) -> Self {
         Node {
             node,
             loc: Some(loc),
@@ -46,7 +46,7 @@ impl<T> Node<T> {
     }
 
     /// Create a new Node with optional source location
-    pub fn with_maybe_source_loc(node: T, loc: Option<Loc>) -> Self {
+    pub fn with_maybe_source_loc(node: T, loc: Option<Box<Loc>>) -> Self {
         Node { node, loc }
     }
 
@@ -75,7 +75,7 @@ impl<T> Node<T> {
     }
 
     /// Consume the `Node`, yielding the node and attached source info.
-    pub fn into_inner(self) -> (T, Option<Loc>) {
+    pub fn into_inner(self) -> (T, Option<Box<Loc>>) {
         (self.node, self.loc)
     }
 
@@ -171,14 +171,14 @@ impl<T> Node<Option<T>> {
     where
         F: FnOnce(&T, Option<&Loc>) -> Option<R>,
     {
-        f(self.node.as_ref()?, self.loc.as_ref())
+        f(self.node.as_ref()?, self.loc.as_deref())
     }
 
     /// Apply the function `f` to the main data and `Loc`, consuming them.
     /// Returns `None` if no main data or if `f` returns `None`.
     pub fn into_apply<F, R>(self, f: F) -> Option<R>
     where
-        F: FnOnce(T, Option<Loc>) -> Option<R>,
+        F: FnOnce(T, Option<Box<Loc>>) -> Option<R>,
     {
         f(self.node?, self.loc)
     }

@@ -159,7 +159,7 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
 pub struct ValidatorType {
     ty: Type,
     #[cfg(feature = "extended-schema")]
-    loc: Option<Loc>,
+    loc: Option<Box<Loc>>,
 }
 
 impl ValidatorType {
@@ -173,7 +173,7 @@ impl ValidatorType {
     }
     /// New validator type with source location
     #[cfg(feature = "extended-schema")]
-    pub fn new_with_loc(ty: Type, loc: Option<Loc>) -> Self {
+    pub fn new_with_loc(ty: Type, loc: Option<Box<Loc>>) -> Self {
         Self { ty, loc }
     }
 }
@@ -188,11 +188,11 @@ pub struct ValidatorCommonType {
 
     /// Common type name source location if available
     #[educe(Eq(ignore))]
-    pub name_loc: Option<Loc>,
+    pub name_loc: Option<Box<Loc>>,
 
     /// Common type definition source location if available
     #[educe(Eq(ignore))]
-    pub type_loc: Option<Loc>,
+    pub type_loc: Option<Box<Loc>>,
 }
 
 #[cfg(feature = "extended-schema")]
@@ -201,7 +201,7 @@ impl ValidatorCommonType {
     pub fn new(name: &InternalName, ty: ValidatorType) -> Self {
         Self {
             name: name.basename().clone().into_smolstr(),
-            name_loc: name.loc().cloned(),
+            name_loc: name.loc().as_deref().map(|loc| Box::new(loc.clone())),
             type_loc: ty.loc,
         }
     }
@@ -216,11 +216,11 @@ pub struct ValidatorNamespace {
     pub name: SmolStr,
     /// Namespace name source location if available
     #[educe(Eq(ignore))]
-    pub name_loc: Option<Loc>,
+    pub name_loc: Option<Box<Loc>>,
 
     /// Namespace definition source location if available
     #[educe(Eq(ignore))]
-    pub def_loc: Option<Loc>,
+    pub def_loc: Option<Box<Loc>>,
 }
 
 /// Internal representation of the schema for use by the validator.
@@ -561,7 +561,7 @@ impl ValidatorSchema {
             })
             .map(|n| ValidatorNamespace {
                 name: n.0.basename().clone().into_smolstr(),
-                name_loc: n.0.loc().cloned(),
+                name_loc: n.0.loc().as_deref().map(|loc| Box::new(loc.clone())),
                 def_loc: n.1,
             })
             .collect::<HashSet<_>>();
@@ -697,7 +697,7 @@ impl ValidatorSchema {
                             name.clone(),
                             descendants,
                             choices,
-                            name.loc().cloned(),
+                            name.loc().as_deref().map(|loc| Box::new(loc.clone())),
                         ),
                     )),
                     EntityTypeFragment::Standard {
@@ -706,7 +706,7 @@ impl ValidatorSchema {
                         tags,
                     } => {
                         let (attributes, open_attributes) = {
-                            let attr_loc = attributes.0.loc().cloned();
+                            let attr_loc = attributes.0.loc().as_deref().map(|loc| Box::new(loc.clone()));
                             let unresolved = try_jsonschema_type_into_validator_type(
                                 attributes.0,
                                 extensions,
@@ -723,7 +723,7 @@ impl ValidatorSchema {
                         };
                         let tags = tags
                             .map(|tags| {
-                                let tags_loc = tags.loc().cloned();
+                                let tags_loc = tags.loc().as_deref().map(|loc| Box::new(loc.clone()));
                                 try_jsonschema_type_into_validator_type(tags, extensions, tags_loc)
                             })
                             .transpose()?
@@ -738,7 +738,7 @@ impl ValidatorSchema {
                                 attributes,
                                 open_attributes,
                                 tags.map(|t| t.ty),
-                                name.loc().cloned(),
+                                name.loc().as_deref().map(|loc| Box::new(loc.clone())),
                             ),
                         ))
                     }
@@ -760,7 +760,7 @@ impl ValidatorSchema {
             .map(|(name, action)| -> Result<_> {
                 let descendants = action_children.remove(&name).unwrap_or_default();
                 let (context, open_context_attributes) = {
-                    let context_loc = action.context.loc().cloned();
+                    let context_loc = action.context.loc().as_deref().map(|loc| Box::new(loc.clone()));
                     let unresolved = try_jsonschema_type_into_validator_type(
                         action.context,
                         extensions,
@@ -1158,7 +1158,7 @@ fn cedar_fragment(
 fn single_alias_in_empty_namespace(
     id: UnreservedId,
     def: InternalName,
-    loc: Option<Loc>,
+    loc: Option<Box<Loc>>,
 ) -> ValidatorSchemaFragment<ConditionalName, ConditionalName> {
     ValidatorSchemaFragment(vec![ValidatorNamespaceDef::from_common_type_def(
         None,
@@ -1576,7 +1576,7 @@ impl<'a> CommonTypeResolver<'a> {
             let ty = self.defs.get(name).unwrap();
             let substituted_ty = Self::resolve_type(&resolve_table, ty.clone())?;
             resolve_table.insert(name, substituted_ty.clone());
-            let substituted_ty_loc = substituted_ty.loc().cloned();
+            let substituted_ty_loc = substituted_ty.loc().as_deref().map(|loc| Box::new(loc.clone()));
             let validator_type = try_jsonschema_type_into_validator_type(
                 substituted_ty,
                 extensions,

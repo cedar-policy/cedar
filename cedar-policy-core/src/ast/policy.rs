@@ -118,7 +118,7 @@ impl Template {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
-        loc: Option<Loc>,
+        loc: Option<Box<Loc>>,
         annotations: Annotations,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -143,7 +143,7 @@ impl Template {
 
     #[cfg(feature = "tolerant-ast")]
     /// Generate a template representing a policy that is unparsable
-    pub fn error(id: PolicyID, loc: Option<Loc>) -> Self {
+    pub fn error(id: PolicyID, loc: Option<Box<Loc>>) -> Self {
         let body = TemplateBody::error(id, loc);
         Template::from(body)
     }
@@ -152,7 +152,7 @@ impl Template {
     #[allow(clippy::too_many_arguments)]
     pub fn new_shared(
         id: PolicyID,
-        loc: Option<Loc>,
+        loc: Option<Box<Loc>>,
         annotations: Arc<Annotations>,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -442,7 +442,7 @@ impl Policy {
     }
 
     /// Build a policy with a given effect, given when clause, and unconstrained scope variables
-    pub fn from_when_clause(effect: Effect, when: Expr, id: PolicyID, loc: Option<Loc>) -> Self {
+    pub fn from_when_clause(effect: Effect, when: Expr, id: PolicyID, loc: Option<Box<Loc>>) -> Self {
         Self::from_when_clause_annos(
             effect,
             Arc::new(when),
@@ -457,7 +457,7 @@ impl Policy {
         effect: Effect,
         when: Arc<Expr>,
         id: PolicyID,
-        loc: Option<Loc>,
+        loc: Option<Box<Loc>>,
         annotations: Arc<Annotations>,
     ) -> Self {
         let t = Template::new_shared(
@@ -902,7 +902,7 @@ impl StaticPolicy {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
-        loc: Option<Loc>,
+        loc: Option<Box<Loc>>,
         annotations: Annotations,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -966,7 +966,7 @@ pub struct TemplateBodyImpl {
     /// Source location spanning the entire policy
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
-    loc: Option<Loc>,
+    loc: Option<Box<Loc>>,
     /// Annotations available for external applications, as key-value store.
     /// Note that the keys are `AnyId`, so Cedar reserved words like `if` and `has`
     /// are explicitly allowed as annotations.
@@ -1000,7 +1000,7 @@ pub enum TemplateBody {
     TemplateBody(TemplateBodyImpl),
     #[cfg(feature = "tolerant-ast")]
     /// Represents a policy that failed to parse
-    TemplateBodyError(PolicyID, Option<Loc>),
+    TemplateBodyError(PolicyID, Option<Box<Loc>>),
 }
 
 impl TemplateBody {
@@ -1016,9 +1016,9 @@ impl TemplateBody {
     /// Get the location of this policy
     pub fn loc(&self) -> Option<&Loc> {
         match self {
-            TemplateBody::TemplateBody(TemplateBodyImpl { loc, .. }) => loc.as_ref(),
+            TemplateBody::TemplateBody(TemplateBodyImpl { loc, .. }) => loc.as_deref(),
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_, loc) => loc.as_ref(),
+            TemplateBody::TemplateBodyError(_, loc) => loc.as_deref(),
         }
     }
 
@@ -1039,7 +1039,7 @@ impl TemplateBody {
 
     #[cfg(feature = "tolerant-ast")]
     /// Create a template body representing a policy that failed to parse
-    pub fn error(id: PolicyID, loc: Option<Loc>) -> Self {
+    pub fn error(id: PolicyID, loc: Option<Box<Loc>>) -> Self {
         TemplateBody::TemplateBodyError(id, loc)
     }
 
@@ -1199,13 +1199,13 @@ impl TemplateBody {
                         self.principal_constraint_expr(),
                         self.action_constraint_expr(),
                     )
-                    .with_maybe_source_loc(self.loc().cloned()),
+                    .with_maybe_source_loc(self.loc().as_deref().map(|loc| Box::new(loc.clone()))),
                     self.resource_constraint_expr(),
                 )
-                .with_maybe_source_loc(self.loc().cloned()),
+                .with_maybe_source_loc(self.loc().as_deref().map(|loc| Box::new(loc.clone()))),
                 self.non_scope_constraints().clone(),
             )
-            .with_maybe_source_loc(self.loc().cloned()),
+            .with_maybe_source_loc(self.loc().as_deref().map(|loc| Box::new(loc.clone()))),
             #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(_, _) => DEFAULT_ERROR_EXPR.as_ref().clone(),
         }
@@ -1215,7 +1215,7 @@ impl TemplateBody {
     #[allow(clippy::too_many_arguments)]
     pub fn new_shared(
         id: PolicyID,
-        loc: Option<Loc>,
+        loc: Option<Box<Loc>>,
         annotations: Arc<Annotations>,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -1239,7 +1239,7 @@ impl TemplateBody {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
-        loc: Option<Loc>,
+        loc: Option<Box<Loc>>,
         annotations: Annotations,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -1514,7 +1514,7 @@ pub enum EntityReference {
         #[educe(PartialEq(ignore))]
         #[educe(PartialOrd(ignore))]
         #[educe(Hash(ignore))]
-        Option<Loc>,
+        Option<Box<Loc>>,
     ),
 }
 
@@ -1548,7 +1548,7 @@ pub enum UnexpectedSlotError {
 impl Diagnostic for UnexpectedSlotError {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         match self {
-            Self::FoundSlot(Slot { loc, .. }) => loc.as_ref().map(|loc| {
+            Self::FoundSlot(Slot { loc, .. }) => loc.as_deref().map(|loc| {
                 let label = miette::LabeledSpan::underline(loc.span);
                 Box::new(std::iter::once(label)) as _
             }),
@@ -1557,7 +1557,7 @@ impl Diagnostic for UnexpectedSlotError {
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         match self {
-            Self::FoundSlot(Slot { loc, .. }) => loc.as_ref().map(|l| l as &dyn miette::SourceCode),
+            Self::FoundSlot(Slot { loc, .. }) => loc.as_deref().map(|l| l as &dyn miette::SourceCode),
         }
     }
 }

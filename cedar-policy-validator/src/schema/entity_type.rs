@@ -49,7 +49,7 @@ pub struct ValidatorEntityType {
 
     /// Source location - if available
     #[serde(skip)]
-    pub loc: Option<Loc>,
+    pub loc: Option<Box<Loc>>,
 }
 
 /// The kind of validator entity types.
@@ -90,7 +90,7 @@ impl ValidatorEntityType {
         attributes: Attributes,
         open_attributes: OpenTag,
         tags: Option<Type>,
-        loc: Option<Loc>,
+        loc: Option<Box<Loc>>,
     ) -> Self {
         Self {
             name,
@@ -112,7 +112,7 @@ impl ValidatorEntityType {
         name: EntityType,
         descendants: impl IntoIterator<Item = EntityType>,
         values: NonEmpty<SmolStr>,
-        loc: Option<Loc>,
+        loc: Option<Box<Loc>>,
     ) -> Self {
         Self {
             name,

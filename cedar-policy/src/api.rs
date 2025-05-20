@@ -4799,7 +4799,7 @@ action CreateList in Create appliesTo {
 
         let et = ast::EntityType::EntityType(ast::Name::from_normalized_str("User").unwrap());
         let et = schema.0.get_entity_type(&et).unwrap();
-        assert!(et.loc.as_ref().is_some());
+        assert!(et.loc.as_deref().is_some());
     }
 
     #[cfg(feature = "extended-schema")]

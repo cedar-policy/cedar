@@ -175,7 +175,7 @@ pub enum ValidationError {
 
 impl ValidationError {
     pub(crate) fn unrecognized_entity_type(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         actual_entity_type: String,
         suggested_entity_type: Option<String>,
@@ -190,7 +190,7 @@ impl ValidationError {
     }
 
     pub(crate) fn unrecognized_action_id(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
 
         policy_id: PolicyID,
         actual_action_id: String,
@@ -206,7 +206,7 @@ impl ValidationError {
     }
 
     pub(crate) fn invalid_action_application(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         would_in_fix_principal: bool,
         would_in_fix_resource: bool,
@@ -222,7 +222,7 @@ impl ValidationError {
 
     /// Construct a type error for when an unexpected type occurs in an expression.
     pub(crate) fn expected_one_of_types(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         expected: Vec<Type>,
         actual: Type,
@@ -241,7 +241,7 @@ impl ValidationError {
     /// Construct a type error for when a least upper bound cannot be found for
     /// a collection of types.
     pub(crate) fn incompatible_types(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         types: impl IntoIterator<Item = Type>,
         hint: validation_errors::LubHelp,
@@ -258,7 +258,7 @@ impl ValidationError {
     }
 
     pub(crate) fn unsafe_attribute_access(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         attribute_access: validation_errors::AttributeAccess,
         suggestion: Option<String>,
@@ -275,7 +275,7 @@ impl ValidationError {
     }
 
     pub(crate) fn unsafe_optional_attribute_access(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         attribute_access: validation_errors::AttributeAccess,
     ) -> Self {
@@ -288,7 +288,7 @@ impl ValidationError {
     }
 
     pub(crate) fn unsafe_tag_access(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         entity_ty: Option<EntityLUB>,
         tag: Expr<Option<Type>>,
@@ -303,7 +303,7 @@ impl ValidationError {
     }
 
     pub(crate) fn no_tags_allowed(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         entity_ty: Option<EntityType>,
     ) -> Self {
@@ -316,7 +316,7 @@ impl ValidationError {
     }
 
     pub(crate) fn undefined_extension(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         name: String,
     ) -> Self {
@@ -329,7 +329,7 @@ impl ValidationError {
     }
 
     pub(crate) fn wrong_number_args(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         expected: usize,
         actual: usize,
@@ -344,7 +344,7 @@ impl ValidationError {
     }
 
     pub(crate) fn function_argument_validation(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         msg: String,
     ) -> Self {
@@ -356,7 +356,7 @@ impl ValidationError {
         .into()
     }
 
-    pub(crate) fn empty_set_forbidden(source_loc: Option<Loc>, policy_id: PolicyID) -> Self {
+    pub(crate) fn empty_set_forbidden(source_loc: Option<Box<Loc>>, policy_id: PolicyID) -> Self {
         validation_errors::EmptySetForbidden {
             source_loc,
             policy_id,
@@ -364,7 +364,7 @@ impl ValidationError {
         .into()
     }
 
-    pub(crate) fn non_lit_ext_constructor(source_loc: Option<Loc>, policy_id: PolicyID) -> Self {
+    pub(crate) fn non_lit_ext_constructor(source_loc: Option<Box<Loc>>, policy_id: PolicyID) -> Self {
         validation_errors::NonLitExtConstructor {
             source_loc,
             policy_id,
@@ -373,7 +373,7 @@ impl ValidationError {
     }
 
     pub(crate) fn internal_invariant_violation(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
     ) -> Self {
         validation_errors::InternalInvariantViolation {
@@ -384,7 +384,7 @@ impl ValidationError {
     }
 
     pub(crate) fn invalid_enum_entity(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         err: InvalidEnumEntityError,
     ) -> Self {
@@ -397,7 +397,7 @@ impl ValidationError {
     }
 
     pub(crate) fn maximum_level_exceeded(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         allowed_level: crate::level_validate::EntityDerefLevel,
         actual_level: crate::level_validate::EntityDerefLevel,
@@ -413,7 +413,7 @@ impl ValidationError {
         .into()
     }
 
-    pub(crate) fn literal_dereference_target(source_loc: Option<Loc>, policy_id: PolicyID) -> Self {
+    pub(crate) fn literal_dereference_target(source_loc: Option<Box<Loc>>, policy_id: PolicyID) -> Self {
         validation_errors::EntityDerefLevelViolation {
             source_loc,
             policy_id,
@@ -455,7 +455,7 @@ pub enum ValidationWarning {
 
 impl ValidationWarning {
     pub(crate) fn mixed_script_string(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         string: impl Into<String>,
     ) -> Self {
@@ -468,7 +468,7 @@ impl ValidationWarning {
     }
 
     pub(crate) fn bidi_chars_strings(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         string: impl Into<String>,
     ) -> Self {
@@ -481,7 +481,7 @@ impl ValidationWarning {
     }
 
     pub(crate) fn mixed_script_identifier(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         id: impl Into<String>,
     ) -> Self {
@@ -494,7 +494,7 @@ impl ValidationWarning {
     }
 
     pub(crate) fn bidi_chars_identifier(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         id: impl Into<String>,
     ) -> Self {
@@ -507,7 +507,7 @@ impl ValidationWarning {
     }
 
     pub(crate) fn confusable_identifier(
-        source_loc: Option<Loc>,
+        source_loc: Option<Box<Loc>>,
         policy_id: PolicyID,
         id: impl Into<String>,
         confusable_character: char,
@@ -521,7 +521,7 @@ impl ValidationWarning {
         .into()
     }
 
-    pub(crate) fn impossible_policy(source_loc: Option<Loc>, policy_id: PolicyID) -> Self {
+    pub(crate) fn impossible_policy(source_loc: Option<Box<Loc>>, policy_id: PolicyID) -> Self {
         validation_warnings::ImpossiblePolicy {
             source_loc,
             policy_id,

@@ -125,7 +125,7 @@ impl EntityType {
             EntityType::EntityType(name) => EntityType::EntityType(Name(InternalName {
                 id: name.0.id.clone(),
                 path: name.0.path.clone(),
-                loc: loc.cloned(),
+                loc: loc.as_deref().map(|loc| Box::new(loc.clone())),
             })),
             #[cfg(feature = "tolerant-ast")]
             EntityType::ErrorEntityType => self.clone(),
@@ -205,7 +205,7 @@ pub struct EntityUIDImpl {
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
     #[educe(PartialOrd(ignore))]
-    loc: Option<Loc>,
+    loc: Option<Box<Loc>>,
 }
 
 /// Unique ID for an entity. These represent entities in the AST.
@@ -299,14 +299,14 @@ impl EntityUID {
     /// Get the source location for this `EntityUID`.
     pub fn loc(&self) -> Option<&Loc> {
         match self {
-            EntityUID::EntityUID(entity_uid) => entity_uid.loc.as_ref(),
+            EntityUID::EntityUID(entity_uid) => entity_uid.loc.as_deref(),
             #[cfg(feature = "tolerant-ast")]
             EntityUID::Error => None,
         }
     }
 
     /// Create an [`EntityUID`] with the given typename and [`Eid`]
-    pub fn from_components(ty: EntityType, eid: Eid, loc: Option<Loc>) -> Self {
+    pub fn from_components(ty: EntityType, eid: Eid, loc: Option<Box<Loc>>) -> Self {
         Self::EntityUID(EntityUIDImpl { ty, eid, loc })
     }
 

@@ -174,7 +174,7 @@ impl From<&models::EntityDecl> for cedar_policy_validator::ValidatorEntityType {
                 // enumerated entity types must have no attributes or tags.
                 assert_eq!(&v.attributes, &HashMap::new());
                 assert_eq!(&v.tags, &None);
-                Self::new_enum(name.clone(), descendants, enum_choices, name.loc().cloned())
+                Self::new_enum(name.clone(), descendants, enum_choices, name.loc().as_deref().map(|loc| Box::new(loc.clone())))
             }
         }
     }

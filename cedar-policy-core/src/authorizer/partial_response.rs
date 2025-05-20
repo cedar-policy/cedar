@@ -351,7 +351,7 @@ impl PartialResponse {
                         effect,
                         expr.clone(),
                         id.clone(),
-                        expr.source_loc().cloned(),
+                        expr.source_loc().as_deref().map(|loc| Box::new(loc.clone())),
                         annotations.clone(),
                     )
                 }),
@@ -490,7 +490,7 @@ fn construct_policy((effect, id, expr, annotations): PolicyComponents<'_>) -> Po
         effect,
         expr.clone(),
         id.clone(),
-        expr.source_loc().cloned(),
+        expr.source_loc().as_deref().map(|loc| Box::new(loc.clone())),
         (*annotations).clone(),
     )
 }

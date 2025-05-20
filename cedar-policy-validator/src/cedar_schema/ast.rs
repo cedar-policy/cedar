@@ -90,12 +90,12 @@ impl Path {
                 basename,
                 namespace: vec![],
             },
-            loc,
+            Box::new(loc),
         ))
     }
 
     /// Create [`Path`] with a head and an iterator. Most significant name first.
-    pub fn new(basename: Id, namespace: impl IntoIterator<Item = Id>, loc: Loc) -> Self {
+    pub fn new(basename: Id, namespace: impl IntoIterator<Item = Id>, loc: Box<Loc>) -> Self {
         let namespace = namespace.into_iter().collect();
         Self(Node::with_source_loc(
             PathInternal {
@@ -113,7 +113,7 @@ impl Path {
 
     /// Source [`Loc`] of this [`Path`]
     pub fn loc(&self) -> Option<&Loc> {
-        self.0.loc.as_ref()
+        self.0.loc.as_deref()
     }
 
     /// Consume the [`Path`] and get an owned iterator over the elements. Most significant name first
@@ -218,7 +218,7 @@ pub struct Namespace {
     pub name: Option<Path>,
     /// The [`Declaration`]s contained in this namespace
     pub decls: Vec<Annotated<Node<Declaration>>>,
-    pub loc: Option<Loc>,
+    pub loc: Option<Box<Loc>>,
 }
 
 impl Namespace {

@@ -778,7 +778,7 @@ fn action_attrs_failing() {
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(
-            failing_policy.loc().cloned(),
+            failing_policy.loc().as_deref().map(|loc| Box::new(loc.clone())),
             PolicyID::from_string("0"),
         )
     );

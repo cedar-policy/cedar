@@ -37,7 +37,7 @@ impl PartialValue {
     }
 
     /// Return the `PartialValue`, but with the given `Loc` (or `None`)
-    pub fn with_maybe_source_loc(self, loc: Option<Loc>) -> Self {
+    pub fn with_maybe_source_loc(self, loc: Option<Box<Loc>>) -> Self {
         match self {
             Self::Value(v) => Self::Value(v.with_maybe_source_loc(loc)),
             Self::Residual(e) => Self::Residual(e.with_maybe_source_loc(loc)),

@@ -56,7 +56,7 @@ impl RefKind for SingleEntity {
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Set,
             ),
-            loc.cloned(),
+            loc.as_deref().map(|loc| Box::new(loc.clone())),
         )
         .into())
     }
@@ -67,7 +67,7 @@ impl RefKind for SingleEntity {
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Template,
             ),
-            loc.cloned(),
+            loc.as_deref().map(|loc| Box::new(loc.clone())),
         )
         .into())
     }
@@ -83,7 +83,7 @@ impl RefKind for EntityReference {
     }
 
     fn create_slot(loc: Option<&Loc>) -> Result<Self> {
-        Ok(EntityReference::Slot(loc.cloned()))
+        Ok(EntityReference::Slot(loc.as_deref().map(|loc| Box::new(loc.clone()))))
     }
 
     fn create_single_ref(e: EntityUID) -> Result<Self> {
@@ -97,7 +97,7 @@ impl RefKind for EntityReference {
                 err::parse_errors::Ref::Template,
                 err::parse_errors::Ref::Set,
             ),
-            loc.cloned(),
+            loc.as_deref().map(|loc| Box::new(loc.clone())),
         )
         .into())
     }
@@ -126,7 +126,7 @@ impl RefKind for OneOrMultipleRefs {
                 err::parse_errors::Ref::Set,
                 err::parse_errors::Ref::Template,
             ),
-            loc.cloned(),
+            loc.as_deref().map(|loc| Box::new(loc.clone())),
         )
         .into())
     }
@@ -240,7 +240,7 @@ impl Node<Option<cst::Primary>> {
                 // it's the wrong slot. This avoids getting an error
                 // `found ?action instead of ?action` when `action` doesn't
                 // support slots.
-                let slot_ref = T::create_slot(self.loc.as_ref())?;
+                let slot_ref = T::create_slot(self.loc.as_deref())?;
                 let slot = s.try_as_inner()?;
                 if slot.matches(var) {
                     Ok(slot_ref)
@@ -297,7 +297,7 @@ impl Node<Option<cst::Primary>> {
             cst::Primary::EList(lst) => {
                 // Calling `create_multiple_refs` first so that we error
                 // immediately if we see a set when we don't expect one.
-                let create_multiple_refs = T::create_multiple_refs(self.loc.as_ref())?;
+                let create_multiple_refs = T::create_multiple_refs(self.loc.as_deref())?;
                 let v = match tolerant_setting {
                     TolerantAstSetting::NotTolerant => {
                         ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref(var)))?

@@ -590,7 +590,7 @@ fn multi_namespace_action_eq() {
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(
-            policy.loc().cloned(),
+            policy.loc().as_deref().map(|loc| Box::new(loc.clone())),
             PolicyID::from_string("policy0"),
         )
     );
@@ -657,7 +657,7 @@ fn multi_namespace_action_in() {
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(
-            policy.loc().cloned(),
+            policy.loc().as_deref().map(|loc| Box::new(loc.clone())),
             PolicyID::from_string("policy0"),
         )
     );

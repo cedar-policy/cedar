@@ -172,7 +172,7 @@ impl TryFrom<cst::Policy> for Policy {
                 return Err(ParseErrors::singleton(ToASTError::new(
                     ToASTErrorKind::CSTErrorNode,
                     // Since we don't have a loc when doing this transformation, we create an arbitrary one
-                    Some(Loc::new(0..1, "CSTErrorNode".into())),
+                    Some(Box::new(Loc::new(0..1, "CSTErrorNode".into()))),
                 )));
             }
         };
@@ -181,7 +181,7 @@ impl TryFrom<cst::Policy> for Policy {
         let maybe_annotations = policy.get_ast_annotations(|v, l| {
             Some(Annotation {
                 val: v?,
-                loc: l.cloned(),
+                loc: l.as_deref().map(|loc| Box::new(loc.clone())),
             })
         });
         let maybe_conditions = ParseErrors::transpose(policy.conds.into_iter().map(|node| {

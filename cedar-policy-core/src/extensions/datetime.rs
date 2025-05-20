@@ -100,7 +100,7 @@ where
 {
     let s = arg.get_as_string()?;
     let ext_value: Ext = constructor(s)?;
-    let arg_source_loc = arg.source_loc().cloned();
+    let arg_source_loc = arg.source_loc().as_deref().map(|loc| Box::new(loc.clone()));
     let e = RepresentableExtensionValue::new(
         Arc::new(ext_value),
         constructor_name,
