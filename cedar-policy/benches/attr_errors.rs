@@ -17,7 +17,8 @@
 #![allow(clippy::unwrap_used)]
 use cedar_policy::EntityUid;
 use cedar_policy::{Authorizer, Context, Entities, PolicySet, Request, RestrictedExpression};
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
+use std::hint::black_box;
 use std::str::FromStr;
 
 const LARGE_SIZE: usize = 100_000;
