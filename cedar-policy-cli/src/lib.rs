@@ -21,6 +21,7 @@
 
 use cedar_policy::entities_errors::EntitiesError;
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
+use colored::Colorize;
 use miette::{miette, Diagnostic, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use serde::{Deserialize, Serialize};
 use std::io::{BufReader, Write};
@@ -1470,46 +1471,85 @@ pub fn partial_authorize(args: &PartiallyAuthorizeArgs) -> CedarExitCode {
     }
 }
 
-pub fn run_tests(args: &RunTestsArgs) -> CedarExitCode {
-    let policies = match args.policies.get_policy_set() {
-        Ok(policies) => policies,
+/// Parse the test, validate against schema,
+/// and then check the authorization decision
+fn run_one_test(
+    policies: &PolicySet,
+    schema: Option<&Schema>,
+    test: &serde_json::Value,
+) -> bool {
+    if let Some(name) = test["name"].as_str() {
+        print!("  test {} ... ", name);
+    } else {
+        print!("  test (unamed) ... ");
+    }
+
+    let test = match TestCase::from_json_value(test.clone(), schema).into_diagnostic() {
+        Ok(test) => test,
         Err(e) => {
+            println!("{}:", "error".red());
             println!("{e:?}");
-            return CedarExitCode::Failure;
+            return false;
         }
     };
-    let schema = match args.schema.get_schema() {
-        Ok(schema) => schema,
-        Err(e) => {
-            println!("{e:?}");
-            return CedarExitCode::Failure;
-        }
-    };
 
-    let tests = match load_tests(&args.tests, Some(&schema)) {
-        Ok(tests) => tests,
-        Err(e) => {
-            println!("{e:?}");
-            return CedarExitCode::Failure;
-        }
-    };
+    let ans = Authorizer::new().is_authorized(&test.request, &policies, &test.entities);
 
-    // Run all test cases
-    let mut failed = false;
+    if ans.decision() == test.expected {
+        println!("{}", "ok".green());
+        true
+    } else {
+        println!("{}: expected {:?}, got {:?}", "fail".red(), test.expected, ans.decision());
+        false
+    }
+}
 
-    for (i, test) in tests.iter().enumerate() {
-        let authorizer = Authorizer::new();
-        let ans = authorizer.is_authorized(&test.request, &policies, &test.entities);
+fn run_tests_inner(
+    args: &RunTestsArgs,
+) -> Result<CedarExitCode> {
+    let policies = args.policies.get_policy_set()?;
+    let schema = args.schema.get_schema()?;
+    let tests = load_tests(&args.tests)?;
 
-        if ans.decision() != test.expected {
-            println!("Test case {}: expected {:?}, got {:?}", i + 1, test.expected, ans.decision());
-            failed = true;
-        } else {
-            println!("Test case {}: passed", i + 1);
+    let mut total_fails: usize = 0;
+
+    println!("running {} test(s)", tests.len());
+    for test in tests.iter() {
+        if !run_one_test(&policies, Some(&schema), test) {
+            total_fails += 1;
         }
     }
 
-    if failed { CedarExitCode::Failure } else { CedarExitCode::Success }
+    println!("results: {} {}, {} {}",
+        tests.len() - total_fails,
+        if total_fails != 0 {
+            "passed".normal()
+        } else {
+            "passed".green()
+        },
+        total_fails,
+        if total_fails != 0 {
+            "failed".red()
+        } else {
+            "failed".normal()
+        },
+    );
+
+    Ok(if total_fails != 0 {
+        CedarExitCode::Failure
+    } else {
+        CedarExitCode::Success
+    })
+}
+
+pub fn run_tests(args: &RunTestsArgs) -> CedarExitCode {
+    match run_tests_inner(args) {
+        Ok(status) => status,
+        Err(e) => {
+            println!("{e:?}");
+            CedarExitCode::Failure
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1521,17 +1561,17 @@ struct TestCase {
 
 #[derive(Error, Diagnostic, Debug)]
 enum TestCaseError {
-    #[error("JSON parse error: {0}")]
+    #[error("error when parsing JSON")]
     JsonParseError(#[from] serde_json::Error),
-    #[error("Entity UID parse error: {0}")]
+    #[error("error when parsing entity UID")]
     EntityUidParseError(#[from] ParseErrors),
-    #[error("Context JSON error: {0}")]
+    #[error("error when parsing context JSON")]
     ContextJsonError(#[from] ContextJsonError),
-    #[error("Failed to parse expected decision: {0}")]
+    #[error("error when parsing expected decision")]
     DecisionParseError(serde_json::Value),
-    #[error("Request validation error: {0}")]
+    #[error("error when validating request against schema")]
     RequestValidationError(#[from] RequestValidationError),
-    #[error("Entities error: {0}")]
+    #[error("error when parsing entities")]
     EntitiesError(#[from] EntitiesError),
 }
 
@@ -1570,35 +1610,23 @@ impl TestCase {
             expected,
         })
     }
-
-    /// Parse a sequence of `TestCase`s from a JSON file.
-    fn vec_from_json_file(
-        json: impl std::io::Read,
-        schema: Option<&Schema>,
-    ) -> Result<Vec<Self>, TestCaseError> {
-        let reader = BufReader::new(json);
-        let tests: Vec<serde_json::Value> = serde_json::from_reader(reader)?;
-        tests.into_iter()
-            .map(|test| Self::from_json_value(test, schema))
-            .collect()
-    }
 }
 
-/// Load tests from a JSON file
-fn load_tests(tests_filename: impl AsRef<Path>, schema: Option<&Schema>) -> Result<Vec<TestCase>> {
+/// Load tests from a JSON file (as JSON values first without parsing to TestCase)
+fn load_tests(tests_filename: impl AsRef<Path>) -> Result<Vec<serde_json::Value>> {
     match std::fs::OpenOptions::new()
         .read(true)
         .open(tests_filename.as_ref())
     {
-        Ok(f) => TestCase::vec_from_json_file(f, schema).wrap_err_with(|| {
-            format!(
-                "failed to parse entities from file {}",
-                tests_filename.as_ref().display()
-            )
-        }),
+        Ok(f) => {
+            let reader = BufReader::new(f);
+            serde_json::from_reader(reader)
+                .map_err(|e| miette!("failed to parse tests from file {}: {e}",
+                    tests_filename.as_ref().display()))
+        },
         Err(e) => Err(e).into_diagnostic().wrap_err_with(|| {
             format!(
-                "failed to open entities file {}",
+                "failed to open test file {}",
                 tests_filename.as_ref().display()
             )
         }),
