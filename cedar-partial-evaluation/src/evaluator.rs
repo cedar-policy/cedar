@@ -189,6 +189,20 @@ impl Evaluator<'_> {
                         ty,
                     },
                     Residual::Concrete { ty, .. } => Residual::Error(ty.clone()),
+                    Residual::Partial {
+                        kind: ResidualKind::Var(Var::Principal),
+                        ..
+                    } => Residual::Concrete {
+                        value: (entity_type == &self.request.principal.ty).into(),
+                        ty,
+                    },
+                    Residual::Partial {
+                        kind: ResidualKind::Var(Var::Resource),
+                        ..
+                    } => Residual::Concrete {
+                        value: (entity_type == &self.request.resource.ty).into(),
+                        ty,
+                    },
                     Residual::Partial { .. } => Residual::Partial {
                         kind: ResidualKind::Is {
                             expr: Arc::new(r),
