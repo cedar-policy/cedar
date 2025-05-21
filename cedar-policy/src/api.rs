@@ -3748,7 +3748,7 @@ impl LosslessPolicy {
             Some(text) => Self::Text {
                 text: text.into(),
                 slots: HashMap::new(),
-            }
+            },
         }
     }
 

@@ -111,7 +111,7 @@ pub enum LinkingError {
     MissedSlot {
         /// Slot which didn't have a value provided for it
         slot: ast::SlotId,
-    }
+    },
 }
 
 impl From<ast::UnexpectedSlotError> for FromJsonError {

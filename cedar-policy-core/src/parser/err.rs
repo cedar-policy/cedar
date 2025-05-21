@@ -60,7 +60,7 @@ pub enum ParseError {
     /// Error caused by missing source code information
     #[error(transparent)]
     #[diagnostic(transparent)]
-    MissingSourceCodeInfo(#[from] MissingSourceCodeInfoError)
+    MissingSourceCodeInfo(#[from] MissingSourceCodeInfoError),
 }
 
 /// Errors possible from `Literal::from_str()`
