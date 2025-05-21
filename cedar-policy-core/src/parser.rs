@@ -28,6 +28,8 @@ pub use fmt::join_with_conjunction;
 /// Source location struct
 mod loc;
 pub use loc::Loc;
+#[macro_use]
+mod macros;
 /// Metadata wrapper for CST Nodes
 mod node;
 pub use node::Node;
