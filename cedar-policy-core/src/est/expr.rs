@@ -714,13 +714,13 @@ impl Expr {
         self,
         mapping: &BTreeMap<EntityUID, EntityUID>,
     ) -> Result<Self, JsonDeserializationError> {
-        match self.clone() {
+        match self {
             Expr::ExprNoExt(e) => match e {
                 ExprNoExt::Value(v) => Ok(Expr::ExprNoExt(ExprNoExt::Value(
                     v.sub_entity_literals(mapping)?,
                 ))),
-                ExprNoExt::Var(_) => Ok(self),
-                ExprNoExt::Slot(_) => Ok(self),
+                v @ ExprNoExt::Var(_) => Ok(Expr::ExprNoExt(v)),
+                s @ ExprNoExt::Slot(_) => Ok(Expr::ExprNoExt(s)),
                 ExprNoExt::Not { arg } => Ok(Expr::ExprNoExt(ExprNoExt::Not {
                     arg: Arc::new(Arc::unwrap_or_clone(arg).sub_entity_literals(mapping)?),
                 })),
