@@ -19,10 +19,11 @@
 // omitted.
 #![allow(clippy::needless_return)]
 
+use cedar_policy::entities_errors::EntitiesError;
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
-use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
+use miette::{miette, Diagnostic, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use serde::{Deserialize, Serialize};
-use std::io::Write;
+use std::io::{BufReader, Write};
 use std::{
     collections::HashMap,
     fmt::{self, Display},
@@ -32,6 +33,7 @@ use std::{
     str::FromStr,
     time::Instant,
 };
+use thiserror::Error;
 
 use cedar_policy::*;
 use cedar_policy_formatter::{policies_str_to_pretty, Config};
@@ -109,6 +111,8 @@ pub enum Commands {
     New(NewArgs),
     /// Partially evaluate an authorization request
     PartiallyAuthorize(PartiallyAuthorizeArgs),
+    /// Run test cases on a policy set
+    RunTests(RunTestsArgs),
     /// Print Cedar language version
     LanguageVersion,
 }
@@ -627,6 +631,19 @@ pub struct PartiallyAuthorizeArgs {
 #[cfg(not(feature = "partial-eval"))]
 #[derive(Debug, Args)]
 pub struct PartiallyAuthorizeArgs;
+
+#[derive(Args, Debug)]
+pub struct RunTestsArgs {
+     /// Schema args (incorporated by reference)
+    #[command(flatten)]
+    pub schema: SchemaArgs,
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
+    /// Tests in JSON format
+    #[arg(long, value_name = "FILE")]
+    pub tests: String,
+}
 
 #[derive(Args, Debug)]
 pub struct VisualizeArgs {
@@ -1450,6 +1467,141 @@ pub fn partial_authorize(args: &PartiallyAuthorizeArgs) -> CedarExitCode {
             }
             CedarExitCode::Failure
         }
+    }
+}
+
+pub fn run_tests(args: &RunTestsArgs) -> CedarExitCode {
+    let policies = match args.policies.get_policy_set() {
+        Ok(policies) => policies,
+        Err(e) => {
+            println!("{e:?}");
+            return CedarExitCode::Failure;
+        }
+    };
+    let schema = match args.schema.get_schema() {
+        Ok(schema) => schema,
+        Err(e) => {
+            println!("{e:?}");
+            return CedarExitCode::Failure;
+        }
+    };
+
+    let tests = match load_tests(&args.tests, Some(&schema)) {
+        Ok(tests) => tests,
+        Err(e) => {
+            println!("{e:?}");
+            return CedarExitCode::Failure;
+        }
+    };
+
+    // Run all test cases
+    let mut failed = false;
+
+    for (i, test) in tests.iter().enumerate() {
+        let authorizer = Authorizer::new();
+        let ans = authorizer.is_authorized(&test.request, &policies, &test.entities);
+
+        if ans.decision() != test.expected {
+            println!("Test case {}: expected {:?}, got {:?}", i + 1, test.expected, ans.decision());
+            failed = true;
+        } else {
+            println!("Test case {}: passed", i + 1);
+        }
+    }
+
+    if failed { CedarExitCode::Failure } else { CedarExitCode::Success }
+}
+
+#[derive(Debug, Clone)]
+struct TestCase {
+    request: Request,
+    entities: Entities,
+    expected: Decision,
+}
+
+#[derive(Error, Diagnostic, Debug)]
+enum TestCaseError {
+    #[error("JSON parse error: {0}")]
+    JsonParseError(#[from] serde_json::Error),
+    #[error("Entity UID parse error: {0}")]
+    EntityUidParseError(#[from] ParseErrors),
+    #[error("Context JSON error: {0}")]
+    ContextJsonError(#[from] ContextJsonError),
+    #[error("Failed to parse expected decision: {0}")]
+    DecisionParseError(serde_json::Value),
+    #[error("Request validation error: {0}")]
+    RequestValidationError(#[from] RequestValidationError),
+    #[error("Entities error: {0}")]
+    EntitiesError(#[from] EntitiesError),
+}
+
+impl TestCase {
+    /// Parse a `TestCase` from a JSON value.
+    fn from_json_value(
+        json: serde_json::Value,
+        schema: Option<&Schema>,
+    ) -> Result<Self, TestCaseError> {
+        let qjson: RequestJSON = serde_json::from_value(json["request"].clone())?;
+
+        let principal = qjson.principal.parse()?;
+        let action = qjson.action.parse()?;
+        let resource = qjson.resource.parse()?;
+        let context = Context::from_json_value(qjson.context, schema.map(|s| (s, &action)))?;
+
+        let request = Request::new(
+            principal,
+            action,
+            resource,
+            context,
+            schema,
+        )?;
+
+        let entities= Entities::from_json_value(json["entities"].clone(), schema)?;
+
+        let expected = match json["decision"].as_str() {
+            Some("allow") => Decision::Allow,
+            Some("deny") => Decision::Deny,
+            _ => return Err(TestCaseError::DecisionParseError(json["decision"].clone())),
+        };
+
+        Ok(Self {
+            request,
+            entities,
+            expected,
+        })
+    }
+
+    /// Parse a sequence of `TestCase`s from a JSON file.
+    fn vec_from_json_file(
+        json: impl std::io::Read,
+        schema: Option<&Schema>,
+    ) -> Result<Vec<Self>, TestCaseError> {
+        let reader = BufReader::new(json);
+        let tests: Vec<serde_json::Value> = serde_json::from_reader(reader)?;
+        tests.into_iter()
+            .map(|test| Self::from_json_value(test, schema))
+            .collect()
+    }
+}
+
+/// Load tests from a JSON file
+fn load_tests(tests_filename: impl AsRef<Path>, schema: Option<&Schema>) -> Result<Vec<TestCase>> {
+    match std::fs::OpenOptions::new()
+        .read(true)
+        .open(tests_filename.as_ref())
+    {
+        Ok(f) => TestCase::vec_from_json_file(f, schema).wrap_err_with(|| {
+            format!(
+                "failed to parse entities from file {}",
+                tests_filename.as_ref().display()
+            )
+        }),
+        Err(e) => Err(e).into_diagnostic().wrap_err_with(|| {
+            format!(
+                "failed to open entities file {}",
+                tests_filename.as_ref().display()
+            )
+        }),
     }
 }
 
