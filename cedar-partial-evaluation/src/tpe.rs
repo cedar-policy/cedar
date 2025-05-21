@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use cedar_policy_core::{ast::Policy, entities::TCComputation, extensions::Extensions};
+use cedar_policy_core::{ast::PolicySet, entities::TCComputation, extensions::Extensions};
 use cedar_policy_validator::{
     typecheck::{PolicyCheck, Typechecker},
     ValidatorSchema,
@@ -13,16 +13,13 @@ use crate::{
 };
 
 /// Type-aware partial-evaluation on a single policy
-pub fn tpe_policy(
-    p: &Policy,
+pub fn tpe_policies(
+    ps: &PolicySet,
     request: &PartialRequest,
     es: &mut PartialEntities,
     schema: &ValidatorSchema,
     tc: TCComputation,
-) -> anyhow::Result<Residual> {
-    if !p.is_static() {
-        return Err(anyhow!("policy must be static"));
-    }
+) -> anyhow::Result<Vec<Residual>> {
     if request.validate_request(schema).is_err() {
         return Err(anyhow!("request is not valid"));
     }
@@ -45,40 +42,38 @@ pub fn tpe_policy(
     }
     let env = request.find_request_env(schema)?;
     let tc = Typechecker::new(schema, cedar_policy_validator::ValidationMode::Strict);
-    let t = p.template();
-    match tc.typecheck_by_single_request_env(t, &env) {
-        PolicyCheck::Success(expr) => {
-            let evaluator = Evaluator {
-                request: request.clone(),
-                entities: es,
-                extensions: Extensions::all_available(),
-            };
-            Ok(evaluator.interpret(&expr))
+    let mut exprs = Vec::new();
+    for p in ps.policies() {
+        if !p.is_static() {
+            return Err(anyhow!("policy must be static"));
         }
-        PolicyCheck::Fail(errs) => Err(anyhow!("failed validation : {errs:#?}")),
-        PolicyCheck::Irrelevant(errs, expr) => {
-            if errs.is_empty() {
-                let evaluator = Evaluator {
-                    request: request.clone(),
-                    entities: es,
-                    extensions: Extensions::all_available(),
-                };
-                Ok(evaluator.interpret(&expr))
-            } else {
-                Err(anyhow!("failed validation : {errs:#?}"))
+        let t = p.template();
+        match tc.typecheck_by_single_request_env(t, &env) {
+            PolicyCheck::Success(expr) => {
+                exprs.push(expr);
+            }
+            PolicyCheck::Fail(errs) => {
+                return Err(anyhow!("failed validation : {errs:#?}"));
+            }
+            PolicyCheck::Irrelevant(errs, expr) => {
+                if errs.is_empty() {
+                    exprs.push(expr);
+                } else {
+                    return Err(anyhow!("failed validation : {errs:#?}"));
+                }
             }
         }
     }
+    let evaluator = Evaluator {
+        request: request.clone(),
+        entities: es,
+        extensions: Extensions::all_available(),
+    };
+    Ok(exprs.iter().map(|expr| evaluator.interpret(expr)).collect())
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        collections::{BTreeMap, HashMap, HashSet},
-        sync::Arc,
-    };
-
-    use anyhow::Result;
     use cedar_policy_core::{
         ast::{Eid, EntityUID, Expr, PolicySet},
         entities::TCComputation,
@@ -86,6 +81,10 @@ mod tests {
         parser::parse_policyset,
     };
     use cedar_policy_validator::ValidatorSchema;
+    use std::{
+        collections::{BTreeMap, HashMap, HashSet},
+        sync::Arc,
+    };
 
     use crate::{
         entities::{PartialEntities, PartialEntity},
@@ -93,7 +92,7 @@ mod tests {
         residual::Residual,
     };
 
-    use super::tpe_policy;
+    use super::tpe_policies;
 
     fn rfc_policies() -> PolicySet {
         parse_policyset(
@@ -204,19 +203,14 @@ action Delete appliesTo {
         let schema = rfc_schema();
         let request = rfc_request();
         let mut entities = rfc_entities();
-        let residuals: Vec<Residual> = policies
-            .policies()
-            .map(|p| {
-                tpe_policy(
-                    p,
-                    &request,
-                    &mut entities,
-                    &schema,
-                    TCComputation::AssumeAlreadyComputed,
-                )
-            })
-            .collect::<Result<Vec<Residual>>>()
-            .unwrap();
+        let residuals: Vec<Residual> = tpe_policies(
+            &policies,
+            &request,
+            &mut entities,
+            &schema,
+            TCComputation::AssumeAlreadyComputed,
+        )
+        .unwrap();
         for residual in residuals {
             println!("{}", Expr::try_from(residual).unwrap());
         }
@@ -242,7 +236,7 @@ mod tinytodo {
         residual::Residual,
     };
 
-    use super::tpe_policy;
+    use super::tpe_policies;
 
     #[track_caller]
     fn schema() -> ValidatorSchema {
@@ -408,19 +402,14 @@ when { principal in resource.editors };
         let schema = schema();
         let request = partial_request();
         let mut entities = partial_entities();
-        let residuals: Vec<Residual> = policies
-            .policies()
-            .map(|p| {
-                tpe_policy(
-                    p,
-                    &request,
-                    &mut entities,
-                    &schema,
-                    TCComputation::AssumeAlreadyComputed,
-                )
-            })
-            .collect::<anyhow::Result<Vec<Residual>>>()
-            .unwrap();
+        let residuals: Vec<Residual> = tpe_policies(
+            &policies,
+            &request,
+            &mut entities,
+            &schema,
+            TCComputation::AssumeAlreadyComputed,
+        )
+        .unwrap();
         for residual in residuals {
             println!("{}", Expr::try_from(residual).unwrap());
         }
