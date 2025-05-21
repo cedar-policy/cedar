@@ -340,14 +340,32 @@ pub(crate) fn validate_parents(entities: &HashMap<EntityUID, PartialEntity>) -> 
 pub struct PartialEntities {
     /// Important internal invariant: for any `Entities` object that exists,
     /// the `ancestor` relation is transitively closed.
-    pub entities: HashMap<EntityUID, PartialEntity>,
+    pub(crate) entities: HashMap<EntityUID, PartialEntity>,
 }
 
 impl PartialEntities {
+    /// Compute transitive closure
     pub fn compute_tc(&mut self) -> anyhow::Result<()> {
         Ok(compute_tc(&mut self.entities, true)?)
     }
 
+    /// Construct `PartialEntities` from an iterator
+    pub fn from_entities(
+        entities: impl Iterator<Item = (EntityUID, PartialEntity)>,
+        schema: &ValidatorSchema,
+    ) -> anyhow::Result<Self> {
+        let mut entities = Self {
+            entities: entities.collect(),
+        };
+        for e in entities.entities.values() {
+            e.validate(schema)?;
+        }
+        validate_parents(&entities.entities)?;
+        entities.compute_tc()?;
+        Ok(entities)
+    }
+
+    /// Construct `PartialEntities` from a JSON list
     pub fn from_json_value(
         value: serde_json::Value,
         schema: &ValidatorSchema,

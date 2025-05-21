@@ -1,46 +1,27 @@
 use anyhow::anyhow;
-use cedar_policy_core::{ast::PolicySet, entities::TCComputation, extensions::Extensions};
+use cedar_policy_core::{ast::PolicySet, extensions::Extensions};
 use cedar_policy_validator::{
     typecheck::{PolicyCheck, Typechecker},
     ValidatorSchema,
 };
 
 use crate::{
-    entities::{validate_parents, PartialEntities},
-    evaluator::Evaluator,
-    request::PartialRequest,
-    residual::Residual,
+    entities::PartialEntities, evaluator::Evaluator, request::PartialRequest, residual::Residual,
 };
 
-/// Type-aware partial-evaluation on a single policy
+/// Type-aware partial-evaluation on a `PolicySet`.
+/// Both `request` and `entities` should be valid and hence be constructed
+/// using their safe constructors.
+/// Polices must be static.
 pub fn tpe_policies(
     ps: &PolicySet,
     request: &PartialRequest,
-    es: &mut PartialEntities,
+    entities: &PartialEntities,
     schema: &ValidatorSchema,
-    tc: TCComputation,
 ) -> anyhow::Result<Vec<Residual>> {
-    if request.validate_request(schema).is_err() {
-        return Err(anyhow!("request is not valid"));
-    }
-    for e in es.entities.values() {
-        if e.validate(schema).is_err() {
-            return Err(anyhow!("entity {} is not valid", e.uid));
-        }
-    }
-    match tc {
-        TCComputation::ComputeNow => {
-            if let Err(errs) = validate_parents(&es.entities) {
-                return Err(anyhow!("invalid hierarchy : {errs:#?}"));
-            }
-            es.compute_tc()?;
-        }
-        TCComputation::EnforceAlreadyComputed => {
-            //TODO: implement this
-        }
-        TCComputation::AssumeAlreadyComputed => {}
-    }
-    let env = request.find_request_env(schema)?;
+    let env = request
+        .find_request_env(schema)
+        .ok_or(anyhow!("can't find a matching request environment"))?;
     let tc = Typechecker::new(schema, cedar_policy_validator::ValidationMode::Strict);
     let mut exprs = Vec::new();
     for p in ps.policies() {
@@ -66,7 +47,7 @@ pub fn tpe_policies(
     }
     let evaluator = Evaluator {
         request: request.clone(),
-        entities: es,
+        entities,
         extensions: Extensions::all_available(),
     };
     Ok(exprs.iter().map(|expr| evaluator.interpret(expr)).collect())
@@ -76,7 +57,6 @@ pub fn tpe_policies(
 mod tests {
     use cedar_policy_core::{
         ast::{Eid, EntityUID, Expr, PolicySet},
-        entities::TCComputation,
         extensions::Extensions,
         parser::parse_policyset,
     };
@@ -202,15 +182,9 @@ action Delete appliesTo {
         let policies = rfc_policies();
         let schema = rfc_schema();
         let request = rfc_request();
-        let mut entities = rfc_entities();
-        let residuals: Vec<Residual> = tpe_policies(
-            &policies,
-            &request,
-            &mut entities,
-            &schema,
-            TCComputation::AssumeAlreadyComputed,
-        )
-        .unwrap();
+        let entities = rfc_entities();
+        let residuals: Vec<Residual> =
+            tpe_policies(&policies, &request, &entities, &schema).unwrap();
         for residual in residuals {
             println!("{}", Expr::try_from(residual).unwrap());
         }
@@ -223,7 +197,6 @@ mod tinytodo {
 
     use cedar_policy_core::{
         ast::{Eid, Expr, PolicySet},
-        entities::TCComputation,
         extensions::Extensions,
         parser::parse_policyset,
     };
@@ -401,15 +374,9 @@ when { principal in resource.editors };
         let policies = policies();
         let schema = schema();
         let request = partial_request();
-        let mut entities = partial_entities();
-        let residuals: Vec<Residual> = tpe_policies(
-            &policies,
-            &request,
-            &mut entities,
-            &schema,
-            TCComputation::AssumeAlreadyComputed,
-        )
-        .unwrap();
+        let entities = partial_entities();
+        let residuals: Vec<Residual> =
+            tpe_policies(&policies, &request, &entities, &schema).unwrap();
         for residual in residuals {
             println!("{}", Expr::try_from(residual).unwrap());
         }

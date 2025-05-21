@@ -36,24 +36,43 @@ impl TryFrom<PartialEntityUID> for EntityUID {
 #[derive(Debug, Clone)]
 pub struct PartialRequest {
     /// Principal associated with the request
-    pub principal: PartialEntityUID,
+    pub(crate) principal: PartialEntityUID,
 
     /// Action associated with the request
-    pub action: EntityUID,
+    pub(crate) action: EntityUID,
 
     /// Resource associated with the request
-    pub resource: PartialEntityUID,
+    pub(crate) resource: PartialEntityUID,
 
     /// Context associated with the request.
     /// `None` means that variable will result in a residual for partial evaluation.
-    pub context: Option<Arc<BTreeMap<SmolStr, Value>>>,
+    pub(crate) context: Option<Arc<BTreeMap<SmolStr, Value>>>,
 }
 
 impl PartialRequest {
+    /// Create a well-formed `PartialRequest` (i.e., it conforms to the schema)
+    pub fn new(
+        principal: PartialEntityUID,
+        resource: PartialEntityUID,
+        action: EntityUID,
+        context: Option<Arc<BTreeMap<SmolStr, Value>>>,
+        schema: &ValidatorSchema,
+    ) -> anyhow::Result<Self> {
+        let req = Self {
+            principal,
+            resource,
+            action,
+            context,
+        };
+        req.validate(schema)?;
+        Ok(req)
+    }
+
+    // Find the matching `RequestEnv`
     pub(crate) fn find_request_env<'s>(
         &self,
         schema: &'s ValidatorSchema,
-    ) -> anyhow::Result<RequestEnv<'s>> {
+    ) -> Option<RequestEnv<'s>> {
         // PANIC SAFETY: strict validation should produce concrete action entity uid
         #[allow(clippy::unwrap_used)]
         schema
@@ -63,10 +82,10 @@ impl PartialRequest {
                     && env.principal_entity_type() == Some(&self.principal.ty)
                     && env.resource_entity_type() == Some(&self.resource.ty)
             })
-            .ok_or(anyhow::anyhow!("cannot find matching request environment"))
     }
 
-    pub(crate) fn validate_request(&self, schema: &ValidatorSchema) -> anyhow::Result<()> {
+    // Validate `self` with `schema`
+    pub(crate) fn validate(&self, schema: &ValidatorSchema) -> anyhow::Result<()> {
         let core_schema = CoreSchema::new(schema);
         if let Some(action_id) = schema.get_action_id(&self.action) {
             if !action_id.is_applicable_principal_type(&self.principal.ty) {
