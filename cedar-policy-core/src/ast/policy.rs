@@ -15,7 +15,7 @@
  */
 
 use crate::ast::*;
-use crate::parser::Loc;
+use crate::parser::{Loc, MaybeLoc};
 use annotation::{Annotation, Annotations};
 use educe::Educe;
 use itertools::Itertools;
@@ -118,7 +118,7 @@ impl Template {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
-        loc: Option<Box<Loc>>,
+        loc: MaybeLoc,
         annotations: Annotations,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -143,7 +143,7 @@ impl Template {
 
     #[cfg(feature = "tolerant-ast")]
     /// Generate a template representing a policy that is unparsable
-    pub fn error(id: PolicyID, loc: Option<Box<Loc>>) -> Self {
+    pub fn error(id: PolicyID, loc: MaybeLoc) -> Self {
         let body = TemplateBody::error(id, loc);
         Template::from(body)
     }
@@ -152,7 +152,7 @@ impl Template {
     #[allow(clippy::too_many_arguments)]
     pub fn new_shared(
         id: PolicyID,
-        loc: Option<Box<Loc>>,
+        loc: MaybeLoc,
         annotations: Arc<Annotations>,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -442,7 +442,7 @@ impl Policy {
     }
 
     /// Build a policy with a given effect, given when clause, and unconstrained scope variables
-    pub fn from_when_clause(effect: Effect, when: Expr, id: PolicyID, loc: Option<Box<Loc>>) -> Self {
+    pub fn from_when_clause(effect: Effect, when: Expr, id: PolicyID, loc: MaybeLoc) -> Self {
         Self::from_when_clause_annos(
             effect,
             Arc::new(when),
@@ -457,7 +457,7 @@ impl Policy {
         effect: Effect,
         when: Arc<Expr>,
         id: PolicyID,
-        loc: Option<Box<Loc>>,
+        loc: MaybeLoc,
         annotations: Arc<Annotations>,
     ) -> Self {
         let t = Template::new_shared(
@@ -902,7 +902,7 @@ impl StaticPolicy {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
-        loc: Option<Box<Loc>>,
+        loc: MaybeLoc,
         annotations: Annotations,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -966,7 +966,7 @@ pub struct TemplateBodyImpl {
     /// Source location spanning the entire policy
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
-    loc: Option<Box<Loc>>,
+    loc: MaybeLoc,
     /// Annotations available for external applications, as key-value store.
     /// Note that the keys are `AnyId`, so Cedar reserved words like `if` and `has`
     /// are explicitly allowed as annotations.
@@ -1000,7 +1000,7 @@ pub enum TemplateBody {
     TemplateBody(TemplateBodyImpl),
     #[cfg(feature = "tolerant-ast")]
     /// Represents a policy that failed to parse
-    TemplateBodyError(PolicyID, Option<Box<Loc>>),
+    TemplateBodyError(PolicyID, MaybeLoc),
 }
 
 impl TemplateBody {
@@ -1039,7 +1039,7 @@ impl TemplateBody {
 
     #[cfg(feature = "tolerant-ast")]
     /// Create a template body representing a policy that failed to parse
-    pub fn error(id: PolicyID, loc: Option<Box<Loc>>) -> Self {
+    pub fn error(id: PolicyID, loc: MaybeLoc) -> Self {
         TemplateBody::TemplateBodyError(id, loc)
     }
 
@@ -1215,7 +1215,7 @@ impl TemplateBody {
     #[allow(clippy::too_many_arguments)]
     pub fn new_shared(
         id: PolicyID,
-        loc: Option<Box<Loc>>,
+        loc: MaybeLoc,
         annotations: Arc<Annotations>,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -1239,7 +1239,7 @@ impl TemplateBody {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
-        loc: Option<Box<Loc>>,
+        loc: MaybeLoc,
         annotations: Annotations,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -1514,7 +1514,7 @@ pub enum EntityReference {
         #[educe(PartialEq(ignore))]
         #[educe(PartialOrd(ignore))]
         #[educe(Hash(ignore))]
-        Option<Box<Loc>>,
+        MaybeLoc,
     ),
 }
 

@@ -16,6 +16,13 @@
 
 use std::sync::Arc;
 
+
+#[cfg(not(feature = "fast-parsing"))]
+pub type MaybeLoc = Option<Loc>;
+
+#[cfg(feature = "fast-parsing")]
+pub type MaybeLoc = Option<Box<Loc>>;
+
 /// Represents a source location: index/range, and a reference to the source
 /// code which that index/range indexes into
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -71,6 +78,33 @@ impl From<Loc> for miette::SourceSpan {
 impl From<&Loc> for miette::SourceSpan {
     fn from(loc: &Loc) -> Self {
         loc.span
+    }
+}
+
+pub trait AsLocRef {
+    fn as_loc_ref(&self) -> Option<&Loc>;
+}
+
+// Implement the trait for MaybeLoc
+impl AsLocRef for MaybeLoc {
+    #[inline]
+    fn as_loc_ref(&self) -> Option<&Loc> {
+        #[cfg(not(feature = "fast-parsing"))]
+        { self.as_ref() }
+        #[cfg(feature = "fast-parsing")]
+        { self.as_deref() }
+    }
+}
+
+impl From<MaybeLoc> for Option<&Loc> {
+    #[inline]
+    fn from(self) -> Self {
+        opt_loc.map(|loc| {
+            #[cfg(feature = "fast-parsing")]
+            { loc.clone() }
+            #[cfg(not(feature = "fast-parsing"))]
+            { Box::new(loc.clone()) }
+        })
     }
 }
 

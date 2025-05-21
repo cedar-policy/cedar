@@ -29,7 +29,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::parser::err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind};
-use crate::parser::Loc;
+use crate::parser::{Loc, MaybeLoc};
 use crate::FromNormalizedStr;
 
 /// Represents the name of an entity type, function, etc.
@@ -49,7 +49,7 @@ pub struct InternalName {
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
     #[educe(PartialOrd(ignore))]
-    pub(crate) loc: Option<Box<Loc>>,
+    pub(crate) loc: MaybeLoc,
 }
 
 /// A shortcut for [`InternalName::unqualified_name`]
@@ -75,7 +75,7 @@ impl TryFrom<InternalName> for Id {
 
 impl InternalName {
     /// A full constructor for [`InternalName`]
-    pub fn new(basename: Id, path: impl IntoIterator<Item = Id>, loc: Option<Box<Loc>>) -> Self {
+    pub fn new(basename: Id, path: impl IntoIterator<Item = Id>, loc: MaybeLoc) -> Self {
         Self {
             id: basename,
             path: Arc::new(path.into_iter().collect()),
@@ -84,7 +84,7 @@ impl InternalName {
     }
 
     /// Create an [`InternalName`] with no path (no namespaces).
-    pub fn unqualified_name(id: Id, loc: Option<Box<Loc>>) -> Self {
+    pub fn unqualified_name(id: Id, loc: MaybeLoc) -> Self {
         Self {
             id,
             path: Arc::new(vec![]),
@@ -113,7 +113,7 @@ impl InternalName {
     pub fn type_in_namespace(
         basename: Id,
         namespace: InternalName,
-        loc: Option<Box<Loc>>,
+        loc: MaybeLoc,
     ) -> InternalName {
         let mut path = Arc::unwrap_or_clone(namespace.path);
         path.push(namespace.id);
@@ -356,7 +356,7 @@ pub struct Slot {
     /// Source location, if available
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
-    pub loc: Option<Box<Loc>>,
+    pub loc: MaybeLoc,
 }
 
 #[cfg(test)]

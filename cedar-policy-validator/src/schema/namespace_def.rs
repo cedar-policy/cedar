@@ -90,7 +90,7 @@ pub struct ValidatorNamespaceDef<N, A> {
     /// Action declarations.
     pub(super) actions: ActionsDef<N, A>,
     #[cfg(feature = "extended-schema")]
-    pub(super) loc: Option<Box<Loc>>,
+    pub(super) loc: MaybeLoc,
 }
 
 impl<N, A> ValidatorNamespaceDef<N, A> {
@@ -732,7 +732,7 @@ pub struct ActionFragment<N, A> {
     /// actual `Entity` objects defined by the schema.
     pub(super) attributes: BTreeMap<SmolStr, PartialValue>,
     /// Source location - if available
-    pub(super) loc: Option<Box<Loc>>,
+    pub(super) loc: MaybeLoc,
 }
 
 impl ActionFragment<ConditionalName, ConditionalName> {
@@ -928,14 +928,14 @@ type ResolveFunc<T> = dyn FnOnce(&HashMap<&InternalName, ValidatorType>) -> crat
 /// Represent a type that might be defined in terms of some common-type
 /// definitions which are not necessarily available in the current namespace.
 pub(crate) enum WithUnresolvedCommonTypeRefs<T> {
-    WithUnresolved(Box<ResolveFunc<T>>, Option<Box<Loc>>),
-    WithoutUnresolved(T, Option<Box<Loc>>),
+    WithUnresolved(Box<ResolveFunc<T>>, MaybeLoc),
+    WithoutUnresolved(T, MaybeLoc),
 }
 
 impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
     pub fn new(
         f: impl FnOnce(&HashMap<&InternalName, ValidatorType>) -> crate::err::Result<T> + 'static,
-        loc: Option<Box<Loc>>,
+        loc: MaybeLoc,
     ) -> Self {
         Self::WithUnresolved(Box::new(f), loc)
     }
@@ -1041,7 +1041,7 @@ impl TryInto<ValidatorNamespaceDef<ConditionalName, ConditionalName>>
 pub(crate) fn try_jsonschema_type_into_validator_type(
     schema_ty: json_schema::Type<InternalName>,
     extensions: &Extensions<'_>,
-    loc: Option<Box<Loc>>,
+    loc: MaybeLoc,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<ValidatorType>> {
     match schema_ty {
         json_schema::Type::Type {
@@ -1154,7 +1154,7 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
             Ok(WithUnresolvedCommonTypeRefs::new(
                 move |common_type_defs| {
                     #[cfg_attr(not(feature = "extended-schema"), allow(unused_variables))]
-                    let loc: Option<Box<Loc>> = loc.clone();
+                    let loc: MaybeLoc = loc.clone();
 
                     // First check if it's a common type, because in the edge case where
                     // the name is both a valid common type name and a valid entity type
@@ -1189,7 +1189,7 @@ pub(crate) fn try_jsonschema_type_into_validator_type(
 pub(crate) fn try_record_type_into_validator_type(
     rty: json_schema::RecordType<InternalName>,
     extensions: &Extensions<'_>,
-    loc: Option<Box<Loc>>,
+    loc: MaybeLoc,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<ValidatorType>> {
     if cfg!(not(feature = "partial-validate")) && rty.additional_attributes {
         Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
@@ -1225,7 +1225,7 @@ pub(crate) fn try_record_type_into_validator_type(
 fn parse_record_attributes(
     attrs: impl IntoIterator<Item = (SmolStr, json_schema::TypeOfAttribute<InternalName>)>,
     extensions: &Extensions<'_>,
-    loc: Option<Box<Loc>>,
+    loc: MaybeLoc,
 ) -> crate::err::Result<WithUnresolvedCommonTypeRefs<Attributes>> {
     let attrs_with_common_type_refs = attrs
         .into_iter()

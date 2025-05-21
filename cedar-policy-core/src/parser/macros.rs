@@ -5,7 +5,10 @@ macro_rules! maybe_loc {
         if $flag {
             None
         } else {
-            Some(Box::new($loc))
+            #[cfg(feature = "fast-parsing")]
+            { Some(Box::new($loc)) }
+            #[cfg(not(feature = "fast-parsing"))]
+            { Some($loc) }
         }
     }
 }

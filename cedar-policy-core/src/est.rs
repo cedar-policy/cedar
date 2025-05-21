@@ -35,7 +35,7 @@ use crate::parser::cst;
 use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
 #[cfg(feature = "tolerant-ast")]
-use crate::parser::Loc;
+use crate::parser::MaybeLoc;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::collections::{BTreeMap, HashMap};

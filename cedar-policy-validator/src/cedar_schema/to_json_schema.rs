@@ -497,7 +497,7 @@ where
 struct NamespaceRecord {
     entities: HashMap<Id, Node<()>>,
     common_types: HashMap<Id, Node<()>>,
-    loc: Option<Box<Loc>>,
+    loc: MaybeLoc,
 }
 
 impl NamespaceRecord {

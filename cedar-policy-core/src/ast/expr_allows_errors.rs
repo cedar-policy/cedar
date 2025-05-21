@@ -28,7 +28,7 @@ impl From<ToASTErrorKind> for AstExprErrorKind {
 
 #[derive(Clone, Debug)]
 pub struct ExprWithErrsBuilder<T = ()> {
-    source_loc: Option<Box<Loc>>,
+    source_loc: MaybeLoc,
     data: T,
 }
 

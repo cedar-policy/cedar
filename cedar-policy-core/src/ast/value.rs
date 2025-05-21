@@ -15,7 +15,7 @@
  */
 
 use crate::ast::*;
-use crate::parser::Loc;
+use crate::parser::{Loc, MaybeLoc};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -36,7 +36,7 @@ pub struct Value {
     /// Source location associated with the value, if any
     #[educe(PartialEq(ignore))]
     #[educe(PartialOrd(ignore))]
-    pub loc: Option<Box<Loc>>,
+    pub loc: MaybeLoc,
 }
 
 /// This describes all the values which could be the dynamic result of evaluating an `Expr`.
@@ -55,7 +55,7 @@ pub enum ValueKind {
 
 impl Value {
     /// Create a new empty set
-    pub fn empty_set(loc: Option<Box<Loc>>) -> Self {
+    pub fn empty_set(loc: MaybeLoc) -> Self {
         Self {
             value: ValueKind::empty_set(),
             loc,
@@ -63,7 +63,7 @@ impl Value {
     }
 
     /// Create a new empty record
-    pub fn empty_record(loc: Option<Box<Loc>>) -> Self {
+    pub fn empty_record(loc: MaybeLoc) -> Self {
         Self {
             value: ValueKind::empty_record(),
             loc,
@@ -72,7 +72,7 @@ impl Value {
 
     /// Create a `Value` from anything that implements `Into<ValueKind>` and an
     /// optional source location
-    pub fn new(value: impl Into<ValueKind>, loc: Option<Box<Loc>>) -> Self {
+    pub fn new(value: impl Into<ValueKind>, loc: MaybeLoc) -> Self {
         Self {
             value: value.into(),
             loc,
@@ -80,7 +80,7 @@ impl Value {
     }
 
     /// Create a set with the given `Value`s as elements
-    pub fn set(vals: impl IntoIterator<Item = Value>, loc: Option<Box<Loc>>) -> Self {
+    pub fn set(vals: impl IntoIterator<Item = Value>, loc: MaybeLoc) -> Self {
         Self {
             value: ValueKind::set(vals),
             loc,
@@ -91,7 +91,7 @@ impl Value {
     ///
     /// the resulting `Value` will have the given `loc` attached, but its
     /// individual `Literal` elements will not have a source loc attached
-    pub fn set_of_lits(lits: impl IntoIterator<Item = Literal>, loc: Option<Box<Loc>>) -> Self {
+    pub fn set_of_lits(lits: impl IntoIterator<Item = Literal>, loc: MaybeLoc) -> Self {
         Self {
             value: ValueKind::set_of_lits(lits),
             loc,
@@ -101,7 +101,7 @@ impl Value {
     /// Create a record with the given (key, value) pairs
     pub fn record<K: Into<SmolStr>, V: Into<Value>>(
         pairs: impl IntoIterator<Item = (K, V)>,
-        loc: Option<Box<Loc>>,
+        loc: MaybeLoc,
     ) -> Self {
         Self {
             value: ValueKind::record(pairs),
@@ -110,7 +110,7 @@ impl Value {
     }
 
     /// Create a record with the given attributes/value mapping.
-    pub fn record_arc(pairs: Arc<BTreeMap<SmolStr, Value>>, loc: Option<Box<Loc>>) -> Self {
+    pub fn record_arc(pairs: Arc<BTreeMap<SmolStr, Value>>, loc: MaybeLoc) -> Self {
         Self {
             value: ValueKind::record_arc(pairs),
             loc,
@@ -118,7 +118,7 @@ impl Value {
     }
 
     /// Return the `Value`, but with the given `Loc` (or `None`)
-    pub fn with_maybe_source_loc(self, loc: Option<Box<Loc>>) -> Self {
+    pub fn with_maybe_source_loc(self, loc: MaybeLoc) -> Self {
         Self { loc, ..self }
     }
 
@@ -291,7 +291,7 @@ pub enum NotValue {
     #[error("not a value")]
     NotValue {
         /// Source location info for the expr that wasn't a value
-        loc: Option<Box<Loc>>,
+        loc: MaybeLoc,
     },
 }
 

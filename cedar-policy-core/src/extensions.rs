@@ -30,7 +30,7 @@ use std::collections::HashMap;
 
 use crate::ast::{Extension, ExtensionFunction, Name};
 use crate::entities::SchemaType;
-use crate::parser::Loc;
+use crate::parser::{Loc, MaybeLoc};
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -248,7 +248,7 @@ impl ExtensionFunctionLookupError {
         }
     }
 
-    pub(crate) fn with_maybe_source_loc(self, source_loc: Option<Box<Loc>>) -> Self {
+    pub(crate) fn with_maybe_source_loc(self, source_loc: MaybeLoc) -> Self {
         match self {
             Self::FuncDoesNotExist(e) => {
                 Self::FuncDoesNotExist(extension_function_lookup_errors::FuncDoesNotExistError {
@@ -263,7 +263,7 @@ impl ExtensionFunctionLookupError {
 /// Error subtypes for [`ExtensionFunctionLookupError`]
 pub mod extension_function_lookup_errors {
     use crate::ast::Name;
-    use crate::parser::Loc;
+    use crate::parser::MaybeLoc;
     use miette::Diagnostic;
     use thiserror::Error;
 
@@ -278,7 +278,7 @@ pub mod extension_function_lookup_errors {
         /// Name of the function that doesn't exist
         pub(crate) name: Name,
         /// Source location
-        pub(crate) source_loc: Option<Box<Loc>>,
+        pub(crate) source_loc: MaybeLoc,
     }
 
     impl Diagnostic for FuncDoesNotExistError {

@@ -27,7 +27,7 @@ mod fmt;
 pub use fmt::join_with_conjunction;
 /// Source location struct
 mod loc;
-pub use loc::Loc;
+pub use loc::{Loc, MaybeLoc};
 #[macro_use]
 mod macros;
 /// Metadata wrapper for CST Nodes

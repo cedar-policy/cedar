@@ -24,7 +24,7 @@ use crate::{
     ast::*,
     expr_builder::{self, ExprBuilder as _},
     extensions::Extensions,
-    parser::{err::ParseErrors, Loc},
+    parser::{err::ParseErrors, Loc, MaybeLoc},
 };
 use educe::Educe;
 use miette::Diagnostic;
@@ -54,7 +54,7 @@ pub struct Expr<T = ()> {
     expr_kind: ExprKind<T>,
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
-    source_loc: Option<Box<Loc>>,
+    source_loc: MaybeLoc,
     data: T,
 }
 
@@ -203,7 +203,7 @@ impl From<PartialValue> for Expr {
 }
 
 impl<T> Expr<T> {
-    pub(crate) fn new(expr_kind: ExprKind<T>, source_loc: Option<Box<Loc>>, data: T) -> Self {
+    pub(crate) fn new(expr_kind: ExprKind<T>, source_loc: MaybeLoc, data: T) -> Self {
         Self {
             expr_kind,
             source_loc,
@@ -236,7 +236,7 @@ impl<T> Expr<T> {
 
     /// Consume the `Expr`, returning the `ExprKind`, `source_loc`, and stored
     /// data.
-    pub fn into_parts(self) -> (ExprKind<T>, Option<Box<Loc>>, T) {
+    pub fn into_parts(self) -> (ExprKind<T>, MaybeLoc, T) {
         (self.expr_kind, self.source_loc, self.data)
     }
 
@@ -246,7 +246,7 @@ impl<T> Expr<T> {
     }
 
     /// Return the `Expr`, but with the new `source_loc` (or `None`).
-    pub fn with_maybe_source_loc(self, source_loc: Option<Box<Loc>>) -> Self {
+    pub fn with_maybe_source_loc(self, source_loc: MaybeLoc) -> Self {
         Self { source_loc, ..self }
     }
 
@@ -960,7 +960,7 @@ impl std::fmt::Display for Unknown {
 /// (possibly taking default value) and optionally a `source_loc`.
 #[derive(Clone, Debug)]
 pub struct ExprBuilder<T> {
-    source_loc: Option<Box<Loc>>,
+    source_loc: MaybeLoc,
     data: T,
 }
 

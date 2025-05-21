@@ -491,7 +491,7 @@ mod test {
     use crate::parser::cst::Name;
     use crate::parser::cst_to_ast::to_ref_or_refs::SingleEntity;
     use crate::parser::cst_to_ast::TolerantAstSetting;
-    use crate::parser::Loc;
+    use crate::parser::MaybeLoc;
     use crate::parser::Node;
 
     #[test]

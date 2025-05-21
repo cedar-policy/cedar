@@ -19,7 +19,7 @@ use crate::entities::{err::EntitiesError, json::err::JsonSerializationError, Ent
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::err::ParseErrors;
-use crate::parser::Loc;
+use crate::parser::{Loc, MaybeLoc};
 use crate::transitive_closure::TCNode;
 use crate::FromNormalizedStr;
 use educe::Educe;
@@ -205,7 +205,7 @@ pub struct EntityUIDImpl {
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
     #[educe(PartialOrd(ignore))]
-    loc: Option<Box<Loc>>,
+    loc: MaybeLoc,
 }
 
 /// Unique ID for an entity. These represent entities in the AST.
@@ -306,7 +306,7 @@ impl EntityUID {
     }
 
     /// Create an [`EntityUID`] with the given typename and [`Eid`]
-    pub fn from_components(ty: EntityType, eid: Eid, loc: Option<Box<Loc>>) -> Self {
+    pub fn from_components(ty: EntityType, eid: Eid, loc: MaybeLoc) -> Self {
         Self::EntityUID(EntityUIDImpl { ty, eid, loc })
     }
 

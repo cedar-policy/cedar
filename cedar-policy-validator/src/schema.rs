@@ -159,7 +159,7 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
 pub struct ValidatorType {
     ty: Type,
     #[cfg(feature = "extended-schema")]
-    loc: Option<Box<Loc>>,
+    loc: MaybeLoc,
 }
 
 impl ValidatorType {
@@ -173,7 +173,7 @@ impl ValidatorType {
     }
     /// New validator type with source location
     #[cfg(feature = "extended-schema")]
-    pub fn new_with_loc(ty: Type, loc: Option<Box<Loc>>) -> Self {
+    pub fn new_with_loc(ty: Type, loc: MaybeLoc) -> Self {
         Self { ty, loc }
     }
 }
@@ -188,11 +188,11 @@ pub struct ValidatorCommonType {
 
     /// Common type name source location if available
     #[educe(Eq(ignore))]
-    pub name_loc: Option<Box<Loc>>,
+    pub name_loc: MaybeLoc,
 
     /// Common type definition source location if available
     #[educe(Eq(ignore))]
-    pub type_loc: Option<Box<Loc>>,
+    pub type_loc: MaybeLoc,
 }
 
 #[cfg(feature = "extended-schema")]
@@ -216,11 +216,11 @@ pub struct ValidatorNamespace {
     pub name: SmolStr,
     /// Namespace name source location if available
     #[educe(Eq(ignore))]
-    pub name_loc: Option<Box<Loc>>,
+    pub name_loc: MaybeLoc,
 
     /// Namespace definition source location if available
     #[educe(Eq(ignore))]
-    pub def_loc: Option<Box<Loc>>,
+    pub def_loc: MaybeLoc,
 }
 
 /// Internal representation of the schema for use by the validator.
@@ -1158,7 +1158,7 @@ fn cedar_fragment(
 fn single_alias_in_empty_namespace(
     id: UnreservedId,
     def: InternalName,
-    loc: Option<Box<Loc>>,
+    loc: MaybeLoc,
 ) -> ValidatorSchemaFragment<ConditionalName, ConditionalName> {
     ValidatorSchemaFragment(vec![ValidatorNamespaceDef::from_common_type_def(
         None,

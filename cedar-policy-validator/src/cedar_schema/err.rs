@@ -451,8 +451,8 @@ pub enum ToJsonSchemaError {
 impl ToJsonSchemaError {
     pub(crate) fn duplicate_context(
         name: &impl ToSmolStr,
-        loc1: Option<Box<Loc>>,
-        loc2: Option<Box<Loc>>,
+        loc1: MaybeLoc,
+        loc2: MaybeLoc,
     ) -> Self {
         Self::DuplicateContext(DuplicateContext {
             name: name.to_smolstr(),
@@ -463,8 +463,8 @@ impl ToJsonSchemaError {
 
     pub(crate) fn duplicate_decls(
         decl: &impl ToSmolStr,
-        loc1: Option<Box<Loc>>,
-        loc2: Option<Box<Loc>>,
+        loc1: MaybeLoc,
+        loc2: MaybeLoc,
     ) -> Self {
         Self::DuplicateDeclarations(DuplicateDeclarations {
             decl: decl.to_smolstr(),
@@ -475,8 +475,8 @@ impl ToJsonSchemaError {
 
     pub(crate) fn duplicate_namespace(
         namespace_id: &impl ToSmolStr,
-        loc1: Option<Box<Loc>>,
-        loc2: Option<Box<Loc>>,
+        loc1: MaybeLoc,
+        loc2: MaybeLoc,
     ) -> Self {
         Self::DuplicateNamespaces(DuplicateNamespace {
             namespace_id: namespace_id.to_smolstr(),
@@ -487,8 +487,8 @@ impl ToJsonSchemaError {
 
     pub(crate) fn duplicate_principal(
         name: &impl ToSmolStr,
-        loc1: Option<Box<Loc>>,
-        loc2: Option<Box<Loc>>,
+        loc1: MaybeLoc,
+        loc2: MaybeLoc,
     ) -> Self {
         Self::DuplicatePrincipalOrResource(DuplicatePrincipalOrResource {
             name: name.to_smolstr(),
@@ -500,8 +500,8 @@ impl ToJsonSchemaError {
 
     pub(crate) fn duplicate_resource(
         name: &impl ToSmolStr,
-        loc1: Option<Box<Loc>>,
-        loc2: Option<Box<Loc>>,
+        loc1: MaybeLoc,
+        loc2: MaybeLoc,
     ) -> Self {
         Self::DuplicatePrincipalOrResource(DuplicatePrincipalOrResource {
             name: name.to_smolstr(),
@@ -511,7 +511,7 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn no_principal(name: &impl ToSmolStr, name_loc: Option<Box<Loc>>) -> Self {
+    pub(crate) fn no_principal(name: &impl ToSmolStr, name_loc: MaybeLoc) -> Self {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Principal,
             name: name.to_smolstr(),
@@ -520,7 +520,7 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn no_resource(name: &impl ToSmolStr, name_loc: Option<Box<Loc>>) -> Self {
+    pub(crate) fn no_resource(name: &impl ToSmolStr, name_loc: MaybeLoc) -> Self {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Resource,
             name: name.to_smolstr(),
@@ -531,8 +531,8 @@ impl ToJsonSchemaError {
 
     pub(crate) fn empty_principal(
         name: &impl ToSmolStr,
-        name_loc: Option<Box<Loc>>,
-        loc: Option<Box<Loc>>,
+        name_loc: MaybeLoc,
+        loc: MaybeLoc,
     ) -> Self {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Principal,
@@ -544,8 +544,8 @@ impl ToJsonSchemaError {
 
     pub(crate) fn empty_resource(
         name: &impl ToSmolStr,
-        name_loc: Option<Box<Loc>>,
-        loc: Option<Box<Loc>>,
+        name_loc: MaybeLoc,
+        loc: MaybeLoc,
     ) -> Self {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Resource,
@@ -555,14 +555,14 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn reserved_name(name: &impl ToSmolStr, loc: Option<Box<Loc>>) -> Self {
+    pub(crate) fn reserved_name(name: &impl ToSmolStr, loc: MaybeLoc) -> Self {
         Self::ReservedName(ReservedName {
             name: name.to_smolstr(),
             loc,
         })
     }
 
-    pub(crate) fn reserved_keyword(keyword: &impl ToSmolStr, loc: Option<Box<Loc>>) -> Self {
+    pub(crate) fn reserved_keyword(keyword: &impl ToSmolStr, loc: MaybeLoc) -> Self {
         Self::ReservedSchemaKeyword(ReservedSchemaKeyword {
             keyword: keyword.to_smolstr(),
             loc,
@@ -574,7 +574,7 @@ impl ToJsonSchemaError {
 #[error("this uses a reserved schema keyword: `{keyword}`")]
 pub struct ReservedSchemaKeyword {
     keyword: SmolStr,
-    loc: Option<Box<Loc>>,
+    loc: MaybeLoc,
 }
 
 impl Diagnostic for ReservedSchemaKeyword {
@@ -589,7 +589,7 @@ impl Diagnostic for ReservedSchemaKeyword {
 #[error("use of the reserved `__cedar` namespace")]
 pub struct ReservedName {
     name: SmolStr,
-    loc: Option<Box<Loc>>,
+    loc: MaybeLoc,
 }
 
 impl Diagnostic for ReservedName {
@@ -606,7 +606,7 @@ impl Diagnostic for ReservedName {
 #[error("unknown type name: `{name}`")]
 pub struct UnknownTypeName {
     name: SmolStr,
-    loc: Option<Box<Loc>>,
+    loc: MaybeLoc,
 }
 
 impl Diagnostic for UnknownTypeName {
@@ -626,8 +626,8 @@ impl Diagnostic for UnknownTypeName {
 pub struct DuplicatePrincipalOrResource {
     name: SmolStr,
     kind: PR,
-    loc1: Option<Box<Loc>>,
-    loc2: Option<Box<Loc>>,
+    loc1: MaybeLoc,
+    loc2: MaybeLoc,
 }
 
 impl Diagnostic for DuplicatePrincipalOrResource {
@@ -643,8 +643,8 @@ impl Diagnostic for DuplicatePrincipalOrResource {
 #[error("duplicate context declaration in action `{name}`")]
 pub struct DuplicateContext {
     name: SmolStr,
-    loc1: Option<Box<Loc>>,
-    loc2: Option<Box<Loc>>,
+    loc1: MaybeLoc,
+    loc2: MaybeLoc,
 }
 
 impl Diagnostic for DuplicateContext {
@@ -660,8 +660,8 @@ impl Diagnostic for DuplicateContext {
 #[error("`{decl}` is declared twice")]
 pub struct DuplicateDeclarations {
     decl: SmolStr,
-    loc1: Option<Box<Loc>>,
-    loc2: Option<Box<Loc>>,
+    loc1: MaybeLoc,
+    loc2: MaybeLoc,
 }
 
 impl Diagnostic for DuplicateDeclarations {
@@ -678,7 +678,7 @@ pub struct NoPrincipalOrResource {
     name: SmolStr,
     missing_or_empty: MissingOrEmpty,
     /// Loc of the action name
-    name_loc: Option<Box<Loc>>,
+    name_loc: MaybeLoc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -688,7 +688,7 @@ enum MissingOrEmpty {
     /// The declaration was present but defined as `[]`
     Empty {
         /// `Loc` of the declaration
-        loc: Option<Box<Loc>>,
+        loc: MaybeLoc,
     },
 }
 
@@ -736,8 +736,8 @@ impl Diagnostic for NoPrincipalOrResource {
 pub struct DuplicateNamespace {
     namespace_id: SmolStr,
     // `Loc`s are optional here as the implicit empty namespace has no location
-    loc1: Option<Box<Loc>>,
-    loc2: Option<Box<Loc>>,
+    loc1: MaybeLoc,
+    loc2: MaybeLoc,
 }
 
 impl Diagnostic for DuplicateNamespace {
@@ -760,7 +760,7 @@ pub mod schema_warnings {
     #[error("The name `{name}` shadows a builtin Cedar name. You'll have to refer to the builtin as `__cedar::{name}`.")]
     pub struct ShadowsBuiltinWarning {
         pub(crate) name: SmolStr,
-        pub(crate) loc: Option<Box<Loc>>,
+        pub(crate) loc: MaybeLoc,
     }
 
     impl Diagnostic for ShadowsBuiltinWarning {
@@ -780,8 +780,8 @@ pub mod schema_warnings {
     #[error("The common type name {name} shadows an entity name")]
     pub struct ShadowsEntityWarning {
         pub(crate) name: SmolStr,
-        pub(crate) entity_loc: Option<Box<Loc>>,
-        pub(crate) common_loc: Option<Box<Loc>>,
+        pub(crate) entity_loc: MaybeLoc,
+        pub(crate) common_loc: MaybeLoc,
     }
 
     impl Diagnostic for ShadowsEntityWarning {
