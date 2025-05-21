@@ -14,7 +14,15 @@
  * limitations under the License.
  */
 
-//! This module contains a partial specification for Cedar in Verus.
+//! This module contains spec data structures modeling the Cedar AST
 
-pub mod spec_ast;
-pub mod spec_authorizer;
+#![allow(missing_debug_implementations)] // vstd types Seq/Set/Map don't impl Debug
+#![allow(missing_docs)] // just for now
+#![allow(unused_imports)]
+
+pub use crate::spec::spec_ast::*;
+pub use crate::verus_utils::*;
+#[cfg(verus_keep_ghost)]
+pub use vstd::{map::*, prelude::*, seq::*, set::*};
+
+verus! {}

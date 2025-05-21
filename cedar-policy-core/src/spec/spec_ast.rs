@@ -202,5 +202,16 @@ pub struct Policy {
 
 pub type Policies = Seq<Policy>;
 
+//////////////////////////////////////////////////////
+// REQUESTS: see cedar-lean/Cedar/Spec/Request.lean //
+//////////////////////////////////////////////////////
+
+pub struct Request {
+    pub principal: EntityUID,
+    pub action: EntityUID,
+    pub resource: EntityUID,
+    pub context: Map<Attr, Value>,
+}
+
 
 } // verus!
