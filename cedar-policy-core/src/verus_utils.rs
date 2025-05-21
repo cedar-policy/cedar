@@ -23,6 +23,7 @@ use std::collections::HashSet;
 use std::hash::Hash;
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
+#[allow(unused_imports)]
 use vstd::std_specs::hash::*;
 
 // Specification macros

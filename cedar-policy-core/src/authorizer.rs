@@ -196,7 +196,6 @@ impl Authorizer {
         let mut residual_forbids = vec![];
         let mut errors = vec![];
 
-        // Verus doesn't support iterators for `PolicySet` here
         for p in pset.policies() {
             let (id, annotations) = (p.id().clone(), p.annotations_arc().clone());
             match eval.partial_evaluate(p) {

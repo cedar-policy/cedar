@@ -25,7 +25,7 @@ pub use vstd::{map::*, prelude::*, seq::*, set::*};
 verus! {
 
 //////////////////////////////////////////////////
-// VALUES: see cedar-spec/Cedar/Spec/Value.lean //
+// VALUES: see cedar-lean/Cedar/Spec/Value.lean //
 //////////////////////////////////////////////////
 
 pub type Id = Seq<char>;
@@ -43,26 +43,26 @@ pub struct EntityUID {
 }
 
 pub enum Prim {
-    Bool(bool),
-    Int(i64),
-    String(Seq<char>),
-    EntityUID(EntityUID),
+    Bool { b: bool },
+    Int { i: i64 },
+    String { s: Seq<char> },
+    EntityUID { uid: EntityUID },
 }
 
 pub type Attr = Seq<char>;
 
 
 pub enum Value {
-    Prim(Prim),
-    Set(FiniteSet<Value>), // TODO switch to vstd finite set when it lands
-    Record(Map<Attr, Value>),
-    // Ext(Ext) // TODO(Pratap): extensions
+    Prim { p: Prim },
+    Set { s: FiniteSet<Value> }, // TODO switch to vstd finite set when it lands
+    Record { m: Map<Attr, Value> },
+    // Ext { x: Ext } // TODO(Pratap): extensions
 }
 
 
 
 ///////////////////////////////////////////////////////
-// ENTITIES: see cedar-spec/Cedar/Spec/Entities.lean //
+// ENTITIES: see cedar-lean/Cedar/Spec/Entities.lean //
 ///////////////////////////////////////////////////////
 
 pub type Tag = Seq<char>;
@@ -76,6 +76,131 @@ pub struct EntityData {
 pub type Entities = Map<EntityUID, EntityData>;
 
 
+//////////////////////////////////////////////////////
+// EXPRESSIONS: see cedar-lean/Cedar/Spec/Expr.lean //
+//////////////////////////////////////////////////////
+
+pub enum Var {
+    Principal,
+    Action,
+    Resource,
+    Context
+}
+
+pub enum UnaryOp {
+    Not,
+    Neg,
+    IsEmpty,
+    // Like { p: Pattern }, // TODO(pratap): handle patterns later
+    Is { ety: EntityType },
+}
+
+pub enum BinaryOp {
+  Eq,
+  Mem, // represents Cedar's in operator
+  HasTag,
+  GetTag,
+  Less,
+  LessEq,
+  Add,
+  Sub,
+  Mul,
+  Contains,
+  ContainsAll,
+  ContainsAny,
+}
+
+pub enum Expr {
+    Lit { p: Prim },
+    Var { v: Var },
+    Ite {
+        cond: Box<Expr>,
+        then_expr: Box<Expr>,
+        else_expr: Box<Expr>,
+    },
+    And { a: Box<Expr>, b: Box<Expr> },
+    Or { a: Box<Expr>, b: Box<Expr> },
+    UnaryApp {
+        uop: UnaryOp,
+        expr: Box<Expr>,
+    },
+    BinaryApp {
+        bop: BinaryOp,
+        a: Box<Expr>,
+        b: Box<Expr>,
+    },
+    GetAttr {
+        expr: Box<Expr>,
+        attr: Attr,
+    },
+    HasAttr {
+        expr: Box<Expr>,
+        attr: Attr,
+    },
+    Set { ls: Seq<Expr> },
+    Record { map: Map<Attr, Expr> },
+    // Call { // TODO(Pratap): handle extension functions
+    //     xfn: ExtFun,
+    //     args: Seq<Expr>,
+    // },
+}
+
+
+
+/////////////////////////////////////////////////////
+// POLICIES: see cedar-lean/Cedar/Spec/Polciy.lean //
+/////////////////////////////////////////////////////
+
+pub enum Effect {
+    Permit,
+    Forbid
+}
+
+pub enum Scope {
+    Any,
+    Eq { entity: EntityUID },
+    Mem { entity: EntityUID },
+    Is { ety: EntityType },
+    IsMem { ety: EntityType, entity: EntityUID },
+}
+
+pub struct PrincipalScope {
+    pub principal_scope: Scope,
+}
+
+pub struct ResourceScope {
+    pub resource_scope: Scope,
+}
+
+pub enum ActionScope {
+    ActionScope { scope: Scope },
+    ActionInAny { ls: Seq<EntityUID> },
+}
+
+pub type PolicyID = Seq<char>;
+
+pub enum ConditionKind {
+    When,
+    Unless
+}
+
+pub struct Condition {
+    pub kind: ConditionKind,
+    pub body: Expr
+}
+
+pub type Conditions = Seq<Condition>;
+
+pub struct Policy {
+    pub id: PolicyID,
+    pub effect: Effect,
+    pub prinicpal_scope: PrincipalScope,
+    pub action_scope: ActionScope,
+    pub resource_scope: ResourceScope,
+    pub condition: Conditions,
+}
+
+pub type Policies = Seq<Policy>;
 
 
 } // verus!
