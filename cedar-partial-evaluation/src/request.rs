@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use anyhow::{anyhow, Ok};
 use cedar_policy_core::{
-    ast::{Eid, EntityType, EntityUID, PartialValue, Value},
+    ast::{Context, Eid, EntityType, EntityUID, EntityUIDEntry, PartialValue, Request, Value},
     entities::conformance::{is_valid_enumerated_entity, validate_euids_in_partial_value},
     extensions::Extensions,
 };
@@ -122,6 +122,104 @@ impl PartialRequest {
             Ok(())
         } else {
             Err(anyhow::anyhow!("action not found"))
+        }
+    }
+}
+
+/// A request builder based on a `PartialRequest`
+// TODO:
+// 1. add validation
+// 2. add a partial constructor that ensures `partial_request` is consistent with `env`
+#[derive(Debug, Clone)]
+pub struct RequestBuilder<'e> {
+    /// The `PartialRequest`
+    pub partial_request: PartialRequest,
+    /// Env used for validation
+    pub env: RequestEnv<'e>,
+}
+
+impl RequestBuilder<'_> {
+    /// Try to get a concrete `Request`
+    pub fn get_request(&self) -> Option<Request> {
+        let PartialRequest {
+            principal,
+            action,
+            resource,
+            context,
+        } = &self.partial_request;
+        match (
+            EntityUID::try_from(principal.clone()),
+            EntityUID::try_from(resource.clone()),
+            context,
+        ) {
+            (
+                std::result::Result::Ok(principal),
+                std::result::Result::Ok(resource),
+                Some(context),
+            ) => Some(Request::new_unchecked(
+                EntityUIDEntry::Known {
+                    euid: Arc::new(principal.clone()),
+                    loc: principal.loc().cloned(),
+                },
+                EntityUIDEntry::Known {
+                    euid: Arc::new(action.clone()),
+                    loc: action.loc().cloned(),
+                },
+                EntityUIDEntry::Known {
+                    euid: Arc::new(resource.clone()),
+                    loc: resource.loc().cloned(),
+                },
+                Some(Context::Value(context.clone())),
+            )),
+            _ => None,
+        }
+    }
+
+    /// Try to add a principal
+    pub fn add_principal(&mut self, candidate: &EntityUID) -> anyhow::Result<()> {
+        if let PartialEntityUID { eid: Some(_), .. } = &self.partial_request.principal {
+            return Err(anyhow!("principal exists"));
+        } else {
+            if candidate.entity_type() != &self.partial_request.principal.ty {
+                return Err(anyhow!("mismatched principal entity type"));
+            } else {
+                self.partial_request.principal = PartialEntityUID {
+                    ty: candidate.entity_type().clone(),
+                    eid: Some(candidate.eid().clone()),
+                };
+                Ok(())
+            }
+        }
+    }
+
+    /// Try to add a resource
+    pub fn add_resource(&mut self, candidate: &EntityUID) -> anyhow::Result<()> {
+        if let PartialEntityUID { eid: Some(_), .. } = &self.partial_request.resource {
+            return Err(anyhow!("resource exists"));
+        } else {
+            if candidate.entity_type() != &self.partial_request.resource.ty {
+                return Err(anyhow!("mismatched resource entity type"));
+            } else {
+                self.partial_request.resource = PartialEntityUID {
+                    ty: candidate.entity_type().clone(),
+                    eid: Some(candidate.eid().clone()),
+                };
+                Ok(())
+            }
+        }
+    }
+
+    /// Try add `Context`
+    pub fn add_context(&mut self, candidate: &Context) -> anyhow::Result<()> {
+        if let Context::Value(v) = candidate {
+            if let Some(_) = &self.partial_request.context {
+                return Err(anyhow!("context already exists"));
+            } else {
+                self.partial_request.context = Some(v.clone());
+                Ok(())
+            }
+        } else {
+            return Err(anyhow!("invalid context"));
         }
     }
 }
