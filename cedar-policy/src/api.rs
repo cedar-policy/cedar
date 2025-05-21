@@ -23,6 +23,7 @@
 )]
 
 mod id;
+use cedar_policy_core::parser::err::MissingSourceCodeInfoError;
 #[cfg(feature = "entity-manifest")]
 use cedar_policy_validator::entity_manifest;
 // TODO (#1157) implement wrappers for these structs before they become public
@@ -2972,7 +2973,7 @@ impl Template {
         let ast = parser::parse_template(id.map(Into::into), src.as_ref())?;
         Ok(Self {
             ast,
-            lossless: LosslessPolicy::policy_or_template_text(src.as_ref()),
+            lossless: LosslessPolicy::policy_or_template_text(Some(src.as_ref())),
         })
     }
 
@@ -3147,6 +3148,7 @@ impl Template {
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> String {
         match &self.lossless {
+            LosslessPolicy::Empty => String::new(),
             LosslessPolicy::Est(_) => self.ast.to_string(),
             LosslessPolicy::Text { text, .. } => text.clone(),
         }
@@ -3477,7 +3479,7 @@ impl Policy {
         let (_, ast) = ast::Template::link_static_policy(inline_ast);
         Ok(Self {
             ast,
-            lossless: LosslessPolicy::policy_or_template_text(policy_src.as_ref()),
+            lossless: LosslessPolicy::policy_or_template_text(Some(policy_src.as_ref())),
         })
     }
 
@@ -3656,6 +3658,7 @@ impl Policy {
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> Option<String> {
         match &self.lossless {
+            LosslessPolicy::Empty => None,
             LosslessPolicy::Est(_) => Some(self.ast.to_string()),
             LosslessPolicy::Text { text, slots } => {
                 if slots.is_empty() {
@@ -3691,7 +3694,7 @@ impl Policy {
         let text = ast.to_string(); // assume that pretty-printing is faster than `est::Policy::from(ast.clone())`; is that true?
         Self {
             ast,
-            lossless: LosslessPolicy::policy_or_template_text(text),
+            lossless: LosslessPolicy::policy_or_template_text(Some(text)),
         }
     }
 }
@@ -3722,6 +3725,8 @@ impl FromStr for Policy {
 /// This structure can be used for static policies, linked policies, and templates.
 #[derive(Debug, Clone)]
 pub(crate) enum LosslessPolicy {
+    /// An empty representation
+    Empty,
     /// EST representation
     Est(est::Policy),
     /// Text representation
@@ -3737,16 +3742,21 @@ pub(crate) enum LosslessPolicy {
 
 impl LosslessPolicy {
     /// Create a new `LosslessPolicy` from the text of a policy or template.
-    fn policy_or_template_text(text: impl Into<String>) -> Self {
-        Self::Text {
-            text: text.into(),
-            slots: HashMap::new(),
+    fn policy_or_template_text(text: Option<impl Into<String>>) -> Self {
+        match text {
+            None => Self::Empty,
+            Some(text) => Self::Text {
+                text: text.into(),
+                slots: HashMap::new(),
+            }
         }
     }
 
     /// Get the EST representation of this static policy, linked policy, or template
     fn est(&self) -> Result<est::Policy, PolicyToJsonError> {
         match self {
+            Self::Empty => todo!(),
+            // Self::Empty => Err(PolicyToJsonError::Parse(MissingSourceCodeInfoError.into())),
             Self::Est(est) => Ok(est.clone()),
             Self::Text { text, slots } => {
                 let est =
@@ -3766,6 +3776,7 @@ impl LosslessPolicy {
         vals: impl IntoIterator<Item = (ast::SlotId, &'a ast::EntityUID)>,
     ) -> Result<Self, est::LinkingError> {
         match self {
+            Self::Empty => Ok(Self::Empty),
             Self::Est(est) => {
                 let unwrapped_est_vals: HashMap<
                     ast::SlotId,
@@ -3788,6 +3799,7 @@ impl LosslessPolicy {
 impl std::fmt::Display for LosslessPolicy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Empty => Err(std::fmt::Error),
             Self::Est(est) => write!(f, "{est}"),
             Self::Text { text, slots } => {
                 if slots.is_empty() {
