@@ -28,6 +28,17 @@ verus! {
 // VALUES: see cedar-lean/Cedar/Spec/Value.lean //
 //////////////////////////////////////////////////
 
+pub enum Error {
+  EntityDoesNotExist,
+  AttrDoesNotExist,
+  TagDoesNotExist,
+  TypeError,
+  ArithBoundsError,
+  ExtensionError,
+}
+
+pub type SpecResult<T> = Result<T, Error>;
+
 pub type Id = Seq<char>;
 
 pub struct Name {
