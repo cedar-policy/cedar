@@ -283,7 +283,7 @@ impl Policy {
         let mut conditions_iter = self
             .conditions
             .into_iter()
-            .map(|cond| cond.try_into_ast(id.clone()));
+            .map(|cond| cond.try_into_ast(&id));
         let conditions = match conditions_iter.next() {
             None => ast::Expr::val(true),
             Some(first) => ast::ExprBuilder::with_data(())
@@ -325,7 +325,7 @@ impl Clause {
         }
     }
     /// `id` is the ID of the policy the clause belongs to, used only for reporting errors
-    fn try_into_ast(self, id: ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
+    fn try_into_ast(self, id: &ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
         match self {
             Clause::When(expr) => Self::filter_slots(expr.try_into_ast(id)?, true),
             Clause::Unless(expr) => {
