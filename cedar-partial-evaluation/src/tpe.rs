@@ -387,18 +387,15 @@ when { principal in resource.editors };
                     "parents" : [{"type": "Application", "id": "TinyTodo"}],
                 },
                 // We need actions explicitly in the entity
-                // TODO: fix actions parsing
-                /*
                 {
                     "uid" : {
                         "type" : "Action",
                         "id": "GetList",
-                        "parents" : [],
-                        "attributes" : {},
-                        "tags" : {},
-                    }
-                }
-                */
+                    },
+                    "parents" : [],
+                    "attrs" : {},
+                    "tags" : {},
+                },
             ]),
             &schema(),
         )

@@ -16,7 +16,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use anyhow::Ok;
+use anyhow::{anyhow, Ok};
 use cedar_policy_core::{
     ast::PartialValue,
     entities::{conformance::EntitySchemaConformanceChecker, Schema},
@@ -88,11 +88,41 @@ pub struct PartialEntity {
 }
 
 pub fn parse_ejson(e: EntityJson, schema: &ValidatorSchema) -> anyhow::Result<PartialEntity> {
-    //TODO: parse action
     let uid = e
         .uid
         .into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
     let core_schema = CoreSchema::new(schema);
+
+    if uid.is_action() {
+        if e.attrs.is_none() || e.parents.is_none() || e.tags.is_none() {
+            return Err(anyhow!("actions can't have unknown attrs/parents/tags"));
+        }
+        if let Some(attrs) = &e.attrs {
+            if !attrs.map.is_empty() {
+                return Err(anyhow!("actions can't have attrs"));
+            }
+        }
+        if let Some(tags) = &e.tags {
+            if !tags.map.is_empty() {
+                return Err(anyhow!("actions can't have tags"));
+            }
+        }
+        let mut parents = HashSet::new();
+        if let Some(es) = &e.parents {
+            for e in es {
+                parents.insert(
+                    e.clone()
+                        .into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
+                );
+            }
+        }
+        return Ok(PartialEntity {
+            uid,
+            attrs: Some(BTreeMap::default()),
+            ancestors: Some(parents),
+            tags: Some(BTreeMap::default()),
+        });
+    }
     let vparser = ValueParser::new(Extensions::all_available());
     let eval = RestrictedEvaluator::new(Extensions::all_available());
     let attrs = e
@@ -216,11 +246,39 @@ impl PartialEntity {
     }
 
     pub(crate) fn validate(&self, schema: &ValidatorSchema) -> anyhow::Result<()> {
-        //TODO: validate action
         let core_schema = CoreSchema::new(schema);
         let uid = &self.uid;
         let etype = uid.entity_type();
 
+        if self.uid.is_action() {
+            if self.attrs.is_none() || self.tags.is_none() {
+                return Err(anyhow!("actions can't have unknown attrs or tags"));
+            }
+            if let Some(attrs) = &self.attrs {
+                if !attrs.is_empty() {
+                    return Err(anyhow!("actions can't have attrs"));
+                }
+            }
+            if let Some(tags) = &self.tags {
+                if !tags.is_empty() {
+                    return Err(anyhow!("actions can't have tags"));
+                }
+            }
+            if let Some(action) = core_schema.action(uid) {
+                if let Some(ancestors) = &self.ancestors {
+                    let schema_ancestors: HashSet<EntityUID> =
+                        action.ancestors().cloned().collect();
+                    if &schema_ancestors != ancestors {
+                        return Err(anyhow!("action ancestors doesn't conform to schema"));
+                    }
+                } else {
+                    return Err(anyhow!("actions can't have unknown ancestors"));
+                }
+            } else {
+                return Err(anyhow!("action not found in schema"));
+            }
+            return Ok(());
+        }
         validate_euid(&core_schema, uid)
             .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
         let schema_etype = core_schema.entity_type(etype).ok_or_else(|| {
