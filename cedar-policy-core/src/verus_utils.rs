@@ -115,4 +115,11 @@ pub fn vec_is_empty<T>(v: &Vec<T>) -> (res: bool)
 //         res <==> v@.len() == 0,
 // ;
 
+// Analogous to Lean's `List.filterMap` (https://lean-lang.org/doc/reference/latest//Basic-Types/Linked-Lists/#List___filterMap)
+pub open spec fn seq_filter_map_option<A, B>(s: Seq<A>, f: spec_fn(A) -> Option<B>) -> Seq<B> {
+    s.map_values(f)
+     .filter(|x: Option<B>| x is Some)
+     .map_values(|x: Option<B>| x.unwrap())
 }
+
+} // verus!

@@ -211,6 +211,11 @@ pub struct Policy {
     pub condition: Conditions,
 }
 
+impl Policy {
+    // TODO(Pratap): implement as part of evaluator
+    pub uninterp spec fn toExpr(self) -> Expr;
+}
+
 pub type Policies = Seq<Policy>;
 
 //////////////////////////////////////////////////////
@@ -224,5 +229,19 @@ pub struct Request {
     pub context: Map<Attr, Value>,
 }
 
+////////////////////////////////////////////////////////
+// RESPONSES: see cedar-lean/Cedar/Spec/Response.lean //
+////////////////////////////////////////////////////////
+
+pub enum Decision {
+    Allow,
+    Deny
+}
+
+pub struct Response {
+    pub decision: Decision,
+    pub determining_policies: Set<PolicyID>,
+    pub erroring_policies: Set<PolicyID>
+}
 
 } // verus!
