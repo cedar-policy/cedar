@@ -18,7 +18,7 @@
 
 use cedar_policy_core::{
     ast::{self, EntityType, EntityUID, PartialValue},
-    parser::Loc,
+    parser::{AsLocRef, Loc, MaybeLoc},
     transitive_closure::TCNode,
 };
 use smol_str::SmolStr;
@@ -100,7 +100,7 @@ impl ValidatorActionId {
 
     /// The source location if available
     pub fn loc(&self) -> Option<&Loc> {
-        self.loc.as_deref()
+        self.loc.as_loc_ref()
     }
 
     /// Iterator over the actions that are members of this action

@@ -17,7 +17,7 @@
 use crate::schema::AllDefs;
 use crate::schema_errors::TypeNotDefinedError;
 use cedar_policy_core::ast::{Id, InternalName, Name, UnreservedId};
-use cedar_policy_core::parser::Loc;
+use cedar_policy_core::parser::{Loc, MaybeLoc};
 use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};

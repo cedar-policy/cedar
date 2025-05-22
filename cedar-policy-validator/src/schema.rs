@@ -24,7 +24,7 @@ use cedar_policy_core::{
     ast::{Entity, EntityType, EntityUID, InternalName, Name, UnreservedId},
     entities::{err::EntitiesError, Entities, TCComputation},
     extensions::Extensions,
-    parser::Loc,
+    parser::{IntoMaybeLoc, Loc, MaybeLoc},
     transitive_closure::compute_tc,
 };
 use educe::Educe;
@@ -697,7 +697,7 @@ impl ValidatorSchema {
                             name.clone(),
                             descendants,
                             choices,
-                            name.loc().as_deref().map(|loc| Box::new(loc.clone())),
+                            name.loc().into_maybe_loc(),
                         ),
                     )),
                     EntityTypeFragment::Standard {
@@ -706,7 +706,7 @@ impl ValidatorSchema {
                         tags,
                     } => {
                         let (attributes, open_attributes) = {
-                            let attr_loc = attributes.0.loc().as_deref().map(|loc| Box::new(loc.clone()));
+                            let attr_loc = attributes.0.loc().into_maybe_loc();
                             let unresolved = try_jsonschema_type_into_validator_type(
                                 attributes.0,
                                 extensions,
@@ -723,7 +723,7 @@ impl ValidatorSchema {
                         };
                         let tags = tags
                             .map(|tags| {
-                                let tags_loc = tags.loc().as_deref().map(|loc| Box::new(loc.clone()));
+                                let tags_loc = tags.loc().into_maybe_loc();
                                 try_jsonschema_type_into_validator_type(tags, extensions, tags_loc)
                             })
                             .transpose()?
@@ -738,7 +738,7 @@ impl ValidatorSchema {
                                 attributes,
                                 open_attributes,
                                 tags.map(|t| t.ty),
-                                name.loc().as_deref().map(|loc| Box::new(loc.clone())),
+                                name.loc().into_maybe_loc(),
                             ),
                         ))
                     }
@@ -760,7 +760,7 @@ impl ValidatorSchema {
             .map(|(name, action)| -> Result<_> {
                 let descendants = action_children.remove(&name).unwrap_or_default();
                 let (context, open_context_attributes) = {
-                    let context_loc = action.context.loc().as_deref().map(|loc| Box::new(loc.clone()));
+                    let context_loc = action.context.loc().into_maybe_loc();
                     let unresolved = try_jsonschema_type_into_validator_type(
                         action.context,
                         extensions,
@@ -1576,7 +1576,7 @@ impl<'a> CommonTypeResolver<'a> {
             let ty = self.defs.get(name).unwrap();
             let substituted_ty = Self::resolve_type(&resolve_table, ty.clone())?;
             resolve_table.insert(name, substituted_ty.clone());
-            let substituted_ty_loc = substituted_ty.loc().as_deref().map(|loc| Box::new(loc.clone()));
+            let substituted_ty_loc = substituted_ty.loc().into_maybe_loc();
             let validator_type = try_jsonschema_type_into_validator_type(
                 substituted_ty,
                 extensions,

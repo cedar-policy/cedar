@@ -24,7 +24,7 @@ use std::fmt::Display;
 
 use cedar_policy_core::fuzzy_match::fuzzy_search;
 use cedar_policy_core::impl_diagnostic_from_source_loc_opt_field;
-use cedar_policy_core::parser::Loc;
+use cedar_policy_core::parser::{Loc, MaybeLoc};
 
 use std::collections::BTreeSet;
 

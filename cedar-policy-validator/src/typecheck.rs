@@ -38,7 +38,7 @@ use crate::{
     ValidationError, ValidationMode, ValidationWarning,
 };
 
-use cedar_policy_core::fuzzy_match::fuzzy_search;
+use cedar_policy_core::{fuzzy_match::fuzzy_search, parser::IntoMaybeLoc};
 use cedar_policy_core::{
     ast::{
         BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
@@ -122,7 +122,7 @@ impl<'a> Typechecker<'a> {
         // possibly apply to any request.
         if all_false {
             warnings.insert(ValidationWarning::impossible_policy(
-                t.loc().as_deref().map(|loc| Box::new(loc.clone())),
+                t.loc().into_maybe_loc(),
                 t.id().clone(),
             ));
         }

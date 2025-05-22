@@ -18,7 +18,7 @@ use std::{collections::BTreeMap, iter::once};
 
 use cedar_policy_core::{
     ast::{Annotation, Annotations, AnyId, Id, InternalName},
-    parser::{Loc, Node},
+    parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc, Node},
 };
 use itertools::{Either, Itertools};
 use nonempty::NonEmpty;
@@ -84,20 +84,20 @@ pub fn deduplicate_annotations<T>(
 pub struct Path(Node<PathInternal>);
 impl Path {
     /// Create a [`Path`] with a single entry
-    pub fn single(basename: Id, loc: Loc) -> Self {
-        Self(Node::with_source_loc(
+    pub fn single(basename: Id, loc: MaybeLoc) -> Self {
+        Self(Node::with_maybe_source_loc(
             PathInternal {
                 basename,
                 namespace: vec![],
             },
-            Box::new(loc),
+            loc,
         ))
     }
 
     /// Create [`Path`] with a head and an iterator. Most significant name first.
-    pub fn new(basename: Id, namespace: impl IntoIterator<Item = Id>, loc: Box<Loc>) -> Self {
+    pub fn new(basename: Id, namespace: impl IntoIterator<Item = Id>, loc: MaybeLoc) -> Self {
         let namespace = namespace.into_iter().collect();
-        Self(Node::with_source_loc(
+        Self(Node::with_maybe_source_loc(
             PathInternal {
                 basename,
                 namespace,
@@ -113,7 +113,7 @@ impl Path {
 
     /// Source [`Loc`] of this [`Path`]
     pub fn loc(&self) -> Option<&Loc> {
-        self.0.loc.as_deref()
+        self.0.loc.as_loc_ref()
     }
 
     /// Consume the [`Path`] and get an owned iterator over the elements. Most significant name first

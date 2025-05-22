@@ -26,9 +26,7 @@ use cedar_policy_core::{
     ast::AnyId,
     impl_diagnostic_from_source_loc_opt_field, impl_diagnostic_from_two_source_loc_opt_fields,
     parser::{
-        err::{expected_to_string, ExpectedTokenConfig},
-        unescape::UnescapeError,
-        Loc, Node,
+        err::{expected_to_string, ExpectedTokenConfig}, unescape::UnescapeError, AsLocRef, Loc, MaybeLoc, Node
     },
 };
 use lalrpop_util as lalr;
@@ -56,11 +54,11 @@ impl UserError {
     // Extract a primary source span locating the error.
     pub(crate) fn primary_source_span(&self) -> Option<SourceSpan> {
         match self {
-            Self::EmptyList(n) => n.loc.as_deref().map(|loc| loc.span),
-            Self::StringEscape(n) => n.loc.as_deref().map(|loc| loc.span),
-            Self::ReservedIdentifierUsed(n) => n.loc.as_deref().map(|loc| loc.span),
+            Self::EmptyList(n) => n.loc.as_loc_ref().map(|loc| loc.span),
+            Self::StringEscape(n) => n.loc.as_loc_ref().map(|loc| loc.span),
+            Self::ReservedIdentifierUsed(n) => n.loc.as_loc_ref().map(|loc| loc.span),
             // use the first occurrence as the primary source span
-            Self::DuplicateAnnotations(_, n, _) => n.loc.as_deref().map(|loc| loc.span),
+            Self::DuplicateAnnotations(_, n, _) => n.loc.as_loc_ref().map(|loc| loc.span),
         }
     }
 }
@@ -210,7 +208,7 @@ impl Diagnostic for ParseError {
             } => {
                 let spans: Vec<_> = [&n1.loc, &n2.loc]
                     .into_iter()
-                    .filter_map(|opt_loc| opt_loc.as_deref())
+                    .filter_map(|opt_loc| opt_loc.as_loc_ref())
                     .map(|loc| LabeledSpan::underline(loc.span))
                     .collect();
 
@@ -704,15 +702,15 @@ impl Diagnostic for NoPrincipalOrResource {
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         match &self.missing_or_empty {
-            MissingOrEmpty::Missing => self.name_loc.as_deref().map(|loc| {
+            MissingOrEmpty::Missing => self.name_loc.as_loc_ref().map(|loc| {
                 Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span))) as _
             }),
             MissingOrEmpty::Empty { loc } => {
                 // also underline the bad declaration
-                let action_name = self.name_loc.as_deref().map(|loc| {
+                let action_name = self.name_loc.as_loc_ref().map(|loc| {
                     miette::LabeledSpan::new_with_span(Some("for this action".into()), loc.span)
                 });
-                let decl = loc.as_deref().map(|loc| {
+                let decl = loc.as_loc_ref().map(|loc| {
                     miette::LabeledSpan::new_with_span(Some("must not be `[]`".into()), loc.span)
                 });
                 let spans: Vec<_> = [action_name, decl].into_iter().flatten().collect();
@@ -746,7 +744,7 @@ impl Diagnostic for DuplicateNamespace {
 
 /// Error subtypes for [`SchemaWarning`]
 pub mod schema_warnings {
-    use cedar_policy_core::{impl_diagnostic_from_source_loc_opt_field, parser::Loc};
+    use cedar_policy_core::{impl_diagnostic_from_source_loc_opt_field, parser::{AsLocRef, Loc, MaybeLoc}};
     use miette::Diagnostic;
     use smol_str::SmolStr;
     use thiserror::Error;
@@ -788,7 +786,7 @@ pub mod schema_warnings {
         fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
             let spans: Vec<_> = [&self.entity_loc, &self.common_loc]
                 .into_iter()
-                .filter_map(|loc| loc.as_deref())
+                .filter_map(|loc| loc.as_loc_ref())
                 .map(miette::LabeledSpan::underline)
                 .collect();
 

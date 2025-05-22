@@ -28,7 +28,7 @@ use cedar_policy_core::{
     evaluator::RestrictedEvaluator,
     extensions::Extensions,
     fuzzy_match::fuzzy_search,
-    parser::Loc,
+    parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc},
 };
 use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
@@ -668,7 +668,7 @@ impl ActionsDef<ConditionalName, ConditionalName> {
                         action_type.clone(),
                         schema_namespace,
                         extensions,
-                        action_type.loc.as_deref(),
+                        action_type.loc.as_loc_ref(),
                     )?;
                     ventry.insert(frag);
                 }
@@ -942,8 +942,8 @@ impl<T: 'static> WithUnresolvedCommonTypeRefs<T> {
 
     pub fn loc(&self) -> Option<&Loc> {
         match self {
-            WithUnresolvedCommonTypeRefs::WithUnresolved(_, loc) => loc.as_deref(),
-            WithUnresolvedCommonTypeRefs::WithoutUnresolved(_, loc) => loc.as_deref(),
+            WithUnresolvedCommonTypeRefs::WithUnresolved(_, loc) => loc.as_loc_ref(),
+            WithUnresolvedCommonTypeRefs::WithoutUnresolved(_, loc) => loc.as_loc_ref(),
         }
     }
 

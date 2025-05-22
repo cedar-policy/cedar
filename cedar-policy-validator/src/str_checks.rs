@@ -15,7 +15,7 @@
  */
 
 use cedar_policy_core::ast::{PolicyID, Template};
-use cedar_policy_core::parser::Loc;
+use cedar_policy_core::parser::{IntoMaybeLoc, Loc};
 
 use crate::expr_iterator::expr_text;
 use crate::expr_iterator::TextKind;
