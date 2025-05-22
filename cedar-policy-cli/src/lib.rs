@@ -24,6 +24,7 @@ use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use colored::Colorize;
 use miette::{miette, Diagnostic, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufReader, Write};
 use std::{
     collections::HashMap,
@@ -1471,13 +1472,63 @@ pub fn partial_authorize(args: &PartiallyAuthorizeArgs) -> CedarExitCode {
     }
 }
 
+enum TestResult {
+    Pass,
+    Warning,
+    Fail,
+}
+
+/// Compare the test's expected decision against the actual decision
+fn compare_test_decisions(
+    test: &TestCase,
+    ans: &Response,
+) -> TestResult {
+    if ans.decision() == test.expected {
+        // Check for warnings
+        let mut warnings = Vec::new();
+        let reason = ans.diagnostics().reason().collect::<BTreeSet<_>>();
+
+        // Check that the declared reason is a subset of the actual reason
+        let missing_reason = test.reason.iter()
+            .filter(|r| !reason.contains(&PolicyId::new(r)))
+            .collect::<Vec<_>>();
+
+        if !missing_reason.is_empty() {
+            warnings.push(format!("missing reason(s): {}",
+                missing_reason.into_iter().cloned().collect::<Vec<_>>().join(", ")));
+        }
+
+        // Check that evaluation errors are expected
+        let has_error = ans.diagnostics().errors().next().is_some();
+        if has_error && !test.has_error {
+            warnings.push(format!("unexpected runtime error(s): {}",
+                ans.diagnostics().errors().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")));
+        } else if !has_error && test.has_error {
+            warnings.push("expected error(s) but none were found".to_string());
+        }
+
+        if warnings.is_empty() {
+            println!("{}", "ok".green());
+            TestResult::Pass
+        } else {
+            println!("{}: {}",
+                "warning(s)".yellow(),
+                warnings.join("; "));
+            TestResult::Warning
+        }
+    } else {
+        println!("{}: expected {:?}, got {:?}", "fail".red(), test.expected, ans.decision());
+        TestResult::Fail
+    }
+}
+
 /// Parse the test, validate against schema,
 /// and then check the authorization decision
 fn run_one_test(
     policies: &PolicySet,
     schema: Option<&Schema>,
     test: &serde_json::Value,
-) -> bool {
+) -> TestResult {
     if let Some(name) = test["name"].as_str() {
         print!("  test {} ... ", name);
     } else {
@@ -1489,19 +1540,13 @@ fn run_one_test(
         Err(e) => {
             println!("{}:", "error".red());
             println!("{e:?}");
-            return false;
+            return TestResult::Fail;
         }
     };
 
     let ans = Authorizer::new().is_authorized(&test.request, &policies, &test.entities);
 
-    if ans.decision() == test.expected {
-        println!("{}", "ok".green());
-        true
-    } else {
-        println!("{}: expected {:?}, got {:?}", "fail".red(), test.expected, ans.decision());
-        false
-    }
+    compare_test_decisions(&test, &ans)
 }
 
 fn run_tests_inner(
@@ -1509,29 +1554,40 @@ fn run_tests_inner(
 ) -> Result<CedarExitCode> {
     let policies = args.policies.get_policy_set()?;
     let schema = args.schema.get_schema()?;
-    let tests = load_tests(&args.tests)?;
+    let tests = load_partial_tests(&args.tests)?;
 
     let mut total_fails: usize = 0;
+    let mut total_warnings: usize = 0;
 
     println!("running {} test(s)", tests.len());
     for test in tests.iter() {
-        if !run_one_test(&policies, Some(&schema), test) {
-            total_fails += 1;
+        match run_one_test(&policies, Some(&schema), test) {
+            TestResult::Pass => {}
+            TestResult::Warning => total_warnings += 1,
+            TestResult::Fail => total_fails += 1,
         }
     }
 
-    println!("results: {} {}, {} {}",
-        tests.len() - total_fails,
-        if total_fails != 0 {
-            "passed".normal()
-        } else {
+    println!("results: {} {}, {} {}, {} {}",
+        tests.len() - total_fails - total_warnings,
+        if total_fails == 0 && total_warnings == 0 {
             "passed".green()
+        } else {
+            "passed".normal()
         },
+
         total_fails,
         if total_fails != 0 {
             "failed".red()
         } else {
             "failed".normal()
+        },
+
+        total_warnings,
+        if total_warnings != 0 {
+            "warning(s)".yellow()
+        } else {
+            "warning(s)".normal()
         },
     );
 
@@ -1557,6 +1613,8 @@ struct TestCase {
     request: Request,
     entities: Entities,
     expected: Decision,
+    reason: Vec<String>,
+    has_error: bool,
 }
 
 #[derive(Error, Diagnostic, Debug)]
@@ -1604,16 +1662,25 @@ impl TestCase {
             _ => return Err(TestCaseError::DecisionParseError(json["decision"].clone())),
         };
 
+        let mut reason = Vec::new();        
+        if let Some(reason_json) = json["reason"].as_array() {
+            reason.extend(reason_json.iter()
+                .filter_map(|r| Some(r.as_str()?.to_string())));
+        }
+
         Ok(Self {
             request,
             entities,
             expected,
+            reason,
+            has_error: json["has_error"].as_bool().unwrap_or(false),
         })
     }
 }
 
-/// Load tests from a JSON file (as JSON values first without parsing to TestCase)
-fn load_tests(tests_filename: impl AsRef<Path>) -> Result<Vec<serde_json::Value>> {
+/// Load partially parsed tests from a JSON file
+/// (as JSON values first without parsing to TestCase)
+fn load_partial_tests(tests_filename: impl AsRef<Path>) -> Result<Vec<serde_json::Value>> {
     match std::fs::OpenOptions::new()
         .read(true)
         .open(tests_filename.as_ref())
