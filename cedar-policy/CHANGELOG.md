@@ -33,7 +33,7 @@ Cedar Language Version: TBD
   schema can be retrieved using `Validator::schema`. (#1584)
 - Bumped MSRV to 1.82 (#1611)
 
-## [4.4.1] - Coming soon
+## [4.4.1] - 2025-05-22
 
 Cedar Language Version: 4.3
 
