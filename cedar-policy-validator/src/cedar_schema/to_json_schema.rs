@@ -318,7 +318,7 @@ fn convert_app_decls(
                     None => {
                         return Err(ToJsonSchemaError::empty_principal(
                             name,
-                            name_loc.as_deref().map(|loc| Box::new(loc.clone())),
+                            name_loc.into_maybe_loc(),
                             loc,
                         )
                         .into())
@@ -350,7 +350,7 @@ fn convert_app_decls(
                 None => match entity_tys {
                     None => {
                         return Err(
-                            ToJsonSchemaError::empty_resource(name, name_loc.as_deref().map(|loc| Box::new(loc.clone())), loc).into(),
+                            ToJsonSchemaError::empty_resource(name, name_loc.into_maybe_loc(), loc).into(),
                         )
                     }
                     Some(entity_tys) => {
@@ -366,10 +366,10 @@ fn convert_app_decls(
     Ok(json_schema::ApplySpec {
         resource_types: resource_types
             .map(|node| node.node)
-            .ok_or_else(|| ToJsonSchemaError::no_resource(&name, name_loc.as_deref().map(|loc| Box::new(loc.clone()))))?,
+            .ok_or_else(|| ToJsonSchemaError::no_resource(&name, name_loc.into_maybe_loc()))?,
         principal_types: principal_types
             .map(|node| node.node)
-            .ok_or_else(|| ToJsonSchemaError::no_principal(&name, name_loc.as_deref().map(|loc| Box::new(loc.clone()))))?,
+            .ok_or_else(|| ToJsonSchemaError::no_principal(&name, name_loc.into_maybe_loc()))?,
         context: context.map(|c| c.node).unwrap_or_default(),
     })
 }

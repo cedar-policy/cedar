@@ -32,7 +32,7 @@ use crate::{
         Name, RepresentableExtensionValue, RestrictedExpr, Type, Value, ValueKind,
     },
     entities::SchemaType,
-    evaluator::{self, EvaluationError},
+    evaluator::{self, EvaluationError}, parser::IntoMaybeLoc,
 };
 
 const DATETIME_EXTENSION_NAME: &str = "datetime";
@@ -100,7 +100,7 @@ where
 {
     let s = arg.get_as_string()?;
     let ext_value: Ext = constructor(s)?;
-    let arg_source_loc = arg.source_loc().as_deref().map(|loc| Box::new(loc.clone()));
+    let arg_source_loc = arg.source_loc().into_maybe_loc();
     let e = RepresentableExtensionValue::new(
         Arc::new(ext_value),
         constructor_name,

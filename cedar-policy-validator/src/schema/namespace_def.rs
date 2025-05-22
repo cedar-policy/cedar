@@ -784,7 +784,7 @@ impl ActionFragment<ConditionalName, ConditionalName> {
                 .collect(),
             attribute_types,
             attributes,
-            loc: loc.as_deref().map(|loc| Box::new(loc.clone())),
+            loc: loc.into_maybe_loc(),
         })
     }
 

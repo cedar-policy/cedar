@@ -16,7 +16,7 @@
 
 use crate::ast::*;
 use crate::extensions::ExtensionFunctionLookupError;
-use crate::parser::{Loc, MaybeLoc};
+use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
 use smol_str::SmolStr;
@@ -105,19 +105,19 @@ impl EvaluationError {
     /// Extract the source location of the error, if one is attached
     pub(crate) fn source_loc(&self) -> Option<&Loc> {
         match self {
-            Self::EntityDoesNotExist(e) => e.source_loc.as_deref(),
-            Self::EntityAttrDoesNotExist(e) => e.source_loc.as_deref(),
-            Self::RecordAttrDoesNotExist(e) => e.source_loc.as_deref(),
+            Self::EntityDoesNotExist(e) => e.source_loc.as_loc_ref(),
+            Self::EntityAttrDoesNotExist(e) => e.source_loc.as_loc_ref(),
+            Self::RecordAttrDoesNotExist(e) => e.source_loc.as_loc_ref(),
             Self::FailedExtensionFunctionLookup(e) => e.source_loc(),
-            Self::TypeError(e) => e.source_loc.as_deref(),
-            Self::WrongNumArguments(e) => e.source_loc.as_deref(),
+            Self::TypeError(e) => e.source_loc.as_loc_ref(),
+            Self::WrongNumArguments(e) => e.source_loc.as_loc_ref(),
             Self::IntegerOverflow(e) => e.source_loc(),
-            Self::UnlinkedSlot(e) => e.source_loc.as_deref(),
-            Self::FailedExtensionFunctionExecution(e) => e.source_loc.as_deref(),
-            Self::NonValue(e) => e.source_loc.as_deref(),
-            Self::RecursionLimit(e) => e.source_loc.as_deref(),
+            Self::UnlinkedSlot(e) => e.source_loc.as_loc_ref(),
+            Self::FailedExtensionFunctionExecution(e) => e.source_loc.as_loc_ref(),
+            Self::NonValue(e) => e.source_loc.as_loc_ref(),
+            Self::RecursionLimit(e) => e.source_loc.as_loc_ref(),
             #[cfg(feature = "tolerant-ast")]
-            Self::ASTErrorExpr(e) => e.source_loc.as_deref(),
+            Self::ASTErrorExpr(e) => e.source_loc.as_loc_ref(),
         }
     }
 
@@ -257,7 +257,7 @@ impl EvaluationError {
             expected,
             actual: actual.type_of(),
             advice: None,
-            source_loc: actual.source_loc().as_deref().map(|loc| Box::new(loc.clone())),
+            source_loc: actual.source_loc().into_maybe_loc(),
         }
         .into()
     }
@@ -276,7 +276,7 @@ impl EvaluationError {
             expected,
             actual: actual.type_of(),
             advice: Some(advice),
-            source_loc: actual.source_loc().as_deref().map(|loc| Box::new(loc.clone())),
+            source_loc: actual.source_loc().into_maybe_loc(),
         }
         .into()
     }
@@ -328,7 +328,7 @@ impl EvaluationError {
 
     /// Construct a [`NonValue`] error
     pub(crate) fn non_value(expr: Expr) -> Self {
-        let source_loc = expr.source_loc().as_deref().map(|loc| Box::new(loc.clone()));
+        let source_loc = expr.source_loc().into_maybe_loc();
         evaluation_errors::NonValueError { expr, source_loc }.into()
     }
 
@@ -341,7 +341,7 @@ impl EvaluationError {
 /// Error subtypes for [`EvaluationError`]
 pub mod evaluation_errors {
     use crate::ast::{BinaryOp, EntityUID, Expr, SlotId, Type, UnaryOp, Value};
-    use crate::parser::{Loc, MaybeLoc};
+    use crate::parser::{AsLocRef, Loc, MaybeLoc};
     use itertools::Itertools;
     use miette::Diagnostic;
     use nonempty::NonEmpty;
@@ -582,8 +582,8 @@ pub mod evaluation_errors {
     impl IntegerOverflowError {
         pub(crate) fn source_loc(&self) -> Option<&Loc> {
             match self {
-                Self::BinaryOp(e) => e.source_loc.as_deref(),
-                Self::UnaryOp(e) => e.source_loc.as_deref(),
+                Self::BinaryOp(e) => e.source_loc.as_loc_ref(),
+                Self::UnaryOp(e) => e.source_loc.as_loc_ref(),
             }
         }
 

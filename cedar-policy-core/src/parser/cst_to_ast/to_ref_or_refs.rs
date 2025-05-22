@@ -20,6 +20,8 @@ use super::Result;
 use crate::ast;
 use crate::ast::EntityReference;
 use crate::ast::EntityUID;
+use crate::parser::loc::AsLocRef;
+use crate::parser::IntoMaybeLoc;
 use crate::parser::{
     cst::{self, Literal},
     err::{self, ParseErrors, ToASTError, ToASTErrorKind},
@@ -56,7 +58,7 @@ impl RefKind for SingleEntity {
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Set,
             ),
-            loc.as_deref().map(|loc| Box::new(loc.clone())),
+            loc.into_maybe_loc(),
         )
         .into())
     }
@@ -67,7 +69,7 @@ impl RefKind for SingleEntity {
                 err::parse_errors::Ref::Single,
                 err::parse_errors::Ref::Template,
             ),
-            loc.as_deref().map(|loc| Box::new(loc.clone())),
+            loc.into_maybe_loc(),
         )
         .into())
     }
@@ -83,7 +85,7 @@ impl RefKind for EntityReference {
     }
 
     fn create_slot(loc: Option<&Loc>) -> Result<Self> {
-        Ok(EntityReference::Slot(loc.as_deref().map(|loc| Box::new(loc.clone()))))
+        Ok(EntityReference::Slot(loc.into_maybe_loc()))
     }
 
     fn create_single_ref(e: EntityUID) -> Result<Self> {
@@ -97,7 +99,7 @@ impl RefKind for EntityReference {
                 err::parse_errors::Ref::Template,
                 err::parse_errors::Ref::Set,
             ),
-            loc.as_deref().map(|loc| Box::new(loc.clone())),
+            loc.into_maybe_loc(),
         )
         .into())
     }
@@ -126,7 +128,7 @@ impl RefKind for OneOrMultipleRefs {
                 err::parse_errors::Ref::Set,
                 err::parse_errors::Ref::Template,
             ),
-            loc.as_deref().map(|loc| Box::new(loc.clone())),
+            loc.into_maybe_loc(),
         )
         .into())
     }
@@ -240,7 +242,7 @@ impl Node<Option<cst::Primary>> {
                 // it's the wrong slot. This avoids getting an error
                 // `found ?action instead of ?action` when `action` doesn't
                 // support slots.
-                let slot_ref = T::create_slot(self.loc.as_deref())?;
+                let slot_ref = T::create_slot(self.loc.as_loc_ref())?;
                 let slot = s.try_as_inner()?;
                 if slot.matches(var) {
                     Ok(slot_ref)
@@ -297,7 +299,7 @@ impl Node<Option<cst::Primary>> {
             cst::Primary::EList(lst) => {
                 // Calling `create_multiple_refs` first so that we error
                 // immediately if we see a set when we don't expect one.
-                let create_multiple_refs = T::create_multiple_refs(self.loc.as_deref())?;
+                let create_multiple_refs = T::create_multiple_refs(self.loc.as_loc_ref())?;
                 let v = match tolerant_setting {
                     TolerantAstSetting::NotTolerant => {
                         ParseErrors::transpose(lst.iter().map(|expr| expr.to_ref(var)))?

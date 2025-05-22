@@ -29,7 +29,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::parser::err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind};
-use crate::parser::{Loc, MaybeLoc};
+use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 use crate::FromNormalizedStr;
 
 /// Represents the name of an entity type, function, etc.
@@ -110,11 +110,7 @@ impl InternalName {
 
     /// Given a type basename and a namespace (as an [`InternalName`] itself),
     /// return an [`InternalName`] representing the type's fully qualified name
-    pub fn type_in_namespace(
-        basename: Id,
-        namespace: InternalName,
-        loc: MaybeLoc,
-    ) -> InternalName {
+    pub fn type_in_namespace(basename: Id, namespace: InternalName, loc: MaybeLoc) -> InternalName {
         let mut path = Arc::unwrap_or_clone(namespace.path);
         path.push(namespace.id);
         InternalName::new(basename, path, loc)
@@ -122,7 +118,7 @@ impl InternalName {
 
     /// Get the source location
     pub fn loc(&self) -> Option<&Loc> {
-        self.loc.as_deref()
+        self.loc.as_loc_ref()
     }
 
     /// Get the basename of the [`InternalName`] (ie, with namespaces stripped).
@@ -448,7 +444,7 @@ impl FromNormalizedStr for Name {
             Ok(Self(InternalName::new(
                 Id::new_unchecked(*last),
                 prefix.iter().map(|part| Id::new_unchecked(*part)),
-                Some(Box::new(Loc::new(0..(s.len()), s.into()))),
+                Loc::new(0..(s.len()), s.into()).into_maybe_loc(),
             )))
         } else {
             Err(Self::parse_err_from_str(s))
@@ -547,7 +543,7 @@ impl Name {
                         src: s.to_string(),
                         normalized_src,
                     },
-                    Some(Box::new(Loc::new(diff_byte, s.into()))),
+                    Loc::new(diff_byte, s.into()).into_maybe_loc(),
                 )))
             }
         }
@@ -572,7 +568,7 @@ impl From<ReservedNameError> for ParseError {
             value.clone().into(),
             value.0.loc.clone().or_else(|| {
                 let name_str = value.0.to_string();
-                Some(Box::new(Loc::new(0..(name_str.len()), name_str.into())))
+                Box::new(Loc::new(0..(name_str.len()), name_str.into())).into_maybe_loc()
             }),
         ))
     }

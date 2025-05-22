@@ -305,7 +305,7 @@ impl Validator {
             self.check_if_in_fixes_resource(resource_constraint, action_constraint);
 
         Some(ValidationError::invalid_action_application(
-            source_loc.as_deref().map(|loc| Box::new(loc.clone())),
+            source_loc.into_maybe_loc(),
             policy_id.clone(),
             would_in_fix_principal,
             would_in_fix_resource,

@@ -19,7 +19,7 @@ use crate::entities::{err::EntitiesError, json::err::JsonSerializationError, Ent
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::err::ParseErrors;
-use crate::parser::{Loc, MaybeLoc};
+use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 use crate::transitive_closure::TCNode;
 use crate::FromNormalizedStr;
 use educe::Educe;
@@ -125,7 +125,7 @@ impl EntityType {
             EntityType::EntityType(name) => EntityType::EntityType(Name(InternalName {
                 id: name.0.id.clone(),
                 path: name.0.path.clone(),
-                loc: loc.as_deref().map(|loc| Box::new(loc.clone())),
+                loc: loc.into_maybe_loc(),
             })),
             #[cfg(feature = "tolerant-ast")]
             EntityType::ErrorEntityType => self.clone(),
@@ -299,7 +299,7 @@ impl EntityUID {
     /// Get the source location for this `EntityUID`.
     pub fn loc(&self) -> Option<&Loc> {
         match self {
-            EntityUID::EntityUID(entity_uid) => entity_uid.loc.as_deref(),
+            EntityUID::EntityUID(entity_uid) => entity_uid.loc.as_loc_ref(),
             #[cfg(feature = "tolerant-ast")]
             EntityUID::Error => None,
         }

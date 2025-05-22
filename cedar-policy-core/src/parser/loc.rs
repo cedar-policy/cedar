@@ -16,7 +16,6 @@
 
 use std::sync::Arc;
 
-
 #[cfg(not(feature = "fast-parsing"))]
 pub type MaybeLoc = Option<Loc>;
 
@@ -90,20 +89,62 @@ impl AsLocRef for MaybeLoc {
     #[inline]
     fn as_loc_ref(&self) -> Option<&Loc> {
         #[cfg(not(feature = "fast-parsing"))]
-        { self.as_ref() }
+        {
+            self.as_ref()
+        }
         #[cfg(feature = "fast-parsing")]
-        { self.as_deref() }
+        {
+            self.as_deref()
+        }
     }
 }
 
-impl From<MaybeLoc> for Option<&Loc> {
+pub trait IntoMaybeLoc {
+    fn into_maybe_loc(self) -> MaybeLoc;
+}
+
+impl IntoMaybeLoc for Loc {
     #[inline]
-    fn from(self) -> Self {
-        opt_loc.map(|loc| {
-            #[cfg(feature = "fast-parsing")]
-            { loc.clone() }
+    fn into_maybe_loc(self) -> MaybeLoc {
+        #[cfg(not(feature = "fast-parsing"))]
+        {
+            Some(self)
+        }
+        #[cfg(feature = "fast-parsing")]
+        {
+            Some(Box::new(self))
+        }
+    }
+}
+
+impl IntoMaybeLoc for Option<Loc> {
+    #[inline]
+    fn into_maybe_loc(self) -> MaybeLoc {
+        self.map(|loc| {
             #[cfg(not(feature = "fast-parsing"))]
-            { Box::new(loc.clone()) }
+            {
+                loc
+            }
+            #[cfg(feature = "fast-parsing")]
+            {
+                Box::new(loc)
+            }
+        })
+    }
+}
+
+impl IntoMaybeLoc for Option<&Loc> {
+    #[inline]
+    fn into_maybe_loc(self) -> MaybeLoc {
+        self.map(|loc| {
+            #[cfg(not(feature = "fast-parsing"))]
+            {
+                loc.clone()
+            }
+            #[cfg(feature = "fast-parsing")]
+            {
+                Box::new(loc.clone())
+            }
         })
     }
 }

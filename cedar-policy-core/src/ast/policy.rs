@@ -15,7 +15,7 @@
  */
 
 use crate::ast::*;
-use crate::parser::{Loc, MaybeLoc};
+use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 use annotation::{Annotation, Annotations};
 use educe::Educe;
 use itertools::Itertools;
@@ -71,7 +71,7 @@ cfg_tolerant_ast! {
             <ExprWithErrsBuilder as ExprBuilder>::new()
                 .error(ParseErrors::singleton(ToASTError::new(
                     ToASTErrorKind::ASTErrorNode,
-                    Some(Loc::new(0..1, "ASTErrorNode".into())),
+                    Loc::new(0..1, "ASTErrorNode".into()).into_maybe_loc(),
                 )))
                 .unwrap(),
         )
@@ -1016,9 +1016,9 @@ impl TemplateBody {
     /// Get the location of this policy
     pub fn loc(&self) -> Option<&Loc> {
         match self {
-            TemplateBody::TemplateBody(TemplateBodyImpl { loc, .. }) => loc.as_deref(),
+            TemplateBody::TemplateBody(TemplateBodyImpl { loc, .. }) => loc.as_loc_ref(),
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_, loc) => loc.as_deref(),
+            TemplateBody::TemplateBodyError(_, loc) => loc.as_loc_ref(),
         }
     }
 
@@ -1199,13 +1199,13 @@ impl TemplateBody {
                         self.principal_constraint_expr(),
                         self.action_constraint_expr(),
                     )
-                    .with_maybe_source_loc(self.loc().as_deref().map(|loc| Box::new(loc.clone()))),
+                    .with_maybe_source_loc(self.loc().into_maybe_loc()),
                     self.resource_constraint_expr(),
                 )
-                .with_maybe_source_loc(self.loc().as_deref().map(|loc| Box::new(loc.clone()))),
+                .with_maybe_source_loc(self.loc().into_maybe_loc()),
                 self.non_scope_constraints().clone(),
             )
-            .with_maybe_source_loc(self.loc().as_deref().map(|loc| Box::new(loc.clone()))),
+            .with_maybe_source_loc(self.loc().into_maybe_loc()),
             #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(_, _) => DEFAULT_ERROR_EXPR.as_ref().clone(),
         }
@@ -1548,7 +1548,7 @@ pub enum UnexpectedSlotError {
 impl Diagnostic for UnexpectedSlotError {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         match self {
-            Self::FoundSlot(Slot { loc, .. }) => loc.as_deref().map(|loc| {
+            Self::FoundSlot(Slot { loc, .. }) => loc.as_loc_ref().map(|loc| {
                 let label = miette::LabeledSpan::underline(loc.span);
                 Box::new(std::iter::once(label)) as _
             }),
@@ -1557,7 +1557,9 @@ impl Diagnostic for UnexpectedSlotError {
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         match self {
-            Self::FoundSlot(Slot { loc, .. }) => loc.as_deref().map(|l| l as &dyn miette::SourceCode),
+            Self::FoundSlot(Slot { loc, .. }) => {
+                loc.as_loc_ref().map(|l| l as &dyn miette::SourceCode)
+            }
         }
     }
 }

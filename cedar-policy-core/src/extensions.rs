@@ -30,7 +30,7 @@ use std::collections::HashMap;
 
 use crate::ast::{Extension, ExtensionFunction, Name};
 use crate::entities::SchemaType;
-use crate::parser::{Loc, MaybeLoc};
+use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -161,7 +161,7 @@ impl<'a> Extensions<'a> {
         self.functions.get(name).copied().ok_or_else(|| {
             FuncDoesNotExistError {
                 name: name.clone(),
-                source_loc: name.loc().as_deref().map(|loc| Box::new(loc.clone())),
+                source_loc: name.loc().into_maybe_loc(),
             }
             .into()
         })
@@ -244,7 +244,7 @@ pub enum ExtensionFunctionLookupError {
 impl ExtensionFunctionLookupError {
     pub(crate) fn source_loc(&self) -> Option<&Loc> {
         match self {
-            Self::FuncDoesNotExist(e) => e.source_loc.as_deref(),
+            Self::FuncDoesNotExist(e) => e.source_loc.as_loc_ref(),
         }
     }
 

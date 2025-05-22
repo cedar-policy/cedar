@@ -15,7 +15,7 @@
  */
 
 use crate::ast::*;
-use crate::parser::{Loc, MaybeLoc};
+use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -129,7 +129,7 @@ impl Value {
 
     /// Get the `Loc` attached to this `Value`, if there is one
     pub fn source_loc(&self) -> Option<&Loc> {
-        self.loc.as_deref()
+        self.loc.as_loc_ref()
     }
 
     /// If the value is a `Literal`, get a reference to the underlying `Literal`
@@ -298,7 +298,7 @@ pub enum NotValue {
 impl Diagnostic for NotValue {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         match self {
-            Self::NotValue { loc } => loc.as_deref().map(|loc| {
+            Self::NotValue { loc } => loc.as_loc_ref().map(|loc| {
                 Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span))) as _
             }),
         }
@@ -306,7 +306,9 @@ impl Diagnostic for NotValue {
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         match self {
-            Self::NotValue { loc } => loc.as_deref().map(|loc| &loc.src as &dyn miette::SourceCode),
+            Self::NotValue { loc } => loc
+                .as_loc_ref()
+                .map(|loc| &loc.src as &dyn miette::SourceCode),
         }
     }
 }
@@ -315,7 +317,7 @@ impl TryFrom<Expr> for Value {
     type Error = NotValue;
 
     fn try_from(expr: Expr) -> Result<Self, Self::Error> {
-        let loc = expr.source_loc().as_deref().map(|loc| Box::new(loc.clone()));
+        let loc = expr.source_loc().into_maybe_loc();
         Ok(Self {
             value: ValueKind::try_from(expr)?,
             loc,
@@ -327,7 +329,7 @@ impl TryFrom<Expr> for ValueKind {
     type Error = NotValue;
 
     fn try_from(expr: Expr) -> Result<Self, Self::Error> {
-        let loc = expr.source_loc().as_deref().map(|loc| Box::new(loc.clone()));
+        let loc = expr.source_loc().into_maybe_loc();
         match expr.into_expr_kind() {
             ExprKind::Lit(lit) => Ok(Self::Lit(lit)),
             ExprKind::Unknown(_) => Err(NotValue::NotValue { loc }),
