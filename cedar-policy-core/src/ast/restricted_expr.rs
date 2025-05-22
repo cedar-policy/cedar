@@ -687,7 +687,7 @@ mod test {
     use super::*;
     use crate::ast::expression_construction_errors;
     use crate::parser::err::{ParseError, ToASTError, ToASTErrorKind};
-    use crate::parser::MaybeLoc;
+    use crate::parser::{Loc, IntoMaybeLoc};
     use std::str::FromStr;
     use std::sync::Arc;
 
@@ -761,7 +761,7 @@ mod test {
                         }
                         .into()
                     ),
-                    Some(Loc::new(0..32, Arc::from(str)))
+                    Loc::new(0..32, Arc::from(str)).into_maybe_loc()
                 )))
             )),
         )

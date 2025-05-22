@@ -403,7 +403,7 @@ mod test {
         let p = Path::new(
             "baz".parse().unwrap(),
             ["foo".parse().unwrap(), "bar".parse().unwrap()],
-            loc(),
+            loc().into_maybe_loc(),
         );
 
         let expected: Vec<Id> = vec![

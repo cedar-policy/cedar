@@ -251,7 +251,7 @@ mod test {
     use cedar_policy_core::{
         ast::{self, PolicyID},
         est::Annotations,
-        parser::{self, Loc},
+        parser::{self, IntoMaybeLoc, Loc},
     };
 
     #[test]
@@ -404,7 +404,7 @@ mod test {
             r#"permit(principal == some_namespace::User::"Alice", action, resource in ?resource);"#,
         )
         .expect("Parse Error");
-        let loc = t.loc().as_deref().map(|loc| Box::new(loc.clone()));
+        let loc = t.loc().into_maybe_loc();
         set.add_template(t)
             .expect("Template already present in PolicySet");
 

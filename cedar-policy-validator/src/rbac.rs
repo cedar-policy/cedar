@@ -1192,7 +1192,7 @@ mod test {
                 .1
                 .collect::<Vec<ValidationWarning>>(),
             vec![ValidationWarning::impossible_policy(
-                policy.loc().as_deref().map(|loc| Box::new(loc.clone())),
+                policy.loc().into_maybe_loc(),
                 policy.id().clone()
             )],
             "Unexpected validation warnings."

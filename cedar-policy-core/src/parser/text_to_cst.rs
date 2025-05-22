@@ -1058,7 +1058,7 @@ mod tests {
             permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
             "#;
         let policies = POLICIES_PARSER
-            .parse(&mut Vec::new(), &Arc::from(src), src)
+            .parse(&mut Vec::new(), &Arc::from(src), false, src)
             .expect("parser error")
             .node
             .expect("no data");

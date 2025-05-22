@@ -23,7 +23,7 @@ use std::{collections::HashSet, hash::Hash, sync::Arc};
 
 use cedar_policy_core::ast::{EntityUID, Expr, PolicyID, Template, ACTION_ENTITY_TYPE};
 use cedar_policy_core::extensions::Extensions;
-use cedar_policy_core::parser::Loc;
+use cedar_policy_core::parser::{Loc, MaybeLoc};
 
 use crate::{
     json_schema,
