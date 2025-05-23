@@ -120,16 +120,14 @@ impl IntoMaybeLoc for Loc {
 impl IntoMaybeLoc for Option<Loc> {
     #[inline]
     fn into_maybe_loc(self) -> MaybeLoc {
-        self.map(|loc| {
-            #[cfg(not(feature = "fast-parsing"))]
-            {
-                loc
-            }
-            #[cfg(feature = "fast-parsing")]
-            {
-                Box::new(loc)
-            }
-        })
+        #[cfg(not(feature = "fast-parsing"))]
+        {
+            self
+        }
+        #[cfg(feature = "fast-parsing")]
+        {
+            self.map(|loc| Box::new(loc))
+        }
     }
 }
 
