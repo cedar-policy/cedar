@@ -24,7 +24,7 @@ use std::sync::Arc;
 use cedar_policy_core::{
     ast::{EntityUID, Expr, PolicyID},
     extensions::Extensions,
-    parser::{parse_policy_or_template, Loc},
+    parser::{parse_policy_or_template, IntoMaybeLoc, Loc},
 };
 
 use crate::{
@@ -385,7 +385,7 @@ fn empty_set_literal() {
             &Expr::from_str(src).unwrap(),
             Type::any_set(),
             ValidationError::empty_set_forbidden(
-                Some(Loc::new(0..2, Arc::from(src))),
+                Loc::new(0..2, Arc::from(src)).into_maybe_loc(),
                 expr_id_placeholder(),
             ),
         )
@@ -395,6 +395,8 @@ fn empty_set_literal() {
 #[cfg(feature = "ipaddr")]
 #[test]
 fn ext_struct_non_lit() {
+    use cedar_policy_core::parser::IntoMaybeLoc;
+
     with_simple_schema_and_request(|s, q| {
         let src = r#"ip(if 1 > 0 then "a" else "b")"#;
         assert_strict_type_error(
@@ -403,7 +405,7 @@ fn ext_struct_non_lit() {
             &Expr::from_str(src).unwrap(),
             Type::extension("ipaddr".parse().unwrap()),
             ValidationError::non_lit_ext_constructor(
-                Some(Loc::new(0..30, Arc::from(src))),
+                Loc::new(0..30, Arc::from(src)).into_maybe_loc(),
                 expr_id_placeholder(),
             ),
         )
@@ -418,7 +420,7 @@ fn ext_struct_non_lit() {
             &Expr::from_str(src).unwrap(),
             Type::extension("decimal".parse().unwrap()),
             ValidationError::non_lit_ext_constructor(
-                Some(Loc::new(0..39, Arc::from(src))),
+                Loc::new(0..39, Arc::from(src)).into_maybe_loc(),
                 expr_id_placeholder(),
             ),
         )

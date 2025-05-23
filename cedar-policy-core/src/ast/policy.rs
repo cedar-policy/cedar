@@ -2375,14 +2375,14 @@ mod test {
         use std::str::FromStr;
 
         let policy_id = PolicyID::from_string("error_policy");
-        let error_loc = Loc::new(0..1, "ASTErrorNode".into());
+        let error_loc = Loc::new(0..1, "ASTErrorNode".into()).into_maybe_loc();
         let error_body =
-            TemplateBody::TemplateBodyError(policy_id.clone(), Some(error_loc.clone()));
+            TemplateBody::TemplateBodyError(policy_id.clone(), error_loc.clone());
 
         let expected_error = <ExprWithErrsBuilder as ExprBuilder>::new()
             .error(ParseErrors::singleton(ToASTError::new(
                 ToASTErrorKind::ASTErrorNode,
-                Some(Loc::new(0..1, "ASTErrorNode".into())),
+                Loc::new(0..1, "ASTErrorNode".into()).into_maybe_loc(),
             )))
             .unwrap();
 
@@ -2390,13 +2390,13 @@ mod test {
         assert_eq!(error_body.id(), &policy_id);
 
         // Test loc() method
-        assert_eq!(error_body.loc(), Some(&error_loc));
+        assert_eq!(error_body.loc(), error_loc.as_loc_ref());
 
         // Test new_id() method
         let new_policy_id = PolicyID::from_string("new_error_policy");
         let updated_error_body = error_body.new_id(new_policy_id.clone());
         assert_matches!(updated_error_body,
-            TemplateBody::TemplateBodyError(id, loc) if id == new_policy_id && loc.clone().unwrap() == error_loc
+            TemplateBody::TemplateBodyError(id, loc) if id == new_policy_id && loc.clone() == error_loc
         );
 
         // Test effect() method
@@ -2439,8 +2439,8 @@ mod test {
     #[test]
     fn template_error_methods() {
         let policy_id = PolicyID::from_string("error_policy");
-        let error_loc = Loc::new(0..1, "ASTErrorNode".into());
-        let error_template = Template::error(policy_id.clone(), Some(error_loc.clone()));
+        let error_loc = Loc::new(0..1, "ASTErrorNode".into()).into_maybe_loc();
+        let error_template = Template::error(policy_id.clone(), error_loc.clone());
 
         // Check template properties
         assert_eq!(error_template.id(), &policy_id);
@@ -2450,7 +2450,7 @@ mod test {
 
         // Check body is an error template body
         assert_matches!(error_template.body,
-            TemplateBody::TemplateBodyError(ref id, ref loc) if id == &policy_id && loc.clone().unwrap() == error_loc
+            TemplateBody::TemplateBodyError(ref id, ref loc) if id == &policy_id && loc.clone() == error_loc
         );
 
         // Test principal_constraint() method
@@ -2478,7 +2478,7 @@ mod test {
         );
 
         // Verify location is None
-        assert_eq!(error_template.loc(), Some(&error_loc));
+        assert_eq!(error_template.loc(), error_loc.as_loc_ref());
 
         // Verify annotations are default
         assert!(error_template.annotations().count() == 0);
