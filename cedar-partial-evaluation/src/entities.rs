@@ -245,7 +245,8 @@ impl PartialEntity {
             .insert(uid);
     }
 
-    pub(crate) fn validate(&self, schema: &ValidatorSchema) -> anyhow::Result<()> {
+    /// Valiate `self` according to `schema`
+    pub fn validate(&self, schema: &ValidatorSchema) -> anyhow::Result<()> {
         let core_schema = CoreSchema::new(schema);
         let uid = &self.uid;
         let etype = uid.entity_type();
@@ -344,6 +345,11 @@ pub struct PartialEntities {
 }
 
 impl PartialEntities {
+    /// Get an iterator of entities
+    pub fn entities(&self) -> impl Iterator<Item = &PartialEntity> {
+        self.entities.values()
+    }
+
     /// Compute transitive closure
     pub fn compute_tc(&mut self) -> anyhow::Result<()> {
         Ok(compute_tc(&mut self.entities, true)?)
@@ -363,6 +369,15 @@ impl PartialEntities {
         validate_parents(&entities.entities)?;
         entities.compute_tc()?;
         Ok(entities)
+    }
+
+    /// Like `from_entities` but do not perform any validation and tc computation
+    pub fn from_entities_unchecked(
+        entities: impl Iterator<Item = (EntityUID, PartialEntity)>,
+    ) -> Self {
+        Self {
+            entities: entities.collect(),
+        }
     }
 
     /// Construct `PartialEntities` from a JSON list

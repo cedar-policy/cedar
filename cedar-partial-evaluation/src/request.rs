@@ -67,6 +67,20 @@ impl PartialRequest {
         req.validate(schema)?;
         Ok(req)
     }
+    /// Like `new` but do not perform any validation
+    pub fn new_unchecked(
+        principal: PartialEntityUID,
+        resource: PartialEntityUID,
+        action: EntityUID,
+        context: Option<Arc<BTreeMap<SmolStr, Value>>>,
+    ) -> Self {
+        Self {
+            principal,
+            resource,
+            action,
+            context,
+        }
+    }
 
     // Find the matching `RequestEnv`
     pub(crate) fn find_request_env<'s>(
