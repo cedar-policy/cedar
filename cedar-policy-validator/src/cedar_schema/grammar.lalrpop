@@ -17,7 +17,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 use crate::cedar_schema::err::{RawErrorRecovery, UserError};
-use cedar_policy_core::parser::{Node, Loc, unescape::to_unescaped_string, cst::Ref};
+use cedar_policy_core::{maybe_loc, parser::{Node, Loc, IntoMaybeLoc, unescape::to_unescaped_string, cst::Ref}};
 use cedar_policy_core::ast::{Id, AnyId, Annotations};
 use smol_str::SmolStr;
 use smol_str::ToSmolStr;
@@ -51,7 +51,7 @@ use lalrpop_util::{ParseError, ErrorRecovery};
 /// `errors` collects generated errors.
 ///
 /// `src` is the (full) original source being parsed, which the source locations l,r index into.
-grammar<'err, 's>(errors: &'err mut Vec<RawErrorRecovery<'input>>, src: &'s Arc<str>);
+grammar<'err, 's>(errors: &'err mut Vec<RawErrorRecovery<'input>>, src: &'s Arc<str>, is_fast: bool);
 
 extern {
     type Error = UserError;
@@ -95,7 +95,7 @@ match {
 
 // Annotations := {'@' AnyIdent '(' String ')'}
 Annotation: Node<(Node<AnyId>, Option<Node<SmolStr>>)> = {
-    <l:@L> "@" <key:AnyIdent> <value: ("(" <STR> ")")?> <r:@R> => Node::with_source_loc((key, value), Loc::new(l..r, Arc::clone(src)))
+    <l:@L> "@" <key:AnyIdent> <value: ("(" <STR> ")")?> <r:@R> => Node::with_maybe_source_loc((key, value), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src))))
 }
 
 Annotated<E>: Annotated<E> = {
@@ -112,13 +112,13 @@ pub Schema: ASchema = {
 #[inline]
 Namedspace: Namespace = {
      <l:@L> NAMESPACE <p: Path> "{" <decls: Annotated<Decl>*> "}" <r:@R> 
-        => Namespace { name: Some(p), decls, loc: Some(Loc::new(l..r, Arc::clone(src)))},
+        => Namespace { name: Some(p), decls, loc: maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))},
 }
 
 // Namespace := 'namespace' Path '{' {Decl} '}'
 Namespace: Annotated<Namespace> = {
     <ns: Annotated<Namedspace>> => ns,
-    <l:@L> <decl: Annotated<Decl>> <r:@R> => Annotated {data: Namespace {name: None, decls: vec![decl], loc: Some(Loc::new(l..r, Arc::clone(src)))}, annotations: Annotations::new()},
+    <l:@L> <decl: Annotated<Decl>> <r:@R> => Annotated {data: Namespace {name: None, decls: vec![decl], loc: maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))}, annotations: Annotations::new()},
 }
 
 // Decl := Entity | Action | TypeDecl
@@ -131,27 +131,27 @@ Decl: Node<Declaration> = {
 // Entity := 'entity' Idents ['in' EntTypes] [['='] RecType] ';' <r:@R>
 Entity: Node<Declaration> = {
     <l1:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> <l2:@L> <ds:("="? "{" <AttrDecls?> "}")?> <r2:@R> <ts:(TAGS <Type>)?> ";" <r1:@R>
-        => Node::with_source_loc(Declaration::Entity(EntityDecl::Standard(StandardEntityDecl {
+        => Node::with_maybe_source_loc(Declaration::Entity(EntityDecl::Standard(StandardEntityDecl {
             names: ets,
             member_of_types: ps.unwrap_or_default(),
-            attrs: Node::with_source_loc(ds.map(|ds| ds.unwrap_or_default()).unwrap_or_default(), Loc::new(l2..r2, Arc::clone(src))),
+            attrs: Node::with_maybe_source_loc(ds.map(|ds| ds.unwrap_or_default()).unwrap_or_default(), maybe_loc!(is_fast, Loc::new(l2..r2, Arc::clone(src)))),
             tags: ts,
-            })), Loc::new(l1..r1, Arc::clone(src))),
-    <l:@L> ENTITY <ets: Idents> ENUM "[" <choices: STRs> "]" ";" <r:@R> => Node::with_source_loc(Declaration::Entity(EntityDecl::Enum(EnumEntityDecl {
+            })), maybe_loc!(is_fast, Loc::new(l1..r1, Arc::clone(src)))),
+    <l:@L> ENTITY <ets: Idents> ENUM "[" <choices: STRs> "]" ";" <r:@R> => Node::with_maybe_source_loc(Declaration::Entity(EntityDecl::Enum(EnumEntityDecl {
         names: ets,
         choices,
-    })), Loc::new(l..r, Arc::clone(src))),
+    })), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
 }
 
 // Action := 'action' Names ['in' QualNameOrNames]
 Action: Node<Declaration> = {
     <l:@L> ACTION <ns:Names> <ps:(IN <QualNameOrQualNames>)?> <ads:(APPLIESTO "{" <AppDecls> "}")?> <attrs:(ATTRIBUTES "{" "}")?>";" <r:@R>
-        => Node::with_source_loc(Declaration::Action(ActionDecl { names: ns, parents: ps, app_decls: ads}), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc(Declaration::Action(ActionDecl { names: ns, parents: ps, app_decls: ads}), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
 }
 
 TypeDecl: Node<Declaration> = {
     <l:@L> TYPE <i:Ident> "=" <t:Type> ";" <r:@R>
-        => Node::with_source_loc(Declaration::Type(TypeDecl { name : i, def : t}), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc(Declaration::Type(TypeDecl { name : i, def : t}), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
 }
 
 // AppDecls := ('principal' | 'resource') ':' EntTypes [',' | ',' AppDecls]
@@ -160,41 +160,41 @@ AppDecls: Node<NonEmpty<Node<AppDecl>>> = {
     <l:@L> <pr: PrincipalOrResource> ":" <ets:EntTypes> <r:@R> ","?
         => {
             let entity_tys: Option<NonEmpty<Path>> = NonEmpty::collect(ets.into_iter());
-            Node::with_source_loc(
-                nonempty![Node::with_source_loc(AppDecl::PR(PRAppDecl { kind:pr, entity_tys }), Loc::new(l..r, Arc::clone(src)))],
-                Loc::new(l..r, Arc::clone(src)))
+            Node::with_maybe_source_loc(
+                nonempty![Node::with_maybe_source_loc(AppDecl::PR(PRAppDecl { kind:pr, entity_tys }), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src))))],
+                maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src))))
         },
     <l:@L> <pr: PrincipalOrResource> ":" <ets:EntTypes> <r:@R> "," <mut ds: AppDecls>
         => {
             let (mut ds, _) = ds.into_inner();
             let entity_tys: Option<NonEmpty<Path>> = NonEmpty::collect(ets.into_iter());
-            ds.insert(0, Node::with_source_loc(AppDecl::PR(PRAppDecl { kind:pr, entity_tys }), Loc::new(l..r, Arc::clone(src))));
-            Node::with_source_loc(ds, Loc::new(l..r, Arc::clone(src)))
+            ds.insert(0, Node::with_maybe_source_loc(AppDecl::PR(PRAppDecl { kind:pr, entity_tys }), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))));
+            Node::with_maybe_source_loc(ds, maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src))))
         },
     <l:@L> CONTEXT ":" <p:Path> ","? <r:@R>
-        =>  Node::with_source_loc(
-                nonempty![Node::with_source_loc(AppDecl::Context(Either::Left(p)), Loc::new(l..r, Arc::clone(src)))],
-                Loc::new(l..r, Arc::clone(src))),
+        =>  Node::with_maybe_source_loc(
+                nonempty![Node::with_maybe_source_loc(AppDecl::Context(Either::Left(p)), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src))))],
+                maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> CONTEXT ":" <p:Path> "," <r:@R> <mut ds: AppDecls>
         => {
             let (mut ds, _) = ds.into_inner();
-            ds.insert(0, Node::with_source_loc(AppDecl::Context(Either::Left(p)), Loc::new(l..r, Arc::clone(src))));
-            Node::with_source_loc(
+            ds.insert(0, Node::with_maybe_source_loc(AppDecl::Context(Either::Left(p)), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))));
+            Node::with_maybe_source_loc(
                 ds,
-                Loc::new(l..r, Arc::clone(src)))
+                maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src))))
         },
     <l1:@L> CONTEXT ":" <l2:@L> "{" <attrs:AttrDecls?> "}" <r2:@R> ","? <r1:@R>
         =>
-            Node::with_source_loc(
-                nonempty![Node::with_source_loc(AppDecl::Context(Either::Right(Node::with_source_loc(attrs.unwrap_or_default(), Loc::new(l2..r2, Arc::clone(src))))), Loc::new(l1..r1, Arc::clone(src)))],
-                Loc::new(l1..r1, Arc::clone(src))),
+            Node::with_maybe_source_loc(
+                nonempty![Node::with_maybe_source_loc(AppDecl::Context(Either::Right(Node::with_maybe_source_loc(attrs.unwrap_or_default(), maybe_loc!(is_fast, Loc::new(l2..r2, Arc::clone(src)))))), maybe_loc!(is_fast, Loc::new(l1..r1, Arc::clone(src))))],
+                maybe_loc!(is_fast, Loc::new(l1..r1, Arc::clone(src)))),
     <l1:@L> CONTEXT ":" <l2:@L> "{" <attrs:AttrDecls?> "}" <r2:@R> "," <r1:@R> <mut ds: AppDecls>
         => {
             let (mut ds, _) = ds.into_inner();
-            ds.insert(0, Node::with_source_loc(AppDecl::Context(Either::Right(Node::with_source_loc(attrs.unwrap_or_default(), Loc::new(l2..r2, Arc::clone(src))))), Loc::new(l1..r1, Arc::clone(src))));
-            Node::with_source_loc(
+            ds.insert(0, Node::with_maybe_source_loc(AppDecl::Context(Either::Right(Node::with_maybe_source_loc(attrs.unwrap_or_default(), maybe_loc!(is_fast, Loc::new(l2..r2, Arc::clone(src)))))), maybe_loc!(is_fast, Loc::new(l1..r1, Arc::clone(src)))));
+            Node::with_maybe_source_loc(
                 ds,
-                Loc::new(l1..r1, Arc::clone(src)))
+                maybe_loc!(is_fast, Loc::new(l1..r1, Arc::clone(src))))
         },
 }
 
@@ -203,19 +203,19 @@ AppDecls: Node<NonEmpty<Node<AppDecl>>> = {
 // Type := PRIMTYPE | Path | SetType | RecType
 pub Type: Node<SType> = {
     <p:Path>
-        => { let loc = p.loc().cloned(); Node::with_maybe_source_loc(SType::Ident(p), loc) },
+        => { let loc = p.loc().into_maybe_loc(); Node::with_maybe_source_loc(SType::Ident(p), loc) },
     <l:@L> SET "<" <t:Type> ">" <r:@R>
-        => Node::with_source_loc(SType::Set(Box::new(t)), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc(SType::Set(Box::new(t)), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> "{" <ds:AttrDecls?> "}" <r:@R>
-        => Node::with_source_loc(SType::Record(ds.unwrap_or_default()), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc(SType::Record(ds.unwrap_or_default()), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
 }
 
 // AttrDecls := Annotation* Name ['?'] ':' Type [',' | ',' AttrDecls]
 AttrDecls: Vec<Node<Annotated<AttrDecl>>> = {
     <l:@L> <annotations: Annotation*> <name: Name> <required:"?"?> ":" <ty:Type> ","? <r:@R>
-        =>? Ok(deduplicate_annotations(AttrDecl { name, required: required.is_none(), ty}, annotations).map(|decl| vec![Node::with_source_loc(decl, Loc::new(l..r, Arc::clone(src)))])?),
+        =>? Ok(deduplicate_annotations(AttrDecl { name, required: required.is_none(), ty}, annotations).map(|decl| vec![Node::with_maybe_source_loc(decl, maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src))))])?),
     <l:@L> <annotations: Annotation*> <name: Name> <required:"?"?> ":" <ty:Type> "," <r:@R> <mut ds: AttrDecls>
-        =>? {ds.insert(0, deduplicate_annotations(AttrDecl { name, required: required.is_none(), ty}, annotations).map(|decl| Node::with_source_loc(decl, Loc::new(l..r, Arc::clone(src))))?); Ok(ds)},
+        =>? {ds.insert(0, deduplicate_annotations(AttrDecl { name, required: required.is_none(), ty}, annotations).map(|decl| Node::with_maybe_source_loc(decl, maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))))?); Ok(ds)},
 }
 
 Comma<E>: Vec<E> = {
@@ -236,46 +236,46 @@ Ident: Node<Id> = {
 // AnyIdent := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']*
 AnyIdent: Node<AnyId> = {
     <l:@L> NAMESPACE <r:@R>
-        => Node::with_source_loc("namespace".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc("namespace".parse().unwrap(), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> ENTITY <r:@R>
-        => Node::with_source_loc("entity".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc("entity".parse().unwrap(), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> SET <r:@R>
-        => Node::with_source_loc("Set".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc("Set".parse().unwrap(), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> APPLIESTO <r:@R>
-        => Node::with_source_loc("appliesTo".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc("appliesTo".parse().unwrap(), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> PRINCIPAL <r:@R>
-        => Node::with_source_loc("principal".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc("principal".parse().unwrap(), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> ACTION <r:@R>
-        => Node::with_source_loc("action".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc("action".parse().unwrap(), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> RESOURCE <r:@R>
-        => Node::with_source_loc("resource".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc("resource".parse().unwrap(), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> CONTEXT <r:@R>
-        => Node::with_source_loc("context".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc("context".parse().unwrap(), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> ATTRIBUTES <r:@R>
-        => Node::with_source_loc("attributes".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc("attributes".parse().unwrap(), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> TAGS <r:@R>
-        => Node::with_source_loc("tags".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc("tags".parse().unwrap(), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> BOOL <r:@R>
-        => Node::with_source_loc("Bool".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc("Bool".parse().unwrap(), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> LONG <r:@R>
-        => Node::with_source_loc("Long".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc("Long".parse().unwrap(), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> STRING <r:@R>
-        => Node::with_source_loc("String".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc("String".parse().unwrap(), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> TYPE <r:@R>
-        => Node::with_source_loc("type".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc("type".parse().unwrap(), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> IN <r:@R>
-        => Node::with_source_loc("in".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc("in".parse().unwrap(), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> ENUM <r:@R>
-        => Node::with_source_loc("enum".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc("enum".parse().unwrap(), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> <i:IDENTIFIER> <r:@R>
-        => Node::with_source_loc(i.parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_maybe_source_loc(i.parse().unwrap(), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
 }
 
 STR: Node<SmolStr> = {
     <l:@L> <s:STRINGLIT> <r:@R>
         =>? to_unescaped_string(&s[1..(s.len() - 1)]).map_or_else(|e| Err(ParseError::User {
-            error: UserError::StringEscape(Node::with_source_loc(e, Loc::new(l..r, Arc::clone(src)))),
-        }), |v| Ok(Node::with_source_loc(v, Loc::new(l..r, Arc::clone(src))))),
+            error: UserError::StringEscape(Node::with_maybe_source_loc(e, maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src))))),
+        }), |v| Ok(Node::with_maybe_source_loc(v, maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))))),
 }
 
 // Name := IDENT | STR
@@ -286,17 +286,17 @@ Name: Node<SmolStr> = {
 
 // QualName      := Name | Path '::' STR
 QualName : Node<QualName> = {
-    <l:@L> <p : PathInline> "::" <s:STR> <r:@R> => Node::with_source_loc(QualName::qualified(p, s.node), Loc::new(l..r, Arc::clone(src))),
-    <l:@L> <i : Name> <r:@R> => Node::with_source_loc(QualName::unqualified(i.node), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> <p : PathInline> "::" <s:STR> <r:@R> => Node::with_maybe_source_loc(QualName::qualified(p, s.node), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
+    <l:@L> <i : Name> <r:@R> => Node::with_maybe_source_loc(QualName::unqualified(i.node), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
 }
 
 // Path := IDENT {'::' IDENT}
 #[inline]
 PathInline: Path = {
     <l:@L> <i:Ident> <r:@R>
-        => Path::single(i.node, Loc::new(l..r, Arc::clone(src))),
+        => Path::single(i.node, maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> <is:(<Ident> "::")+> <i:Ident> <r:@R>
-        => Path::new(i.node, is.into_iter().map(|n| n.node), Loc::new(l..r, Arc::clone(src))),
+        => Path::new(i.node, is.into_iter().map(|n| n.node), maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
 }
 
 NonEmptyComma<E>: NonEmpty<E> = {
@@ -321,8 +321,8 @@ QualNames : NonEmpty<Node<QualName>> = NonEmptyComma<QualName>;
 STRs: NonEmpty<Node<SmolStr>> = NonEmptyComma<STR>;
 
 PrincipalOrResource: Node<PR> = {
-    <l:@L> PRINCIPAL <r:@R> => Node::with_source_loc(PR::Principal, Loc::new(l..r, Arc::clone(src))),
-    <l:@L> RESOURCE <r:@R> => Node::with_source_loc(PR::Resource, Loc::new(l..r, Arc::clone(src))),
+    <l:@L> PRINCIPAL <r:@R> => Node::with_maybe_source_loc(PR::Principal, maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
+    <l:@L> RESOURCE <r:@R> => Node::with_maybe_source_loc(PR::Resource, maybe_loc!(is_fast, Loc::new(l..r, Arc::clone(src)))),
 }
 
 // EntTypes := Path | '[' [Path {',' Path}] ']'

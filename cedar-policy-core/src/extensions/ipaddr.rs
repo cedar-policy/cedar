@@ -22,6 +22,7 @@ use crate::ast::{
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
+use crate::parser::IntoMaybeLoc;
 use std::sync::Arc;
 
 // PANIC SAFETY All the names are valid names
@@ -307,7 +308,7 @@ fn str_contains_colons_and_dots(s: &str) -> Result<(), String> {
 /// Cedar string
 fn ip_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
-    let arg_source_loc = arg.source_loc().cloned();
+    let arg_source_loc = arg.source_loc().into_maybe_loc();
     let ipaddr = RepresentableExtensionValue::new(
         Arc::new(IPAddr::from_str(str.as_str()).map_err(extension_err)?),
         names::IP_FROM_STR_NAME.clone(),

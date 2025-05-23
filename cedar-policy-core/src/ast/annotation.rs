@@ -20,7 +20,7 @@ use educe::Educe;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
-use crate::parser::Loc;
+use crate::parser::MaybeLoc;
 
 use super::AnyId;
 
@@ -115,7 +115,7 @@ pub struct Annotation {
     #[educe(Hash(ignore))]
     #[educe(PartialEq(ignore))]
     #[educe(PartialOrd(ignore))]
-    pub loc: Option<Loc>,
+    pub loc: MaybeLoc,
 }
 
 impl std::fmt::Display for Annotation {
@@ -129,7 +129,7 @@ impl Annotation {
     /// to construct annotations from the CST and EST representation where a
     /// value is not required, but an absent value is equivalent to `""`.
     /// Here, a `None` constructs an annotation containing the value `""`.`
-    pub fn with_optional_value(val: Option<SmolStr>, loc: Option<Loc>) -> Self {
+    pub fn with_optional_value(val: Option<SmolStr>, loc: MaybeLoc) -> Self {
         Self {
             val: val.unwrap_or_default(),
             loc,

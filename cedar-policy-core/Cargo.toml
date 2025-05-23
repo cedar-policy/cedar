@@ -54,7 +54,8 @@ arbitrary = ["dep:arbitrary"]
 # Expose test utilities
 test-util = []
 
-# Experimental features.
+# Experimental features
+fast-parsing = []
 partial-eval = []
 tolerant-ast = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]

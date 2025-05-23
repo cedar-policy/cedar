@@ -16,7 +16,7 @@
 
 /// Macro which implements the `.labels()` and `.source_code()` methods of
 /// `miette::Diagnostic` by using the parameter `$i` which must be the name
-/// of a field of type `Option<Loc>`
+/// of a field of type `MaybeLoc`
 #[macro_export]
 macro_rules! impl_diagnostic_from_source_loc_opt_field {
     ( $($id:ident).+ ) => {
@@ -36,7 +36,7 @@ macro_rules! impl_diagnostic_from_source_loc_opt_field {
 
 /// Macro which implements the `.labels()` and `.source_code()` methods of
 /// `miette::Diagnostic` by using the parameters `$i` and `$j` which must be the
-/// names of fields of type `Option<Loc>`.
+/// names of fields of type `MaybeLoc`.
 /// Both locations will be underlined, if both locs are present.
 /// It is assumed that both locs have the same `src`, if both locs are present.
 #[macro_export]

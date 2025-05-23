@@ -15,7 +15,7 @@
  */
 
 use crate::ast::*;
-use crate::parser::Loc;
+use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -36,7 +36,7 @@ pub struct Value {
     /// Source location associated with the value, if any
     #[educe(PartialEq(ignore))]
     #[educe(PartialOrd(ignore))]
-    pub loc: Option<Loc>,
+    pub loc: MaybeLoc,
 }
 
 /// This describes all the values which could be the dynamic result of evaluating an `Expr`.
@@ -55,7 +55,7 @@ pub enum ValueKind {
 
 impl Value {
     /// Create a new empty set
-    pub fn empty_set(loc: Option<Loc>) -> Self {
+    pub fn empty_set(loc: MaybeLoc) -> Self {
         Self {
             value: ValueKind::empty_set(),
             loc,
@@ -63,7 +63,7 @@ impl Value {
     }
 
     /// Create a new empty record
-    pub fn empty_record(loc: Option<Loc>) -> Self {
+    pub fn empty_record(loc: MaybeLoc) -> Self {
         Self {
             value: ValueKind::empty_record(),
             loc,
@@ -72,7 +72,7 @@ impl Value {
 
     /// Create a `Value` from anything that implements `Into<ValueKind>` and an
     /// optional source location
-    pub fn new(value: impl Into<ValueKind>, loc: Option<Loc>) -> Self {
+    pub fn new(value: impl Into<ValueKind>, loc: MaybeLoc) -> Self {
         Self {
             value: value.into(),
             loc,
@@ -80,7 +80,7 @@ impl Value {
     }
 
     /// Create a set with the given `Value`s as elements
-    pub fn set(vals: impl IntoIterator<Item = Value>, loc: Option<Loc>) -> Self {
+    pub fn set(vals: impl IntoIterator<Item = Value>, loc: MaybeLoc) -> Self {
         Self {
             value: ValueKind::set(vals),
             loc,
@@ -91,7 +91,7 @@ impl Value {
     ///
     /// the resulting `Value` will have the given `loc` attached, but its
     /// individual `Literal` elements will not have a source loc attached
-    pub fn set_of_lits(lits: impl IntoIterator<Item = Literal>, loc: Option<Loc>) -> Self {
+    pub fn set_of_lits(lits: impl IntoIterator<Item = Literal>, loc: MaybeLoc) -> Self {
         Self {
             value: ValueKind::set_of_lits(lits),
             loc,
@@ -101,7 +101,7 @@ impl Value {
     /// Create a record with the given (key, value) pairs
     pub fn record<K: Into<SmolStr>, V: Into<Value>>(
         pairs: impl IntoIterator<Item = (K, V)>,
-        loc: Option<Loc>,
+        loc: MaybeLoc,
     ) -> Self {
         Self {
             value: ValueKind::record(pairs),
@@ -110,7 +110,7 @@ impl Value {
     }
 
     /// Create a record with the given attributes/value mapping.
-    pub fn record_arc(pairs: Arc<BTreeMap<SmolStr, Value>>, loc: Option<Loc>) -> Self {
+    pub fn record_arc(pairs: Arc<BTreeMap<SmolStr, Value>>, loc: MaybeLoc) -> Self {
         Self {
             value: ValueKind::record_arc(pairs),
             loc,
@@ -118,7 +118,7 @@ impl Value {
     }
 
     /// Return the `Value`, but with the given `Loc` (or `None`)
-    pub fn with_maybe_source_loc(self, loc: Option<Loc>) -> Self {
+    pub fn with_maybe_source_loc(self, loc: MaybeLoc) -> Self {
         Self { loc, ..self }
     }
 
@@ -129,7 +129,7 @@ impl Value {
 
     /// Get the `Loc` attached to this `Value`, if there is one
     pub fn source_loc(&self) -> Option<&Loc> {
-        self.loc.as_ref()
+        self.loc.as_loc_ref()
     }
 
     /// If the value is a `Literal`, get a reference to the underlying `Literal`
@@ -291,14 +291,14 @@ pub enum NotValue {
     #[error("not a value")]
     NotValue {
         /// Source location info for the expr that wasn't a value
-        loc: Option<Loc>,
+        loc: MaybeLoc,
     },
 }
 
 impl Diagnostic for NotValue {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         match self {
-            Self::NotValue { loc } => loc.as_ref().map(|loc| {
+            Self::NotValue { loc } => loc.as_loc_ref().map(|loc| {
                 Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span))) as _
             }),
         }
@@ -306,7 +306,9 @@ impl Diagnostic for NotValue {
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         match self {
-            Self::NotValue { loc } => loc.as_ref().map(|loc| &loc.src as &dyn miette::SourceCode),
+            Self::NotValue { loc } => loc
+                .as_loc_ref()
+                .map(|loc| &loc.src as &dyn miette::SourceCode),
         }
     }
 }
@@ -315,7 +317,7 @@ impl TryFrom<Expr> for Value {
     type Error = NotValue;
 
     fn try_from(expr: Expr) -> Result<Self, Self::Error> {
-        let loc = expr.source_loc().cloned();
+        let loc = expr.source_loc().into_maybe_loc();
         Ok(Self {
             value: ValueKind::try_from(expr)?,
             loc,
@@ -327,7 +329,7 @@ impl TryFrom<Expr> for ValueKind {
     type Error = NotValue;
 
     fn try_from(expr: Expr) -> Result<Self, Self::Error> {
-        let loc = expr.source_loc().cloned();
+        let loc = expr.source_loc().into_maybe_loc();
         match expr.into_expr_kind() {
             ExprKind::Lit(lit) => Ok(Self::Lit(lit)),
             ExprKind::Unknown(_) => Err(NotValue::NotValue { loc }),

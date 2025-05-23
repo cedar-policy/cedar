@@ -16,6 +16,14 @@
 
 use std::sync::Arc;
 
+/// Represents an optional `Loc`
+#[cfg(not(feature = "fast-parsing"))]
+pub type MaybeLoc = Option<Loc>;
+
+/// Represents an optional `Loc`
+#[cfg(feature = "fast-parsing")]
+pub type MaybeLoc = Option<Box<Loc>>;
+
 /// Represents a source location: index/range, and a reference to the source
 /// code which that index/range indexes into
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -71,6 +79,101 @@ impl From<Loc> for miette::SourceSpan {
 impl From<&Loc> for miette::SourceSpan {
     fn from(loc: &Loc) -> Self {
         loc.span
+    }
+}
+
+/// Trait to define conversions to `Option<&Loc>`
+pub trait AsLocRef {
+    /// Automatic conversion to `Option<&Loc>`
+    fn as_loc_ref(&self) -> Option<&Loc>;
+}
+
+impl AsLocRef for Option<Loc> {
+    #[inline]
+    fn as_loc_ref(&self) -> Option<&Loc> {
+        self.as_ref()
+    }
+}
+
+impl AsLocRef for Option<Box<Loc>> {
+    #[inline]
+    fn as_loc_ref(&self) -> Option<&Loc> {
+        self.as_deref()
+    }
+}
+
+/// Trait to define conversions into `MaybeLoc`
+pub trait IntoMaybeLoc {
+    /// Automatic conversion to `MaybeLoc`
+    fn into_maybe_loc(self) -> MaybeLoc;
+}
+
+impl IntoMaybeLoc for Loc {
+    #[inline]
+    fn into_maybe_loc(self) -> MaybeLoc {
+        #[cfg(not(feature = "fast-parsing"))]
+        {
+            Some(self)
+        }
+        #[cfg(feature = "fast-parsing")]
+        {
+            Some(Box::new(self))
+        }
+    }
+}
+
+impl IntoMaybeLoc for Option<Loc> {
+    #[inline]
+    fn into_maybe_loc(self) -> MaybeLoc {
+        #[cfg(not(feature = "fast-parsing"))]
+        {
+            self
+        }
+        #[cfg(feature = "fast-parsing")]
+        {
+            self.map(|loc| Box::new(loc))
+        }
+    }
+}
+
+impl IntoMaybeLoc for Option<&Loc> {
+    #[inline]
+    fn into_maybe_loc(self) -> MaybeLoc {
+        #[cfg(not(feature = "fast-parsing"))]
+        {
+            self.cloned()
+        }
+        #[cfg(feature = "fast-parsing")]
+        {
+            self.map(|loc| Box::new(loc.clone()))
+        }
+    }
+}
+
+impl IntoMaybeLoc for Option<Box<Loc>> {
+    #[inline]
+    fn into_maybe_loc(self) -> MaybeLoc {
+        #[cfg(not(feature = "fast-parsing"))]
+        {
+            self.map(|loc| *loc)
+        }
+        #[cfg(feature = "fast-parsing")]
+        {
+            self
+        }
+    }
+}
+
+/// Trait to define clones for `MaybeLoc`
+pub trait CloneMaybeLoc {
+    /// Automatic clone to `MaybeLoc`
+    fn clone_maybe_loc(&self) -> MaybeLoc;
+}
+
+impl CloneMaybeLoc for MaybeLoc {
+    #[inline]
+    fn clone_maybe_loc(&self) -> MaybeLoc {
+        self.clone()
     }
 }
 

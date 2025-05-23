@@ -3,7 +3,7 @@ use crate::{
     expr_builder::{self},
     parser::{
         err::{ParseErrors, ToASTErrorKind},
-        Loc,
+        AsLocRef, IntoMaybeLoc, Loc, MaybeLoc,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -28,7 +28,7 @@ impl From<ToASTErrorKind> for AstExprErrorKind {
 
 #[derive(Clone, Debug)]
 pub struct ExprWithErrsBuilder<T = ()> {
-    source_loc: Option<Loc>,
+    source_loc: MaybeLoc,
     data: T,
 }
 
@@ -41,7 +41,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
     type ErrorType = Infallible;
 
     fn loc(&self) -> Option<&Loc> {
-        self.source_loc.as_ref()
+        self.source_loc.as_loc_ref()
     }
 
     fn data(&self) -> &Self::Data {
@@ -56,7 +56,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
     }
 
     fn with_maybe_source_loc(mut self, maybe_source_loc: Option<&Loc>) -> Self {
-        self.source_loc = maybe_source_loc.cloned();
+        self.source_loc = maybe_source_loc.into_maybe_loc();
         self
     }
 

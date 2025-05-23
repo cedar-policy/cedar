@@ -43,7 +43,7 @@ use cedar_policy_core::{
 };
 
 #[cfg(feature = "extended-schema")]
-use cedar_policy_core::parser::Loc;
+use cedar_policy_core::parser::MaybeLoc;
 
 use crate::{validation_errors::LubHelp, ValidationMode};
 
@@ -1415,7 +1415,7 @@ pub struct AttributeType {
     #[cfg(feature = "extended-schema")]
     #[serde(skip)]
     #[educe(Eq(ignore))]
-    pub loc: Option<Loc>,
+    pub loc: MaybeLoc,
 }
 
 impl AttributeType {
@@ -1433,7 +1433,7 @@ impl AttributeType {
     #[cfg(feature = "extended-schema")]
     /// Construct an [`AttributeType`] with some type that may be required or
     /// optional as specified by the `is_required` parameter - includes source location
-    pub fn new_with_loc(attr_type: Type, is_required: bool, loc: Option<Loc>) -> Self {
+    pub fn new_with_loc(attr_type: Type, is_required: bool, loc: MaybeLoc) -> Self {
         Self {
             attr_type,
             is_required,

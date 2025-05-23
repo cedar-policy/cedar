@@ -15,7 +15,7 @@
  */
 
 use super::{BoundedDisplay, Expr, Unknown, Value};
-use crate::parser::Loc;
+use crate::parser::MaybeLoc;
 use itertools::Either;
 use miette::Diagnostic;
 use thiserror::Error;
@@ -37,7 +37,7 @@ impl PartialValue {
     }
 
     /// Return the `PartialValue`, but with the given `Loc` (or `None`)
-    pub fn with_maybe_source_loc(self, loc: Option<Loc>) -> Self {
+    pub fn with_maybe_source_loc(self, loc: MaybeLoc) -> Self {
         match self {
             Self::Value(v) => Self::Value(v.with_maybe_source_loc(loc)),
             Self::Residual(e) => Self::Residual(e.with_maybe_source_loc(loc)),

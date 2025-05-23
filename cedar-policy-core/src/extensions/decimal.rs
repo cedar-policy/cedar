@@ -22,6 +22,7 @@ use crate::ast::{
 };
 use crate::entities::SchemaType;
 use crate::evaluator;
+use crate::parser::IntoMaybeLoc;
 use miette::Diagnostic;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -188,7 +189,7 @@ fn decimal_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
     let decimal =
         Decimal::from_str(str.as_str()).map_err(|e| extension_err(e.to_string(), None))?;
-    let arg_source_loc = arg.source_loc().cloned();
+    let arg_source_loc = arg.source_loc().into_maybe_loc();
     let e = RepresentableExtensionValue::new(
         Arc::new(decimal),
         constants::DECIMAL_FROM_STR_NAME.clone(),

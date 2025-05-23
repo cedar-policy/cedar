@@ -53,12 +53,13 @@ fn parse_collect_errors<'a, P, T>(
         &P,
         &mut Vec<err::RawErrorRecovery<'a>>,
         &Arc<str>,
+        bool,
         &'a str,
     ) -> Result<T, err::RawParseError<'a>>,
     text: &'a str,
 ) -> Result<T, err::ParseErrors> {
     let mut errs = Vec::new();
-    let result = parse(parser, &mut errs, &Arc::from(text), text);
+    let result = parse(parser, &mut errs, &Arc::from(text), false, text);
 
     let errors = errs
         .into_iter()
