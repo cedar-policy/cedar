@@ -1556,7 +1556,6 @@ fn run_tests_inner(
     args: &RunTestsArgs,
 ) -> Result<CedarExitCode> {
     let policies = args.policies.get_policy_set()?;
-    let policies = rename_from_id_annotation(&policies)?;
 
     let schema = args.schema.get_schema()?;
     let tests = load_partial_tests(&args.tests)?;
