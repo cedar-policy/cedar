@@ -2376,8 +2376,7 @@ mod test {
 
         let policy_id = PolicyID::from_string("error_policy");
         let error_loc = Loc::new(0..1, "ASTErrorNode".into()).into_maybe_loc();
-        let error_body =
-            TemplateBody::TemplateBodyError(policy_id.clone(), error_loc.clone());
+        let error_body = TemplateBody::TemplateBodyError(policy_id.clone(), error_loc.clone());
 
         let expected_error = <ExprWithErrsBuilder as ExprBuilder>::new()
             .error(ParseErrors::singleton(ToASTError::new(

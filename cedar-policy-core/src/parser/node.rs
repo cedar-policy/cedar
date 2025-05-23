@@ -46,7 +46,7 @@ impl<T> Node<T> {
             loc: Some(loc),
         }
     }
-    
+
     /// Create a new Node with the given source location
     #[cfg(not(feature = "fast-parsing"))]
     pub fn with_source_loc(node: T, loc: Loc) -> Self {

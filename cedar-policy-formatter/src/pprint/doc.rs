@@ -39,8 +39,10 @@ impl Doc for Node<Option<VariableDef>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let vd = self.as_inner()?;
 
-        let start_comment =
-            get_comment_at_start(self.loc.as_loc_ref().map(|loc| loc.span), &mut context.tokens)?;
+        let start_comment = get_comment_at_start(
+            self.loc.as_loc_ref().map(|loc| loc.span),
+            &mut context.tokens,
+        )?;
         let var_doc = vd.variable.as_inner()?.to_doc(context)?;
 
         let is_doc = match &vd.entity_type {
@@ -111,8 +113,10 @@ impl Doc for Node<Option<Cond>> {
             cond.cond.loc.as_loc_ref().map(|loc| loc.span),
             &mut context.tokens,
         )?;
-        let rb_comment =
-            get_comment_at_end(self.loc.as_loc_ref().map(|loc| loc.span), &mut context.tokens)?;
+        let rb_comment = get_comment_at_end(
+            self.loc.as_loc_ref().map(|loc| loc.span),
+            &mut context.tokens,
+        )?;
         let cond_comment = get_comment_at_start(
             cond.cond.loc.as_loc_ref().map(|loc| loc.span),
             &mut context.tokens,
@@ -582,7 +586,10 @@ impl Doc for Node<Option<Str>> {
         // on newlines, which may alter the string content.
         Some(add_comment(
             RcDoc::as_string(e),
-            get_comment_at_start(self.loc.as_loc_ref().map(|loc| loc.span), &mut context.tokens)?,
+            get_comment_at_start(
+                self.loc.as_loc_ref().map(|loc| loc.span),
+                &mut context.tokens,
+            )?,
             RcDoc::nil(),
         ))
     }
@@ -612,7 +619,10 @@ impl Doc for Node<Option<Literal>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         Some(add_comment(
             RcDoc::as_string(self.as_inner()?),
-            get_comment_at_start(self.loc.as_loc_ref().map(|loc| loc.span), &mut context.tokens)?,
+            get_comment_at_start(
+                self.loc.as_loc_ref().map(|loc| loc.span),
+                &mut context.tokens,
+            )?,
             RcDoc::nil(),
         ))
     }
@@ -622,7 +632,10 @@ impl Doc for Node<Option<Slot>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         Some(add_comment(
             RcDoc::as_string(self.as_inner()?),
-            get_comment_at_start(self.loc.as_loc_ref().map(|loc| loc.span), &mut context.tokens)?,
+            get_comment_at_start(
+                self.loc.as_loc_ref().map(|loc| loc.span),
+                &mut context.tokens,
+            )?,
             RcDoc::nil(),
         ))
     }
@@ -649,7 +662,10 @@ impl Doc for Node<Option<Primary>> {
                 .append(RcDoc::nil())
                 .append(add_comment(
                     RcDoc::text(")"),
-                    get_comment_at_end(self.loc.as_loc_ref().map(|loc| loc.span), &mut context.tokens)?,
+                    get_comment_at_end(
+                        self.loc.as_loc_ref().map(|loc| loc.span),
+                        &mut context.tokens,
+                    )?,
                     RcDoc::nil(),
                 ))
                 .group(),
@@ -688,7 +704,10 @@ impl Doc for Node<Option<Primary>> {
                 ),
                 add_comment(
                     RcDoc::text("]"),
-                    get_comment_at_end(self.loc.as_loc_ref().map(|loc| loc.span), &mut context.tokens)?,
+                    get_comment_at_end(
+                        self.loc.as_loc_ref().map(|loc| loc.span),
+                        &mut context.tokens,
+                    )?,
                     RcDoc::nil(),
                 ),
             )),
@@ -726,7 +745,10 @@ impl Doc for Node<Option<Primary>> {
                 ),
                 add_comment(
                     RcDoc::text("}"),
-                    get_comment_at_end(self.loc.as_loc_ref().map(|loc| loc.span), &mut context.tokens)?,
+                    get_comment_at_end(
+                        self.loc.as_loc_ref().map(|loc| loc.span),
+                        &mut context.tokens,
+                    )?,
                     RcDoc::nil(),
                 ),
             )),
@@ -790,7 +812,10 @@ impl Doc for Node<Option<MemAccess>> {
                 .append(RcDoc::line_())
                 .append(add_comment(
                     RcDoc::text(")"),
-                    get_comment_at_end(self.loc.as_loc_ref().map(|loc| loc.span), &mut context.tokens)?,
+                    get_comment_at_end(
+                        self.loc.as_loc_ref().map(|loc| loc.span),
+                        &mut context.tokens,
+                    )?,
                     RcDoc::nil(),
                 )),
             ),
@@ -808,7 +833,10 @@ impl Doc for Node<Option<MemAccess>> {
                 .append(RcDoc::line_())
                 .append(add_comment(
                     RcDoc::text("]"),
-                    get_comment_at_end(self.loc.as_loc_ref().map(|loc| loc.span), &mut context.tokens)?,
+                    get_comment_at_end(
+                        self.loc.as_loc_ref().map(|loc| loc.span),
+                        &mut context.tokens,
+                    )?,
                     RcDoc::nil(),
                 )),
             ),
@@ -822,7 +850,10 @@ impl Doc for Node<Option<Annotation>> {
         let id_doc = annotation.key.to_doc(context);
         let at_doc = add_comment(
             RcDoc::text("@"),
-            get_comment_at_start(self.loc.as_loc_ref().map(|loc| loc.span), &mut context.tokens)?,
+            get_comment_at_start(
+                self.loc.as_loc_ref().map(|loc| loc.span),
+                &mut context.tokens,
+            )?,
             RcDoc::nil(),
         );
         let val_doc = match annotation.value.as_ref() {
@@ -838,7 +869,10 @@ impl Doc for Node<Option<Annotation>> {
                 let val_doc = value.to_doc(context);
                 let rp_doc = add_comment(
                     RcDoc::text(")"),
-                    get_comment_at_end(self.loc.as_loc_ref().map(|loc| loc.span), &mut context.tokens)?,
+                    get_comment_at_end(
+                        self.loc.as_loc_ref().map(|loc| loc.span),
+                        &mut context.tokens,
+                    )?,
                     RcDoc::hardline(),
                 );
                 lp_doc.append(val_doc).append(rp_doc)
@@ -854,7 +888,10 @@ impl Doc for Node<Option<Ident>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         Some(add_comment(
             self.as_inner()?.to_doc(context)?,
-            get_comment_at_start(self.loc.as_loc_ref().map(|loc| loc.span), &mut context.tokens)?,
+            get_comment_at_start(
+                self.loc.as_loc_ref().map(|loc| loc.span),
+                &mut context.tokens,
+            )?,
             RcDoc::nil(),
         ))
     }
@@ -972,7 +1009,10 @@ impl Doc for Node<Option<Policy>> {
                 .append(cond_doc)
                 .append(add_comment(
                     RcDoc::text(";"),
-                    get_comment_at_end(self.loc.as_loc_ref().map(|loc| loc.span), &mut context.tokens)?,
+                    get_comment_at_end(
+                        self.loc.as_loc_ref().map(|loc| loc.span),
+                        &mut context.tokens,
+                    )?,
                     RcDoc::nil(),
                 )),
         )

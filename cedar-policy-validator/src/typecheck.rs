@@ -38,7 +38,6 @@ use crate::{
     ValidationError, ValidationMode, ValidationWarning,
 };
 
-use cedar_policy_core::{fuzzy_match::fuzzy_search, parser::IntoMaybeLoc};
 use cedar_policy_core::{
     ast::{
         BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
@@ -46,6 +45,7 @@ use cedar_policy_core::{
     },
     expr_builder::ExprBuilder as _,
 };
+use cedar_policy_core::{fuzzy_match::fuzzy_search, parser::IntoMaybeLoc};
 
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 

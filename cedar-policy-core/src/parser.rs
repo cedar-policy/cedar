@@ -27,7 +27,7 @@ mod fmt;
 pub use fmt::join_with_conjunction;
 /// Source location struct
 mod loc;
-pub use loc::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc, CloneMaybeLoc};
+pub use loc::{AsLocRef, CloneMaybeLoc, IntoMaybeLoc, Loc, MaybeLoc};
 #[macro_use]
 mod macros;
 /// Metadata wrapper for CST Nodes
@@ -78,7 +78,7 @@ pub fn parse_policyset_and_also_return_policy_text(
         .expect("shouldn't be `None` since `parse_policies` and `to_policyset` didn't return `Err`")
         .map(|(id, policy)| {
             if let Some(loc) = &policy.loc {
-            (id, &text[loc.start()..loc.end()])
+                (id, &text[loc.start()..loc.end()])
             } else {
                 (id, "")
             }
@@ -147,7 +147,11 @@ pub fn parse_template(
     let cst = text_to_cst::parse_policy(text)?;
     let template = cst.to_template(id)?;
     if template.slots().count() == 0 {
-        Err(err::ToASTError::new(err::ToASTErrorKind::expected_template(), cst.loc.into_maybe_loc()).into())
+        Err(err::ToASTError::new(
+            err::ToASTErrorKind::expected_template(),
+            cst.loc.into_maybe_loc(),
+        )
+        .into())
     } else {
         Ok(template)
     }

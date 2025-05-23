@@ -18,7 +18,10 @@
 
 use super::*;
 use crate::types::{EntityRecordKind, RequestEnv, Type};
-use cedar_policy_core::{ast::{BinaryOp, Expr, ExprKind, Literal, PolicyID}, parser::IntoMaybeLoc};
+use cedar_policy_core::{
+    ast::{BinaryOp, Expr, ExprKind, Literal, PolicyID},
+    parser::IntoMaybeLoc,
+};
 use smol_str::SmolStr;
 use thiserror::Error;
 use typecheck::PolicyCheck;

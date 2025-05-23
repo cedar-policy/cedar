@@ -687,7 +687,7 @@ mod test {
     use super::*;
     use crate::ast::expression_construction_errors;
     use crate::parser::err::{ParseError, ToASTError, ToASTErrorKind};
-    use crate::parser::{Loc, IntoMaybeLoc};
+    use crate::parser::{IntoMaybeLoc, Loc};
     use std::str::FromStr;
     use std::sync::Arc;
 

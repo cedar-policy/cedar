@@ -35,11 +35,11 @@
 
 use super::err::{parse_errors, ParseError, ParseErrors, ToASTError, ToASTErrorKind};
 use super::loc::CloneMaybeLoc;
-use super::{AsLocRef, IntoMaybeLoc, Loc};
 use super::node::Node;
 use super::unescape::{to_pattern, to_unescaped_string};
 use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
 use super::{cst, MaybeLoc};
+use super::{AsLocRef, IntoMaybeLoc, Loc};
 #[cfg(feature = "tolerant-ast")]
 use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
 use crate::ast::{
@@ -1223,10 +1223,7 @@ where
     }
 
     fn to_ast_err(&self, kind: impl Into<ToASTErrorKind>) -> ToASTError {
-        ToASTError::new(
-            kind.into(),
-            self.loc().into_maybe_loc(),
-        )
+        ToASTError::new(kind.into(), self.loc().into_maybe_loc())
     }
 
     fn into_expr<Build: ExprBuilder<Expr = Expr>>(self) -> Result<Expr> {
@@ -1464,7 +1461,12 @@ impl Node<Option<cst::Relation>> {
                     None => Ok(first),
                     Some((&op, second)) => first.into_expr::<Build>().and_then(|first| {
                         Ok(ExprOrSpecial::Expr {
-                            expr: construct_expr_rel::<Build>(first, op, second, self.loc.clone_maybe_loc())?,
+                            expr: construct_expr_rel::<Build>(
+                                first,
+                                op,
+                                second,
+                                self.loc.clone_maybe_loc(),
+                            )?,
                             loc: self.loc.clone_maybe_loc(),
                         })
                     }),
@@ -1907,7 +1909,10 @@ impl Node<Option<cst::Member>> {
                 (Name { name, .. }, [Call(args), rest @ ..]) => {
                     // move the vec out of the slice, we won't use the slice after
                     let args = std::mem::take(args);
-                    (name.into_func::<Build>(args, self.loc.clone_maybe_loc())?, rest)
+                    (
+                        name.into_func::<Build>(args, self.loc.clone_maybe_loc())?,
+                        rest,
+                    )
                 }
                 // variable function call - error
                 (Var { var, .. }, [Call(_), ..]) => {
@@ -2082,7 +2087,10 @@ impl Node<Option<cst::Primary>> {
                     .with_maybe_source_loc(self.loc.as_loc_ref())
                     .record(rec)
                     .map_err(|e| {
-                        Into::<ParseErrors>::into(ToASTError::new(e.into(), self.loc.clone_maybe_loc()))
+                        Into::<ParseErrors>::into(ToASTError::new(
+                            e.into(),
+                            self.loc.clone_maybe_loc(),
+                        ))
                     })?;
                 Ok(ExprOrSpecial::Expr {
                     expr,

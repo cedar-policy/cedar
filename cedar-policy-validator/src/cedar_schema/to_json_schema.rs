@@ -349,9 +349,12 @@ fn convert_app_decls(
                 }
                 None => match entity_tys {
                     None => {
-                        return Err(
-                            ToJsonSchemaError::empty_resource(name, name_loc.into_maybe_loc(), loc).into(),
+                        return Err(ToJsonSchemaError::empty_resource(
+                            name,
+                            name_loc.into_maybe_loc(),
+                            loc,
                         )
+                        .into())
                     }
                     Some(entity_tys) => {
                         resource_types = Some(Node::with_maybe_source_loc(
@@ -507,8 +510,9 @@ impl NamespaceRecord {
             .clone()
             .map(|n| {
                 let internal_name = RawName::from(n.clone()).qualify_with(None); // namespace names are already fully-qualified
-                Name::try_from(internal_name)
-                    .map_err(|e| ToJsonSchemaError::reserved_name(e.name(), n.loc().into_maybe_loc()))
+                Name::try_from(internal_name).map_err(|e| {
+                    ToJsonSchemaError::reserved_name(e.name(), n.loc().into_maybe_loc())
+                })
             })
             .transpose()?;
         let (entities, actions, types) = partition_decls(&namespace.decls);
@@ -536,7 +540,10 @@ impl NamespaceRecord {
         let record = NamespaceRecord {
             entities,
             common_types,
-            loc: namespace.name.as_ref().and_then(|n| n.loc().into_maybe_loc()),
+            loc: namespace
+                .name
+                .as_ref()
+                .and_then(|n| n.loc().into_maybe_loc()),
         };
 
         Ok((ns, record))

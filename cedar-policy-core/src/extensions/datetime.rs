@@ -32,7 +32,8 @@ use crate::{
         Name, RepresentableExtensionValue, RestrictedExpr, Type, Value, ValueKind,
     },
     entities::SchemaType,
-    evaluator::{self, EvaluationError}, parser::IntoMaybeLoc,
+    evaluator::{self, EvaluationError},
+    parser::IntoMaybeLoc,
 };
 
 const DATETIME_EXTENSION_NAME: &str = "datetime";

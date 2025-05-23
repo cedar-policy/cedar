@@ -26,7 +26,9 @@ use cedar_policy_core::{
     ast::AnyId,
     impl_diagnostic_from_source_loc_opt_field, impl_diagnostic_from_two_source_loc_opt_fields,
     parser::{
-        err::{expected_to_string, ExpectedTokenConfig}, unescape::UnescapeError, AsLocRef, MaybeLoc, Node
+        err::{expected_to_string, ExpectedTokenConfig},
+        unescape::UnescapeError,
+        AsLocRef, MaybeLoc, Node,
     },
 };
 use lalrpop_util as lalr;
@@ -447,11 +449,7 @@ pub enum ToJsonSchemaError {
 }
 
 impl ToJsonSchemaError {
-    pub(crate) fn duplicate_context(
-        name: &impl ToSmolStr,
-        loc1: MaybeLoc,
-        loc2: MaybeLoc,
-    ) -> Self {
+    pub(crate) fn duplicate_context(name: &impl ToSmolStr, loc1: MaybeLoc, loc2: MaybeLoc) -> Self {
         Self::DuplicateContext(DuplicateContext {
             name: name.to_smolstr(),
             loc1,
@@ -459,11 +457,7 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn duplicate_decls(
-        decl: &impl ToSmolStr,
-        loc1: MaybeLoc,
-        loc2: MaybeLoc,
-    ) -> Self {
+    pub(crate) fn duplicate_decls(decl: &impl ToSmolStr, loc1: MaybeLoc, loc2: MaybeLoc) -> Self {
         Self::DuplicateDeclarations(DuplicateDeclarations {
             decl: decl.to_smolstr(),
             loc1,
@@ -540,11 +534,7 @@ impl ToJsonSchemaError {
         })
     }
 
-    pub(crate) fn empty_resource(
-        name: &impl ToSmolStr,
-        name_loc: MaybeLoc,
-        loc: MaybeLoc,
-    ) -> Self {
+    pub(crate) fn empty_resource(name: &impl ToSmolStr, name_loc: MaybeLoc, loc: MaybeLoc) -> Self {
         Self::NoPrincipalOrResource(NoPrincipalOrResource {
             kind: PR::Resource,
             name: name.to_smolstr(),
@@ -744,7 +734,10 @@ impl Diagnostic for DuplicateNamespace {
 
 /// Error subtypes for [`SchemaWarning`]
 pub mod schema_warnings {
-    use cedar_policy_core::{impl_diagnostic_from_source_loc_opt_field, parser::{AsLocRef, MaybeLoc}};
+    use cedar_policy_core::{
+        impl_diagnostic_from_source_loc_opt_field,
+        parser::{AsLocRef, MaybeLoc},
+    };
     use miette::Diagnostic;
     use smol_str::SmolStr;
     use thiserror::Error;

@@ -1249,7 +1249,7 @@ fn parse_record_attributes(
             attrs_with_common_type_refs
                 .into_iter()
                 .map(|(s, (attr_ty, is_req))| {
-                    let loc = attr_ty.loc().as_deref().map(|loc| Box::new(loc.clone()));
+                    let loc = attr_ty.loc().into_maybe_loc();
                     attr_ty
                         .resolve_common_type_refs(common_type_defs)
                         .map(|ty| {

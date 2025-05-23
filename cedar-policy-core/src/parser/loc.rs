@@ -139,14 +139,14 @@ impl IntoMaybeLoc for Option<Loc> {
 impl IntoMaybeLoc for Option<&Loc> {
     #[inline]
     fn into_maybe_loc(self) -> MaybeLoc {
-            #[cfg(not(feature = "fast-parsing"))]
-            {
-                self.cloned()
-            }
-            #[cfg(feature = "fast-parsing")]
-            {
-                self.map(|loc| Box::new(loc.clone()))
-            }
+        #[cfg(not(feature = "fast-parsing"))]
+        {
+            self.cloned()
+        }
+        #[cfg(feature = "fast-parsing")]
+        {
+            self.map(|loc| Box::new(loc.clone()))
+        }
     }
 }
 

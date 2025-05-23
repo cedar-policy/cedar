@@ -2,7 +2,8 @@ use crate::{
     ast::*,
     expr_builder::{self},
     parser::{
-        err::{ParseErrors, ToASTErrorKind}, AsLocRef, IntoMaybeLoc, Loc, MaybeLoc
+        err::{ParseErrors, ToASTErrorKind},
+        AsLocRef, IntoMaybeLoc, Loc, MaybeLoc,
     },
 };
 use serde::{Deserialize, Serialize};

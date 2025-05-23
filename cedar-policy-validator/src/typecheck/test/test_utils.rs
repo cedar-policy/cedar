@@ -41,9 +41,9 @@ pub fn expr_id_placeholder() -> PolicyID {
     PolicyID::from_string("expr")
 }
 
-/// Get `Loc` corresponding to `snippet` in `src`. Returns an option because we
-/// always want an `MaybeLoc` instead of a `Loc`. Panics if `snippet` is not
-/// in `src` to fail fast in tests.
+/// Get `Loc` corresponding to `snippet` in `src`. Returns a `MaybeLoc` because
+/// we always want an optional `Loc` instead of a just `Loc`. Panics if
+/// `snippet` is not in `src` to fail fast in tests.
 #[track_caller]
 pub fn get_loc(src: impl AsRef<str>, snippet: impl AsRef<str>) -> MaybeLoc {
     let start = src

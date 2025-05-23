@@ -372,10 +372,7 @@ impl ValidationError {
         .into()
     }
 
-    pub(crate) fn internal_invariant_violation(
-        source_loc: MaybeLoc,
-        policy_id: PolicyID,
-    ) -> Self {
+    pub(crate) fn internal_invariant_violation(source_loc: MaybeLoc, policy_id: PolicyID) -> Self {
         validation_errors::InternalInvariantViolation {
             source_loc,
             policy_id,

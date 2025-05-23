@@ -656,14 +656,20 @@ fn is_impossible() {
     let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
-        ValidationWarning::impossible_policy(p.loc().into_maybe_loc(), PolicyID::from_string("policy0"),)
+        ValidationWarning::impossible_policy(
+            p.loc().into_maybe_loc(),
+            PolicyID::from_string("policy0"),
+        )
     );
     let p = parse_policy(None, r#"permit(principal, action, resource is User);"#).unwrap();
     let warnings = assert_policy_typecheck_warns(simple_schema_file(), p.clone());
     let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
-        ValidationWarning::impossible_policy(p.loc().into_maybe_loc(), PolicyID::from_string("policy0"),)
+        ValidationWarning::impossible_policy(
+            p.loc().into_maybe_loc(),
+            PolicyID::from_string("policy0"),
+        )
     );
 }
 
@@ -697,7 +703,10 @@ fn is_entity_lub() {
     let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
-        ValidationWarning::impossible_policy(p.loc().into_maybe_loc(), PolicyID::from_string("policy0"),)
+        ValidationWarning::impossible_policy(
+            p.loc().into_maybe_loc(),
+            PolicyID::from_string("policy0"),
+        )
     );
 }
 
@@ -724,7 +733,10 @@ fn is_action() {
     let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
-        ValidationWarning::impossible_policy(p.loc().into_maybe_loc(), PolicyID::from_string("policy0"),)
+        ValidationWarning::impossible_policy(
+            p.loc().into_maybe_loc(),
+            PolicyID::from_string("policy0"),
+        )
     );
 }
 
@@ -891,7 +903,10 @@ fn action_groups() {
     let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
-        ValidationWarning::impossible_policy(policy.loc().into_maybe_loc(), PolicyID::from_string("0"),)
+        ValidationWarning::impossible_policy(
+            policy.loc().into_maybe_loc(),
+            PolicyID::from_string("0"),
+        )
     );
 
     let policy = parse_policy(
@@ -903,7 +918,10 @@ fn action_groups() {
     let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
-        ValidationWarning::impossible_policy(policy.loc().into_maybe_loc(), PolicyID::from_string("0"),)
+        ValidationWarning::impossible_policy(
+            policy.loc().into_maybe_loc(),
+            PolicyID::from_string("0"),
+        )
     );
 
     let policy = parse_policy(
@@ -915,7 +933,10 @@ fn action_groups() {
     let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
-        ValidationWarning::impossible_policy(policy.loc().into_maybe_loc(), PolicyID::from_string("0"),)
+        ValidationWarning::impossible_policy(
+            policy.loc().into_maybe_loc(),
+            PolicyID::from_string("0"),
+        )
     );
 
     let policy = parse_policy(
@@ -927,7 +948,10 @@ fn action_groups() {
     let warning = assert_exactly_one_diagnostic(warnings);
     assert_eq!(
         warning,
-        ValidationWarning::impossible_policy(policy.loc().into_maybe_loc(), PolicyID::from_string("0"),)
+        ValidationWarning::impossible_policy(
+            policy.loc().into_maybe_loc(),
+            PolicyID::from_string("0"),
+        )
     );
 }
 
