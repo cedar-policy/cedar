@@ -77,11 +77,11 @@ pub fn parse_policyset_and_also_return_policy_text(
         .with_generated_policyids()
         .expect("shouldn't be `None` since `parse_policies` and `to_policyset` didn't return `Err`")
         .map(|(id, policy)| {
-            let loc = policy
-                .loc
-                .as_ref()
-                .expect("shouldn't be `None` since we parse with locations");
+            if let Some(loc) = &policy.loc {
             (id, &text[loc.start()..loc.end()])
+            } else {
+                (id, "")
+            }
         })
         .collect::<HashMap<ast::PolicyID, &str>>();
     Ok((texts, pset))
