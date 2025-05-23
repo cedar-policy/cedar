@@ -1,11 +1,11 @@
 // PANIC SAFETY: it's ok for benchmarking code to panic
 #![allow(clippy::unwrap_used)]
 
-use std::str::FromStr;
+use std::{hint::black_box, str::FromStr};
 
 use cedar_policy::EntityTypeName;
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
 fn entity_type_name_parsing(c: &mut Criterion) {
     let mut group = c.benchmark_group("EntityTypeName parsing");

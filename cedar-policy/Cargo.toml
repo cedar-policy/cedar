@@ -74,7 +74,7 @@ crate-type = ["rlib", "cdylib"]
 [dev-dependencies]
 miette = { version = "7.6.0", features = ["fancy"] }
 cool_asserts = "2.0"
-criterion = "0.5"
+criterion = "0.6"
 globset = "0.4"
 cedar-policy-core = { version = "=4.4.0", features = [
     "test-util",
