@@ -26,6 +26,24 @@ pub enum PatternElem {
     Wildcard,
 }
 
+impl From<char> for PatternElem {
+    fn from(c: char) -> Self {
+        Self::Char(c)
+    }
+}
+
+impl PatternElem {
+    /// Create a pattern element from a character
+    pub fn char(c: char) -> Self {
+        c.into()
+    }
+
+    /// Create a wildcard
+    pub fn wildcard() -> Self {
+        Self::Wildcard
+    }
+}
+
 /// Represent a pattern literal (the RHS of the like operator)
 /// Also provides an implementation of the Display trait as well as a wildcard matching method.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -36,8 +54,8 @@ pub struct Pattern {
 
 impl Pattern {
     /// Explicitly create a pattern literal out of a shared vector of pattern elements
-    fn new(elems: Arc<Vec<PatternElem>>) -> Self {
-        Self { elems }
+    pub fn new(elems: impl IntoIterator<Item = PatternElem>) -> Self {
+        Self::from_iter(elems)
     }
 
     /// Getter to the wrapped vector
@@ -63,19 +81,21 @@ impl Pattern {
 
 impl From<Arc<Vec<PatternElem>>> for Pattern {
     fn from(value: Arc<Vec<PatternElem>>) -> Self {
-        Self::new(value)
+        Self { elems: value }
     }
 }
 
 impl From<Vec<PatternElem>> for Pattern {
     fn from(value: Vec<PatternElem>) -> Self {
-        Self::new(Arc::new(value))
+        Self::new(value)
     }
 }
 
 impl FromIterator<PatternElem> for Pattern {
     fn from_iter<T: IntoIterator<Item = PatternElem>>(iter: T) -> Self {
-        Self::new(Arc::new(iter.into_iter().collect()))
+        Self {
+            elems: Arc::new(iter.into_iter().collect()),
+        }
     }
 }
 
