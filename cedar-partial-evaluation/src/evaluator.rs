@@ -241,6 +241,14 @@ impl Evaluator<'_> {
             ExprKind::BinaryApp { op, arg1, arg2 } => {
                 let arg1 = self.interpret(arg1);
                 let arg2 = self.interpret(arg2);
+                let residual = |arg1, arg2, ty| Residual::Partial {
+                    kind: ResidualKind::BinaryApp {
+                        op: *op,
+                        arg1: Arc::new(arg1),
+                        arg2: Arc::new(arg2),
+                    },
+                    ty,
+                };
                 match (&arg1, &arg2) {
                     (
                         Residual::Concrete { value: v1, .. },
@@ -274,36 +282,19 @@ impl Evaluator<'_> {
                             if let Ok(uid1) = v1.get_as_entity() {
                                 if let Ok(uid2) = v2.get_as_entity() {
                                     if uid1 == uid2 {
-                                        Residual::Concrete {
+                                        return Residual::Concrete {
                                             value: true.into(),
                                             ty,
-                                        }
+                                        };
                                     } else if let Some(entity) = self.entities.entities.get(uid1) {
                                         if let Some(ancestors) = &entity.ancestors {
-                                            Residual::Concrete {
+                                            return Residual::Concrete {
                                                 value: ancestors.contains(uid2).into(),
                                                 ty,
-                                            }
-                                        } else {
-                                            Residual::Partial {
-                                                kind: ResidualKind::BinaryApp {
-                                                    op: *op,
-                                                    arg1: Arc::new(arg1),
-                                                    arg2: Arc::new(arg2),
-                                                },
-                                                ty,
-                                            }
-                                        }
-                                    } else {
-                                        Residual::Partial {
-                                            kind: ResidualKind::BinaryApp {
-                                                op: *op,
-                                                arg1: Arc::new(arg1),
-                                                arg2: Arc::new(arg2),
-                                            },
-                                            ty,
+                                            };
                                         }
                                     }
+                                    residual(arg1, arg2, ty)
                                 } else if let Ok(s) = v2.get_as_set() {
                                     if let Ok(uids) = s
                                         .iter()
@@ -327,24 +318,10 @@ impl Evaluator<'_> {
                                                         };
                                                     }
                                                 } else {
-                                                    return Residual::Partial {
-                                                        kind: ResidualKind::BinaryApp {
-                                                            op: *op,
-                                                            arg1: Arc::new(arg1),
-                                                            arg2: Arc::new(arg2),
-                                                        },
-                                                        ty,
-                                                    };
+                                                    return residual(arg1, arg2, ty);
                                                 }
                                             } else {
-                                                return Residual::Partial {
-                                                    kind: ResidualKind::BinaryApp {
-                                                        op: *op,
-                                                        arg1: Arc::new(arg1),
-                                                        arg2: Arc::new(arg2),
-                                                    },
-                                                    ty,
-                                                };
+                                                return residual(arg1, arg2, ty);
                                             }
                                         }
                                         Residual::Concrete {
@@ -375,24 +352,10 @@ impl Evaluator<'_> {
                                                 Residual::Error(ty)
                                             }
                                         } else {
-                                            Residual::Partial {
-                                                kind: ResidualKind::BinaryApp {
-                                                    op: *op,
-                                                    arg1: Arc::new(arg1),
-                                                    arg2: Arc::new(arg2),
-                                                },
-                                                ty,
-                                            }
+                                            residual(arg1, arg2, ty)
                                         }
                                     } else {
-                                        Residual::Partial {
-                                            kind: ResidualKind::BinaryApp {
-                                                op: *op,
-                                                arg1: Arc::new(arg1),
-                                                arg2: Arc::new(arg2),
-                                            },
-                                            ty,
-                                        }
+                                        residual(arg1, arg2, ty)
                                     }
                                 } else {
                                     Residual::Error(ty)
@@ -411,24 +374,10 @@ impl Evaluator<'_> {
                                                 ty,
                                             }
                                         } else {
-                                            Residual::Partial {
-                                                kind: ResidualKind::BinaryApp {
-                                                    op: *op,
-                                                    arg1: Arc::new(arg1),
-                                                    arg2: Arc::new(arg2),
-                                                },
-                                                ty,
-                                            }
+                                            residual(arg1, arg2, ty)
                                         }
                                     } else {
-                                        Residual::Partial {
-                                            kind: ResidualKind::BinaryApp {
-                                                op: *op,
-                                                arg1: Arc::new(arg1),
-                                                arg2: Arc::new(arg2),
-                                            },
-                                            ty,
-                                        }
+                                        residual(arg1, arg2, ty)
                                     }
                                 } else {
                                     Residual::Error(ty)
@@ -508,14 +457,7 @@ impl Evaluator<'_> {
                     },
                     (Residual::Error(_), _) => Residual::Error(ty),
                     (_, Residual::Error(_)) => Residual::Error(ty),
-                    (_, _) => Residual::Partial {
-                        kind: ResidualKind::BinaryApp {
-                            op: *op,
-                            arg1: Arc::new(arg1),
-                            arg2: Arc::new(arg2),
-                        },
-                        ty,
-                    },
+                    (_, _) => residual(arg1, arg2, ty),
                 }
             }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
@@ -725,5 +667,385 @@ impl Evaluator<'_> {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, i64};
+
+    use cedar_policy_core::{
+        ast::{
+            BinaryOp, EntityUID, ExprBuilder, Literal, Pattern, PatternElem, Value, ValueKind, Var,
+        },
+        expr_builder::ExprBuilder as _,
+        extensions::Extensions,
+    };
+    use cedar_policy_validator::{types::Type, ValidatorSchema};
+    use cool_asserts::assert_matches;
+
+    use crate::{
+        entities::{PartialEntities, PartialEntity},
+        request::{PartialEntityUID, PartialRequest},
+        residual::{Residual, ResidualKind},
+    };
+
+    use super::Evaluator;
+
+    #[allow(unused)]
+    #[track_caller]
+    fn simple_schema() -> ValidatorSchema {
+        let src = r#"
+            entity E { s? : String, };
+            action a {
+              principal: E,
+              resource: E,
+            };
+        "#;
+        ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())
+            .unwrap()
+            .0
+    }
+
+    #[track_caller]
+    fn action() -> EntityUID {
+        r#"Action::"a""#.parse().unwrap()
+    }
+
+    #[track_caller]
+    fn dummy_uid() -> EntityUID {
+        r#"E::"""#.parse().unwrap()
+    }
+
+    #[allow(unused)]
+    #[track_caller]
+    fn dummy_entity() -> PartialEntity {
+        PartialEntity {
+            uid: dummy_uid(),
+            attrs: None,
+            ancestors: None,
+            tags: None,
+        }
+    }
+
+    #[track_caller]
+    fn dummy_entities() -> PartialEntities {
+        PartialEntities {
+            entities: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn test_var() {
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: req,
+            entities: &dummy_entities(),
+            extensions: Extensions::all_available(),
+        };
+        // principal -> principal because its eid is unknown
+        assert_matches!(
+            eval.interpret(&builder().var(Var::Principal)),
+            Residual::Partial {
+                kind: ResidualKind::Var(Var::Principal),
+                ..
+            }
+        );
+        // resource -> E::""
+        assert_matches!(
+            eval.interpret(&builder().var(Var::Resource)),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::EntityUID(uid)),
+                    ..
+                },
+                ..
+            } => {
+                assert_eq!(uid.as_ref(), &dummy_uid());
+            }
+        );
+        // action is always known
+        assert_matches!(
+            eval.interpret(&builder().var(Var::Action)),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::EntityUID(uid)),
+                    ..
+                },
+                ..
+            } => {
+                assert_eq!(uid.as_ref(), &action());
+            }
+        );
+        // context is always unknown
+        assert_matches!(
+            eval.interpret(&builder().var(Var::Context)),
+            Residual::Partial {
+                kind: ResidualKind::Var(Var::Context),
+                ..
+            }
+        );
+    }
+
+    #[track_caller]
+    fn builder() -> ExprBuilder<Option<Type>> {
+        ExprBuilder::with_data(Some(Type::Never))
+    }
+
+    #[test]
+    fn test_and() {
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: req,
+            entities: &dummy_entities(),
+            extensions: Extensions::all_available(),
+        };
+        assert_matches!(
+            eval.interpret(&builder().and(
+                builder().noteq(builder().var(Var::Resource), builder().var(Var::Resource)),
+                builder().val(42)
+            )),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(false)),
+                    ..
+                },
+                ..
+            }
+        );
+        assert_matches!(
+            eval.interpret(&builder().and(
+                builder().noteq(
+                    builder().mul(builder().val(i64::MAX), builder().val(2)),
+                    builder().val(0)
+                ),
+                builder().val(42)
+            )),
+            Residual::Error(_),
+        );
+        // resource == resource && 42 => 42
+        // Note that this expression is not an invalid input
+        // The evaluator does not perform any validation
+        assert_matches!(
+            eval.interpret(&builder().and(
+                builder().binary_app(
+                    BinaryOp::Eq,
+                    builder().var(Var::Resource),
+                    builder().var(Var::Resource)
+                ),
+                builder().val(42)
+            )),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Long(42)),
+                    ..
+                },
+                ..
+            }
+        );
+    }
+
+    #[test]
+    fn test_or() {
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: req,
+            entities: &dummy_entities(),
+            extensions: Extensions::all_available(),
+        };
+        assert_matches!(
+            eval.interpret(&builder().or(
+                builder().binary_app(
+                    BinaryOp::Eq,
+                    builder().var(Var::Resource),
+                    builder().var(Var::Resource)
+                ),
+                builder().val(42)
+            )),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
+                    ..
+                },
+                ..
+            }
+        );
+        assert_matches!(
+            eval.interpret(&builder().or(
+                builder().noteq(
+                    builder().mul(builder().val(i64::MAX), builder().val(2)),
+                    builder().val(0)
+                ),
+                builder().val(42)
+            )),
+            Residual::Error(_),
+        );
+        // resource != resource || 42 => 42
+        // Note that this expression is not an invalid input
+        // The evaluator does not perform any validation
+        assert_matches!(
+            eval.interpret(&builder().or(
+                builder().noteq(builder().var(Var::Resource), builder().var(Var::Resource)),
+                builder().val(42)
+            )),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Long(42)),
+                    ..
+                },
+                ..
+            }
+        );
+    }
+
+    #[test]
+    fn test_ite() {
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: req,
+            entities: &dummy_entities(),
+            extensions: Extensions::all_available(),
+        };
+        assert_matches!(
+            eval.interpret(&builder().ite(
+                builder().is_eq(builder().var(Var::Action), builder().var(Var::Action)),
+                builder().var(Var::Principal),
+                builder().val(2)
+            )),
+            Residual::Partial {
+                kind: ResidualKind::Var(Var::Principal),
+                ..
+            }
+        );
+        assert_matches!(
+            eval.interpret(&builder().ite(
+                builder().is_eq(builder().var(Var::Principal), builder().var(Var::Principal)),
+                builder().var(Var::Principal),
+                builder().val(2)
+            )),
+            Residual::Partial {
+                kind: ResidualKind::If { test_expr, then_expr, else_expr },
+                ..
+            } => {
+                assert_matches!(test_expr.as_ref(), Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, .. }, .. });
+                assert_matches!(then_expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
+                assert_matches!(else_expr.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::Long(2)), .. }, .. });
+            }
+        );
+    }
+
+    #[test]
+    fn test_is() {
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: req,
+            entities: &dummy_entities(),
+            extensions: Extensions::all_available(),
+        };
+        assert_matches!(
+            eval.interpret(&builder().is_entity_type(
+                builder().var(Var::Resource),
+                dummy_uid().entity_type().clone()
+            )),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
+                    ..
+                },
+                ..
+            }
+        );
+        // Note that the Lean model evaluates it to `principal is E`
+        assert_matches!(
+            eval.interpret(&builder().is_entity_type(
+                builder().var(Var::Principal),
+                dummy_uid().entity_type().clone()
+            )),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
+                    ..
+                },
+                ..
+            }
+        );
+    }
+
+    #[test]
+    fn test_like() {
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: req,
+            entities: &dummy_entities(),
+            extensions: Extensions::all_available(),
+        };
+        assert_matches!(
+            eval.interpret(&builder().like(
+                builder().val("aaa"),
+                Pattern::from(vec![PatternElem::Char('a'), PatternElem::Wildcard])
+            )),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
+                    ..
+                },
+                ..
+            }
+        );
+        // Note that this expression is not valid input
+        assert_matches!(
+            eval.interpret(&builder().like(builder().var(Var::Principal), Pattern::from(vec![PatternElem::Char('a'), PatternElem::Wildcard]))),
+           Residual::Partial { kind: ResidualKind::Like { expr, .. }, .. } => {
+                assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
+            }
+        );
     }
 }

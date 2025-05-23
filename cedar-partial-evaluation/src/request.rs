@@ -32,6 +32,15 @@ impl TryFrom<PartialEntityUID> for EntityUID {
     }
 }
 
+impl From<EntityUID> for PartialEntityUID {
+    fn from(value: EntityUID) -> Self {
+        Self {
+            ty: value.entity_type().clone(),
+            eid: Some(value.eid().clone()),
+        }
+    }
+}
+
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
 #[derive(Debug, Clone)]
 pub struct PartialRequest {
