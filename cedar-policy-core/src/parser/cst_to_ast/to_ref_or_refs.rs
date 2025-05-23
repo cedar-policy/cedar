@@ -495,7 +495,6 @@ mod test {
     use crate::parser::cst_to_ast::TolerantAstSetting;
     use crate::parser::IntoMaybeLoc;
     use crate::parser::Loc;
-    use crate::parser::MaybeLoc;
     use crate::parser::Node;
 
     #[test]

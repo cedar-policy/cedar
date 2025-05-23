@@ -18,7 +18,7 @@ use std::{collections::BTreeMap, iter::once};
 
 use cedar_policy_core::{
     ast::{Annotation, Annotations, AnyId, Id, InternalName},
-    parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc, Node},
+    parser::{AsLocRef, Loc, MaybeLoc, Node},
 };
 use itertools::{Either, Itertools};
 use nonempty::NonEmpty;
@@ -390,6 +390,8 @@ impl Decl for ActionDecl {
 #[cfg(test)]
 mod test {
     use std::sync::Arc;
+
+    use cedar_policy_core::parser::IntoMaybeLoc;
 
     use super::*;
 

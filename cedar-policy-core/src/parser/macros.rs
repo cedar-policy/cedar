@@ -1,3 +1,4 @@
+/// Return a `MaybeLoc` value that depends on the flag
 #[macro_export]
 macro_rules! maybe_loc {
     ($flag:ident, $loc:expr) => {

@@ -24,7 +24,7 @@ use cedar_policy_core::{
     ast::{Entity, EntityType, EntityUID, InternalName, Name, UnreservedId},
     entities::{err::EntitiesError, Entities, TCComputation},
     extensions::Extensions,
-    parser::{IntoMaybeLoc, Loc, MaybeLoc},
+    parser::{IntoMaybeLoc, MaybeLoc},
     transitive_closure::compute_tc,
 };
 use educe::Educe;

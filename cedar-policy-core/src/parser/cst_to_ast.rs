@@ -34,7 +34,8 @@
 // cloning.
 
 use super::err::{parse_errors, ParseError, ParseErrors, ToASTError, ToASTErrorKind};
-use super::loc::{AsLocRef, IntoMaybeLoc, Loc};
+use super::loc::CloneMaybeLoc;
+use super::{AsLocRef, IntoMaybeLoc, Loc};
 use super::node::Node;
 use super::unescape::{to_pattern, to_unescaped_string};
 use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
@@ -267,7 +268,7 @@ impl Node<Option<cst::Policy>> {
             // The source parsed as a template, but not a static policy
             Ok(Err(ast::UnexpectedSlotError::FoundSlot(slot))) => Err(ToASTError::new(
                 ToASTErrorKind::expected_static_policy(slot.clone()),
-                slot.loc.or_else(|| self.loc.clone()),
+                slot.loc.or_else(|| self.loc.clone_maybe_loc()),
             )
             .into()),
             // The source failed to parse completely. If the parse errors include
@@ -304,7 +305,7 @@ impl Node<Option<cst::Policy>> {
                 // during parsing to CST
                 return Err(ParseErrors::singleton(ToASTError::new(
                     ToASTErrorKind::CSTErrorNode,
-                    self.loc.clone(),
+                    self.loc.clone_maybe_loc(),
                 )));
             }
         };
@@ -368,7 +369,7 @@ impl Node<Option<cst::Policy>> {
             // The source parsed as a template, but not a static policy
             Ok(Err(ast::UnexpectedSlotError::FoundSlot(slot))) => Err(ToASTError::new(
                 ToASTErrorKind::expected_static_policy(slot.clone()),
-                slot.loc.or_else(|| self.loc.clone()),
+                slot.loc.or_else(|| self.loc.clone_maybe_loc()),
             )
             .into()),
             // The source failed to parse completely. If the parse errors include
@@ -404,7 +405,7 @@ impl Node<Option<cst::Policy>> {
         let policy = match policy {
             cst::Policy::Policy(policy_impl) => policy_impl,
             cst::Policy::PolicyError => {
-                return Ok(ast::Template::error(id, self.loc.clone()));
+                return Ok(ast::Template::error(id, self.loc.clone_maybe_loc()));
             }
         };
         // convert effect
@@ -1357,13 +1358,13 @@ impl Node<Option<cst::Expr>> {
             cst::Expr::Expr(expr_impl) => expr_impl,
             #[cfg(feature = "tolerant-ast")]
             cst::Expr::ErrorExpr => {
-                let e = ToASTError::new(ToASTErrorKind::CSTErrorNode, self.loc.clone());
+                let e = ToASTError::new(ToASTErrorKind::CSTErrorNode, self.loc.clone_maybe_loc());
                 return Ok(ExprOrSpecial::Expr {
                     expr: convert_expr_error_to_parse_error::<Build>(
                         e.into(),
                         self.loc.as_loc_ref(),
                     )?,
-                    loc: self.loc.clone(),
+                    loc: self.loc.clone_maybe_loc(),
                 });
             }
         };
@@ -1380,7 +1381,7 @@ impl Node<Option<cst::Expr>> {
                     expr: Build::new()
                         .with_maybe_source_loc(self.loc.as_loc_ref())
                         .ite(i, t, e),
-                    loc: self.loc.clone(),
+                    loc: self.loc.clone_maybe_loc(),
                 })
             }
         }
@@ -1404,7 +1405,7 @@ impl Node<Option<cst::Or>> {
                 expr: Build::new()
                     .with_maybe_source_loc(self.loc.as_loc_ref())
                     .or_nary(first, rest),
-                loc: self.loc.clone(),
+                loc: self.loc.clone_maybe_loc(),
             })
         }
     }
@@ -1430,7 +1431,7 @@ impl Node<Option<cst::And>> {
                 expr: Build::new()
                     .with_maybe_source_loc(self.loc.as_loc_ref())
                     .and_nary(first, rest),
-                loc: self.loc.clone(),
+                loc: self.loc.clone_maybe_loc(),
             })
         }
     }
@@ -1463,8 +1464,8 @@ impl Node<Option<cst::Relation>> {
                     None => Ok(first),
                     Some((&op, second)) => first.into_expr::<Build>().and_then(|first| {
                         Ok(ExprOrSpecial::Expr {
-                            expr: construct_expr_rel::<Build>(first, op, second, self.loc.clone())?,
-                            loc: self.loc.clone(),
+                            expr: construct_expr_rel::<Build>(first, op, second, self.loc.clone_maybe_loc())?,
+                            loc: self.loc.clone_maybe_loc(),
                         })
                     }),
                 }
@@ -1482,7 +1483,7 @@ impl Node<Option<cst::Relation>> {
                         &field,
                         self.loc.as_loc_ref(),
                     ),
-                    loc: self.loc.clone(),
+                    loc: self.loc.clone_maybe_loc(),
                 })
             }
             cst::Relation::Like { target, pattern } => {
@@ -1493,7 +1494,7 @@ impl Node<Option<cst::Relation>> {
                     expr: Build::new()
                         .with_maybe_source_loc(self.loc.as_loc_ref())
                         .like(target, pattern.into()),
-                    loc: self.loc.clone(),
+                    loc: self.loc.clone_maybe_loc(),
                 })
             }
             cst::Relation::IsIn {
@@ -1527,14 +1528,14 @@ impl Node<Option<cst::Relation>> {
                             expr: Build::new()
                                 .with_maybe_source_loc(self.loc.as_loc_ref())
                                 .is_in_entity_type(t, n, in_expr),
-                            loc: self.loc.clone(),
+                            loc: self.loc.clone_maybe_loc(),
                         })
                     }
                     None => Ok(ExprOrSpecial::Expr {
                         expr: Build::new()
                             .with_maybe_source_loc(self.loc.as_loc_ref())
                             .is_entity_type(t, n),
-                        loc: self.loc.clone(),
+                        loc: self.loc.clone_maybe_loc(),
                     }),
                 }
             }
@@ -1579,11 +1580,11 @@ impl Node<Option<cst::Add>> {
                 Ok(acc)
             };
         if !extended.is_empty() {
-            return Err(err(self.loc.clone()));
+            return Err(err(self.loc.clone_maybe_loc()));
         }
         let cst::Mult { initial, extended } = initial.try_as_inner()?;
         if !extended.is_empty() {
-            return Err(err(self.loc.clone()));
+            return Err(err(self.loc.clone_maybe_loc()));
         }
         if let cst::Unary {
             op: None,
@@ -1641,12 +1642,12 @@ impl Node<Option<cst::Add>> {
                         )
                         .into()),
                         (ExprOrSpecial::Expr { loc, .. }, _) => Err(err(loc)),
-                        _ => Err(err(self.loc.clone())),
+                        _ => Err(err(self.loc.clone_maybe_loc())),
                     }
                 }
             }
         } else {
-            Err(err(self.loc.clone()))
+            Err(err(self.loc.clone_maybe_loc()))
         }
     }
 
@@ -1669,7 +1670,7 @@ impl Node<Option<cst::Add>> {
                 expr: Build::new()
                     .with_maybe_source_loc(self.loc.as_loc_ref())
                     .add_nary(first, rest),
-                loc: self.loc.clone(),
+                loc: self.loc.clone_maybe_loc(),
             })
         } else {
             Ok(first)
@@ -1703,7 +1704,7 @@ impl Node<Option<cst::Mult>> {
                 expr: Build::new()
                     .with_maybe_source_loc(self.loc.as_loc_ref())
                     .mul_nary(first, rest),
-                loc: self.loc.clone(),
+                loc: self.loc.clone_maybe_loc(),
             })
         } else {
             Ok(first)
@@ -1728,7 +1729,7 @@ impl Node<Option<cst::Unary>> {
                             expr: Build::new()
                                 .with_maybe_source_loc(self.loc.as_loc_ref())
                                 .not(expr),
-                            loc: self.loc.clone(),
+                            loc: self.loc.clone_maybe_loc(),
                         })
                 })
             }
@@ -1782,7 +1783,7 @@ impl Node<Option<cst::Unary>> {
                     })
                     .map(|expr| ExprOrSpecial::Expr {
                         expr,
-                        loc: self.loc.clone(),
+                        loc: self.loc.clone_maybe_loc(),
                     })
             }
             Some(cst::NegOp::OverBang) => Err(self
@@ -1906,7 +1907,7 @@ impl Node<Option<cst::Member>> {
                 (Name { name, .. }, [Call(args), rest @ ..]) => {
                     // move the vec out of the slice, we won't use the slice after
                     let args = std::mem::take(args);
-                    (name.into_func::<Build>(args, self.loc.clone())?, rest)
+                    (name.into_func::<Build>(args, self.loc.clone_maybe_loc())?, rest)
                 }
                 // variable function call - error
                 (Var { var, .. }, [Call(_), ..]) => {
@@ -1997,7 +1998,7 @@ impl Node<Option<cst::Member>> {
         }
         Ok(ExprOrSpecial::Expr {
             expr: head,
-            loc: self.loc.clone(),
+            loc: self.loc.clone_maybe_loc(),
         })
     }
 }
@@ -2034,7 +2035,7 @@ impl Node<Option<cst::Primary>> {
             cst::Primary::Literal(lit) => lit.to_expr_or_special::<Build>(),
             cst::Primary::Ref(r) => r.to_expr::<Build>().map(|expr| ExprOrSpecial::Expr {
                 expr,
-                loc: r.loc.clone(),
+                loc: r.loc.clone_maybe_loc(),
             }),
             cst::Primary::Slot(s) => {
                 s.clone()
@@ -2050,13 +2051,13 @@ impl Node<Option<cst::Primary>> {
                 if let Some(var) = n.maybe_to_var() {
                     Ok(ExprOrSpecial::Var {
                         var,
-                        loc: self.loc.clone(),
+                        loc: self.loc.clone_maybe_loc(),
                     })
                 } else {
                     n.to_internal_name().and_then(|name| match name.try_into() {
                         Ok(name) => Ok(ExprOrSpecial::Name {
                             name,
-                            loc: self.loc.clone(),
+                            loc: self.loc.clone_maybe_loc(),
                         }),
                         Err(err) => Err(ParseErrors::singleton(err)),
                     })
@@ -2072,7 +2073,7 @@ impl Node<Option<cst::Primary>> {
                     expr: Build::new()
                         .with_maybe_source_loc(self.loc.as_loc_ref())
                         .set(list),
-                    loc: self.loc.clone(),
+                    loc: self.loc.clone_maybe_loc(),
                 })
             }
             cst::Primary::RInits(is) => {
@@ -2081,11 +2082,11 @@ impl Node<Option<cst::Primary>> {
                     .with_maybe_source_loc(self.loc.as_loc_ref())
                     .record(rec)
                     .map_err(|e| {
-                        Into::<ParseErrors>::into(ToASTError::new(e.into(), self.loc.clone()))
+                        Into::<ParseErrors>::into(ToASTError::new(e.into(), self.loc.clone_maybe_loc()))
                     })?;
                 Ok(ExprOrSpecial::Expr {
                     expr,
-                    loc: self.loc.clone(),
+                    loc: self.loc.clone_maybe_loc(),
                 })
             }
         }
@@ -2160,7 +2161,7 @@ impl Node<Option<cst::Name>> {
 
         // computation and error generation is complete, so fail or construct
         let (name, path) = flatten_tuple_2(maybe_name, maybe_path)?;
-        Ok(construct_name(path, name, self.loc.clone()))
+        Ok(construct_name(path, name, self.loc.clone_maybe_loc()))
     }
 
     // Errors from this function are ignored (because they are detected elsewhere)
@@ -2269,7 +2270,7 @@ impl Node<Option<cst::Ref>> {
 
                 let (p, e) = flatten_tuple_2(maybe_path, maybe_eid)?;
                 Ok({
-                    let loc = self.loc.clone();
+                    let loc = self.loc.clone_maybe_loc();
                     ast::EntityUID::from_components(p, ast::Eid::new(e), loc)
                 })
             }
@@ -2294,18 +2295,18 @@ impl Node<Option<cst::Literal>> {
         match lit {
             cst::Literal::True => Ok(ExprOrSpecial::BoolLit {
                 val: true,
-                loc: self.loc.clone(),
+                loc: self.loc.clone_maybe_loc(),
             }),
             cst::Literal::False => Ok(ExprOrSpecial::BoolLit {
                 val: false,
-                loc: self.loc.clone(),
+                loc: self.loc.clone_maybe_loc(),
             }),
             cst::Literal::Num(n) => match Integer::try_from(*n) {
                 Ok(i) => Ok(ExprOrSpecial::Expr {
                     expr: Build::new()
                         .with_maybe_source_loc(self.loc.as_loc_ref())
                         .val(i),
-                    loc: self.loc.clone(),
+                    loc: self.loc.clone_maybe_loc(),
                 }),
                 Err(_) => Err(self
                     .to_ast_err(ToASTErrorKind::IntegerLiteralTooLarge(*n))
@@ -2315,7 +2316,7 @@ impl Node<Option<cst::Literal>> {
                 let maybe_str = s.as_valid_string();
                 maybe_str.map(|lit| ExprOrSpecial::StrLit {
                     lit,
-                    loc: self.loc.clone(),
+                    loc: self.loc.clone_maybe_loc(),
                 })
             }
         }

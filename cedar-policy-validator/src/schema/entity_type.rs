@@ -21,7 +21,7 @@ use serde::Serialize;
 use smol_str::SmolStr;
 use std::collections::HashSet;
 
-use cedar_policy_core::{ast::EntityType, parser::{Loc, MaybeLoc}, transitive_closure::TCNode};
+use cedar_policy_core::{ast::EntityType, parser::MaybeLoc, transitive_closure::TCNode};
 
 use crate::types::{AttributeType, Attributes, OpenTag, Type};
 

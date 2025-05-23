@@ -31,7 +31,9 @@ use crate::ast::EntityUID;
 use crate::ast::{self, Annotation};
 use crate::entities::json::{err::JsonDeserializationError, EntityUidJson};
 use crate::expr_builder::ExprBuilder;
-use crate::parser::{cst, IntoMaybeLoc, Loc, MaybeLoc};
+use crate::parser::{cst, IntoMaybeLoc};
+#[cfg(feature = "tolerant-ast")]
+use crate::parser::Loc;
 use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
 use serde::{Deserialize, Serialize};
@@ -160,14 +162,6 @@ impl Clause {
     }
 }
 
-fn dummy_cst_node_maybeloc() -> MaybeLoc {
-    let loc = Loc::new(0..1, "CSTErrorNode".into());
-    #[cfg(not(feature = "fast-parsing"))]
-    { Some(loc) }
-    #[cfg(feature = "fast-parsing")]
-    { Some(Box::new(loc)) }
-}
-
 impl TryFrom<cst::Policy> for Policy {
     type Error = ParseErrors;
     fn try_from(policy: cst::Policy) -> Result<Policy, ParseErrors> {
@@ -178,7 +172,7 @@ impl TryFrom<cst::Policy> for Policy {
                 return Err(ParseErrors::singleton(ToASTError::new(
                     ToASTErrorKind::CSTErrorNode,
                     // Since we don't have a loc when doing this transformation, we create an arbitrary one
-                    dummy_cst_node_maybeloc(),
+                    Loc::new(0..1, "CSTErrorNode".into()).into_maybe_loc(),
                 )));
             }
         };

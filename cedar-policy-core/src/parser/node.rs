@@ -20,7 +20,8 @@ use educe::Educe;
 use miette::Diagnostic;
 
 use super::err::{ToASTError, ToASTErrorKind};
-use super::loc::{AsLocRef, Loc, MaybeLoc};
+use super::loc::{AsLocRef, CloneMaybeLoc, Loc, MaybeLoc};
+use super::IntoMaybeLoc;
 
 /// Metadata for our syntax trees
 #[derive(Educe, Debug, Clone)]
@@ -37,7 +38,7 @@ pub struct Node<T> {
 }
 
 impl<T> Node<T> {
-    /// Create a new Node with the given source location
+    /// Create a new Node with the given (boxed) source location
     #[cfg(feature = "fast-parsing")]
     pub fn with_source_loc(node: T, loc: Box<Loc>) -> Self {
         Node {
@@ -45,7 +46,8 @@ impl<T> Node<T> {
             loc: Some(loc),
         }
     }
-
+    
+    /// Create a new Node with the given source location
     #[cfg(not(feature = "fast-parsing"))]
     pub fn with_source_loc(node: T, loc: Loc) -> Self {
         Node {
@@ -71,7 +73,7 @@ impl<T> Node<T> {
     pub fn as_ref(&self) -> Node<&T> {
         Node {
             node: &self.node,
-            loc: self.loc.clone(),
+            loc: self.loc.clone_maybe_loc(),
         }
     }
 
@@ -79,7 +81,7 @@ impl<T> Node<T> {
     pub fn as_mut(&mut self) -> Node<&mut T> {
         Node {
             node: &mut self.node,
-            loc: self.loc.clone(),
+            loc: self.loc.clone_maybe_loc(),
         }
     }
 
@@ -90,7 +92,7 @@ impl<T> Node<T> {
 
     /// Utility to construct a `ToAstError` with the source location taken from this node.
     pub fn to_ast_err(&self, error_kind: impl Into<ToASTErrorKind>) -> ToASTError {
-        ToASTError::new(error_kind.into(), self.loc.clone())
+        ToASTError::new(error_kind.into(), self.loc.clone_maybe_loc())
     }
 }
 
@@ -170,7 +172,7 @@ impl<T> Node<Option<T>> {
     pub fn collapse(&self) -> Option<Node<&T>> {
         self.node.as_ref().map(|node| Node {
             node,
-            loc: self.loc.clone(),
+            loc: self.loc.clone_maybe_loc(),
         })
     }
 
@@ -189,7 +191,7 @@ impl<T> Node<Option<T>> {
     where
         F: FnOnce(T, MaybeLoc) -> Option<R>,
     {
-        f(self.node?, self.loc)
+        f(self.node?, self.loc.into_maybe_loc())
     }
 
     /// Get node data if present or return the error `EmptyNodeInvariantViolation`
@@ -204,7 +206,7 @@ impl<T> Node<Option<T>> {
         self.node.ok_or_else(|| {
             ToASTError::new(
                 ToASTErrorKind::EmptyNodeInvariantViolation,
-                self.loc.clone(),
+                self.loc.into_maybe_loc(),
             )
         })
     }

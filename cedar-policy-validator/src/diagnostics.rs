@@ -25,7 +25,7 @@ use validation_errors::UnrecognizedActionIdHelp;
 use std::collections::BTreeSet;
 
 use cedar_policy_core::ast::{EntityType, Expr, PolicyID};
-use cedar_policy_core::parser::{Loc, MaybeLoc};
+use cedar_policy_core::parser::MaybeLoc;
 
 use crate::types::{EntityLUB, Type};
 

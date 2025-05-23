@@ -27,7 +27,7 @@ macro_rules! impl_diagnostic_warning {
     };
 }
 
-use cedar_policy_core::{ast::PolicyID, impl_diagnostic_from_source_loc_opt_field, parser::{Loc, MaybeLoc}};
+use cedar_policy_core::{ast::PolicyID, impl_diagnostic_from_source_loc_opt_field, parser::MaybeLoc};
 use miette::Diagnostic;
 use thiserror::Error;
 

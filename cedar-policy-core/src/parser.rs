@@ -27,7 +27,7 @@ mod fmt;
 pub use fmt::join_with_conjunction;
 /// Source location struct
 mod loc;
-pub use loc::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
+pub use loc::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc, CloneMaybeLoc};
 #[macro_use]
 mod macros;
 /// Metadata wrapper for CST Nodes
@@ -147,7 +147,7 @@ pub fn parse_template(
     let cst = text_to_cst::parse_policy(text)?;
     let template = cst.to_template(id)?;
     if template.slots().count() == 0 {
-        Err(err::ToASTError::new(err::ToASTErrorKind::expected_template(), cst.loc).into())
+        Err(err::ToASTError::new(err::ToASTErrorKind::expected_template(), cst.loc.into_maybe_loc()).into())
     } else {
         Ok(template)
     }
