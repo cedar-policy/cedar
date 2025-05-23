@@ -24,7 +24,7 @@ use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use colored::Colorize;
 use miette::{miette, Diagnostic, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::io::{BufReader, Write};
 use std::{
     collections::HashMap,
@@ -1495,7 +1495,10 @@ fn compare_test_decisions(
 
         if !missing_reason.is_empty() {
             warnings.push(format!("missing reason(s): {}",
-                missing_reason.into_iter().cloned().collect::<Vec<_>>().join(", ")));
+                missing_reason.into_iter()
+                    .map(|r| format!("`{}`", r))
+                    .collect::<Vec<_>>()
+                    .join(", ")));
         }
 
         // Check that evaluation errors are expected
@@ -1553,6 +1556,8 @@ fn run_tests_inner(
     args: &RunTestsArgs,
 ) -> Result<CedarExitCode> {
     let policies = args.policies.get_policy_set()?;
+    let policies = rename_from_id_annotation(&policies)?;
+
     let schema = args.schema.get_schema()?;
     let tests = load_partial_tests(&args.tests)?;
 
