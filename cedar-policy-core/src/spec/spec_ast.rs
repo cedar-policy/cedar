@@ -49,8 +49,8 @@ pub struct Name {
 pub type EntityType = Name;
 
 pub struct EntityUID {
-    ty: EntityType,
-    eid: Seq<char>,
+    pub ty: EntityType,
+    pub eid: Seq<char>,
 }
 
 pub enum Prim {

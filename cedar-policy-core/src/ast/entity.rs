@@ -20,7 +20,9 @@ use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
 use crate::parser::err::ParseErrors;
 use crate::parser::Loc;
+use crate::spec::*;
 use crate::transitive_closure::TCNode;
+use crate::verus_utils::*;
 use crate::FromNormalizedStr;
 use educe::Educe;
 use itertools::Itertools;
@@ -65,6 +67,18 @@ pub enum EntityType {
     #[cfg(feature = "tolerant-ast")]
     /// Represents an error node of an entity that failed to parse
     ErrorEntityType,
+}
+
+impl View for EntityType {
+    type V = spec_ast::EntityType;
+
+    closed spec fn view(&self) -> Self::V {
+        match self {
+            EntityType::EntityType(n) => n.view(),
+            #[cfg(feature = "tolerant-ast")]
+            ErrorEntityType => unreachable()
+        }
+    }
 }
 
 }
@@ -197,14 +211,13 @@ impl std::fmt::Display for EntityType {
     }
 }
 
-// verus! {
+verus! {
 
 /// Unique ID for an entity. These represent entities in the AST.
 #[derive(Educe, Serialize, Deserialize, Debug, Clone)]
 #[serde(rename = "EntityUID")]
 #[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
-// #[verifier::external_derive]
-// #[verifier::external_body]
+#[verifier::external_derive]
 pub struct EntityUIDImpl {
     /// Typename of the entity
     ty: EntityType,
@@ -218,11 +231,20 @@ pub struct EntityUIDImpl {
     loc: Option<Loc>,
 }
 
+impl View for EntityUIDImpl {
+    type V = spec_ast::EntityUID;
+    closed spec fn view(&self) -> spec_ast::EntityUID {
+        spec_ast::EntityUID {
+            ty: self.ty.view(),
+            eid: self.eid.view(),
+        }
+    }
+}
+
 /// Unique ID for an entity. These represent entities in the AST.
 #[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
-// #[verifier::external_derive]
-// #[verifier::external_body]
+#[verifier::external_derive]
 pub enum EntityUID {
     /// Unique ID for an entity. These represent entities in the AST
     EntityUID(EntityUIDImpl),
@@ -231,7 +253,18 @@ pub enum EntityUID {
     Error,
 }
 
-// } // verus!
+impl View for EntityUID {
+    type V = spec_ast::EntityUID;
+    closed spec fn view(&self) -> spec_ast::EntityUID {
+        match self {
+            EntityUID::EntityUID(uid_impl) => uid_impl.view(),
+            #[cfg(feature = "tolerant-ast")]
+            EntityUID::Error => unreachable()
+        }
+    }
+}
+
+} // verus!
 
 impl<'de> Deserialize<'de> for EntityUID {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -380,6 +413,8 @@ impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
     }
 }
 
+verus! {
+
 /// The `Eid` type represents the id of an `Entity`, without the typename.
 /// Together with the typename it comprises an `EntityUID`.
 /// For example, in `User::"alice"`, the `Eid` is `alice`.
@@ -390,6 +425,7 @@ impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
 /// To get an escaped representation, use `.escaped()`.
 /// To get an unescaped representation, use `.as_ref()`.
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
+#[verifier::external_derive]
 pub enum Eid {
     /// Actual Eid
     Eid(SmolStr),
@@ -397,6 +433,20 @@ pub enum Eid {
     /// Represents an Eid of an entity that failed to parse
     ErrorEid,
 }
+
+impl View for Eid {
+    type V = Seq<char>;
+    closed spec fn view(&self) -> Self::V {
+        match self {
+            Eid::Eid(s) => s.view(),
+            #[cfg(feature = "tolerant-ast")]
+            Eid::ErrorEid => unreachable(),
+        }
+    }
+}
+
+
+} // verus!
 
 impl<'de> Deserialize<'de> for Eid {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

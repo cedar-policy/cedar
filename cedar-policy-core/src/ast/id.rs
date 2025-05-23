@@ -21,8 +21,9 @@ use crate::{parser::err::ParseErrors, FromNormalizedStr};
 
 use super::{InternalName, ReservedNameError};
 
+use crate::spec::*;
 #[allow(unused_imports)]
-use crate::verus_utils;
+use crate::verus_utils::*;
 use vstd::prelude::*;
 
 const RESERVED_ID: &str = "__cedar";
@@ -38,6 +39,13 @@ verus! {
 #[derive(Serialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
 #[verifier::external_derive]
 pub struct Id(SmolStr);
+
+impl View for Id {
+    type V = spec_ast::Id;
+    closed spec fn view(&self) -> Self::V {
+        self.0.view()
+    }
+}
 
 }
 

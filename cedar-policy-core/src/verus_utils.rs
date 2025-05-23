@@ -17,6 +17,7 @@
 //! Extra utilties for Verus verification
 
 #![allow(missing_debug_implementations)] // vstd types Seq/Set/Map don't impl Debug
+#![allow(missing_docs)] // don't want docs on `assume_specification` etc
 
 use smol_str::SmolStr;
 use std::collections::HashSet;
@@ -62,6 +63,18 @@ pub struct ExSmolStr(SmolStr);
 
 pub assume_specification [<SmolStr as Clone>::clone](s: &SmolStr) -> (res: SmolStr)
 ensures res == s;
+
+/// Like `impl View for SmolStr`, but we can't write that explicitly due to trait orphan rules
+pub trait SmolStrView {
+    type V;
+    spec fn view(&self) -> Self::V;
+}
+
+impl SmolStrView for SmolStr {
+    type V = Seq<char>;
+    uninterp spec fn view(&self) -> Self::V;
+}
+
 
 }
 

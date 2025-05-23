@@ -34,6 +34,7 @@ use vstd::prelude::*;
 
 #[macro_use]
 use crate::verus_utils::*;
+use crate::spec::*;
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
@@ -441,6 +442,11 @@ pub struct Policy {
     /// The constructor `new` is only visible in this module,
     /// so it is the responsibility of callers to maintain
     values: HashMap<SlotId, EntityUID>,
+}
+
+impl View for Policy {
+    type V = spec_ast::Policy;
+    uninterp spec fn view(&self) -> Self::V;
 }
 
 }
@@ -1032,6 +1038,20 @@ pub struct TemplateBodyImpl {
     /// negation of each of the policy's `unless` conditions.
     non_scope_constraints: Arc<Expr>,
 }
+
+// impl View for TemplateBodyImpl {
+//     type V = spec_ast::Policy;
+//     open spec fn view(&self) -> Self::V {
+//         spec_ast::Policy {
+//             id: self.id.view(),
+//             effect: self.effect.view(),
+//             principal_scope: self.principal_constraint.view(),
+//             action_scope: self.action_constraint.view(),
+//             resource_scope: self.resource_constraint.view(),
+//             condition: self.non_scope_constraints.view(),
+//         }
+//     }
+// }
 
 } // verus!
 
@@ -1923,6 +1943,14 @@ verus! {
 pub struct PolicyID(SmolStr);
 
 empty_clone_spec_for!(PolicyID);
+
+impl View for PolicyID {
+    type V = spec_ast::PolicyID;
+
+    closed spec fn view(&self) -> Self::V {
+        self.0.view()
+    }
+}
 
 } // verus!
 

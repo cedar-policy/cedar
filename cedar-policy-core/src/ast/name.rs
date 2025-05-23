@@ -28,6 +28,9 @@ use thiserror::Error;
 
 use crate::parser::err::{ParseError, ParseErrors, ToASTError};
 use crate::parser::Loc;
+use crate::spec::*;
+#[allow(unused_imports)]
+use crate::verus_utils::*;
 use crate::FromNormalizedStr;
 
 use vstd::prelude::*;
@@ -53,6 +56,16 @@ pub struct InternalName {
     #[educe(Hash(ignore))]
     #[educe(PartialOrd(ignore))]
     pub(crate) loc: Option<Loc>,
+}
+
+impl View for InternalName {
+    type V = spec_ast::Name;
+    closed spec fn view(&self) -> spec_ast::Name {
+        spec_ast::Name {
+            id: self.id.view(),
+            path: (*self.path).view().map_values(|v: Id| v.view())
+        }
+    }
 }
 
 }
@@ -392,6 +405,13 @@ verus! {
 #[repr(transparent)]
 #[serde(transparent)]
 pub struct Name(pub(crate) InternalName);
+
+impl View for Name {
+    type V = spec_ast::Name;
+    closed spec fn view(&self) -> Self::V {
+        self.0.view()
+    }
+}
 
 }
 

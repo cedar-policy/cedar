@@ -16,8 +16,13 @@
 
 use crate::ast::{EntityUID, Integer, StaticallyTyped, Type};
 use crate::parser;
+use crate::spec::*;
+use crate::verus_utils::*;
 use smol_str::SmolStr;
 use std::sync::Arc;
+use vstd::prelude::*;
+
+verus! {
 
 /// First-class values which may appear as literals in `Expr::Lit`.
 ///
@@ -32,6 +37,7 @@ use std::sync::Arc;
 ///
 /// Cloning is O(1).
 #[derive(Hash, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
+#[verifier::external_derive]
 pub enum Literal {
     /// Boolean value
     Bool(bool),
@@ -43,6 +49,20 @@ pub enum Literal {
     /// look up this UID in a Store or Slice.
     EntityUID(Arc<EntityUID>),
 }
+
+impl View for Literal {
+    type V = spec_ast::Prim;
+    closed spec fn view(&self) -> Self::V {
+        match self {
+            Self::Bool(b) => spec_ast::Prim::Bool { b: *b },
+            Self::Long(i) => spec_ast::Prim::Int { i: *i },
+            Self::String(s) => spec_ast::Prim::String { s: s.view() },
+            Self::EntityUID(uid) => spec_ast::Prim::EntityUID { uid: uid.view() },
+        }
+    }
+}
+
+} // verus!
 
 impl StaticallyTyped for Literal {
     fn type_of(&self) -> Type {
