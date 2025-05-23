@@ -20,6 +20,7 @@
 #![allow(missing_docs)] // don't want docs on `assume_specification` etc
 
 use smol_str::SmolStr;
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::hash::Hash;
 use vstd::prelude::*;
@@ -56,13 +57,13 @@ pub(crate) use empty_clone_spec_for;
 
 verus! {
 
+// SmolStr
+
 #[verifier::external_type_specification]
 #[verifier::external_body]
-#[derive(Debug)]
 pub struct ExSmolStr(SmolStr);
 
-pub assume_specification [<SmolStr as Clone>::clone](s: &SmolStr) -> (res: SmolStr)
-ensures res == s;
+clone_spec_for!(SmolStr);
 
 /// Like `impl View for SmolStr`, but we can't write that explicitly due to trait orphan rules
 pub trait SmolStrView {
@@ -76,7 +77,35 @@ impl SmolStrView for SmolStr {
 }
 
 
+
+// BTreeMap
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(K)]
+#[verifier::accept_recursive_types(V)]
+#[verifier::reject_recursive_types(A)]
+pub struct ExBTreeMap<K, V, A: std::alloc::Allocator + Clone>(BTreeMap<K,V,A>);
+
+// pub assume_specification<K: Clone, V: Clone, A: std::alloc::Allocator + Clone>
+//     [ <BTreeMap::<K, V, A> as Clone>:: clone ](this: &BTreeMap<K, V, A>) -> (other: BTreeMap<K, V, A>)
+//     ensures other.view() == this.view();
+
+
+/// Like `impl<K:View, V:View> View for BTreeMap<K,V>`,
+/// but we can't write that explicitly due to trait orphan rules
+pub trait BTreeMapView {
+    type V;
+    spec fn view(&self) -> Self::V;
 }
+
+impl<K:View, V:View> BTreeMapView for BTreeMap<K, V> {
+    type V = Map<K::V, V::V>;
+
+    uninterp spec fn view(&self) -> Self::V; // plan to just axiomatize it for now
+}
+
+} // verus!
 
 // Helper data structures (should be in vstd)
 

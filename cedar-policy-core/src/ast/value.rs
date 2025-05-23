@@ -16,6 +16,8 @@
 
 use crate::ast::*;
 use crate::parser::Loc;
+use crate::spec::*;
+use crate::verus_utils::*;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -25,6 +27,10 @@ use itertools::Itertools;
 use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
+
+use vstd::prelude::*;
+
+verus! {
 
 /// This describes all the values which could be the dynamic result of evaluating an `Expr`.
 /// Cloning is O(1).
@@ -37,6 +43,13 @@ pub struct Value {
     #[educe(PartialEq(ignore))]
     #[educe(PartialOrd(ignore))]
     pub loc: Option<Loc>,
+}
+
+impl View for Value {
+    type V = spec_ast::Value;
+    open spec fn view(&self) -> Self::V {
+        self.value.view()
+    }
 }
 
 /// This describes all the values which could be the dynamic result of evaluating an `Expr`.
@@ -52,6 +65,20 @@ pub enum ValueKind {
     /// Evaluating an `Expr` can result in an extension value
     ExtensionValue(Arc<RepresentableExtensionValue>),
 }
+
+impl View for ValueKind {
+    type V = spec_ast::Value;
+    open spec fn view(&self) -> Self::V {
+        match self {
+            ValueKind::Lit(l) => spec_ast::Value::Prim { p: l.view() },
+            ValueKind::Set(s) => spec_ast::Value::Set { s: s.view() },
+            ValueKind::Record(r) => spec_ast::Value::Record { m: (*r).view() },
+            // ValueKind::ExtensionValue(e) => admit() // TODO currently ignoring extensions
+        }
+    }
+}
+
+} // verus!
 
 impl Value {
     /// Create a new empty set

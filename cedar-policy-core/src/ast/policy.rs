@@ -1942,7 +1942,7 @@ verus! {
 #[verifier::external_derive]
 pub struct PolicyID(SmolStr);
 
-empty_clone_spec_for!(PolicyID);
+clone_spec_for!(PolicyID);
 
 impl View for PolicyID {
     type V = spec_ast::PolicyID;
