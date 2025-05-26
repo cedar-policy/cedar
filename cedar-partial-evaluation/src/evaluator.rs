@@ -689,7 +689,7 @@ impl Evaluator<'_> {
 #[cfg(test)]
 mod tests {
     use std::{
-        collections::{BTreeMap, HashMap},
+        collections::{BTreeMap, HashMap, HashSet},
         i64,
     };
 
@@ -1071,7 +1071,7 @@ mod tests {
     }
 
     #[test]
-    fn test_unary() {
+    fn test_unary_app() {
         let req = PartialRequest::new_unchecked(
             PartialEntityUID {
                 ty: "E".parse().unwrap(),
@@ -1451,5 +1451,207 @@ mod tests {
             )),
             Residual::Error(_)
         )
+    }
+
+    #[test]
+    fn test_binary_app() {
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        // not valid entities
+        let entities = PartialEntities {
+            entities: HashMap::from_iter([
+                (
+                    dummy_uid(),
+                    PartialEntity {
+                        uid: dummy_uid(),
+                        attrs: None,
+                        ancestors: Some(HashSet::from_iter([r#"E::"e""#.parse().unwrap()])),
+                        tags: Some(BTreeMap::from_iter([(
+                            "s".parse().unwrap(),
+                            Value::from("bar"),
+                        )])),
+                    },
+                ),
+                (
+                    r#"E::"e""#.parse().unwrap(),
+                    PartialEntity {
+                        uid: r#"E::"e""#.parse().unwrap(),
+                        attrs: None,
+                        ancestors: Some(HashSet::default()),
+                        tags: None,
+                    },
+                ),
+            ]),
+        };
+        let eval = Evaluator {
+            request: req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+
+        assert_matches!(
+            eval.interpret(&builder().binary_app(
+                BinaryOp::Eq,
+                builder().var(Var::Resource),
+                builder().val(dummy_uid())
+            )),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
+                    ..
+                },
+                ..
+            }
+        );
+
+        assert_matches!(
+            eval.interpret(&builder().binary_app(
+                BinaryOp::Eq,
+                builder().var(Var::Principal),
+                builder().val(dummy_uid())
+            )),
+            Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, .. }, .. } => {
+                assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
+            }
+        );
+
+        assert_matches!(
+            eval.interpret(&builder().binary_app(
+                BinaryOp::Add,
+                builder().val(i64::MAX),
+                builder().val(i64::MAX)
+            )),
+            Residual::Error(_)
+        );
+
+        assert_matches!(
+            eval.interpret(&builder().binary_app(
+                BinaryOp::Contains,
+                builder().set([builder().val(dummy_uid())]),
+                builder().var(Var::Resource)
+            )),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
+                    ..
+                },
+                ..
+            }
+        );
+
+        assert_matches!(
+            eval.interpret(&builder().binary_app(
+                BinaryOp::Contains,
+                builder().set([builder().val(dummy_uid())]),
+                builder().var(Var::Principal)
+            )),
+            Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Contains, arg2, .. }, .. } => {
+                assert_matches!(arg2.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
+            }
+        );
+
+        assert_matches!(
+            eval.interpret(&builder().binary_app(
+                BinaryOp::In,
+                builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
+                builder().var(Var::Resource)
+            )),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(false)),
+                    ..
+                },
+                ..
+            }
+        );
+
+        // LHS of `in` has unknown ancestors
+        assert_matches!(
+            eval.interpret(&builder().binary_app(
+                BinaryOp::In,
+                builder().val(EntityUID::from_normalized_str(r#"E::"f""#).unwrap()),
+                builder().var(Var::Resource)
+            )),
+            Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::In, arg1, arg2 }, .. } => {
+                assert_matches!(arg1.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
+                assert_matches!(arg2.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
+            }
+        );
+
+        // LHS of `in` is not in the entities
+        assert_matches!(
+            eval.interpret(&builder().binary_app(
+                BinaryOp::In,
+                builder().val(EntityUID::from_normalized_str(r#"E::"a""#).unwrap()),
+                builder().var(Var::Resource)
+            )),
+            Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::In, arg1, arg2 }, .. } => {
+                assert_matches!(arg1.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
+                assert_matches!(arg2.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
+            }
+        );
+
+        assert_matches!(
+            eval.interpret(&builder().binary_app(
+                BinaryOp::HasTag,
+                builder().var(Var::Resource),
+                builder().val("s")
+            )),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
+                    ..
+                },
+                ..
+            }
+        );
+
+        assert_matches!(
+            eval.interpret(&builder().binary_app(
+                BinaryOp::GetTag,
+                builder().var(Var::Resource),
+                builder().val("s")
+            )),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::String(s)),
+                    ..
+                },
+                ..
+            } => {
+                assert_eq!(s, "bar");
+            }
+        );
+
+        // LHS of hasTag/getTag has unknown tags
+        assert_matches!(
+            eval.interpret(&builder().binary_app(
+                BinaryOp::HasTag,
+                builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
+                builder().val("s")
+            )),
+            Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::HasTag, arg1, .. }, .. } => {
+                assert_matches!(arg1.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
+            }
+        );
+
+        // LHS of hasTag/getTag is not in the entities
+        assert_matches!(
+            eval.interpret(&builder().binary_app(
+                BinaryOp::HasTag,
+                builder().val(EntityUID::from_normalized_str(r#"E::"a""#).unwrap()),
+                builder().val("s")
+            )),
+            Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::HasTag, arg1, .. }, .. } => {
+                assert_matches!(arg1.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
+            }
+        );
     }
 }
