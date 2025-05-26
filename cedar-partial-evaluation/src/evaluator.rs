@@ -474,12 +474,16 @@ impl Evaluator<'_> {
                     }
                     Residual::Error(ty)
                 } else {
-                    Residual::Partial {
-                        kind: ResidualKind::ExtensionFunctionApp {
-                            fn_name: fn_name.clone(),
-                            args: Arc::new(args),
-                        },
-                        ty,
+                    if args.iter().any(|r| matches!(r, Residual::Error(_))) {
+                        Residual::Error(ty)
+                    } else {
+                        Residual::Partial {
+                            kind: ResidualKind::ExtensionFunctionApp {
+                                fn_name: fn_name.clone(),
+                                args: Arc::new(args),
+                            },
+                            ty,
+                        }
                     }
                 }
             }
@@ -636,9 +640,13 @@ impl Evaluator<'_> {
                         ty,
                     }
                 } else {
-                    Residual::Partial {
-                        kind: ResidualKind::Set(Arc::new(rs)),
-                        ty,
+                    if rs.iter().any(|r| matches!(r, Residual::Error(_))) {
+                        Residual::Error(ty)
+                    } else {
+                        Residual::Partial {
+                            kind: ResidualKind::Set(Arc::new(rs)),
+                            ty,
+                        }
                     }
                 }
             }
@@ -660,8 +668,16 @@ impl Evaluator<'_> {
                         ty,
                     }
                 } else {
+                    let mut m = BTreeMap::new();
+                    for (a, r) in record {
+                        if matches!(r, Residual::Error(_)) {
+                            return Residual::Error(ty);
+                        } else {
+                            m.insert(a, r);
+                        }
+                    }
                     Residual::Partial {
-                        kind: ResidualKind::Record(Arc::new(record.collect())),
+                        kind: ResidualKind::Record(Arc::new(m)),
                         ty,
                     }
                 }
@@ -672,14 +688,19 @@ impl Evaluator<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, i64};
+    use std::{
+        collections::{BTreeMap, HashMap},
+        i64,
+    };
 
     use cedar_policy_core::{
         ast::{
-            BinaryOp, EntityUID, ExprBuilder, Literal, Pattern, PatternElem, Value, ValueKind, Var,
+            BinaryOp, EntityUID, ExprBuilder, Literal, Pattern, PatternElem, UnaryOp, Value,
+            ValueKind, Var,
         },
         expr_builder::ExprBuilder as _,
         extensions::Extensions,
+        FromNormalizedStr,
     };
     use cedar_policy_validator::{types::Type, ValidatorSchema};
     use cool_asserts::assert_matches;
@@ -696,7 +717,7 @@ mod tests {
     #[track_caller]
     fn simple_schema() -> ValidatorSchema {
         let src = r#"
-            entity E { s? : String, };
+            entity E { s? : String, l? : Long };
             action a {
               principal: E,
               resource: E,
@@ -1047,5 +1068,388 @@ mod tests {
                 assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
             }
         );
+    }
+
+    #[test]
+    fn test_unary() {
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: req,
+            entities: &dummy_entities(),
+            extensions: Extensions::all_available(),
+        };
+        assert_matches!(
+            eval.interpret(&builder().unary_app(UnaryOp::Neg, builder().val(42))),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Long(-42)),
+                    ..
+                },
+                ..
+            }
+        );
+        // This is not a valid input
+        assert_matches!(
+            eval.interpret(&builder().unary_app(UnaryOp::Neg, builder().var(Var::Principal))),
+            Residual::Partial { kind: ResidualKind::UnaryApp { op: UnaryOp::Neg, arg }, .. } => {
+                assert_matches!(arg.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
+            }
+        );
+        assert_matches!(
+            eval.interpret(&builder().unary_app(UnaryOp::Neg, builder().val(i64::MIN))),
+            Residual::Error(_),
+        );
+    }
+
+    #[test]
+    fn test_get_attr() {
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let entities = PartialEntities {
+            entities: HashMap::from_iter([
+                (
+                    dummy_uid(),
+                    PartialEntity {
+                        uid: dummy_uid(),
+                        attrs: Some(BTreeMap::from_iter([(
+                            "s".parse().unwrap(),
+                            Value::from("bar"),
+                        )])),
+                        ancestors: None,
+                        tags: None,
+                    },
+                ),
+                (
+                    r#"E::"e""#.parse().unwrap(),
+                    PartialEntity {
+                        uid: r#"E::"e""#.parse().unwrap(),
+                        attrs: None,
+                        ancestors: None,
+                        tags: None,
+                    },
+                ),
+            ]),
+        };
+        let eval = Evaluator {
+            request: req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        assert_matches!(
+            eval.interpret(&builder().get_attr(builder().var(Var::Resource), "s".parse().unwrap())),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::String(s)),
+                    ..
+                },
+                ..
+            } => {
+                assert_eq!(s, "bar");
+            }
+        );
+
+        // When LHS is unknown, the entire expression is
+        assert_matches!(
+            eval.interpret(&builder().get_attr(
+                builder().var(Var::Principal),
+                "s".parse().unwrap()
+            )),
+            Residual::Partial { kind: ResidualKind::GetAttr { expr, .. }, .. } => {
+                assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
+            }
+        );
+        // When LHS is not in the entities, the entire expression is unknown
+        assert_matches!(
+            eval.interpret(&builder().get_attr(
+                builder().val(EntityUID::from_normalized_str(r#"E::"f""#).unwrap()),
+                "s".parse().unwrap()
+            )),
+            Residual::Partial { kind: ResidualKind::GetAttr { expr, .. }, .. } => {
+                assert_matches!(expr.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
+            }
+        );
+        // When LHS is in the entities, but its attributes are `None`, the
+        // entire expression is unknown
+        assert_matches!(
+            eval.interpret(&builder().get_attr(
+                builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
+                "s".parse().unwrap()
+            )),
+            Residual::Partial { kind: ResidualKind::GetAttr { expr, .. }, .. } => {
+                assert_matches!(expr.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
+            }
+        );
+        assert_matches!(
+            eval.interpret(
+                &builder().get_attr(builder().var(Var::Resource), "baz".parse().unwrap())
+            ),
+            Residual::Error(_),
+        );
+    }
+
+    #[test]
+    fn test_has_attr() {
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let entities = PartialEntities {
+            entities: HashMap::from_iter([
+                (
+                    dummy_uid(),
+                    PartialEntity {
+                        uid: dummy_uid(),
+                        attrs: Some(BTreeMap::from_iter([(
+                            "s".parse().unwrap(),
+                            Value::from("bar"),
+                        )])),
+                        ancestors: None,
+                        tags: None,
+                    },
+                ),
+                (
+                    r#"E::"e""#.parse().unwrap(),
+                    PartialEntity {
+                        uid: r#"E::"e""#.parse().unwrap(),
+                        attrs: None,
+                        ancestors: None,
+                        tags: None,
+                    },
+                ),
+            ]),
+        };
+        let eval = Evaluator {
+            request: req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        assert_matches!(
+            eval.interpret(&builder().has_attr(builder().var(Var::Resource), "s".parse().unwrap())),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(true)),
+                    ..
+                },
+                ..
+            }
+        );
+        assert_matches!(
+            eval.interpret(&builder().has_attr(builder().var(Var::Principal), "s".parse().unwrap())),
+            Residual::Partial {
+                kind: ResidualKind::HasAttr { expr, .. },
+                ..
+            } => {
+                assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. });
+            }
+        );
+        // When LHS is not in the entities, the entire expression is unknown
+        assert_matches!(
+            eval.interpret(&builder().has_attr(
+                builder().val(EntityUID::from_normalized_str(r#"E::"f""#).unwrap()),
+                "s".parse().unwrap()
+            )),
+            Residual::Partial { kind: ResidualKind::HasAttr { expr, .. }, .. } => {
+                assert_matches!(expr.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
+            }
+        );
+        // When LHS is in the entities, but its attributes are `None`, the
+        // entire expression is unknown
+        assert_matches!(
+            eval.interpret(&builder().has_attr(
+                builder().val(EntityUID::from_normalized_str(r#"E::"e""#).unwrap()),
+                "s".parse().unwrap()
+            )),
+            Residual::Partial { kind: ResidualKind::HasAttr { expr, .. }, .. } => {
+                assert_matches!(expr.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. });
+            }
+        );
+    }
+
+    #[test]
+    fn test_set() {
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: req,
+            entities: &dummy_entities(),
+            extensions: Extensions::all_available(),
+        };
+        assert_matches!(
+            eval.interpret(&builder().set(
+                [builder().var(Var::Resource)]
+            )),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Set(s),
+                    ..
+                },
+                ..
+            } => {
+                assert_eq!(Vec::from_iter(s.iter().cloned()), vec![Value::from(dummy_uid())]);
+            }
+        );
+        assert_matches!(
+            eval.interpret(&builder().set(
+                [builder().var(Var::Principal),
+                builder().var(Var::Resource),]
+            )),
+            Residual::Partial {
+                kind: ResidualKind::Set(s),
+                ..
+            } => {
+                assert_matches!(s.as_ref().as_slice(), [Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. }, Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(_)), .. }, .. }]);
+            }
+        );
+
+        // Error is propagated
+        assert_matches!(
+            eval.interpret(&builder().set([
+                builder().neg(builder().val(i64::MIN)),
+                builder().var(Var::Resource),
+            ])),
+            Residual::Error(_)
+        )
+    }
+
+    #[test]
+    fn test_record() {
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: req,
+            entities: &dummy_entities(),
+            extensions: Extensions::all_available(),
+        };
+        assert_matches!(
+            eval.interpret(&builder().record(
+                [(
+                    "s".into(),
+                    builder().var(Var::Resource),
+                )]
+            ).unwrap()),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Record(m),
+                    ..
+                },
+                ..
+            } => {
+                assert_eq!(m.get("s"), Some(&Value::from(dummy_uid())));
+            }
+        );
+        assert_matches!(
+            eval.interpret(&builder().record(
+                [(
+                    "s".into(),
+                    builder().var(Var::Principal),
+                )]
+            ).unwrap()),
+            Residual::Partial {
+                kind: ResidualKind::Record(m),
+                ..
+            } => {
+                assert_matches!(m.as_ref().get("s"), Some(Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. }));
+            }
+        );
+
+        // Error is propagated
+        assert_matches!(
+            eval.interpret(
+                &builder()
+                    .record([
+                        ("s".into(), builder().neg(builder().val(i64::MIN)),),
+                        ("".into(), builder().var(Var::Resource),)
+                    ])
+                    .unwrap()
+            ),
+            Residual::Error(_)
+        )
+    }
+
+    #[test]
+    fn test_call() {
+        let req = PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "E".parse().unwrap(),
+                eid: None,
+            },
+            dummy_uid().into(),
+            action(),
+            None,
+        );
+        let eval = Evaluator {
+            request: req,
+            entities: &dummy_entities(),
+            extensions: Extensions::all_available(),
+        };
+        assert_matches!(
+            eval.interpret(
+                &builder().call_extension_fn("decimal".parse().unwrap(), [builder().val("0.0")])
+            ),
+            Residual::Concrete {
+                value: Value {
+                    value: ValueKind::ExtensionValue(_),
+                    ..
+                },
+                ..
+            }
+        );
+        // not a valid input
+        assert_matches!(
+            eval.interpret(&builder().call_extension_fn(
+                "decimal".parse().unwrap(),
+                [builder().var(Var::Principal)]
+            )),
+            Residual::Partial {
+                kind: ResidualKind::ExtensionFunctionApp { fn_name, args, .. },
+                ..
+            } => {
+                assert_eq!(fn_name.to_string(), "decimal");
+                assert_matches!(args.as_ref().as_slice(), [Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. }]);
+            }
+        );
+
+        // Error is propagated
+        assert_matches!(
+            eval.interpret(&builder().call_extension_fn(
+                "decimal".parse().unwrap(),
+                [builder().neg(builder().val(i64::MIN))]
+            )),
+            Residual::Error(_)
+        )
     }
 }
