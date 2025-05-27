@@ -234,7 +234,8 @@ impl Template {
 
     /// Get the `Effect` (`Permit` or `Deny`) of this template
     #[verifier::external_body]
-    pub fn effect(&self) -> Effect {
+    pub fn effect(&self) -> Effect
+    {
         self.body.effect()
     }
 
@@ -515,7 +516,9 @@ impl Policy {
 
     /// Get the effect (forbid or permit) of this policy.
     #[verifier::external_body]
-    pub fn effect(&self) -> Effect {
+    pub fn effect(&self) -> (res: Effect)
+        ensures res@ == self@.effect
+    {
         self.template.effect()
     }
 
@@ -597,7 +600,9 @@ impl Policy {
 
     /// Get the ID of this policy.
     #[verifier::external_body]
-    pub fn id(&self) -> &PolicyID {
+    pub fn id(&self) -> (res: &PolicyID)
+        ensures res@ == self@.id
+    {
         self.link.as_ref().unwrap_or_else(|| self.template.id())
     }
 
@@ -2005,7 +2010,18 @@ pub enum Effect {
     Forbid,
 }
 
+impl View for Effect {
+    type V = spec_ast::Effect;
+
+    open spec fn view(&self) -> Self::V {
+        match self {
+            Effect::Permit => spec_ast::Effect::Permit,
+            Effect::Forbid => spec_ast::Effect::Forbid,
+        }
+    }
 }
+
+} // verus!
 
 impl std::fmt::Display for Effect {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

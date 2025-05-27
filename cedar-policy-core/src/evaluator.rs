@@ -224,10 +224,7 @@ pub struct Evaluator<'e> {
 }
 
 pub struct SpecEvaluator {
-    pub principal: spec_ast::EntityUID,
-    pub action: spec_ast::EntityUID,
-    pub resource: spec_ast::EntityUID,
-    pub context: vstd::map::Map<spec_ast::Attr, spec_ast::Value>,
+    pub request: spec_ast::Request,
     pub entities: spec_ast::Entities,
     // TODO: extensions?
 }
@@ -236,10 +233,12 @@ impl vstd::view::View for Evaluator<'_> {
     type V = SpecEvaluator;
     uninterp spec fn view(&self) -> SpecEvaluator;
         // SpecEvaluator {
-        //     principal: self.principal.view(),
-        //     action: self.action.view(),
-        //     resource: self.resource.view(),
-        //     context: self.context.view(),
+        //     request: spec_ast::Request {
+        //         principal: self.principal.view(),
+        //         action: self.action.view(),
+        //         resource: self.resource.view(),
+        //         context: self.context.view(),
+        //     },
         //     entities: self.entities.view(),
         // }
 }
@@ -375,8 +374,13 @@ impl<'e> Evaluator<'e> {
     /// Create a fresh `Evaluator` for the given `request`, which uses the given
     /// `Entities` to resolve entity references. Use the given `Extension`s when
     /// evaluating.
-    #[verifier::external_body]
-    pub fn new(q: Request, entities: &'e Entities, extensions: &'e Extensions<'e>) -> Self {
+    #[verifier::external_body] // axiomatized for now since `Evaluator` is an `external_body` struct
+    pub fn new(q: Request, entities: &'e Entities, extensions: &'e Extensions<'e>) -> (res: Self)
+        ensures (res@ == SpecEvaluator {
+            request: q@,
+            entities: entities@,
+        })
+    {
         Self {
             principal: q.principal,
             action: q.action,
@@ -423,19 +427,13 @@ impl<'e> Evaluator<'e> {
     #[verifier::external_body]
     pub fn evaluate_verus(&self, p: &Policy) -> (res: VerusResultHack<bool>)
         ensures ({
-            let spec_req = spec_ast::Request {
-                principal: self@.principal,
-                action: self@.action,
-                resource: self@.resource,
-                context: self@.context,
-            };
             &&& res matches Ok(res_b) ==> {
-                &&& spec_evaluator::evaluate(p@.to_expr(), spec_req, self@.entities) matches Ok(v)
+                &&& spec_evaluator::evaluate(p@.to_expr(), self@.request, self@.entities) matches Ok(v)
                 &&& v is Prim &&& v->p is Bool &&& v->p->b == res_b
             }
             // TODO: more precise spec for errors when errors are supported in exec
             &&& res is Err ==> {
-                &&& spec_evaluator::evaluate(p@.to_expr(), spec_req, self@.entities) is Err
+                &&& spec_evaluator::evaluate(p@.to_expr(), self@.request, self@.entities) is Err
             }
         })
     {

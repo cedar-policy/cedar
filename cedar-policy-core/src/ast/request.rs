@@ -71,7 +71,7 @@ impl View for Request {
 
 }
 
-empty_clone_spec_for!(Request);
+clone_spec_for!(Request);
 
 
 /// Represents the principal type, resource type, and action UID.

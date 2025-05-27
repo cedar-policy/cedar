@@ -39,7 +39,7 @@ pub use err::{AuthorizationError, ConcretizationError, ReauthorizationError};
 pub use partial_response::ErrorState;
 pub use partial_response::PartialResponse;
 
-use crate::spec::{spec_ast, spec_authorizer};
+use crate::spec::{spec_ast, spec_authorizer, spec_evaluator};
 use crate::verus_utils::*;
 use vstd::prelude::*;
 use vstd::std_specs::hash::*;
@@ -103,7 +103,7 @@ impl Authorizer {
     {
         let eval = Evaluator::new(q.clone(), entities, self.extensions);
 
-        // logic from `Authorizer::is_authorized_core_internal()``
+        // logic from `Authorizer::is_authorized_core_internal()`
         let mut satisfied_permits = vec![];
         let mut satisfied_forbids = vec![];
         // let mut errors = vec![];
@@ -111,12 +111,31 @@ impl Authorizer {
         // Verus well-formedness assumptions for HashMap
         proof { assume(obeys_key_model::<PolicyID>() && builds_valid_hashers::<std::hash::RandomState>()) }
         let policies_iter = pset.policies_iter();
-        for p in policies_iter {
+        for p in policies_seq: policies_iter
+            invariant
+                eval@.request == q@,
+                eval@.entities == entities@,
+                satisfied_permits@.map_values(|p:PolicyID| p@).to_set()
+                    == spec_authorizer::satisfied_policies(spec_ast::Effect::Permit, policies_seq@.map_values(|p:Policy| p@), q@, entities@),
+                satisfied_forbids@.map_values(|p:PolicyID| p@).to_set()
+                    == spec_authorizer::satisfied_policies(spec_ast::Effect::Forbid, policies_seq@.map_values(|p:Policy| p@), q@, entities@),
+        {
             let id = p.id().clone();
+            assert(id@ == p@.id);
             match eval.evaluate_verus(p) {
                 Ok(satisfied) => match (satisfied, p.effect()) {
-                    (true, Effect::Permit) => satisfied_permits.push(id),
-                    (true, Effect::Forbid) => satisfied_forbids.push(id),
+                    (true, Effect::Permit) => {
+                        assert(spec_authorizer::satisfied(p@, q@, entities@)) by { reveal(spec_authorizer::satisfied) };
+                        assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Permit, p@, q@, entities@) matches Some(spec_id) && spec_id == p@.id )
+                            by { reveal(spec_authorizer::satisfied_with_effect) };
+                        satisfied_permits.push(id)
+                    },
+                    (true, Effect::Forbid) => {
+                        assert(spec_authorizer::satisfied(p@, q@, entities@)) by { reveal(spec_authorizer::satisfied) };
+                        assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Forbid, p@, q@, entities@) matches Some(spec_id) && spec_id == p@.id )
+                            by { reveal(spec_authorizer::satisfied_with_effect) };
+                        satisfied_forbids.push(id)
+                    },
                     _ => {},
                     // (false, Effect::Permit) => {
                     //     false_permits.push((id, (ErrorState::NoError, annotations)))
@@ -134,6 +153,7 @@ impl Authorizer {
                     let satisfied = match self.error_handling {
                         ErrorHandling::Skip => false,
                     };
+                    // TODO(pratap): make sure this branch is reflected in the loop invariant
                     match (satisfied, p.effect()) {
                         (true, Effect::Permit) => satisfied_permits.push(id),
                         (true, Effect::Forbid) => satisfied_forbids.push(id),
@@ -149,20 +169,31 @@ impl Authorizer {
             }
         }
 
-        let response = if !vec_is_empty(&satisfied_permits) && vec_is_empty(&satisfied_forbids) {
+        // TODO: need some lemmas to the effect of vec_is_empty(v) <==> v@.to_set().is_empty
+
+        if !vec_is_empty(&satisfied_permits) && vec_is_empty(&satisfied_forbids) {
+            reveal(spec_authorizer::satisfied_policies);
+            reveal(spec_authorizer::is_authorized);
+            assert(!spec_authorizer::satisfied_policies(spec_ast::Effect::Permit, pset@, q@, entities@).is_empty());
+            assert(spec_authorizer::satisfied_policies(spec_ast::Effect::Forbid, pset@, q@, entities@).is_empty());
             Response::new_no_errors(
                 Decision::Allow,
                 hash_set_from_vec(satisfied_permits),
                 // errors
             )
         } else {
+            reveal(spec_authorizer::satisfied_policies);
+            reveal(spec_authorizer::is_authorized);
+            assert({
+                ||| spec_authorizer::satisfied_policies(spec_ast::Effect::Permit, pset@, q@, entities@).is_empty()
+                ||| !spec_authorizer::satisfied_policies(spec_ast::Effect::Forbid, pset@, q@, entities@).is_empty()
+            });
             Response::new_no_errors(
                 Decision::Deny,
                 hash_set_from_vec(satisfied_forbids),
                 // errors
             )
-        };
-        response
+        }
     }
 
     } // verus!
