@@ -201,7 +201,7 @@ impl ValidatorCommonType {
     pub fn new(name: &InternalName, ty: ValidatorType) -> Self {
         Self {
             name: name.basename().clone().into_smolstr(),
-            name_loc: name.loc().as_deref().map(|loc| Box::new(loc.clone())),
+            name_loc: name.loc().into_maybe_loc(),
             type_loc: ty.loc,
         }
     }
@@ -561,7 +561,7 @@ impl ValidatorSchema {
             })
             .map(|n| ValidatorNamespace {
                 name: n.0.basename().clone().into_smolstr(),
-                name_loc: n.0.loc().as_deref().map(|loc| Box::new(loc.clone())),
+                name_loc: n.0.loc().into_maybe_loc(),
                 def_loc: n.1,
             })
             .collect::<HashSet<_>>();
