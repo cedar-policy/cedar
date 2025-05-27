@@ -39,8 +39,10 @@ pub use err::{AuthorizationError, ConcretizationError, ReauthorizationError};
 pub use partial_response::ErrorState;
 pub use partial_response::PartialResponse;
 
+use crate::spec::{spec_ast, spec_authorizer};
 use crate::verus_utils::*;
 use vstd::prelude::*;
+use vstd::std_specs::hash::*;
 
 verus! {
 
@@ -94,7 +96,9 @@ impl Authorizer {
     ///
     /// The language spec and formal model give a precise definition of how this is
     /// computed.
-    pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> (response: Response) {
+    pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> (response: Response)
+        // ensures response@ == spec_authorizer::is_authorized(q@, entities@, pset@)
+    {
         let eval = Evaluator::new(q.clone(), entities, self.extensions);
 
         // logic from `Authorizer::is_authorized_core_internal()``
@@ -102,6 +106,8 @@ impl Authorizer {
         let mut satisfied_forbids = vec![];
         // let mut errors = vec![];
 
+        // Verus well-formedness assumptions for HashMap
+        proof { assume(obeys_key_model::<PolicyID>() && builds_valid_hashers::<std::hash::RandomState>()) }
         let policies_iter = pset.policies_iter();
         for p in policies_iter {
             let id = p.id().clone();
@@ -749,6 +755,21 @@ pub struct Response {
     pub diagnostics: Diagnostics,
 }
 
+impl View for Response {
+    type V = spec_ast::Response;
+    open spec fn view(&self) -> spec_ast::Response {
+        spec_ast::Response {
+            decision: self.decision.view(),
+            determining_policies: self.spec_get_reason(),
+            // TODO: Verus can't handle AuthorizationError at the moment
+            erroring_policies: set![], // self.diagnostics.errors.view().to_set().map(|e: AuthorizationError| e.id.view())
+        }
+    }
+}
+
+clone_spec_for!(Response);
+
+
 }
 
 /// Policy evaluation response returned from the `Authorizer`.
@@ -781,7 +802,6 @@ pub struct Diagnostics {
 }
 
 } // verus!
-
 impl Response {
     /// Create a new `Response`
     pub fn new(
@@ -802,11 +822,24 @@ impl Response {
     pub fn new_no_errors(
         decision: Decision,
         reason: HashSet<PolicyID>,
-    ) -> Self {
+    ) -> (r: Self)
+        ensures
+            r@ == (spec_ast::Response {
+                decision: decision@,
+                determining_policies: reason@.map(|p: PolicyID| p.view()),
+                erroring_policies: set![],
+            }),
+            r.spec_get_reason() == reason@.map(|p: PolicyID| p.view()),
+    {
         Response {
             decision,
             diagnostics: Diagnostics { reason, errors: vec![] },
         }
+    }
+
+    #[verifier::external_body]
+    pub closed spec fn spec_get_reason(&self) -> vstd::set::Set<spec_ast::PolicyID> {
+        self.diagnostics.reason.view().map(|p: PolicyID| p.view())
     }
 
     }
@@ -829,5 +862,17 @@ pub enum Decision {
     /// the policies.
     Deny,
 }
+
+impl View for Decision {
+    type V = spec_ast::Decision;
+    open spec fn view(&self) -> spec_ast::Decision {
+        match self {
+            Decision::Allow => spec_ast::Decision::Allow,
+            Decision::Deny => spec_ast::Decision::Deny,
+        }
+    }
+}
+
+clone_spec_for!(Decision);
 
 } // verus!

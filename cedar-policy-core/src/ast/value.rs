@@ -36,6 +36,7 @@ verus! {
 /// Cloning is O(1).
 #[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq, PartialOrd, Ord)]
+#[verifier::external_derive]
 pub struct Value {
     /// Underlying actual value
     pub value: ValueKind,
@@ -51,6 +52,8 @@ impl View for Value {
         self.value.view()
     }
 }
+
+clone_spec_for!(Value);
 
 /// This describes all the values which could be the dynamic result of evaluating an `Expr`.
 /// Cloning is O(1).

@@ -24,6 +24,9 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::{borrow::Borrow, sync::Arc};
 use thiserror::Error;
 
+use crate::spec::*;
+use crate::verus_utils::*;
+
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 use vstd::std_specs::hash::*;
@@ -51,6 +54,14 @@ pub struct PolicySet {
     /// There is a key `t` iff `templates` contains the key `t`. The value of `t` will be a (possibly empty)
     /// set of every `p` in `links` s.t. `p.template().id() == t`.
     template_to_links_map: HashMap<PolicyID, HashSet<PolicyID>>,
+}
+
+impl View for PolicySet {
+    type V = spec_ast::Policies;
+
+    closed spec fn view(&self) -> spec_ast::Policies {
+        self.links.view().values().map(|p: Policy| p.view()).to_seq()
+    }
 }
 
 }
@@ -574,14 +585,23 @@ impl PolicySet {
     verus! {
 
     /// Like `PolicySet::policies()` but explicit about the value type for Verus
-    #[verifier::external_body]
+    // #[verifier::external_body]
     pub fn policies_iter(&self) -> (policies: std::collections::hash_map::Values<'_, PolicyID, Policy>)
+        requires obeys_key_model::<PolicyID>() && builds_valid_hashers::<std::hash::RandomState>()
         ensures ({
-            let (policies_idx, _) = policies@;
-            policies_idx == 0 // TODO connect to self.view() once implemented
-        })
+            let (policies_idx, policies_seq) = policies@;
+            policies_idx == 0 && policies_seq.to_set().map(|p: Policy| p.view()) == self.view().to_set()
+        }),
     {
-        self.links.values()
+        let policies = self.links.values();
+        proof {
+            let (policies_idx, policies_seq) = policies@;
+            let policies_iter_view = policies_seq.to_set().map(|p: Policy| p.view());
+            vstd::seq_lib::seq_to_set_is_finite(policies_seq);
+            lemma_set_map_finite_stays_finite(policies_seq.to_set(), |p: Policy| p.view());
+            lemma_set_to_seq_to_set(self.links.view().values().map(|p: Policy| p.view()));
+        }
+        policies
     }
 
     }

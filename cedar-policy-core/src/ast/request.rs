@@ -32,6 +32,7 @@ use super::{
     ExpressionConstructionError, PartialValue, RestrictedExpr, Unknown, Value, ValueKind, Var,
 };
 
+use crate::spec::*;
 use crate::verus_utils::*;
 use vstd::prelude::*;
 
@@ -54,6 +55,20 @@ pub struct Request {
     /// Context associated with the request.
     /// `None` means that variable will result in a residual for partial evaluation.
     pub(crate) context: Option<Context>,
+}
+
+impl View for Request {
+    type V = spec_ast::Request;
+
+    // uninterpreted for now
+    uninterp spec fn view(&self) -> spec_ast::Request;
+        // spec_ast::Request {
+        //     principal: self.principal.view(),
+        //     action: self.action.view(),
+        //     resource: self.resource.view(),
+        //     context: self.context.view(),
+        // }
+
 }
 
 empty_clone_spec_for!(Request);
