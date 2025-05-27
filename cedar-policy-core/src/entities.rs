@@ -38,6 +38,7 @@ pub use json::{
 use conformance::EntitySchemaConformanceChecker;
 use err::*;
 
+use crate::spec::spec_ast;
 use vstd::prelude::*;
 
 verus! {
@@ -51,7 +52,7 @@ verus! {
 /// `cedar-policy` types.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[verifier::external_derive]
-#[verifier::external_body]
+#[verifier::external_body] // due to `Entity` which uses `PartialValue`
 pub struct Entities {
     /// Important internal invariant: for any `Entities` object that exists,
     /// the `ancestor` relation is transitively closed.
@@ -63,6 +64,12 @@ pub struct Entities {
     /// Mode::Partial means the store is partial, and failed dereferences result in a residual.
     mode: Mode,
 }
+
+impl View for Entities {
+    type V = spec_ast::Entities;
+    uninterp spec fn view(&self) -> Self::V;
+}
+
 
 }
 

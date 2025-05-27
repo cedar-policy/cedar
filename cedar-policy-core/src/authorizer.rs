@@ -97,7 +97,9 @@ impl Authorizer {
     /// The language spec and formal model give a precise definition of how this is
     /// computed.
     pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> (response: Response)
-        // ensures response@ == spec_authorizer::is_authorized(q@, entities@, pset@)
+        ensures
+            //response@ == spec_authorizer::is_authorized(q@, entities@, pset@)
+            response@.decision == spec_authorizer::is_authorized(q@, entities@, pset@).decision // ignoring determining_policies for now
     {
         let eval = Evaluator::new(q.clone(), entities, self.extensions);
 
