@@ -30,7 +30,7 @@ verus! {
 
 #[verifier::opaque]
 pub open spec fn satisfied(p: Policy, req: Request, entities: Entities) -> bool {
-    &&& evaluate(p.toExpr(), req, entities) matches Ok(v)
+    &&& evaluate(p.to_expr(), req, entities) matches Ok(v)
     &&& v is Prim &&& v->p is Bool &&& v->p->b == true
 }
 
@@ -50,7 +50,7 @@ pub open spec fn satisfied_policies(effect: Effect, policies: Policies, req: Req
 
 #[verifier::opaque]
 pub open spec fn has_error(policy: Policy, req: Request, entities: Entities) -> bool {
-    evaluate(policy.toExpr(), req, entities) is Err
+    evaluate(policy.to_expr(), req, entities) is Err
 }
 
 // This function is analogous to `satisfiedWithEffect` in that it returns

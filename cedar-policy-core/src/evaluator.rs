@@ -35,7 +35,8 @@ use itertools::{Either, Itertools};
 use nonempty::nonempty;
 use smol_str::SmolStr;
 
-use vstd::prelude::verus;
+use crate::spec::{spec_ast, spec_evaluator};
+use vstd::prelude::{verus, View};
 
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 
@@ -222,6 +223,27 @@ pub struct Evaluator<'e> {
     unknowns_mapper: UnknownsMapper<'e>,
 }
 
+pub struct SpecEvaluator {
+    pub principal: spec_ast::EntityUID,
+    pub action: spec_ast::EntityUID,
+    pub resource: spec_ast::EntityUID,
+    pub context: vstd::map::Map<spec_ast::Attr, spec_ast::Value>,
+    pub entities: spec_ast::Entities,
+    // TODO: extensions?
+}
+
+impl vstd::view::View for Evaluator<'_> {
+    type V = SpecEvaluator;
+    uninterp spec fn view(&self) -> SpecEvaluator;
+        // SpecEvaluator {
+        //     principal: self.principal.view(),
+        //     action: self.action.view(),
+        //     resource: self.resource.view(),
+        //     context: self.context.view(),
+        //     entities: self.entities.view(),
+        // }
+}
+
 
 } // verus!
 
@@ -399,11 +421,28 @@ impl<'e> Evaluator<'e> {
     /// it doesn't consider whether we're processing a `Permit` policy or a
     /// `Forbid` policy.
     #[verifier::external_body]
-    pub fn evaluate_verus(&self, p: &Policy) -> VerusResultHack<bool> {
+    pub fn evaluate_verus(&self, p: &Policy) -> (res: VerusResultHack<bool>)
+        ensures ({
+            let spec_req = spec_ast::Request {
+                principal: self@.principal,
+                action: self@.action,
+                resource: self@.resource,
+                context: self@.context,
+            };
+            &&& res matches Ok(res_b) ==> {
+                &&& spec_evaluator::evaluate(p@.to_expr(), spec_req, self@.entities) matches Ok(v)
+                &&& v is Prim &&& v->p is Bool &&& v->p->b == res_b
+            }
+            // TODO: more precise spec for errors when errors are supported in exec
+            &&& res is Err ==> {
+                &&& spec_evaluator::evaluate(p@.to_expr(), spec_req, self@.entities) is Err
+            }
+        })
+    {
         self.evaluate(p).map_err(|_| ())
     }
 
-    }
+    } // verus!
 
     /// Evaluate the given `Policy`, returning either a bool or an error.
     /// The bool indicates whether the policy applies, ie, "is satisfied" for the

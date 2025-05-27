@@ -214,7 +214,7 @@ pub struct Policy {
 
 impl Policy {
     // TODO(Pratap): implement as part of evaluator
-    pub uninterp spec fn toExpr(self) -> Expr;
+    pub uninterp spec fn to_expr(self) -> Expr;
 }
 
 pub type Policies = Seq<Policy>;
