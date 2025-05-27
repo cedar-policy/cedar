@@ -99,11 +99,12 @@ pub trait BTreeMapView {
     spec fn view(&self) -> Self::V;
 }
 
-impl<K:View, V:View> BTreeMapView for BTreeMap<K, V> {
-    type V = Map<K::V, V::V>;
-
-    uninterp spec fn view(&self) -> Self::V; // plan to just axiomatize it for now
-}
+// Doesn't work for BTreeMap<SmolStr, V> because SmolStr doesn't implement View, but SmolStrView;
+// so we just manually implement BTreeMapView for each map type we want
+// impl<K:View, V:View> BTreeMapView for BTreeMap<K, V> {
+//     type V = Map<K::V, V::V>;
+//     uninterp spec fn view(&self) -> Self::V; // plan to just axiomatize it for now
+// }
 
 } // verus!
 
@@ -119,6 +120,7 @@ verus! {
 pub struct FiniteSet<T> {
     s: Seq<T>,
 }
+
 
 impl<T> FiniteSet<T> {
     #[verifier::type_invariant]

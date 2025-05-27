@@ -67,6 +67,7 @@ pub enum Value {
     Prim { p: Prim },
     Set { s: FiniteSet<Value> }, // TODO switch to vstd finite set when it lands
     Record { m: Map<Attr, Value> },
+    Ext { x: () } // TODO(Pratap): extensions
     // Ext { x: Ext } // TODO(Pratap): extensions
 }
 

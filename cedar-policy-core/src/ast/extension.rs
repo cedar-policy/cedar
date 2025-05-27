@@ -23,6 +23,8 @@ use std::fmt::Debug;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::Arc;
 
+use vstd::prelude::*;
+
 /// Cedar extension.
 ///
 /// An extension can define new types and functions on those types. (Currently,
@@ -383,7 +385,11 @@ impl<V: ExtensionValue> StaticallyTyped for V {
     }
 }
 
+verus! {
+
 #[derive(Debug, Clone)]
+#[verifier::external_derive]
+#[verifier::external_body]
 /// Object container for extension values
 /// An extension value must be representable by a [`RestrictedExpr`]
 /// Specifically, it will be a function call `func` on `args`
@@ -395,6 +401,8 @@ pub struct RepresentableExtensionValue {
     pub(crate) args: Vec<RestrictedExpr>,
     pub(crate) value: Arc<dyn InternalExtensionValue>,
 }
+
+} // verus!
 
 impl RepresentableExtensionValue {
     /// Create a new [`RepresentableExtensionValue`]

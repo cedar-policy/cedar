@@ -55,6 +55,7 @@ impl View for Value {
 /// This describes all the values which could be the dynamic result of evaluating an `Expr`.
 /// Cloning is O(1).
 #[derive(Debug, Clone, PartialOrd, Ord)]
+#[verifier::external_derive]
 pub enum ValueKind {
     /// anything that is a Literal can also be the dynamic result of evaluating an `Expr`
     Lit(Literal),
@@ -73,9 +74,18 @@ impl View for ValueKind {
             ValueKind::Lit(l) => spec_ast::Value::Prim { p: l.view() },
             ValueKind::Set(s) => spec_ast::Value::Set { s: s.view() },
             ValueKind::Record(r) => spec_ast::Value::Record { m: (*r).view() },
-            // ValueKind::ExtensionValue(e) => admit() // TODO currently ignoring extensions
+            ValueKind::ExtensionValue(e) => spec_ast::Value::Ext { x: () } // TODO currently ignoring extensions
         }
     }
+}
+
+clone_spec_for!(ValueKind);
+
+// Since we can't write `impl<K:View, V:View> BTreeMapView for BTreeMap<K,V>` or similar,
+// we have to just implement BTreeMapView manually for each monomorphized BTreeMap we want
+impl BTreeMapView for BTreeMap<SmolStr, Value> {
+    type V = Map<Seq<char>, spec_ast::Value>;
+    uninterp spec fn view(&self) -> Self::V; // plan to just axiomatize it for now
 }
 
 } // verus!
@@ -386,8 +396,12 @@ impl TryFrom<Expr> for ValueKind {
     }
 }
 
+verus! {
+
 /// `Value`'s internal representation of a `Set`
 #[derive(Debug, Clone)]
+#[verifier::external_derive]
+#[verifier::external_body]
 pub struct Set {
     /// the values in the set, stored in a `BTreeSet`
     pub authoritative: Arc<BTreeSet<Value>>,
@@ -402,6 +416,16 @@ pub struct Set {
     /// that if one set has `fast` and another does not, the sets can't be
     /// equal.)
     pub fast: Option<Arc<HashSet<Literal>>>,
+}
+
+impl View for Set {
+    type V = FiniteSet<spec_ast::Value>;
+
+    // TODO: can eventually use this to enforce the FastRepr invariant
+    // (once HashSet and BTreeSet are supported)
+    uninterp spec fn view(&self) -> FiniteSet<spec_ast::Value>;
+}
+
 }
 
 impl Set {

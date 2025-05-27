@@ -62,6 +62,8 @@ impl View for Literal {
     }
 }
 
+clone_spec_for!(Literal);
+
 } // verus!
 
 impl StaticallyTyped for Literal {
