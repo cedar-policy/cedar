@@ -31,12 +31,11 @@ use thiserror::Error;
 
 use crate::ast::{self, ReservedNameError};
 use crate::parser::fmt::join_with_conjunction;
-use crate::parser::loc::{Loc, MaybeLoc};
 use crate::parser::node::Node;
 use crate::parser::unescape::UnescapeError;
+use crate::parser::{AsLocRef, Loc, MaybeLoc};
 
 use super::cst;
-use super::loc::AsLocRef;
 
 pub(crate) type RawLocation = usize;
 pub(crate) type RawToken<'a> = lalr::lexer::Token<'a>;

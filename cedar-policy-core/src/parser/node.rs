@@ -20,8 +20,7 @@ use educe::Educe;
 use miette::Diagnostic;
 
 use super::err::{ToASTError, ToASTErrorKind};
-use super::loc::{AsLocRef, Loc, MaybeLoc};
-use super::IntoMaybeLoc;
+use super::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 
 /// Metadata for our syntax trees
 #[derive(Educe, Debug, Clone)]

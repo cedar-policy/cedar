@@ -20,12 +20,10 @@ use super::Result;
 use crate::ast;
 use crate::ast::EntityReference;
 use crate::ast::EntityUID;
-use crate::parser::loc::AsLocRef;
-use crate::parser::IntoMaybeLoc;
 use crate::parser::{
     cst::{self, Literal},
     err::{self, ParseErrors, ToASTError, ToASTErrorKind},
-    Loc, Node,
+    AsLocRef, IntoMaybeLoc, Loc, Node,
 };
 
 /// Type level marker for parsing sets of entity uids or single uids
