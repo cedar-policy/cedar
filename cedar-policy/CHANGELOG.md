@@ -22,8 +22,8 @@ Cedar Language Version: TBD
   format. The new functions are deprecated and placed behind the `deprecated-schema-compat` feature. (#1600)
 - `Expression::new_duration`, `Expression::new_datetime`, `RestrictedExpression::new_duration`,
    and `RestrictedExpression::new_datetime` (#1614)
-- Added a function to be able to split a policy set parsed from a single string into its component static 
-  policies and templates. The relevant function is `policy_set_text_to_parts` in the `ffi` module.
+- Added a function to be able to split a policy set parsed from a single string into its component static
+  policies and templates. The relevant function is `policy_set_text_to_parts` in the `ffi` module (#1629).
 
 ### Changed
 
@@ -33,7 +33,12 @@ Cedar Language Version: TBD
   schema can be retrieved using `Validator::schema`. (#1584)
 - Bumped MSRV to 1.82 (#1611)
 
+## [4.4.1] - 2025-05-22
+
+Cedar Language Version: 4.3
+
 ### Fixed
+
 - Apply entity conformance checking to tags (#1604)
 
 ## [4.4.0] - 2025-04-23

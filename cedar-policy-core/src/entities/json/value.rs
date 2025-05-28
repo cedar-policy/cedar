@@ -502,21 +502,21 @@ impl CedarValueJson {
         self,
         mapping: &BTreeMap<EntityUID, EntityUID>,
     ) -> Result<Self, JsonDeserializationError> {
-        match self.clone() {
+        match self {
             // Since we are modifying an already legal policy, this should be unreachable.
             CedarValueJson::ExprEscape { __expr } => Err(JsonDeserializationError::ExprTag(
                 Box::new(JsonDeserializationErrorContext::Unknown),
             )),
             CedarValueJson::EntityEscape { __entity } => {
-                let euid = EntityUID::try_from(__entity);
+                let euid = EntityUID::try_from(__entity.clone());
                 match euid {
                     Ok(euid) => match mapping.get(&euid) {
                         Some(new_euid) => Ok(CedarValueJson::EntityEscape {
                             __entity: new_euid.into(),
                         }),
-                        None => Ok(self),
+                        None => Ok(CedarValueJson::EntityEscape { __entity }),
                     },
-                    Err(_) => Ok(self),
+                    Err(_) => Ok(CedarValueJson::EntityEscape { __entity }),
                 }
             }
             CedarValueJson::ExtnEscape { __extn } => Ok(CedarValueJson::ExtnEscape {
@@ -525,9 +525,9 @@ impl CedarValueJson {
                     arg: Box::new((*__extn.arg).sub_entity_literals(mapping)?),
                 },
             }),
-            CedarValueJson::Bool(_) => Ok(self),
-            CedarValueJson::Long(_) => Ok(self),
-            CedarValueJson::String(_) => Ok(self),
+            v @ CedarValueJson::Bool(_) => Ok(v),
+            v @ CedarValueJson::Long(_) => Ok(v),
+            v @ CedarValueJson::String(_) => Ok(v),
             CedarValueJson::Set(v) => Ok(CedarValueJson::Set(
                 v.into_iter()
                     .map(|e| e.sub_entity_literals(mapping))
@@ -540,7 +540,7 @@ impl CedarValueJson {
                 }
                 Ok(CedarValueJson::Record(JsonRecord { values: new_m }))
             }
-            CedarValueJson::Null => Ok(self),
+            v @ CedarValueJson::Null => Ok(v),
         }
     }
 }
