@@ -133,7 +133,7 @@ impl Value {
     }
 
     /// If the value is a `Literal`, get a reference to the underlying `Literal`
-    pub(crate) fn try_as_lit(&self) -> Option<&Literal> {
+    pub fn try_as_lit(&self) -> Option<&Literal> {
         self.value.try_as_lit()
     }
 
