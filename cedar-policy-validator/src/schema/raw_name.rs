@@ -17,7 +17,7 @@
 use crate::schema::AllDefs;
 use crate::schema_errors::TypeNotDefinedError;
 use cedar_policy_core::ast::{Id, InternalName, Name, UnreservedId};
-use cedar_policy_core::parser::Loc;
+use cedar_policy_core::parser::{Loc, MaybeLoc};
 use itertools::Itertools;
 use nonempty::{nonempty, NonEmpty};
 use serde::{Deserialize, Serialize};
@@ -34,12 +34,12 @@ pub struct RawName(InternalName);
 
 impl RawName {
     /// Create a new [`RawName`] from the given [`Id`]
-    pub fn new(id: Id, loc: Option<Loc>) -> Self {
+    pub fn new(id: Id, loc: MaybeLoc) -> Self {
         Self(InternalName::unqualified_name(id, loc))
     }
 
     /// Create a new [`RawName`] from the given [`UnreservedId`]
-    pub fn new_from_unreserved(id: UnreservedId, loc: Option<Loc>) -> Self {
+    pub fn new_from_unreserved(id: UnreservedId, loc: MaybeLoc) -> Self {
         Self::new(id.into(), loc)
     }
 

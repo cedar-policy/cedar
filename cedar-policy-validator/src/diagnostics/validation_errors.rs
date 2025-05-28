@@ -24,7 +24,7 @@ use std::fmt::Display;
 
 use cedar_policy_core::fuzzy_match::fuzzy_search;
 use cedar_policy_core::impl_diagnostic_from_source_loc_opt_field;
-use cedar_policy_core::parser::Loc;
+use cedar_policy_core::parser::MaybeLoc;
 
 use std::collections::BTreeSet;
 
@@ -43,7 +43,7 @@ use smol_str::SmolStr;
 #[error("for policy `{policy_id}`, unrecognized entity type `{actual_entity_type}`")]
 pub struct UnrecognizedEntityType {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// The entity type seen in the policy.
@@ -69,7 +69,7 @@ impl Diagnostic for UnrecognizedEntityType {
 #[error("for policy `{policy_id}`, unrecognized action `{actual_action_id}`")]
 pub struct UnrecognizedActionId {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// Action Id seen in the policy
@@ -133,7 +133,7 @@ pub fn unrecognized_action_id_help(
 #[error("for policy `{policy_id}`, unable to find an applicable action given the policy scope constraints")]
 pub struct InvalidActionApplication {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// `true` if changing `==` to `in` wouuld fix the principal clause
@@ -171,7 +171,7 @@ impl Diagnostic for InvalidActionApplication {
     .actual)]
 pub struct UnexpectedType {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// Type(s) which were expected
@@ -231,7 +231,7 @@ pub enum UnexpectedTypeHelp {
 #[derive(Error, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct IncompatibleTypes {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// Types which are incompatible
@@ -309,7 +309,7 @@ pub enum LubContext {
 #[error("for policy `{policy_id}`, attribute {attribute_access} not found")]
 pub struct UnsafeAttributeAccess {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// More details about the missing-attribute error
@@ -339,7 +339,7 @@ impl Diagnostic for UnsafeAttributeAccess {
 #[error("for policy `{policy_id}`, unable to guarantee safety of access to optional attribute {attribute_access}")]
 pub struct UnsafeOptionalAttributeAccess {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// More details about the attribute-access error
@@ -368,7 +368,7 @@ impl Diagnostic for UnsafeOptionalAttributeAccess {
 )]
 pub struct UnsafeTagAccess {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// `EntityLUB` that we tried to access a tag on (or `None` if not an `EntityLUB`, for example, an `AnyEntity`)
@@ -399,7 +399,7 @@ impl Diagnostic for UnsafeTagAccess {
 )]
 pub struct NoTagsAllowed {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// Entity type which we tried to call `.getTag()` on but which doesn't have any tags allowed in the schema
@@ -417,7 +417,7 @@ impl Diagnostic for NoTagsAllowed {
 #[error("for policy `{policy_id}`, undefined extension function: {name}")]
 pub struct UndefinedFunction {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// Name of the undefined function
@@ -433,7 +433,7 @@ impl Diagnostic for UndefinedFunction {
 #[error("for policy `{policy_id}`, wrong number of arguments in extension function application. Expected {expected}, got {actual}")]
 pub struct WrongNumberArguments {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// Expected number of arguments
@@ -451,7 +451,7 @@ impl Diagnostic for WrongNumberArguments {
 #[error("for policy `{policy_id}`, error during extension function argument validation: {msg}")]
 pub struct FunctionArgumentValidation {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// Error message
@@ -467,7 +467,7 @@ impl Diagnostic for FunctionArgumentValidation {
 #[error("Internal invariant violated: `HierarchyNotRespected` error should never occur. Please file an issue")]
 pub struct HierarchyNotRespected {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
 }
@@ -485,7 +485,7 @@ impl Diagnostic for HierarchyNotRespected {
 #[error("for policy `{policy_id}`, {violation_kind}")]
 pub struct EntityDerefLevelViolation {
     /// Location of outer most dereference
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// Provides more information about the specific kind of violation
@@ -519,7 +519,7 @@ impl Diagnostic for EntityDerefLevelViolation {
 #[error("for policy `{policy_id}`, empty set literals are forbidden in policies")]
 pub struct EmptySetForbidden {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
 }
@@ -534,7 +534,7 @@ impl Diagnostic for EmptySetForbidden {
 #[error("for policy `{policy_id}`, extension constructors may not be called with non-literal expressions")]
 pub struct NonLitExtConstructor {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
 }
@@ -555,7 +555,7 @@ impl Diagnostic for NonLitExtConstructor {
 #[error("internal invariant violated")]
 pub struct InternalInvariantViolation {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
 }
@@ -679,7 +679,7 @@ impl Display for AttributeAccess {
 #[error("for policy `{policy_id}`: {err}")]
 pub struct InvalidEnumEntity {
     /// Source location
-    pub source_loc: Option<Loc>,
+    pub source_loc: MaybeLoc,
     /// Policy ID where the error occurred
     pub policy_id: PolicyID,
     /// The error

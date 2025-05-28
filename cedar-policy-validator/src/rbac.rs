@@ -23,7 +23,7 @@ use cedar_policy_core::{
     },
     entities::conformance::is_valid_enumerated_entity,
     fuzzy_match::fuzzy_search,
-    parser::Loc,
+    parser::{IntoMaybeLoc, Loc},
 };
 
 use std::{collections::HashSet, sync::Arc};
@@ -55,7 +55,7 @@ impl Validator {
                         Ok(_) => {}
                         Err(err) => {
                             return Some(ValidationError::invalid_enum_entity(
-                                e.loc().cloned(),
+                                e.loc().into_maybe_loc(),
                                 template.id().clone(),
                                 err,
                             ));
@@ -87,7 +87,7 @@ impl Validator {
                 let suggested_entity_type =
                     fuzzy_search(&actual_entity_type, known_entity_types.as_slice());
                 Some(ValidationError::unrecognized_entity_type(
-                    name.loc().cloned(),
+                    name.loc().into_maybe_loc(),
                     template.id().clone(),
                     actual_entity_type,
                     suggested_entity_type,
@@ -111,7 +111,7 @@ impl Validator {
             let entity_type = euid.entity_type();
             if entity_type.is_action() && !self.schema.is_known_action_id(euid) {
                 Some(ValidationError::unrecognized_action_id(
-                    euid.loc().cloned(),
+                    euid.loc().into_maybe_loc(),
                     template.id().clone(),
                     euid.to_string(),
                     unrecognized_action_id_help(euid, &self.schema),
@@ -305,7 +305,7 @@ impl Validator {
             self.check_if_in_fixes_resource(resource_constraint, action_constraint);
 
         Some(ValidationError::invalid_action_application(
-            source_loc.cloned(),
+            source_loc.into_maybe_loc(),
             policy_id.clone(),
             would_in_fix_principal,
             would_in_fix_resource,
@@ -1192,7 +1192,7 @@ mod test {
                 .1
                 .collect::<Vec<ValidationWarning>>(),
             vec![ValidationWarning::impossible_policy(
-                policy.loc().cloned(),
+                policy.loc().into_maybe_loc(),
                 policy.id().clone()
             )],
             "Unexpected validation warnings."
@@ -1321,7 +1321,7 @@ mod test {
             &validator,
             &policy,
             &[ValidationError::invalid_action_application(
-                Some(Loc::new(0..43, Arc::from(src))),
+                Loc::new(0..43, Arc::from(src)).into_maybe_loc(),
                 PolicyID::from_string("policy0"),
                 false,
                 false,
@@ -1337,19 +1337,19 @@ mod test {
             &policy,
             &[
                 ValidationError::unrecognized_entity_type(
-                    Some(Loc::new(27..30, Arc::from(src))),
+                    Loc::new(27..30, Arc::from(src)).into_maybe_loc(),
                     PolicyID::from_string("policy0"),
                     "faz".into(),
                     Some("baz".into()),
                 ),
                 ValidationError::unrecognized_entity_type(
-                    Some(Loc::new(20..23, Arc::from(src))),
+                    Loc::new(20..23, Arc::from(src)).into_maybe_loc(),
                     PolicyID::from_string("policy0"),
                     "biz".into(),
                     Some("baz".into()),
                 ),
                 ValidationError::invalid_action_application(
-                    Some(Loc::new(0..55, Arc::from(src))),
+                    Loc::new(0..55, Arc::from(src)).into_maybe_loc(),
                     PolicyID::from_string("policy0"),
                     false,
                     false,
@@ -1365,7 +1365,7 @@ mod test {
             &validator,
             &policy,
             &[ValidationError::invalid_action_application(
-                Some(Loc::new(0..57, Arc::from(src))),
+                Loc::new(0..57, Arc::from(src)).into_maybe_loc(),
                 PolicyID::from_string("policy0"),
                 false,
                 false,
@@ -1405,7 +1405,7 @@ mod test {
             &validator,
             &policy,
             &[ValidationError::invalid_action_application(
-                Some(Loc::new(0..43, Arc::from(src))),
+                Loc::new(0..43, Arc::from(src)).into_maybe_loc(),
                 PolicyID::from_string("policy0"),
                 false,
                 false,
@@ -1420,7 +1420,7 @@ mod test {
             &validator,
             &policy,
             &[ValidationError::invalid_action_application(
-                Some(Loc::new(0..57, Arc::from(src))),
+                Loc::new(0..57, Arc::from(src)).into_maybe_loc(),
                 PolicyID::from_string("policy0"),
                 false,
                 false,
@@ -1436,19 +1436,19 @@ mod test {
             &policy,
             &[
                 ValidationError::unrecognized_entity_type(
-                    Some(Loc::new(45..48, Arc::from(src))),
+                    Loc::new(45..48, Arc::from(src)).into_maybe_loc(),
                     PolicyID::from_string("policy0"),
                     "faz".into(),
                     Some("baz".into()),
                 ),
                 ValidationError::unrecognized_entity_type(
-                    Some(Loc::new(38..41, Arc::from(src))),
+                    Loc::new(38..41, Arc::from(src)).into_maybe_loc(),
                     PolicyID::from_string("policy0"),
                     "biz".into(),
                     Some("baz".into()),
                 ),
                 ValidationError::invalid_action_application(
-                    Some(Loc::new(0..55, Arc::from(src))),
+                    Loc::new(0..55, Arc::from(src)).into_maybe_loc(),
                     PolicyID::from_string("policy0"),
                     false,
                     false,

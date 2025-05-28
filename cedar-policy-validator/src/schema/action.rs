@@ -18,7 +18,7 @@
 
 use cedar_policy_core::{
     ast::{self, EntityType, EntityUID, PartialValue},
-    parser::Loc,
+    parser::{AsLocRef, Loc, MaybeLoc},
     transitive_closure::TCNode,
 };
 use smol_str::SmolStr;
@@ -60,7 +60,7 @@ pub struct ValidatorActionId {
     /// typechecking by partial evaluation.
     pub(crate) attributes: BTreeMap<SmolStr, PartialValue>,
     /// Source location - if available
-    pub(crate) loc: Option<Loc>,
+    pub(crate) loc: MaybeLoc,
 }
 
 impl ValidatorActionId {
@@ -77,7 +77,7 @@ impl ValidatorActionId {
         context: Type,
         attribute_types: Attributes,
         attributes: BTreeMap<SmolStr, PartialValue>,
-        loc: Option<Loc>,
+        loc: MaybeLoc,
     ) -> Self {
         Self {
             name,
@@ -100,7 +100,7 @@ impl ValidatorActionId {
 
     /// The source location if available
     pub fn loc(&self) -> Option<&Loc> {
-        self.loc.as_ref()
+        self.loc.as_loc_ref()
     }
 
     /// Iterator over the actions that are members of this action

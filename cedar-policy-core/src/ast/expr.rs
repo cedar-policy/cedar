@@ -24,7 +24,7 @@ use crate::{
     ast::*,
     expr_builder::{self, ExprBuilder as _},
     extensions::Extensions,
-    parser::{err::ParseErrors, Loc},
+    parser::{err::ParseErrors, AsLocRef, IntoMaybeLoc, Loc, MaybeLoc},
 };
 use educe::Educe;
 use miette::Diagnostic;
@@ -54,7 +54,7 @@ pub struct Expr<T = ()> {
     expr_kind: ExprKind<T>,
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
-    source_loc: Option<Loc>,
+    source_loc: MaybeLoc,
     data: T,
 }
 
@@ -203,7 +203,7 @@ impl From<PartialValue> for Expr {
 }
 
 impl<T> Expr<T> {
-    pub(crate) fn new(expr_kind: ExprKind<T>, source_loc: Option<Loc>, data: T) -> Self {
+    pub(crate) fn new(expr_kind: ExprKind<T>, source_loc: MaybeLoc, data: T) -> Self {
         Self {
             expr_kind,
             source_loc,
@@ -236,17 +236,17 @@ impl<T> Expr<T> {
 
     /// Consume the `Expr`, returning the `ExprKind`, `source_loc`, and stored
     /// data.
-    pub fn into_parts(self) -> (ExprKind<T>, Option<Loc>, T) {
+    pub fn into_parts(self) -> (ExprKind<T>, MaybeLoc, T) {
         (self.expr_kind, self.source_loc, self.data)
     }
 
     /// Access the `Loc` stored on the `Expr`.
     pub fn source_loc(&self) -> Option<&Loc> {
-        self.source_loc.as_ref()
+        self.source_loc.as_loc_ref()
     }
 
     /// Return the `Expr`, but with the new `source_loc` (or `None`).
-    pub fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+    pub fn with_maybe_source_loc(self, source_loc: MaybeLoc) -> Self {
         Self { source_loc, ..self }
     }
 
@@ -294,7 +294,7 @@ impl<T> Expr<T> {
             .filter_map(|exp| match &exp.expr_kind {
                 ExprKind::Slot(slotid) => Some(Slot {
                     id: *slotid,
-                    loc: exp.source_loc().cloned(),
+                    loc: exp.source_loc().into_maybe_loc(),
                 }),
                 _ => None,
             })
@@ -410,7 +410,7 @@ impl<T> Expr<T> {
     where
         T: Clone,
     {
-        let builder = B::new().with_maybe_source_loc(self.source_loc().cloned().as_ref());
+        let builder = B::new().with_maybe_source_loc(self.source_loc().as_deref());
         match self.into_expr_kind() {
             ExprKind::Lit(lit) => builder.val(lit),
             ExprKind::Var(var) => builder.var(var),
@@ -480,7 +480,7 @@ impl<T> Expr<T> {
             ExprKind::Error { .. } => builder
                 .error(ParseErrors::singleton(ToASTError::new(
                     ToASTErrorKind::ASTErrorNode,
-                    Some(Loc::new(0..1, "AST_ERROR_NODE".into())),
+                    Loc::new(0..1, "AST_ERROR_NODE".into()).into_maybe_loc(),
                 )))
                 .unwrap(),
         }
@@ -960,7 +960,7 @@ impl std::fmt::Display for Unknown {
 /// (possibly taking default value) and optionally a `source_loc`.
 #[derive(Clone, Debug)]
 pub struct ExprBuilder<T> {
-    source_loc: Option<Loc>,
+    source_loc: MaybeLoc,
     data: T,
 }
 
@@ -973,7 +973,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     type ErrorType = ParseErrors;
 
     fn loc(&self) -> Option<&Loc> {
-        self.source_loc.as_ref()
+        self.source_loc.as_loc_ref()
     }
 
     fn data(&self) -> &Self::Data {
@@ -988,7 +988,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     }
 
     fn with_maybe_source_loc(mut self, maybe_source_loc: Option<&Loc>) -> Self {
-        self.source_loc = maybe_source_loc.cloned();
+        self.source_loc = maybe_source_loc.into_maybe_loc();
         self
     }
 
@@ -1330,7 +1330,7 @@ impl<T: Clone + Default> ExprBuilder<T> {
     /// location as an existing expression. This is done when reconstructing the
     /// `Expr` with type information.
     pub fn with_same_source_loc<U>(self, expr: &Expr<U>) -> Self {
-        self.with_maybe_source_loc(expr.source_loc.as_ref())
+        self.with_maybe_source_loc(expr.source_loc.as_loc_ref())
     }
 }
 

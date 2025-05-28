@@ -43,12 +43,13 @@ fn parse_collect_errors<'a, P, T>(
         &P,
         &mut Vec<err::RawErrorRecovery<'a>>,
         &Arc<str>,
+        bool,
         &'a str,
     ) -> Result<T, err::RawParseError<'a>>,
     text: &'a str,
 ) -> Result<T, err::ParseErrors> {
     let mut errs = Vec::new();
-    let result = parse(parser, &mut errs, &Arc::from(text), text);
+    let result = parse(parser, &mut errs, &Arc::from(text), false, text);
 
     let errors = errs
         .into_iter()
@@ -79,12 +80,13 @@ fn parse_collect_errors_tolerant<'a, P, T>(
         &P,
         &mut Vec<err::RawErrorRecovery<'a>>,
         &Arc<str>,
+        bool,
         &'a str,
     ) -> Result<T, err::RawParseError<'a>>,
     text: &'a str,
 ) -> Result<T, err::ParseErrors> {
     let mut errs = Vec::new();
-    let result = parse(parser, &mut errs, &Arc::from(text), text);
+    let result = parse(parser, &mut errs, &Arc::from(text), false, text);
 
     let errors = errs
         .into_iter()
@@ -1056,7 +1058,7 @@ mod tests {
             permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
             "#;
         let policies = POLICIES_PARSER
-            .parse(&mut Vec::new(), &Arc::from(src), src)
+            .parse(&mut Vec::new(), &Arc::from(src), false, src)
             .expect("parser error")
             .node
             .expect("no data");

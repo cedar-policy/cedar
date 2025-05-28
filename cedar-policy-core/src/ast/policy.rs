@@ -15,7 +15,7 @@
  */
 
 use crate::ast::*;
-use crate::parser::Loc;
+use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 use annotation::{Annotation, Annotations};
 use educe::Educe;
 use itertools::Itertools;
@@ -71,7 +71,7 @@ cfg_tolerant_ast! {
             <ExprWithErrsBuilder as ExprBuilder>::new()
                 .error(ParseErrors::singleton(ToASTError::new(
                     ToASTErrorKind::ASTErrorNode,
-                    Some(Loc::new(0..1, "ASTErrorNode".into())),
+                    Loc::new(0..1, "ASTErrorNode".into()).into_maybe_loc(),
                 )))
                 .unwrap(),
         )
@@ -118,7 +118,7 @@ impl Template {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
-        loc: Option<Loc>,
+        loc: MaybeLoc,
         annotations: Annotations,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -143,7 +143,7 @@ impl Template {
 
     #[cfg(feature = "tolerant-ast")]
     /// Generate a template representing a policy that is unparsable
-    pub fn error(id: PolicyID, loc: Option<Loc>) -> Self {
+    pub fn error(id: PolicyID, loc: MaybeLoc) -> Self {
         let body = TemplateBody::error(id, loc);
         Template::from(body)
     }
@@ -152,7 +152,7 @@ impl Template {
     #[allow(clippy::too_many_arguments)]
     pub fn new_shared(
         id: PolicyID,
-        loc: Option<Loc>,
+        loc: MaybeLoc,
         annotations: Arc<Annotations>,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -442,7 +442,7 @@ impl Policy {
     }
 
     /// Build a policy with a given effect, given when clause, and unconstrained scope variables
-    pub fn from_when_clause(effect: Effect, when: Expr, id: PolicyID, loc: Option<Loc>) -> Self {
+    pub fn from_when_clause(effect: Effect, when: Expr, id: PolicyID, loc: MaybeLoc) -> Self {
         Self::from_when_clause_annos(
             effect,
             Arc::new(when),
@@ -457,7 +457,7 @@ impl Policy {
         effect: Effect,
         when: Arc<Expr>,
         id: PolicyID,
-        loc: Option<Loc>,
+        loc: MaybeLoc,
         annotations: Arc<Annotations>,
     ) -> Self {
         let t = Template::new_shared(
@@ -902,7 +902,7 @@ impl StaticPolicy {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
-        loc: Option<Loc>,
+        loc: MaybeLoc,
         annotations: Annotations,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -966,7 +966,7 @@ pub struct TemplateBodyImpl {
     /// Source location spanning the entire policy
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
-    loc: Option<Loc>,
+    loc: MaybeLoc,
     /// Annotations available for external applications, as key-value store.
     /// Note that the keys are `AnyId`, so Cedar reserved words like `if` and `has`
     /// are explicitly allowed as annotations.
@@ -1000,7 +1000,7 @@ pub enum TemplateBody {
     TemplateBody(TemplateBodyImpl),
     #[cfg(feature = "tolerant-ast")]
     /// Represents a policy that failed to parse
-    TemplateBodyError(PolicyID, Option<Loc>),
+    TemplateBodyError(PolicyID, MaybeLoc),
 }
 
 impl TemplateBody {
@@ -1016,9 +1016,9 @@ impl TemplateBody {
     /// Get the location of this policy
     pub fn loc(&self) -> Option<&Loc> {
         match self {
-            TemplateBody::TemplateBody(TemplateBodyImpl { loc, .. }) => loc.as_ref(),
+            TemplateBody::TemplateBody(TemplateBodyImpl { loc, .. }) => loc.as_loc_ref(),
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_, loc) => loc.as_ref(),
+            TemplateBody::TemplateBodyError(_, loc) => loc.as_loc_ref(),
         }
     }
 
@@ -1039,7 +1039,7 @@ impl TemplateBody {
 
     #[cfg(feature = "tolerant-ast")]
     /// Create a template body representing a policy that failed to parse
-    pub fn error(id: PolicyID, loc: Option<Loc>) -> Self {
+    pub fn error(id: PolicyID, loc: MaybeLoc) -> Self {
         TemplateBody::TemplateBodyError(id, loc)
     }
 
@@ -1199,13 +1199,13 @@ impl TemplateBody {
                         self.principal_constraint_expr(),
                         self.action_constraint_expr(),
                     )
-                    .with_maybe_source_loc(self.loc().cloned()),
+                    .with_maybe_source_loc(self.loc().into_maybe_loc()),
                     self.resource_constraint_expr(),
                 )
-                .with_maybe_source_loc(self.loc().cloned()),
+                .with_maybe_source_loc(self.loc().into_maybe_loc()),
                 self.non_scope_constraints().clone(),
             )
-            .with_maybe_source_loc(self.loc().cloned()),
+            .with_maybe_source_loc(self.loc().into_maybe_loc()),
             #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(_, _) => DEFAULT_ERROR_EXPR.as_ref().clone(),
         }
@@ -1215,7 +1215,7 @@ impl TemplateBody {
     #[allow(clippy::too_many_arguments)]
     pub fn new_shared(
         id: PolicyID,
-        loc: Option<Loc>,
+        loc: MaybeLoc,
         annotations: Arc<Annotations>,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -1239,7 +1239,7 @@ impl TemplateBody {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: PolicyID,
-        loc: Option<Loc>,
+        loc: MaybeLoc,
         annotations: Annotations,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
@@ -1514,7 +1514,7 @@ pub enum EntityReference {
         #[educe(PartialEq(ignore))]
         #[educe(PartialOrd(ignore))]
         #[educe(Hash(ignore))]
-        Option<Loc>,
+        MaybeLoc,
     ),
 }
 
@@ -1548,7 +1548,7 @@ pub enum UnexpectedSlotError {
 impl Diagnostic for UnexpectedSlotError {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         match self {
-            Self::FoundSlot(Slot { loc, .. }) => loc.as_ref().map(|loc| {
+            Self::FoundSlot(Slot { loc, .. }) => loc.as_loc_ref().map(|loc| {
                 let label = miette::LabeledSpan::underline(loc.span);
                 Box::new(std::iter::once(label)) as _
             }),
@@ -1557,7 +1557,9 @@ impl Diagnostic for UnexpectedSlotError {
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         match self {
-            Self::FoundSlot(Slot { loc, .. }) => loc.as_ref().map(|l| l as &dyn miette::SourceCode),
+            Self::FoundSlot(Slot { loc, .. }) => {
+                loc.as_loc_ref().map(|l| l as &dyn miette::SourceCode)
+            }
         }
     }
 }
@@ -2373,14 +2375,13 @@ mod test {
         use std::str::FromStr;
 
         let policy_id = PolicyID::from_string("error_policy");
-        let error_loc = Loc::new(0..1, "ASTErrorNode".into());
-        let error_body =
-            TemplateBody::TemplateBodyError(policy_id.clone(), Some(error_loc.clone()));
+        let error_loc = Loc::new(0..1, "ASTErrorNode".into()).into_maybe_loc();
+        let error_body = TemplateBody::TemplateBodyError(policy_id.clone(), error_loc.clone());
 
         let expected_error = <ExprWithErrsBuilder as ExprBuilder>::new()
             .error(ParseErrors::singleton(ToASTError::new(
                 ToASTErrorKind::ASTErrorNode,
-                Some(Loc::new(0..1, "ASTErrorNode".into())),
+                Loc::new(0..1, "ASTErrorNode".into()).into_maybe_loc(),
             )))
             .unwrap();
 
@@ -2388,13 +2389,13 @@ mod test {
         assert_eq!(error_body.id(), &policy_id);
 
         // Test loc() method
-        assert_eq!(error_body.loc(), Some(&error_loc));
+        assert_eq!(error_body.loc(), error_loc.as_loc_ref());
 
         // Test new_id() method
         let new_policy_id = PolicyID::from_string("new_error_policy");
         let updated_error_body = error_body.new_id(new_policy_id.clone());
         assert_matches!(updated_error_body,
-            TemplateBody::TemplateBodyError(id, loc) if id == new_policy_id && loc.clone().unwrap() == error_loc
+            TemplateBody::TemplateBodyError(id, loc) if id == new_policy_id && loc.clone() == error_loc
         );
 
         // Test effect() method
@@ -2437,8 +2438,8 @@ mod test {
     #[test]
     fn template_error_methods() {
         let policy_id = PolicyID::from_string("error_policy");
-        let error_loc = Loc::new(0..1, "ASTErrorNode".into());
-        let error_template = Template::error(policy_id.clone(), Some(error_loc.clone()));
+        let error_loc = Loc::new(0..1, "ASTErrorNode".into()).into_maybe_loc();
+        let error_template = Template::error(policy_id.clone(), error_loc.clone());
 
         // Check template properties
         assert_eq!(error_template.id(), &policy_id);
@@ -2448,7 +2449,7 @@ mod test {
 
         // Check body is an error template body
         assert_matches!(error_template.body,
-            TemplateBody::TemplateBodyError(ref id, ref loc) if id == &policy_id && loc.clone().unwrap() == error_loc
+            TemplateBody::TemplateBodyError(ref id, ref loc) if id == &policy_id && loc.clone() == error_loc
         );
 
         // Test principal_constraint() method
@@ -2476,7 +2477,7 @@ mod test {
         );
 
         // Verify location is None
-        assert_eq!(error_template.loc(), Some(&error_loc));
+        assert_eq!(error_template.loc(), error_loc.as_loc_ref());
 
         // Verify annotations are default
         assert!(error_template.annotations().count() == 0);
