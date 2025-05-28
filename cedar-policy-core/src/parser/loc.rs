@@ -16,11 +16,21 @@
 
 use std::sync::Arc;
 
-/// Represents an optional `Loc`
+/// Represents an optional `Loc`.
 #[cfg(not(feature = "fast-parsing"))]
 pub type MaybeLoc = Option<Loc>;
 
-/// Represents an optional `Loc`
+/// Represents an optional `Loc`.
+///
+/// This definition uses heap allocation (Box) to reduce the memory
+/// footprint of structures containing `MaybeLoc`.
+///
+/// The computational performance compared to the unboxed `Option<Loc>` depends on its value:
+/// - `Some` case: Slightly slower due to heap allocation and indirect access
+/// - `None` case: More memory efficient as no space is reserved for the location data
+///
+/// When the `fast-parsing` feature is enabled, we use this type and avoid
+/// storing locations during parsing, maximizing the parsing performance.
 #[cfg(feature = "fast-parsing")]
 pub type MaybeLoc = Option<Box<Loc>>;
 
