@@ -164,19 +164,6 @@ impl IntoMaybeLoc for Option<Box<Loc>> {
     }
 }
 
-/// Trait to define clones for `MaybeLoc`
-pub trait CloneMaybeLoc {
-    /// Automatic clone to `MaybeLoc`
-    fn clone_maybe_loc(&self) -> MaybeLoc;
-}
-
-impl CloneMaybeLoc for MaybeLoc {
-    #[inline]
-    fn clone_maybe_loc(&self) -> MaybeLoc {
-        self.clone()
-    }
-}
-
 impl miette::SourceCode for Loc {
     fn read_span<'a>(
         &'a self,

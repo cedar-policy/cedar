@@ -20,7 +20,7 @@ use educe::Educe;
 use miette::Diagnostic;
 
 use super::err::{ToASTError, ToASTErrorKind};
-use super::loc::{AsLocRef, CloneMaybeLoc, Loc, MaybeLoc};
+use super::loc::{AsLocRef, Loc, MaybeLoc};
 use super::IntoMaybeLoc;
 
 /// Metadata for our syntax trees
@@ -73,7 +73,7 @@ impl<T> Node<T> {
     pub fn as_ref(&self) -> Node<&T> {
         Node {
             node: &self.node,
-            loc: self.loc.clone_maybe_loc(),
+            loc: self.loc.clone(),
         }
     }
 
@@ -81,7 +81,7 @@ impl<T> Node<T> {
     pub fn as_mut(&mut self) -> Node<&mut T> {
         Node {
             node: &mut self.node,
-            loc: self.loc.clone_maybe_loc(),
+            loc: self.loc.clone(),
         }
     }
 
@@ -92,7 +92,7 @@ impl<T> Node<T> {
 
     /// Utility to construct a `ToAstError` with the source location taken from this node.
     pub fn to_ast_err(&self, error_kind: impl Into<ToASTErrorKind>) -> ToASTError {
-        ToASTError::new(error_kind.into(), self.loc.clone_maybe_loc())
+        ToASTError::new(error_kind.into(), self.loc.clone())
     }
 }
 
@@ -172,7 +172,7 @@ impl<T> Node<Option<T>> {
     pub fn collapse(&self) -> Option<Node<&T>> {
         self.node.as_ref().map(|node| Node {
             node,
-            loc: self.loc.clone_maybe_loc(),
+            loc: self.loc.clone(),
         })
     }
 

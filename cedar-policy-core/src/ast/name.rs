@@ -29,7 +29,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::parser::err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind};
-use crate::parser::{AsLocRef, CloneMaybeLoc, IntoMaybeLoc, Loc, MaybeLoc};
+use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 use crate::FromNormalizedStr;
 
 /// Represents the name of an entity type, function, etc.
@@ -168,7 +168,7 @@ impl InternalName {
                         .namespace_components()
                         .chain(std::iter::once(namespace.basename()))
                         .cloned(),
-                    self.loc.clone_maybe_loc(),
+                    self.loc.clone(),
                 ),
                 None => self.clone(),
             }
