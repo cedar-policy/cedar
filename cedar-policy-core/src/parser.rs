@@ -724,17 +724,17 @@ mod tests {
         assert_eq!(texts.len(), 2);
         assert_eq!(
             texts.get(&PolicyID::from_string("policy0")),
-            Some(
-                &r#"permit(principal, action, resource)
+            Some(&Some(
+                r#"permit(principal, action, resource)
             when { principal == resource.owner };"#
-            )
+            ))
         );
         assert_eq!(
             texts.get(&PolicyID::from_string("policy1")),
-            Some(
-                &r#"forbid(principal, action == Action::"modify", resource) // a comment
+            Some(&Some(
+                r#"forbid(principal, action == Action::"modify", resource) // a comment
             when { resource . highSecurity };"#
-            )
+            ))
         );
     }
 
