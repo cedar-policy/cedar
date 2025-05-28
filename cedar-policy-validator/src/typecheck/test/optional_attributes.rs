@@ -19,7 +19,7 @@
 
 use cedar_policy_core::{
     ast::{PolicyID, StaticPolicy},
-    parser::parse_policy,
+    parser::{parse_policy, IntoMaybeLoc},
 };
 
 use crate::{
@@ -778,7 +778,7 @@ fn action_attrs_failing() {
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(
-            failing_policy.loc().cloned(),
+            failing_policy.loc().into_maybe_loc(),
             PolicyID::from_string("0"),
         )
     );

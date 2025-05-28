@@ -18,7 +18,10 @@
 
 use super::*;
 use crate::types::{EntityRecordKind, RequestEnv, Type};
-use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, Literal, PolicyID};
+use cedar_policy_core::{
+    ast::{BinaryOp, Expr, ExprKind, Literal, PolicyID},
+    parser::IntoMaybeLoc,
+};
 use smol_str::SmolStr;
 use thiserror::Error;
 use typecheck::PolicyCheck;
@@ -138,7 +141,7 @@ impl LevelChecker<'_> {
             ExprKind::Slot(_) => {
                 self.level_checking_errors
                     .insert(ValidationError::literal_dereference_target(
-                        e.source_loc().cloned(),
+                        e.source_loc().into_maybe_loc(),
                         self.policy_id.clone(),
                     ));
                 EntityDerefLevel::zero()
@@ -149,7 +152,7 @@ impl LevelChecker<'_> {
                 if Some(euid.as_ref()) != env.action_entity_uid() {
                     self.level_checking_errors
                         .insert(ValidationError::literal_dereference_target(
-                            e.source_loc().cloned(),
+                            e.source_loc().into_maybe_loc(),
                             self.policy_id.clone(),
                         ));
                 }
@@ -183,7 +186,7 @@ impl LevelChecker<'_> {
                 _ => {
                     self.level_checking_errors.insert(
                         ValidationError::internal_invariant_violation(
-                            e.source_loc().cloned(),
+                            e.source_loc().into_maybe_loc(),
                             self.policy_id.clone(),
                         ),
                     );
@@ -218,7 +221,7 @@ impl LevelChecker<'_> {
                     None => {
                         self.level_checking_errors.insert(
                             ValidationError::internal_invariant_violation(
-                                e.source_loc().cloned(),
+                                e.source_loc().into_maybe_loc(),
                                 self.policy_id.clone(),
                             ),
                         );
@@ -233,7 +236,7 @@ impl LevelChecker<'_> {
             _ => {
                 self.level_checking_errors
                     .insert(ValidationError::internal_invariant_violation(
-                        e.source_loc().cloned(),
+                        e.source_loc().into_maybe_loc(),
                         self.policy_id.clone(),
                     ));
                 EntityDerefLevel::zero()
@@ -269,7 +272,7 @@ impl LevelChecker<'_> {
                 if deref_target_lvl >= self.max_level {
                     self.level_checking_errors
                         .insert(ValidationError::maximum_level_exceeded(
-                            e.source_loc().cloned(),
+                            e.source_loc().into_maybe_loc(),
                             self.policy_id.clone(),
                             self.max_level,
                             deref_target_lvl.increment(),
@@ -293,7 +296,7 @@ impl LevelChecker<'_> {
                     if deref_target_lvl >= self.max_level {
                         self.level_checking_errors
                             .insert(ValidationError::maximum_level_exceeded(
-                                e.source_loc().cloned(),
+                                e.source_loc().into_maybe_loc(),
                                 self.policy_id.clone(),
                                 self.max_level,
                                 deref_target_lvl.increment(),
@@ -308,7 +311,7 @@ impl LevelChecker<'_> {
                 _ => {
                     self.level_checking_errors.insert(
                         ValidationError::internal_invariant_violation(
-                            e.source_loc().cloned(),
+                            e.source_loc().into_maybe_loc(),
                             self.policy_id.clone(),
                         ),
                     );
@@ -334,7 +337,7 @@ impl LevelChecker<'_> {
             ExprKind::Error { .. } => {
                 self.level_checking_errors
                     .insert(ValidationError::internal_invariant_violation(
-                        e.source_loc().cloned(),
+                        e.source_loc().into_maybe_loc(),
                         self.policy_id.clone(),
                     ));
             }

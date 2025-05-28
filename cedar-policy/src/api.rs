@@ -4773,7 +4773,7 @@ pub fn eval_expression(
 // These are the same tests in validator, just ensuring all the plumbing is done correctly
 #[cfg(test)]
 mod test_access {
-    use cedar_policy_core::ast;
+    use cedar_policy_core::{ast, parser::AsLocRef};
 
     use super::*;
 
@@ -4846,7 +4846,7 @@ action CreateList in Create appliesTo {
 
         let et = ast::EntityType::EntityType(ast::Name::from_normalized_str("User").unwrap());
         let et = schema.0.get_entity_type(&et).unwrap();
-        assert!(et.loc.as_ref().is_some());
+        assert!(et.loc.as_loc_ref().is_some());
     }
 
     #[cfg(feature = "extended-schema")]

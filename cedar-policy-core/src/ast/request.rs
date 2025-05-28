@@ -19,7 +19,7 @@ use crate::entities::json::{
 };
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
 use crate::extensions::Extensions;
-use crate::parser::Loc;
+use crate::parser::MaybeLoc;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, ToSmolStr};
@@ -71,7 +71,7 @@ pub enum EntityUIDEntry {
         /// The concrete `EntityUID`
         euid: Arc<EntityUID>,
         /// Source location associated with the `EntityUIDEntry`, if any
-        loc: Option<Loc>,
+        loc: MaybeLoc,
     },
     /// An EntityUID left as unknown for partial evaluation
     Unknown {
@@ -79,7 +79,7 @@ pub enum EntityUIDEntry {
         ty: Option<EntityType>,
 
         /// Source location associated with the `EntityUIDEntry`, if any
-        loc: Option<Loc>,
+        loc: MaybeLoc,
     },
 }
 
@@ -112,7 +112,7 @@ impl EntityUIDEntry {
     }
 
     /// Create an entry with a concrete EntityUID and the given source location
-    pub fn known(euid: EntityUID, loc: Option<Loc>) -> Self {
+    pub fn known(euid: EntityUID, loc: MaybeLoc) -> Self {
         Self::Known {
             euid: Arc::new(euid),
             loc,
@@ -128,7 +128,7 @@ impl EntityUIDEntry {
     }
 
     /// Create an entry with an unknown EntityUID but known EntityType
-    pub fn unknown_with_type(ty: EntityType, loc: Option<Loc>) -> Self {
+    pub fn unknown_with_type(ty: EntityType, loc: MaybeLoc) -> Self {
         Self::Unknown { ty: Some(ty), loc }
     }
 
@@ -155,9 +155,9 @@ impl Request {
     /// If `schema` is provided, this constructor validates that this `Request`
     /// complies with the given `schema`.
     pub fn new<S: RequestSchema>(
-        principal: (EntityUID, Option<Loc>),
-        action: (EntityUID, Option<Loc>),
-        resource: (EntityUID, Option<Loc>),
+        principal: (EntityUID, MaybeLoc),
+        action: (EntityUID, MaybeLoc),
+        resource: (EntityUID, MaybeLoc),
         context: Context,
         schema: Option<&S>,
         extensions: &Extensions<'_>,
