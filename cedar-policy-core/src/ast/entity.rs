@@ -37,8 +37,7 @@ static ERROR_NAME: std::sync::LazyLock<Name> =
     std::sync::LazyLock::new(|| Name(InternalName::from(Id::new_unchecked("EntityTypeError"))));
 
 #[cfg(feature = "tolerant-ast")]
-static ERROR_EID_SMOL_STR: std::sync::LazyLock<SmolStr> =
-    std::sync::LazyLock::new(|| SmolStr::from("Eid::ErrorEid"));
+static ERROR_EID_SMOL_STR: SmolStr = SmolStr::new_static("Eid::ErrorEid");
 
 #[cfg(feature = "tolerant-ast")]
 static EID_ERROR_STR: &str = "Eid::Error";
@@ -419,6 +418,13 @@ impl Eid {
             Eid::Eid(smol_str) => smol_str.escape_debug().collect(),
             #[cfg(feature = "tolerant-ast")]
             Eid::ErrorEid => EID_ERROR_STR.into(),
+        }
+    }
+
+    pub fn into_smolstr(self) -> SmolStr {
+        match self {
+            Eid::Eid(smol_str) => smol_str,
+            Eid::ErrorEid => SmolStr::new_static(EID_ERROR_STR),
         }
     }
 }

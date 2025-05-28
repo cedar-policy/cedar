@@ -94,7 +94,7 @@ impl RawName {
     ///
     /// Note that if the [`RawName`] already had a non-empty explicit namespace,
     /// no additional prefixing will be done, even if `ns` is `Some`.
-    pub fn qualify_with(self, ns: Option<&InternalName>) -> InternalName {
+    pub fn qualify_with(&self, ns: Option<&InternalName>) -> InternalName {
         self.0.qualify_with(ns)
     }
 
@@ -140,22 +140,19 @@ impl RawName {
                     // the `RawName` does not have any namespace attached, so it refers
                     // to something in the current namespace if available; otherwise, it
                     // refers to something in the empty namespace
-                    nonempty![
-                        self.clone().qualify_with(Some(ns)),
-                        self.clone().qualify_with(None),
-                    ]
+                    nonempty![self.qualify_with(Some(ns)), self.qualify_with(None),]
                 }
                 None => {
                     // Same as the above case, but since the current/active
                     // namespace is the empty namespace, the two possibilities
                     // are the same; there is only one possibility
-                    nonempty![self.clone().qualify_with(None)]
+                    nonempty![self.qualify_with(None)]
                 }
             }
         } else {
             // if the `RawName` already had an explicit namespace, there's no
             // ambiguity
-            nonempty![self.clone().qualify_with(None)]
+            nonempty![self.qualify_with(None)]
         };
         ConditionalName {
             possibilities,
@@ -235,6 +232,11 @@ impl ConditionalName {
     /// encountered in the source, for the purposes of error messages
     pub fn raw(&self) -> &RawName {
         &self.raw
+    }
+
+    ///
+    pub fn into_raw(self) -> RawName {
+        self.raw
     }
 
     /// Get the possible fully-qualified [`InternalName`]s which this [`ConditionalName`]

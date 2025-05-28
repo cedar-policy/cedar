@@ -1093,6 +1093,18 @@ impl ActionEntityUID<ConditionalName> {
         self.ty.as_ref().expect("by INVARIANT on self.ty")
     }
 
+    ///
+    pub fn into_components(self) -> (ConditionalName, SmolStr, Option<Loc>) {
+        // PANIC SAFETY: by INVARIANT on self.ty
+        #[allow(clippy::expect_used)]
+        let ty = self.ty.expect("by INVARIANT on self.ty");
+        #[cfg(feature = "extended-schema")]
+        let loc = self.loc;
+        #[cfg(not(feature = "extended-schema"))]
+        let loc = None;
+        (ty, self.id, loc)
+    }
+
     /// Convert this [`ActionEntityUID<ConditionalName>`] into an
     /// [`ActionEntityUID<InternalName>`] by fully-qualifying its typename.
     ///
@@ -1144,6 +1156,15 @@ impl ActionEntityUID<ConditionalName> {
             loc: None,
         }
     }
+
+    pub(crate) fn into_raw(self) -> ActionEntityUID<RawName> {
+        ActionEntityUID {
+            id: self.id,
+            ty: self.ty.map(|ty| ty.into_raw()),
+            #[cfg(feature = "extended-schema")]
+            loc: None,
+        }
+    }
 }
 
 impl ActionEntityUID<Name> {
@@ -1152,6 +1173,18 @@ impl ActionEntityUID<Name> {
         // PANIC SAFETY: by INVARIANT on self.ty
         #[allow(clippy::expect_used)]
         self.ty.as_ref().expect("by INVARIANT on self.ty")
+    }
+
+    ///
+    pub fn into_components(self) -> (Name, SmolStr, Option<Loc>) {
+        // PANIC SAFETY: by INVARIANT on self.ty
+        #[allow(clippy::expect_used)]
+        let ty = self.ty.expect("by INVARIANT on self.ty");
+        #[cfg(feature = "extended-schema")]
+        let loc = self.loc;
+        #[cfg(not(feature = "extended-schema"))]
+        let loc = None;
+        (ty, self.id, loc)
     }
 }
 
@@ -1162,11 +1195,24 @@ impl ActionEntityUID<InternalName> {
         #[allow(clippy::expect_used)]
         self.ty.as_ref().expect("by INVARIANT on self.ty")
     }
+
+    ///
+    pub fn into_components(self) -> (InternalName, SmolStr, Option<Loc>) {
+        // PANIC SAFETY: by INVARIANT on self.ty
+        #[allow(clippy::expect_used)]
+        let ty = self.ty.expect("by INVARIANT on self.ty");
+        #[cfg(feature = "extended-schema")]
+        let loc = self.loc;
+        #[cfg(not(feature = "extended-schema"))]
+        let loc = None;
+        (ty, self.id, loc)
+    }
 }
 
 impl From<ActionEntityUID<Name>> for EntityUID {
     fn from(aeuid: ActionEntityUID<Name>) -> Self {
-        EntityUID::from_components(aeuid.ty().clone().into(), Eid::new(aeuid.id), None)
+        let (ty, id, loc) = aeuid.into_components();
+        EntityUID::from_components(ty.into(), Eid::new(id), loc)
     }
 }
 
@@ -1175,14 +1221,10 @@ impl TryFrom<ActionEntityUID<InternalName>> for EntityUID {
     fn try_from(
         aeuid: ActionEntityUID<InternalName>,
     ) -> std::result::Result<Self, <InternalName as TryInto<Name>>::Error> {
-        let ty = Name::try_from(aeuid.ty().clone())?;
-        #[cfg(feature = "extended-schema")]
-        let loc = aeuid.loc;
-        #[cfg(not(feature = "extended-schema"))]
-        let loc = None;
+        let (ty, id, loc) = aeuid.into_components();
         Ok(EntityUID::from_components(
-            ty.into(),
-            Eid::new(aeuid.id),
+            Name::try_from(ty)?.into(),
+            Eid::new(id),
             loc,
         ))
     }
@@ -1193,7 +1235,7 @@ impl From<EntityUID> for ActionEntityUID<Name> {
         let (ty, id) = euid.components();
         ActionEntityUID {
             ty: Some(ty.into()),
-            id: <Eid as AsRef<SmolStr>>::as_ref(&id).clone(),
+            id: id.into_smolstr(),
             #[cfg(feature = "extended-schema")]
             loc: None,
         }

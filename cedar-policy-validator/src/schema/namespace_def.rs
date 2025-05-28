@@ -661,14 +661,13 @@ impl ActionsDef<ConditionalName, ConditionalName> {
         for (action_name, action_type) in schema_file_actions {
             let action_uid =
                 create_action_entity_uid_default_type(&action_name, &action_type, schema_namespace);
-            match actions.entry(action_uid.clone().try_into()?) {
+            match actions.entry(action_uid.try_into()?) {
                 Entry::Vacant(ventry) => {
                     let frag = ActionFragment::from_raw_action(
                         ventry.key(),
-                        action_type.clone(),
+                        action_type,
                         schema_namespace,
                         extensions,
-                        action_type.loc.as_ref(),
                     )?;
                     ventry.insert(frag);
                 }
@@ -741,7 +740,6 @@ impl ActionFragment<ConditionalName, ConditionalName> {
         action_type: json_schema::ActionType<RawName>,
         schema_namespace: Option<&InternalName>,
         extensions: &Extensions<'_>,
-        loc: Option<&Loc>,
     ) -> crate::err::Result<Self> {
         let (principal_types, resource_types, context) = action_type
             .applies_to
@@ -784,7 +782,7 @@ impl ActionFragment<ConditionalName, ConditionalName> {
                 .collect(),
             attribute_types,
             attributes,
-            loc: loc.cloned(),
+            loc: action_type.loc,
         })
     }
 

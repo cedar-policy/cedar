@@ -419,7 +419,7 @@ pub mod schema_errors {
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
-    #[derive(Debug, Error)]
+    #[derive(Clone, Debug, Error)]
     #[error("failed to resolve type{}: {}", if .undefined_types.len() > 1 { "s" } else { "" }, .undefined_types.iter().map(crate::ConditionalName::raw).join(", "))]
     pub struct TypeNotDefinedError {
         /// Names of type(s) which were not defined
