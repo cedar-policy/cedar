@@ -31,11 +31,11 @@ use crate::ast::EntityUID;
 use crate::ast::{self, Annotation};
 use crate::entities::json::{err::JsonDeserializationError, EntityUidJson};
 use crate::expr_builder::ExprBuilder;
-use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
-use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
+use crate::parser::{cst, IntoMaybeLoc};
 #[cfg(feature = "tolerant-ast")]
 use crate::parser::Loc;
-use crate::parser::{cst, IntoMaybeLoc};
+use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
+use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::collections::{BTreeMap, HashMap};
