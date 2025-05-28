@@ -26,7 +26,7 @@ use std::vec;
 use cedar_policy_core::{
     ast::{Expr, PolicyID, StaticPolicy},
     extensions::Extensions,
-    parser::parse_policy,
+    parser::{parse_policy, IntoMaybeLoc},
 };
 
 use super::test_utils::{
@@ -590,7 +590,7 @@ fn multi_namespace_action_eq() {
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(
-            policy.loc().cloned(),
+            policy.loc().into_maybe_loc(),
             PolicyID::from_string("policy0"),
         )
     );
@@ -657,7 +657,7 @@ fn multi_namespace_action_in() {
     assert_eq!(
         warning,
         ValidationWarning::impossible_policy(
-            policy.loc().cloned(),
+            policy.loc().into_maybe_loc(),
             PolicyID::from_string("policy0"),
         )
     );

@@ -59,6 +59,9 @@ partial-eval = []
 tolerant-ast = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
+# Feature for fast parsing
+fast-parsing = []
+
 [build-dependencies]
 lalrpop = "0.22.2"
 

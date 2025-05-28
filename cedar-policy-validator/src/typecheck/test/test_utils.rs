@@ -23,7 +23,7 @@ use std::{collections::HashSet, hash::Hash, sync::Arc};
 
 use cedar_policy_core::ast::{EntityUID, Expr, PolicyID, Template, ACTION_ENTITY_TYPE};
 use cedar_policy_core::extensions::Extensions;
-use cedar_policy_core::parser::Loc;
+use cedar_policy_core::parser::{IntoMaybeLoc, Loc, MaybeLoc};
 
 use crate::{
     json_schema,
@@ -41,24 +41,24 @@ pub fn expr_id_placeholder() -> PolicyID {
     PolicyID::from_string("expr")
 }
 
-/// Get `Loc` corresponding to `snippet` in `src`. Returns an option because we
-/// always want an `Option<Loc>` instead of a `Loc`. Panics if `snippet` is not
-/// in `src` to fail fast in tests.
+/// Get `Loc` corresponding to `snippet` in `src`. Returns a `MaybeLoc` because
+/// we always want an optional `Loc` instead of a just `Loc`. Panics if
+/// `snippet` is not in `src` to fail fast in tests.
 #[track_caller]
-pub fn get_loc(src: impl AsRef<str>, snippet: impl AsRef<str>) -> Option<Loc> {
+pub fn get_loc(src: impl AsRef<str>, snippet: impl AsRef<str>) -> MaybeLoc {
     let start = src
         .as_ref()
         .find(snippet.as_ref())
         .expect("Snippet does not exist in source!");
     let end = start + snippet.as_ref().len();
-    Some(Loc::new(start..end, src.as_ref().into()))
+    Loc::new(start..end, src.as_ref().into()).into_maybe_loc()
 }
 
 impl ValidationError {
     /// Testing utility for an unexpected type error when exactly one type was
     /// expected.
     pub(crate) fn expected_type(
-        source_loc: Option<Loc>,
+        source_loc: MaybeLoc,
         policy_id: PolicyID,
         expected: Type,
         actual: Type,
