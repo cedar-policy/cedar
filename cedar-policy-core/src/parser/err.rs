@@ -57,10 +57,6 @@ pub enum ParseError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ToAST(#[from] ToASTError),
-    /// Error caused by missing source code information
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    MissingSourceCodeInfo(#[from] MissingSourceCodeInfoError),
 }
 
 /// Errors possible from `Literal::from_str()`
@@ -1003,25 +999,5 @@ impl<'a> IntoIterator for &'a ParseErrors {
 
     fn into_iter(self) -> Self::IntoIter {
         iter::once(&self.head).chain(self.tail.iter())
-    }
-}
-
-const MISSING_SOURCE_CODE_HELP: &str =
-    "use the standard parsing methods for source code information to be available";
-
-/// Errors caused by missing source code information.
-///
-/// Source code information (such as locations or references to the original source code)
-/// is not available when using fast parsing mode. Any operation that requires this information,
-/// such as error reporting or source-based conversions, will fail with this error.
-#[derive(Clone, Debug, Diagnostic, Error, PartialEq, Eq)]
-#[error("source code information is missing")]
-#[diagnostic(help("{MISSING_SOURCE_CODE_HELP}"))]
-pub struct MissingSourceCodeInfoError;
-
-impl MissingSourceCodeInfoError {
-    /// Construct a new `MissingSourceCodeInfoError`
-    pub fn new() -> Self {
-        Self
     }
 }

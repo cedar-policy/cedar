@@ -23,7 +23,6 @@
 )]
 
 mod id;
-use cedar_policy_core::parser::err::MissingSourceCodeInfoError;
 #[cfg(feature = "entity-manifest")]
 use cedar_policy_validator::entity_manifest;
 // TODO (#1157) implement wrappers for these structs before they become public
@@ -61,7 +60,6 @@ use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::fmt::Debug;
 use std::io::Read;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -3161,7 +3159,7 @@ impl Template {
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> String {
         match &self.lossless {
-            LosslessPolicy::Empty => String::new(),
+            LosslessPolicy::Empty => self.ast.to_string(),
             LosslessPolicy::Est(_) => self.ast.to_string(),
             LosslessPolicy::Text { text, .. } => text.clone(),
         }
