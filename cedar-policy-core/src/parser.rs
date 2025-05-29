@@ -54,6 +54,12 @@ pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
     cst.to_policyset()
 }
 
+#[cfg(feature = "fast-parsing")]
+pub fn parse_policyset_fast(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
+    let cst = text_to_cst::parse_policies_fast(text)?;
+    cst.to_policyset()
+}
+
 /// Like `parse_policyset()`, but also returns the (lossless) original text of
 /// each individual policy.
 /// INVARIANT: The `PolicyId` of every `Policy` and `Template` returned by the

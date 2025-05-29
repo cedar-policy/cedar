@@ -2797,6 +2797,33 @@ impl PolicySet {
             }
         }
     }
+
+    /// TODO: Document this
+    #[cfg(feature = "fast-parsing")]
+    pub fn parse_lossy(policies: &str) -> Option<Self> {
+        let pset = parser::parse_policyset_fast(policies).ok()?;
+        // PANIC SAFETY: By the invariant on `parse_policyset_and_also_return_policy_text(policies)`, every `PolicyId` in `pset.policies()` occurs as a key in `text`.
+        #[allow(clippy::expect_used)]
+        let policies = pset.policies().map(|p|
+            (
+                PolicyId::new(p.id().clone()),
+                Policy { lossless: LosslessPolicy::policy_or_template_text(None::<&str>), ast: p.clone() }
+            )
+        ).collect();
+        // PANIC SAFETY: By the same invariant, every `PolicyId` in `pset.templates()` also occurs as a key in `text`.
+        #[allow(clippy::expect_used)]
+        let templates = pset.templates().map(|t|
+            (
+                PolicyId::new(t.id().clone()),
+                Template { lossless: LosslessPolicy::policy_or_template_text(None::<&str>), ast: t.clone() }
+            )
+        ).collect();
+        Some(Self {
+            ast: pset,
+            policies,
+            templates,
+        })
+    }
 }
 
 impl std::fmt::Display for PolicySet {

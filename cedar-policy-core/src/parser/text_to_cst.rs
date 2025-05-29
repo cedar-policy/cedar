@@ -46,10 +46,11 @@ fn parse_collect_errors<'a, P, T>(
         bool,
         &'a str,
     ) -> Result<T, err::RawParseError<'a>>,
+    is_fast: bool,
     text: &'a str,
 ) -> Result<T, err::ParseErrors> {
     let mut errs = Vec::new();
-    let result = parse(parser, &mut errs, &Arc::from(text), false, text);
+    let result = parse(parser, &mut errs, &Arc::from(text), is_fast, text);
 
     let errors = errs
         .into_iter()
@@ -117,37 +118,79 @@ lazy_static::lazy_static! {
 
 /// Create CST for multiple policies from text
 pub fn parse_policies(text: &str) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
-    parse_collect_errors(&*POLICIES_PARSER, grammar::PoliciesParser::parse, text)
+    parse_collect_errors(&*POLICIES_PARSER, grammar::PoliciesParser::parse, false, text)
 }
 
 /// Create CST for one policy statement from text
 pub fn parse_policy(text: &str) -> Result<Node<Option<cst::Policy>>, err::ParseErrors> {
-    parse_collect_errors(&*POLICY_PARSER, grammar::PolicyParser::parse, text)
+    parse_collect_errors(&*POLICY_PARSER, grammar::PolicyParser::parse, false, text)
 }
 
 /// Create CST for one Expression from text
 pub fn parse_expr(text: &str) -> Result<Node<Option<cst::Expr>>, err::ParseErrors> {
-    parse_collect_errors(&*EXPR_PARSER, grammar::ExprParser::parse, text)
+    parse_collect_errors(&*EXPR_PARSER, grammar::ExprParser::parse, false, text)
 }
 
 /// Create CST for one Entity Ref (i.e., UID) from text
 pub fn parse_ref(text: &str) -> Result<Node<Option<cst::Ref>>, err::ParseErrors> {
-    parse_collect_errors(&*REF_PARSER, grammar::RefParser::parse, text)
+    parse_collect_errors(&*REF_PARSER, grammar::RefParser::parse, false, text)
 }
 
 /// Create CST for one Primary value from text
 pub fn parse_primary(text: &str) -> Result<Node<Option<cst::Primary>>, err::ParseErrors> {
-    parse_collect_errors(&*PRIMARY_PARSER, grammar::PrimaryParser::parse, text)
+    parse_collect_errors(&*PRIMARY_PARSER, grammar::PrimaryParser::parse, false, text)
 }
 
 /// Parse text as a Name, or fail if it does not parse as a Name
 pub fn parse_name(text: &str) -> Result<Node<Option<cst::Name>>, err::ParseErrors> {
-    parse_collect_errors(&*NAME_PARSER, grammar::NameParser::parse, text)
+    parse_collect_errors(&*NAME_PARSER, grammar::NameParser::parse, false, text)
 }
 
 /// Parse text as an identifier, or fail if it does not parse as an identifier
 pub fn parse_ident(text: &str) -> Result<Node<Option<cst::Ident>>, err::ParseErrors> {
-    parse_collect_errors(&*IDENT_PARSER, grammar::IdentParser::parse, text)
+    parse_collect_errors(&*IDENT_PARSER, grammar::IdentParser::parse, false, text)
+}
+
+#[cfg(feature = "fast-parsing")]
+/// Create CST for multiple policies from text
+pub fn parse_policies_fast(text: &str) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
+    parse_collect_errors(&*POLICIES_PARSER, grammar::PoliciesParser::parse, true, text)
+}
+
+#[cfg(feature = "fast-parsing")]
+/// Create CST for one policy statement from text
+pub fn parse_policy_fast(text: &str) -> Result<Node<Option<cst::Policy>>, err::ParseErrors> {
+    parse_collect_errors(&*POLICY_PARSER, grammar::PolicyParser::parse, true, text)
+}
+
+#[cfg(feature = "fast-parsing")]
+/// Create CST for one Expression from text
+pub fn parse_expr_fast(text: &str) -> Result<Node<Option<cst::Expr>>, err::ParseErrors> {
+    parse_collect_errors(&*EXPR_PARSER, grammar::ExprParser::parse, true, text)
+}
+
+#[cfg(feature = "fast-parsing")]
+/// Create CST for one Entity Ref (i.e., UID) from text
+pub fn parse_ref_fast(text: &str) -> Result<Node<Option<cst::Ref>>, err::ParseErrors> {
+    parse_collect_errors(&*REF_PARSER, grammar::RefParser::parse, true, text)
+}
+
+#[cfg(feature = "fast-parsing")]
+/// Create CST for one Primary value from text
+pub fn parse_primary_fast(text: &str) -> Result<Node<Option<cst::Primary>>, err::ParseErrors> {
+    parse_collect_errors(&*PRIMARY_PARSER, grammar::PrimaryParser::parse, true, text)
+}
+
+#[cfg(feature = "fast-parsing")]
+/// Parse text as a Name, or fail if it does not parse as a Name
+pub fn parse_name_fast(text: &str) -> Result<Node<Option<cst::Name>>, err::ParseErrors> {
+    parse_collect_errors(&*NAME_PARSER, grammar::NameParser::parse, true, text)
+}
+
+#[cfg(feature = "fast-parsing")]
+/// Parse text as an identifier, or fail if it does not parse as an identifier
+pub fn parse_ident_fast(text: &str) -> Result<Node<Option<cst::Ident>>, err::ParseErrors> {
+    parse_collect_errors(&*IDENT_PARSER, grammar::IdentParser::parse, true, text)
 }
 
 /// Create CST for one policy statement from text - allows CST error nodes on certain parse failures
