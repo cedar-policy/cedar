@@ -3669,7 +3669,7 @@ impl Policy {
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> Option<String> {
         match &self.lossless {
-            LosslessPolicy::Empty => None,
+            LosslessPolicy::Empty => Some(self.ast.to_string()),
             LosslessPolicy::Est(_) => Some(self.ast.to_string()),
             LosslessPolicy::Text { text, slots } => {
                 if slots.is_empty() {
@@ -5410,6 +5410,51 @@ action CreateList in Create appliesTo {
             .unwrap();
         assert!(default_namespace.name_loc.is_some());
         assert!(default_namespace.def_loc.is_some());
+    }
+}
+
+#[cfg(test)]
+mod test_lossless_empty {
+    use super::{LosslessPolicy, Policy, PolicyId, Template};
+
+    #[test]
+    fn test_lossless_empty_policy() {
+        const STATIC_POLICY_TEXT: &str = "permit(principal,action,resource);";
+        let policy0 = Policy::parse(Some(PolicyId::new("policy0")), STATIC_POLICY_TEXT)
+            .expect("Failed to parse");
+        let lossy_policy0 = Policy {
+            ast: policy0.ast.clone(),
+            lossless: LosslessPolicy::policy_or_template_text(None::<&str>),
+        };
+        // The `to_cedar` representation becomes lossy since we didn't provide text
+        assert_eq!(
+            lossy_policy0.to_cedar(),
+            Some(String::from(
+                "permit(\n  principal,\n  action,\n  resource\n) when {\n  true\n};"
+            ))
+        );
+        let lossy_policy0_est = lossy_policy0.lossless.policy_est(&policy0).unwrap();
+        assert_eq!(lossy_policy0_est, policy0.ast.into());
+    }
+
+    #[test]
+    fn test_lossless_empty_template() {
+        const TEMPLATE_TEXT: &str = "permit(principal == ?principal,action,resource);";
+        let template0 = Template::parse(Some(PolicyId::new("template0")), TEMPLATE_TEXT)
+            .expect("Failed to parse");
+        let lossy_template0 = Template {
+            ast: template0.ast.clone(),
+            lossless: LosslessPolicy::policy_or_template_text(None::<&str>),
+        };
+        // The `to_cedar` representation becomes lossy because we did not provide text
+        assert_eq!(
+            lossy_template0.to_cedar(),
+            String::from(
+                "permit(\n  principal == ?principal,\n  action,\n  resource\n) when {\n  true\n};"
+            )
+        );
+        let lossy_template0_est = lossy_template0.lossless.template_est(&template0).unwrap();
+        assert_eq!(lossy_template0_est, template0.ast.into());
     }
 }
 
