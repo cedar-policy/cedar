@@ -5433,6 +5433,7 @@ mod test_lossless_empty {
                 "permit(\n  principal,\n  action,\n  resource\n) when {\n  true\n};"
             ))
         );
+        // The EST representation is obtained from the AST
         let lossy_policy0_est = lossy_policy0.lossless.policy_est(&policy0).unwrap();
         assert_eq!(lossy_policy0_est, policy0.ast.into());
     }
@@ -5446,13 +5447,14 @@ mod test_lossless_empty {
             ast: template0.ast.clone(),
             lossless: LosslessPolicy::policy_or_template_text(None::<&str>),
         };
-        // The `to_cedar` representation becomes lossy because we did not provide text
+        // The `to_cedar` representation becomes lossy since we didn't provide text
         assert_eq!(
             lossy_template0.to_cedar(),
             String::from(
                 "permit(\n  principal == ?principal,\n  action,\n  resource\n) when {\n  true\n};"
             )
         );
+        // The EST representation is obtained from the AST
         let lossy_template0_est = lossy_template0.lossless.template_est(&template0).unwrap();
         assert_eq!(lossy_template0_est, template0.ast.into());
     }
