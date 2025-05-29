@@ -787,6 +787,49 @@ mod policy_set_tests {
         );
     }
 
+    #[test]
+    fn policyset_fmt_static() {
+        const STATIC_POLICY_TEXT: &str = "permit(principal,action,resource);";
+        let mut pset = PolicySet::new();
+        let policy0 = Policy::parse(Some(PolicyId::new("policy0")), STATIC_POLICY_TEXT)
+            .expect("Failed to parse");
+        let policy1 = Policy::parse(Some(PolicyId::new("policy1")), STATIC_POLICY_TEXT)
+            .expect("Failed to parse");
+        pset.add(policy0).unwrap();
+        pset.add(policy1).unwrap();
+        let policy_fmt = format!("{}", pset);
+        let mut expected_fmt = String::from(STATIC_POLICY_TEXT);
+        expected_fmt.push('\n');
+        expected_fmt.push_str(STATIC_POLICY_TEXT);
+        assert_eq!(expected_fmt, policy_fmt);
+    }
+
+    #[test]
+    fn policyset_fmt_template() {
+        const TEMPLATE_TEXT: &str = "permit(principal == ?principal,action,resource);";
+        const LINKED_POLICY_TEXT: &str = "permit(principal == Test::\"test\", action, resource);";
+        let mut pset = PolicySet::new();
+        let template0 = Template::parse(Some(PolicyId::new("template0")), TEMPLATE_TEXT)
+            .expect("Failed to parse");
+        let template1 = Template::parse(Some(PolicyId::new("template1")), TEMPLATE_TEXT)
+            .expect("Failed to parse");
+        pset.add_template(template0).unwrap();
+        pset.add_template(template1).unwrap();
+        let env0: HashMap<SlotId, EntityUid> =
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("template0"), PolicyId::new("linked0"), env0)
+            .expect("Failed to link");
+        let env1: HashMap<SlotId, EntityUid> =
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("template1"), PolicyId::new("linked1"), env1)
+            .expect("Failed to link");
+        let policy_fmt = format!("{}", pset);
+        let mut expected_fmt = String::from(LINKED_POLICY_TEXT);
+        expected_fmt.push('\n');
+        expected_fmt.push_str(LINKED_POLICY_TEXT);
+        assert_eq!(expected_fmt, policy_fmt);
+    }
+
     #[cfg(feature = "partial-eval")]
     #[test]
     fn unknown_entities() {
