@@ -636,7 +636,7 @@ pub struct PartiallyAuthorizeArgs;
 
 #[derive(Args, Debug)]
 pub struct RunTestsArgs {
-     /// Schema args (incorporated by reference)
+    /// Schema args (incorporated by reference)
     #[command(flatten)]
     pub schema: SchemaArgs,
     /// Policies args (incorporated by reference)
@@ -1479,33 +1479,41 @@ enum TestResult {
 }
 
 /// Compare the test's expected decision against the actual decision
-fn compare_test_decisions(
-    test: &TestCase,
-    ans: &Response,
-) -> TestResult {
+fn compare_test_decisions(test: &TestCase, ans: &Response) -> TestResult {
     if ans.decision() == test.expected {
         // Check for warnings
         let mut warnings = Vec::new();
         let reason = ans.diagnostics().reason().collect::<BTreeSet<_>>();
 
         // Check that the declared reason is a subset of the actual reason
-        let missing_reason = test.reason.iter()
+        let missing_reason = test
+            .reason
+            .iter()
             .filter(|r| !reason.contains(&PolicyId::new(r)))
             .collect::<Vec<_>>();
 
         if !missing_reason.is_empty() {
-            warnings.push(format!("missing reason(s): {}",
-                missing_reason.into_iter()
+            warnings.push(format!(
+                "missing reason(s): {}",
+                missing_reason
+                    .into_iter()
                     .map(|r| format!("`{}`", r))
                     .collect::<Vec<_>>()
-                    .join(", ")));
+                    .join(", ")
+            ));
         }
 
         // Check that evaluation errors are expected
         let has_error = ans.diagnostics().errors().next().is_some();
         if has_error && !test.has_error {
-            warnings.push(format!("unexpected runtime error(s): {}",
-                ans.diagnostics().errors().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")));
+            warnings.push(format!(
+                "unexpected runtime error(s): {}",
+                ans.diagnostics()
+                    .errors()
+                    .map(|e| e.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
         } else if !has_error && test.has_error {
             warnings.push("expected error(s) but none were found".to_string());
         }
@@ -1514,13 +1522,16 @@ fn compare_test_decisions(
             println!("{}", "ok".green());
             TestResult::Pass
         } else {
-            println!("{}: {}",
-                "warning(s)".yellow(),
-                warnings.join("; "));
+            println!("{}: {}", "warning(s)".yellow(), warnings.join("; "));
             TestResult::Warning
         }
     } else {
-        println!("{}: expected {:?}, got {:?}", "fail".red(), test.expected, ans.decision());
+        println!(
+            "{}: expected {:?}, got {:?}",
+            "fail".red(),
+            test.expected,
+            ans.decision()
+        );
         TestResult::Fail
     }
 }
@@ -1552,9 +1563,7 @@ fn run_one_test(
     compare_test_decisions(&test, &ans)
 }
 
-fn run_tests_inner(
-    args: &RunTestsArgs,
-) -> Result<CedarExitCode> {
+fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
     let policies = args.policies.get_policy_set()?;
 
     let schema = args.schema.get_schema()?;
@@ -1572,21 +1581,20 @@ fn run_tests_inner(
         }
     }
 
-    println!("results: {} {}, {} {}, {} {}",
+    println!(
+        "results: {} {}, {} {}, {} {}",
         tests.len() - total_fails - total_warnings,
         if total_fails == 0 && total_warnings == 0 {
             "passed".green()
         } else {
             "passed".normal()
         },
-
         total_fails,
         if total_fails != 0 {
             "failed".red()
         } else {
             "failed".normal()
         },
-
         total_warnings,
         if total_warnings != 0 {
             "warning(s)".yellow()
@@ -1650,15 +1658,9 @@ impl TestCase {
         let resource = qjson.resource.parse()?;
         let context = Context::from_json_value(qjson.context, schema.map(|s| (s, &action)))?;
 
-        let request = Request::new(
-            principal,
-            action,
-            resource,
-            context,
-            schema,
-        )?;
+        let request = Request::new(principal, action, resource, context, schema)?;
 
-        let entities= Entities::from_json_value(json["entities"].clone(), schema)?;
+        let entities = Entities::from_json_value(json["entities"].clone(), schema)?;
 
         let expected = match json["decision"].as_str() {
             Some("allow") => Decision::Allow,
@@ -1666,10 +1668,13 @@ impl TestCase {
             _ => return Err(TestCaseError::DecisionParseError(json["decision"].clone())),
         };
 
-        let mut reason = Vec::new();        
+        let mut reason = Vec::new();
         if let Some(reason_json) = json["reason"].as_array() {
-            reason.extend(reason_json.iter()
-                .filter_map(|r| Some(r.as_str()?.to_string())));
+            reason.extend(
+                reason_json
+                    .iter()
+                    .filter_map(|r| Some(r.as_str()?.to_string())),
+            );
         }
 
         Ok(Self {
@@ -1691,10 +1696,13 @@ fn load_partial_tests(tests_filename: impl AsRef<Path>) -> Result<Vec<serde_json
     {
         Ok(f) => {
             let reader = BufReader::new(f);
-            serde_json::from_reader(reader)
-                .map_err(|e| miette!("failed to parse tests from file {}: {e}",
-                    tests_filename.as_ref().display()))
-        },
+            serde_json::from_reader(reader).map_err(|e| {
+                miette!(
+                    "failed to parse tests from file {}: {e}",
+                    tests_filename.as_ref().display()
+                )
+            })
+        }
         Err(e) => Err(e).into_diagnostic().wrap_err_with(|| {
             format!(
                 "failed to open test file {}",
