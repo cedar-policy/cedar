@@ -2357,7 +2357,7 @@ impl PolicySet {
             .map(|(id, template)| {
                 template
                     .lossless
-                    .template_est(&template)
+                    .est(|| template.ast.clone().into())
                     .map(|est| (id.into(), est))
             })
             .collect::<Result<HashMap<_, _>, _>>()?;
@@ -2804,7 +2804,7 @@ impl std::fmt::Display for PolicySet {
         // prefer to display the lossless format
         let mut policies = self.policies().peekable();
         while let Some(policy) = policies.next() {
-            policy.lossless.policy_fmt(&policy, f)?;
+            policy.lossless.fmt(|| policy.ast.clone().into(), f)?;
             if policies.peek().is_some() {
                 writeln!(f)?;
             }
@@ -2834,7 +2834,7 @@ fn is_static_or_link(
         }
         None => policy
             .lossless
-            .policy_est(&policy)
+            .est(|| policy.ast.clone().into())
             .map(|est| Either::Left((id.into(), est))),
     }
 }
@@ -3145,7 +3145,7 @@ impl Template {
 
     /// Get the JSON representation of this `Template`.
     pub fn to_json(&self) -> Result<serde_json::Value, PolicyToJsonError> {
-        let est = self.lossless.template_est(self)?;
+        let est = self.lossless.est(|| self.ast.clone().into())?;
         serde_json::to_value(est).map_err(Into::into)
     }
 
@@ -3177,7 +3177,7 @@ impl Template {
 impl std::fmt::Display for Template {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // prefer to display the lossless format
-        self.lossless.template_fmt(self, f)
+        self.lossless.fmt(|| self.ast.clone().into(), f)
     }
 }
 
@@ -3601,7 +3601,7 @@ impl Policy {
         #[allow(clippy::expect_used)]
         let cloned_est = self
             .lossless
-            .policy_est(&self)
+            .est(|| self.ast.clone().into())
             .expect("Internal error, failed to construct est.");
 
         let mapping = mapping.into_iter().map(|(k, v)| (k.0, v.0)).collect();
@@ -3649,7 +3649,7 @@ impl Policy {
     /// assert_eq!(json, Policy::from_json(None, json.clone()).unwrap().to_json().unwrap());
     /// ```
     pub fn to_json(&self) -> Result<serde_json::Value, PolicyToJsonError> {
-        let est = self.lossless.policy_est(self)?;
+        let est = self.lossless.est(|| self.ast.clone().into())?;
         serde_json::to_value(est).map_err(Into::into)
     }
 
@@ -3713,7 +3713,7 @@ impl Policy {
 impl std::fmt::Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // prefer to display the lossless format
-        self.lossless.policy_fmt(self, f)
+        self.lossless.fmt(|| self.ast.clone().into(), f)
     }
 }
 
@@ -3763,30 +3763,14 @@ impl LosslessPolicy {
         }
     }
 
-    /// Get the EST representation of this static policy or template-linked policy.
-    fn policy_est(&self, policy: &Policy) -> Result<est::Policy, PolicyToJsonError> {
+    /// Get the EST representation of this static policy, linked policy, or template.
+    fn est(
+        &self,
+        fallback_est: impl FnOnce() -> est::Policy,
+    ) -> Result<est::Policy, PolicyToJsonError> {
         match self {
             // Fall back to the `policy` AST if the lossless representation is empty
-            Self::Empty => Ok(policy.ast.clone().into()),
-            Self::Est(est) => Ok(est.clone()),
-            Self::Text { text, slots } => {
-                let est =
-                    parser::parse_policy_or_template_to_est(text).map_err(ParseErrors::from)?;
-                if slots.is_empty() {
-                    Ok(est)
-                } else {
-                    let unwrapped_vals = slots.iter().map(|(k, v)| (*k, v.into())).collect();
-                    Ok(est.link(&unwrapped_vals)?)
-                }
-            }
-        }
-    }
-
-    /// Get the EST representation of this template.
-    fn template_est(&self, template: &Template) -> Result<est::Policy, PolicyToJsonError> {
-        match self {
-            // Fall back to the `template` AST if the lossless representation is empty
-            Self::Empty => Ok(template.ast.clone().into()),
+            Self::Empty => Ok(fallback_est()),
             Self::Est(est) => Ok(est.clone()),
             Self::Text { text, slots } => {
                 let est =
@@ -3825,9 +3809,13 @@ impl LosslessPolicy {
         }
     }
 
-    fn policy_fmt(&self, policy: &Policy, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        fallback_est: impl FnOnce() -> est::Policy,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
         match self {
-            Self::Empty => match self.policy_est(policy) {
+            Self::Empty => match self.est(fallback_est) {
                 Ok(est) => write!(f, "{est}"),
                 Err(e) => write!(f, "<invalid policy: {e}>"),
             },
@@ -3841,36 +3829,7 @@ impl LosslessPolicy {
                     // want to use the actual parser; right now we reuse
                     // another implementation by just converting to EST and
                     // printing that
-                    match self.policy_est(policy) {
-                        Ok(est) => write!(f, "{est}"),
-                        Err(e) => write!(f, "<invalid linked policy: {e}>"),
-                    }
-                }
-            }
-        }
-    }
-
-    fn template_fmt(
-        &self,
-        template: &Template,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> std::fmt::Result {
-        match self {
-            Self::Empty => match self.template_est(template) {
-                Ok(est) => write!(f, "{est}"),
-                Err(e) => write!(f, "<invalid template: {e}>"),
-            },
-            Self::Est(est) => write!(f, "{est}"),
-            Self::Text { text, slots } => {
-                if slots.is_empty() {
-                    write!(f, "{text}")
-                } else {
-                    // need to replace placeholders according to `slots`.
-                    // just find-and-replace wouldn't be safe/perfect, we
-                    // want to use the actual parser; right now we reuse
-                    // another implementation by just converting to EST and
-                    // printing that
-                    match self.template_est(template) {
+                    match self.est(fallback_est) {
                         Ok(est) => write!(f, "{est}"),
                         Err(e) => write!(f, "<invalid linked policy: {e}>"),
                     }
@@ -5434,7 +5393,10 @@ mod test_lossless_empty {
             ))
         );
         // The EST representation is obtained from the AST
-        let lossy_policy0_est = lossy_policy0.lossless.policy_est(&policy0).unwrap();
+        let lossy_policy0_est = lossy_policy0
+            .lossless
+            .est(|| policy0.ast.clone().into())
+            .unwrap();
         assert_eq!(lossy_policy0_est, policy0.ast.into());
     }
 
@@ -5455,7 +5417,10 @@ mod test_lossless_empty {
             )
         );
         // The EST representation is obtained from the AST
-        let lossy_template0_est = lossy_template0.lossless.template_est(&template0).unwrap();
+        let lossy_template0_est = lossy_template0
+            .lossless
+            .est(|| template0.ast.clone().into())
+            .unwrap();
         assert_eq!(lossy_template0_est, template0.ast.into());
     }
 }
