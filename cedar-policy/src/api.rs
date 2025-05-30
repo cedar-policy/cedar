@@ -3708,6 +3708,26 @@ impl Policy {
         }
     }
 
+    /// Parse a single policy.
+    /// If `id` is Some, the policy will be given that Policy Id.
+    /// If `id` is None, then "policy0" will be used.
+    /// The behavior around None may change in the future.
+    ///
+    /// This can fail if the policy fails to parse.
+    /// It can also fail if a template was passed in, as this function only accepts static
+    /// policies
+    pub fn parse(id: Option<PolicyId>, policy_src: impl AsRef<str>) -> Result<Self, ParseErrors> {
+
+    #[cfg(feature = "fast-parsing")]
+    pub fn parse_lossy(id: Option<PolicyId>, policy_src: impl AsRef<str>) -> Option<Self> {
+        let inline_ast = parser::parse_policy(id.map(Into::into), policy_src.as_ref())?;
+        let (_, ast) = ast::Template::link_static_policy(inline_ast);
+        Ok(Self {
+            ast,
+            lossless: LosslessPolicy::policy_or_template_text(Some(policy_src.as_ref())),
+        })
+    }
+
     /// Get all the unknown entities from the policy
     #[doc = include_str!("../experimental_warning.md")]
     #[cfg(feature = "partial-eval")]

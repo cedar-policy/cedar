@@ -54,6 +54,7 @@ pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
     cst.to_policyset()
 }
 
+
 #[cfg(feature = "fast-parsing")]
 pub fn parse_policyset_fast(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
     let cst = text_to_cst::parse_policies_fast(text)?;
@@ -173,6 +174,20 @@ pub fn parse_policy(
 ) -> Result<ast::StaticPolicy, err::ParseErrors> {
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
+    cst.to_policy(id)
+}
+
+/// Main function for parsing a (static) policy.
+/// Will return an error if provided with a template.
+/// If `id` is Some, then the resulting policy will have that `id`.
+/// If the `id` is None, the parser will use "policy0".
+#[cfg(feature = "fast-parsing")]
+pub fn parse_policy_fast(
+    id: Option<ast::PolicyID>,
+    text: &str,
+) -> Result<ast::StaticPolicy, err::ParseErrors> {
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
+    let cst = text_to_cst::parse_policy_fast(text)?;
     cst.to_policy(id)
 }
 
