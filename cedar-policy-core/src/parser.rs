@@ -54,7 +54,6 @@ pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
     cst.to_policyset()
 }
 
-
 #[cfg(feature = "fast-parsing")]
 pub fn parse_policyset_fast(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
     let cst = text_to_cst::parse_policies_fast(text)?;
@@ -153,15 +152,18 @@ pub fn parse_template(
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
     let template = cst.to_template(id)?;
-    if template.slots().count() == 0 {
-        Err(err::ToASTError::new(
-            err::ToASTErrorKind::expected_template(),
-            cst.loc.into_maybe_loc(),
-        )
-        .into())
-    } else {
-        Ok(template)
-    }
+    validate_template_has_slots(template, cst)
+}
+
+#[cfg(feature = "fast-parsing")]
+pub fn parse_template_fast(
+    id: Option<ast::PolicyID>,
+    text: &str,
+) -> Result<ast::Template, err::ParseErrors> {
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
+    let cst = text_to_cst::parse_policy_fast(text)?;
+    let template = cst.to_template(id)?;
+    validate_template_has_slots(template, cst)
 }
 
 /// Main function for parsing a (static) policy.
@@ -299,6 +301,23 @@ pub(crate) fn parse_ident(id: &str) -> Result<ast::Id, err::ParseErrors> {
 pub(crate) fn parse_anyid(id: &str) -> Result<ast::AnyId, err::ParseErrors> {
     let cst = text_to_cst::parse_ident(id)?;
     cst.to_any_ident()
+}
+
+/// Check that a template contains slots. Return the template if it does, or an
+/// error otherwise.
+fn validate_template_has_slots(
+    template: ast::Template,
+    cst: Node<Option<cst::Policy>>,
+) -> Result<ast::Template, err::ParseErrors> {
+    if template.slots().count() == 0 {
+        Err(err::ToASTError::new(
+            err::ToASTErrorKind::expected_template(),
+            cst.loc.into_maybe_loc(),
+        )
+        .into())
+    } else {
+        Ok(template)
+    }
 }
 
 /// Utilities used in tests in this file (and maybe other files in this crate)

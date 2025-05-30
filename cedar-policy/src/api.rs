@@ -2798,26 +2798,45 @@ impl PolicySet {
         }
     }
 
-    /// TODO: Document this
+    /// Attempt to parse a [`PolicySet`] from source, without retaining source information.
+    ///
+    /// Policy ids will default to "policy*" with numbers from 0.
+    /// If you load more policies, do not use the default id, or there will be conflicts.
+    ///
+    /// See [`Policy`] for more.
+    ///
+    /// Similar to [`PolicySet::from_str`], but does not retain the original source
+    /// code or its locations. This allows for faster parsing and reduced memory
+    /// usage, but limits the ability to provide detailed error messages.
+    ///
+    /// Only available with the "fast-parsing" feature.
     #[cfg(feature = "fast-parsing")]
     pub fn parse_lossy(policies: &str) -> Option<Self> {
         let pset = parser::parse_policyset_fast(policies).ok()?;
-        // PANIC SAFETY: By the invariant on `parse_policyset_and_also_return_policy_text(policies)`, every `PolicyId` in `pset.policies()` occurs as a key in `text`.
-        #[allow(clippy::expect_used)]
-        let policies = pset.policies().map(|p|
-            (
-                PolicyId::new(p.id().clone()),
-                Policy { lossless: LosslessPolicy::policy_or_template_text(None::<&str>), ast: p.clone() }
-            )
-        ).collect();
-        // PANIC SAFETY: By the same invariant, every `PolicyId` in `pset.templates()` also occurs as a key in `text`.
-        #[allow(clippy::expect_used)]
-        let templates = pset.templates().map(|t|
-            (
-                PolicyId::new(t.id().clone()),
-                Template { lossless: LosslessPolicy::policy_or_template_text(None::<&str>), ast: t.clone() }
-            )
-        ).collect();
+        let policies = pset
+            .policies()
+            .map(|p| {
+                (
+                    PolicyId::new(p.id().clone()),
+                    Policy {
+                        lossless: LosslessPolicy::policy_or_template_text(None::<&str>),
+                        ast: p.clone(),
+                    },
+                )
+            })
+            .collect();
+        let templates = pset
+            .templates()
+            .map(|t| {
+                (
+                    PolicyId::new(t.id().clone()),
+                    Template {
+                        lossless: LosslessPolicy::policy_or_template_text(None::<&str>),
+                        ast: t.clone(),
+                    },
+                )
+            })
+            .collect();
         Some(Self {
             ast: pset,
             policies,
@@ -3009,6 +3028,26 @@ impl Template {
     /// The behavior around None may change in the future.
     pub fn parse(id: Option<PolicyId>, src: impl AsRef<str>) -> Result<Self, ParseErrors> {
         let ast = parser::parse_template(id.map(Into::into), src.as_ref())?;
+        Ok(Self {
+            ast,
+            lossless: LosslessPolicy::policy_or_template_text(Some(src.as_ref())),
+        })
+    }
+
+    /// Attempt to parse a [`Template`] from source, without retaining source information.
+    /// Returns `None` if the input is a static policy (i.e., has no slots).
+    /// If `id` is Some, then the resulting template will have that `id`.
+    /// If the `id` is None, the parser will use the default "policy0".
+    /// The behavior around None may change in the future.
+    ///
+    /// Similar to [`Template::parse`], but does not retain the original source
+    /// code or its locations. This allows for faster parsing and reduced memory
+    /// usage, but limits the ability to provide detailed error messages.
+    ///
+    /// Only available with the "fast-parsing" feature.
+    #[cfg(feature = "fast-parsing")]
+    pub fn parse_lossy(id: Option<PolicyId>, src: impl AsRef<str>) -> Result<Self, ParseErrors> {
+        let ast = parser::parse_template_fast(id.map(Into::into), src.as_ref())?;
         Ok(Self {
             ast,
             lossless: LosslessPolicy::policy_or_template_text(Some(src.as_ref())),
@@ -3708,14 +3747,19 @@ impl Policy {
         }
     }
 
-    /// Parse a single policy.
+    /// Attempt to parse a [`Policy`] from source, without retaining source information.
     /// If `id` is Some, the policy will be given that Policy Id.
     /// If `id` is None, then "policy0" will be used.
     /// The behavior around None may change in the future.
     ///
     /// This can fail if the policy fails to parse.
     /// It can also fail if a template was passed in, as this function only accepts static
-    /// policies
+    /// policies.
+    /// Similar to [`Policy::parse`], but does not retain the original source
+    /// code or its locations. This allows for faster parsing and reduced memory
+    /// usage, but limits the ability to provide detailed error messages.
+    ///
+    /// Only available with the "fast-parsing" feature.
     #[cfg(feature = "fast-parsing")]
     pub fn parse_lossy(id: Option<PolicyId>, policy_src: impl AsRef<str>) -> Option<Self> {
         let inline_ast = parser::parse_policy_fast(id.map(Into::into), policy_src.as_ref()).ok()?;

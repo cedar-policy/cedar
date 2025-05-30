@@ -118,7 +118,12 @@ lazy_static::lazy_static! {
 
 /// Create CST for multiple policies from text
 pub fn parse_policies(text: &str) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
-    parse_collect_errors(&*POLICIES_PARSER, grammar::PoliciesParser::parse, false, text)
+    parse_collect_errors(
+        &*POLICIES_PARSER,
+        grammar::PoliciesParser::parse,
+        false,
+        text,
+    )
 }
 
 /// Create CST for one policy statement from text
@@ -154,7 +159,12 @@ pub fn parse_ident(text: &str) -> Result<Node<Option<cst::Ident>>, err::ParseErr
 #[cfg(feature = "fast-parsing")]
 /// Create CST for multiple policies from text
 pub fn parse_policies_fast(text: &str) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
-    parse_collect_errors(&*POLICIES_PARSER, grammar::PoliciesParser::parse, true, text)
+    parse_collect_errors(
+        &*POLICIES_PARSER,
+        grammar::PoliciesParser::parse,
+        true,
+        text,
+    )
 }
 
 #[cfg(feature = "fast-parsing")]
