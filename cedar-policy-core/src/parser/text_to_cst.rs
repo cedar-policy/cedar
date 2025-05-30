@@ -158,7 +158,7 @@ pub fn parse_ident(text: &str) -> Result<Node<Option<cst::Ident>>, err::ParseErr
 
 #[cfg(feature = "fast-parsing")]
 /// Create CST for multiple policies from text
-pub fn parse_policies_fast(text: &str) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
+pub fn parse_policies_lossy(text: &str) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
     parse_collect_errors(
         &*POLICIES_PARSER,
         grammar::PoliciesParser::parse,
@@ -169,7 +169,7 @@ pub fn parse_policies_fast(text: &str) -> Result<Node<Option<cst::Policies>>, er
 
 #[cfg(feature = "fast-parsing")]
 /// Create CST for one policy statement from text
-pub fn parse_policy_fast(text: &str) -> Result<Node<Option<cst::Policy>>, err::ParseErrors> {
+pub fn parse_policy_lossy(text: &str) -> Result<Node<Option<cst::Policy>>, err::ParseErrors> {
     parse_collect_errors(&*POLICY_PARSER, grammar::PolicyParser::parse, true, text)
 }
 
@@ -192,6 +192,7 @@ pub fn parse_policies_tolerant(
 pub fn parse_expr_tolerant(text: &str) -> Result<Node<Option<cst::Expr>>, err::ParseErrors> {
     parse_collect_errors_tolerant(&*EXPR_PARSER, grammar::ExprParser::parse, text)
 }
+
 // PANIC SAFETY unit test code
 #[allow(clippy::panic)]
 // PANIC SAFETY unit test code
