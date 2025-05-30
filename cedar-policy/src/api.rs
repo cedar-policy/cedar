@@ -3762,7 +3762,8 @@ impl Policy {
     /// Only available with the "fast-parsing" feature.
     #[cfg(feature = "fast-parsing")]
     pub fn parse_lossy(id: Option<PolicyId>, policy_src: impl AsRef<str>) -> Option<Self> {
-        let inline_ast = parser::parse_policy_lossy(id.map(Into::into), policy_src.as_ref()).ok()?;
+        let inline_ast =
+            parser::parse_policy_lossy(id.map(Into::into), policy_src.as_ref()).ok()?;
         let (_, ast) = ast::Template::link_static_policy(inline_ast);
         Some(Self {
             ast,

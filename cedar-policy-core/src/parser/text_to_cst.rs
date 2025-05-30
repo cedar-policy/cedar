@@ -1447,6 +1447,263 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "fast-parsing")]
+    mod lossy_parsing {
+        use super::*;
+
+        #[track_caller]
+        fn assert_parse_lossy_succeeds<T>(
+            parse: impl FnOnce(&str) -> Result<Node<Option<T>>, err::ParseErrors>,
+            text: &str,
+        ) {
+            let cst_node = parse(text)
+                .unwrap_or_else(|errs| panic!("failed to parse:\n{:?}", miette::Report::new(errs)));
+            assert!(cst_node.node.is_some());
+            assert!(cst_node.loc.is_none());
+        }
+
+        #[test]
+        fn comments_has() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_lossy_succeeds(
+                parse_policy_lossy,
+                r#"
+                    permit(principal, action,resource)
+                    when{ principal //comment p
+                    has //comment has
+                    age //comment
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_like() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_lossy_succeeds(
+                parse_policy_lossy,
+                r#"
+                    permit(principal, action,resource)
+                    when{ principal //comment p
+                    like //comment like
+
+                    age //comment
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_and() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_lossy_succeeds(
+                parse_policy_lossy,
+                r#"
+                    permit(principal, action,resource)
+                    when{ 1 //comment p
+                    &&  //comment &&
+                        //comment &&
+                    "hello" //comment
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_or() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_lossy_succeeds(
+                parse_policy_lossy,
+                r#"
+                    permit(principal, action,resource)
+                    when{ 1 //comment 1
+                        //  comment 1
+                    ||  //comment ||
+                        //comments ||
+                    "hello" //comment
+                            //comment hello
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_add() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_lossy_succeeds(
+                parse_policy_lossy,
+                r#"
+                    permit(principal, action,resource)
+                    when{ 1 //comment 1
+                            //comment 1_2
+                    + //comment +
+                    //comment +
+                    2 //comment 2
+                        //comment 2
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_paren() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_lossy_succeeds(
+                parse_policy_lossy,
+                r#"
+                    permit(principal, action,resource)
+                    when{
+                    ( //comment 1
+                        ( //comment 2
+                    1
+                        ) //comment 3
+                    ) //comment 4
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_set() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_lossy_succeeds(
+                parse_policy_lossy,
+                r#"
+                    permit(principal, action,resource)
+                    when{
+                    [ // comment 1
+                    "hello" //comment 2
+                    , // comment 3
+                    // comment 3-2
+                    1 //comment 4
+                        //comment 5
+                    ]  //comment 5-0
+
+                    .  //comment 5-1
+
+                    contains //comment 5-2
+
+                    ( //comment 6
+
+                    "a"  //comment 7
+
+                    ) //comment 20
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_if() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_lossy_succeeds(
+                parse_policy_lossy,
+                r#"
+                    permit(principal, action,resource)
+                    when{
+                    ( //comment open outer
+                    ( //comment open inner
+                    if //comment if
+                    1             //comment
+                    < //comment <
+                    2 //commment 2
+                    then // comment then
+                    "hello" //comment hello
+                    else  //comment else
+                        1 //comment 1
+                        ) //comment close inner
+                        ) //comment close outer
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_member_access() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_lossy_succeeds(
+                parse_policy_lossy,
+                r#"
+                    permit(principal, action,resource)
+                    when{ principal. //comment .
+                    age // comment age
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_principal() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_lossy_succeeds(
+                parse_policy_lossy,
+                r#"
+                    permit(principal //comment 1
+                    ==
+                    User::"alice" //comment 3
+                    ,  //comment 4
+                    action,resource);
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_annotation() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_lossy_succeeds(
+                parse_policy_lossy,
+                r#"
+                //comment policy
+                // comment policy 2
+                @anno("good annotation")  // comments after annotation
+                // comments after annotation 2
+                        permit(principal //comment 1
+                        ==
+                        User::"alice" //comment 3
+                        ,  //comment 4
+                        action,resource);
+                    "#,
+                );
+            }
+        
+        #[test]
+        fn comments_policy() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_lossy_succeeds(
+                parse_policy_lossy,
+                r#"
+                    //comment policy 1
+                    //comment policy 2
+                    permit( //comment 3
+                       // comment 4
+                    principal //comment principal
+                    == //comment == 1
+                       //comment == 2
+                    User::"alice" //comment alice
+                    , //comment comma 1
+                                //comment comma 2
+                    action //comment action 1
+                    //comment action 2
+                    , //comment comma action
+                    resource // comment resource
+                    )
+                    //comment 5
+                    //comment 6
+                    ;
+                "#,
+            );
+            //multi-line comments (`/* ... */`) are not allowed
+            let src = r#" /* multi-line
+                comment */
+                    permit(principal, action, resource)
+                    when{
+                        one.two
+                    };
+                "#;
+            assert_parse_fails(parse_policy_lossy, src);
+        }
+    }
+
     #[test]
     #[cfg(feature = "tolerant-ast")]
     fn policies_tolerant_success() {

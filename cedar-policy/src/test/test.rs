@@ -8036,3 +8036,40 @@ mod test_entities_api {
         assert!(entities.is_ancestor_of(&e2_uid, &e1_uid));
     }
 }
+
+#[cfg(feature = "fast-parsing")]
+mod lossy_parsing {
+    use crate::{PolicySet, Policy, Template, PolicyId};
+
+    #[test]
+    fn policyset_lossy_parsing() {
+        const PSET_TEXT: &str = r#"
+            forbid(principal,action,resource)
+            when{ context has suspicion };
+
+            permit(
+                principal == Account::"jane",
+                action,
+                resource == Album::"jane_vacation"
+            );
+        "#;
+        let pset = PolicySet::parse_lossy(PSET_TEXT).unwrap();
+        assert_eq!(pset.num_of_policies(), 2);
+    }
+
+        #[test]
+    fn policy_lossy_parsing() {
+        const STATIC_POLICY_TEXT: &str = "permit(principal,action,resource);";
+        Policy::parse_lossy(Some(PolicyId::new("policy0")), STATIC_POLICY_TEXT)
+            .expect("Failed to parse");
+    }
+
+    #[test]
+    fn template_lossy_parsing() {
+        const TEMPLATE_TEXT: &str = "permit(principal == ?principal,action,resource);";
+        Template::parse_lossy(Some(PolicyId::new("template0")), TEMPLATE_TEXT)
+            .expect("Failed to parse");
+    }
+
+
+}
