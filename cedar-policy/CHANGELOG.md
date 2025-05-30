@@ -24,8 +24,10 @@ Cedar Language Version: TBD
    and `RestrictedExpression::new_datetime` (#1614)
 - Added a function to be able to split a policy set parsed from a single string into its component static
   policies and templates. The relevant function is `policy_set_text_to_parts` in the `ffi` module (#1629).
-- Added the `lossy-parsing` feature flag to enable future optimizations by allowing parsing without
-  storing source code information.
+- Added the `lossy-parsing` feature flag which provides alternative parsing APIs (`parse_lossy`) for
+  `PolicySet`, `Policy`, and `Template`. These APIs don't retain source code information, trading detailed error
+  reporting for reduced memory usage and faster parsing. The feature is only intended for use with lossy parsing
+  APIs, as regular parsing performance is degraded when the `lossy-parsing` feature is enabled.
 
 ### Changed
 
