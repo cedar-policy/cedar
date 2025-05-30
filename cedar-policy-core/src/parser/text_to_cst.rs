@@ -156,8 +156,8 @@ pub fn parse_ident(text: &str) -> Result<Node<Option<cst::Ident>>, err::ParseErr
     parse_collect_errors(&*IDENT_PARSER, grammar::IdentParser::parse, false, text)
 }
 
+/// Create CST for multiple policies from text, but without retaining source information
 #[cfg(feature = "fast-parsing")]
-/// Create CST for multiple policies from text
 pub fn parse_policies_lossy(text: &str) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
     parse_collect_errors(
         &*POLICIES_PARSER,
@@ -167,8 +167,8 @@ pub fn parse_policies_lossy(text: &str) -> Result<Node<Option<cst::Policies>>, e
     )
 }
 
+/// Create CST for one policy statement from text, but without retaining source information
 #[cfg(feature = "fast-parsing")]
-/// Create CST for one policy statement from text
 pub fn parse_policy_lossy(text: &str) -> Result<Node<Option<cst::Policy>>, err::ParseErrors> {
     parse_collect_errors(&*POLICY_PARSER, grammar::PolicyParser::parse, true, text)
 }
