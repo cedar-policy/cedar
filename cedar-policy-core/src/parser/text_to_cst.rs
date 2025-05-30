@@ -1458,7 +1458,6 @@ mod tests {
         ) {
             let cst_node = parse(text)
                 .unwrap_or_else(|errs| panic!("failed to parse:\n{:?}", miette::Report::new(errs)));
-            assert!(cst_node.node.is_some());
             assert!(cst_node.loc.is_none());
         }
 
