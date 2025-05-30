@@ -27,15 +27,15 @@ pub use cedar_policy_core::evaluator::{evaluation_errors, EvaluationError};
 pub use cedar_policy_core::extensions::{
     extension_function_lookup_errors, ExtensionFunctionLookupError,
 };
-use cedar_policy_core::{ast, authorizer, est};
-pub use cedar_policy_validator::cedar_schema::{schema_warnings, SchemaWarning};
+pub use cedar_policy_core::validator::cedar_schema::{schema_warnings, SchemaWarning};
 #[cfg(feature = "entity-manifest")]
-pub use cedar_policy_validator::entity_manifest::slicing::EntitySliceError;
+pub use cedar_policy_core::validator::entity_manifest::slicing::EntitySliceError;
 #[cfg(feature = "entity-manifest")]
-use cedar_policy_validator::entity_manifest::{
+use cedar_policy_core::validator::entity_manifest::{
     self, PartialExpressionError, PartialRequestError, UnsupportedCedarFeatureError,
 };
-pub use cedar_policy_validator::{schema_errors, SchemaError};
+pub use cedar_policy_core::validator::{schema_errors, SchemaError};
+use cedar_policy_core::{ast, authorizer, est};
 use miette::Diagnostic;
 use ref_cast::RefCast;
 use smol_str::SmolStr;
@@ -190,7 +190,7 @@ pub mod to_cedar_syntax_errors {
     #[error("{err}")]
     pub struct NameCollisionsError {
         #[diagnostic(transparent)]
-        pub(super) err: cedar_policy_validator::cedar_schema::fmt::NameCollisionsError,
+        pub(super) err: cedar_policy_core::validator::cedar_schema::fmt::NameCollisionsError,
         // because `.names()` needs to return borrowed `&str`, we need somewhere to borrow from, hence here
         pub(super) names_as_strings: Vec<String>,
     }
@@ -206,12 +206,14 @@ pub mod to_cedar_syntax_errors {
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_validator::cedar_schema::fmt::ToCedarSchemaSyntaxError>
+impl From<cedar_policy_core::validator::cedar_schema::fmt::ToCedarSchemaSyntaxError>
     for ToCedarSchemaError
 {
-    fn from(value: cedar_policy_validator::cedar_schema::fmt::ToCedarSchemaSyntaxError) -> Self {
+    fn from(
+        value: cedar_policy_core::validator::cedar_schema::fmt::ToCedarSchemaSyntaxError,
+    ) -> Self {
         match value {
-            cedar_policy_validator::cedar_schema::fmt::ToCedarSchemaSyntaxError::NameCollisions(
+            cedar_policy_core::validator::cedar_schema::fmt::ToCedarSchemaSyntaxError::NameCollisions(
                 name_collision_err,
             ) => NameCollisionsError {
                 names_as_strings: name_collision_err
@@ -230,7 +232,7 @@ pub mod cedar_schema_errors {
     use miette::Diagnostic;
     use thiserror::Error;
 
-    pub use cedar_policy_validator::CedarSchemaParseError as ParseError;
+    pub use cedar_policy_core::validator::CedarSchemaParseError as ParseError;
 
     /// IO error while parsing a Cedar schema
     #[derive(Debug, Error, Diagnostic)]
@@ -257,14 +259,14 @@ pub enum CedarSchemaError {
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_validator::CedarSchemaError> for CedarSchemaError {
-    fn from(value: cedar_policy_validator::CedarSchemaError) -> Self {
+impl From<cedar_policy_core::validator::CedarSchemaError> for CedarSchemaError {
+    fn from(value: cedar_policy_core::validator::CedarSchemaError) -> Self {
         match value {
-            cedar_policy_validator::CedarSchemaError::Schema(e) => e.into(),
-            cedar_policy_validator::CedarSchemaError::IO(e) => {
+            cedar_policy_core::validator::CedarSchemaError::Schema(e) => e.into(),
+            cedar_policy_core::validator::CedarSchemaError::IO(e) => {
                 cedar_schema_errors::IoError(e).into()
             }
-            cedar_policy_validator::CedarSchemaError::Parsing(e) => e.into(),
+            cedar_policy_core::validator::CedarSchemaError::Parsing(e) => e.into(),
         }
     }
 }
@@ -470,58 +472,58 @@ impl ValidationError {
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_validator::ValidationError> for ValidationError {
-    fn from(error: cedar_policy_validator::ValidationError) -> Self {
+impl From<cedar_policy_core::validator::ValidationError> for ValidationError {
+    fn from(error: cedar_policy_core::validator::ValidationError) -> Self {
         match error {
-            cedar_policy_validator::ValidationError::UnrecognizedEntityType(e) => {
+            cedar_policy_core::validator::ValidationError::UnrecognizedEntityType(e) => {
                 Self::UnrecognizedEntityType(e.into())
             }
-            cedar_policy_validator::ValidationError::UnrecognizedActionId(e) => {
+            cedar_policy_core::validator::ValidationError::UnrecognizedActionId(e) => {
                 Self::UnrecognizedActionId(e.into())
             }
-            cedar_policy_validator::ValidationError::InvalidActionApplication(e) => {
+            cedar_policy_core::validator::ValidationError::InvalidActionApplication(e) => {
                 Self::InvalidActionApplication(e.into())
             }
-            cedar_policy_validator::ValidationError::UnexpectedType(e) => {
+            cedar_policy_core::validator::ValidationError::UnexpectedType(e) => {
                 Self::UnexpectedType(e.into())
             }
-            cedar_policy_validator::ValidationError::IncompatibleTypes(e) => {
+            cedar_policy_core::validator::ValidationError::IncompatibleTypes(e) => {
                 Self::IncompatibleTypes(e.into())
             }
-            cedar_policy_validator::ValidationError::UnsafeAttributeAccess(e) => {
+            cedar_policy_core::validator::ValidationError::UnsafeAttributeAccess(e) => {
                 Self::UnsafeAttributeAccess(e.into())
             }
-            cedar_policy_validator::ValidationError::UnsafeOptionalAttributeAccess(e) => {
+            cedar_policy_core::validator::ValidationError::UnsafeOptionalAttributeAccess(e) => {
                 Self::UnsafeOptionalAttributeAccess(e.into())
             }
-            cedar_policy_validator::ValidationError::UnsafeTagAccess(e) => {
+            cedar_policy_core::validator::ValidationError::UnsafeTagAccess(e) => {
                 Self::UnsafeTagAccess(e.into())
             }
-            cedar_policy_validator::ValidationError::NoTagsAllowed(e) => {
+            cedar_policy_core::validator::ValidationError::NoTagsAllowed(e) => {
                 Self::NoTagsAllowed(e.into())
             }
-            cedar_policy_validator::ValidationError::UndefinedFunction(e) => {
+            cedar_policy_core::validator::ValidationError::UndefinedFunction(e) => {
                 Self::UndefinedFunction(e.into())
             }
-            cedar_policy_validator::ValidationError::WrongNumberArguments(e) => {
+            cedar_policy_core::validator::ValidationError::WrongNumberArguments(e) => {
                 Self::WrongNumberArguments(e.into())
             }
-            cedar_policy_validator::ValidationError::FunctionArgumentValidation(e) => {
+            cedar_policy_core::validator::ValidationError::FunctionArgumentValidation(e) => {
                 Self::FunctionArgumentValidation(e.into())
             }
-            cedar_policy_validator::ValidationError::EmptySetForbidden(e) => {
+            cedar_policy_core::validator::ValidationError::EmptySetForbidden(e) => {
                 Self::EmptySetForbidden(e.into())
             }
-            cedar_policy_validator::ValidationError::NonLitExtConstructor(e) => {
+            cedar_policy_core::validator::ValidationError::NonLitExtConstructor(e) => {
                 Self::NonLitExtConstructor(e.into())
             }
-            cedar_policy_validator::ValidationError::InternalInvariantViolation(e) => {
+            cedar_policy_core::validator::ValidationError::InternalInvariantViolation(e) => {
                 Self::InternalInvariantViolation(e.into())
             }
-            cedar_policy_validator::ValidationError::InvalidEnumEntity(e) => {
+            cedar_policy_core::validator::ValidationError::InvalidEnumEntity(e) => {
                 Self::InvalidEnumEntity(e.into())
             }
-            cedar_policy_validator::ValidationError::EntityDerefLevelViolation(e) => {
+            cedar_policy_core::validator::ValidationError::EntityDerefLevelViolation(e) => {
                 Self::EntityDerefLevelViolation(e.into())
             }
         }
@@ -589,25 +591,25 @@ impl ValidationWarning {
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_validator::ValidationWarning> for ValidationWarning {
-    fn from(warning: cedar_policy_validator::ValidationWarning) -> Self {
+impl From<cedar_policy_core::validator::ValidationWarning> for ValidationWarning {
+    fn from(warning: cedar_policy_core::validator::ValidationWarning) -> Self {
         match warning {
-            cedar_policy_validator::ValidationWarning::MixedScriptString(w) => {
+            cedar_policy_core::validator::ValidationWarning::MixedScriptString(w) => {
                 Self::MixedScriptString(w.into())
             }
-            cedar_policy_validator::ValidationWarning::BidiCharsInString(w) => {
+            cedar_policy_core::validator::ValidationWarning::BidiCharsInString(w) => {
                 Self::BidiCharsInString(w.into())
             }
-            cedar_policy_validator::ValidationWarning::BidiCharsInIdentifier(w) => {
+            cedar_policy_core::validator::ValidationWarning::BidiCharsInIdentifier(w) => {
                 Self::BidiCharsInIdentifier(w.into())
             }
-            cedar_policy_validator::ValidationWarning::MixedScriptIdentifier(w) => {
+            cedar_policy_core::validator::ValidationWarning::MixedScriptIdentifier(w) => {
                 Self::MixedScriptIdentifier(w.into())
             }
-            cedar_policy_validator::ValidationWarning::ConfusableIdentifier(w) => {
+            cedar_policy_core::validator::ValidationWarning::ConfusableIdentifier(w) => {
                 Self::ConfusableIdentifier(w.into())
             }
-            cedar_policy_validator::ValidationWarning::ImpossiblePolicy(w) => {
+            cedar_policy_core::validator::ValidationWarning::ImpossiblePolicy(w) => {
                 Self::ImpossiblePolicy(w.into())
             }
         }
@@ -1094,31 +1096,31 @@ pub enum RequestValidationError {
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_validator::RequestValidationError> for RequestValidationError {
-    fn from(e: cedar_policy_validator::RequestValidationError) -> Self {
+impl From<cedar_policy_core::validator::RequestValidationError> for RequestValidationError {
+    fn from(e: cedar_policy_core::validator::RequestValidationError) -> Self {
         match e {
-            cedar_policy_validator::RequestValidationError::UndeclaredAction(e) => {
+            cedar_policy_core::validator::RequestValidationError::UndeclaredAction(e) => {
                 Self::UndeclaredAction(e.into())
             }
-            cedar_policy_validator::RequestValidationError::UndeclaredPrincipalType(e) => {
+            cedar_policy_core::validator::RequestValidationError::UndeclaredPrincipalType(e) => {
                 Self::UndeclaredPrincipalType(e.into())
             }
-            cedar_policy_validator::RequestValidationError::UndeclaredResourceType(e) => {
+            cedar_policy_core::validator::RequestValidationError::UndeclaredResourceType(e) => {
                 Self::UndeclaredResourceType(e.into())
             }
-            cedar_policy_validator::RequestValidationError::InvalidPrincipalType(e) => {
+            cedar_policy_core::validator::RequestValidationError::InvalidPrincipalType(e) => {
                 Self::InvalidPrincipalType(e.into())
             }
-            cedar_policy_validator::RequestValidationError::InvalidResourceType(e) => {
+            cedar_policy_core::validator::RequestValidationError::InvalidResourceType(e) => {
                 Self::InvalidResourceType(e.into())
             }
-            cedar_policy_validator::RequestValidationError::InvalidContext(e) => {
+            cedar_policy_core::validator::RequestValidationError::InvalidContext(e) => {
                 Self::InvalidContext(e.into())
             }
-            cedar_policy_validator::RequestValidationError::TypeOfContext(e) => {
+            cedar_policy_core::validator::RequestValidationError::TypeOfContext(e) => {
                 Self::TypeOfContext(e.into())
             }
-            cedar_policy_validator::RequestValidationError::InvalidEnumEntity(e) => {
+            cedar_policy_core::validator::RequestValidationError::InvalidEnumEntity(e) => {
                 Self::InvalidEnumEntity(e.into())
             }
         }
@@ -1139,7 +1141,7 @@ pub mod request_validation_errors {
     #[error(transparent)]
     #[diagnostic(transparent)]
     pub struct UndeclaredActionError(
-        #[from] cedar_policy_validator::request_validation_errors::UndeclaredActionError,
+        #[from] cedar_policy_core::validator::request_validation_errors::UndeclaredActionError,
     );
 
     impl UndeclaredActionError {
@@ -1154,7 +1156,8 @@ pub mod request_validation_errors {
     #[error(transparent)]
     #[diagnostic(transparent)]
     pub struct UndeclaredPrincipalTypeError(
-        #[from] cedar_policy_validator::request_validation_errors::UndeclaredPrincipalTypeError,
+        #[from]
+        cedar_policy_core::validator::request_validation_errors::UndeclaredPrincipalTypeError,
     );
 
     impl UndeclaredPrincipalTypeError {
@@ -1169,7 +1172,8 @@ pub mod request_validation_errors {
     #[error(transparent)]
     #[diagnostic(transparent)]
     pub struct UndeclaredResourceTypeError(
-        #[from] cedar_policy_validator::request_validation_errors::UndeclaredResourceTypeError,
+        #[from]
+        cedar_policy_core::validator::request_validation_errors::UndeclaredResourceTypeError,
     );
 
     impl UndeclaredResourceTypeError {
@@ -1185,7 +1189,7 @@ pub mod request_validation_errors {
     #[error(transparent)]
     #[diagnostic(transparent)]
     pub struct InvalidPrincipalTypeError(
-        #[from] cedar_policy_validator::request_validation_errors::InvalidPrincipalTypeError,
+        #[from] cedar_policy_core::validator::request_validation_errors::InvalidPrincipalTypeError,
     );
 
     impl InvalidPrincipalTypeError {
@@ -1206,7 +1210,7 @@ pub mod request_validation_errors {
     #[error(transparent)]
     #[diagnostic(transparent)]
     pub struct InvalidResourceTypeError(
-        #[from] cedar_policy_validator::request_validation_errors::InvalidResourceTypeError,
+        #[from] cedar_policy_core::validator::request_validation_errors::InvalidResourceTypeError,
     );
 
     impl InvalidResourceTypeError {
@@ -1226,7 +1230,7 @@ pub mod request_validation_errors {
     #[error(transparent)]
     #[diagnostic(transparent)]
     pub struct InvalidContextError(
-        #[from] cedar_policy_validator::request_validation_errors::InvalidContextError,
+        #[from] cedar_policy_core::validator::request_validation_errors::InvalidContextError,
     );
 
     impl InvalidContextError {

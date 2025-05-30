@@ -38,7 +38,7 @@ macro_rules! wrap_core_error {
         #[error(transparent)]
         #[diagnostic(transparent)]
         #[doc=concat!("Structure containing details about a [`ValidationError::", stringify!($s), "`].")]
-        pub struct $s(cedar_policy_validator::validation_errors::$s);
+        pub struct $s(cedar_policy_core::validator::validation_errors::$s);
 
         impl $s {
             /// Access the `[PolicyId]` for the policy where this error was found.
@@ -48,8 +48,8 @@ macro_rules! wrap_core_error {
         }
 
         #[doc(hidden)]
-        impl From<cedar_policy_validator::validation_errors::$s> for $s {
-            fn from(e: cedar_policy_validator::validation_errors::$s) -> Self {
+        impl From<cedar_policy_core::validator::validation_errors::$s> for $s {
+            fn from(e: cedar_policy_core::validator::validation_errors::$s) -> Self {
                 Self(e)
             }
         }

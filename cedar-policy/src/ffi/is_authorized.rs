@@ -22,7 +22,7 @@
 use super::utils::JsonValueWithNoDuplicateKeys;
 use super::utils::{Context, DetailedError, Entities, EntityUid, PolicySet, Schema, WithWarnings};
 use crate::{Authorizer, Decision, PolicyId, Request};
-use cedar_policy_validator::cedar_schema::SchemaWarning;
+use cedar_policy_core::validator::cedar_schema::SchemaWarning;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 #[cfg(feature = "partial-eval")]

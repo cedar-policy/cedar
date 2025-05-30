@@ -24,7 +24,7 @@
 // functions defined.
 
 use cedar_policy_core::extensions::Extensions;
-use cedar_policy_validator::SchemaError;
+use cedar_policy_core::validator::SchemaError;
 
 use super::{Schema, SchemaFragment};
 
@@ -38,7 +38,7 @@ impl SchemaFragment {
     )]
     pub fn from_deprecated_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
         let lossless =
-            cedar_policy_validator::json_schema::Fragment::from_deprecated_json_value(json)?;
+            cedar_policy_core::validator::json_schema::Fragment::from_deprecated_json_value(json)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
@@ -51,7 +51,7 @@ impl SchemaFragment {
     #[deprecated(since = "4.5.0", note = "use `SchemaFragment::from_json_str` instead")]
     pub fn from_deprecated_json_str(src: &str) -> Result<Self, SchemaError> {
         let lossless =
-            cedar_policy_validator::json_schema::Fragment::from_deprecated_json_str(src)?;
+            cedar_policy_core::validator::json_schema::Fragment::from_deprecated_json_str(src)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
@@ -65,7 +65,7 @@ impl SchemaFragment {
     #[deprecated(since = "4.5.0", note = "use `SchemaFragment::from_json_file` instead")]
     pub fn from_deprecated_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         let lossless =
-            cedar_policy_validator::json_schema::Fragment::from_deprecated_json_file(file)?;
+            cedar_policy_core::validator::json_schema::Fragment::from_deprecated_json_file(file)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
@@ -80,7 +80,7 @@ impl Schema {
     #[deprecated(since = "4.5.0", note = "use `Schema::from_json_str` instead")]
     pub fn from_deprecated_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
         Ok(Self(
-            cedar_policy_validator::ValidatorSchema::from_deprecated_json_value(
+            cedar_policy_core::validator::ValidatorSchema::from_deprecated_json_value(
                 json,
                 Extensions::all_available(),
             )?,
@@ -93,7 +93,7 @@ impl Schema {
     #[deprecated(since = "4.5.0", note = "use `Schema::from_json_value` instead")]
     pub fn from_deprecated_json_str(json: &str) -> Result<Self, SchemaError> {
         Ok(Self(
-            cedar_policy_validator::ValidatorSchema::from_deprecated_json_str(
+            cedar_policy_core::validator::ValidatorSchema::from_deprecated_json_str(
                 json,
                 Extensions::all_available(),
             )?,
@@ -106,7 +106,7 @@ impl Schema {
     #[deprecated(since = "4.5.0", note = "use `Schema::from_json_file` instead")]
     pub fn from_deprecated_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         Ok(Self(
-            cedar_policy_validator::ValidatorSchema::from_deprecated_json_file(
+            cedar_policy_core::validator::ValidatorSchema::from_deprecated_json_file(
                 file,
                 Extensions::all_available(),
             )?,
