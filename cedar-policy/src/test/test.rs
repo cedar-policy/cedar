@@ -8039,7 +8039,7 @@ mod test_entities_api {
 
 #[cfg(feature = "lossy-parsing")]
 mod lossy_parsing {
-    use crate::{PolicySet, Policy, Template, PolicyId};
+    use crate::{Policy, PolicyId, PolicySet, Template};
 
     #[test]
     fn policyset_lossy_parsing() {
@@ -8057,7 +8057,7 @@ mod lossy_parsing {
         assert_eq!(pset.num_of_policies(), 2);
     }
 
-        #[test]
+    #[test]
     fn policy_lossy_parsing() {
         const STATIC_POLICY_TEXT: &str = "permit(principal,action,resource);";
         Policy::parse_lossy(Some(PolicyId::new("policy0")), STATIC_POLICY_TEXT)
@@ -8070,6 +8070,4 @@ mod lossy_parsing {
         Template::parse_lossy(Some(PolicyId::new("template0")), TEMPLATE_TEXT)
             .expect("Failed to parse");
     }
-
-
 }

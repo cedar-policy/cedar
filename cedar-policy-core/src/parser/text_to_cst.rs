@@ -1662,9 +1662,9 @@ mod tests {
                         ,  //comment 4
                         action,resource);
                     "#,
-                );
-            }
-        
+            );
+        }
+
         #[test]
         fn comments_policy() {
             // single line comments (`// ...`) are valid anywhere
