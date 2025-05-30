@@ -17,7 +17,7 @@
 use std::sync::Arc;
 
 /// Represents an optional `Loc`.
-#[cfg(not(feature = "fast-parsing"))]
+#[cfg(not(feature = "lossy-parsing"))]
 pub type MaybeLoc = Option<Loc>;
 
 /// Represents an optional `Loc`.
@@ -29,9 +29,9 @@ pub type MaybeLoc = Option<Loc>;
 /// - `Some` case: Slightly slower due to heap allocation and indirect access
 /// - `None` case: More memory efficient as no space is reserved for the location data
 ///
-/// When the `fast-parsing` feature is enabled, we use this type and avoid
+/// When the `lossy-parsing` feature is enabled, we use this type and avoid
 /// storing locations during parsing, maximizing the parsing performance.
-#[cfg(feature = "fast-parsing")]
+#[cfg(feature = "lossy-parsing")]
 pub type MaybeLoc = Option<Box<Loc>>;
 
 /// Represents a source location: index/range, and a reference to the source
@@ -121,11 +121,11 @@ pub trait IntoMaybeLoc {
 impl IntoMaybeLoc for Loc {
     #[inline]
     fn into_maybe_loc(self) -> MaybeLoc {
-        #[cfg(not(feature = "fast-parsing"))]
+        #[cfg(not(feature = "lossy-parsing"))]
         {
             Some(self)
         }
-        #[cfg(feature = "fast-parsing")]
+        #[cfg(feature = "lossy-parsing")]
         {
             Some(Box::new(self))
         }
@@ -135,11 +135,11 @@ impl IntoMaybeLoc for Loc {
 impl IntoMaybeLoc for Option<Loc> {
     #[inline]
     fn into_maybe_loc(self) -> MaybeLoc {
-        #[cfg(not(feature = "fast-parsing"))]
+        #[cfg(not(feature = "lossy-parsing"))]
         {
             self
         }
-        #[cfg(feature = "fast-parsing")]
+        #[cfg(feature = "lossy-parsing")]
         {
             self.map(|loc| Box::new(loc))
         }
@@ -149,11 +149,11 @@ impl IntoMaybeLoc for Option<Loc> {
 impl IntoMaybeLoc for Option<&Loc> {
     #[inline]
     fn into_maybe_loc(self) -> MaybeLoc {
-        #[cfg(not(feature = "fast-parsing"))]
+        #[cfg(not(feature = "lossy-parsing"))]
         {
             self.cloned()
         }
-        #[cfg(feature = "fast-parsing")]
+        #[cfg(feature = "lossy-parsing")]
         {
             self.map(|loc| Box::new(loc.clone()))
         }
@@ -163,11 +163,11 @@ impl IntoMaybeLoc for Option<&Loc> {
 impl IntoMaybeLoc for Option<Box<Loc>> {
     #[inline]
     fn into_maybe_loc(self) -> MaybeLoc {
-        #[cfg(not(feature = "fast-parsing"))]
+        #[cfg(not(feature = "lossy-parsing"))]
         {
             self.map(|loc| *loc)
         }
-        #[cfg(feature = "fast-parsing")]
+        #[cfg(feature = "lossy-parsing")]
         {
             self
         }

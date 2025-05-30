@@ -55,7 +55,7 @@ pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
 }
 
 /// Like [`parse_policyset`], but without retaining source information.
-#[cfg(feature = "fast-parsing")]
+#[cfg(feature = "lossy-parsing")]
 pub fn parse_policyset_lossy(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
     let cst = text_to_cst::parse_policies_lossy(text)?;
     cst.to_policyset()
@@ -157,7 +157,7 @@ pub fn parse_template(
 }
 
 /// Like [`parse_template`], but without retaining source information.
-#[cfg(feature = "fast-parsing")]
+#[cfg(feature = "lossy-parsing")]
 pub fn parse_template_lossy(
     id: Option<ast::PolicyID>,
     text: &str,
@@ -182,7 +182,7 @@ pub fn parse_policy(
 }
 
 /// Like [`parse_policy`], but without retaining source information.
-#[cfg(feature = "fast-parsing")]
+#[cfg(feature = "lossy-parsing")]
 pub fn parse_policy_lossy(
     id: Option<ast::PolicyID>,
     text: &str,

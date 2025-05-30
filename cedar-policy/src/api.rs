@@ -2809,8 +2809,8 @@ impl PolicySet {
     /// code or its locations. This allows for faster parsing and reduced memory
     /// usage, but limits the ability to provide detailed error messages.
     ///
-    /// Only available with the "fast-parsing" feature.
-    #[cfg(feature = "fast-parsing")]
+    /// Only available with the "lossy-parsing" feature.
+    #[cfg(feature = "lossy-parsing")]
     pub fn parse_lossy(policies: &str) -> Option<Self> {
         let pset = parser::parse_policyset_lossy(policies).ok()?;
         let policies = pset
@@ -3044,8 +3044,8 @@ impl Template {
     /// code or its locations. This allows for faster parsing and reduced memory
     /// usage, but limits the ability to provide detailed error messages.
     ///
-    /// Only available with the "fast-parsing" feature.
-    #[cfg(feature = "fast-parsing")]
+    /// Only available with the "lossy-parsing" feature.
+    #[cfg(feature = "lossy-parsing")]
     pub fn parse_lossy(id: Option<PolicyId>, src: impl AsRef<str>) -> Result<Self, ParseErrors> {
         let ast = parser::parse_template_lossy(id.map(Into::into), src.as_ref())?;
         Ok(Self {
@@ -3759,8 +3759,8 @@ impl Policy {
     /// code or its locations. This allows for faster parsing and reduced memory
     /// usage, but limits the ability to provide detailed error messages.
     ///
-    /// Only available with the "fast-parsing" feature.
-    #[cfg(feature = "fast-parsing")]
+    /// Only available with the "lossy-parsing" feature.
+    #[cfg(feature = "lossy-parsing")]
     pub fn parse_lossy(id: Option<PolicyId>, policy_src: impl AsRef<str>) -> Option<Self> {
         let inline_ast =
             parser::parse_policy_lossy(id.map(Into::into), policy_src.as_ref()).ok()?;

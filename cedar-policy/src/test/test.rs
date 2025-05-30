@@ -8037,7 +8037,7 @@ mod test_entities_api {
     }
 }
 
-#[cfg(feature = "fast-parsing")]
+#[cfg(feature = "lossy-parsing")]
 mod lossy_parsing {
     use crate::{PolicySet, Policy, Template, PolicyId};
 
