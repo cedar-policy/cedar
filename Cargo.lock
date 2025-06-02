@@ -268,7 +268,6 @@ version = "4.4.0"
 dependencies = [
  "cedar-policy-core",
  "cedar-policy-formatter",
- "cedar-policy-validator",
  "cool_asserts",
  "criterion",
  "dhat",
@@ -336,10 +335,12 @@ dependencies = [
  "serde-wasm-bindgen",
  "serde_json",
  "serde_with",
+ "similar-asserts",
  "smol_str",
  "stacker",
  "thiserror",
  "tsify",
+ "unicode-security",
  "wasm-bindgen",
 ]
 
@@ -359,41 +360,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "cedar-policy-validator"
-version = "4.4.0"
-dependencies = [
- "arbitrary",
- "cedar-policy-core",
- "cool_asserts",
- "educe",
- "itertools 0.14.0",
- "lalrpop",
- "lalrpop-util",
- "lazy_static",
- "miette",
- "nonempty",
- "ref-cast",
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
- "serde_with",
- "similar-asserts",
- "smol_str",
- "stacker",
- "thiserror",
- "tsify",
- "unicode-security",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "cedar-testing"
 version = "4.4.0"
 dependencies = [
  "assert_cmd",
  "cedar-policy",
  "cedar-policy-core",
- "cedar-policy-validator",
  "miette",
  "serde",
  "serde_json",
@@ -408,7 +380,6 @@ dependencies = [
  "cedar-policy",
  "cedar-policy-core",
  "cedar-policy-formatter",
- "cedar-policy-validator",
  "console_error_panic_hook",
  "cool_asserts",
  "serde",

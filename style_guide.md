@@ -66,7 +66,7 @@ pub mod request_validation_errors {
     #[error(transparent)]
     #[diagnostic(transparent)]
     pub struct UndeclaredActionError(
-        #[from] cedar_policy_validator::request_validation_errors::UndeclaredActionError,
+        #[from] cedar_policy_core::validator::request_validation_errors::UndeclaredActionError,
     );
 
     impl UndeclaredActionError {
