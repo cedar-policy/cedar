@@ -12,7 +12,6 @@ repository = "https://github.com/cedar-policy/cedar"
 
 [dependencies]
 cedar-policy-core = { version = "=4.4.0", path = "../cedar-policy-core" }
-cedar-policy-validator = { version = "=4.4.0", path = "../cedar-policy-validator" }
 cedar-policy-formatter = { version = "=4.4.0", path = "../cedar-policy-formatter" }
 ref-cast = "1.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
@@ -42,9 +41,9 @@ prost-build = { version = "0.13", optional = true }
 default = ["ipaddr", "decimal", "datetime"]
 
 # Cedar extensions
-ipaddr = ["cedar-policy-core/ipaddr", "cedar-policy-validator/ipaddr"]
-decimal = ["cedar-policy-core/decimal", "cedar-policy-validator/decimal"]
-datetime = ["cedar-policy-core/datetime", "cedar-policy-validator/datetime"]
+ipaddr = ["cedar-policy-core/ipaddr"]
+decimal = ["cedar-policy-core/decimal"]
+datetime = ["cedar-policy-core/datetime"]
 
 # Features for memory or runtime profiling
 heap-profiling = ["dep:dhat"]
@@ -53,21 +52,21 @@ corpus-timing = []
 # Experimental features.
 # Enable all experimental features with `cargo build --features "experimental"`
 experimental = ["partial-eval", "permissive-validate", "partial-validate", "entity-manifest", "protobufs", "tolerant-ast", "extended-schema", "deprecated-schema-compat"]
-entity-manifest = ["cedar-policy-validator/entity-manifest"]
-partial-eval = ["cedar-policy-core/partial-eval", "cedar-policy-validator/partial-eval"]
+entity-manifest = ["cedar-policy-core/entity-manifest"]
+partial-eval = ["cedar-policy-core/partial-eval"]
 permissive-validate = []
-partial-validate = ["cedar-policy-validator/partial-validate"]
+partial-validate = ["cedar-policy-core/partial-validate"]
 protobufs = ["dep:prost", "dep:prost-build"]
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
-tolerant-ast = ["cedar-policy-core/tolerant-ast",  "cedar-policy-validator/tolerant-ast", "cedar-policy-formatter/tolerant-ast"]
-extended-schema = ["cedar-policy-validator/extended-schema"]
+tolerant-ast = ["cedar-policy-core/tolerant-ast", "cedar-policy-formatter/tolerant-ast"]
+extended-schema = ["cedar-policy-core/extended-schema"]
 # Not exactly experimental but rather a feature for supporting deprecated
 # parsing behavior. API is stable, but hopefully will be removed in a future
 # release.
 deprecated-schema-compat = []
 
 # Feature for raw parsing
-raw-parsing = ["cedar-policy-core/raw-parsing", "cedar-policy-validator/raw-parsing"]
+raw-parsing = ["cedar-policy-core/raw-parsing"]
 
 [lib]
 # cdylib required for wasm

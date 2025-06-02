@@ -36,6 +36,7 @@ pub mod fuzzy_match;
 pub mod jsonvalue;
 pub mod parser;
 pub mod transitive_closure;
+pub mod validator;
 
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_utils;
