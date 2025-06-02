@@ -54,6 +54,13 @@ pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
     cst.to_policyset()
 }
 
+/// Like [`parse_policyset`], but without retaining source information.
+#[cfg(feature = "raw-parsing")]
+pub fn parse_policyset_raw(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
+    let cst = text_to_cst::parse_policies_raw(text)?;
+    cst.to_policyset()
+}
+
 /// Like `parse_policyset()`, but also returns the (lossless) original text of
 /// each individual policy.
 /// INVARIANT: The `PolicyId` of every `Policy` and `Template` returned by the
@@ -146,15 +153,19 @@ pub fn parse_template(
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
     let template = cst.to_template(id)?;
-    if template.slots().count() == 0 {
-        Err(err::ToASTError::new(
-            err::ToASTErrorKind::expected_template(),
-            cst.loc.into_maybe_loc(),
-        )
-        .into())
-    } else {
-        Ok(template)
-    }
+    validate_template_has_slots(template, cst)
+}
+
+/// Like [`parse_template`], but without retaining source information.
+#[cfg(feature = "raw-parsing")]
+pub fn parse_template_raw(
+    id: Option<ast::PolicyID>,
+    text: &str,
+) -> Result<ast::Template, err::ParseErrors> {
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
+    let cst = text_to_cst::parse_policy_raw(text)?;
+    let template = cst.to_template(id)?;
+    validate_template_has_slots(template, cst)
 }
 
 /// Main function for parsing a (static) policy.
@@ -167,6 +178,17 @@ pub fn parse_policy(
 ) -> Result<ast::StaticPolicy, err::ParseErrors> {
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
     let cst = text_to_cst::parse_policy(text)?;
+    cst.to_policy(id)
+}
+
+/// Like [`parse_policy`], but without retaining source information.
+#[cfg(feature = "raw-parsing")]
+pub fn parse_policy_raw(
+    id: Option<ast::PolicyID>,
+    text: &str,
+) -> Result<ast::StaticPolicy, err::ParseErrors> {
+    let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
+    let cst = text_to_cst::parse_policy_raw(text)?;
     cst.to_policy(id)
 }
 
@@ -278,6 +300,23 @@ pub(crate) fn parse_ident(id: &str) -> Result<ast::Id, err::ParseErrors> {
 pub(crate) fn parse_anyid(id: &str) -> Result<ast::AnyId, err::ParseErrors> {
     let cst = text_to_cst::parse_ident(id)?;
     cst.to_any_ident()
+}
+
+/// Check that a template contains slots. Return the template if it does, or an
+/// error otherwise.
+fn validate_template_has_slots(
+    template: ast::Template,
+    cst: Node<Option<cst::Policy>>,
+) -> Result<ast::Template, err::ParseErrors> {
+    if template.slots().count() == 0 {
+        Err(err::ToASTError::new(
+            err::ToASTErrorKind::expected_template(),
+            cst.loc.into_maybe_loc(),
+        )
+        .into())
+    } else {
+        Ok(template)
+    }
 }
 
 /// Utilities used in tests in this file (and maybe other files in this crate)

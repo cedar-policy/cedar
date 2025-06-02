@@ -65,8 +65,8 @@ extended-schema = ["cedar-policy-core/extended-schema"]
 # release.
 deprecated-schema-compat = []
 
-# Feature for fast parsing
-fast-parsing = ["cedar-policy-core/fast-parsing"]
+# Feature for raw parsing
+raw-parsing = ["cedar-policy-core/raw-parsing"]
 
 [lib]
 # cdylib required for wasm
