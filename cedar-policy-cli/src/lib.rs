@@ -21,8 +21,8 @@
 
 use cedar_policy::entities_errors::EntitiesError;
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
-use colored::Colorize;
 use miette::{miette, Diagnostic, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
+use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::io::{BufReader, Write};
@@ -1585,21 +1585,21 @@ fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
         "results: {} {}, {} {}, {} {}",
         tests.len() - total_fails - total_warnings,
         if total_fails == 0 && total_warnings == 0 {
-            "passed".green()
+            "passed".green().to_string()
         } else {
-            "passed".normal()
+            "passed".to_string()
         },
         total_fails,
         if total_fails != 0 {
-            "failed".red()
+            "failed".red().to_string()
         } else {
-            "failed".normal()
+            "failed".to_string()
         },
         total_warnings,
         if total_warnings != 0 {
-            "warning(s)".yellow()
+            "warning(s)".yellow().to_string()
         } else {
-            "warning(s)".normal()
+            "warning(s)".to_string()
         },
     );
 
