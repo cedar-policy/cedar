@@ -1702,7 +1702,11 @@ impl TestCase {
             entities,
             expected,
             reason,
-            has_error: json["has_error"].as_bool().unwrap_or(false),
+            has_error: json
+                .get("has_error")
+                .ok_or(TestCaseError::MissingField("has_error".to_string()))?
+                .as_bool()
+                .unwrap_or(false),
         })
     }
 }
