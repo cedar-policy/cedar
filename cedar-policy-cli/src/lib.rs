@@ -1643,6 +1643,8 @@ enum TestCaseError {
     RequestValidationError(#[from] RequestValidationError),
     #[error("error when parsing entities")]
     EntitiesError(#[from] EntitiesError),
+    #[error("missing field `{0}`")]
+    MissingField(String),
 }
 
 impl TestCase {
@@ -1651,7 +1653,11 @@ impl TestCase {
         json: serde_json::Value,
         schema: Option<&Schema>,
     ) -> Result<Self, TestCaseError> {
-        let qjson: RequestJSON = serde_json::from_value(json["request"].clone())?;
+        let qjson: RequestJSON = serde_json::from_value(
+            json.get("request")
+                .ok_or(TestCaseError::MissingField("request".to_string()))?
+                .clone(),
+        )?;
 
         let principal = qjson.principal.parse()?;
         let action = qjson.action.parse()?;
@@ -1660,16 +1666,30 @@ impl TestCase {
 
         let request = Request::new(principal, action, resource, context, schema)?;
 
-        let entities = Entities::from_json_value(json["entities"].clone(), schema)?;
+        let entities = Entities::from_json_value(
+            json.get("entities")
+                .ok_or(TestCaseError::MissingField("entities".to_string()))?
+                .clone(),
+            schema,
+        )?;
 
-        let expected = match json["decision"].as_str() {
+        let decision = json
+            .get("decision")
+            .ok_or(TestCaseError::MissingField("decision".to_string()))?
+            .clone();
+        let expected = match decision.as_str() {
             Some("allow") => Decision::Allow,
             Some("deny") => Decision::Deny,
-            _ => return Err(TestCaseError::DecisionParseError(json["decision"].clone())),
+            _ => return Err(TestCaseError::DecisionParseError(decision.clone())),
         };
 
         let mut reason = Vec::new();
-        if let Some(reason_json) = json["reason"].as_array() {
+
+        if let Some(reason_json) = json
+            .get("reason")
+            .ok_or(TestCaseError::MissingField("reason".to_string()))?
+            .as_array()
+        {
             reason.extend(
                 reason_json
                     .iter()
