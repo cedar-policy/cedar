@@ -25,7 +25,7 @@ use cedar_policy_core::authorizer::Authorizer;
 use cedar_policy_core::entities::{Entities, TCComputation};
 use cedar_policy_core::evaluator::Evaluator;
 use cedar_policy_core::extensions::Extensions;
-use cedar_policy_validator::{ValidationMode, Validator, ValidatorSchema};
+use cedar_policy_core::validator::{ValidationMode, Validator, ValidatorSchema};
 use core::panic;
 use miette::miette;
 use serde::Deserialize;
@@ -360,7 +360,7 @@ impl CedarTestImplementation for RustEngine {
         let (res, dur) = time_function(|| {
             Entities::from_entities(
                 entities.iter().cloned(),
-                Some(&cedar_policy_validator::CoreSchema::new(schema)),
+                Some(&cedar_policy_core::validator::CoreSchema::new(schema)),
                 TCComputation::AssumeAlreadyComputed,
                 Extensions::all_available(),
             )

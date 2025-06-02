@@ -26,10 +26,10 @@ use cedar_policy::{Decision, PolicyId, ValidationMode};
 use cedar_policy_core::ast::{EntityUID, PolicySet, Request};
 use cedar_policy_core::entities::{self, json::err::JsonDeserializationErrorContext, Entities};
 use cedar_policy_core::extensions::Extensions;
-use cedar_policy_core::{jsonvalue::JsonValueWithNoDuplicateKeys, parser};
 #[cfg(feature = "entity-manifest")]
-use cedar_policy_validator::entity_manifest::compute_entity_manifest;
-use cedar_policy_validator::ValidatorSchema;
+use cedar_policy_core::validator::entity_manifest::compute_entity_manifest;
+use cedar_policy_core::validator::ValidatorSchema;
+use cedar_policy_core::{jsonvalue::JsonValueWithNoDuplicateKeys, parser};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
@@ -171,7 +171,7 @@ pub fn parse_entities_from_test(test: &JsonTest, schema: &ValidatorSchema) -> En
         .open(entity_file)
         .unwrap_or_else(|e| panic!("error opening entity file {}: {e}", &test.entities));
 
-    let schema = cedar_policy_validator::CoreSchema::new(schema);
+    let schema = cedar_policy_core::validator::CoreSchema::new(schema);
     let eparser = entities::EntityJsonParser::new(
         Some(&schema),
         Extensions::all_available(),
@@ -218,7 +218,7 @@ pub fn parse_request_from_test(
     );
     let resource = parse_entity_uid(json_request.resource.clone(), &error_string);
 
-    let context_schema = cedar_policy_validator::context_schema_for_action(schema, &action)
+    let context_schema = cedar_policy_core::validator::context_schema_for_action(schema, &action)
         .unwrap_or_else(|| {
             panic!(
                 "Unknown action {} for request \"{}\" in {}",
@@ -348,7 +348,7 @@ pub fn perform_integration_test(
         #[cfg(feature = "entity-manifest")]
         if should_validate {
             let entity_manifest = compute_entity_manifest(
-                &cedar_policy_validator::Validator::new(schema.clone()),
+                &cedar_policy_core::validator::Validator::new(schema.clone()),
                 policies,
             )
             .expect("test failed");
