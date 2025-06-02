@@ -38,7 +38,7 @@ pub struct Node<T> {
 
 impl<T> Node<T> {
     /// Create a new Node with the given (boxed) source location
-    #[cfg(feature = "lossy-parsing")]
+    #[cfg(feature = "raw-parsing")]
     pub fn with_source_loc(node: T, loc: Box<Loc>) -> Self {
         Node {
             node,
@@ -47,7 +47,7 @@ impl<T> Node<T> {
     }
 
     /// Create a new Node with the given source location
-    #[cfg(not(feature = "lossy-parsing"))]
+    #[cfg(not(feature = "raw-parsing"))]
     pub fn with_source_loc(node: T, loc: Loc) -> Self {
         Node {
             node,

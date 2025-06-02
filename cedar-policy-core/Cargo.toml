@@ -59,8 +59,8 @@ partial-eval = []
 tolerant-ast = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
-# Feature for lossy parsing
-lossy-parsing = []
+# Feature for raw parsing
+raw-parsing = []
 
 [build-dependencies]
 lalrpop = "0.22.2"

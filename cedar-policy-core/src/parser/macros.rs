@@ -22,11 +22,11 @@ macro_rules! maybe_loc {
         if $flag {
             None
         } else {
-            #[cfg(feature = "lossy-parsing")]
+            #[cfg(feature = "raw-parsing")]
             {
                 Some(Box::new($loc))
             }
-            #[cfg(not(feature = "lossy-parsing"))]
+            #[cfg(not(feature = "raw-parsing"))]
             {
                 Some($loc)
             }

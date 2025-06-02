@@ -8037,12 +8037,12 @@ mod test_entities_api {
     }
 }
 
-#[cfg(feature = "lossy-parsing")]
-mod lossy_parsing {
+#[cfg(feature = "raw-parsing")]
+mod raw_parsing {
     use crate::{Policy, PolicyId, PolicySet, Template};
 
     #[test]
-    fn policyset_lossy_parsing() {
+    fn policyset_raw_parsing() {
         const PSET_TEXT: &str = r#"
             forbid(principal,action,resource)
             when{ context has suspicion };
@@ -8053,21 +8053,21 @@ mod lossy_parsing {
                 resource == Album::"jane_vacation"
             );
         "#;
-        let pset = PolicySet::parse_lossy(PSET_TEXT).unwrap();
+        let pset = PolicySet::parse_raw(PSET_TEXT).unwrap();
         assert_eq!(pset.num_of_policies(), 2);
     }
 
     #[test]
-    fn policy_lossy_parsing() {
+    fn policy_raw_parsing() {
         const STATIC_POLICY_TEXT: &str = "permit(principal,action,resource);";
-        Policy::parse_lossy(Some(PolicyId::new("policy0")), STATIC_POLICY_TEXT)
+        Policy::parse_raw(Some(PolicyId::new("policy0")), STATIC_POLICY_TEXT)
             .expect("Failed to parse");
     }
 
     #[test]
-    fn template_lossy_parsing() {
+    fn template_raw_parsing() {
         const TEMPLATE_TEXT: &str = "permit(principal == ?principal,action,resource);";
-        Template::parse_lossy(Some(PolicyId::new("template0")), TEMPLATE_TEXT)
+        Template::parse_raw(Some(PolicyId::new("template0")), TEMPLATE_TEXT)
             .expect("Failed to parse");
     }
 }

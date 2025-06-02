@@ -2809,10 +2809,10 @@ impl PolicySet {
     /// code or its locations. This allows for faster parsing and reduced memory
     /// usage, but limits the ability to provide detailed error messages.
     ///
-    /// Only available with the "lossy-parsing" feature.
-    #[cfg(feature = "lossy-parsing")]
-    pub fn parse_lossy(policies: &str) -> Option<Self> {
-        let pset = parser::parse_policyset_lossy(policies).ok()?;
+    /// Only available with the "raw-parsing" feature.
+    #[cfg(feature = "raw-parsing")]
+    pub fn parse_raw(policies: &str) -> Option<Self> {
+        let pset = parser::parse_policyset_raw(policies).ok()?;
         let policies = pset
             .policies()
             .map(|p| {
@@ -3044,10 +3044,10 @@ impl Template {
     /// code or its locations. This allows for faster parsing and reduced memory
     /// usage, but limits the ability to provide detailed error messages.
     ///
-    /// Only available with the "lossy-parsing" feature.
-    #[cfg(feature = "lossy-parsing")]
-    pub fn parse_lossy(id: Option<PolicyId>, src: impl AsRef<str>) -> Result<Self, ParseErrors> {
-        let ast = parser::parse_template_lossy(id.map(Into::into), src.as_ref())?;
+    /// Only available with the "raw-parsing" feature.
+    #[cfg(feature = "raw-parsing")]
+    pub fn parse_raw(id: Option<PolicyId>, src: impl AsRef<str>) -> Result<Self, ParseErrors> {
+        let ast = parser::parse_template_raw(id.map(Into::into), src.as_ref())?;
         Ok(Self {
             ast,
             lossless: LosslessPolicy::policy_or_template_text(Some(src.as_ref())),
@@ -3759,11 +3759,11 @@ impl Policy {
     /// code or its locations. This allows for faster parsing and reduced memory
     /// usage, but limits the ability to provide detailed error messages.
     ///
-    /// Only available with the "lossy-parsing" feature.
-    #[cfg(feature = "lossy-parsing")]
-    pub fn parse_lossy(id: Option<PolicyId>, policy_src: impl AsRef<str>) -> Option<Self> {
+    /// Only available with the "raw-parsing" feature.
+    #[cfg(feature = "raw-parsing")]
+    pub fn parse_raw(id: Option<PolicyId>, policy_src: impl AsRef<str>) -> Option<Self> {
         let inline_ast =
-            parser::parse_policy_lossy(id.map(Into::into), policy_src.as_ref()).ok()?;
+            parser::parse_policy_raw(id.map(Into::into), policy_src.as_ref()).ok()?;
         let (_, ast) = ast::Template::link_static_policy(inline_ast);
         Some(Self {
             ast,

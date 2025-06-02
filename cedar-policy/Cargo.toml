@@ -66,8 +66,8 @@ extended-schema = ["cedar-policy-validator/extended-schema"]
 # release.
 deprecated-schema-compat = []
 
-# Feature for lossy parsing
-lossy-parsing = ["cedar-policy-core/lossy-parsing", "cedar-policy-validator/lossy-parsing"]
+# Feature for raw parsing
+raw-parsing = ["cedar-policy-core/raw-parsing", "cedar-policy-validator/raw-parsing"]
 
 [lib]
 # cdylib required for wasm

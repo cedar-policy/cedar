@@ -157,8 +157,8 @@ pub fn parse_ident(text: &str) -> Result<Node<Option<cst::Ident>>, err::ParseErr
 }
 
 /// Create CST for multiple policies from text, but without retaining source information
-#[cfg(feature = "lossy-parsing")]
-pub fn parse_policies_lossy(text: &str) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
+#[cfg(feature = "raw-parsing")]
+pub fn parse_policies_raw(text: &str) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
     parse_collect_errors(
         &*POLICIES_PARSER,
         grammar::PoliciesParser::parse,
@@ -168,8 +168,8 @@ pub fn parse_policies_lossy(text: &str) -> Result<Node<Option<cst::Policies>>, e
 }
 
 /// Create CST for one policy statement from text, but without retaining source information
-#[cfg(feature = "lossy-parsing")]
-pub fn parse_policy_lossy(text: &str) -> Result<Node<Option<cst::Policy>>, err::ParseErrors> {
+#[cfg(feature = "raw-parsing")]
+pub fn parse_policy_raw(text: &str) -> Result<Node<Option<cst::Policy>>, err::ParseErrors> {
     parse_collect_errors(&*POLICY_PARSER, grammar::PolicyParser::parse, true, text)
 }
 
@@ -1447,12 +1447,12 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "lossy-parsing")]
-    mod lossy_parsing {
+    #[cfg(feature = "raw-parsing")]
+    mod raw_parsing {
         use super::*;
 
         #[track_caller]
-        fn assert_parse_lossy_succeeds<T>(
+        fn assert_parse_raw_succeeds<T>(
             parse: impl FnOnce(&str) -> Result<Node<Option<T>>, err::ParseErrors>,
             text: &str,
         ) {
@@ -1464,8 +1464,8 @@ mod tests {
         #[test]
         fn comments_has() {
             // single line comments (`// ...`) are valid anywhere
-            assert_parse_lossy_succeeds(
-                parse_policy_lossy,
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
                 r#"
                     permit(principal, action,resource)
                     when{ principal //comment p
@@ -1479,8 +1479,8 @@ mod tests {
         #[test]
         fn comments_like() {
             // single line comments (`// ...`) are valid anywhere
-            assert_parse_lossy_succeeds(
-                parse_policy_lossy,
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
                 r#"
                     permit(principal, action,resource)
                     when{ principal //comment p
@@ -1495,8 +1495,8 @@ mod tests {
         #[test]
         fn comments_and() {
             // single line comments (`// ...`) are valid anywhere
-            assert_parse_lossy_succeeds(
-                parse_policy_lossy,
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
                 r#"
                     permit(principal, action,resource)
                     when{ 1 //comment p
@@ -1511,8 +1511,8 @@ mod tests {
         #[test]
         fn comments_or() {
             // single line comments (`// ...`) are valid anywhere
-            assert_parse_lossy_succeeds(
-                parse_policy_lossy,
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
                 r#"
                     permit(principal, action,resource)
                     when{ 1 //comment 1
@@ -1529,8 +1529,8 @@ mod tests {
         #[test]
         fn comments_add() {
             // single line comments (`// ...`) are valid anywhere
-            assert_parse_lossy_succeeds(
-                parse_policy_lossy,
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
                 r#"
                     permit(principal, action,resource)
                     when{ 1 //comment 1
@@ -1547,8 +1547,8 @@ mod tests {
         #[test]
         fn comments_paren() {
             // single line comments (`// ...`) are valid anywhere
-            assert_parse_lossy_succeeds(
-                parse_policy_lossy,
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
                 r#"
                     permit(principal, action,resource)
                     when{
@@ -1565,8 +1565,8 @@ mod tests {
         #[test]
         fn comments_set() {
             // single line comments (`// ...`) are valid anywhere
-            assert_parse_lossy_succeeds(
-                parse_policy_lossy,
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
                 r#"
                     permit(principal, action,resource)
                     when{
@@ -1595,8 +1595,8 @@ mod tests {
         #[test]
         fn comments_if() {
             // single line comments (`// ...`) are valid anywhere
-            assert_parse_lossy_succeeds(
-                parse_policy_lossy,
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
                 r#"
                     permit(principal, action,resource)
                     when{
@@ -1620,8 +1620,8 @@ mod tests {
         #[test]
         fn comments_member_access() {
             // single line comments (`// ...`) are valid anywhere
-            assert_parse_lossy_succeeds(
-                parse_policy_lossy,
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
                 r#"
                     permit(principal, action,resource)
                     when{ principal. //comment .
@@ -1634,8 +1634,8 @@ mod tests {
         #[test]
         fn comments_principal() {
             // single line comments (`// ...`) are valid anywhere
-            assert_parse_lossy_succeeds(
-                parse_policy_lossy,
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
                 r#"
                     permit(principal //comment 1
                     ==
@@ -1649,8 +1649,8 @@ mod tests {
         #[test]
         fn comments_annotation() {
             // single line comments (`// ...`) are valid anywhere
-            assert_parse_lossy_succeeds(
-                parse_policy_lossy,
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
                 r#"
                 //comment policy
                 // comment policy 2
@@ -1668,8 +1668,8 @@ mod tests {
         #[test]
         fn comments_policy() {
             // single line comments (`// ...`) are valid anywhere
-            assert_parse_lossy_succeeds(
-                parse_policy_lossy,
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
                 r#"
                     //comment policy 1
                     //comment policy 2
@@ -1699,13 +1699,13 @@ mod tests {
                         one.two
                     };
                 "#;
-            assert_parse_fails(parse_policy_lossy, src);
+            assert_parse_fails(parse_policy_raw, src);
         }
 
         #[test]
         fn multiple_policies() {
-            assert_parse_lossy_succeeds(
-                parse_policies_lossy,
+            assert_parse_raw_succeeds(
+                parse_policies_raw,
                 r#"
                     permit(
                         principal in Group::"jane_friends",  // Policy c1

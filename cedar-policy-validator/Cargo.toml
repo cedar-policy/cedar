@@ -53,8 +53,8 @@ tolerant-ast = ["cedar-policy-core/tolerant-ast"]
 experimental = ["tolerant-ast", "extended-schema"]
 extended-schema = []
 
-# Feature for lossy parsing
-lossy-parsing = ["cedar-policy-core/lossy-parsing"]
+# Feature for raw parsing
+raw-parsing = ["cedar-policy-core/raw-parsing"]
 
 [dev-dependencies]
 similar-asserts = "1.7.0"

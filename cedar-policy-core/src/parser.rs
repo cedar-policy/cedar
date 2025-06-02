@@ -55,9 +55,9 @@ pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
 }
 
 /// Like [`parse_policyset`], but without retaining source information.
-#[cfg(feature = "lossy-parsing")]
-pub fn parse_policyset_lossy(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
-    let cst = text_to_cst::parse_policies_lossy(text)?;
+#[cfg(feature = "raw-parsing")]
+pub fn parse_policyset_raw(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
+    let cst = text_to_cst::parse_policies_raw(text)?;
     cst.to_policyset()
 }
 
@@ -157,13 +157,13 @@ pub fn parse_template(
 }
 
 /// Like [`parse_template`], but without retaining source information.
-#[cfg(feature = "lossy-parsing")]
-pub fn parse_template_lossy(
+#[cfg(feature = "raw-parsing")]
+pub fn parse_template_raw(
     id: Option<ast::PolicyID>,
     text: &str,
 ) -> Result<ast::Template, err::ParseErrors> {
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
-    let cst = text_to_cst::parse_policy_lossy(text)?;
+    let cst = text_to_cst::parse_policy_raw(text)?;
     let template = cst.to_template(id)?;
     validate_template_has_slots(template, cst)
 }
@@ -182,13 +182,13 @@ pub fn parse_policy(
 }
 
 /// Like [`parse_policy`], but without retaining source information.
-#[cfg(feature = "lossy-parsing")]
-pub fn parse_policy_lossy(
+#[cfg(feature = "raw-parsing")]
+pub fn parse_policy_raw(
     id: Option<ast::PolicyID>,
     text: &str,
 ) -> Result<ast::StaticPolicy, err::ParseErrors> {
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
-    let cst = text_to_cst::parse_policy_lossy(text)?;
+    let cst = text_to_cst::parse_policy_raw(text)?;
     cst.to_policy(id)
 }
 
