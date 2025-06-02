@@ -3755,6 +3755,7 @@ impl Policy {
     /// This can fail if the policy fails to parse.
     /// It can also fail if a template was passed in, as this function only accepts static
     /// policies.
+    ///
     /// Similar to [`Policy::parse`], but does not retain the original source
     /// code or its locations. This allows for faster parsing and reduced memory
     /// usage, but limits the ability to provide detailed error messages.
