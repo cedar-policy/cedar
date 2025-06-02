@@ -17,14 +17,14 @@
 #![allow(clippy::use_self)]
 
 use super::models;
+use cedar_policy_core::validator::types;
 use cedar_policy_core::{ast, parser::IntoMaybeLoc};
-use cedar_policy_validator::types;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap};
 
-impl From<&cedar_policy_validator::ValidatorSchema> for models::Schema {
-    fn from(v: &cedar_policy_validator::ValidatorSchema) -> Self {
+impl From<&cedar_policy_core::validator::ValidatorSchema> for models::Schema {
+    fn from(v: &cedar_policy_core::validator::ValidatorSchema) -> Self {
         Self {
             entity_decls: v.entity_types().map(models::EntityDecl::from).collect(),
             action_decls: v.action_ids().map(models::ActionDecl::from).collect(),
@@ -32,42 +32,42 @@ impl From<&cedar_policy_validator::ValidatorSchema> for models::Schema {
     }
 }
 
-impl From<&models::Schema> for cedar_policy_validator::ValidatorSchema {
+impl From<&models::Schema> for cedar_policy_core::validator::ValidatorSchema {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &models::Schema) -> Self {
         Self::new(
             v.entity_decls
                 .iter()
-                .map(cedar_policy_validator::ValidatorEntityType::from),
+                .map(cedar_policy_core::validator::ValidatorEntityType::from),
             v.action_decls
                 .iter()
-                .map(cedar_policy_validator::ValidatorActionId::from),
+                .map(cedar_policy_core::validator::ValidatorActionId::from),
         )
     }
 }
 
-impl From<&cedar_policy_validator::ValidationMode> for models::ValidationMode {
+impl From<&cedar_policy_core::validator::ValidationMode> for models::ValidationMode {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::unimplemented)]
-    fn from(v: &cedar_policy_validator::ValidationMode) -> Self {
+    fn from(v: &cedar_policy_core::validator::ValidationMode) -> Self {
         match v {
-            cedar_policy_validator::ValidationMode::Strict => models::ValidationMode::Strict,
-            cedar_policy_validator::ValidationMode::Permissive => {
+            cedar_policy_core::validator::ValidationMode::Strict => models::ValidationMode::Strict,
+            cedar_policy_core::validator::ValidationMode::Permissive => {
                 models::ValidationMode::Permissive
             }
             #[cfg(feature = "partial-validate")]
-            cedar_policy_validator::ValidationMode::Partial => unimplemented!(),
+            cedar_policy_core::validator::ValidationMode::Partial => unimplemented!(),
         }
     }
 }
 
-impl From<&models::ValidationMode> for cedar_policy_validator::ValidationMode {
+impl From<&models::ValidationMode> for cedar_policy_core::validator::ValidationMode {
     fn from(v: &models::ValidationMode) -> Self {
         match v {
-            models::ValidationMode::Strict => cedar_policy_validator::ValidationMode::Strict,
+            models::ValidationMode::Strict => cedar_policy_core::validator::ValidationMode::Strict,
             models::ValidationMode::Permissive => {
-                cedar_policy_validator::ValidationMode::Permissive
+                cedar_policy_core::validator::ValidationMode::Permissive
             }
         }
     }
@@ -75,10 +75,10 @@ impl From<&models::ValidationMode> for cedar_policy_validator::ValidationMode {
 
 // PANIC SAFETY: experimental feature
 #[allow(clippy::fallible_impl_from)]
-impl From<&cedar_policy_validator::ValidatorActionId> for models::ActionDecl {
+impl From<&cedar_policy_core::validator::ValidatorActionId> for models::ActionDecl {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::panic)]
-    fn from(v: &cedar_policy_validator::ValidatorActionId) -> Self {
+    fn from(v: &cedar_policy_core::validator::ValidatorActionId) -> Self {
         debug_assert_eq!(
             v.attribute_types().keys().collect::<Vec<&SmolStr>>(),
             Vec::<&SmolStr>::new(),
@@ -106,7 +106,7 @@ impl From<&cedar_policy_validator::ValidatorActionId> for models::ActionDecl {
     }
 }
 
-impl From<&models::ActionDecl> for cedar_policy_validator::ValidatorActionId {
+impl From<&models::ActionDecl> for cedar_policy_core::validator::ValidatorActionId {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &models::ActionDecl) -> Self {
@@ -128,21 +128,21 @@ impl From<&models::ActionDecl> for cedar_policy_validator::ValidatorActionId {
     }
 }
 
-impl From<&cedar_policy_validator::ValidatorEntityType> for models::EntityDecl {
-    fn from(v: &cedar_policy_validator::ValidatorEntityType) -> Self {
+impl From<&cedar_policy_core::validator::ValidatorEntityType> for models::EntityDecl {
+    fn from(v: &cedar_policy_core::validator::ValidatorEntityType) -> Self {
         let name = Some(models::Name::from(v.name()));
         let descendants = v.descendants.iter().map(models::Name::from).collect();
         let attributes = attributes_to_model(v.attributes());
         let tags = v.tag_type().map(models::Type::from);
         match &v.kind {
-            cedar_policy_validator::ValidatorEntityTypeKind::Standard(_) => Self {
+            cedar_policy_core::validator::ValidatorEntityTypeKind::Standard(_) => Self {
                 name,
                 descendants,
                 attributes,
                 tags,
                 enum_choices: vec![],
             },
-            cedar_policy_validator::ValidatorEntityTypeKind::Enum(enum_choices) => Self {
+            cedar_policy_core::validator::ValidatorEntityTypeKind::Enum(enum_choices) => Self {
                 name,
                 descendants,
                 attributes,
@@ -153,7 +153,7 @@ impl From<&cedar_policy_validator::ValidatorEntityType> for models::EntityDecl {
     }
 }
 
-impl From<&models::EntityDecl> for cedar_policy_validator::ValidatorEntityType {
+impl From<&models::EntityDecl> for cedar_policy_core::validator::ValidatorEntityType {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::expect_used)]
     fn from(v: &models::EntityDecl) -> Self {
