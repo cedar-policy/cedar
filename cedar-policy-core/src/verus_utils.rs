@@ -166,6 +166,14 @@ pub open spec fn seq_filter_map_option<A, B>(s: Seq<A>, f: spec_fn(A) -> Option<
      .map_values(|x: Option<B>| x.unwrap())
 }
 
+// Like `seq_filter_map_option` but operating on Sets instead
+pub open spec fn set_filter_map_option<A, B>(s: Set<A>, f: spec_fn(A) -> Option<B>) -> Set<B> {
+    s.map(f)
+     .filter(|x: Option<B>| x is Some)
+     .map(|x: Option<B>| x.unwrap())
+}
+
+
 } // verus!
 
 // Helper lemmas (should be in vstd)
@@ -216,5 +224,48 @@ pub proof fn lemma_set_to_seq_to_set<T>(set: Set<T>)
         );
     }
 }
+
+pub proof fn lemma_seq_set_map<A,B>(st: Set<A>, sq: Seq<A>, f: spec_fn(A) -> B)
+    requires
+        st.finite(),
+        st == sq.to_set(),
+    ensures
+        st.map(f) == sq.map_values(f).to_set(),
+    decreases st.len()
+{
+    admit()
+}
+
+pub proof fn lemma_seq_set_filter<A>(st: Set<A>, sq: Seq<A>, f: spec_fn(A) -> bool)
+    requires
+        st.finite(),
+        st == sq.to_set(),
+    ensures
+        st.filter(f) == sq.filter(f).to_set(),
+{
+    admit()
+}
+
+
+pub proof fn lemma_seq_set_filter_map_option<A, B>(st: Set<A>, f: spec_fn(A) -> Option<B>)
+    requires
+        st.finite(),
+    ensures
+        set_filter_map_option(st,f) == seq_filter_map_option(st.to_seq(), f).to_set(),
+    decreases st.len(),
+{
+    let sq = st.to_seq();
+    assert(st == sq.to_set()) by { lemma_set_to_seq_to_set(st) };
+    lemma_seq_set_map(st, sq, f);
+    let st_map = st.map(f);
+    let sq_map = sq.map_values(f);
+    lemma_seq_set_filter(st_map, sq_map, |x: Option<B>| x is Some);
+    let st_map_filter = st_map.filter(|x: Option<B>| x is Some);
+    let sq_map_filter = sq_map.filter(|x: Option<B>| x is Some);
+    lemma_seq_set_map(st_map_filter, sq_map_filter, |x: Option<B>| x.unwrap());
+}
+
+
+
 
 } // verus!

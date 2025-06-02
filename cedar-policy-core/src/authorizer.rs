@@ -41,8 +41,7 @@ pub use partial_response::PartialResponse;
 
 use crate::spec::{spec_ast, spec_authorizer, spec_evaluator};
 use crate::verus_utils::*;
-use vstd::prelude::*;
-use vstd::std_specs::hash::*;
+use vstd::{prelude::*, seq_lib::*, std_specs::hash::*};
 
 verus! {
 
@@ -99,7 +98,7 @@ impl Authorizer {
     pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> (response: Response)
         ensures
             //response@ == spec_authorizer::is_authorized(q@, entities@, pset@)
-            response@.decision == spec_authorizer::is_authorized(q@, entities@, pset@).decision // ignoring determining_policies for now
+            response@.decision == spec_authorizer::is_authorized(q@, entities@, pset.view_as_seq()).decision // ignoring determining_policies for now
     {
         let eval = Evaluator::new(q.clone(), entities, self.extensions);
 
@@ -111,14 +110,19 @@ impl Authorizer {
         // Verus well-formedness assumptions for HashMap
         proof { assume(obeys_key_model::<PolicyID>() && builds_valid_hashers::<std::hash::RandomState>()) }
         let policies_iter = pset.policies_iter();
-        for p in policies_seq: policies_iter
+        for p in policies_ghost_iter: policies_iter
             invariant
                 eval@.request == q@,
                 eval@.entities == entities@,
+                ({
+                    let (policies_idx, policies_seq) = policies_iter@;
+                    policies_ghost_iter@ == policies_seq.take(policies_ghost_iter.pos)
+                }),
+                // TODO: use a quantifier here somehow?
                 satisfied_permits@.map_values(|p:PolicyID| p@).to_set()
-                    == spec_authorizer::satisfied_policies(spec_ast::Effect::Permit, policies_seq@.map_values(|p:Policy| p@), q@, entities@),
+                    == spec_authorizer::satisfied_policies(spec_ast::Effect::Permit, policies_ghost_iter@.map_values(|p:Policy| p@), q@, entities@),
                 satisfied_forbids@.map_values(|p:PolicyID| p@).to_set()
-                    == spec_authorizer::satisfied_policies(spec_ast::Effect::Forbid, policies_seq@.map_values(|p:Policy| p@), q@, entities@),
+                    == spec_authorizer::satisfied_policies(spec_ast::Effect::Forbid, policies_ghost_iter@.map_values(|p:Policy| p@), q@, entities@),
         {
             let id = p.id().clone();
             assert(id@ == p@.id);
@@ -150,32 +154,38 @@ impl Authorizer {
                     //     id: id.clone(),
                     //     error: e,
                     // });
-                    let satisfied = match self.error_handling {
-                        ErrorHandling::Skip => false,
-                    };
-                    // TODO(pratap): make sure this branch is reflected in the loop invariant
-                    match (satisfied, p.effect()) {
-                        (true, Effect::Permit) => satisfied_permits.push(id),
-                        (true, Effect::Forbid) => satisfied_forbids.push(id),
-                        _ => {},
-                        // (false, Effect::Permit) => {
-                        //     false_permits.push((id, (ErrorState::Error, annotations)))
-                        // }
-                        // (false, Effect::Forbid) => {
-                        //     false_forbids.push((id, (ErrorState::Error, annotations)))
-                        // }
-                    }
+
+                    // // Since Cedar currently only supports `ErrorHandling::Skip`, we never push to `satisfied_permits`
+                    // // or `satisfied_forbids` in this error case; so we can just
+                    // let satisfied = match self.error_handling {
+                    //     ErrorHandling::Skip => false,
+                    // };
+                    // match (satisfied, p.effect()) {
+                    //     (true, Effect::Permit) => satisfied_permits.push(id),
+                    //     (true, Effect::Forbid) => satisfied_forbids.push(id),
+                    //     _ => {},
+                    //     (false, Effect::Permit) => {
+                    //         false_permits.push((id, (ErrorState::Error, annotations)))
+                    //     }
+                    //     (false, Effect::Forbid) => {
+                    //         false_forbids.push((id, (ErrorState::Error, annotations)))
+                    //     }
+                    // }
                 }
-            }
+            };
         }
 
         // TODO: need some lemmas to the effect of vec_is_empty(v) <==> v@.to_set().is_empty
 
         if !vec_is_empty(&satisfied_permits) && vec_is_empty(&satisfied_forbids) {
-            reveal(spec_authorizer::satisfied_policies);
-            reveal(spec_authorizer::is_authorized);
-            assert(!spec_authorizer::satisfied_policies(spec_ast::Effect::Permit, pset@, q@, entities@).is_empty());
-            assert(spec_authorizer::satisfied_policies(spec_ast::Effect::Forbid, pset@, q@, entities@).is_empty());
+            proof {
+                reveal(spec_authorizer::satisfied_policies);
+                reveal(spec_authorizer::is_authorized);
+                satisfied_permits@.map_values(|p:PolicyID| p@).lemma_cardinality_of_empty_set_is_0();
+                satisfied_forbids@.map_values(|p:PolicyID| p@).lemma_cardinality_of_empty_set_is_0();
+                assert(!spec_authorizer::satisfied_policies(spec_ast::Effect::Permit, pset.view_as_seq(), q@, entities@).is_empty());
+                assert(spec_authorizer::satisfied_policies(spec_ast::Effect::Forbid, pset.view_as_seq(), q@, entities@).is_empty());
+            }
             Response::new_no_errors(
                 Decision::Allow,
                 hash_set_from_vec(satisfied_permits),
@@ -185,8 +195,8 @@ impl Authorizer {
             reveal(spec_authorizer::satisfied_policies);
             reveal(spec_authorizer::is_authorized);
             assert({
-                ||| spec_authorizer::satisfied_policies(spec_ast::Effect::Permit, pset@, q@, entities@).is_empty()
-                ||| !spec_authorizer::satisfied_policies(spec_ast::Effect::Forbid, pset@, q@, entities@).is_empty()
+                ||| spec_authorizer::satisfied_policies(spec_ast::Effect::Permit, pset.view_as_seq(), q@, entities@).is_empty()
+                ||| !spec_authorizer::satisfied_policies(spec_ast::Effect::Forbid, pset.view_as_seq(), q@, entities@).is_empty()
             });
             Response::new_no_errors(
                 Decision::Deny,

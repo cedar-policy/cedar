@@ -57,12 +57,19 @@ pub struct PolicySet {
 }
 
 impl View for PolicySet {
-    type V = spec_ast::Policies;
+    type V = Set<spec_ast::Policy>;
 
-    closed spec fn view(&self) -> spec_ast::Policies {
-        self.links.view().values().map(|p: Policy| p.view()).to_seq()
+    closed spec fn view(&self) -> Set<spec_ast::Policy> {
+        self.links.view().values().map(|p: Policy| p.view())
     }
 }
+
+impl PolicySet {
+    pub open spec fn view_as_seq(&self) -> spec_ast::Policies {
+        self.view().to_seq()
+    }
+}
+
 
 }
 
@@ -585,21 +592,29 @@ impl PolicySet {
     verus! {
 
     /// Like `PolicySet::policies()` but explicit about the value type for Verus
-    // #[verifier::external_body]
     pub fn policies_iter(&self) -> (policies: std::collections::hash_map::Values<'_, PolicyID, Policy>)
         requires obeys_key_model::<PolicyID>() && builds_valid_hashers::<std::hash::RandomState>()
         ensures ({
             let (policies_idx, policies_seq) = policies@;
-            policies_idx == 0 && policies_seq.to_set().map(|p: Policy| p.view()) == self.view().to_set()
+            &&& policies_idx == 0
+            &&& policies_seq.to_set().map(|p: Policy| p.view()) == self.view()
+            &&& forall |p: Policy| #[trigger] policies_seq.contains(p) ==> #[trigger] self.view().contains(p@)
         }),
     {
         let policies = self.links.values();
         proof {
             let (policies_idx, policies_seq) = policies@;
-            let policies_iter_view = policies_seq.to_set().map(|p: Policy| p.view());
             vstd::seq_lib::seq_to_set_is_finite(policies_seq);
-            lemma_set_map_finite_stays_finite(policies_seq.to_set(), |p: Policy| p.view());
-            lemma_set_to_seq_to_set(self.links.view().values().map(|p: Policy| p.view()));
+            assert(policies_seq.to_set().map(|p: Policy| p.view()) == self.view());
+            assert forall |p: Policy| #[trigger] policies_seq.contains(p) implies #[trigger] self.view().contains(p@) by {
+                assert(policies_seq.to_set().contains(p));
+                assert(policies_seq.to_set().map(|p:Policy| p.view()).contains(p@));
+                assert(self.view().contains(p@));
+            };
+            // assert forall |p: Policy| #[trigger] self.view().contains(p@) implies #[trigger] policies_seq.contains(p) by {
+            //     assert(policies_seq.to_set().map(|p:Policy| p.view()).contains(p@));
+            //     assert(policies_seq.to_set().contains(p));
+            // }
         }
         policies
     }

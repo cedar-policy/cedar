@@ -91,3 +91,27 @@ pub open spec fn is_authorized(req: Request, entities: Entities, policies: Polic
 }
 
 }
+
+/////////////////////zzzzzz/////////////////////////////
+// Helper definitions and lemmas about the authorizer //
+///////////////////////////zzzzzz///////////////////////
+
+verus! {
+
+/// Like `satisfied_policies`, but starting from a `Set<Policy>`, not `Policies` (which is `Seq<Policy>`)
+#[verifier::opaque]
+pub open spec fn satisfied_policies_from_set(effect: Effect, policy_set: Set<Policy>, req: Request, entities: Entities) -> Set<PolicyID> {
+    set_filter_map_option(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities))
+}
+
+pub proof fn lemma_satisfied_policies_from_set(effect: Effect, policy_set: Set<Policy>, req: Request, entities: Entities)
+    requires policy_set.finite()
+    ensures satisfied_policies_from_set(effect, policy_set, req, entities) == satisfied_policies(effect, policy_set.to_seq(), req, entities)
+{
+    reveal(satisfied_policies);
+    reveal(satisfied_policies_from_set);
+    lemma_seq_set_filter_map_option(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities))
+}
+
+
+}
