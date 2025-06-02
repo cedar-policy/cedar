@@ -2800,6 +2800,52 @@ impl PolicySet {
             }
         }
     }
+
+    /// Attempt to parse a [`PolicySet`] from source, without retaining source information.
+    ///
+    /// Policy ids will default to "policy*" with numbers from 0.
+    /// If you load more policies, do not use the default id, or there will be conflicts.
+    ///
+    /// See [`Policy`] for more.
+    ///
+    /// Similar to [`PolicySet::from_str`], but does not retain the original source
+    /// code or its locations. This allows for faster parsing and reduced memory
+    /// usage, but limits the ability to provide detailed error messages.
+    ///
+    /// Only available with the "raw-parsing" feature.
+    #[cfg(feature = "raw-parsing")]
+    pub fn parse_raw(policies: &str) -> Option<Self> {
+        let pset = parser::parse_policyset_raw(policies).ok()?;
+        let policies = pset
+            .policies()
+            .map(|p| {
+                (
+                    PolicyId::new(p.id().clone()),
+                    Policy {
+                        lossless: LosslessPolicy::policy_or_template_text(None::<&str>),
+                        ast: p.clone(),
+                    },
+                )
+            })
+            .collect();
+        let templates = pset
+            .templates()
+            .map(|t| {
+                (
+                    PolicyId::new(t.id().clone()),
+                    Template {
+                        lossless: LosslessPolicy::policy_or_template_text(None::<&str>),
+                        ast: t.clone(),
+                    },
+                )
+            })
+            .collect();
+        Some(Self {
+            ast: pset,
+            policies,
+            templates,
+        })
+    }
 }
 
 impl std::fmt::Display for PolicySet {
@@ -2988,6 +3034,26 @@ impl Template {
     /// The behavior around None may change in the future.
     pub fn parse(id: Option<PolicyId>, src: impl AsRef<str>) -> Result<Self, ParseErrors> {
         let ast = parser::parse_template(id.map(Into::into), src.as_ref())?;
+        Ok(Self {
+            ast,
+            lossless: LosslessPolicy::policy_or_template_text(Some(src.as_ref())),
+        })
+    }
+
+    /// Attempt to parse a [`Template`] from source, without retaining source information.
+    /// Returns `None` if the input is a static policy (i.e., has no slots).
+    /// If `id` is Some, then the resulting template will have that `id`.
+    /// If the `id` is None, the parser will use the default "policy0".
+    /// The behavior around None may change in the future.
+    ///
+    /// Similar to [`Template::parse`], but does not retain the original source
+    /// code or its locations. This allows for faster parsing and reduced memory
+    /// usage, but limits the ability to provide detailed error messages.
+    ///
+    /// Only available with the "raw-parsing" feature.
+    #[cfg(feature = "raw-parsing")]
+    pub fn parse_raw(id: Option<PolicyId>, src: impl AsRef<str>) -> Result<Self, ParseErrors> {
+        let ast = parser::parse_template_raw(id.map(Into::into), src.as_ref())?;
         Ok(Self {
             ast,
             lossless: LosslessPolicy::policy_or_template_text(Some(src.as_ref())),
@@ -3685,6 +3751,30 @@ impl Policy {
                 }
             }
         }
+    }
+
+    /// Attempt to parse a [`Policy`] from source, without retaining source information.
+    /// If `id` is Some, the policy will be given that Policy Id.
+    /// If `id` is None, then "policy0" will be used.
+    /// The behavior around None may change in the future.
+    ///
+    /// This can fail if the policy fails to parse.
+    /// It can also fail if a template was passed in, as this function only accepts static
+    /// policies.
+    ///
+    /// Similar to [`Policy::parse`], but does not retain the original source
+    /// code or its locations. This allows for faster parsing and reduced memory
+    /// usage, but limits the ability to provide detailed error messages.
+    ///
+    /// Only available with the "raw-parsing" feature.
+    #[cfg(feature = "raw-parsing")]
+    pub fn parse_raw(id: Option<PolicyId>, policy_src: impl AsRef<str>) -> Option<Self> {
+        let inline_ast = parser::parse_policy_raw(id.map(Into::into), policy_src.as_ref()).ok()?;
+        let (_, ast) = ast::Template::link_static_policy(inline_ast);
+        Some(Self {
+            ast,
+            lossless: LosslessPolicy::policy_or_template_text(Some(policy_src.as_ref())),
+        })
     }
 
     /// Get all the unknown entities from the policy

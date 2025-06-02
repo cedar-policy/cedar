@@ -64,8 +64,8 @@ wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 experimental = ["tolerant-ast", "extended-schema", "entity-manifest", "partial-validate", "partial-eval"]
 extended-schema = []
 
-# Feature for fast parsing
-fast-parsing = []
+# Feature for raw parsing
+raw-parsing = []
 
 [build-dependencies]
 lalrpop = "0.22.2"
