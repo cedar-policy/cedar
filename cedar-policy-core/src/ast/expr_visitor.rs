@@ -26,7 +26,7 @@ use smol_str::SmolStr;
 pub trait ExprVisitor {
     /// The output type for this visitor.
     ///
-    /// By default, one a `visit_*` function returns `Some`, this visitor will
+    /// By default, once a `visit_*` function returns `Some`, this visitor will
     /// return that value from `visit_expr`.
     type Output;
 
