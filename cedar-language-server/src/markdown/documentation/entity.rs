@@ -1,0 +1,176 @@
+use std::{collections::BTreeSet, fmt::Display, ops::Deref};
+
+use cedar_policy_core::ast::{EntityType, EntityUID};
+use cedar_policy_core::validator::ValidatorSchema;
+
+use crate::{
+    markdown::{MarkdownBuilder, ToDocumentationString},
+    policy::{cedar::EntityTypeKind, format_attributes},
+};
+
+pub(crate) struct EntityTypeDocumentation<'a> {
+    et: &'a EntityType,
+    formatted_attributes: Option<String>,
+}
+
+impl<'a> EntityTypeDocumentation<'a> {
+    pub(crate) fn new<S>(et: &EntityType, schema: S) -> EntityTypeDocumentation<'_>
+    where
+        S: for<'b> Into<Option<&'a ValidatorSchema>>,
+    {
+        if let Some(schema_type) = schema.into().and_then(|schema| schema.get_entity_type(et)) {
+            let attrs = schema_type.attributes();
+            if !attrs.keys().count() > 0 {
+                let attrs = format_attributes(attrs);
+                return EntityTypeDocumentation {
+                    et,
+                    formatted_attributes: Some(attrs),
+                };
+            }
+        }
+        EntityTypeDocumentation {
+            et,
+            formatted_attributes: None,
+        }
+    }
+}
+
+impl ToDocumentationString for EntityTypeDocumentation<'_> {
+    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
+        let mut builder = MarkdownBuilder::new();
+        builder
+            .header("Type")
+            .paragraph(&format!("Entity Type: `{}`", self.et));
+
+        if let Some(attrs) = &self.formatted_attributes {
+            builder
+                .paragraph("Attributes:")
+                .code_block("cedarschema", attrs);
+        }
+
+        builder.build()
+    }
+}
+
+impl ToDocumentationString for EntityType {
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
+        let mut builder = MarkdownBuilder::new();
+        builder
+            .header("Type")
+            .paragraph(&format!("Entity Type: `{self}`"));
+
+        if let Some(schema_type) = schema.and_then(|schema| schema.get_entity_type(self)) {
+            let attrs = schema_type.attributes();
+            if !attrs.keys().count() > 0 {
+                builder
+                    .paragraph("Attributes:")
+                    .code_block("cedarschema", &format_attributes(attrs));
+            }
+        }
+
+        builder.build()
+    }
+}
+
+impl ToDocumentationString for EntityUID {
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
+        let mut builder = MarkdownBuilder::new();
+        builder
+            .header("Entity")
+            .paragraph(&format!("Entity: `{self}`"))
+            .paragraph(&format!("Type: `{}`", self.entity_type()));
+
+        if let Some(schema) = schema {
+            if let Some(schema_type) = schema.get_entity_type(self.entity_type()) {
+                let attrs = schema_type.attributes();
+                if !attrs.keys().count() > 0 {
+                    builder
+                        .paragraph("Available Attributes:")
+                        .code_block("cedarschema", &format_attributes(attrs));
+                }
+            }
+        }
+
+        builder.build()
+    }
+}
+
+impl<D> ToDocumentationString for BTreeSet<D>
+where
+    D: Deref<Target = EntityType> + Display,
+{
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
+        if self.is_empty() {
+            return String::new();
+        }
+
+        if self.len() == 1 {
+            return self.iter().next().unwrap().to_documentation_string(schema);
+        }
+
+        let mut builder = MarkdownBuilder::new();
+        builder
+            .header("Possible Types")
+            .paragraph("This entity can be any of the following entity types:");
+
+        for entity_type in self {
+            builder.header(&format!("Type: `{entity_type}`"));
+
+            // Add attribute information for each type if schema is available
+            if let Some(schema_type) = schema.and_then(|schema| schema.get_entity_type(entity_type))
+            {
+                let attrs = schema_type.attributes();
+                if !attrs.keys().count() > 0 {
+                    builder
+                        .paragraph("Attributes:")
+                        .code_block("cedarschema", &format_attributes(attrs));
+                }
+            }
+        }
+        builder.build()
+    }
+}
+
+impl ToDocumentationString for EntityTypeKind {
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
+        match self {
+            Self::Concrete(entity_type) => {
+                EntityTypeDocumentation::new(entity_type, schema).to_documentation_string(schema)
+            }
+            Self::Set(set) => set.to_documentation_string(schema),
+            Self::Any => {
+                let Some(schema) = schema else {
+                    let mut builder = MarkdownBuilder::new();
+                    builder.paragraph("*Schema not available - any entity permitted*");
+                    return builder.build();
+                };
+                let set = schema
+                    .entity_types()
+                    .map(cedar_policy_core::validator::ValidatorEntityType::name)
+                    .collect::<BTreeSet<_>>();
+
+                set.to_documentation_string(Some(schema))
+            }
+            Self::AnyPrincipal => {
+                let Some(schema) = schema else {
+                    let mut builder = MarkdownBuilder::new();
+                    builder.paragraph("*Schema not available - any principal permitted*");
+                    return builder.build();
+                };
+                let set = schema.principals().collect::<BTreeSet<_>>();
+
+                set.to_documentation_string(Some(schema))
+            }
+            Self::AnyResource => {
+                let Some(schema) = schema else {
+                    let mut builder = MarkdownBuilder::new();
+                    builder.paragraph("*Schema not available - any resource permitted*");
+                    return builder.build();
+                };
+                let set = schema.resources().collect::<BTreeSet<_>>();
+
+                set.to_documentation_string(Some(schema))
+            }
+        }
+    }
+}

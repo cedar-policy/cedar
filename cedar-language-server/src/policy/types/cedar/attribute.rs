@@ -1,0 +1,164 @@
+use std::{collections::BTreeMap, fmt::Display, hash::Hash, sync::Arc};
+
+use cedar_policy_core::validator::{types::AttributeType, ValidatorSchema};
+use smol_str::SmolStr;
+
+use crate::markdown::ToDocumentationString;
+
+use super::CedarTypeKind;
+
+/// Represents a record type in the Cedar type system.
+///
+/// A record is a collection of named attributes with potentially different types.
+/// In Cedar policies, records can appear in several contexts:
+/// - As literal values: `{ "name": "Alice", "age": 30 }`
+/// - As attribute values of entities or context objects
+/// - As intermediate results of expressions
+///
+/// This structure maintains a mapping from attribute names to their type information,
+/// which is used for type checking and providing auto-completion suggestions.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct Record {
+    /// The mapping of attribute names to their attribute information.
+    ///
+    /// This field stores all attributes available on the record, including
+    /// their types, required, and source locations.
+    pub(crate) attrs: Arc<BTreeMap<SmolStr, Attribute>>,
+}
+
+impl Record {
+    #[must_use]
+    pub(crate) fn attr(&self, attr: &str) -> Option<&Attribute> {
+        self.attrs.get(attr)
+    }
+}
+
+impl From<Arc<BTreeMap<SmolStr, Attribute>>> for Record {
+    fn from(value: Arc<BTreeMap<SmolStr, Attribute>>) -> Self {
+        Self { attrs: value }
+    }
+}
+
+/// Represents metadata about an attribute in the Cedar type system.
+///
+/// Attributes are named properties that can be accessed on entities, records,
+/// and context objects in Cedar policies. This structure captures information
+/// about an attribute's name, type, whether it's required, and its location
+/// in the source code.
+///
+/// Attributes appear in Cedar policies in expressions like:
+/// - `principal.department`
+/// - `resource has owner`
+#[derive(Debug, Clone)]
+pub(crate) struct Attribute {
+    /// The name of the attribute.
+    name: String,
+    /// Whether the attribute is required to be present on its parent object.
+    ///
+    /// Required attributes must always have a value, while optional attributes
+    /// might not be present.
+    required: bool,
+    /// The Cedar type of the attribute's value, if known.
+    ///
+    /// This represents what kind of value the attribute holds and is used
+    /// for type checking and auto-completion of nested expressions.
+    cedar_type: Option<CedarTypeKind>,
+}
+
+impl PartialEq for Attribute {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.required == other.required
+            && self.cedar_type == other.cedar_type
+    }
+}
+
+impl Eq for Attribute {}
+
+impl Hash for Attribute {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.required.hash(state);
+        self.cedar_type.hash(state);
+    }
+}
+
+impl Attribute {
+    #[must_use]
+    pub(crate) fn new(value: String, required: bool, cedar_type: Option<CedarTypeKind>) -> Self {
+        Self {
+            name: value,
+            required,
+            cedar_type,
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn cedar_type(&self) -> Option<CedarTypeKind> {
+        self.cedar_type.clone()
+    }
+
+    #[must_use]
+    pub(crate) fn to_label(&self) -> String {
+        if self.required {
+            self.name.clone()
+        } else {
+            format!("{}?", self.name)
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    #[must_use]
+    pub(crate) fn detail(&self) -> String {
+        self.cedar_type()
+            .map_or_else(|| self.name(), |cedar_type| cedar_type.to_string())
+    }
+}
+
+impl ToDocumentationString for Attribute {
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
+        self.cedar_type().map_or_else(
+            || self.name(),
+            |cedar_type| cedar_type.to_documentation_string(schema),
+        )
+    }
+}
+
+impl Display for Attribute {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.cedar_type() {
+            Some(ct) => write!(f, "{ct}"),
+            None => write!(f, "{}", self.name()),
+        }
+    }
+}
+
+impl<N> From<(N, AttributeType)> for Attribute
+where
+    N: AsRef<str>,
+{
+    fn from((name, attr): (N, AttributeType)) -> Self {
+        Self::new(
+            name.as_ref().to_string(),
+            attr.is_required(),
+            Some(attr.attr_type.into()),
+        )
+    }
+}
+
+impl<N> From<(N, &AttributeType)> for Attribute
+where
+    N: AsRef<str>,
+{
+    fn from((name, attr): (N, &AttributeType)) -> Self {
+        Self::new(
+            name.as_ref().to_string(),
+            attr.is_required(),
+            Some(attr.attr_type.clone().into()),
+        )
+    }
+}
