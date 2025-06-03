@@ -23,10 +23,10 @@ use smol_str::SmolStr;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::hash::Hash;
-use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 #[allow(unused_imports)]
 use vstd::std_specs::hash::*;
+use vstd::{assert_seqs_equal, calc, prelude::*};
 
 // Specification macros
 
@@ -247,7 +247,7 @@ pub proof fn lemma_seq_set_filter<A>(st: Set<A>, sq: Seq<A>, f: spec_fn(A) -> bo
 }
 
 
-pub proof fn lemma_seq_set_filter_map_option<A, B>(st: Set<A>, f: spec_fn(A) -> Option<B>)
+pub proof fn lemma_set_seq_filter_map_option<A, B>(st: Set<A>, f: spec_fn(A) -> Option<B>)
     requires
         st.finite(),
     ensures
@@ -265,7 +265,56 @@ pub proof fn lemma_seq_set_filter_map_option<A, B>(st: Set<A>, f: spec_fn(A) -> 
     lemma_seq_set_map(st_map_filter, sq_map_filter, |x: Option<B>| x.unwrap());
 }
 
+pub proof fn lemma_seq_filter_map_option_add<A,B>(s: Seq<A>, f: spec_fn(A) -> Option<B>, a: A)
+    requires f(a) is Some,
+    ensures
+        seq_filter_map_option(s.push(a), f) == seq_filter_map_option(s, f).push(f(a).unwrap()),
+    decreases s.len(),
+{
+    calc! { (==)
+        seq_filter_map_option(s.push(a), f); {}
+        (s.push(a)).map_values(f).filter(|x: Option<B>| x is Some).map_values(|x: Option<B>| x.unwrap());
+            { lemma_seq_map_values_append(s, f, a) }
+        (s.map_values(f).push(f(a))).filter(|x: Option<B>| x is Some).map_values(|x: Option<B>| x.unwrap());
+            { lemma_seq_filter_values_append(s.map_values(f), |x: Option<B>| x is Some, f(a)) }
+        (s.map_values(f).filter(|x: Option<B>| x is Some)).push(f(a)).map_values(|x: Option<B>| x.unwrap());
+            { lemma_seq_map_values_append(s.map_values(f).filter(|x: Option<B>| x is Some), |x: Option<B>| x.unwrap(), f(a)) }
+        (s.map_values(f).filter(|x: Option<B>| x is Some).map_values(|x: Option<B>| x.unwrap())).push(f(a).unwrap()); {}
+        seq_filter_map_option(s, f).push(f(a).unwrap());
+    }
+}
 
+pub proof fn lemma_seq_map_values_append<A,B>(s: Seq<A>, f: spec_fn(A) -> B, a: A)
+    ensures
+        (s.push(a)).map_values(f) == s.map_values(f).push(f(a)),
+    decreases s.len(),
+{
+    let s_push_a = s.push(a);
+    assert(s_push_a.map_values(f) == Seq::new(s_push_a.len(), |i: int| f(s_push_a[i])));
+    assert_seqs_equal!(s_push_a.map_values(f) == s.map_values(f).push(f(a)), i => {
+        if 0 <= i < s.len() {
+            assert(s_push_a.map_values(f)[i] == f(s_push_a[i]));
+            assert(s.map_values(f).push(f(a))[i] == f(s_push_a[i]));
+        } else {
+            assert(s_push_a.map_values(f)[i] == f(a));
+            assert(s.map_values(f).push(f(a))[i] == f(a));
+        }
+    });
+}
+
+pub proof fn lemma_seq_filter_values_append<A>(s: Seq<A>, f: spec_fn(A) -> bool, a: A)
+    requires f(a) == true
+    ensures
+        (s.push(a)).filter(f) == s.filter(f).push(a),
+{
+    reveal_with_fuel(Seq::filter, 1);
+    let s_push_a = s.push(a);
+    assert(s_push_a.last() == a);
+    assert(s_push_a.drop_last() == s);
+    assert(s_push_a.drop_last().filter(f) == s.filter(f));
+    assert(s_push_a.drop_last().filter(f).push(s_push_a.last()) == s.filter(f).push(a));
+    assert(s_push_a.filter(f) == s_push_a.drop_last().filter(f).push(s_push_a.last()));
+}
 
 
 } // verus!

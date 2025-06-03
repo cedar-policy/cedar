@@ -110,7 +110,7 @@ pub proof fn lemma_satisfied_policies_from_set(effect: Effect, policy_set: Set<P
 {
     reveal(satisfied_policies);
     reveal(satisfied_policies_from_set);
-    lemma_seq_set_filter_map_option(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities))
+    lemma_set_seq_filter_map_option(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities))
 }
 
 

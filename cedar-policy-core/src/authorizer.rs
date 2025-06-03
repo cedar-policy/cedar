@@ -107,6 +107,10 @@ impl Authorizer {
         let mut satisfied_forbids = vec![];
         // let mut errors = vec![];
 
+        proof {
+            pset.lemma_view_is_finite();
+        }
+
         // Verus well-formedness assumptions for HashMap
         proof { assume(obeys_key_model::<PolicyID>() && builds_valid_hashers::<std::hash::RandomState>()) }
         let policies_iter = pset.policies_iter();
@@ -175,7 +179,6 @@ impl Authorizer {
             };
         }
 
-        // TODO: need some lemmas to the effect of vec_is_empty(v) <==> v@.to_set().is_empty
 
         if !vec_is_empty(&satisfied_permits) && vec_is_empty(&satisfied_forbids) {
             proof {
@@ -183,6 +186,8 @@ impl Authorizer {
                 reveal(spec_authorizer::is_authorized);
                 satisfied_permits@.map_values(|p:PolicyID| p@).lemma_cardinality_of_empty_set_is_0();
                 satisfied_forbids@.map_values(|p:PolicyID| p@).lemma_cardinality_of_empty_set_is_0();
+                spec_authorizer::lemma_satisfied_policies_from_set(spec_ast::Effect::Permit, pset.view(), q@, entities@);
+                spec_authorizer::lemma_satisfied_policies_from_set(spec_ast::Effect::Forbid, pset.view(), q@, entities@);
                 assert(!spec_authorizer::satisfied_policies(spec_ast::Effect::Permit, pset.view_as_seq(), q@, entities@).is_empty());
                 assert(spec_authorizer::satisfied_policies(spec_ast::Effect::Forbid, pset.view_as_seq(), q@, entities@).is_empty());
             }
@@ -192,12 +197,16 @@ impl Authorizer {
                 // errors
             )
         } else {
-            reveal(spec_authorizer::satisfied_policies);
-            reveal(spec_authorizer::is_authorized);
-            assert({
-                ||| spec_authorizer::satisfied_policies(spec_ast::Effect::Permit, pset.view_as_seq(), q@, entities@).is_empty()
-                ||| !spec_authorizer::satisfied_policies(spec_ast::Effect::Forbid, pset.view_as_seq(), q@, entities@).is_empty()
-            });
+            proof {
+                reveal(spec_authorizer::satisfied_policies);
+                reveal(spec_authorizer::is_authorized);
+                spec_authorizer::lemma_satisfied_policies_from_set(spec_ast::Effect::Permit, pset.view(), q@, entities@);
+                spec_authorizer::lemma_satisfied_policies_from_set(spec_ast::Effect::Forbid, pset.view(), q@, entities@);
+                assert({
+                    ||| spec_authorizer::satisfied_policies(spec_ast::Effect::Permit, pset.view_as_seq(), q@, entities@).is_empty()
+                    ||| !spec_authorizer::satisfied_policies(spec_ast::Effect::Forbid, pset.view_as_seq(), q@, entities@).is_empty()
+                });
+            }
             Response::new_no_errors(
                 Decision::Deny,
                 hash_set_from_vec(satisfied_forbids),
