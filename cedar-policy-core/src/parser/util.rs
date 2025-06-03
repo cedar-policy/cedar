@@ -21,15 +21,20 @@ use super::err::ParseErrors;
 type Result<T> = std::result::Result<T, ParseErrors>;
 
 /// Combine two `Result`s into a single `Result`
+#[inline]
 pub fn flatten_tuple_2<T1, T2>(res1: Result<T1>, res2: Result<T2>) -> Result<(T1, T2)> {
-    match (res1, res2) {
-        (Ok(v1), Ok(v2)) => Ok((v1, v2)),
-        (Err(errs1), Ok(_)) => Err(errs1),
-        (Ok(_), Err(errs2)) => Err(errs2),
-        (Err(mut errs1), Err(errs2)) => {
-            errs1.extend(errs2);
-            Err(errs1)
-        }
+    match res1 {
+        Ok(v1) => match res2 {
+            Ok(v2) => Ok((v1, v2)),
+            Err(errs2) => Err(errs2),
+        },
+        Err(mut errs1) => match res2 {
+            Ok(_) => Err(errs1),
+            Err(errs2) => {
+                errs1.extend(errs2);
+                Err(errs1)
+            }
+        },
     }
 }
 
