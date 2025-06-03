@@ -50,7 +50,11 @@ fn parse_collect_errors<'a, P, T>(
     text: &'a str,
 ) -> Result<T, err::ParseErrors> {
     // We don't need to copy the source if we won't keep it
-    let shared_src = if keep_src { Arc::from(text) } else { Arc::from("") };
+    let shared_src = if keep_src {
+        Arc::from(text)
+    } else {
+        Arc::from("")
+    };
     let mut errs = Vec::new();
     let result = parse(parser, &mut errs, &shared_src, keep_src, text);
 
