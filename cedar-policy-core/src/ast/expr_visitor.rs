@@ -1,9 +1,24 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
     ast::{
-        expr_allows_errors::AstExprErrorKind, BinaryOp, EntityType, Expr, ExprKind, Literal, Name,
-        Pattern, SlotId, UnaryOp, Unknown, Var,
+        BinaryOp, EntityType, Expr, ExprKind, Literal, Name, Pattern, SlotId, UnaryOp, Unknown, Var,
     },
     parser::Loc,
 };
@@ -247,7 +262,10 @@ pub trait ExprVisitor {
 
     /// Visits the AST node representing a parse error.
     #[cfg(feature = "tolerant-ast")]
-    fn visit_error(&mut self, _error_kind: &AstExprErrorKind) -> Option<Self::Output> {
+    fn visit_error(
+        &mut self,
+        _error_kind: &crate::ast::expr_allows_errors::AstExprErrorKind,
+    ) -> Option<Self::Output> {
         None
     }
 }
