@@ -2,8 +2,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
     ast::{
-        expr_allows_errors::AstExprErrorKind, BinaryOp, EntityType, Expr, ExprKind, Literal, Name,
-        Pattern, SlotId, UnaryOp, Unknown, Var,
+        BinaryOp, EntityType, Expr, ExprKind, Literal, Name, Pattern, SlotId, UnaryOp, Unknown, Var,
     },
     parser::Loc,
 };
@@ -247,7 +246,10 @@ pub trait ExprVisitor {
 
     /// Visits the AST node representing a parse error.
     #[cfg(feature = "tolerant-ast")]
-    fn visit_error(&mut self, _error_kind: &AstExprErrorKind) -> Option<Self::Output> {
+    fn visit_error(
+        &mut self,
+        _error_kind: &crate::ast::expr_allows_errors::AstExprErrorKind,
+    ) -> Option<Self::Output> {
         None
     }
 }
