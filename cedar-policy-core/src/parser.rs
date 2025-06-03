@@ -1190,20 +1190,20 @@ mod tests {
             "permit(principal,",
             "unexpected end of input",
             "",
-            "expected identifier",
+            "expected `)` or identifier",
         );
         assert_labeled_span(
             "permit(principal,action,",
             "unexpected end of input",
             "",
-            "expected identifier",
+            "expected `)` or identifier",
         );
         // Nothing will actually convert to an AST here.
         assert_labeled_span(
             "permit(principal,action,resource,",
             "unexpected end of input",
             "",
-            "expected identifier",
+            "expected `)` or identifier",
         );
         // We still list out `if` as an expected token because it doesn't get
         // parsed as an ident in this position.
