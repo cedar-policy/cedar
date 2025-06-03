@@ -87,7 +87,7 @@ fn parse_collect_errors_tolerant<'a, P, T>(
     text: &'a str,
 ) -> Result<T, err::ParseErrors> {
     let mut errs = Vec::new();
-    let result = parse(parser, &mut errs, &Arc::from(text), false, text);
+    let result = parse(parser, &mut errs, &Arc::from(text), true, text);
 
     let errors = errs
         .into_iter()
@@ -121,7 +121,7 @@ pub fn parse_policies(text: &str) -> Result<Node<Option<cst::Policies>>, err::Pa
     parse_collect_errors(
         &*POLICIES_PARSER,
         grammar::PoliciesParser::parse,
-        false,
+        true,
         text,
     )
 }
