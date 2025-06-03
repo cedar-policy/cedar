@@ -90,19 +90,49 @@ pub open spec fn is_authorized(req: Request, entities: Entities, policies: Polic
     }
 }
 
-}
+///////////////////////////////////////////////////////////////////////////////
+// Alternate version of authorizer using Set<Policy>, instead of Seq<Policy> //
+///////////////////////////////////////////////////////////////////////////////
 
-/////////////////////zzzzzz/////////////////////////////
-// Helper definitions and lemmas about the authorizer //
-///////////////////////////zzzzzz///////////////////////
-
-verus! {
-
-/// Like `satisfied_policies`, but starting from a `Set<Policy>`, not `Policies` (which is `Seq<Policy>`)
 #[verifier::opaque]
 pub open spec fn satisfied_policies_from_set(effect: Effect, policy_set: Set<Policy>, req: Request, entities: Entities) -> Set<PolicyID> {
     set_filter_map_option(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities))
 }
+
+#[verifier::opaque]
+pub open spec fn error_policies_from_set(policy_set: Set<Policy>, req: Request, entities: Entities) -> Set<PolicyID> {
+    set_filter_map_option(policy_set, |p: Policy| errored(p, req, entities))
+}
+
+#[verifier::opaque]
+pub open spec fn is_authorized_from_set(req: Request, entities: Entities, policy_set: Set<Policy>) -> Response {
+    let forbids = satisfied_policies_from_set(Effect::Forbid, policy_set, req, entities);
+    let permits = satisfied_policies_from_set(Effect::Permit, policy_set, req, entities);
+    let erroring_policies = error_policies_from_set(policy_set, req, entities);
+    if forbids.is_empty() && !permits.is_empty() {
+        Response {
+            decision: Decision::Allow,
+            determining_policies: permits,
+            erroring_policies
+        }
+    } else {
+        Response {
+            decision: Decision::Deny,
+            determining_policies: forbids,
+            erroring_policies
+        }
+    }
+}
+
+
+}
+
+////////////////////////////////////////////////////////
+// Helper definitions and lemmas about the authorizer //
+////////////////////////////////////////////////////////
+
+verus! {
+
 
 pub proof fn lemma_satisfied_policies_from_set(effect: Effect, policy_set: Set<Policy>, req: Request, entities: Entities)
     requires policy_set.finite()
@@ -112,6 +142,27 @@ pub proof fn lemma_satisfied_policies_from_set(effect: Effect, policy_set: Set<P
     reveal(satisfied_policies_from_set);
     lemma_set_seq_filter_map_option(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities))
 }
+
+pub proof fn lemma_error_policies_from_set(policy_set: Set<Policy>, req: Request, entities: Entities)
+    requires policy_set.finite()
+    ensures error_policies_from_set(policy_set, req, entities) == error_policies(policy_set.to_seq(), req, entities)
+{
+    reveal(error_policies);
+    reveal(error_policies_from_set);
+    lemma_set_seq_filter_map_option(policy_set, |p: Policy| errored(p, req, entities))
+}
+
+pub proof fn lemma_is_authorized_from_set(req: Request, entities: Entities, policy_set: Set<Policy>)
+    requires policy_set.finite()
+    ensures is_authorized_from_set(req, entities, policy_set) == is_authorized(req, entities, policy_set.to_seq())
+{
+    reveal(is_authorized);
+    reveal(is_authorized_from_set);
+    lemma_satisfied_policies_from_set(Effect::Forbid, policy_set, req, entities);
+    lemma_satisfied_policies_from_set(Effect::Permit, policy_set, req, entities);
+    lemma_error_policies_from_set(policy_set, req, entities);
+}
+
 
 
 }

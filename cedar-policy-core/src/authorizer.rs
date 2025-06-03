@@ -136,7 +136,14 @@ impl Authorizer {
                         assert(spec_authorizer::satisfied(p@, q@, entities@)) by { reveal(spec_authorizer::satisfied) };
                         assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Permit, p@, q@, entities@) matches Some(spec_id) && spec_id == p@.id )
                             by { reveal(spec_authorizer::satisfied_with_effect) };
-                        satisfied_permits.push(id)
+                        satisfied_permits.push(id);
+                        proof {
+                            lemma_seq_filter_map_option_add(
+                                policies_ghost_iter@.map_values(|p:Policy| p@),
+                                |p: spec_ast::Policy| spec_authorizer::satisfied_with_effect(spec_ast::Effect::Permit, p, q@, entities@),
+                                p@
+                            );
+                        }
                     },
                     (true, Effect::Forbid) => {
                         assert(spec_authorizer::satisfied(p@, q@, entities@)) by { reveal(spec_authorizer::satisfied) };
