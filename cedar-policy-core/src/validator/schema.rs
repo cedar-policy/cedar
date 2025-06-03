@@ -560,7 +560,7 @@ impl ValidatorSchema {
                 (None, _) => None,
             })
             .map(|n| ValidatorNamespace {
-                name: n.0.basename().clone().into_smolstr(),
+                name: n.0.to_smolstr(),
                 name_loc: n.0.loc().into_maybe_loc(),
                 def_loc: n.1,
             })

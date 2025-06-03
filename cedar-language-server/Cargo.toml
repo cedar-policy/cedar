@@ -1,0 +1,57 @@
+[package]
+name = "cedar-language-server"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+categories.workspace = true
+description = "Language server implementation for working with the Cedar policy language"
+keywords.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+cedar-policy-core = { version = "=4.4.0", path = "../cedar-policy-core", features = ["datetime", "tolerant-ast", "extended-schema"] }
+cedar-policy-formatter = { version = "=4.4.0", path = "../cedar-policy-formatter", features = ["tolerant-ast"] }
+cedar-policy = { version = "=4.4.0", path = "../cedar-policy", features = ["tolerant-ast"]}
+anyhow = "1.0.95"
+dashmap = "6.1.0"
+itertools = "0.14.0"
+lsp-types = "0.94.1"
+miette = "7.4.0"
+ropey = "1.6.1"
+smol_str = "0.3"
+tracing = "0.1.41"
+serde = "1"
+serde_json = "1.0.139"
+indoc = "2.0.5"
+regex = "1.11.1"
+
+# Dependencies needed only for the language server binary
+tokio = { version = "1.43.0", features = ["full"], optional = true }
+tower-lsp = { version = "0.20.0", optional = true }
+tracing-appender = { version = "0.2.3", optional = true }
+tracing-subscriber = { version = "0.3.19", features = ["json"], optional = true}
+tower-service = { version = "0.3.3", optional = true}
+
+# Dependencies needed only for WASM integration
+serde-wasm-bindgen = { version = "0.6", optional = true }
+tsify = { version = "0.4.5", optional = true }
+wasm-bindgen = { version = "0.2.97", optional = true }
+
+[dev-dependencies]
+tracing-test = "0.2.5"
+cool_asserts = "2.0.3"
+similar-asserts = "1.7.0"
+
+[features]
+wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
+bin = ["tokio", "tower-lsp", "tower-service", "tracing-subscriber", "tracing-appender"]
+
+[[bin]]
+name = "cedar-language-server"
+path = "src/main.rs"
+required-features = ["bin"]
+
+[lints]
+workspace = true

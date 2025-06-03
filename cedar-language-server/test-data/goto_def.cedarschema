@@ -1,0 +1,69 @@
+type PermissionsMap = {
+  hotelReservations: Set<Hotel>,
+  propertyReservations: Set<Property>,
+  // With unions, just have reservations: Set<Hotel|Property>
+  // Do similarly for PaymentDetails, Rates, etc.
+};
+type ComplexType = {
+  required: Bool,
+  hotels: Set<Hotel>,
+  other: Bool,
+};
+
+entity Group;
+
+entity User in [Group] {
+  viewPermissions: PermissionsMap,
+  memberPermissions: PermissionsMap,
+  hotelAdminPermissions: Set<Hotel>,
+  propertyAdminPermissions: Set<Property>,
+  lastName?: String,
+  property: Property,
+};
+entity Property in [Hotel] {
+  propertyName: String,
+  name: String
+};
+entity Hotel in [Hotel] {
+  hotelName: String,
+  complex: ComplexType,
+  name: ComplexType
+};
+entity Reservation in [Property] {
+  reservationName: String,
+  name: String
+};
+
+action propertyManagerActions;
+
+// ACTIONS: Reservations
+action viewReservation, updateReservation, grantAccessReservation in [propertyManagerActions]
+  appliesTo {
+    principal: User,
+    resource: Reservation,
+    context: {
+      complex: ComplexType,
+      location: String,
+      other: Long,
+    }
+  };
+
+// ACTIONS: Properties (plus, CreateReservation for a Property)
+action createReservation, viewProperty, updateProperty, grantAccessProperty in [propertyManagerActions]
+  appliesTo {
+    principal: User,
+    resource: Property,
+    context: ComplexType
+  };
+
+// ACTIONS: Hotels (plus, CreateProperty for a Hotel)
+action createProperty, createHotel, viewHotel, updateHotel, grantAccessHotel in [propertyManagerActions]
+  appliesTo {
+    principal: User,
+    resource: Hotel,
+    context: {
+      location: String,
+      other_user: User,
+      other: String
+    }
+  };

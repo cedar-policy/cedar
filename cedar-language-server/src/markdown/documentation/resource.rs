@@ -1,0 +1,65 @@
+use cedar_policy_core::validator::ValidatorSchema;
+
+use crate::{
+    markdown::{MarkdownBuilder, ToDocumentationString},
+    policy::{cedar::EntityTypeKind, DocumentContext},
+};
+
+use indoc::indoc;
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ResourceDocumentation {
+    entity_type: Option<EntityTypeKind>,
+}
+
+impl ResourceDocumentation {
+    pub(crate) fn new(entity_type: EntityTypeKind) -> Self {
+        Self {
+            entity_type: Some(entity_type),
+        }
+    }
+}
+
+impl From<EntityTypeKind> for ResourceDocumentation {
+    fn from(value: EntityTypeKind) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<&DocumentContext> for ResourceDocumentation {
+    fn from(value: &DocumentContext) -> Self {
+        value.resolve_resource_type().into()
+    }
+}
+
+impl From<Option<&DocumentContext>> for ResourceDocumentation {
+    fn from(value: Option<&DocumentContext>) -> Self {
+        value.map(Into::into).unwrap_or_default()
+    }
+}
+
+impl ToDocumentationString for ResourceDocumentation {
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
+        let mut builder = MarkdownBuilder::new();
+
+        builder
+            .header("Resource")
+            .paragraph(indoc! {"
+                The resource element in a Cedar policy is a resource defined by your application that can
+                be accessed or modified by the specified action."
+            })
+            .paragraph(indoc! {"
+                The resource element must be present. If you specify only resource without an expression
+                that constrains its scope, then the policy applies to any resource."
+            });
+
+        let Some(entity_type) = &self.entity_type else {
+            return builder.build();
+        };
+
+        let entity_type_doc = entity_type.to_documentation_string(schema);
+        builder.push_with_new_line(&entity_type_doc);
+
+        builder.build()
+    }
+}
