@@ -23,6 +23,8 @@ type Result<T> = std::result::Result<T, ParseErrors>;
 /// Combine two `Result`s into a single `Result`
 #[inline]
 pub fn flatten_tuple_2<T1, T2>(res1: Result<T1>, res2: Result<T2>) -> Result<(T1, T2)> {
+    // WARNING: Do not refactor without considering performance. See
+    // https://github.com/cedar-policy/cedar/pull/1649 for more details.
     match res1 {
         Ok(v1) => match res2 {
             Ok(v2) => Ok((v1, v2)),
