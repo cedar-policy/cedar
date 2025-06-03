@@ -85,11 +85,13 @@ match {
 }
 
 Comma<E>: Vec<E> = {
-    <e:E?> => e.into_iter().collect(),
-    <mut es:(<E> ",")+> <e:E> => {
-        es.push(e);
-        es
-    },
+    <mut es:(<E> ",")*> <e:E?> => match e {
+        None => es,
+        Some(e) => {
+            es.push(e);
+            es
+        }
+    }
 }
 
 // Policies := {Policy}

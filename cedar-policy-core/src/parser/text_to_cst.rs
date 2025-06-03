@@ -1255,7 +1255,7 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `!`")
-                .exactly_one_underline_with_label("!", "expected identifier")
+                .exactly_one_underline_with_label("!", "expected `)` or identifier")
                 .build(),
         );
 
@@ -1269,14 +1269,14 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `!`")
-                .exactly_one_underline_with_label("!", "expected identifier")
+                .exactly_one_underline_with_label("!", "expected `)` or identifier")
                 .build(),
         );
         expect_some_error_matches(
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `+`")
-                .exactly_one_underline_with_label("+", "expected identifier")
+                .exactly_one_underline_with_label("+", "expected `)` or identifier")
                 .build(),
         );
         expect_n_errors(src, &errs, 2);
@@ -1290,7 +1290,7 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `!`")
-                .exactly_one_underline_with_label("!", "expected identifier")
+                .exactly_one_underline_with_label("!", "expected `)` or identifier")
                 .build(),
         );
     }
@@ -1719,6 +1719,20 @@ mod tests {
                     "#,
             );
         }
+    }
+
+    #[test]
+    fn trailing_comma() {
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource,);
+        "#,
+        );
+        assert_parse_succeeds(parse_expr, r#"foo(a, b, c,)"#);
+        assert_parse_succeeds(parse_expr, r#"[A, B, C,]"#);
+        assert_parse_succeeds(parse_expr, r#"{ A: B, C: D, }"#);
+        assert_parse_succeeds(parse_ref, r#"Principal::{uid: "123", role: "admin",}"#);
     }
 
     #[test]
