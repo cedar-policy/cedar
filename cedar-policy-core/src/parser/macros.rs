@@ -20,8 +20,6 @@
 macro_rules! maybe_loc {
     ($flag:ident, $loc:expr) => {
         if $flag {
-            None
-        } else {
             #[cfg(feature = "raw-parsing")]
             {
                 Some(Box::new($loc))
@@ -30,6 +28,8 @@ macro_rules! maybe_loc {
             {
                 Some($loc)
             }
+        } else {
+            None
         }
     };
 }
