@@ -1315,6 +1315,48 @@ fn visualize_entities_parses_as_dot(
     CedarExitCode::Success
 )]
 #[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-missing-reason.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-unexpected-error.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-named.json",
+    CedarExitCode::Success
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-fail.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-format-error.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/tests-format-error2.json",
+    CedarExitCode::Failure
+)]
+#[case(
+    "sample-data/tiny_sandboxes/sample1/policy.cedar",
+    "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
+    "sample-data/tiny_sandboxes/sample1/no-such-file.json",
+    CedarExitCode::Failure
+)]
+#[case(
     "sample-data/tiny_sandboxes/sample2/policy.cedar",
     "sample-data/tiny_sandboxes/sample2/schema.cedarschema.json",
     "sample-data/tiny_sandboxes/sample2/tests-combined.json",
