@@ -49,18 +49,24 @@ fn parse_collect_errors<'a, P, T>(
     keep_src: bool,
     text: &'a str,
 ) -> Result<T, err::ParseErrors> {
+    // We don't need to copy the source if we won't keep it
+    let shared_src = if keep_src {
+        Arc::from(text)
+    } else {
+        Arc::from("")
+    };
     let mut errs = Vec::new();
-    let result = parse(parser, &mut errs, &Arc::from(text), keep_src, text);
+    let result = parse(parser, &mut errs, &shared_src, keep_src, text);
 
     let errors = errs
         .into_iter()
-        .map(|rc| err::ToCSTError::from_raw_err_recovery(rc, Arc::from(text)))
+        .map(|rc| err::ToCSTError::from_raw_err_recovery(rc, Arc::clone(&shared_src)))
         .map(Into::into);
     let parsed = match result {
         Ok(parsed) => parsed,
         Err(e) => {
             return Err(err::ParseErrors::new(
-                err::ToCSTError::from_raw_parse_err(e, Arc::from(text)).into(),
+                err::ToCSTError::from_raw_parse_err(e, Arc::clone(&shared_src)).into(),
                 errors,
             ));
         }
