@@ -33,6 +33,8 @@ Cedar Language Version: TBD
 
 ### Changed
 
+- Allow entity attributes and tags to contain Action-typed entities, and pass
+  policy/entity/request validation (#1652)
 - Changed experimental `entity-manifest` function `compute_entity_manifest` to
   accept an `&Validator` instead of `&Schema`. Callers can construct a `Validator`
   from a schema with `Validator::new` afterwhich a reference to the original
