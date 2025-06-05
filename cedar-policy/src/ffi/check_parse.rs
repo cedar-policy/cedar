@@ -153,9 +153,9 @@ pub fn check_parse_context(call: ContextParsingCall) -> CheckParseAnswer {
             };
         }
     };
-    
+
     let parse_result = call.context.parse(schema.as_ref(), action.as_ref());
-    
+
     // Check if the parsed context is valid
     if let Ok(context) = &parse_result {
         if let Err(err) = context.validate_context(schema.as_ref(), action.as_ref()) {
@@ -164,7 +164,7 @@ pub fn check_parse_context(call: ContextParsingCall) -> CheckParseAnswer {
             };
         }
     }
-    
+
     // Return the parse result if all other checks pass
     parse_result.into()
 }
@@ -549,7 +549,7 @@ mod test {
     }
 
     #[test]
-    fn check_parse_context_fails_for_invalid_context_type(){
+    fn check_parse_context_fails_for_invalid_context_type() {
         let call = json!({
             "context": {
                 "authenticated": "foo"
@@ -688,12 +688,11 @@ mod test {
                         }
                     }
                 }
-            
+
             }
         });
         let answer = serde_json::from_value(check_parse_context_json(call).unwrap()).unwrap();
         let errs = assert_check_parse_is_err(&answer);
         assert_exactly_one_error(errs, "Context validation failed: context `{authenticated: \"foo\"}` is not valid for `PhotoApp::Action::\"viewPhoto\"`", None);
     }
-
 }

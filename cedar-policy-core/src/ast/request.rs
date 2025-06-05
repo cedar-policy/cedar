@@ -643,8 +643,6 @@ impl RequestSchema for RequestSchemaAllPass {
     ) -> std::result::Result<(), Self::Error> {
         Ok(())
     }
-
-    
 }
 
 /// Wrapper around `std::convert::Infallible` which also implements

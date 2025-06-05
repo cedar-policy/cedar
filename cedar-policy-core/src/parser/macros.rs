@@ -20,16 +20,16 @@
 macro_rules! maybe_loc {
     ($flag:ident, $loc:expr) => {
         if $flag {
-            None
-        } else {
-            #[cfg(feature = "fast-parsing")]
+            #[cfg(feature = "raw-parsing")]
             {
                 Some(Box::new($loc))
             }
-            #[cfg(not(feature = "fast-parsing"))]
+            #[cfg(not(feature = "raw-parsing"))]
             {
                 Some($loc)
             }
+        } else {
+            None
         }
     };
 }
