@@ -231,22 +231,8 @@ impl ast::RequestSchema for ValidatorSchema {
                     validator_action_id.check_resource_type(principal_type, action)?;
                 }
                 if let Some(context) = request.context() {
-                    validate_euids_in_partial_value(
-                        &CoreSchema::new(self),
-                        &context.clone().into(),
-                    )
-                    .map_err(RequestValidationError::InvalidEnumEntity)?;
-                    let expected_context_ty = validator_action_id.context_type();
-                    if !expected_context_ty
-                        .typecheck_partial_value(&context.clone().into(), extensions)
-                        .map_err(RequestValidationError::TypeOfContext)?
-                    {
-                        return Err(request_validation_errors::InvalidContextError {
-                            context: context.clone(),
-                            action: Arc::clone(action),
-                        }
-                        .into());
-                    }
+                    self.validate_context(context, action, extensions)
+                        .map_err(RequestValidationError::from)?;
                 }
             }
             EntityUIDEntry::Unknown { .. } => {
