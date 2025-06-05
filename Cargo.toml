@@ -2,7 +2,6 @@
 members = [
 	"cedar-policy",
 	"cedar-policy-core",
-	"cedar-policy-validator",
 	"cedar-policy-formatter",
 	"cedar-policy-cli",
 	"cedar-testing",
