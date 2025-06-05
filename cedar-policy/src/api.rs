@@ -44,7 +44,7 @@ pub use ast::Effect;
 pub use authorizer::Decision;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
-use cedar_policy_core::ast::{self, RestrictedExpr};
+use cedar_policy_core::ast::{self, RequestSchema, RestrictedExpr};
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{ContextSchema, Dereference};
 use cedar_policy_core::est::{self, TemplateLink};
@@ -4560,6 +4560,28 @@ impl Context {
         other_context: impl IntoIterator<Item = (String, RestrictedExpression)>,
     ) -> Result<Self, ContextCreationError> {
         Self::from_pairs(self.into_iter().chain(other_context))
+    }
+
+    /// Validates this context against the provided schema
+    /// Returns Ok(()) if the context is valid according to the schema, or an error otherwise
+    pub fn validate_context(&self, schema: Option<&crate::Schema>, action: Option<&EntityUid>) -> std::result::Result<(), String> {
+        match (schema, action) {
+            (Some(schema), Some(action)) => {
+                // Get the context schema for this action
+                let _context_schema = Self::get_context_schema(schema, action)
+                    .map_err(|e| format!("Context schema error: {}", e))?;
+                
+                // Call the validate_context function from coreschema.rs
+                RequestSchema::validate_context(
+                    &schema.0,
+                    &self.0,
+                    action.as_ref(),
+                    &Extensions::all_available()
+                )
+                .map_err(|e| format!("Context validation failed: {}", e))
+            },
+            _ => Ok(()) // If no schema or action provided, we can't validate, so return Ok
+        }
     }
 }
 

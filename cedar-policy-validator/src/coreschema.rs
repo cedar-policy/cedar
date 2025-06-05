@@ -260,6 +260,44 @@ impl ast::RequestSchema for ValidatorSchema {
         }
         Ok(())
     }
+
+    /// Validate a context against a schema for a specific action
+    fn validate_context<'a>(
+        &self,
+        context: &ast::Context,
+        action: &ast::EntityUID,
+        extensions: &Extensions<'a>,
+    ) -> std::result::Result<(), RequestValidationError> {
+        // Following the same logic in validate_request
+        // Get the action ID
+        let action_arc = Arc::new(action.clone());
+        let validator_action_id = self.get_action_id(&action_arc).ok_or_else(|| {
+            request_validation_errors::UndeclaredActionError {
+                action: action_arc.clone(),
+            }
+        })?;
+        
+        // Validate entity UIDs in the context
+        validate_euids_in_partial_value(
+            &CoreSchema::new(&self),
+            &context.clone().into(),
+        )
+        .map_err(RequestValidationError::InvalidEnumEntity)?;
+        
+        // Typecheck the context against the expected context type
+        let expected_context_ty = validator_action_id.context_type();
+        if !expected_context_ty
+            .typecheck_partial_value(&context.clone().into(), extensions)
+            .map_err(RequestValidationError::TypeOfContext)?
+        {
+            return Err(request_validation_errors::InvalidContextError {
+                context: context.clone(),
+                action: action_arc,
+            }
+            .into());
+        }
+        Ok(())
+    }
 }
 
 impl ValidatorActionId {
@@ -304,6 +342,16 @@ impl ast::RequestSchema for CoreSchema<'_> {
         extensions: &Extensions<'_>,
     ) -> Result<(), Self::Error> {
         self.schema.validate_request(request, extensions)
+    }
+
+    /// Validate the given `context`, returning `Err` if it fails validation
+    fn validate_context<'a>(
+        &self,
+        context: &cedar_policy_core::ast::Context,
+        action: &EntityUID,
+        extensions: &Extensions<'a>,
+    ) -> std::result::Result<(), Self::Error> {
+        self.schema.validate_context(context, action, extensions)
     }
 }
 
