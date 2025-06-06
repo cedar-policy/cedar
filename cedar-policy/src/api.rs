@@ -32,7 +32,6 @@ pub use cedar_policy_core::validator::entity_manifest::{
 };
 use cedar_policy_core::validator::json_schema;
 use cedar_policy_core::validator::typecheck::{PolicyCheck, Typechecker};
-pub use err::RequestValidationError;
 pub use id::*;
 
 #[cfg(feature = "deprecated-schema-compat")]
@@ -4694,7 +4693,7 @@ impl Context {
     ///
     /// Returns Ok(()) if the context is valid according to the schema, or an error otherwise
     ///
-    /// This validation is already handled by Request::new, so there is no need to separately call
+    /// This validation is already handled by `Request::new`, so there is no need to separately call
     /// if you are validating the whole request
     pub fn validate(
         &self,
@@ -4706,7 +4705,7 @@ impl Context {
             &schema.0,
             &self.0,
             action.as_ref(),
-            &Extensions::all_available(),
+            Extensions::all_available(),
         )?)
     }
 }

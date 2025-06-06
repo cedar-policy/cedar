@@ -254,14 +254,12 @@ impl ast::RequestSchema for ValidatorSchema {
         action: &ast::EntityUID,
         extensions: &Extensions<'a>,
     ) -> std::result::Result<(), RequestValidationError> {
-        // Following the same logic in validate_request
         // Get the action ID
-        let action_arc = Arc::new(action.clone());
-        let validator_action_id = self.get_action_id(&action_arc).ok_or_else(|| {
-            request_validation_errors::UndeclaredActionError {
-                action: action_arc.clone(),
-            }
-        })?;
+        let validator_action_id =
+            self.get_action_id(&Arc::new(action.clone()))
+                .ok_or_else(|| request_validation_errors::UndeclaredActionError {
+                    action: Arc::new(action.clone()),
+                })?;
 
         // Validate entity UIDs in the context
         validate_euids_in_partial_value(&CoreSchema::new(&self), &context.clone().into())
@@ -275,7 +273,7 @@ impl ast::RequestSchema for ValidatorSchema {
         {
             return Err(request_validation_errors::InvalidContextError {
                 context: context.clone(),
-                action: action_arc,
+                action: Arc::new(action.clone()),
             }
             .into());
         }
