@@ -256,7 +256,7 @@ impl ast::RequestSchema for ValidatorSchema {
     ) -> std::result::Result<(), RequestValidationError> {
         // Get the action ID
         let validator_action_id =
-            self.get_action_id(&Arc::new(action.clone()))
+            self.get_action_id(action)
                 .ok_or_else(|| request_validation_errors::UndeclaredActionError {
                     action: Arc::new(action.clone()),
                 })?;
