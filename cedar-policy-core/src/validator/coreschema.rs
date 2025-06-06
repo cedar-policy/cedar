@@ -14,8 +14,10 @@
  * limitations under the License.
  */
 use crate::ast::{Eid, EntityType, EntityUID};
-use crate::entities::conformance::err::InvalidEnumEntityError;
-use crate::entities::conformance::{is_valid_enumerated_entity, validate_euids_in_partial_value};
+use crate::entities::conformance::{
+    err::InvalidEnumEntityError, is_valid_enumerated_entity, validate_euids_in_partial_value,
+    ValidateEuidError,
+};
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use crate::validator::{
     ValidatorActionId, ValidatorEntityType, ValidatorEntityTypeKind, ValidatorSchema,
@@ -235,7 +237,17 @@ impl ast::RequestSchema for ValidatorSchema {
                         &CoreSchema::new(self),
                         &context.clone().into(),
                     )
-                    .map_err(RequestValidationError::InvalidEnumEntity)?;
+                    .map_err(|e| match e {
+                        ValidateEuidError::InvalidEnumEntity(e) => {
+                            RequestValidationError::InvalidEnumEntity(e)
+                        }
+                        ValidateEuidError::UndeclaredAction(e) => {
+                            request_validation_errors::UndeclaredActionError {
+                                action: Arc::new(e.uid),
+                            }
+                            .into()
+                        }
+                    })?;
                     let expected_context_ty = validator_action_id.context_type();
                     if !expected_context_ty
                         .typecheck_partial_value(&context.clone().into(), extensions)
