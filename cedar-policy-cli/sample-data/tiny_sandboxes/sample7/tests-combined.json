@@ -1,1 +1,710 @@
-[{"request":{"principal":"PhotoFlash::Data::User::\"alice\"","action":"PhotoFlash::Data::Action::\"view\"","resource":"PhotoFlash::Data::Photo::\"AAAAA\"","context":{"addr":{"city":"DC","street":"main"},"person":{"age":-1,"name":"A"},"role":[]}},"entities":[{"uid":{"type":"PhotoFlash::Data::Account","id":""},"attrs":{"age":0},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Album","id":"jane_vacation"},"attrs":{},"parents":[]},{"uid":{"type":"PhotoFlash::Data::User","id":""},"attrs":{"account":{"__entity":{"type":"PhotoFlash::Data::Account","id":""}}},"parents":[]},{"uid":{"type":"PhotoFlash::Data::User","id":"alice"},"attrs":{"account":{"__entity":{"type":"PhotoFlash::Data::Account","id":""}}},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Photo","id":"AAAAA"},"attrs":{"owner":{"__entity":{"type":"PhotoFlash::Data::User","id":""}}},"parents":[{"type":"PhotoFlash::Data::Album","id":"jane_vacation"}]},{"uid":{"type":"PhotoFlash::Data::Action","id":"view"},"attrs":{},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Action","id":"edit"},"attrs":{},"parents":[]}],"decision":"allow","reason":["policy0"],"has_error":false},{"request":{"principal":"PhotoFlash::Data::User::\"alice\"","action":"PhotoFlash::Data::Action::\"view\"","resource":"PhotoFlash::Data::Photo::\"AAAAA\"","context":{"addr":{"city":"","street":"B"},"person":{"age":9223372036854775807,"name":"A"},"role":["admin"]}},"entities":[{"uid":{"type":"PhotoFlash::Data::Action","id":"view"},"attrs":{},"parents":[]},{"uid":{"type":"PhotoFlash::Data::User","id":"alice"},"attrs":{"account":{"__entity":{"type":"PhotoFlash::Data::Account","id":""}}},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Album","id":"jane_vacation"},"attrs":{},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Account","id":""},"attrs":{"age":0},"parents":[]},{"uid":{"type":"PhotoFlash::Data::User","id":""},"attrs":{"account":{"__entity":{"type":"PhotoFlash::Data::Account","id":""}}},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Photo","id":"AAAAA"},"attrs":{"owner":{"__entity":{"type":"PhotoFlash::Data::User","id":""}}},"parents":[{"type":"PhotoFlash::Data::Album","id":"jane_vacation"}]},{"uid":{"type":"PhotoFlash::Data::Action","id":"edit"},"attrs":{},"parents":[]}],"decision":"deny","reason":[],"has_error":false},{"request":{"principal":"PhotoFlash::Data::User::\"alice\"","action":"PhotoFlash::Data::Action::\"view\"","resource":"PhotoFlash::Data::Photo::\"admin\"","context":{"addr":{"city":"DC","street":"B"},"person":{"age":9223372036854775807,"name":"A"},"role":["admin"]}},"entities":[{"uid":{"type":"PhotoFlash::Data::User","id":""},"attrs":{"account":{"__entity":{"type":"PhotoFlash::Data::Account","id":""}}},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Photo","id":"admin"},"attrs":{"owner":{"__entity":{"type":"PhotoFlash::Data::User","id":""}}},"parents":[{"type":"PhotoFlash::Data::Album","id":"jane_vacation"}]},{"uid":{"type":"PhotoFlash::Data::Account","id":""},"attrs":{"age":0},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Album","id":"jane_vacation"},"attrs":{},"parents":[]},{"uid":{"type":"PhotoFlash::Data::User","id":"alice"},"attrs":{"account":{"__entity":{"type":"PhotoFlash::Data::Account","id":""}}},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Action","id":"edit"},"attrs":{},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Action","id":"view"},"attrs":{},"parents":[]}],"decision":"allow","reason":["policy0"],"has_error":false},{"request":{"principal":"PhotoFlash::Data::User::\"alice\"","action":"PhotoFlash::Data::Action::\"edit\"","resource":"PhotoFlash::Data::Photo::\"admin\"","context":{}},"entities":[{"uid":{"type":"PhotoFlash::Data::Photo","id":"admin"},"attrs":{"owner":{"__entity":{"type":"PhotoFlash::Data::User","id":""}}},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Action","id":"view"},"attrs":{},"parents":[]},{"uid":{"type":"PhotoFlash::Data::User","id":""},"attrs":{"account":{"__entity":{"type":"PhotoFlash::Data::Account","id":""}}},"parents":[]},{"uid":{"type":"PhotoFlash::Data::User","id":"alice"},"attrs":{"account":{"__entity":{"type":"PhotoFlash::Data::Account","id":""}}},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Action","id":"edit"},"attrs":{},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Account","id":""},"attrs":{"age":0},"parents":[]}],"decision":"deny","reason":[],"has_error":false},{"request":{"principal":"PhotoFlash::Data::User::\"A\"","action":"PhotoFlash::Data::Action::\"edit\"","resource":"PhotoFlash::Data::Photo::\"B\"","context":{}},"entities":[{"uid":{"type":"PhotoFlash::Data::User","id":""},"attrs":{"account":{"__entity":{"type":"PhotoFlash::Data::Account","id":""}}},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Action","id":"edit"},"attrs":{},"parents":[]},{"uid":{"type":"PhotoFlash::Data::User","id":"A"},"attrs":{"account":{"__entity":{"type":"PhotoFlash::Data::Account","id":""}}},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Action","id":"view"},"attrs":{},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Account","id":""},"attrs":{"age":0},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Photo","id":"B"},"attrs":{"owner":{"__entity":{"type":"PhotoFlash::Data::User","id":""}}},"parents":[]}],"decision":"deny","reason":[],"has_error":false},{"request":{"principal":"PhotoFlash::Data::User::\"alice\"","action":"PhotoFlash::Data::Action::\"view\"","resource":"PhotoFlash::Data::Photo::\"AAAAA\"","context":{"addr":{"city":"","street":"B"},"person":{"age":-1,"name":"A"},"role":[]}},"entities":[{"uid":{"type":"PhotoFlash::Data::User","id":""},"attrs":{"account":{"__entity":{"type":"PhotoFlash::Data::Account","id":""}}},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Album","id":"jane_vacation"},"attrs":{},"parents":[]},{"uid":{"type":"PhotoFlash::Data::User","id":"alice"},"attrs":{"account":{"__entity":{"type":"PhotoFlash::Data::Account","id":""}}},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Action","id":"view"},"attrs":{},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Account","id":""},"attrs":{"age":0},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Action","id":"edit"},"attrs":{},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Photo","id":"AAAAA"},"attrs":{"owner":{"__entity":{"type":"PhotoFlash::Data::User","id":""}}},"parents":[]}],"decision":"deny","reason":[],"has_error":false},{"request":{"principal":"PhotoFlash::Data::User::\"alice\"","action":"PhotoFlash::Data::Action::\"view\"","resource":"PhotoFlash::Data::Photo::\"AAAAA\"","context":{"addr":{"city":"","street":"B"},"person":{"age":-1,"name":"A"},"role":["admin"]}},"entities":[{"uid":{"type":"PhotoFlash::Data::Action","id":"view"},"attrs":{},"parents":[]},{"uid":{"type":"PhotoFlash::Data::User","id":"alice"},"attrs":{"account":{"__entity":{"type":"PhotoFlash::Data::Account","id":""}}},"parents":[]},{"uid":{"type":"PhotoFlash::Data::User","id":""},"attrs":{"account":{"__entity":{"type":"PhotoFlash::Data::Account","id":""}}},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Photo","id":"AAAAA"},"attrs":{"owner":{"__entity":{"type":"PhotoFlash::Data::User","id":""}}},"parents":[{"type":"PhotoFlash::Data::Album","id":"jane_vacation"}]},{"uid":{"type":"PhotoFlash::Data::Account","id":""},"attrs":{"age":0},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Album","id":"jane_vacation"},"attrs":{},"parents":[]},{"uid":{"type":"PhotoFlash::Data::Action","id":"edit"},"attrs":{},"parents":[]}],"decision":"deny","reason":[],"has_error":false}]
+[
+  {
+    "request": {
+      "principal": "PhotoFlash::Data::User::\"alice\"",
+      "action": "PhotoFlash::Data::Action::\"view\"",
+      "resource": "PhotoFlash::Data::Photo::\"AAAAA\"",
+      "context": {
+        "addr": {
+          "city": "DC",
+          "street": "main"
+        },
+        "person": {
+          "age": -1,
+          "name": "A"
+        },
+        "role": []
+      }
+    },
+    "entities": [
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Account",
+          "id": ""
+        },
+        "attrs": {
+          "age": 0
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Album",
+          "id": "jane_vacation"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::User",
+          "id": ""
+        },
+        "attrs": {
+          "account": {
+            "__entity": {
+              "type": "PhotoFlash::Data::Account",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::User",
+          "id": "alice"
+        },
+        "attrs": {
+          "account": {
+            "__entity": {
+              "type": "PhotoFlash::Data::Account",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Photo",
+          "id": "AAAAA"
+        },
+        "attrs": {
+          "owner": {
+            "__entity": {
+              "type": "PhotoFlash::Data::User",
+              "id": ""
+            }
+          }
+        },
+        "parents": [
+          {
+            "type": "PhotoFlash::Data::Album",
+            "id": "jane_vacation"
+          }
+        ]
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Action",
+          "id": "view"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Action",
+          "id": "edit"
+        },
+        "attrs": {},
+        "parents": []
+      }
+    ],
+    "decision": "allow",
+    "reason": [
+      "policy0"
+    ],
+    "has_error": false
+  },
+  {
+    "request": {
+      "principal": "PhotoFlash::Data::User::\"alice\"",
+      "action": "PhotoFlash::Data::Action::\"view\"",
+      "resource": "PhotoFlash::Data::Photo::\"AAAAA\"",
+      "context": {
+        "addr": {
+          "city": "",
+          "street": "B"
+        },
+        "person": {
+          "age": 9223372036854775807,
+          "name": "A"
+        },
+        "role": [
+          "admin"
+        ]
+      }
+    },
+    "entities": [
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Action",
+          "id": "view"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::User",
+          "id": "alice"
+        },
+        "attrs": {
+          "account": {
+            "__entity": {
+              "type": "PhotoFlash::Data::Account",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Album",
+          "id": "jane_vacation"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Account",
+          "id": ""
+        },
+        "attrs": {
+          "age": 0
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::User",
+          "id": ""
+        },
+        "attrs": {
+          "account": {
+            "__entity": {
+              "type": "PhotoFlash::Data::Account",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Photo",
+          "id": "AAAAA"
+        },
+        "attrs": {
+          "owner": {
+            "__entity": {
+              "type": "PhotoFlash::Data::User",
+              "id": ""
+            }
+          }
+        },
+        "parents": [
+          {
+            "type": "PhotoFlash::Data::Album",
+            "id": "jane_vacation"
+          }
+        ]
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Action",
+          "id": "edit"
+        },
+        "attrs": {},
+        "parents": []
+      }
+    ],
+    "decision": "deny",
+    "reason": [],
+    "has_error": false
+  },
+  {
+    "request": {
+      "principal": "PhotoFlash::Data::User::\"alice\"",
+      "action": "PhotoFlash::Data::Action::\"view\"",
+      "resource": "PhotoFlash::Data::Photo::\"admin\"",
+      "context": {
+        "addr": {
+          "city": "DC",
+          "street": "B"
+        },
+        "person": {
+          "age": 9223372036854775807,
+          "name": "A"
+        },
+        "role": [
+          "admin"
+        ]
+      }
+    },
+    "entities": [
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::User",
+          "id": ""
+        },
+        "attrs": {
+          "account": {
+            "__entity": {
+              "type": "PhotoFlash::Data::Account",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Photo",
+          "id": "admin"
+        },
+        "attrs": {
+          "owner": {
+            "__entity": {
+              "type": "PhotoFlash::Data::User",
+              "id": ""
+            }
+          }
+        },
+        "parents": [
+          {
+            "type": "PhotoFlash::Data::Album",
+            "id": "jane_vacation"
+          }
+        ]
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Account",
+          "id": ""
+        },
+        "attrs": {
+          "age": 0
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Album",
+          "id": "jane_vacation"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::User",
+          "id": "alice"
+        },
+        "attrs": {
+          "account": {
+            "__entity": {
+              "type": "PhotoFlash::Data::Account",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Action",
+          "id": "edit"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Action",
+          "id": "view"
+        },
+        "attrs": {},
+        "parents": []
+      }
+    ],
+    "decision": "allow",
+    "reason": [
+      "policy0"
+    ],
+    "has_error": false
+  },
+  {
+    "request": {
+      "principal": "PhotoFlash::Data::User::\"alice\"",
+      "action": "PhotoFlash::Data::Action::\"edit\"",
+      "resource": "PhotoFlash::Data::Photo::\"admin\"",
+      "context": {}
+    },
+    "entities": [
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Photo",
+          "id": "admin"
+        },
+        "attrs": {
+          "owner": {
+            "__entity": {
+              "type": "PhotoFlash::Data::User",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Action",
+          "id": "view"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::User",
+          "id": ""
+        },
+        "attrs": {
+          "account": {
+            "__entity": {
+              "type": "PhotoFlash::Data::Account",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::User",
+          "id": "alice"
+        },
+        "attrs": {
+          "account": {
+            "__entity": {
+              "type": "PhotoFlash::Data::Account",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Action",
+          "id": "edit"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Account",
+          "id": ""
+        },
+        "attrs": {
+          "age": 0
+        },
+        "parents": []
+      }
+    ],
+    "decision": "deny",
+    "reason": [],
+    "has_error": false
+  },
+  {
+    "request": {
+      "principal": "PhotoFlash::Data::User::\"A\"",
+      "action": "PhotoFlash::Data::Action::\"edit\"",
+      "resource": "PhotoFlash::Data::Photo::\"B\"",
+      "context": {}
+    },
+    "entities": [
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::User",
+          "id": ""
+        },
+        "attrs": {
+          "account": {
+            "__entity": {
+              "type": "PhotoFlash::Data::Account",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Action",
+          "id": "edit"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::User",
+          "id": "A"
+        },
+        "attrs": {
+          "account": {
+            "__entity": {
+              "type": "PhotoFlash::Data::Account",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Action",
+          "id": "view"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Account",
+          "id": ""
+        },
+        "attrs": {
+          "age": 0
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Photo",
+          "id": "B"
+        },
+        "attrs": {
+          "owner": {
+            "__entity": {
+              "type": "PhotoFlash::Data::User",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      }
+    ],
+    "decision": "deny",
+    "reason": [],
+    "has_error": false
+  },
+  {
+    "request": {
+      "principal": "PhotoFlash::Data::User::\"alice\"",
+      "action": "PhotoFlash::Data::Action::\"view\"",
+      "resource": "PhotoFlash::Data::Photo::\"AAAAA\"",
+      "context": {
+        "addr": {
+          "city": "",
+          "street": "B"
+        },
+        "person": {
+          "age": -1,
+          "name": "A"
+        },
+        "role": []
+      }
+    },
+    "entities": [
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::User",
+          "id": ""
+        },
+        "attrs": {
+          "account": {
+            "__entity": {
+              "type": "PhotoFlash::Data::Account",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Album",
+          "id": "jane_vacation"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::User",
+          "id": "alice"
+        },
+        "attrs": {
+          "account": {
+            "__entity": {
+              "type": "PhotoFlash::Data::Account",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Action",
+          "id": "view"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Account",
+          "id": ""
+        },
+        "attrs": {
+          "age": 0
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Action",
+          "id": "edit"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Photo",
+          "id": "AAAAA"
+        },
+        "attrs": {
+          "owner": {
+            "__entity": {
+              "type": "PhotoFlash::Data::User",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      }
+    ],
+    "decision": "deny",
+    "reason": [],
+    "has_error": false
+  },
+  {
+    "request": {
+      "principal": "PhotoFlash::Data::User::\"alice\"",
+      "action": "PhotoFlash::Data::Action::\"view\"",
+      "resource": "PhotoFlash::Data::Photo::\"AAAAA\"",
+      "context": {
+        "addr": {
+          "city": "",
+          "street": "B"
+        },
+        "person": {
+          "age": -1,
+          "name": "A"
+        },
+        "role": [
+          "admin"
+        ]
+      }
+    },
+    "entities": [
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Action",
+          "id": "view"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::User",
+          "id": "alice"
+        },
+        "attrs": {
+          "account": {
+            "__entity": {
+              "type": "PhotoFlash::Data::Account",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::User",
+          "id": ""
+        },
+        "attrs": {
+          "account": {
+            "__entity": {
+              "type": "PhotoFlash::Data::Account",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Photo",
+          "id": "AAAAA"
+        },
+        "attrs": {
+          "owner": {
+            "__entity": {
+              "type": "PhotoFlash::Data::User",
+              "id": ""
+            }
+          }
+        },
+        "parents": [
+          {
+            "type": "PhotoFlash::Data::Album",
+            "id": "jane_vacation"
+          }
+        ]
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Account",
+          "id": ""
+        },
+        "attrs": {
+          "age": 0
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Album",
+          "id": "jane_vacation"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "PhotoFlash::Data::Action",
+          "id": "edit"
+        },
+        "attrs": {},
+        "parents": []
+      }
+    ],
+    "decision": "deny",
+    "reason": [],
+    "has_error": false
+  }
+]
