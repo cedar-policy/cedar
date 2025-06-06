@@ -1,1 +1,152 @@
-[{"request":{"principal":"User::\"alice\"","action":"Action::\"view\"","resource":"Photo::\"AAAAA\"","context":{}},"entities":[{"uid":{"type":"User","id":"alice"},"attrs":{},"parents":[]},{"uid":{"type":"Action","id":"view"},"attrs":{},"parents":[]},{"uid":{"type":"Album","id":"jane_vacation"},"attrs":{},"parents":[]},{"uid":{"type":"Photo","id":"AAAAA"},"attrs":{},"parents":[]}],"decision":"deny","reason":[],"has_error":false},{"request":{"principal":"User::\"alice\"","action":"Action::\"view\"","resource":"Photo::\"AAAAA\"","context":{}},"entities":[{"uid":{"type":"Photo","id":"AAAAA"},"attrs":{},"parents":[{"type":"Album","id":"jane_vacation"}]},{"uid":{"type":"Action","id":"view"},"attrs":{},"parents":[]},{"uid":{"type":"Album","id":"jane_vacation"},"attrs":{},"parents":[]},{"uid":{"type":"User","id":"alice"},"attrs":{},"parents":[]}],"decision":"allow","reason":["policy0"],"has_error":false},{"request":{"principal":"User::\"jane_vacation\"","action":"Action::\"view\"","resource":"Photo::\"AAAAAAAAAAAAA\"","context":{}},"entities":[{"uid":{"type":"Action","id":"view"},"attrs":{},"parents":[]},{"uid":{"type":"User","id":"alice"},"attrs":{},"parents":[]},{"uid":{"type":"Photo","id":"AAAAAAAAAAAAA"},"attrs":{},"parents":[]},{"uid":{"type":"User","id":"jane_vacation"},"attrs":{},"parents":[]},{"uid":{"type":"Album","id":"jane_vacation"},"attrs":{},"parents":[]}],"decision":"deny","reason":[],"has_error":false}]
+[
+  {
+    "request": {
+      "principal": "User::\"alice\"",
+      "action": "Action::\"view\"",
+      "resource": "Photo::\"AAAAA\"",
+      "context": {}
+    },
+    "entities": [
+      {
+        "uid": {
+          "type": "User",
+          "id": "alice"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Action",
+          "id": "view"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Album",
+          "id": "jane_vacation"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Photo",
+          "id": "AAAAA"
+        },
+        "attrs": {},
+        "parents": []
+      }
+    ],
+    "decision": "deny",
+    "reason": [],
+    "has_error": false
+  },
+  {
+    "request": {
+      "principal": "User::\"alice\"",
+      "action": "Action::\"view\"",
+      "resource": "Photo::\"AAAAA\"",
+      "context": {}
+    },
+    "entities": [
+      {
+        "uid": {
+          "type": "Photo",
+          "id": "AAAAA"
+        },
+        "attrs": {},
+        "parents": [
+          {
+            "type": "Album",
+            "id": "jane_vacation"
+          }
+        ]
+      },
+      {
+        "uid": {
+          "type": "Action",
+          "id": "view"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Album",
+          "id": "jane_vacation"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "User",
+          "id": "alice"
+        },
+        "attrs": {},
+        "parents": []
+      }
+    ],
+    "decision": "allow",
+    "reason": [
+      "policy0"
+    ],
+    "has_error": false
+  },
+  {
+    "request": {
+      "principal": "User::\"jane_vacation\"",
+      "action": "Action::\"view\"",
+      "resource": "Photo::\"AAAAAAAAAAAAA\"",
+      "context": {}
+    },
+    "entities": [
+      {
+        "uid": {
+          "type": "Action",
+          "id": "view"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "User",
+          "id": "alice"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Photo",
+          "id": "AAAAAAAAAAAAA"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "User",
+          "id": "jane_vacation"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Album",
+          "id": "jane_vacation"
+        },
+        "attrs": {},
+        "parents": []
+      }
+    ],
+    "decision": "deny",
+    "reason": [],
+    "has_error": false
+  }
+]

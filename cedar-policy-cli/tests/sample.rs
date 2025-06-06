@@ -1392,6 +1392,12 @@ fn visualize_entities_parses_as_dot(
     "sample-data/tiny_sandboxes/sample9/tests-combined.json",
     CedarExitCode::Success
 )]
+#[case(
+    "sample-data/tiny_sandboxes/sample10/policy.cedar",
+    "sample-data/tiny_sandboxes/sample10/schema.cedarschema",
+    "sample-data/tiny_sandboxes/sample10/tests-error.json",
+    CedarExitCode::Success
+)]
 #[track_caller]
 fn test_run_tests_samples(
     #[case] policies_file: impl Into<String>,
@@ -1407,7 +1413,11 @@ fn test_run_tests_samples(
     let cmd = RunTestsArgs {
         schema: SchemaArgs {
             schema_file: schema_file.into(),
-            schema_format: SchemaFormat::Json,
+            schema_format: if schema_file.display().to_string().ends_with(".json") {
+                SchemaFormat::Json
+            } else {
+                SchemaFormat::Cedar
+            },
         },
         policies: PoliciesArgs {
             policies_file: Some(policies_file.clone()),

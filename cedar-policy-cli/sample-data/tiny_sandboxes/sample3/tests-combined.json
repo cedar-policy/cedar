@@ -1,1 +1,221 @@
-[{"request":{"principal":"User::\"bob\"","action":"Action::\"edit\"","resource":"Photo::\"AAA\"","context":{}},"entities":[{"uid":{"type":"User","id":""},"attrs":{},"parents":[]},{"uid":{"type":"Album","id":"jane_vacation"},"attrs":{},"parents":[]},{"uid":{"type":"Photo","id":"AAA"},"attrs":{"owner":{"__entity":{"type":"User","id":""}}},"parents":[]},{"uid":{"type":"User","id":"bob"},"attrs":{},"parents":[]},{"uid":{"type":"Action","id":"edit"},"attrs":{},"parents":[]},{"uid":{"type":"Action","id":"view"},"attrs":{},"parents":[]}],"decision":"deny","reason":[],"has_error":false},{"request":{"principal":"User::\"bob\"","action":"Action::\"edit\"","resource":"Photo::\"AAA\"","context":{}},"entities":[{"uid":{"type":"Action","id":"edit"},"attrs":{},"parents":[]},{"uid":{"type":"User","id":""},"attrs":{},"parents":[]},{"uid":{"type":"Photo","id":"AAA"},"attrs":{"owner":{"__entity":{"type":"User","id":""}}},"parents":[{"type":"Album","id":"jane_vacation"}]},{"uid":{"type":"Album","id":"jane_vacation"},"attrs":{},"parents":[]},{"uid":{"type":"User","id":"bob"},"attrs":{},"parents":[]},{"uid":{"type":"Action","id":"view"},"attrs":{},"parents":[]}],"decision":"allow","reason":["policy0"],"has_error":false},{"request":{"principal":"User::\"jane_vacation\"","action":"Action::\"edit\"","resource":"Photo::\"AAAAAAAAAAAAA\"","context":{}},"entities":[{"uid":{"type":"Album","id":"jane_vacation"},"attrs":{},"parents":[]},{"uid":{"type":"User","id":"jane_vacation"},"attrs":{},"parents":[]},{"uid":{"type":"User","id":""},"attrs":{},"parents":[]},{"uid":{"type":"Photo","id":"AAAAAAAAAAAAA"},"attrs":{"owner":{"__entity":{"type":"User","id":""}}},"parents":[]},{"uid":{"type":"Action","id":"edit"},"attrs":{},"parents":[]},{"uid":{"type":"User","id":"bob"},"attrs":{},"parents":[]},{"uid":{"type":"Action","id":"view"},"attrs":{},"parents":[]}],"decision":"deny","reason":[],"has_error":false}]
+[
+  {
+    "request": {
+      "principal": "User::\"bob\"",
+      "action": "Action::\"edit\"",
+      "resource": "Photo::\"AAA\"",
+      "context": {}
+    },
+    "entities": [
+      {
+        "uid": {
+          "type": "User",
+          "id": ""
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Album",
+          "id": "jane_vacation"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Photo",
+          "id": "AAA"
+        },
+        "attrs": {
+          "owner": {
+            "__entity": {
+              "type": "User",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "User",
+          "id": "bob"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Action",
+          "id": "edit"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Action",
+          "id": "view"
+        },
+        "attrs": {},
+        "parents": []
+      }
+    ],
+    "decision": "deny",
+    "reason": [],
+    "has_error": false
+  },
+  {
+    "request": {
+      "principal": "User::\"bob\"",
+      "action": "Action::\"edit\"",
+      "resource": "Photo::\"AAA\"",
+      "context": {}
+    },
+    "entities": [
+      {
+        "uid": {
+          "type": "Action",
+          "id": "edit"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "User",
+          "id": ""
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Photo",
+          "id": "AAA"
+        },
+        "attrs": {
+          "owner": {
+            "__entity": {
+              "type": "User",
+              "id": ""
+            }
+          }
+        },
+        "parents": [
+          {
+            "type": "Album",
+            "id": "jane_vacation"
+          }
+        ]
+      },
+      {
+        "uid": {
+          "type": "Album",
+          "id": "jane_vacation"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "User",
+          "id": "bob"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Action",
+          "id": "view"
+        },
+        "attrs": {},
+        "parents": []
+      }
+    ],
+    "decision": "allow",
+    "reason": [
+      "policy0"
+    ],
+    "has_error": false
+  },
+  {
+    "request": {
+      "principal": "User::\"jane_vacation\"",
+      "action": "Action::\"edit\"",
+      "resource": "Photo::\"AAAAAAAAAAAAA\"",
+      "context": {}
+    },
+    "entities": [
+      {
+        "uid": {
+          "type": "Album",
+          "id": "jane_vacation"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "User",
+          "id": "jane_vacation"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "User",
+          "id": ""
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Photo",
+          "id": "AAAAAAAAAAAAA"
+        },
+        "attrs": {
+          "owner": {
+            "__entity": {
+              "type": "User",
+              "id": ""
+            }
+          }
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Action",
+          "id": "edit"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "User",
+          "id": "bob"
+        },
+        "attrs": {},
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Action",
+          "id": "view"
+        },
+        "attrs": {},
+        "parents": []
+      }
+    ],
+    "decision": "deny",
+    "reason": [],
+    "has_error": false
+  }
+]

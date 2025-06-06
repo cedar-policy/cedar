@@ -737,7 +737,7 @@ impl FromStr for Arguments {
 }
 
 /// This struct is the serde structure expected for --request-json
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct RequestJSON {
     /// Principal for the request
     #[serde(default)]
