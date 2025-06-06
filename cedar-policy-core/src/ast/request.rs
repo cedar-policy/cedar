@@ -612,6 +612,14 @@ pub trait RequestSchema {
         request: &Request,
         extensions: &Extensions<'_>,
     ) -> Result<(), Self::Error>;
+
+    /// Validate the given `context`, returning `Err` if it fails validation
+    fn validate_context<'a>(
+        &self,
+        context: &Context,
+        action: &EntityUID,
+        extensions: &Extensions<'a>,
+    ) -> std::result::Result<(), Self::Error>;
 }
 
 /// A `RequestSchema` that does no validation and always reports a passing result
@@ -624,6 +632,15 @@ impl RequestSchema for RequestSchemaAllPass {
         _request: &Request,
         _extensions: &Extensions<'_>,
     ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn validate_context<'a>(
+        &self,
+        _context: &Context,
+        _action: &EntityUID,
+        _extensions: &Extensions<'a>,
+    ) -> std::result::Result<(), Self::Error> {
         Ok(())
     }
 }
