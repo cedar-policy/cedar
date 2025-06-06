@@ -19,10 +19,13 @@
 // omitted.
 #![allow(clippy::needless_return)]
 
+use cedar_policy::entities_errors::EntitiesError;
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
-use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
+use miette::{miette, Diagnostic, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
+use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
-use std::io::Write;
+use std::collections::BTreeSet;
+use std::io::{BufReader, Write};
 use std::{
     collections::HashMap,
     fmt::{self, Display},
@@ -32,6 +35,7 @@ use std::{
     str::FromStr,
     time::Instant,
 };
+use thiserror::Error;
 
 use cedar_policy::*;
 use cedar_policy_formatter::{policies_str_to_pretty, Config};
@@ -109,6 +113,8 @@ pub enum Commands {
     New(NewArgs),
     /// Partially evaluate an authorization request
     PartiallyAuthorize(PartiallyAuthorizeArgs),
+    /// Run test cases on a policy set
+    RunTests(RunTestsArgs),
     /// Print Cedar language version
     LanguageVersion,
 }
@@ -629,6 +635,19 @@ pub struct PartiallyAuthorizeArgs {
 pub struct PartiallyAuthorizeArgs;
 
 #[derive(Args, Debug)]
+pub struct RunTestsArgs {
+    /// Schema args (incorporated by reference)
+    #[command(flatten)]
+    pub schema: SchemaArgs,
+    /// Policies args (incorporated by reference)
+    #[command(flatten)]
+    pub policies: PoliciesArgs,
+    /// Tests in JSON format
+    #[arg(long, value_name = "FILE")]
+    pub tests: String,
+}
+
+#[derive(Args, Debug)]
 pub struct VisualizeArgs {
     #[arg(long = "entities", value_name = "FILE")]
     pub entities_file: String,
@@ -718,7 +737,7 @@ impl FromStr for Arguments {
 }
 
 /// This struct is the serde structure expected for --request-json
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct RequestJSON {
     /// Principal for the request
     #[serde(default)]
@@ -1450,6 +1469,270 @@ pub fn partial_authorize(args: &PartiallyAuthorizeArgs) -> CedarExitCode {
             }
             CedarExitCode::Failure
         }
+    }
+}
+
+enum TestResult {
+    Pass,
+    Warning,
+    Fail,
+}
+
+/// Compare the test's expected decision against the actual decision
+fn compare_test_decisions(test: &TestCase, ans: &Response) -> TestResult {
+    if ans.decision() == test.expected {
+        // Check for warnings
+        let mut warnings = Vec::new();
+        let reason = ans.diagnostics().reason().collect::<BTreeSet<_>>();
+
+        // Check that the declared reason is a subset of the actual reason
+        let missing_reason = test
+            .reason
+            .iter()
+            .filter(|r| !reason.contains(&PolicyId::new(r)))
+            .collect::<Vec<_>>();
+
+        if !missing_reason.is_empty() {
+            warnings.push(format!(
+                "missing reason(s): {}",
+                missing_reason
+                    .into_iter()
+                    .map(|r| format!("`{}`", r))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+
+        // Check that evaluation errors are expected
+        let has_error = ans.diagnostics().errors().next().is_some();
+        if has_error && !test.has_error {
+            warnings.push(format!(
+                "unexpected runtime error(s): {}",
+                ans.diagnostics()
+                    .errors()
+                    .map(|e| e.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        } else if !has_error && test.has_error {
+            warnings.push("expected error(s) but none were found".to_string());
+        }
+
+        if warnings.is_empty() {
+            println!("{}", "ok".green());
+            TestResult::Pass
+        } else {
+            println!("{}: {}", "warning(s)".yellow(), warnings.join("; "));
+            TestResult::Warning
+        }
+    } else {
+        println!(
+            "{}: expected {:?}, got {:?}",
+            "fail".red(),
+            test.expected,
+            ans.decision()
+        );
+        TestResult::Fail
+    }
+}
+
+/// Parse the test, validate against schema,
+/// and then check the authorization decision
+fn run_one_test(
+    policies: &PolicySet,
+    schema: Option<&Schema>,
+    test: &serde_json::Value,
+) -> TestResult {
+    if let Some(name) = test["name"].as_str() {
+        print!("  test {} ... ", name);
+    } else {
+        print!("  test (unamed) ... ");
+    }
+
+    let test = match TestCase::from_json_value(test.clone(), schema).into_diagnostic() {
+        Ok(test) => test,
+        Err(e) => {
+            println!("{}:", "error".red());
+            println!("{e:?}");
+            return TestResult::Fail;
+        }
+    };
+
+    let ans = Authorizer::new().is_authorized(&test.request, &policies, &test.entities);
+
+    compare_test_decisions(&test, &ans)
+}
+
+fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
+    let policies = args.policies.get_policy_set()?;
+
+    let schema = args.schema.get_schema()?;
+    let tests = load_partial_tests(&args.tests)?;
+
+    let mut total_fails: usize = 0;
+    let mut total_warnings: usize = 0;
+
+    println!("running {} test(s)", tests.len());
+    for test in tests.iter() {
+        match run_one_test(&policies, Some(&schema), test) {
+            TestResult::Pass => {}
+            TestResult::Warning => total_warnings += 1,
+            TestResult::Fail => total_fails += 1,
+        }
+    }
+
+    println!(
+        "results: {} {}, {} {}, {} {}",
+        tests.len() - total_fails - total_warnings,
+        if total_fails == 0 && total_warnings == 0 {
+            "passed".green().to_string()
+        } else {
+            "passed".to_string()
+        },
+        total_fails,
+        if total_fails != 0 {
+            "failed".red().to_string()
+        } else {
+            "failed".to_string()
+        },
+        total_warnings,
+        if total_warnings != 0 {
+            "warning(s)".yellow().to_string()
+        } else {
+            "warning(s)".to_string()
+        },
+    );
+
+    Ok(if total_fails != 0 {
+        CedarExitCode::Failure
+    } else {
+        CedarExitCode::Success
+    })
+}
+
+pub fn run_tests(args: &RunTestsArgs) -> CedarExitCode {
+    match run_tests_inner(args) {
+        Ok(status) => status,
+        Err(e) => {
+            println!("{e:?}");
+            CedarExitCode::Failure
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TestCase {
+    request: Request,
+    entities: Entities,
+    expected: Decision,
+    reason: Vec<String>,
+    has_error: bool,
+}
+
+#[derive(Error, Diagnostic, Debug)]
+enum TestCaseError {
+    #[error("error when parsing JSON")]
+    JsonParseError(#[from] serde_json::Error),
+    #[error("error when parsing entity UID")]
+    EntityUidParseError(#[from] ParseErrors),
+    #[error("error when parsing context JSON")]
+    ContextJsonError(#[from] ContextJsonError),
+    #[error("error when parsing expected decision")]
+    DecisionParseError(serde_json::Value),
+    #[error("error when validating request against schema")]
+    RequestValidationError(#[from] RequestValidationError),
+    #[error("error when parsing entities")]
+    EntitiesError(#[from] EntitiesError),
+    #[error("missing field `{0}`")]
+    MissingField(String),
+}
+
+impl TestCase {
+    /// Parse a `TestCase` from a JSON value.
+    fn from_json_value(
+        json: serde_json::Value,
+        schema: Option<&Schema>,
+    ) -> Result<Self, TestCaseError> {
+        let qjson: RequestJSON = serde_json::from_value(
+            json.get("request")
+                .ok_or(TestCaseError::MissingField("request".to_string()))?
+                .clone(),
+        )?;
+
+        let principal = qjson.principal.parse()?;
+        let action = qjson.action.parse()?;
+        let resource = qjson.resource.parse()?;
+        let context = Context::from_json_value(qjson.context, schema.map(|s| (s, &action)))?;
+
+        let request = Request::new(principal, action, resource, context, schema)?;
+
+        let entities = Entities::from_json_value(
+            json.get("entities")
+                .ok_or(TestCaseError::MissingField("entities".to_string()))?
+                .clone(),
+            schema,
+        )?;
+
+        let decision = json
+            .get("decision")
+            .ok_or(TestCaseError::MissingField("decision".to_string()))?
+            .clone();
+        let expected = match decision.as_str() {
+            Some("allow") => Decision::Allow,
+            Some("deny") => Decision::Deny,
+            _ => return Err(TestCaseError::DecisionParseError(decision.clone())),
+        };
+
+        let mut reason = Vec::new();
+
+        if let Some(reason_json) = json
+            .get("reason")
+            .ok_or(TestCaseError::MissingField("reason".to_string()))?
+            .as_array()
+        {
+            reason.extend(
+                reason_json
+                    .iter()
+                    .filter_map(|r| Some(r.as_str()?.to_string())),
+            );
+        }
+
+        Ok(Self {
+            request,
+            entities,
+            expected,
+            reason,
+            has_error: json
+                .get("has_error")
+                .ok_or(TestCaseError::MissingField("has_error".to_string()))?
+                .as_bool()
+                .unwrap_or(false),
+        })
+    }
+}
+
+/// Load partially parsed tests from a JSON file
+/// (as JSON values first without parsing to TestCase)
+fn load_partial_tests(tests_filename: impl AsRef<Path>) -> Result<Vec<serde_json::Value>> {
+    match std::fs::OpenOptions::new()
+        .read(true)
+        .open(tests_filename.as_ref())
+    {
+        Ok(f) => {
+            let reader = BufReader::new(f);
+            serde_json::from_reader(reader).map_err(|e| {
+                miette!(
+                    "failed to parse tests from file {}: {e}",
+                    tests_filename.as_ref().display()
+                )
+            })
+        }
+        Err(e) => Err(e).into_diagnostic().wrap_err_with(|| {
+            format!(
+                "failed to open test file {}",
+                tests_filename.as_ref().display()
+            )
+        }),
     }
 }
 

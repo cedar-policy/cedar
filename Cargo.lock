@@ -304,6 +304,7 @@ dependencies = [
  "glob",
  "graphviz-rust",
  "miette",
+ "owo-colors",
  "predicates",
  "rstest",
  "semver",
