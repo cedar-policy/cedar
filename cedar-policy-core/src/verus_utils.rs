@@ -225,28 +225,6 @@ pub proof fn lemma_set_to_seq_to_set<T>(set: Set<T>)
     }
 }
 
-pub proof fn lemma_seq_set_map<A,B>(st: Set<A>, sq: Seq<A>, f: spec_fn(A) -> B)
-    requires
-        st.finite(),
-        st == sq.to_set(),
-    ensures
-        st.map(f) == sq.map_values(f).to_set(),
-    decreases st.len()
-{
-    admit()
-}
-
-pub proof fn lemma_seq_set_filter<A>(st: Set<A>, sq: Seq<A>, f: spec_fn(A) -> bool)
-    requires
-        st.finite(),
-        st == sq.to_set(),
-    ensures
-        st.filter(f) == sq.filter(f).to_set(),
-{
-    admit()
-}
-
-
 pub proof fn lemma_set_filter_map_aux_equiv<A,B>(st: Set<A>, f: spec_fn(A) -> Option<B>)
     requires
         st.finite() // so we can use recursion
@@ -341,13 +319,13 @@ pub proof fn lemma_set_seq_filter_map_option<A, B>(st: Set<A>, f: spec_fn(A) -> 
 {
     let sq = st.to_seq();
     assert(st == sq.to_set()) by { lemma_set_to_seq_to_set(st) };
-    lemma_seq_set_map(st, sq, f);
+    lemma_seq_to_set_commutes_with_map(sq, f);
     let st_map = st.map(f);
     let sq_map = sq.map_values(f);
-    lemma_seq_set_filter(st_map, sq_map, |x: Option<B>| x is Some);
+    lemma_seq_to_set_commutes_with_filter(sq_map, |x: Option<B>| x is Some);
     let st_map_filter = st_map.filter(|x: Option<B>| x is Some);
     let sq_map_filter = sq_map.filter(|x: Option<B>| x is Some);
-    lemma_seq_set_map(st_map_filter, sq_map_filter, |x: Option<B>| x.unwrap());
+    lemma_seq_to_set_commutes_with_map(sq_map_filter, |x: Option<B>| x.unwrap());
     lemma_set_filter_map_aux_equiv(st, f);
 }
 
@@ -438,6 +416,35 @@ pub proof fn lemma_seq_to_set_commutes_with_map<A,B>(s: Seq<A>, f: spec_fn(A) ->
     assert_sets_equal!(s.to_set().map(f) == s.map_values(f).to_set());
 }
 
+pub proof fn lemma_seq_to_set_commutes_with_filter<A>(s: Seq<A>, f: spec_fn(A) -> bool)
+    ensures s.to_set().filter(f) == s.filter(f).to_set()
+{
+    broadcast use vstd::seq_lib::group_filter_ensures;
+    assert forall |a:A| s.filter(f).to_set().contains(a) implies s.to_set().filter(f).contains(a) by {
+        assert(s.filter(f).contains(a));
+        lemma_seq_filter_contains_rev(s, f, a);
+        assert(s.to_set().contains(a));
+    };
+
+    assert_sets_equal!(s.to_set().filter(f) == s.filter(f).to_set());
+}
+
+pub proof fn lemma_seq_filter_contains_rev<A>(s: Seq<A>, f: spec_fn(A) -> bool, a: A)
+    requires s.filter(f).contains(a)
+    ensures s.contains(a)
+    decreases s.len()
+{
+    reveal_with_fuel(Seq::filter, 1);
+    broadcast use vstd::seq_lib::group_filter_ensures;
+    assert(f(a));
+    if a == s.last() {
+        assert(a == s.filter(f).last());
+    } else {
+        lemma_seq_filter_contains_rev(s.drop_last(), f, a);
+    }
+}
+
+
 pub proof fn lemma_seq_to_set_distributes_over_add<A>(s1: Seq<A>, s2: Seq<A>)
     ensures (s1 + s2).to_set() == s1.to_set().union(s2.to_set())
 {
@@ -453,26 +460,6 @@ pub proof fn lemma_seq_to_set_distributes_over_add<A>(s1: Seq<A>, s2: Seq<A>)
         }
     };
     assert_sets_equal!((s1 + s2).to_set() == s1.to_set().union(s2.to_set()));
-}
-
-pub proof fn lemma_set_filter_map_insert_some<A,B>(s: Set<A>, f: spec_fn(A) -> Option<B>, a: A, b: B)
-    requires
-        s.finite(),
-        f(a) matches Some(b_) && b == b_,
-    ensures
-        s.insert(a).filter_map(f) == s.filter_map(f).insert(b),
-{
-    admit()
-}
-
-pub proof fn lemma_set_filter_map_insert_none<A,B>(s: Set<A>, f: spec_fn(A) -> Option<B>, a: A)
-    requires
-        s.finite(),
-        f(a) is None
-    ensures
-        s.insert(a).filter_map(f) == s.filter_map(f),
-{
-    admit()
 }
 
 pub proof fn lemma_seq_take_distributes_over_map_values<A,B>(s: Seq<A>, n: int, f: spec_fn(A) -> B)

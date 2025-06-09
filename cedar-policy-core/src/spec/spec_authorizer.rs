@@ -183,7 +183,7 @@ pub proof fn lemma_satisfied_policies_from_set_insert_some(effect: Effect, polic
         satisfied_policies_from_set(effect, policy_set.insert(new_policy), req, entities) == satisfied_policies_from_set(effect, policy_set, req, entities).insert(new_id)
 {
     reveal(satisfied_policies_from_set);
-    lemma_set_filter_map_insert_some(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities), new_policy, new_id)
+    vstd::set::Set::lemma_filter_map_insert(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities), new_policy);
 }
 
 pub proof fn lemma_satisfied_policies_from_set_insert_none(effect: Effect, policy_set: Set<Policy>, req: Request, entities: Entities, new_policy: Policy)
@@ -194,7 +194,7 @@ pub proof fn lemma_satisfied_policies_from_set_insert_none(effect: Effect, polic
         satisfied_policies_from_set(effect, policy_set.insert(new_policy), req, entities) == satisfied_policies_from_set(effect, policy_set, req, entities)
 {
     reveal(satisfied_policies_from_set);
-    lemma_set_filter_map_insert_none(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities), new_policy)
+    vstd::set::Set::lemma_filter_map_insert(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities), new_policy);
 }
 
 
