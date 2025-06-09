@@ -26,7 +26,7 @@ use std::hash::Hash;
 #[cfg(verus_keep_ghost)]
 #[allow(unused_imports)]
 use vstd::std_specs::hash::*;
-use vstd::{assert_seqs_equal, calc, prelude::*};
+use vstd::{assert_seqs_equal, assert_sets_equal, calc, prelude::*};
 
 // Specification macros
 
@@ -314,6 +314,42 @@ pub proof fn lemma_seq_filter_values_append<A>(s: Seq<A>, f: spec_fn(A) -> bool,
     assert(s_push_a.drop_last().filter(f) == s.filter(f));
     assert(s_push_a.drop_last().filter(f).push(s_push_a.last()) == s.filter(f).push(a));
     assert(s_push_a.filter(f) == s_push_a.drop_last().filter(f).push(s_push_a.last()));
+}
+
+pub proof fn lemma_seq_take_skip_add<A>(s: Seq<A>, n: int)
+    requires 0 <= n <= s.len(),
+    ensures s == s.take(n) + s.skip(n)
+{
+    assert_seqs_equal!(s.take(n) + s.skip(n) == s);
+}
+
+pub broadcast proof fn lemma_seq_map_values_distributes_over_add<A,B>(s1: Seq<A>, s2: Seq<A>, f: spec_fn(A) -> B)
+    ensures #[trigger] (s1.map_values(f) + s2.map_values(f)) == #[trigger] (s1 + s2).map_values(f)
+{
+    assert_seqs_equal!(s1.map_values(f) + s2.map_values(f) == (s1 + s2).map_values(f));
+}
+
+pub proof fn lemma_seq_to_set_commutes_with_map<A,B>(s: Seq<A>, f: spec_fn(A) -> B)
+    ensures s.to_set().map(f) == s.map_values(f).to_set()
+{
+    assert forall |a: A| #[trigger] s.contains(a) implies s.map_values(f).contains(f(a)) by {
+        assert(exists |i| 0 <= i < s.len() && s[i] == a);
+        let i = choose |i| 0 <= i < s.len() && s[i] == a;
+        assert(s.map_values(f)[i] == f(a));
+    };
+    assert forall |a: A| #[trigger] s.contains(a) implies s.to_set().map(f).contains(f(a)) by {
+        assert(s.to_set().contains(a));
+    };
+    assert forall |a: A| #[trigger] s.contains(a) implies s.map_values(f).to_set().contains(f(a)) by {
+        assert(s.map_values(f).contains(f(a)));
+    };
+    assert forall |a: A| #[trigger] s.map_values(f).contains(f(a)) implies s.to_set().map(f).contains(f(a)) by {
+        assert(exists |i| 0 <= i < s.len() && s.map_values(f)[i] == f(a));
+        let i = choose |i| 0 <= i < s.len() && s.map_values(f)[i] == f(a);
+        assert(s.to_set().contains(s[i]));
+        assert(s.to_set().map(f).contains(f(s[i])));
+    };
+    assert_sets_equal!(s.to_set().map(f) == s.map_values(f).to_set());
 }
 
 

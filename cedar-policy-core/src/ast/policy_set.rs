@@ -607,6 +607,7 @@ impl PolicySet {
             let (policies_idx, policies_seq) = policies@;
             &&& policies_idx == 0
             &&& policies_seq.to_set().map(|p: Policy| p.view()) == self.view()
+            &&& policies_seq.map_values(|p: Policy| p.view()).to_set() == self.view()
             &&& forall |p: Policy| #[trigger] policies_seq.contains(p) ==> #[trigger] self.view().contains(p@)
         }),
     {
@@ -620,6 +621,7 @@ impl PolicySet {
                 assert(policies_seq.to_set().map(|p:Policy| p.view()).contains(p@));
                 assert(self.view().contains(p@));
             };
+            lemma_seq_to_set_commutes_with_map(policies_seq, |p: Policy| p.view())
             // assert forall |p: Policy| #[trigger] self.view().contains(p@) implies #[trigger] policies_seq.contains(p) by {
             //     assert(policies_seq.to_set().map(|p:Policy| p.view()).contains(p@));
             //     assert(policies_seq.to_set().contains(p));
