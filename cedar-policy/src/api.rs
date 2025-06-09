@@ -4714,25 +4714,23 @@ impl Context {
     }
 
     /// Validates this context against the provided schema
+    ///
     /// Returns Ok(()) if the context is valid according to the schema, or an error otherwise
-    pub fn validate_context(&self, schema: Option<&crate::Schema>, action: Option<&EntityUid>) -> std::result::Result<(), String> {
-        match (schema, action) {
-            (Some(schema), Some(action)) => {
-                // Get the context schema for this action
-                let _context_schema = Self::get_context_schema(schema, action)
-                    .map_err(|e| format!("Context schema error: {}", e))?;
-                
-                // Call the validate_context function from coreschema.rs
-                RequestSchema::validate_context(
-                    &schema.0,
-                    &self.0,
-                    action.as_ref(),
-                    &Extensions::all_available()
-                )
-                .map_err(|e| format!("Context validation failed: {}", e))
-            },
-            _ => Ok(()) // If no schema or action provided, we can't validate, so return Ok
-        }
+    ///
+    /// This validation is already handled by `Request::new`, so there is no need to separately call
+    /// if you are validating the whole request
+    pub fn validate(
+        &self,
+        schema: &crate::Schema,
+        action: &EntityUid,
+    ) -> std::result::Result<(), RequestValidationError> {
+        // Call the validate_context function from coreschema.rs
+        Ok(RequestSchema::validate_context(
+            &schema.0,
+            &self.0,
+            action.as_ref(),
+            Extensions::all_available(),
+        )?)
     }
 }
 

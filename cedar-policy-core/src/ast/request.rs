@@ -651,7 +651,7 @@ impl RequestSchema for RequestSchemaAllPass {
     ) -> std::result::Result<(), Self::Error> {
         Ok(())
     }
-
+    
     fn validate_scope_variables(
         &self,
         _principal: &EntityUID,

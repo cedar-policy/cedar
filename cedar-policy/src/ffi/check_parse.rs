@@ -218,18 +218,19 @@ pub fn check_parse_context(call: ContextParsingCall) -> CheckParseAnswer {
             };
         }
     };
-    
+
     let parse_result = call.context.parse(schema.as_ref(), action.as_ref());
-    
+
     // Check if the parsed context is valid
     if let Ok(context) = &parse_result {
-        if let Err(err) = context.validate_context(schema.as_ref(), action.as_ref()) {
-            return CheckParseAnswer::Failure {
-                errors: vec![miette::Report::msg(err).into()],
-            };
+        if let (Some(schema_ref), Some(action_ref)) = (&schema, &action) {
+            if let Err(err) = context.validate(schema_ref, action_ref) {
+                return CheckParseAnswer::Failure {
+                    errors: vec![miette::Report::msg(err).into()],
+                };
+            }
         }
     }
-    
     // Return the parse result if all other checks pass
     parse_result.into()
 }
@@ -843,7 +844,7 @@ mod test {
     }
 
     #[test]
-    fn check_parse_context_fails_for_invalid_context_type(){
+    fn check_parse_context_fails_for_invalid_context_type() {
         let call = json!({
             "context": {
                 "authenticated": "foo"
@@ -885,14 +886,7 @@ mod test {
                         "User": {
                             "shape": {
                                 "type": "Record",
-                                "attributes": {
-                                    "userId": {
-                                        "type": "String"
-                                    },
-                                    "personInformation": {
-                                        "type": "PersonType"
-                                    }
-                                }
+                                "attributes": {}
                             },
                             "memberOfTypes": [
                                 "UserGroup"
@@ -907,34 +901,8 @@ mod test {
                         "Photo": {
                             "shape": {
                                 "type": "Record",
-                                "attributes": {
-                                    "account": {
-                                        "type": "Entity",
-                                        "name": "Account",
-                                        "required": true
-                                    },
-                                    "private": {
-                                        "type": "Boolean",
-                                        "required": true
-                                    }
-                                }
+                                "attributes": {}
                             },
-                            "memberOfTypes": [
-                                "Album",
-                                "Account"
-                            ]
-                        },
-                        "Album": {
-                            "shape": {
-                                "type": "Record",
-                                "attributes": {}
-                            }
-                        },
-                        "Account": {
-                            "shape": {
-                                "type": "Record",
-                                "attributes": {}
-                            }
                         }
                     },
                     "actions": {
@@ -951,43 +919,17 @@ mod test {
                                     "type": "ContextType"
                                 }
                             }
-                        },
-                        "createPhoto": {
-                            "appliesTo": {
-                                "principalTypes": [
-                                    "User",
-                                    "UserGroup"
-                                ],
-                                "resourceTypes": [
-                                    "Photo"
-                                ],
-                                "context": {
-                                    "type": "ContextType"
-                                }
-                            }
-                        },
-                        "listPhotos": {
-                            "appliesTo": {
-                                "principalTypes": [
-                                    "User",
-                                    "UserGroup"
-                                ],
-                                "resourceTypes": [
-                                    "Photo"
-                                ],
-                                "context": {
-                                    "type": "ContextType"
-                                }
-                            }
                         }
                     }
                 }
-            
             }
         });
         let answer = serde_json::from_value(check_parse_context_json(call).unwrap()).unwrap();
         let errs = assert_check_parse_is_err(&answer);
-        assert_exactly_one_error(errs, "Context validation failed: context `{authenticated: \"foo\"}` is not valid for `PhotoApp::Action::\"viewPhoto\"`", None);
+        assert_exactly_one_error(
+            errs,
+            "context `{authenticated: \"foo\"}` is not valid for `PhotoApp::Action::\"viewPhoto\"`",
+            None,
+        );
     }
-
 }

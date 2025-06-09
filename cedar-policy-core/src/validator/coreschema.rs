@@ -335,7 +335,7 @@ impl ast::RequestSchema for CoreSchema<'_> {
         self.schema.validate_context(context, action, extensions)
     }
 
-    /// Validate the entities, returning `Err` if it fails validation
+    /// Validate the scope_variables, returning `Err` if it fails validation
     fn validate_scope_variables(
         &self,
         principal: &EntityUID,
