@@ -33,7 +33,7 @@ tempfile = "3"
 glob = "0.3.2"
 predicates = "3.1.3"
 rstest = "0.25.0"
-graphviz-rust = {version = "0.9.4",  default-features = false }
+graphviz-rust = {version = "0.9.5",  default-features = false }
 
 # We override the name of the binary for src/main.rs, which otherwise would be
 # cedar-policy-cli (matching the crate name).
