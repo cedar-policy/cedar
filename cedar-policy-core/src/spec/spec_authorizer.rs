@@ -96,12 +96,12 @@ pub open spec fn is_authorized(req: Request, entities: Entities, policies: Polic
 
 #[verifier::opaque]
 pub open spec fn satisfied_policies_from_set(effect: Effect, policy_set: Set<Policy>, req: Request, entities: Entities) -> Set<PolicyID> {
-    set_filter_map_option(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities))
+    policy_set.filter_map(|p: Policy| satisfied_with_effect(effect, p, req, entities))
 }
 
 #[verifier::opaque]
 pub open spec fn error_policies_from_set(policy_set: Set<Policy>, req: Request, entities: Entities) -> Set<PolicyID> {
-    set_filter_map_option(policy_set, |p: Policy| errored(p, req, entities))
+    policy_set.filter_map(|p: Policy| errored(p, req, entities))
 }
 
 #[verifier::opaque]
@@ -171,7 +171,7 @@ pub proof fn lemma_satisfied_policies_from_set_empty(effect: Effect, req: Reques
     ensures satisfied_policies_from_set(effect, Set::<Policy>::empty(), req, entities).is_empty()
 {
     reveal(satisfied_policies_from_set);
-    // lemma_set_filter_map_option_empty(|p: Policy| satisfied_with_effect(effect, p, req, entities))
+    // lemma_set_filter_map_empty(|p: Policy| satisfied_with_effect(effect, p, req, entities))
 }
 
 
@@ -183,7 +183,7 @@ pub proof fn lemma_satisfied_policies_from_set_insert_some(effect: Effect, polic
         satisfied_policies_from_set(effect, policy_set.insert(new_policy), req, entities) == satisfied_policies_from_set(effect, policy_set, req, entities).insert(new_id)
 {
     reveal(satisfied_policies_from_set);
-    lemma_set_filter_map_option_insert_some(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities), new_policy, new_id)
+    lemma_set_filter_map_insert_some(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities), new_policy, new_id)
 }
 
 pub proof fn lemma_satisfied_policies_from_set_insert_none(effect: Effect, policy_set: Set<Policy>, req: Request, entities: Entities, new_policy: Policy)
@@ -194,7 +194,7 @@ pub proof fn lemma_satisfied_policies_from_set_insert_none(effect: Effect, polic
         satisfied_policies_from_set(effect, policy_set.insert(new_policy), req, entities) == satisfied_policies_from_set(effect, policy_set, req, entities)
 {
     reveal(satisfied_policies_from_set);
-    lemma_set_filter_map_option_insert_none(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities), new_policy)
+    lemma_set_filter_map_insert_none(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities), new_policy)
 }
 
 

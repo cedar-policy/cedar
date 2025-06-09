@@ -167,7 +167,7 @@ pub open spec fn seq_filter_map_option<A, B>(s: Seq<A>, f: spec_fn(A) -> Option<
 }
 
 // Like `seq_filter_map_option` but operating on Sets instead
-pub open spec fn set_filter_map_option<A, B>(s: Set<A>, f: spec_fn(A) -> Option<B>) -> Set<B> {
+pub open spec fn set_filter_map_aux<A, B>(s: Set<A>, f: spec_fn(A) -> Option<B>) -> Set<B> {
     s.map(f)
      .filter(|x: Option<B>| x is Some)
      .map(|x: Option<B>| x.unwrap())
@@ -247,11 +247,96 @@ pub proof fn lemma_seq_set_filter<A>(st: Set<A>, sq: Seq<A>, f: spec_fn(A) -> bo
 }
 
 
+pub proof fn lemma_set_filter_map_aux_equiv<A,B>(st: Set<A>, f: spec_fn(A) -> Option<B>)
+    requires
+        st.finite() // so we can use recursion
+    ensures
+        st.map(f).filter(|x: Option<B>| x is Some).map(|x: Option<B>| x.unwrap()) == st.filter_map(f)
+    decreases st.len()
+{
+    if st.is_empty() {
+        assert(st.filter_map(f).is_empty());
+        assert(st.map(f).is_empty());
+        assert(st.map(f).filter(|x: Option<B>| x is Some).is_empty());
+        assert(st.map(f).filter(|x: Option<B>| x is Some).map(|x: Option<B>| x.unwrap()).is_empty());
+    } else {
+        let a = choose |a:A| st.contains(a);
+        let st_without_a = st.remove(a);
+        assert(st_without_a.insert(a) == st);
+        lemma_set_filter_map_aux_equiv(st_without_a, f);
+        vstd::set::Set::lemma_filter_map_insert(st_without_a, f, a);
+        match f(a) {
+            Some(res) => {
+                assert(st_without_a.insert(a).filter_map(f) == st_without_a.filter_map(f).insert(res));
+                assert(st_without_a.insert(a).filter_map(f) == st_without_a.map(f).filter(|x: Option<B>| x is Some).map(|x: Option<B>| x.unwrap()).insert(res));
+                calc! { (==)
+                    st_without_a.insert(a).map(f).filter(|x: Option<B>| x is Some).map(|x: Option<B>| x.unwrap());
+                        {lemma_set_map_insert(st_without_a, f, a)}
+                    st_without_a.map(f).insert(f(a)).filter(|x: Option<B>| x is Some).map(|x: Option<B>| x.unwrap());
+                        {lemma_set_filter_insert_true(st_without_a.map(f), |x: Option<B>| x is Some, f(a))}
+                    st_without_a.map(f).filter(|x: Option<B>| x is Some).insert(f(a)).map(|x: Option<B>| x.unwrap());
+                        {lemma_set_map_insert(st_without_a.map(f).filter(|x: Option<B>| x is Some), |x: Option<B>| x.unwrap(), f(a))}
+                    st_without_a.map(f).filter(|x: Option<B>| x is Some).map(|x: Option<B>| x.unwrap()).insert(res);
+                }
+            },
+            None => {
+                assert(st_without_a.insert(a).filter_map(f) == st_without_a.filter_map(f));
+                assert(st_without_a.insert(a).filter_map(f) == st_without_a.map(f).filter(|x: Option<B>| x is Some).map(|x: Option<B>| x.unwrap()));
+                calc! { (==)
+                    st_without_a.insert(a).map(f).filter(|x: Option<B>| x is Some).map(|x: Option<B>| x.unwrap());
+                        {lemma_set_map_insert(st_without_a, f, a)}
+                    st_without_a.map(f).insert(f(a)).filter(|x: Option<B>| x is Some).map(|x: Option<B>| x.unwrap());
+                        {lemma_set_filter_insert_false(st_without_a.map(f), |x: Option<B>| x is Some, f(a))}
+                    st_without_a.map(f).filter(|x: Option<B>| x is Some).map(|x: Option<B>| x.unwrap());
+                }
+            },
+        }
+
+    }
+}
+
+pub proof fn lemma_set_filter_insert_true<A>(s: Set<A>, f: spec_fn(A) -> bool, a: A)
+    requires
+        f(a),
+    ensures
+        s.filter(f).insert(a) == s.insert(a).filter(f),
+{
+    assert_sets_equal!(s.filter(f).insert(a) == s.insert(a).filter(f));
+}
+
+pub proof fn lemma_set_filter_insert_false<A>(s: Set<A>, f: spec_fn(A) -> bool, a: A)
+    requires
+        !f(a),
+    ensures
+        s.filter(f) == s.insert(a).filter(f),
+{
+    assert_sets_equal!(s.filter(f) == s.insert(a).filter(f));
+}
+
+
+pub proof fn lemma_set_map_insert<A,B>(s: Set<A>, f: spec_fn(A) -> B, a: A)
+    ensures
+        s.map(f).insert(f(a)) == s.insert(a).map(f),
+{
+    assert forall |b: B| s.map(f).insert(f(a)).contains(b) implies s.insert(a).map(f).contains(b) by {
+        if (exists |a0: A| s.contains(a0) && f(a0) == b) {
+            let a0 = choose |a0: A| s.contains(a0) && f(a0) == b;
+            assert(s.insert(a).contains(a0));
+            assert(s.insert(a).map(f).contains(f(a0)));
+        } else if f(a) == b {
+            assert(s.insert(a).contains(a));
+            assert(s.insert(a).map(f).contains(f(a)));
+        }
+    };
+    assert_sets_equal!(s.map(f).insert(f(a)) == s.insert(a).map(f));
+}
+
+
 pub proof fn lemma_set_seq_filter_map_option<A, B>(st: Set<A>, f: spec_fn(A) -> Option<B>)
     requires
         st.finite(),
     ensures
-        set_filter_map_option(st,f) == seq_filter_map_option(st.to_seq(), f).to_set(),
+        st.filter_map(f) == seq_filter_map_option(st.to_seq(), f).to_set(),
     decreases st.len(),
 {
     let sq = st.to_seq();
@@ -263,6 +348,7 @@ pub proof fn lemma_set_seq_filter_map_option<A, B>(st: Set<A>, f: spec_fn(A) -> 
     let st_map_filter = st_map.filter(|x: Option<B>| x is Some);
     let sq_map_filter = sq_map.filter(|x: Option<B>| x is Some);
     lemma_seq_set_map(st_map_filter, sq_map_filter, |x: Option<B>| x.unwrap());
+    lemma_set_filter_map_aux_equiv(st, f);
 }
 
 pub proof fn lemma_seq_filter_map_option_add<A,B>(s: Seq<A>, f: spec_fn(A) -> Option<B>, a: A)
@@ -369,22 +455,22 @@ pub proof fn lemma_seq_to_set_distributes_over_add<A>(s1: Seq<A>, s2: Seq<A>)
     assert_sets_equal!((s1 + s2).to_set() == s1.to_set().union(s2.to_set()));
 }
 
-pub proof fn lemma_set_filter_map_option_insert_some<A,B>(s: Set<A>, f: spec_fn(A) -> Option<B>, a: A, b: B)
+pub proof fn lemma_set_filter_map_insert_some<A,B>(s: Set<A>, f: spec_fn(A) -> Option<B>, a: A, b: B)
     requires
         s.finite(),
         f(a) matches Some(b_) && b == b_,
     ensures
-        set_filter_map_option(s.insert(a), f) == set_filter_map_option(s, f).insert(b),
+        s.insert(a).filter_map(f) == s.filter_map(f).insert(b),
 {
     admit()
 }
 
-pub proof fn lemma_set_filter_map_option_insert_none<A,B>(s: Set<A>, f: spec_fn(A) -> Option<B>, a: A)
+pub proof fn lemma_set_filter_map_insert_none<A,B>(s: Set<A>, f: spec_fn(A) -> Option<B>, a: A)
     requires
         s.finite(),
         f(a) is None
     ensures
-        set_filter_map_option(s.insert(a), f) == set_filter_map_option(s, f),
+        s.insert(a).filter_map(f) == s.filter_map(f),
 {
     admit()
 }
