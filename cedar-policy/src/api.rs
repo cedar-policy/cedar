@@ -44,7 +44,7 @@ pub use ast::Effect;
 pub use authorizer::Decision;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
-use cedar_policy_core::ast::{self, RestrictedExpr};
+use cedar_policy_core::ast::{self, RequestSchema, RestrictedExpr};
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{ContextSchema, Dereference};
 use cedar_policy_core::est::{self, TemplateLink};
@@ -4687,6 +4687,26 @@ impl Context {
         other_context: impl IntoIterator<Item = (String, RestrictedExpression)>,
     ) -> Result<Self, ContextCreationError> {
         Self::from_pairs(self.into_iter().chain(other_context))
+    }
+
+    /// Validates this context against the provided schema
+    ///
+    /// Returns Ok(()) if the context is valid according to the schema, or an error otherwise
+    ///
+    /// This validation is already handled by `Request::new`, so there is no need to separately call
+    /// if you are validating the whole request
+    pub fn validate(
+        &self,
+        schema: &crate::Schema,
+        action: &EntityUid,
+    ) -> std::result::Result<(), RequestValidationError> {
+        // Call the validate_context function from coreschema.rs
+        Ok(RequestSchema::validate_context(
+            &schema.0,
+            &self.0,
+            action.as_ref(),
+            Extensions::all_available(),
+        )?)
     }
 }
 
