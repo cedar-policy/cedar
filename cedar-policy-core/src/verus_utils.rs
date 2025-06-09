@@ -369,5 +369,56 @@ pub proof fn lemma_seq_to_set_distributes_over_add<A>(s1: Seq<A>, s2: Seq<A>)
     assert_sets_equal!((s1 + s2).to_set() == s1.to_set().union(s2.to_set()));
 }
 
+pub proof fn lemma_set_filter_map_option_insert_some<A,B>(s: Set<A>, f: spec_fn(A) -> Option<B>, a: A, b: B)
+    requires
+        s.finite(),
+        f(a) matches Some(b_) && b == b_,
+    ensures
+        set_filter_map_option(s.insert(a), f) == set_filter_map_option(s, f).insert(b),
+{
+    admit()
+}
+
+pub proof fn lemma_set_filter_map_option_insert_none<A,B>(s: Set<A>, f: spec_fn(A) -> Option<B>, a: A)
+    requires
+        s.finite(),
+        f(a) is None
+    ensures
+        set_filter_map_option(s.insert(a), f) == set_filter_map_option(s, f),
+{
+    admit()
+}
+
+pub proof fn lemma_seq_take_distributes_over_map_values<A,B>(s: Seq<A>, n: int, f: spec_fn(A) -> B)
+    requires 0 <= n <= s.len(),
+    ensures (s.take(n)).map_values(f) == s.map_values(f).take(n)
+{
+    assert_seqs_equal!((s.take(n)).map_values(f) == s.map_values(f).take(n));
+}
+
+pub proof fn lemma_seq_take_to_set_insert<A>(s: Seq<A>, n: int)
+    requires 0 <= n < s.len(),
+    ensures s.take(n).to_set().insert(s[n]) == s.take(n+1).to_set()
+{
+    let s_take_n = s.take(n);
+    let s_n = s[n];
+    assert(s.take(n+1) == s_take_n + seq![s_n]);
+    lemma_seq_to_set_distributes_over_add(s_take_n, seq![s_n]);
+    assert((s_take_n + seq![s_n]).to_set() == s_take_n.to_set().union(seq![s_n].to_set()));
+    lemma_seq_singleton_to_set(s_n);
+    assert_sets_equal!(s_take_n.to_set().insert(s_n) == s_take_n.to_set().union(set![s_n]));
+    assert(s_take_n.to_set().insert(s_n) =~= (s_take_n + seq![s_n]).to_set());
+}
+
+pub proof fn lemma_seq_singleton_to_set<A>(x: A)
+    ensures seq![x].to_set() == set![x]
+{
+    assert forall |a: A| #[trigger] set![x].contains(a) implies seq![x].to_set().contains(a) by {
+        assert(a == x);
+        assert(seq![x][0] == a); // need to manually instantiate the existential quantifier on `contains`
+        assert(seq![x].contains(a));
+    };
+    assert_sets_equal!(seq![x].to_set() == set![x]);
+}
 
 } // verus!

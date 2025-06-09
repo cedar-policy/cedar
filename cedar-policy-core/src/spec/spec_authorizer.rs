@@ -133,6 +133,7 @@ pub open spec fn is_authorized_from_set(req: Request, entities: Entities, policy
 
 verus! {
 
+// Lemmas connecting the main specs to the `_from_set` specs
 
 pub proof fn lemma_satisfied_policies_from_set(effect: Effect, policy_set: Set<Policy>, req: Request, entities: Entities)
     requires policy_set.finite()
@@ -164,5 +165,48 @@ pub proof fn lemma_is_authorized_from_set(req: Request, entities: Entities, poli
 }
 
 
+// Helper lemmas for `is_authorized` proof
+
+pub proof fn lemma_satisfied_policies_from_set_empty(effect: Effect, req: Request, entities: Entities)
+    ensures satisfied_policies_from_set(effect, Set::<Policy>::empty(), req, entities).is_empty()
+{
+    reveal(satisfied_policies_from_set);
+    // lemma_set_filter_map_option_empty(|p: Policy| satisfied_with_effect(effect, p, req, entities))
+}
+
+
+pub proof fn lemma_satisfied_policies_from_set_insert_some(effect: Effect, policy_set: Set<Policy>, req: Request, entities: Entities, new_policy: Policy, new_id: PolicyID)
+    requires
+        policy_set.finite(),
+        satisfied_with_effect(effect, new_policy, req, entities) matches Some(new_id_) && new_id_ == new_id,
+    ensures
+        satisfied_policies_from_set(effect, policy_set.insert(new_policy), req, entities) == satisfied_policies_from_set(effect, policy_set, req, entities).insert(new_id)
+{
+    reveal(satisfied_policies_from_set);
+    lemma_set_filter_map_option_insert_some(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities), new_policy, new_id)
+}
+
+pub proof fn lemma_satisfied_policies_from_set_insert_none(effect: Effect, policy_set: Set<Policy>, req: Request, entities: Entities, new_policy: Policy)
+    requires
+        policy_set.finite(),
+        satisfied_with_effect(effect, new_policy, req, entities) is None
+    ensures
+        satisfied_policies_from_set(effect, policy_set.insert(new_policy), req, entities) == satisfied_policies_from_set(effect, policy_set, req, entities)
+{
+    reveal(satisfied_policies_from_set);
+    lemma_set_filter_map_option_insert_none(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities), new_policy)
+}
+
+
+pub proof fn lemma_erroring_policy_cannot_be_satisfied(policy: Policy, req: Request, entities: Entities)
+    requires
+        has_error(policy, req, entities)
+    ensures
+        forall |effect: Effect| (#[trigger] satisfied_with_effect(effect, policy, req, entities)) is None
+{
+    reveal(has_error);
+    reveal(satisfied_with_effect);
+    reveal(satisfied);
+}
 
 }
