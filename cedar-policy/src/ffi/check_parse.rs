@@ -153,7 +153,21 @@ pub fn check_parse_context(call: ContextParsingCall) -> CheckParseAnswer {
             };
         }
     };
-    call.context.parse(schema.as_ref(), action.as_ref()).into()
+
+    let parse_result = call.context.parse(schema.as_ref(), action.as_ref());
+
+    // Check if the parsed context is valid
+    if let Ok(context) = &parse_result {
+        if let (Some(schema_ref), Some(action_ref)) = (&schema, &action) {
+            if let Err(err) = context.validate(schema_ref, action_ref) {
+                return CheckParseAnswer::Failure {
+                    errors: vec![miette::Report::msg(err).into()],
+                };
+            }
+        }
+    }
+    // Return the parse result if all other checks pass
+    parse_result.into()
 }
 
 /// Check whether a context successfully parses. Input is a JSON encoding of
@@ -533,5 +547,95 @@ mod test {
         let answer = serde_json::from_value(check_parse_context_json(call).unwrap()).unwrap();
         let errs = assert_check_parse_is_err(&answer);
         assert_exactly_one_error(errs, "while parsing context, expected the record to have an attribute `referrer`, but it does not", None);
+    }
+
+    #[test]
+    fn check_parse_context_fails_for_invalid_context_type() {
+        let call = json!({
+            "context": {
+                "authenticated": "foo"
+            },
+            "action": {
+                "type": "PhotoApp::Action",
+                "id": "viewPhoto"
+            },
+            "schema": {
+                "PhotoApp": {
+                    "commonTypes": {
+                        "PersonType": {
+                            "type": "Record",
+                            "attributes": {
+                                "age": {
+                                    "type": "Long"
+                                },
+                                "name": {
+                                    "type": "String"
+                                }
+                            }
+                        },
+                        "ContextType": {
+                            "type": "Record",
+                            "attributes": {
+                                "ip": {
+                                    "type": "Extension",
+                                    "name": "ipaddr",
+                                    "required": false
+                                },
+                                "authenticated": {
+                                    "type": "Boolean",
+                                    "required": true
+                                }
+                            }
+                        }
+                    },
+                    "entityTypes": {
+                        "User": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {}
+                            },
+                            "memberOfTypes": [
+                                "UserGroup"
+                            ]
+                        },
+                        "UserGroup": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {}
+                            }
+                        },
+                        "Photo": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {}
+                            },
+                        }
+                    },
+                    "actions": {
+                        "viewPhoto": {
+                            "appliesTo": {
+                                "principalTypes": [
+                                    "User",
+                                    "UserGroup"
+                                ],
+                                "resourceTypes": [
+                                    "Photo"
+                                ],
+                                "context": {
+                                    "type": "ContextType"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        let answer = serde_json::from_value(check_parse_context_json(call).unwrap()).unwrap();
+        let errs = assert_check_parse_is_err(&answer);
+        assert_exactly_one_error(
+            errs,
+            "context `{authenticated: \"foo\"}` is not valid for `PhotoApp::Action::\"viewPhoto\"`",
+            None,
+        );
     }
 }
