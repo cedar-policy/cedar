@@ -48,14 +48,11 @@ pub trait ExprVisitor {
 
     /// Entry point for visiting an expression.
     ///
-    /// This is typically called to begin traversal and dispatches to `visit_expr_kind`.
+    /// This is typically called to begin traversal and dispatches to the
+    /// relevant `visit_*` functions based on the expression kind.
     fn visit_expr(&mut self, expr: &Expr) -> Option<Self::Output> {
-        self.visit_expr_kind(expr.expr_kind(), expr.source_loc())
-    }
-
-    /// Dispatches to the appropriate visit method based on the expression kind.
-    fn visit_expr_kind(&mut self, expr_kind: &ExprKind, loc: Option<&Loc>) -> Option<Self::Output> {
-        match expr_kind {
+        let loc = expr.source_loc();
+        match expr.expr_kind() {
             ExprKind::Lit(lit) => self.visit_literal(lit, loc),
             ExprKind::Var(var) => self.visit_var(*var, loc),
             ExprKind::Slot(slot) => self.visit_slot(*slot, loc),
