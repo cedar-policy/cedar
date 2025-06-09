@@ -101,6 +101,7 @@ pub(crate) fn preprocess_policy(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use similar_asserts::assert_eq;
 
     #[test]
     fn test_preprocess_behind_position() {
@@ -181,5 +182,31 @@ mod tests {
             position,
             Position::new(1, 106 + (LSP_MARKER.len() as u32 * 2))
         );
+    }
+
+    #[test]
+    fn test_dot_with_comments() {
+        let (new_policy, position) = preprocess_policy(
+            "permit(principal, action, resource) when {\n    // A comment\n    principal. // Another comment\n}",
+            Position::new(2, 13),
+        );
+        assert_eq!(
+            new_policy,
+            "permit(principal, action, resource) when {\n    // A comment\n    principal.__CEDAR_LSP // Another comment\n}"
+        );
+        assert_eq!(position, Position::new(2, 13));
+    }
+
+    #[test]
+    fn test_many_consecutive_dots() {
+        let (new_policy, position) = preprocess_policy(
+            "permit(principal, action, resource) when { principal. . . . };",
+            Position::new(0, 55),
+        );
+        assert_eq!(
+            new_policy,
+            "permit(principal, action, resource) when { principal.__CEDAR_LSP .__CEDAR_LSP .__CEDAR_LSP .__CEDAR_LSP };"
+        );
+        assert_eq!(position, Position::new(0, 55 + LSP_MARKER.len() as u32));
     }
 }

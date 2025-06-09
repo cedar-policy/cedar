@@ -203,7 +203,7 @@ impl BinaryOpContext {
                 })
                 .chain(document_context.get_variable_completions())
                 .collect(),
-            CedarTypeKind::Action(..) => schema
+            CedarTypeKind::Action => schema
                 .actions()
                 .filter(|euid| !schema.action_groups().contains(euid))
                 .map(|euid| {
@@ -237,7 +237,7 @@ impl BinaryOpContext {
                 .into_iter()
                 .chain(document_context.get_variable_completions())
                 .collect(),
-            CedarTypeKind::Action(..) => vec![equals_action_euid_snippet(curr_char)]
+            CedarTypeKind::Action => vec![equals_action_euid_snippet(curr_char)]
                 .into_iter()
                 .chain(document_context.get_variable_completions())
                 .collect(),
@@ -261,7 +261,7 @@ impl BinaryOpContext {
         }
 
         match other_side {
-            CedarTypeKind::Action(..) => schema
+            CedarTypeKind::Action => schema
                 .actions()
                 .map(|euid| {
                     let text = if complete_type.is_euid() {
@@ -398,7 +398,7 @@ impl BinaryOpContext {
                     .chain(document_context.get_variable_completions())
                     .collect()
             }
-            CedarTypeKind::Action(..) => {
+            CedarTypeKind::Action => {
                 let completion_kind =
                     get_completion_type(&self.complete_side_expr, document_context);
                 schema
@@ -451,7 +451,7 @@ impl BinaryOpContext {
         let curr_char = document_context.get_previous_char();
         let iter = match other_side {
             CedarTypeKind::EntityType(..) => vec![in_entity_snippet(curr_char)].into_iter(),
-            CedarTypeKind::Action(..) => vec![
+            CedarTypeKind::Action => vec![
                 in_action_group_snippet(curr_char),
                 in_action_set_snippet(curr_char),
             ]

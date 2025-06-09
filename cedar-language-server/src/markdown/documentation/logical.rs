@@ -177,7 +177,9 @@ impl ToDocumentationString for IfDocumentation {
                 specific cases."
             })
             .header("Examples:")
-            .code_block("cedar", indoc! {"
+            .code_block(
+                "cedar",
+                indoc! {"
                 // Basic conditional
                 if isAdmin then true else false
 
@@ -189,16 +191,20 @@ impl ToDocumentationString for IfDocumentation {
                     else
                         false
                 };"
-            })
+                },
+            )
             .paragraph(indoc! {"
                 Common Pattern: Using if with has for safe attribute access:"
             })
-            .code_block("cedar", indoc! {"
+            .code_block(
+                "cedar",
+                indoc! {"
                 if principal has age then
                     principal.age >= 21
                 else
                     false"
-            })
+                },
+            )
             .paragraph(indoc! {"
                 Note: The if operator's short-circuit evaluation makes it useful for safely handling
                 optional attributes or conditions that might otherwise cause errors. Always ensure

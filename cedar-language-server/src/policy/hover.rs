@@ -143,7 +143,7 @@ impl ToHover for PrincipalConstraint {
         if let Some(euid) = euid {
             if cx.is_cursor_over_loc(euid.loc()) && euid.to_string().contains(word_under_cursor) {
                 let ty = CedarTypeKind::EntityUid(euid.clone());
-                let loc = euid.loc().expect("EntityUid should have a location");
+                let loc = euid.loc()?;
                 return ty.to_hover_with_range(cx, loc.to_range());
             }
         }

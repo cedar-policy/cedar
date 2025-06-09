@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt::Display, hash::Hash, sync::Arc};
 
 use cedar_policy_core::validator::{types::AttributeType, ValidatorSchema};
-use smol_str::SmolStr;
+use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 
 use crate::markdown::ToDocumentationString;
 
@@ -49,10 +49,10 @@ impl From<Arc<BTreeMap<SmolStr, Attribute>>> for Record {
 /// Attributes appear in Cedar policies in expressions like:
 /// - `principal.department`
 /// - `resource has owner`
-#[derive(Debug, Clone)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
 pub(crate) struct Attribute {
     /// The name of the attribute.
-    name: String,
+    name: SmolStr,
     /// Whether the attribute is required to be present on its parent object.
     ///
     /// Required attributes must always have a value, while optional attributes
@@ -65,29 +65,11 @@ pub(crate) struct Attribute {
     cedar_type: Option<CedarTypeKind>,
 }
 
-impl PartialEq for Attribute {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-            && self.required == other.required
-            && self.cedar_type == other.cedar_type
-    }
-}
-
-impl Eq for Attribute {}
-
-impl Hash for Attribute {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-        self.required.hash(state);
-        self.cedar_type.hash(state);
-    }
-}
-
 impl Attribute {
     #[must_use]
-    pub(crate) fn new(value: String, required: bool, cedar_type: Option<CedarTypeKind>) -> Self {
+    pub(crate) fn new(name: SmolStr, required: bool, cedar_type: Option<CedarTypeKind>) -> Self {
         Self {
-            name: value,
+            name,
             required,
             cedar_type,
         }
@@ -99,30 +81,30 @@ impl Attribute {
     }
 
     #[must_use]
-    pub(crate) fn to_label(&self) -> String {
+    pub(crate) fn to_label(&self) -> SmolStr {
         if self.required {
             self.name.clone()
         } else {
-            format!("{}?", self.name)
+            format_smolstr!("{}?", self.name)
         }
     }
 
     #[must_use]
-    pub(crate) fn name(&self) -> String {
+    pub(crate) fn name(&self) -> SmolStr {
         self.name.clone()
     }
 
     #[must_use]
-    pub(crate) fn detail(&self) -> String {
+    pub(crate) fn detail(&self) -> SmolStr {
         self.cedar_type()
-            .map_or_else(|| self.name(), |cedar_type| cedar_type.to_string())
+            .map_or_else(|| self.name(), |cedar_type| cedar_type.to_smolstr())
     }
 }
 
 impl ToDocumentationString for Attribute {
     fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
         self.cedar_type().map_or_else(
-            || self.name(),
+            || self.name().to_string(),
             |cedar_type| cedar_type.to_documentation_string(schema),
         )
     }
@@ -139,11 +121,11 @@ impl Display for Attribute {
 
 impl<N> From<(N, AttributeType)> for Attribute
 where
-    N: AsRef<str>,
+    N: ToSmolStr,
 {
     fn from((name, attr): (N, AttributeType)) -> Self {
         Self::new(
-            name.as_ref().to_string(),
+            name.to_smolstr(),
             attr.is_required(),
             Some(attr.attr_type.into()),
         )
@@ -152,11 +134,11 @@ where
 
 impl<N> From<(N, &AttributeType)> for Attribute
 where
-    N: AsRef<str>,
+    N: ToSmolStr,
 {
     fn from((name, attr): (N, &AttributeType)) -> Self {
         Self::new(
-            name.as_ref().to_string(),
+            name.to_smolstr(),
             attr.is_required(),
             Some(attr.attr_type.clone().into()),
         )

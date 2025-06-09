@@ -343,7 +343,7 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
             };
 
             drop(doc);
-            let _ = schema.update_linked_documents(&Some(file.new_uri.parse().unwrap()));
+            let _ = schema.update_linked_documents(Some(&file.new_uri.parse().unwrap()));
         }
 
         let _ = self.client.code_lens_refresh().await;
@@ -363,7 +363,7 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
                 continue;
             };
 
-            let updated_docs = schema.update_linked_documents(&None);
+            let updated_docs = schema.update_linked_documents(None);
             self.documents.remove(&url);
 
             // update diagnostics for linked documents

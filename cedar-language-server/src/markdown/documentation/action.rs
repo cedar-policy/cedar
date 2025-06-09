@@ -60,24 +60,7 @@ impl ToDocumentationString for ActionDocumentation<'_> {
                     if actions.is_empty() {
                         builder.paragraph("No actions defined in schema.");
                     } else {
-                        // Show first N actions and indicate if there are more
-                        const MAX_ACTIONS_TO_SHOW: usize = 10;
-                        let (shown_actions, remaining) = if actions.len() > MAX_ACTIONS_TO_SHOW {
-                            (
-                                &actions[..MAX_ACTIONS_TO_SHOW],
-                                actions.len() - MAX_ACTIONS_TO_SHOW,
-                            )
-                        } else {
-                            (&actions[..], 0)
-                        };
-
-                        builder.code_block("cedar", &format_actions(shown_actions));
-
-                        if remaining > 0 {
-                            builder.paragraph(&format!(
-                                "*... and {remaining} more actions available*"
-                            ));
-                        }
+                        format_action_list(&mut builder, &actions);
                     }
                 } else {
                     builder.paragraph("*Schema not available - any action permitted*");
@@ -134,20 +117,15 @@ fn format_actions(actions: &[EntityUID]) -> String {
 }
 
 fn format_action_list(builder: &mut MarkdownBuilder, actions: &[EntityUID]) {
-    const MAX_ACTIONS_TO_SHOW: usize = 10;
-
     if actions.is_empty() {
         builder.paragraph("*No actions specified*");
         return;
     }
 
-    let (shown_actions, remaining) = if actions.len() > MAX_ACTIONS_TO_SHOW {
-        (
-            &actions[..MAX_ACTIONS_TO_SHOW],
-            actions.len() - MAX_ACTIONS_TO_SHOW,
-        )
-    } else {
-        (actions, 0)
+    const MAX_ACTIONS_TO_SHOW: usize = 10;
+    let (shown_actions, remaining) = match actions.get(..MAX_ACTIONS_TO_SHOW) {
+        Some(shown_actions) => (shown_actions, actions.len() - MAX_ACTIONS_TO_SHOW),
+        None => (actions, 0),
     };
 
     builder.code_block("cedar", &format_actions(shown_actions));

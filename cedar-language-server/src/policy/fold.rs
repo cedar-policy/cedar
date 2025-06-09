@@ -116,8 +116,8 @@ mod test {
 
     assert_folding_ranges!(
         multi_line_policy_with_annotation,
-        "@id(\"foo\")\npermit(principal, action, resource)\nwhen { principal.department == \"Engineering\" };",
-        (0, 2)
+        "@id(\"foo\")\npermit(principal, action, resource);",
+        (0, 1)
     );
 
     assert_folding_ranges!(

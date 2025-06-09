@@ -30,7 +30,6 @@ use crate::utils::{to_lsp_diagnostics, ToRange};
 /// - Reference errors (e.g., referencing undefined entity types)
 /// - Action constraints that don't match schema definitions
 /// - Warnings about potentially problematic policy patterns
-
 pub fn validate_policyset(
     policy: &str,
     schema: Option<SchemaInfo>,
