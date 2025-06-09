@@ -83,7 +83,7 @@ cedar-policy-core = { version = "=4.4.0", features = [
 # NON-CRYPTOGRAPHIC random number generators
 oorandom = "11.1"
 
-proptest = "1.6.0"
+proptest = "1.7.0"
 
 [[bench]]
 name = "cedar_benchmarks"
