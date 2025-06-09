@@ -2,6 +2,7 @@ use std::{collections::BTreeSet, fmt::Display, ops::Deref};
 
 use cedar_policy_core::ast::{EntityType, EntityUID};
 use cedar_policy_core::validator::ValidatorSchema;
+use itertools::Itertools;
 
 use crate::{
     markdown::{MarkdownBuilder, ToDocumentationString},
@@ -104,8 +105,8 @@ where
             return String::new();
         }
 
-        if self.len() == 1 {
-            return self.iter().next().unwrap().to_documentation_string(schema);
+        if let Ok(entity_type) = self.iter().exactly_one() {
+            return entity_type.to_documentation_string(schema);
         }
 
         let mut builder = MarkdownBuilder::new();

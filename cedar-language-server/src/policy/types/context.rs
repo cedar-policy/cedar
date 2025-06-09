@@ -1,10 +1,10 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use cedar_policy_core::ast::{ActionConstraint, Expr, ExprKind, Literal, Var};
+use cedar_policy_core::ast::{Expr, ExprKind, Literal, Var};
 
 use crate::policy::TypeInferenceContext;
 use crate::policy::{
-    cedar::{ActionEntity, ActionKind, Attribute, CedarTypeKind},
+    cedar::{Attribute, CedarTypeKind},
     DocumentContext, GetType,
 };
 
@@ -65,7 +65,7 @@ impl GetType for ExprKind {
                 let mut record_fields = BTreeMap::new();
                 for (key, value) in fields.iter() {
                     let value_type = value.expr_kind().get_type(cx);
-                    let attr = Attribute::new(key.to_string(), true, value_type);
+                    let attr = Attribute::new(key.clone(), true, value_type);
                     record_fields.insert(key.clone(), attr);
                 }
                 Some(CedarTypeKind::Record(Arc::new(record_fields).into()))
@@ -109,7 +109,7 @@ impl GetType for ExprKind {
                 let mut record_fields = BTreeMap::new();
                 for (key, value) in fields.iter() {
                     let value_type = value.expr_kind().get_type_with_cx(cx);
-                    let attr = Attribute::new(key.to_string(), true, value_type);
+                    let attr = Attribute::new(key.clone(), true, value_type);
                     record_fields.insert(key.clone(), attr);
                 }
                 Some(CedarTypeKind::Record(Arc::new(record_fields).into()))
@@ -132,23 +132,7 @@ impl GetType for Var {
             Self::Principal => CedarTypeKind::EntityType(cx.resolve_principal_type()),
             Self::Resource => CedarTypeKind::EntityType(cx.resolve_resource_type()),
             Self::Context => CedarTypeKind::Context(cx.resolve_context_type()),
-            Self::Action => {
-                let constraint = cx.policy.action_constraint();
-                match constraint {
-                    ActionConstraint::Any => CedarTypeKind::Action(ActionKind::AnyAction),
-                    ActionConstraint::In(entity_uids) => {
-                        CedarTypeKind::Action(ActionKind::Actions(
-                            entity_uids.iter().cloned().map(ActionEntity::new).collect(),
-                        ))
-                    }
-                    ActionConstraint::Eq(entity_uid) => CedarTypeKind::Action(ActionKind::Action(
-                        ActionEntity::new(entity_uid.clone()).into(),
-                    )),
-                    ActionConstraint::ErrorConstraint => {
-                        CedarTypeKind::Action(ActionKind::AnyAction)
-                    }
-                }
-            }
+            Self::Action => CedarTypeKind::Action,
         };
         Some(ty)
     }

@@ -133,13 +133,13 @@ impl<'a> From<AttributeAndSchema<'a>> for lsp_types::CompletionItem {
     fn from(attr: AttributeAndSchema<'a>) -> Self {
         Self {
             kind: Some(CompletionItemKind::FIELD),
-            detail: Some(attr.1.detail()),
+            detail: Some(attr.1.detail().to_string()),
             documentation: Some(Documentation::MarkupContent(MarkupContent {
                 kind: MarkupKind::Markdown,
                 value: attr.1.to_documentation_string(attr.0),
             })),
-            label: attr.1.to_label(),
-            insert_text: Some(attr.1.name()),
+            label: attr.1.to_label().to_string(),
+            insert_text: Some(attr.1.name().to_string()),
             insert_text_format: Some(InsertTextFormat::PLAIN_TEXT),
             ..Self::default()
         }

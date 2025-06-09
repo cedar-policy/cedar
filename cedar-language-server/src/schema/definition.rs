@@ -296,6 +296,12 @@ mod test {
     );
 
     goto_def_test!(
+        multi_entity_def_from_in,
+        "entity Foo, User; entity Other in Us|caret|er;",
+        "entity Foo, User;"
+    );
+
+    goto_def_test!(
         entity_def_from_applies_to_principal,
         "entity Other; entity User; action act appliesTo { principal: Use|caret|r, resource: Other };",
         "entity User;"
@@ -308,26 +314,44 @@ mod test {
     );
 
     goto_def_test!(
-        entity_def_from_entity_attr,
-        "entity Other { a: Other|caret| };",
-        "entity Other { a: Other };"
-    );
-
-    goto_def_test!(
-        entity_def_from_context_attr,
-        "entity Other; entity User; action act appliesTo { principal: User, resource: Other, context: {a: User|caret| } };",
-        "entity User;"
-    );
-
-    goto_def_test!(
         action_def_from_in,
         "action act; action other in [act|caret|];",
         "action act;"
     );
 
     goto_def_test!(
+        action_def_from_multi_in,
+        "action foo; action act; action other in [foo, act|caret|];",
+        "action act;"
+    );
+
+    goto_def_test!(
+        multi_action_def,
+        "action foo, act; action other in [act|caret|];",
+        "action foo, act;"
+    );
+
+    goto_def_test!(
+        entity_def_from_entity_attr,
+        "entity Other { a: Other|caret| };",
+        "entity Other { a: Other };"
+    );
+
+    goto_def_test!(
+        from_def_in_set,
+        "entity E; entity Other { a: Set<E|caret|> };",
+        "entity E;"
+    );
+
+    goto_def_test!(
         common_type_from_entity_attr,
-        "type ty = Long; entity E { a: { b: ty|caret| } };",
+        "entity E { a: { b: ty|caret| } };\ntype ty = Long;",
         "type ty = Long;"
+    );
+
+    goto_def_test!(
+        entity_def_from_context_attr,
+        "entity Other; entity User; action act appliesTo { principal: User, resource: Other, context: {a: User|caret| } };",
+        "entity User;"
     );
 }

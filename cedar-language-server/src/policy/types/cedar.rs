@@ -14,13 +14,11 @@ use cedar_policy_core::{
     extensions::{datetime, decimal, ipaddr},
 };
 
-mod action;
 mod attribute;
 mod context;
 mod entity;
 mod method;
 
-pub(crate) use action::*;
 pub(crate) use attribute::*;
 pub(crate) use context::*;
 pub(crate) use entity::*;
@@ -67,7 +65,7 @@ pub(crate) enum CedarTypeKind {
     /// Action type, representing policy actions.
     ///
     /// Example: `Action::"view"`, `Action::"edit"`
-    Action(ActionKind),
+    Action,
     /// Entity UID type, representing specific entity instances.
     ///
     /// Example: `User::"alice"`, `Photo::"vacation.jpg"`
@@ -179,7 +177,7 @@ impl Display for CedarTypeKind {
                             name,
                             typ.cedar_type()
                                 .map(|ct| ct.to_string())
-                                .unwrap_or_else(|| typ.name())
+                                .unwrap_or_else(|| typ.name().to_string())
                         )
                     })
                     .collect();
@@ -193,12 +191,13 @@ impl Display for CedarTypeKind {
             Self::EntityType(entity_type_kind) => entity_type_kind.to_string(),
             Self::EntityUid(..) => "Literal".to_string(),
             Self::Error => "Error".to_string(),
-            Self::Action(..) => "actionKind".to_string(),
+            Self::Action => "actionKind".to_string(),
         };
         write!(f, "{s}")
     }
 }
 
+#[allow(clippy::fallible_impl_from)]
 impl From<Type> for CedarTypeKind {
     fn from(ty: Type) -> Self {
         match ty {
@@ -223,12 +222,10 @@ impl From<Type> for CedarTypeKind {
                 }
                 EntityRecordKind::AnyEntity => Self::EntityType(EntityTypeKind::Any),
                 EntityRecordKind::Entity(entity_lub) => {
-                    let e = entity_lub.into_single_entity().expect("msg");
+                    let e = entity_lub.into_single_entity().unwrap();
                     Self::EntityType(EntityTypeKind::Concrete(Arc::new(e)))
                 }
-                EntityRecordKind::ActionEntity { name, .. } => Self::Action(ActionKind::Action(
-                    ActionEntity::from_entity_type(name).into(),
-                )),
+                EntityRecordKind::ActionEntity { .. } => Self::Action,
             },
             Type::ExtensionType { name } => Self::Extension(name),
         }
@@ -250,10 +247,12 @@ impl ToDocumentationString for CedarTypeKind {
                 sorted_fields.sort_by(|(a, _), (b, _)| a.cmp(b));
 
                 for (name, typ) in sorted_fields {
-                    let type_str = typ
-                        .cedar_type()
-                        .map_or_else(|| typ.name(), |ct| ct.to_string());
-                    let _ = writeln!(code, "    {name}: {type_str}");
+                    let _ = write!(code, "    {name}: ");
+                    if let Some(ct) = typ.cedar_type() {
+                        let _ = writeln!(code, "{ct}");
+                    } else {
+                        let _ = writeln!(code, "{}", typ.name());
+                    }
                 }
                 code.push('}');
 

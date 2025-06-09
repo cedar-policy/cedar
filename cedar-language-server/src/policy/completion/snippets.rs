@@ -23,16 +23,13 @@ pub(crate) fn should_show_policy_snippets(text: &str, cursor_position: Position)
     let lines: Vec<&str> = text.split('\n').collect();
 
     // Guard against out of bounds
-    if cursor_position.line as usize >= lines.len() {
+    let Some(current_line) = lines.get(cursor_position.line as usize) else {
         return false;
-    }
-
-    let current_line = lines[cursor_position.line as usize];
-    let line_prefix = if cursor_position.character as usize <= current_line.len() {
-        &current_line[..cursor_position.character as usize]
-    } else {
-        current_line
     };
+
+    let line_prefix = current_line
+        .get(..cursor_position.character as usize)
+        .unwrap_or(current_line);
 
     // Check if the line prefix only contains whitespace or just policy effect keywords
     let trimmed_prefix = line_prefix.trim();

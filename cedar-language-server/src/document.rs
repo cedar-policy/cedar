@@ -406,7 +406,7 @@ impl SchemaDocument {
     }
 
     #[must_use]
-    pub(crate) fn update_linked_documents(&self, new_url: &Option<Url>) -> Vec<Url> {
+    pub(crate) fn update_linked_documents(&self, new_url: Option<&Url>) -> Vec<Url> {
         let Some(documents) = self.state.documents.upgrade() else {
             return vec![];
         };
@@ -417,7 +417,7 @@ impl SchemaDocument {
                 Document::Policy(policy) => {
                     if let Some(schema_url) = &policy.schema_url {
                         if schema_url == &self.schema_url {
-                            policy.schema_url.clone_from(new_url);
+                            policy.schema_url = new_url.cloned();
                             updated_doc_urls.push(policy.policy_url.clone());
                         }
                     }
@@ -425,7 +425,7 @@ impl SchemaDocument {
                 Document::Entities(entities) => {
                     if let Some(schema_url) = &entities.schema_url {
                         if schema_url == &self.schema_url {
-                            entities.schema_url.clone_from(new_url);
+                            entities.schema_url = new_url.cloned();
                             updated_doc_urls.push(entities.state.url.clone());
                         }
                     }

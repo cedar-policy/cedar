@@ -63,20 +63,21 @@ pub(crate) fn policy_goto_definition(
 
     let schema_ranges =
         PolicyGotoSchemaDefinition::get_schema_definition_ranges(&d_cx, &validator)?;
+    match schema_ranges.into_iter().exactly_one() {
+        Ok(range) => {
+            let location = Location::new(schema_uri.clone(), range);
+            Some(GotoDefinitionResponse::Scalar(location))
+        }
+        Err(schema_ranges) => {
+            let locations = schema_ranges
+                .into_iter()
+                .sorted_by(|a, b| a.start.cmp(&b.start).then(a.end.cmp(&b.end)))
+                .map(|range| Location::new(schema_uri.clone(), range))
+                .collect::<Vec<_>>();
 
-    if schema_ranges.len() == 1 {
-        let range = schema_ranges[0];
-        let location = Location::new(schema_uri.clone(), range);
-        return Some(GotoDefinitionResponse::Scalar(location));
+            Some(GotoDefinitionResponse::Array(locations))
+        }
     }
-
-    let locations = schema_ranges
-        .into_iter()
-        .sorted_by(|a, b| a.start.cmp(&b.start).then(a.end.cmp(&b.end)))
-        .map(|range| Location::new(schema_uri.clone(), range))
-        .collect::<Vec<_>>();
-
-    Some(GotoDefinitionResponse::Array(locations))
 }
 
 #[cfg(test)]
@@ -559,6 +560,20 @@ mod tests {
         r#"permit(principal, action == Action::"viewHotel", resource) when { context.other_user.hotelAdminPermissi|caret|ons.isEmpty() };"#,
         get_schema_info(),
         "hotelAdminPermissions: Set<Hotel>,"
+    );
+
+    goto_def_test!(
+        go_to_context_record_attr,
+        r#"permit(principal, action == Action::"viewReservation", resource) when { context.complex.hot|caret|els.isEmpty() };"#,
+        get_schema_info(),
+        "hotels: Set<Hotel>,"
+    );
+
+    goto_def_test!(
+        go_to_has_attr_definition,
+        r#"permit(principal, action, resource) when { principal has viewPermissi|caret|ons };"#,
+        get_schema_info(),
+        "viewPermissions: PermissionsMap,"
     );
 
     fn get_schema_info() -> SchemaInfo {

@@ -543,14 +543,11 @@ pub(crate) fn extract_common_type_name(type_dec_snippet: &str) -> Option<String>
     }
 
     // Split the string by the '=' character
-    let parts: Vec<&str> = type_dec_snippet.splitn(2, '=').collect();
-    if parts.len() != 2 {
-        return None;
-    }
+    let (type_name, _) = type_dec_snippet.split_once('=')?;
 
     // Extract the type name from the left part
-    let type_part = parts[0].trim();
-    let type_name = type_part
+    let type_name = type_name
+        .trim()
         .strip_prefix("type ")? // Remove "type " prefix
         .trim(); // Trim any whitespace
 
