@@ -26,7 +26,7 @@ use std::hash::Hash;
 #[cfg(verus_keep_ghost)]
 #[allow(unused_imports)]
 use vstd::std_specs::hash::*;
-use vstd::{assert_seqs_equal, assert_sets_equal, calc, prelude::*};
+use vstd::{assert_seqs_equal, assert_sets_equal, calc, prelude::*, seq_lib};
 
 // Specification macros
 
@@ -350,6 +350,23 @@ pub proof fn lemma_seq_to_set_commutes_with_map<A,B>(s: Seq<A>, f: spec_fn(A) ->
         assert(s.to_set().map(f).contains(f(s[i])));
     };
     assert_sets_equal!(s.to_set().map(f) == s.map_values(f).to_set());
+}
+
+pub proof fn lemma_seq_to_set_distributes_over_add<A>(s1: Seq<A>, s2: Seq<A>)
+    ensures (s1 + s2).to_set() == s1.to_set().union(s2.to_set())
+{
+    assert forall |a: A| #[trigger] s1.to_set().union(s2.to_set()).contains(a) implies (s1 + s2).to_set().contains(a) by {
+        seq_lib::lemma_seq_concat_contains_all_elements(s1, s2, a);
+        if (s1.to_set().contains(a)) {
+            assert(s1.contains(a));
+            assert((s1 + s2).contains(a));
+        } else {
+            assert(s2.to_set().contains(a));
+            assert(s2.contains(a));
+            assert((s1 + s2).contains(a));
+        }
+    };
+    assert_sets_equal!((s1 + s2).to_set() == s1.to_set().union(s2.to_set()));
 }
 
 

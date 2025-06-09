@@ -118,6 +118,7 @@ impl Authorizer {
         proof {
             let ghost policies_ghost_iter = policies_iter.ghost_iter();
             let (policies_idx, policies_seq) = policies_iter@;
+
             assert(policies_seq.map_values(|p: Policy| p@).to_set() == pset@);
             assert(policies_ghost_iter@ == policies_seq.take(policies_ghost_iter.pos));
             assert(policies_ghost_iter@ + policies_seq.skip(policies_ghost_iter.pos) == policies_seq);
@@ -133,23 +134,20 @@ impl Authorizer {
                 eval@.entities == entities@,
                 ({
                     let (policies_idx, policies_seq) = policies_iter@;
-                    &&& policies_ghost_iter@ == policies_seq.take(policies_ghost_iter.pos)
-                    &&& policies_ghost_iter@ + policies_seq.skip(policies_ghost_iter.pos) == policies_seq
-                    &&& policies_ghost_iter@.map_values(|p:Policy| p@) + policies_seq.skip(policies_ghost_iter.pos).map_values(|p:Policy| p@)
-                            == (policies_ghost_iter@ + policies_seq.skip(policies_ghost_iter.pos)).map_values(|p:Policy| p@)
-                    // &&& policies_ghost_iter@.map_values(|p:Policy| p@).to_set()
-                    //         .union(policies_seq.skip(policies_ghost_iter.pos).map_values(|p:Policy| p@).to_set())
-                    //         == pset@
+                    // Invariants about how the loop iteration proceeds
+                    &&& policies_seq.map_values(|p: Policy| p@).to_set() == pset@
+                    // &&& policies_ghost_iter@ == policies_seq.take(policies_ghost_iter.pos)
+                    // &&& policies_ghost_iter@ + policies_seq.skip(policies_ghost_iter.pos) == policies_seq
+                    // &&& policies_ghost_iter@.map_values(|p:Policy| p@) + policies_seq.skip(policies_ghost_iter.pos).map_values(|p:Policy| p@)
+                    //         == (policies_ghost_iter@ + policies_seq.skip(policies_ghost_iter.pos)).map_values(|p:Policy| p@)
+                    &&& policies_ghost_iter@.map_values(|p:Policy| p@).to_set()
+                            .union(policies_seq.skip(policies_ghost_iter.pos).map_values(|p:Policy| p@).to_set())
+                            == pset@
                 }),
-                /* TODO:
-                 *   - Need some invariant that says policies_ghost_iter@.map_values(...).to_set() `union` policies_seq.skip(policies_ghost_iter.pos).map_values(...).to_set() == pset@
-                 *     - i.e., the policies we have looked at so far, plus the policies we're going to look at, are together all the policies we care about
-                 *   -
-                 */
-                // satisfied_permits@.map_values(|p:PolicyID| p@).to_set()
-                //     == spec_authorizer::satisfied_policies_from_set(spec_ast::Effect::Permit, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@),
-                // satisfied_forbids@.map_values(|p:PolicyID| p@).to_set()
-                //     == spec_authorizer::satisfied_policies_from_set(spec_ast::Effect::Forbid, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@),
+                satisfied_permits@.map_values(|p:PolicyID| p@).to_set()
+                    == spec_authorizer::satisfied_policies_from_set(spec_ast::Effect::Permit, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@),
+                satisfied_forbids@.map_values(|p:PolicyID| p@).to_set()
+                    == spec_authorizer::satisfied_policies_from_set(spec_ast::Effect::Forbid, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@),
         {
             let id = p.id().clone();
             assert(id@ == p@.id);
@@ -211,8 +209,15 @@ impl Authorizer {
             proof {
                 let (policies_idx, policies_seq) = policies_iter@;
                 lemma_seq_take_skip_add(policies_seq, policies_ghost_iter.pos + 1);
-
-
+                lemma_seq_map_values_distributes_over_add(
+                    policies_seq.take(policies_ghost_iter.pos + 1),
+                    policies_seq.skip(policies_ghost_iter.pos + 1),
+                    |p:Policy| p@
+                );
+                lemma_seq_to_set_distributes_over_add(
+                    policies_seq.take(policies_ghost_iter.pos + 1).map_values(|p:Policy| p@),
+                    policies_seq.skip(policies_ghost_iter.pos + 1).map_values(|p:Policy| p@)
+                );
             }
         }
 
