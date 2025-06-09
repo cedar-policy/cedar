@@ -396,18 +396,25 @@ pub proof fn lemma_seq_take_distributes_over_map_values<A,B>(s: Seq<A>, n: int, 
     assert_seqs_equal!((s.take(n)).map_values(f) == s.map_values(f).take(n));
 }
 
-pub proof fn lemma_seq_take_to_set_insert<A>(s: Seq<A>, n: int)
+pub proof fn lemma_seq_push_to_set_insert<A>(s: Seq<A>, a: A)
+    ensures s.push(a).to_set() == s.to_set().insert(a)
+{
+    lemma_seq_to_set_distributes_over_add(s, seq![a]);
+    assert((s + seq![a]).to_set() == s.to_set().union(seq![a].to_set()));
+    lemma_seq_singleton_to_set(a);
+    assert_sets_equal!(s.to_set().insert(a) == s.to_set().union(set![a]));
+    assert(s.to_set().insert(a) =~= (s + seq![a]).to_set());
+    assert_seqs_equal!(s + seq![a] == s.push(a));
+}
+
+pub proof fn lemma_seq_take_push_to_set_insert<A>(s: Seq<A>, n: int)
     requires 0 <= n < s.len(),
     ensures s.take(n).to_set().insert(s[n]) == s.take(n+1).to_set()
 {
     let s_take_n = s.take(n);
     let s_n = s[n];
-    assert(s.take(n+1) == s_take_n + seq![s_n]);
-    lemma_seq_to_set_distributes_over_add(s_take_n, seq![s_n]);
-    assert((s_take_n + seq![s_n]).to_set() == s_take_n.to_set().union(seq![s_n].to_set()));
-    lemma_seq_singleton_to_set(s_n);
-    assert_sets_equal!(s_take_n.to_set().insert(s_n) == s_take_n.to_set().union(set![s_n]));
-    assert(s_take_n.to_set().insert(s_n) =~= (s_take_n + seq![s_n]).to_set());
+    assert(s.take(n+1) == s_take_n.push(s_n));
+    lemma_seq_push_to_set_insert(s_take_n, s_n);
 }
 
 pub proof fn lemma_seq_singleton_to_set<A>(x: A)
@@ -419,6 +426,12 @@ pub proof fn lemma_seq_singleton_to_set<A>(x: A)
         assert(seq![x].contains(a));
     };
     assert_sets_equal!(seq![x].to_set() == set![x]);
+}
+
+pub proof fn lemma_seq_map_values_distributes_over_push<A,B>(s: Seq<A>, f: spec_fn(A) -> B, a: A)
+    ensures (s.push(a)).map_values(f) == s.map_values(f).push(f(a))
+{
+    assert_seqs_equal!((s.push(a)).map_values(f) == s.map_values(f).push(f(a)));
 }
 
 } // verus!

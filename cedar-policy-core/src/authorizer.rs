@@ -167,7 +167,7 @@ impl Authorizer {
                 assert(policies_seq.map_values(|p:Policy| p@)[policies_ghost_iter.pos] == p@);
                 lemma_seq_take_distributes_over_map_values(policies_seq, policies_ghost_iter.pos, |p:Policy| p@);
                 lemma_seq_take_distributes_over_map_values(policies_seq, policies_ghost_iter.pos + 1, |p:Policy| p@);
-                lemma_seq_take_to_set_insert(policies_seq.map_values(|p:Policy| p@), policies_ghost_iter.pos);
+                lemma_seq_take_push_to_set_insert(policies_seq.map_values(|p:Policy| p@), policies_ghost_iter.pos);
                 assert(policies_seq.take(policies_ghost_iter.pos + 1).map_values(|p:Policy| p@).to_set() == policies_seq.take(policies_ghost_iter.pos).map_values(|p:Policy| p@).to_set().insert(p@));
             }
             match eval.evaluate_verus(p) {
@@ -183,6 +183,9 @@ impl Authorizer {
                                 spec_ast::Effect::Permit, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@, id@);
                             spec_authorizer::lemma_satisfied_policies_from_set_insert_none(
                                 spec_ast::Effect::Forbid, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@);
+                            lemma_seq_push_to_set_insert(satisfied_permits@.map_values(|p:PolicyID| p@), id@);
+                            lemma_seq_map_values_distributes_over_push(satisfied_permits@, |p:PolicyID| p@, id);
+                            // assert(satisfied_permits@.push(id).map_values(|p:PolicyID| p@).to_set() == satisfied_permits@.map_values(|p:PolicyID| p@).to_set().insert(id@));
                         }
                         satisfied_permits.push(id);
                     },
@@ -197,6 +200,9 @@ impl Authorizer {
                                 spec_ast::Effect::Permit, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@);
                             spec_authorizer::lemma_satisfied_policies_from_set_insert_some(
                                 spec_ast::Effect::Forbid, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@, id@);
+                            lemma_seq_push_to_set_insert(satisfied_forbids@.map_values(|p:PolicyID| p@), id@);
+                            lemma_seq_map_values_distributes_over_push(satisfied_forbids@, |p:PolicyID| p@, id);
+                            // assert(satisfied_forbids@.push(id).map_values(|p:PolicyID| p@).to_set() == satisfied_forbids@.map_values(|p:PolicyID| p@).to_set().insert(id@));
                         }
                         satisfied_forbids.push(id)
                     },
