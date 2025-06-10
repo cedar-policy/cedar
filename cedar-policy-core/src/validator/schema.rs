@@ -827,6 +827,7 @@ impl ValidatorSchema {
         // entity types or actions. Any keys left in the map are therefore
         // undeclared.
         Self::check_for_undeclared(
+            &all_defs,
             &entity_types,
             entity_children.into_keys(),
             &action_ids,
@@ -848,19 +849,13 @@ impl ValidatorSchema {
     /// This function assumes that all entity types are fully qualified, which
     /// is indicated by the use of the [`EntityType`] and [`EntityUID`] types.
     fn check_for_undeclared(
+        all_defs: &AllDefs,
         entity_types: &HashMap<EntityType, ValidatorEntityType>,
         undeclared_parent_entities: impl IntoIterator<Item = EntityType>,
         action_ids: &HashMap<EntityUID, ValidatorActionId>,
         undeclared_parent_actions: impl IntoIterator<Item = EntityUID>,
         common_types: impl IntoIterator<Item = ValidatorType>,
     ) -> Result<()> {
-        // For the purposes of this function, the set of declared entity types
-        // includes the types of all declared actions.
-        let declared_entity_types: HashSet<&EntityType> = entity_types
-            .keys()
-            .chain(action_ids.keys().map(|action_uid| action_uid.entity_type()))
-            .collect();
-
         // When we constructed `entity_types`, we removed entity types from  the
         // `entity_children` map as we encountered a declaration for that type.
         // Any entity types left in the map are therefore undeclared. These are
@@ -875,21 +870,13 @@ impl ValidatorSchema {
         // types to their parent entity types.
         for entity_type in entity_types.values() {
             for (_, attr_typ) in entity_type.attributes().iter() {
-                Self::check_undeclared_in_type(
-                    &attr_typ.attr_type,
-                    &declared_entity_types,
-                    &mut undeclared_e,
-                );
+                Self::check_undeclared_in_type(&attr_typ.attr_type, all_defs, &mut undeclared_e);
             }
         }
 
         // Check for undeclared entity types within common types.
         for common_type in common_types {
-            Self::check_undeclared_in_type(
-                &common_type.ty,
-                &declared_entity_types,
-                &mut undeclared_e,
-            );
+            Self::check_undeclared_in_type(&common_type.ty, all_defs, &mut undeclared_e);
         }
 
         // Undeclared actions in a `memberOf` list.
@@ -898,11 +885,7 @@ impl ValidatorSchema {
         // types and `appliesTo` lists. See the `entity_types` loop for why the
         // `descendants` list is not checked.
         for action in action_ids.values() {
-            Self::check_undeclared_in_type(
-                &action.context,
-                &declared_entity_types,
-                &mut undeclared_e,
-            );
+            Self::check_undeclared_in_type(&action.context, all_defs, &mut undeclared_e);
 
             for p_entity in action.applies_to_principals() {
                 if !entity_types.contains_key(p_entity) {
@@ -943,13 +926,13 @@ impl ValidatorSchema {
     /// `undeclared_types` set.
     fn check_undeclared_in_type(
         ty: &Type,
-        declared_entity_types: &HashSet<&EntityType>,
+        all_defs: &AllDefs,
         undeclared_types: &mut BTreeSet<EntityType>,
     ) {
         match ty {
             Type::EntityOrRecord(EntityRecordKind::Entity(lub)) => {
                 for name in lub.iter() {
-                    if !declared_entity_types.contains(name) {
+                    if !all_defs.is_defined_as_entity(name.as_ref().as_ref()) {
                         undeclared_types.insert(name.clone());
                     }
                 }
@@ -957,21 +940,13 @@ impl ValidatorSchema {
 
             Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
                 for (_, attr_ty) in attrs.iter() {
-                    Self::check_undeclared_in_type(
-                        &attr_ty.attr_type,
-                        declared_entity_types,
-                        undeclared_types,
-                    );
+                    Self::check_undeclared_in_type(&attr_ty.attr_type, all_defs, undeclared_types);
                 }
             }
 
             Type::Set {
                 element_type: Some(element_type),
-            } => Self::check_undeclared_in_type(
-                element_type,
-                declared_entity_types,
-                undeclared_types,
-            ),
+            } => Self::check_undeclared_in_type(element_type, all_defs, undeclared_types),
 
             _ => (),
         }
