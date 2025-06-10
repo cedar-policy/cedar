@@ -101,24 +101,32 @@ impl Authorizer {
             // TODO: we eventually want the below, but we can't currently handle errors due to Verus limitations,
             // so for now we just reason about `decision` and `determining_policies`
             //response@ == spec_authorizer::is_authorized(q@, entities@, pset@)
-            response@.decision == spec_authorizer::is_authorized_from_set(q@, entities@, pset@).decision,
-            response@.determining_policies == spec_authorizer::is_authorized_from_set(q@, entities@, pset@).determining_policies,
+            response@.decision == spec_authorizer::is_authorized(q@, entities@, pset@.to_seq()).decision,
+            response@.determining_policies == spec_authorizer::is_authorized(q@, entities@, pset@.to_seq()).determining_policies,
     {
+        proof {
+            // Assumptions and basic setup for the proof
+
+            // PolicySet contains only finitely many policies
+            pset.lemma_view_is_finite();
+
+            // Verus well-formedness assumptions for HashMap
+            // these are uninterpreted in vstd and need to be assumed
+            assume(obeys_key_model::<PolicyID>() && builds_valid_hashers::<std::hash::RandomState>());
+
+            // To make the proof easier, we prove the code correct against `spec_authorizer::is_authorized_from_set`, which
+            // operates on a Set<Policy> (like this function), not a Seq<Policy> (like the Lean model).
+            // This lemma proves that the two versions are equivalent for the case that we start with a Set<Policy>
+            // (as we do here since `pset@` is a Set<Policy>)
+            spec_authorizer::lemma_is_authorized_from_set(q@, entities@, pset@);
+        }
+
         let eval = Evaluator::new(q.clone(), entities, self.extensions);
 
         // logic from `Authorizer::is_authorized_core_internal()`
         let mut satisfied_permits = vec![];
         let mut satisfied_forbids = vec![];
         // let mut errors = vec![];
-
-        // PolicySet contains only finitely many policies
-        // TODO: this currently depends on an assumption because Verus seems not to derive that the underlying HashMap is finite?
-        proof { pset.lemma_view_is_finite(); }
-
-        // Verus well-formedness assumptions for HashMap
-        // these are uninterpreted in vstd and need to be assumed
-        proof { assume(obeys_key_model::<PolicyID>() && builds_valid_hashers::<std::hash::RandomState>()); }
-
 
         // Main loop iterating over the policy set and evaluating each policy. Explaining the various iterators:
         //    - `policies_iter` has type `hash_map::Values<'_,PolicyID,Policy>`, Rust exec iterator over `Policy`
