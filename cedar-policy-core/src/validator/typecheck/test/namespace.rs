@@ -30,9 +30,10 @@ use crate::{
 };
 
 use super::test_utils::{
-    assert_exactly_one_diagnostic, assert_policy_typecheck_fails, assert_policy_typecheck_warns,
-    assert_policy_typechecks, assert_sets_equal, assert_typecheck_fails, assert_typechecks,
-    expr_id_placeholder, get_loc,
+    assert_entities_do_not_validate, assert_entities_validate, assert_exactly_one_diagnostic,
+    assert_policy_typecheck_fails, assert_policy_typecheck_warns, assert_policy_typechecks,
+    assert_request_does_not_validate, assert_request_validates, assert_sets_equal,
+    assert_typecheck_fails, assert_typechecks, expr_id_placeholder, get_loc,
 };
 use crate::validator::{
     diagnostics::ValidationError,
@@ -715,4 +716,481 @@ fn multi_namespace_action_group_cycle() {
         ValidatorSchema::try_from(schema),
         Err(SchemaError::CycleInActionHierarchy(_))
     )
+}
+
+#[test]
+fn actions_in_attributes() {
+    // inspired by the example in #304
+    let (schema, _) = json_schema::Fragment::from_cedarschema_str(
+        r#"
+        entity Role {
+            actions: Set<Action>
+        };
+        entity User {
+            role: Role
+        };
+        entity Session;
+        action getSession, deleteSession appliesTo {
+            principal: [User],
+            resource: [Session],
+        };
+    "#,
+        Extensions::all_available(),
+    )
+    .unwrap();
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"
+            permit(principal, action, resource) when {
+                action in principal.role.actions
+            };
+            "#,
+        )
+        .unwrap(),
+    );
+    assert_entities_validate(
+        json!([
+            {
+                "uid": {
+                    "type": "User",
+                    "id": "user1",
+                },
+                "parents": [],
+                "attrs": {
+                    "role": { "type": "Role", "id": "admin" }
+                }
+            },
+            {
+                "uid": {
+                    "type": "Role",
+                    "id": "admin"
+                },
+                "parents": [],
+                "attrs": {
+                    "actions": [
+                        { "type": "Action", "id": "getSession" },
+                        { "type": "Action", "id": "deleteSession" },
+                    ]
+                }
+            },
+        ]),
+        schema.clone(),
+    );
+    assert_request_validates(
+        "User::\"user1\"",
+        "Action::\"getSession\"",
+        "Session::\"1\"",
+        json!({}),
+        schema,
+    );
+
+    // now using namespaced actions
+    let (schema, _) = json_schema::Fragment::from_cedarschema_str(
+        r#"
+        namespace A {
+            entity Role {
+                actions: Set<Action>  // implicitly Set<A::Action>
+            };
+            entity User {
+                role: Role  // implicitly A::Role
+            };
+            entity Session;
+            action getSession, deleteSession appliesTo {
+                principal: [User],  // implicitly A::User
+                resource: [Session],  // implicitly A::Session
+            };
+        }
+        namespace B {
+            entity Role {
+                actions: Set<Action>,  // implicily Set<B::Action>
+                a_actions: Set<A::Action>,
+                b_actions: Set<B::Action>,
+            };
+            entity User {
+                role: Role,  // implicitly B::Role
+                a_role: A::Role,
+                b_role: B::Role,
+            };
+            entity Session;
+            action getSession, deleteSession appliesTo {
+                principal: [User],  // implicitly B::User
+                resource: [Session],  // implicitly B::Session
+            };
+        }
+        action outer appliesTo {
+            principal: [A::User],
+            resource: [B::Session],
+        };
+        entity Tagged tags Action;
+    "#,
+        Extensions::all_available(),
+    )
+    .unwrap();
+    // this policy should typecheck for all possible actions
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"
+            permit(principal, action, resource) when {
+                action in principal.role.actions
+            };
+            "#,
+        )
+        .unwrap(),
+    );
+    assert_entities_validate(
+        json!([
+            {
+                "uid": {
+                    "type": "A::User",
+                    "id": "user1",
+                },
+                "parents": [],
+                "attrs": {
+                    "role": { "type": "A::Role", "id": "admin" }
+                }
+            },
+            {
+                "uid": {
+                    "type": "B::User",
+                    "id": "user1",
+                },
+                "parents": [],
+                "attrs": {
+                    "role": { "type": "B::Role", "id": "admin" },
+                    "a_role": { "type": "A::Role", "id": "admin" },
+                    "b_role": { "type": "B::Role", "id": "admin" },
+                }
+            }
+        ]),
+        schema.clone(),
+    );
+    assert_entities_validate(
+        json!([
+            {
+                "uid": {
+                    "type": "A::Role",
+                    "id": "admin",
+                },
+                "parents": [],
+                "attrs": {
+                    "actions": [
+                        { "type": "A::Action", "id": "getSession" },
+                        { "type": "A::Action", "id": "deleteSession" },
+                    ]
+                }
+            },
+            {
+                "uid": {
+                    "type": "B::Role",
+                    "id": "admin",
+                },
+                "parents": [],
+                "attrs": {
+                    "actions": [
+                        { "type": "B::Action", "id": "getSession" },
+                        { "type": "B::Action", "id": "deleteSession" },
+                    ],
+                    "a_actions": [
+                        { "type": "A::Action", "id": "getSession" },
+                        { "type": "A::Action", "id": "deleteSession" },
+                    ],
+                    "b_actions": [
+                        { "type": "B::Action", "id": "getSession" },
+                        { "type": "B::Action", "id": "deleteSession" },
+                    ],
+                }
+            },
+        ]),
+        schema.clone(),
+    );
+    assert_entities_do_not_validate(
+        json!([
+            {
+                "uid": {
+                    "type": "B::User",
+                    "id": "user1",
+                },
+                "parents": [],
+                "attrs": {
+                    // needs to be a B::Role, not an A::Role
+                    "role": { "type": "A::Role", "id": "admin" },
+                    "a_role": { "type": "A::Role", "id": "admin" },
+                    "b_role": { "type": "B::Role", "id": "admin" },
+                }
+            }
+        ]),
+        schema.clone(),
+    );
+    assert_entities_do_not_validate(
+        json!([
+            {
+                "uid": {
+                    "type": "B::Role",
+                    "id": "get",
+                },
+                "parents": [],
+                "attrs": {
+                    "actions": [
+                        { "type": "B::Action", "id": "getSession" },
+                    ],
+                    "a_actions": [
+                        // cannot contain a B::Action
+                        { "type": "B::Action", "id": "getSession" },
+                    ],
+                    "b_actions": [
+                        { "type": "B::Action", "id": "getSession" },
+                    ],
+                }
+            }
+        ]),
+        schema.clone(),
+    );
+    assert_entities_do_not_validate(
+        json!([
+            {
+                "uid": {
+                    "type": "B::Role",
+                    "id": "get",
+                },
+                "parents": [],
+                "attrs": {
+                    "actions": [
+                        { "type": "B::Action", "id": "getSession" },
+                    ],
+                    "a_actions": [
+                        // cannot contain Action::"outer"
+                        { "type": "Action", "id": "outer" },
+                    ],
+                    "b_actions": [
+                        { "type": "B::Action", "id": "getSession" },
+                    ],
+                }
+            }
+        ]),
+        schema.clone(),
+    );
+    assert_entities_do_not_validate(
+        json!([
+            {
+                "uid": {
+                    "type": "A::Role",
+                    "id": "get",
+                },
+                "parents": [],
+                "attrs": {
+                    "actions": [
+                        // cannot contain a B::Action
+                        { "type": "B::Action", "id": "getSession" },
+                    ],
+                }
+            }
+        ]),
+        schema.clone(),
+    );
+    assert_entities_do_not_validate(
+        json!([
+            {
+                "uid": {
+                    "type": "A::Role",
+                    "id": "get",
+                },
+                "parents": [],
+                "attrs": {
+                    "actions": [
+                        // cannot contain Action::"outer"
+                        { "type": "Action", "id": "outer" },
+                    ],
+                }
+            }
+        ]),
+        schema.clone(),
+    );
+    assert_entities_do_not_validate(
+        json!([
+            {
+                "uid": {
+                    "type": "A::Role",
+                    "id": "get",
+                },
+                "parents": [],
+                "attrs": {
+                    "actions": [
+                        // cannot contain A::Action::"doesnotexist"
+                        { "type": "A::Action", "id": "doesnotexist" },
+                    ],
+                }
+            }
+        ]),
+        schema.clone(),
+    );
+    assert_entities_validate(
+        json!([
+            {
+                "uid": {
+                    "type": "Tagged",
+                    "id": "tagged",
+                },
+                "parents": [],
+                "attrs": {},
+                "tags": {
+                    "tag1": { "type": "Action", "id": "outer" },
+                }
+            }
+        ]),
+        schema.clone(),
+    );
+    assert_entities_do_not_validate(
+        json!([
+            {
+                "uid": {
+                    "type": "Tagged",
+                    "id": "tagged",
+                },
+                "parents": [],
+                "attrs": {},
+                "tags": {
+                    // cannot contain an A::Action
+                    "tag1": { "type": "A::Action", "id": "getSession" },
+                }
+            }
+        ]),
+        schema.clone(),
+    );
+    assert_entities_do_not_validate(
+        json!([
+            {
+                "uid": {
+                    "type": "Tagged",
+                    "id": "tagged",
+                },
+                "parents": [],
+                "attrs": {},
+                "tags": {
+                    // cannot contain Action::"doesnotexist"
+                    "tag1": { "type": "Action", "id": "doesnotexist" },
+                }
+            }
+        ]),
+        schema.clone(),
+    );
+    assert_request_validates(
+        "A::User::\"user1\"",
+        "A::Action::\"getSession\"",
+        "A::Session::\"1\"",
+        json!({}),
+        schema.clone(),
+    );
+    assert_request_validates(
+        "B::User::\"user1\"",
+        "B::Action::\"getSession\"",
+        "B::Session::\"1\"",
+        json!({}),
+        schema.clone(),
+    );
+    assert_request_does_not_validate(
+        "B::User::\"user1\"",
+        "A::Action::\"getSession\"",
+        "A::Session::\"1\"",
+        json!({}),
+        schema.clone(),
+    );
+    assert_request_does_not_validate(
+        "A::User::\"user1\"",
+        "A::Action::\"getSession\"",
+        "B::Session::\"1\"",
+        json!({}),
+        schema.clone(),
+    );
+    assert_request_does_not_validate(
+        "A::User::\"user1\"",
+        "B::Action::\"getSession\"",
+        "B::Session::\"1\"",
+        json!({}),
+        schema.clone(),
+    );
+    assert_request_does_not_validate(
+        "B::User::\"user1\"",
+        "B::Action::\"getSession\"",
+        "A::Session::\"1\"",
+        json!({}),
+        schema.clone(),
+    );
+    assert_request_validates(
+        "A::User::\"user1\"",
+        "Action::\"outer\"",
+        "B::Session::\"1\"",
+        json!({}),
+        schema.clone(),
+    );
+    assert_request_does_not_validate(
+        "B::User::\"user1\"",
+        "Action::\"outer\"",
+        "B::Session::\"1\"",
+        json!({}),
+        schema,
+    );
+
+    // In the above example, `Action` always referred to the `Action` type in
+    // the current namespace.
+    // We also want to support referring to the un-namespaced `Action` type, at
+    // least if there are no `action` declarations in the current namespace.
+    let (schema, _) = json_schema::Fragment::from_cedarschema_str(
+        r#"
+        namespace A {
+            entity Role {
+                actions: Set<Action>  // needs to be interpreted as un-namespaced `Action`, not `A::Action`
+            };
+            entity User {
+                role: Role  // implicitly A::Role
+            };
+            entity Session;
+        }
+        action getSession, deleteSession appliesTo {
+            principal: [A::User],
+            resource: [A::Session],
+        };
+        "#,
+        Extensions::all_available(),
+    ).unwrap();
+    assert_policy_typechecks(
+        schema.clone(),
+        parse_policy(
+            None,
+            r#"
+            permit(principal, action, resource) when {
+                action in principal.role.actions
+            };
+            "#,
+        )
+        .unwrap(),
+    );
+    assert_entities_validate(
+        json!([
+            {
+                "uid": {
+                    "type": "A::Role",
+                    "id": "admin",
+                },
+                "parents": [],
+                "attrs": {
+                    "actions": [
+                        { "type": "Action", "id": "getSession" },
+                        { "type": "Action", "id": "deleteSession" },
+                    ]
+                }
+            }
+        ]),
+        schema.clone(),
+    );
+    assert_request_validates(
+        "A::User::\"user1\"",
+        "Action::\"getSession\"",
+        "A::Session::\"1\"",
+        json!({}),
+        schema,
+    );
 }

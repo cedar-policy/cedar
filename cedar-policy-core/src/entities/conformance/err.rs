@@ -60,7 +60,7 @@ pub enum EntitySchemaConformanceError {
     /// Encountered an action which was not declared in the schema
     #[error(transparent)]
     #[diagnostic(transparent)]
-    UndeclaredAction(UndeclaredAction),
+    UndeclaredAction(#[from] UndeclaredAction),
     /// Encountered an action whose definition doesn't precisely match the
     /// schema's declaration of that action
     #[error(transparent)]
@@ -190,7 +190,7 @@ pub struct ActionDeclarationMismatch {
 #[error("found action entity `{uid}`, but it was not declared as an action in the schema")]
 pub struct UndeclaredAction {
     /// Action which was not declared in the schema
-    uid: EntityUID,
+    pub(crate) uid: EntityUID,
 }
 
 /// Found an ancestor of a type that's not allowed for that entity
