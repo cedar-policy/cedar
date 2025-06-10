@@ -181,51 +181,6 @@ pub open spec fn set_filter_map_aux<A, B>(s: Set<A>, f: spec_fn(A) -> Option<B>)
 
 verus! {
 
-pub proof fn lemma_set_map_finite_stays_finite<A,B>(s: Set<A>, f: spec_fn(A)->B)
-    requires s.finite(),
-    ensures s.map(f).finite(),
-{
-    admit();
-}
-
-pub proof fn lemma_set_to_seq_to_set<T>(set: Set<T>)
-    requires set.finite()
-    ensures set.to_seq().to_set() == set,
-    decreases set.len(),
-{
-    if set.len() == 0 {
-        assert(set == Set::<T>::empty());
-        assert(set.to_seq() == Seq::<T>::empty());
-        assert(set.to_seq().to_set() == Set::<T>::empty());
-    } else {
-        let x = set.choose();
-        lemma_set_to_seq_to_set(set.remove(x));
-        assert(Seq::<T>::empty().push(x).to_set() == Set::<T>::empty().insert(x)) by {
-            vstd::seq_lib::lemma_seq_contains_after_push(Seq::<T>::empty(), x, x);
-            vstd::assert_sets_equal!(Seq::<T>::empty().push(x).to_set() == set![x]);
-        }
-        assert(set.to_seq().to_set() == (Seq::<T>::empty().push(x) + set.remove(x).to_seq()).to_set());
-        assert(set == (Set::<T>::empty().insert(x)).union(set.remove(x).to_seq().to_set()));
-        vstd::assert_sets_equal!(
-            (Seq::<T>::empty().push(x) + set.remove(x).to_seq()).to_set()
-            ==
-            (Seq::<T>::empty().push(x).to_set()).union(set.remove(x).to_seq().to_set()),
-            elem => {
-                if elem == x {
-                    vstd::seq_lib::lemma_seq_concat_contains_all_elements(Seq::<T>::empty().push(x), set.remove(x).to_seq(), elem);
-                } else {
-                    if ((Seq::<T>::empty().push(x) + set.remove(x).to_seq()).to_set().contains(elem)) {
-                        assert((Seq::<T>::empty().push(x).to_set()).union(set.remove(x).to_seq().to_set()).contains(elem));
-                    };
-                    if ((Seq::<T>::empty().push(x).to_set()).union(set.remove(x).to_seq().to_set()).contains(elem)) {
-                        vstd::seq_lib::lemma_seq_concat_contains_all_elements(Seq::<T>::empty().push(x), set.remove(x).to_seq(), elem);
-                    };
-                }
-            }
-        );
-    }
-}
-
 pub proof fn lemma_set_filter_map_aux_equiv<A,B>(st: Set<A>, f: spec_fn(A) -> Option<B>)
     requires
         st.finite() // so we can use recursion
@@ -319,7 +274,7 @@ pub proof fn lemma_set_seq_filter_map_option<A, B>(st: Set<A>, f: spec_fn(A) -> 
     decreases st.len(),
 {
     let sq = st.to_seq();
-    assert(st == sq.to_set()) by { lemma_set_to_seq_to_set(st) };
+    assert(st == sq.to_set()) by { st.lemma_to_seq_to_set_id(); };
     lemma_seq_to_set_commutes_with_map(sq, f);
     let st_map = st.map(f);
     let sq_map = sq.map_values(f);
