@@ -139,6 +139,7 @@ verus! {
 
 #[verifier::external_body]
 pub fn hash_set_from_vec<T: Eq + Hash>(vec: Vec<T>) -> (hset: HashSet<T>)
+    ensures hset@ == vec@.to_set()
 {
     HashSet::from_iter(vec)
 }

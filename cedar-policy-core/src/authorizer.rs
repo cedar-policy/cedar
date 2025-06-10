@@ -39,10 +39,10 @@ pub use err::{AuthorizationError, ConcretizationError, ReauthorizationError};
 pub use partial_response::ErrorState;
 pub use partial_response::PartialResponse;
 
-use crate::spec::{spec_ast, spec_authorizer, spec_evaluator};
+use crate::spec::{spec_ast, spec_authorizer};
 use crate::verus_utils::*;
 use vstd::pervasive::ForLoopGhostIteratorNew;
-use vstd::{prelude::*, seq_lib::*, std_specs::hash::*};
+use vstd::{prelude::*, std_specs::hash::*};
 
 verus! {
 
@@ -98,8 +98,11 @@ impl Authorizer {
     /// computed.
     pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> (response: Response)
         ensures
+            // TODO: we eventually want the below, but we can't currently handle errors due to Verus limitations,
+            // so for now we just reason about `decision` and `determining_policies`
             //response@ == spec_authorizer::is_authorized(q@, entities@, pset@)
-            response@.decision == spec_authorizer::is_authorized_from_set(q@, entities@, pset@).decision // ignoring determining_policies for now
+            response@.decision == spec_authorizer::is_authorized_from_set(q@, entities@, pset@).decision,
+            response@.determining_policies == spec_authorizer::is_authorized_from_set(q@, entities@, pset@).determining_policies,
     {
         let eval = Evaluator::new(q.clone(), entities, self.extensions);
 
@@ -108,14 +111,32 @@ impl Authorizer {
         let mut satisfied_forbids = vec![];
         // let mut errors = vec![];
 
-        proof {
-            pset.lemma_view_is_finite();
-        }
+        // PolicySet contains only finitely many policies
+        // TODO: this currently depends on an assumption because Verus seems not to derive that the underlying HashMap is finite?
+        proof { pset.lemma_view_is_finite(); }
 
         // Verus well-formedness assumptions for HashMap
-        proof { assume(obeys_key_model::<PolicyID>() && builds_valid_hashers::<std::hash::RandomState>()) }
+        // these are uninterpreted in vstd and need to be assumed
+        proof { assume(obeys_key_model::<PolicyID>() && builds_valid_hashers::<std::hash::RandomState>()); }
+
+
+        // Main loop iterating over the policy set and evaluating each policy. Explaining the various iterators:
+        //    - `policies_iter` has type `hash_map::Values<'_,PolicyID,Policy>`, Rust exec iterator over `Policy`
+        //    - `policies_iter@` has type `(int, Seq<Policy>)`; the `Seq<Policy>` contains *all* policies to iterate over
+        //    - `policies_ghost_iter` has type `vstd::std_specs::ValuesGhostIterator<PolicyID,Policy>`, containing:
+        //         - `pos: int`, the current index into the sequence of policies
+        //    - `policies_ghost_iter@` has type `Seq<Policy>`, containing policies 0..policies_ghost_iter.pos (those already iterated over)
+        // There are two groups of invariants:
+        //    - *Structural invariants:* establishing that we iterate correctly through the policy set. Essentially, we show that:
+        //          "the policies we've examined already" union "the policies we have yet to examine"        == "all policies in the policy set"
+        //          `policies_ghost_iter@`                union `policies_seq.take(policies_ghost_iter.pos)` == `pset@`
+        //      At the end of the loop, we have therefore examined all of the policies in `pset@`.
+        //    - *Semantic invariants:* establishing that `satisfied_permits` and `satisfied_forbids` contain exactly
+        //      the satisfied permits and satisfied forbids (respectively) from the policies we have examined so far (`policies_ghost_iter@`)
+
         let policies_iter = pset.policies_iter();
         proof {
+            // Establish that loop invariants hold before the loop starts
             let ghost policies_ghost_iter = policies_iter.ghost_iter();
             let (policies_idx, policies_seq) = policies_iter@;
 
@@ -129,21 +150,20 @@ impl Authorizer {
                     .union(policies_seq.skip(policies_ghost_iter.pos).map_values(|p:Policy| p@).to_set())
                     == pset@);
 
-            // Establishing invariants about `satisfied_permits`/`satisfied_forbids` before loop
+            // Establishing semantic invariants about `satisfied_permits`/`satisfied_forbids` before loop
             assert(policies_ghost_iter@.map_values(|p:Policy| p@).to_set().is_empty());
             assert(satisfied_permits@.map_values(|p:PolicyID| p@).to_set().is_empty());
             assert(satisfied_forbids@.map_values(|p:PolicyID| p@).to_set().is_empty());
             spec_authorizer::lemma_satisfied_policies_from_set_empty(spec_ast::Effect::Permit, q@, entities@);
             spec_authorizer::lemma_satisfied_policies_from_set_empty(spec_ast::Effect::Forbid, q@, entities@);
-
         }
         for p in policies_ghost_iter: policies_iter
             invariant
                 eval@.request == q@,
                 eval@.entities == entities@,
+                // "Structural" invariants about how the loop iteration proceeds
                 ({
                     let (policies_idx, policies_seq) = policies_iter@;
-                    // Structural invariants about how the loop iteration proceeds
                     &&& policies_seq.map_values(|p: Policy| p@).to_set() == pset@
                     &&& policies_ghost_iter@ == policies_seq.take(policies_ghost_iter.pos)
                     // &&& policies_ghost_iter@ + policies_seq.skip(policies_ghost_iter.pos) == policies_seq
@@ -154,7 +174,7 @@ impl Authorizer {
                             == pset@
                 }),
 
-                // Invariants about `satisfied_permits`/`satisfied_forbids`
+                // "Semantic" invariants about `satisfied_permits`/`satisfied_forbids`
                 satisfied_permits@.map_values(|p:PolicyID| p@).to_set()
                     == spec_authorizer::satisfied_policies_from_set(spec_ast::Effect::Permit, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@),
                 satisfied_forbids@.map_values(|p:PolicyID| p@).to_set()
@@ -163,26 +183,35 @@ impl Authorizer {
             let id = p.id().clone();
             assert(id@ == p@.id);
             proof {
+                // Establish that `p` is correctly being processed, to prove we update `satisfied_permits`/`satisfied_forbids` correctly
                 let (policies_idx, policies_seq) = policies_iter@;
                 assert(policies_seq.map_values(|p:Policy| p@)[policies_ghost_iter.pos] == p@);
                 lemma_seq_take_distributes_over_map_values(policies_seq, policies_ghost_iter.pos, |p:Policy| p@);
                 lemma_seq_take_distributes_over_map_values(policies_seq, policies_ghost_iter.pos + 1, |p:Policy| p@);
                 lemma_seq_take_push_to_set_insert(policies_seq.map_values(|p:Policy| p@), policies_ghost_iter.pos);
-                assert(policies_seq.take(policies_ghost_iter.pos + 1).map_values(|p:Policy| p@).to_set() == policies_seq.take(policies_ghost_iter.pos).map_values(|p:Policy| p@).to_set().insert(p@));
+                assert(policies_seq.take(policies_ghost_iter.pos + 1).map_values(|p:Policy| p@).to_set()
+                        == policies_seq.take(policies_ghost_iter.pos).map_values(|p:Policy| p@).to_set().insert(p@));
             }
             match eval.evaluate_verus(p) {
                 Ok(satisfied) => match (satisfied, p.effect()) {
                     (true, Effect::Permit) => {
                         proof {
+                            // Establish that `p@` is a satisfied permit and not a satisfied forbid
                             assert(spec_authorizer::satisfied(p@, q@, entities@)) by { reveal(spec_authorizer::satisfied) };
                             assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Permit, p@, q@, entities@) matches Some(spec_id) && spec_id == p@.id )
                                 by { reveal(spec_authorizer::satisfied_with_effect) };
                             assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Forbid, p@, q@, entities@) is None)
                                 by { reveal(spec_authorizer::satisfied_with_effect); reveal(spec_authorizer::satisfied) };
+
+                            // Establish that `p@` should go into `satisfied_permits` and not `satisfied_forbids`
                             spec_authorizer::lemma_satisfied_policies_from_set_insert_some(
-                                spec_ast::Effect::Permit, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@, id@);
+                                spec_ast::Effect::Permit, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@, id@
+                            );
                             spec_authorizer::lemma_satisfied_policies_from_set_insert_none(
-                                spec_ast::Effect::Forbid, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@);
+                                spec_ast::Effect::Forbid, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@
+                            );
+
+                            // Boring proof that pushing to `satisfied_permits` results in the correct set of `spec_ast::PolicyID`s
                             lemma_seq_push_to_set_insert(satisfied_permits@.map_values(|p:PolicyID| p@), id@);
                             lemma_seq_map_values_distributes_over_push(satisfied_permits@, |p:PolicyID| p@, id);
                             // assert(satisfied_permits@.push(id).map_values(|p:PolicyID| p@).to_set() == satisfied_permits@.map_values(|p:PolicyID| p@).to_set().insert(id@));
@@ -191,15 +220,20 @@ impl Authorizer {
                     },
                     (true, Effect::Forbid) => {
                         proof {
+                            // Establish that `p@` is a satisfied forbid and not a satisfied permit
                             assert(spec_authorizer::satisfied(p@, q@, entities@)) by { reveal(spec_authorizer::satisfied) };
                             assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Permit, p@, q@, entities@) is None)
                                 by { reveal(spec_authorizer::satisfied_with_effect); reveal(spec_authorizer::satisfied) };
                             assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Forbid, p@, q@, entities@) matches Some(spec_id) && spec_id == p@.id )
                                 by { reveal(spec_authorizer::satisfied_with_effect) };
+
+                            // Establish that `p@` should go into `satisfied_forbids` and not `satisfied_permits`
                             spec_authorizer::lemma_satisfied_policies_from_set_insert_none(
                                 spec_ast::Effect::Permit, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@);
                             spec_authorizer::lemma_satisfied_policies_from_set_insert_some(
                                 spec_ast::Effect::Forbid, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@, id@);
+
+                            // Boring proof that pushing to `satisfied_forbids` results in the correct set of `spec_ast::PolicyID`s
                             lemma_seq_push_to_set_insert(satisfied_forbids@.map_values(|p:PolicyID| p@), id@);
                             lemma_seq_map_values_distributes_over_push(satisfied_forbids@, |p:PolicyID| p@, id);
                             // assert(satisfied_forbids@.push(id).map_values(|p:PolicyID| p@).to_set() == satisfied_forbids@.map_values(|p:PolicyID| p@).to_set().insert(id@));
@@ -208,14 +242,19 @@ impl Authorizer {
                     },
                     _ => {
                         proof {
+                            // Establish that `p@` is neither a satisfied permit nor a satisfied permit
                             assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Permit, p@, q@, entities@) is None)
                                 by { reveal(spec_authorizer::satisfied_with_effect); reveal(spec_authorizer::satisfied) };
                             assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Forbid, p@, q@, entities@) is None)
                                 by { reveal(spec_authorizer::satisfied_with_effect); reveal(spec_authorizer::satisfied) };
+
+                            // Establish that `p@` should go into neither `satisfied_permits` nor `satisfied_forbids`
                             spec_authorizer::lemma_satisfied_policies_from_set_insert_none(
-                                spec_ast::Effect::Permit, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@);
+                                spec_ast::Effect::Permit, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@
+                            );
                             spec_authorizer::lemma_satisfied_policies_from_set_insert_none(
-                                spec_ast::Effect::Forbid, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@);
+                                spec_ast::Effect::Forbid, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@
+                            );
                         }
                     },
                     // (false, Effect::Permit) => {
@@ -227,14 +266,19 @@ impl Authorizer {
                 },
                 Err(e) => {
                     proof {
+                        // Establish that `p@` is neither a satisfied permit nor a satisfied permit
                         assert(spec_authorizer::has_error(p@, q@, entities@)) by { reveal(spec_authorizer::has_error); reveal(spec_authorizer::satisfied) };
                         spec_authorizer::lemma_erroring_policy_cannot_be_satisfied(p@, q@, entities@);
                         assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Permit, p@, q@, entities@) is None);
                         assert(spec_authorizer::satisfied_with_effect(spec_ast::Effect::Forbid, p@, q@, entities@) is None);
+
+                        // Establish that `p@` should go into neither `satisfied_permits` nor `satisfied_forbids`
                         spec_authorizer::lemma_satisfied_policies_from_set_insert_none(
-                            spec_ast::Effect::Permit, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@);
+                            spec_ast::Effect::Permit, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@
+                        );
                         spec_authorizer::lemma_satisfied_policies_from_set_insert_none(
-                            spec_ast::Effect::Forbid, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@);
+                            spec_ast::Effect::Forbid, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@
+                        );
                     }
                     // TODO add back errors when we can handle them
                     // errors.push(AuthorizationError::PolicyEvaluationError {
@@ -262,6 +306,9 @@ impl Authorizer {
             };
 
             proof {
+                // Prove structural invariants for next iteration of the loop
+                // i.e., on the next iteration, we will have already examined the first `policies_ghost_iter.pos + 1` policies
+
                 let (policies_idx, policies_seq) = policies_iter@;
                 lemma_seq_take_skip_add(policies_seq, policies_ghost_iter.pos + 1);
                 lemma_seq_map_values_distributes_over_add(
@@ -278,31 +325,43 @@ impl Authorizer {
 
         if !vec_is_empty(&satisfied_permits) && vec_is_empty(&satisfied_forbids) {
             proof {
+                // Establish that decision is correct
                 reveal(spec_authorizer::satisfied_policies_from_set);
                 reveal(spec_authorizer::is_authorized_from_set);
                 satisfied_permits@.map_values(|p:PolicyID| p@).lemma_cardinality_of_empty_set_is_0();
                 satisfied_forbids@.map_values(|p:PolicyID| p@).lemma_cardinality_of_empty_set_is_0();
                 assert(!spec_authorizer::satisfied_policies_from_set(spec_ast::Effect::Permit, pset@, q@, entities@).is_empty());
                 assert(spec_authorizer::satisfied_policies_from_set(spec_ast::Effect::Forbid, pset@, q@, entities@).is_empty());
+
+                // Establish that determining_policies is correct
+                // (need to commute `.map(...).to_set()` from loop invariant to `.to_set().map(f)` from spec of `Response::new_no_errors`)
+                lemma_seq_to_set_commutes_with_map(satisfied_permits@, |p:PolicyID| p@);
             }
             Response::new_no_errors(
                 Decision::Allow,
                 hash_set_from_vec(satisfied_permits),
-                // errors
+                // TODO errors
             )
         } else {
             proof {
+                // Establish that decision is correct
                 reveal(spec_authorizer::satisfied_policies_from_set);
                 reveal(spec_authorizer::is_authorized_from_set);
+                satisfied_permits@.map_values(|p:PolicyID| p@).lemma_cardinality_of_empty_set_is_0();
+                satisfied_forbids@.map_values(|p:PolicyID| p@).lemma_cardinality_of_empty_set_is_0();
                 assert({
                     ||| spec_authorizer::satisfied_policies_from_set(spec_ast::Effect::Permit, pset@, q@, entities@).is_empty()
                     ||| !spec_authorizer::satisfied_policies_from_set(spec_ast::Effect::Forbid, pset@, q@, entities@).is_empty()
                 });
+
+                // Establish that determining_policies is correct
+                // (need to commute `.map(...).to_set()` from loop invariant to `.to_set().map(f)` from spec of `Response::new_no_errors`)
+                lemma_seq_to_set_commutes_with_map(satisfied_forbids@, |p:PolicyID| p@);
             }
             Response::new_no_errors(
                 Decision::Deny,
                 hash_set_from_vec(satisfied_forbids),
-                // errors
+                // TODO errors
             )
         }
     }
