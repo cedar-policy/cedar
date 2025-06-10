@@ -24,7 +24,6 @@
     clippy::expect_used,
     clippy::indexing_slicing,
 )]
-pub mod document;
 mod entities;
 mod lsp;
 mod markdown;
@@ -32,4 +31,6 @@ pub mod policy;
 pub mod schema;
 #[cfg(feature = "bin")]
 pub mod server;
+#[cfg(feature = "bin")]
+pub mod document;
 mod utils;
