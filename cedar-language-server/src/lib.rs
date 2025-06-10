@@ -17,10 +17,10 @@
 // Not currently enforcing panic lints in the LSP crate. We judge this less
 // critical than the core Cedar authorization code, so the possibility of panics
 // is more acceptable. Still, we should eventual remove these exceptions, at
-// least pushing them more localized regions of code.
+// least pushing them to more localized regions of code.
 #![allow(
     clippy::cast_possible_truncation,
-    //clippy::unwrap_used,
+    clippy::unwrap_used,
     clippy::expect_used,
     clippy::indexing_slicing,
 )]
