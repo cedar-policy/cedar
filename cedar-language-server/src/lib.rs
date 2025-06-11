@@ -22,8 +22,10 @@
     clippy::cast_possible_truncation,
     clippy::unwrap_used,
     clippy::expect_used,
-    clippy::indexing_slicing,
+    // clippy::indexing_slicing,
 )]
+#[cfg(feature = "bin")]
+pub mod document;
 mod entities;
 mod lsp;
 mod markdown;
@@ -31,6 +33,4 @@ pub mod policy;
 pub mod schema;
 #[cfg(feature = "bin")]
 pub mod server;
-#[cfg(feature = "bin")]
-pub mod document;
 mod utils;

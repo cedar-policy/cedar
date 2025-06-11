@@ -45,8 +45,9 @@ cool_asserts = "2.0.3"
 similar-asserts = "1.7.0"
 
 [features]
-wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
+default = ["bin"]
 bin = ["tokio", "tower-lsp", "tower-service", "tracing-subscriber", "tracing-appender", "dashmap"]
+wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
 [[bin]]
 name = "cedar-language-server"
