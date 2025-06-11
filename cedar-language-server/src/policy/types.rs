@@ -53,7 +53,6 @@ mod get_type;
 pub(crate) use get_type::*;
 pub(crate) mod cedar;
 pub(crate) mod context;
-pub(crate) mod regex;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -260,6 +259,8 @@ impl DocumentContext {
                 }
 
                 if entity_types.len() == 1 {
+                    // PANIC SAFETY: If condition ensures there is an element
+                    #[allow(clippy::unwrap_used)]
                     return EntityTypeKind::Concrete(entity_types.into_iter().next().unwrap());
                 }
 
@@ -321,6 +322,8 @@ impl DocumentContext {
 
                 // Handle single-element optimization for resources
                 if any_type == EntityTypeKind::AnyResource && entities.len() == 1 {
+                    // PANIC SAFETY: If condition ensures there is an element
+                    #[allow(clippy::unwrap_used)]
                     return EntityTypeKind::Concrete(entities.into_iter().next().unwrap());
                 }
 
@@ -346,6 +349,8 @@ impl DocumentContext {
 
                 // Handle single-element optimization for resources
                 if any_type == EntityTypeKind::AnyResource && entities.len() == 1 {
+                    // PANIC SAFETY: If condition ensures there is an element
+                    #[allow(clippy::unwrap_used)]
                     return EntityTypeKind::Concrete(entities.into_iter().next().unwrap());
                 }
 

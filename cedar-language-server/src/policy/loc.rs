@@ -25,7 +25,8 @@ impl<'a> SchemaActionLoc<'a> {
     }
 
     // FIXME: Does not handle `appliesTo` or `context:` appearing in strings or
-    // comments. Likely does not handle unicode properly. Should be able to maintain this when parsing. 
+    // comments. Should be able to maintain this location when parsing the
+    // schema and get rid of this whole mess.
     pub(crate) fn context_loc(&self) -> Option<Loc> {
         // Get the full text within this location
         let text = &self.0.src[self.0.span.offset()..self.0.span.offset() + self.0.span.len()];
@@ -40,72 +41,62 @@ impl<'a> SchemaActionLoc<'a> {
                 let absolute_context_pos = applies_to_pos + context_pos;
                 let after_context = absolute_context_pos + "context:".len();
 
-                // Skip whitespace
-                let mut content_start = after_context;
-                while content_start < text.len()
-                    && (text.as_bytes()[content_start] as char).is_whitespace()
-                {
-                    content_start += 1;
-                }
-
-                if content_start < text.len() {
-                    let first_char = text.as_bytes()[content_start] as char;
-
-                    if first_char == '{' {
-                        // Anonymous record - find matching closing brace
-                        let mut depth = 1;
-                        let mut pos = content_start + 1;
-
-                        while pos < text.len() && depth > 0 {
-                            match text.as_bytes()[pos] as char {
-                                '{' => depth += 1,
-                                '}' => depth -= 1,
-                                _ => {}
-                            }
-                            pos += 1;
-                        }
-
-                        if depth == 0 {
-                            // We found the complete context block
-                            let context_end = pos;
-
-                            // Calculate the absolute position in the source
-                            let absolute_start = self.0.span.offset() + absolute_context_pos;
-                            let length = context_end - absolute_context_pos;
-
-                            return Some(Loc {
-                                span: SourceSpan::new(SourceOffset::from(absolute_start), length),
-                                src: self.0.src.clone(),
-                            });
-                        }
-                    } else {
-                        // Named type - find the end (comma, semicolon, line break or closing brace)
-                        let mut pos = content_start;
-                        while pos < text.len() {
-                            let c = text.as_bytes()[pos] as char;
-                            if c == ',' || c == ';' || c == '\n' || c == '}' {
-                                break;
-                            }
-                            pos += 1;
-                        }
-
-                        // Trim any trailing whitespace
-                        let mut end_pos = pos;
-                        while end_pos > content_start
-                            && (text.as_bytes()[end_pos - 1] as char).is_whitespace()
-                        {
-                            end_pos -= 1;
-                        }
-
-                        // Calculate the absolute position in the source
-                        let absolute_start = self.0.span.offset() + absolute_context_pos;
-                        let length = end_pos - absolute_context_pos;
-
-                        return Some(Loc {
-                            span: SourceSpan::new(SourceOffset::from(absolute_start), length),
-                            src: self.0.src.clone(),
-                        });
+                // Get an iterator over characters with their byte positions
+                let mut chars = text[after_context..].char_indices();
+                let first_non_whitespace = loop {
+                    let (p, c) = chars.next()?;
+                    if !c.is_whitespace() {
+                        break (p, c);
                     }
+                };
+                if first_non_whitespace.1 == '{' {
+                    // Anonymous record - find matching closing brace
+                    let mut depth = 1;
+
+                    while let Some((_, c)) = chars.next() {
+                        match c {
+                            '{' => depth += 1,
+                            '}' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    // We found the complete context block
+                                    let context_end = after_context + chars.offset();
+
+                                    // Calculate the absolute position in the source
+                                    let absolute_start =
+                                        self.0.span.offset() + absolute_context_pos;
+                                    let length = context_end - absolute_context_pos;
+
+                                    return Some(Loc {
+                                        span: SourceSpan::new(
+                                            SourceOffset::from(absolute_start),
+                                            length,
+                                        ),
+                                        src: self.0.src.clone(),
+                                    });
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                } else {
+                    let start_offset = after_context + first_non_whitespace.0;
+                    let mut last_non_whitespace = 0;
+                    for (byte_pos, c) in chars {
+                        if c == ',' || c == ';' || c == '\n' || c == '}' {
+                            break;
+                        }
+                        if !c.is_whitespace() {
+                            last_non_whitespace = byte_pos;
+                        }
+                    }
+
+                    let absolute_start = self.0.span.offset() + absolute_context_pos;
+                    let length = start_offset + last_non_whitespace - absolute_context_pos;
+                    return Some(Loc {
+                        span: SourceSpan::new(SourceOffset::from(absolute_start), length),
+                        src: self.0.src.clone(),
+                    });
                 }
             }
         }
@@ -273,5 +264,69 @@ mod tests {
         let action_loc = SchemaActionLoc::new(&loc);
         let context_loc = action_loc.context_loc().unwrap();
         assert_loc_text(&context_loc, "context: ContextType");
+    }
+
+    #[test]
+    fn test_unicode_type_name() {
+        let text = "action DoSomething
+            appliesTo {
+                principal: User,
+                resource: Resource,
+                context: 컨텍스트Type
+            }";
+        let loc = make_loc(text);
+        let action_loc = SchemaActionLoc::new(&loc);
+        let context_loc = action_loc.context_loc().unwrap();
+        assert_loc_text(&context_loc, "context: 컨텍스트Type");
+    }
+
+    #[test]
+    fn test_combining_characters() {
+        let text = "action DoSomething
+            appliesTo {
+                principal: User,
+                resource: Resource,
+                context: Contéxt
+            }";
+        let loc = make_loc(text);
+        let action_loc = SchemaActionLoc::new(&loc);
+        let context_loc = action_loc.context_loc().unwrap();
+        assert_loc_text(&context_loc, "context: Contéxt");
+    }
+
+    #[test]
+    fn test_unicode_with_brace_bytes() {
+        let text = "action DoSomething
+            appliesTo {
+                principal: User,
+                resource: Resource,
+                context: { a: \u{017b}Type }
+            }";
+        let loc = make_loc(text);
+        let action_loc = SchemaActionLoc::new(&loc);
+        let context_loc = action_loc.context_loc().unwrap();
+        assert_loc_text(&context_loc, "context: { a: \u{017b}Type }");
+
+        let text = "action DoSomething
+            appliesTo {
+                principal: User,
+                resource: Resource,
+                context: { a: \u{7b01}Type }
+            }";
+        let loc = make_loc(text);
+        let action_loc = SchemaActionLoc::new(&loc);
+        let context_loc = action_loc.context_loc().unwrap();
+        assert_loc_text(&context_loc, "context: { a: \u{7b01}Type }");
+
+        let text = "action DoSomething
+            appliesTo {
+                principal: User,
+                resource: Resource,
+                context: \u{7b01}Type
+            }";
+        let loc = make_loc(text);
+        let action_loc = SchemaActionLoc::new(&loc);
+        let context_loc = action_loc.context_loc().unwrap();
+        assert_loc_text(&context_loc, "context: \u{7b01}Type");
     }
 }

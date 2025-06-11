@@ -14,16 +14,7 @@
  * limitations under the License.
  */
 
-// Not currently enforcing panic lints in the LSP crate. We judge this less
-// critical than the core Cedar authorization code, so the possibility of panics
-// is more acceptable. Still, we should eventual remove these exceptions, at
-// least pushing them to more localized regions of code.
-#![allow(
-    clippy::cast_possible_truncation,
-    clippy::unwrap_used,
-    clippy::expect_used,
-    // clippy::indexing_slicing,
-)]
+#![allow(clippy::cast_possible_truncation)]
 #[cfg(feature = "bin")]
 pub mod document;
 mod entities;

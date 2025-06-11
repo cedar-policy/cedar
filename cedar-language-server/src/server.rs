@@ -351,15 +351,20 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
 
     async fn will_rename_files(&self, params: RenameFilesParams) -> Result<Option<WorkspaceEdit>> {
         for file in params.files {
-            let Some(doc) = self.documents.get(&file.old_uri.parse().unwrap()) else {
+            let Ok(old_uri) = file.old_uri.parse::<Url>() else {
+                continue;
+            };
+            let Some(doc) = self.documents.get(&old_uri) else {
                 continue;
             };
             let Some(schema) = doc.clone().into_schema() else {
                 continue;
             };
-
             drop(doc);
-            let _ = schema.update_linked_documents(Some(&file.new_uri.parse().unwrap()));
+            let Ok(new_uri) = file.new_uri.parse::<Url>() else {
+                continue;
+            };
+            let _ = schema.update_linked_documents(Some(&new_uri));
         }
 
         let _ = self.client.code_lens_refresh().await;
@@ -368,7 +373,9 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
 
     async fn will_delete_files(&self, params: DeleteFilesParams) -> Result<Option<WorkspaceEdit>> {
         for file in params.files {
-            let url: Url = file.uri.parse().unwrap();
+            let Ok(url) = file.uri.parse::<Url>() else {
+                continue;
+            };
             let Some(guard) = self.documents.get(&url) else {
                 continue;
             };

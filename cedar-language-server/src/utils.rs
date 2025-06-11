@@ -227,38 +227,28 @@ pub(crate) fn get_operator_at_position(position: Position, text: &str) -> Option
     let potential_operator = line[start..end].to_string();
 
     // Check if the extracted string is a valid operator
-    let valid_operator = operators.iter().find(|&&op| {
-        // Check if our extracted string contains this operator
-        if potential_operator.contains(op) {
-            // Find the position of this operator in our extracted string
-            if let Some(op_start) = potential_operator.find(op) {
-                // Check if our cursor position is within this operator
-                let absolute_op_start = start + op_start;
-                let absolute_op_end = absolute_op_start + op.len();
-                return char_pos >= absolute_op_start && char_pos <= absolute_op_end;
+    operators.iter().find_map(|&op| {
+        // Find the position of this operator in our extracted string
+        if let Some(op_start) = potential_operator.find(op) {
+            // Check if our cursor position is within this operator
+            let absolute_op_start = start + op_start;
+            let absolute_op_end = absolute_op_start + op.len();
+            if char_pos >= absolute_op_start && char_pos <= absolute_op_end {
+                let range = Range {
+                    start: Position {
+                        line: position.line,
+                        character: absolute_op_start as u32,
+                    },
+                    end: Position {
+                        line: position.line,
+                        character: absolute_op_end as u32,
+                    },
+                };
+
+                return Some((op, range));
             }
         }
-        false
-    });
-
-    valid_operator.map(|&op| {
-        // Find the exact position of the operator
-        let op_start = potential_operator.find(op).unwrap();
-        let absolute_start = start + op_start;
-        let absolute_end = absolute_start + op.len();
-
-        let range = Range {
-            start: Position {
-                line: position.line,
-                character: absolute_start as u32,
-            },
-            end: Position {
-                line: position.line,
-                character: absolute_end as u32,
-            },
-        };
-
-        (op, range)
+        None
     })
 }
 
@@ -299,8 +289,8 @@ pub(crate) fn is_cursor_within_policy_scope(policy_text: &str, cursor_position: 
 
             // If we've found an effect keyword, track parentheses
             if in_effect_keyword {
-                match line.as_bytes()[char_idx] {
-                    b'(' => {
+                match line.as_bytes().get(char_idx).copied() {
+                    Some(b'(') => {
                         paren_depth += 1;
                         if paren_depth == 1 {
                             policy_start_pos = Some(Position {
@@ -309,18 +299,19 @@ pub(crate) fn is_cursor_within_policy_scope(policy_text: &str, cursor_position: 
                             });
                         }
                     }
-                    b')' => {
+                    Some(b')') => {
                         paren_depth -= 1;
-                        if paren_depth == 0 && policy_start_pos.is_some() {
+                        if let Some(policy_start_pos) =
+                            policy_start_pos.take_if(|_| paren_depth == 0)
+                        {
                             // Add this policy scope to our list
                             policy_scopes.push((
-                                policy_start_pos.unwrap(),
+                                policy_start_pos,
                                 Position {
                                     line: line_idx as u32,
                                     character: char_idx as u32,
                                 },
                             ));
-                            policy_start_pos = None;
                             in_effect_keyword = false;
                         }
                     }
@@ -422,11 +413,11 @@ pub(crate) fn get_policy_scope_variable(
                     }
                     Some(b')') => {
                         paren_depth -= 1;
-                        if paren_depth == 0 && current_policy_start.is_some() {
+                        if let Some(current_policy_start) =
+                            current_policy_start.take_if(|_| paren_depth == 0)
+                        {
                             // Add this policy scope to our list
-                            policy_scopes
-                                .push((current_policy_start.unwrap(), (line_idx, char_idx)));
-                            current_policy_start = None;
+                            policy_scopes.push((current_policy_start, (line_idx, char_idx)));
                             in_effect_keyword = false;
                         }
                     }
@@ -452,14 +443,12 @@ pub(crate) fn get_policy_scope_variable(
                 after_start && before_end
             });
 
-    if current_policy.is_none() {
+    let Some(((policy_start_line, policy_start_char), _)) = current_policy.copied() else {
         return ScopeVariableInfo {
             variable_type: PolicyScopeVariable::None,
             text: "".into(),
         };
-    }
-
-    let ((policy_start_line, policy_start_char), _) = *current_policy.unwrap();
+    };
 
     // Now find the commas within this policy to determine the variables
     let mut param_sections = Vec::new();
@@ -516,18 +505,26 @@ pub(crate) fn get_policy_scope_variable(
     };
 
     // Extract the text for the current parameter section
-    let text = if param_index < param_sections.len() {
-        let ((start_line, start_pos), (end_line, end_pos)) = param_sections[param_index];
+    let text = if let Some(((start_line, start_pos), (end_line, end_pos))) =
+        param_sections.get(param_index)
+    {
         if start_line == end_line {
-            lines[start_line][start_pos..end_pos].trim().into()
+            // PANIC SAFETY: Line numbers in `param_sections` are always indexes from enumerating `lines()`.
+            #[allow(clippy::indexing_slicing)]
+            lines[*start_line][*start_pos..*end_pos].trim().into()
         } else {
             // Handle multi-line parameters
             let mut text = String::new();
-            for (line_num, item) in lines.iter().enumerate().take(end_line + 1).skip(start_line) {
-                if line_num == start_line {
-                    text.push_str(&item[start_pos..]);
-                } else if line_num == end_line {
-                    text.push_str(&item[..end_pos]);
+            for (line_num, item) in lines
+                .iter()
+                .enumerate()
+                .take(end_line + 1)
+                .skip(*start_line)
+            {
+                if line_num == *start_line {
+                    text.push_str(&item[*start_pos..]);
+                } else if line_num == *end_line {
+                    text.push_str(&item[..*end_pos]);
                 } else {
                     text.push_str(item);
                 }
@@ -585,6 +582,11 @@ pub(crate) trait GetPolicyText {
 
 impl GetPolicyText for Template {
     fn get_text(&self) -> &str {
+        // FIXME: could panic if template is parsed using fast parsing, parsed
+        // from JSON/protobuf, or constructed manually. It seems likely that
+        // none of these will happen in the LSP, but I have not checked this myself.
+        // PANIC SAFETY: see above
+        #[allow(clippy::expect_used)]
         self.loc()
             .map(|loc| &loc.src)
             .expect("Policy should have an LOC.")
@@ -618,10 +620,14 @@ pub(crate) fn is_cursor_in_condition_braces(position: Position, source_text: &st
     let chars: Vec<char> = source_text.chars().collect();
 
     while pos < chars.len() && pos < target_pos {
+        // PANIC SAFETY: while loop guard ensures `pos` is in bounds
+        #[allow(clippy::indexing_slicing)]
         let c = chars[pos];
 
         match state {
             State::Normal => {
+                // PANIC SAFETY: indexing to `chars` is guarded by length check
+                #[allow(clippy::indexing_slicing)]
                 // Check for when/unless keywords
                 if pos + 4 <= chars.len()
                     && chars[pos..pos + 4] == ['w', 'h', 'e', 'n']
