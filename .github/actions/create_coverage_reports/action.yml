@@ -27,14 +27,16 @@ runs:
       run: cargo install grcov
     - name: Collect coverage profiles
       shell: bash
-      run: zip -0 raw_cov.zip $(find . -name "*.profraw") -q
+      run: |
+        mkdir -p ./target/raw_coverage
+        find . -name "*.profraw" -type f -exec mv "{}" ./target/raw_coverage  \;
     # Note: source-based branch coverage is not supported for Rust
     # (see http://github.com/rust-lang/rust/issues/79649)
     - name: Build coverage report
       shell: bash
       run: |
         mkdir -p ./target/coverage
-        grcov raw_cov.zip \
+        grcov ./target/raw_coverage \
             --source-dir . \
             --binary-path ./target/debug/ \
             -t html,cobertura \
