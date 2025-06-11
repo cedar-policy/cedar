@@ -17,21 +17,33 @@
 use super::SchemaInfo;
 use lsp_types::{CompletionItem, CompletionItemKind, CompletionResponse, Position, Range};
 use regex::Regex;
-use std::{collections::HashMap, sync::LazyLock};
+use std::collections::HashMap;
 
-static NAMESPACE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^namespace\s+(([_a-zA-Z][_a-zA-Z0-9]*::)*[_a-zA-Z][_a-zA-Z0-9]*)\s*\{").unwrap()
-});
-static TYPE_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^type\s+([_a-zA-Z][_a-zA-Z0-9]*)\s*=").unwrap());
-static ENTITY_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"^entity\s+(([_a-zA-Z][_a-zA-Z0-9]*, \s*)*[_a-zA-Z][_a-zA-Z0-9]*)\s*( in|=|\{|;|\$)",
-    )
-    .unwrap()
-});
-static ACTION_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"^action\s+([_a-zA-Z0-9, "]*)(?: in| appliesTo|;|\$)"#).unwrap());
+// PANIC SAFETY: These regex are valid and would panic immediately in test if not.
+#[allow(clippy::unwrap_used)]
+mod regex_consts {
+    use regex::Regex;
+    use std::sync::LazyLock;
+    pub(crate) static NAMESPACE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"^namespace\s+(([_a-zA-Z][_a-zA-Z0-9]*::)*[_a-zA-Z][_a-zA-Z0-9]*)\s*\{")
+            .unwrap()
+    });
+
+    pub(crate) static TYPE_REGEX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^type\s+([_a-zA-Z][_a-zA-Z0-9]*)\s*=").unwrap());
+
+    pub(crate) static ENTITY: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(
+            r"^entity\s+(([_a-zA-Z][_a-zA-Z0-9]*, \s*)*[_a-zA-Z][_a-zA-Z0-9]*)\s*( in|=|\{|;|\$)",
+        )
+        .unwrap()
+    });
+
+    #[allow(clippy::unwrap_used)]
+    pub(crate) static ACTION: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"^action\s+([_a-zA-Z0-9, "]*)(?: in| appliesTo|;|\$)"#).unwrap()
+    });
+}
 
 pub(crate) fn schema_completions(
     position: Position,
@@ -78,10 +90,10 @@ pub(crate) struct CedarSchemaParser {
 impl CedarSchemaParser {
     pub(crate) fn new() -> Self {
         Self {
-            namespace: &NAMESPACE_REGEX,
-            r#type: &TYPE_REGEX,
-            entity: &ENTITY_REGEX,
-            action: &ACTION_REGEX,
+            namespace: &regex_consts::NAMESPACE,
+            r#type: &regex_consts::TYPE_REGEX,
+            entity: &regex_consts::ENTITY,
+            action: &regex_consts::ACTION,
         }
     }
 
@@ -228,11 +240,7 @@ impl CedarSchemaParser {
         let lines: Vec<&str> = doc_text.lines().collect();
         let line_index = position.line as usize;
 
-        if line_index >= lines.len() {
-            return None;
-        }
-
-        let line_text = lines[line_index];
+        let line_text = lines.get(line_index)?;
         let line_prefix = if (position.character as usize) <= line_text.len() {
             &line_text[..position.character as usize]
         } else {

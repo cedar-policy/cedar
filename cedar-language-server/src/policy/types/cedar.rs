@@ -238,6 +238,9 @@ impl From<Type> for CedarTypeKind {
                 }
                 EntityRecordKind::AnyEntity => Self::EntityType(EntityTypeKind::Any),
                 EntityRecordKind::Entity(entity_lub) => {
+                    // FIXME: This feels like an easy assumption to break. We should handle it gracefully
+                    // PANIC SAFETY: LSP is only used with strict validation, so all entities are singleton
+                    #[allow(clippy::unwrap_used)]
                     let e = entity_lub.into_single_entity().unwrap();
                     Self::EntityType(EntityTypeKind::Concrete(Arc::new(e)))
                 }

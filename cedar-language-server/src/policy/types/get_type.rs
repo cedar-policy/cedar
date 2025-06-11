@@ -216,6 +216,8 @@ pub(crate) struct AttributeCollection<'a> {
     /// All attribute infos in this collection
     attributes: Vec<AttributeInfo<'a>>,
     /// Optional name-based index for faster lookups
+    /// INVARIANT: all elements of vectors in this map are indexes into
+    /// `attributes`, so they must be less than `attributes.len()`.
     name_index: HashMap<&'a str, Vec<usize>>,
 }
 
@@ -231,6 +233,8 @@ impl<'a> AttributeCollection<'a> {
                 attr_type,
             });
 
+            // We push an element into `attribute` for every iteration fo this
+            // loops, so `idx` will always be a valid index into `attributes`.
             name_index
                 .entry(name.as_str())
                 .or_insert_with(Vec::new)
@@ -267,6 +271,8 @@ impl<'a> AttributeCollection<'a> {
         let mut name_index = HashMap::new();
 
         for (idx, attr) in attributes.iter().enumerate() {
+            // `idx` comes from `enumerate` on `attributes`, so it will always
+            // be a valid index into `attributes`.
             name_index
                 .entry(attr.name)
                 .or_insert_with(Vec::new)
@@ -283,6 +289,8 @@ impl<'a> AttributeCollection<'a> {
     #[must_use]
     pub(crate) fn get_by_name(&self, name: &str) -> Vec<&AttributeInfo<'a>> {
         self.name_index.get(name).map_or_else(Vec::new, |indices| {
+            // PANIC SAFETY: From invariant on `name_index`, every stored index is a valid index into attributes.
+            #[allow(clippy::indexing_slicing)]
             indices.iter().map(|&idx| &self.attributes[idx]).collect()
         })
     }

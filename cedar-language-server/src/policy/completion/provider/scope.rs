@@ -26,16 +26,37 @@ use crate::{
     policy::{
         context::{BinaryOpContext, IsContext, Op, ReceiverContext},
         items::{EqCompletionItem, InCompletionItem, IsCompletionItem, IsInCompletionItem},
-        types::regex::{
-            ACTION_EQ_REGEX, ACTION_IN_ARRAY, ACTION_IN_REGEX, PRINCIPAL_IS_REGEX,
-            RESOURCE_IS_REGEX,
-        },
         CompletionContextKind,
     },
     utils::{
         get_policy_scope_variable, get_word_at_position, PolicyScopeVariable, ScopeVariableInfo,
     },
 };
+use regex_consts::{
+    ACTION_EQ_REGEX, ACTION_IN_ARRAY, ACTION_IN_REGEX, PRINCIPAL_IS_REGEX, RESOURCE_IS_REGEX,
+};
+
+// PANIC SAFETY: These regex are valid and would panic immediately in test if not.
+#[allow(clippy::unwrap_used)]
+mod regex_consts {
+    use std::sync::LazyLock;
+
+    use regex::Regex;
+
+    pub(crate) static PRINCIPAL_IS_REGEX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"principal\s+is\s*").unwrap());
+
+    pub(crate) static ACTION_IN_REGEX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"action\s+in\s*").unwrap());
+    pub(crate) static ACTION_EQ_REGEX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"action\s+==\s*").unwrap());
+    pub(crate) static ACTION_IN_ARRAY: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"action\s+in\s+\[(?:\s*(?:[A-Za-z]+::)?Action::"[\w]+?"\s*,?)*\s*"#).unwrap()
+    });
+
+    pub(crate) static RESOURCE_IS_REGEX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"resource\s+is\s*").unwrap());
+}
 
 pub(crate) fn get_scope_completions(
     position: Position,
