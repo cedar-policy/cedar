@@ -15,6 +15,8 @@
  */
 
 #![allow(clippy::cast_possible_truncation)]
+#![cfg_attr(not(feature = "bin"), allow(dead_code, unused_imports))]
+
 #[cfg(feature = "bin")]
 pub mod document;
 mod entities;
