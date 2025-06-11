@@ -39,7 +39,6 @@ mod regex_consts {
         .unwrap()
     });
 
-    #[allow(clippy::unwrap_used)]
     pub(crate) static ACTION: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r#"^action\s+([_a-zA-Z0-9, "]*)(?: in| appliesTo|;|\$)"#).unwrap()
     });

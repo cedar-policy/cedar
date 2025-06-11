@@ -213,6 +213,7 @@ impl Display for CedarTypeKind {
     }
 }
 
+// PANIC SAFETY: See comment on `uwrap` bellow
 #[allow(clippy::fallible_impl_from)]
 impl From<Type> for CedarTypeKind {
     fn from(ty: Type) -> Self {
