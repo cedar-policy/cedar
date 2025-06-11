@@ -24,6 +24,8 @@ impl<'a> SchemaActionLoc<'a> {
         Self(loc)
     }
 
+    // FIXME: Does not handle `appliesTo` or `context:` appearing in strings or
+    // comments. Likely does not handle unicode properly. Should be able to maintain this when parsing. 
     pub(crate) fn context_loc(&self) -> Option<Loc> {
         // Get the full text within this location
         let text = &self.0.src[self.0.span.offset()..self.0.span.offset() + self.0.span.len()];
@@ -108,5 +110,168 @@ impl<'a> SchemaActionLoc<'a> {
             }
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use similar_asserts::assert_eq;
+    use std::sync::Arc;
+
+    use super::*;
+
+    fn make_loc(text: &str) -> Loc {
+        Loc {
+            span: SourceSpan::new(SourceOffset::from(0), text.len()),
+            src: Arc::from(text),
+        }
+    }
+
+    #[track_caller]
+    fn assert_loc_text(loc: &Loc, expected: &str) {
+        let actual = &loc.src[loc.span.offset()..loc.span.offset() + loc.span.len()];
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_no_applies_to() {
+        let loc = make_loc("action DoSomething");
+        let action_loc = SchemaActionLoc::new(&loc);
+        assert!(action_loc.context_loc().is_none());
+    }
+
+    #[test]
+    fn test_no_context() {
+        let loc = make_loc(
+            "action DoSomething
+            appliesTo {
+                principal: User,
+                resource: Resource
+            }",
+        );
+        let action_loc = SchemaActionLoc::new(&loc);
+        assert!(action_loc.context_loc().is_none());
+    }
+
+    #[test]
+    fn test_named_type_context() {
+        let text = "action DoSomething
+            appliesTo {
+                principal: User,
+                resource: Resource,
+                context: ContextType
+            }";
+        let loc = make_loc(text);
+        let action_loc = SchemaActionLoc::new(&loc);
+        let context_loc = action_loc.context_loc().unwrap();
+        assert_loc_text(&context_loc, "context: ContextType");
+    }
+
+    #[test]
+    fn test_record_type_context() {
+        let text = "action DoSomething
+            appliesTo {
+                principal: User,
+                resource: Resource,
+                context: {
+                    field1: String,
+                    field2: Number
+                }
+            }";
+        let loc = make_loc(text);
+        let action_loc = SchemaActionLoc::new(&loc);
+        let context_loc = action_loc.context_loc().unwrap();
+        assert_loc_text(&context_loc, "context: {\n                    field1: String,\n                    field2: Number\n                }");
+    }
+
+    #[test]
+    fn test_context_with_comments() {
+        let text = "action DoSomething
+            appliesTo {
+                principal: User,
+                resource: Resource,
+                // A comment before context
+                context: ContextType, // Inline comment
+            }";
+        let loc = make_loc(text);
+        let action_loc = SchemaActionLoc::new(&loc);
+        let context_loc = action_loc.context_loc().unwrap();
+        assert_loc_text(&context_loc, "context: ContextType");
+    }
+
+    #[test]
+    fn test_multiple_actions() {
+        let text = "action Action1, Action2, Action3 in [other]
+            appliesTo {
+                principal: User,
+                resource: Resource,
+                context: ContextType
+            }";
+        let loc = make_loc(text);
+        let action_loc = SchemaActionLoc::new(&loc);
+        let context_loc = action_loc.context_loc().unwrap();
+        assert_loc_text(&context_loc, "context: ContextType");
+    }
+
+    #[test]
+    fn test_nested_record() {
+        let text = "action DoSomething
+            appliesTo {
+                principal: User,
+                resource: Resource,
+                context: { outer: { inner: Long }, other: String }
+            }";
+        let loc = make_loc(text);
+        let action_loc = SchemaActionLoc::new(&loc);
+        let context_loc = action_loc.context_loc().unwrap();
+        assert_loc_text(
+            &context_loc,
+            "context: { outer: { inner: Long }, other: String }",
+        );
+    }
+
+    #[test]
+    fn test_multiple_nested_record() {
+        let text = "action DoSomething
+            appliesTo {
+                principal: User,
+                resource: Resource,
+                context: { outer: { inner: Long }, other: { inner: String } }
+            }";
+        let loc = make_loc(text);
+        let action_loc = SchemaActionLoc::new(&loc);
+        let context_loc = action_loc.context_loc().unwrap();
+        assert_loc_text(
+            &context_loc,
+            "context: { outer: { inner: Long }, other: { inner: String } }",
+        );
+    }
+
+    #[test]
+    fn test_empty_record() {
+        let text = "action DoSomething
+            appliesTo {
+                principal: User,
+                resource: Resource,
+                context: {}
+            }";
+        let loc = make_loc(text);
+        let action_loc = SchemaActionLoc::new(&loc);
+        let context_loc = action_loc.context_loc().unwrap();
+        assert_loc_text(&context_loc, "context: {}");
+    }
+
+    #[test]
+    fn test_context_with_trailing_comma() {
+        let text = "action DoSomething
+            appliesTo {
+                principal: User,
+                resource: Resource,
+                context: ContextType,
+            }";
+        let loc = make_loc(text);
+        let action_loc = SchemaActionLoc::new(&loc);
+        let context_loc = action_loc.context_loc().unwrap();
+        assert_loc_text(&context_loc, "context: ContextType");
     }
 }
