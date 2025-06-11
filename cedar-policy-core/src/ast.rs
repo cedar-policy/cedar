@@ -54,3 +54,5 @@ mod expr_iterator;
 pub use expr_iterator::*;
 mod annotation;
 pub use annotation::*;
+mod expr_visitor;
+pub use expr_visitor::*;
