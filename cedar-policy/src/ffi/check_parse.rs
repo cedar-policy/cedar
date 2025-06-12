@@ -314,7 +314,7 @@ pub struct EntitiesParsingCall {
     schema: Option<Schema>,
 }
 
-/// Struct containing the input data for [`check_scope_variables()`]
+/// Struct containing the input data for [`check_parse_scope_variables()`]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ScopeVariablesParsingCall {
     /// Optional Principal entity for schema-based validation
