@@ -238,7 +238,6 @@ impl BinaryOpContext {
                 })
                 .chain(document_context.get_variable_completions())
                 .collect(),
-            CedarTypeKind::EntityUid(..) => document_context.get_variable_completions(),
             _ => condition_completions(document_context),
         }
     }
@@ -292,27 +291,6 @@ impl BinaryOpContext {
                         ..CompletionItem::default()
                     }
                 })
-                .chain(document_context.get_variable_completions())
-                .collect(),
-            CedarTypeKind::EntityUid(euid) if !document_context.is_in_scope_block() => schema
-                .entity_types()
-                .filter(|v| v.descendants.contains(euid.entity_type()))
-                .map(cedar_policy_core::validator::ValidatorEntityType::name)
-                .map(|p| CompletionItem {
-                    label: p.to_string(),
-                    kind: Some(CompletionItemKind::CLASS),
-                    insert_text: Some(format!("{p}::\"${{1:entityId}}\"")),
-                    insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-                    ..CompletionItem::default()
-                })
-                .chain(once(CompletionItem {
-                    label: euid.entity_type().to_string(),
-                    kind: Some(CompletionItemKind::CLASS),
-                    insert_text: Some(format!("{}::\"${{1:entityId}}\"", euid.entity_type())),
-                    insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-                    ..CompletionItem::default()
-                }))
-                .unique_by(|item| item.label.clone())
                 .chain(document_context.get_variable_completions())
                 .collect(),
             CedarTypeKind::EntityType(..) if !document_context.is_in_scope_block() => {
@@ -435,27 +413,6 @@ impl BinaryOpContext {
                     .chain(document_context.get_variable_completions())
                     .collect()
             }
-            CedarTypeKind::EntityUid(euid) if !document_context.is_in_scope_block() => schema
-                .entity_types()
-                .filter(|v| v.descendants.contains(euid.entity_type()))
-                .map(cedar_policy_core::validator::ValidatorEntityType::name)
-                .map(|p| CompletionItem {
-                    label: p.to_string(),
-                    kind: Some(CompletionItemKind::CLASS),
-                    insert_text: Some(format!("{p}::\"${{1:entityId}}\"")),
-                    insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-                    ..CompletionItem::default()
-                })
-                .chain(once(CompletionItem {
-                    label: euid.entity_type().to_string(),
-                    kind: Some(CompletionItemKind::CLASS),
-                    insert_text: Some(format!("{}::\"${{1:entityId}}\"", euid.entity_type())),
-                    insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-                    ..CompletionItem::default()
-                }))
-                .unique_by(|item| item.label.clone())
-                .chain(document_context.get_variable_completions())
-                .collect(),
             _ => vec![],
         }
     }

@@ -81,7 +81,7 @@ impl ExprVisitor for HoverVisitor<'_> {
                 Literal::EntityUID(euid)
                     if euid.to_string().contains(self.token_under_cursor.inner()) =>
                 {
-                    CedarTypeKind::EntityUid(euid.clone())
+                    euid.as_ref().into()
                 }
                 _ => return None,
             };
