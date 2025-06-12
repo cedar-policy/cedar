@@ -16,6 +16,7 @@
 
 use crate::ast::*;
 use crate::evaluator::EvaluationError;
+use crate::spec::*;
 use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -37,6 +38,14 @@ pub enum AuthorizationError {
         #[diagnostic(transparent)]
         error: EvaluationError,
     },
+}
+
+impl AuthorizationError {
+    pub open spec fn spec_get_policy_id(&self) -> spec_ast::PolicyID {
+        match self {
+            Self::PolicyEvaluationError { id, .. } => id@,
+        }
+    }
 }
 
 }

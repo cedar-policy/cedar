@@ -171,7 +171,12 @@ pub proof fn lemma_satisfied_policies_from_set_empty(effect: Effect, req: Reques
     ensures satisfied_policies_from_set(effect, Set::<Policy>::empty(), req, entities).is_empty()
 {
     reveal(satisfied_policies_from_set);
-    // lemma_set_filter_map_empty(|p: Policy| satisfied_with_effect(effect, p, req, entities))
+}
+
+pub proof fn lemma_error_policies_from_set_empty(req: Request, entities: Entities)
+    ensures error_policies_from_set(Set::<Policy>::empty(), req, entities).is_empty()
+{
+    reveal(error_policies_from_set);
 }
 
 
@@ -208,5 +213,29 @@ pub proof fn lemma_erroring_policy_cannot_be_satisfied(policy: Policy, req: Requ
     reveal(satisfied_with_effect);
     reveal(satisfied);
 }
+
+
+pub proof fn lemma_error_policies_from_set_insert_some(policy_set: Set<Policy>, req: Request, entities: Entities, new_policy: Policy, new_id: PolicyID)
+    requires
+        policy_set.finite(),
+        errored(new_policy, req, entities) matches Some(new_id_) && new_id_ == new_id,
+    ensures
+        error_policies_from_set(policy_set.insert(new_policy), req, entities) == error_policies_from_set(policy_set, req, entities).insert(new_id)
+{
+    reveal(error_policies_from_set);
+    vstd::set::Set::lemma_filter_map_insert(policy_set, |p: Policy| errored(p, req, entities), new_policy);
+}
+
+pub proof fn lemma_error_policies_from_set_insert_none(policy_set: Set<Policy>, req: Request, entities: Entities, new_policy: Policy)
+    requires
+        policy_set.finite(),
+        errored(new_policy, req, entities) is None
+    ensures
+        error_policies_from_set(policy_set.insert(new_policy), req, entities) == error_policies_from_set(policy_set, req, entities)
+{
+    reveal(error_policies_from_set);
+    vstd::set::Set::lemma_filter_map_insert(policy_set, |p: Policy| errored(p, req, entities), new_policy);
+}
+
 
 }
