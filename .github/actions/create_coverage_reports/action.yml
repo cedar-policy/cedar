@@ -29,7 +29,7 @@ runs:
       shell: bash
       run: |
         mkdir -p ./target/raw_coverage
-        find . -name "*.profraw" -type f -exec mv "{}" ./target/raw_coverage  \;
+        find . -path ./target/raw_coverage -prune -o -name "*.profraw" -type f -exec mv "{}" ./target/raw_coverage  \;
     # Note: source-based branch coverage is not supported for Rust
     # (see http://github.com/rust-lang/rust/issues/79649)
     - name: Build coverage report
