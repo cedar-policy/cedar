@@ -65,9 +65,6 @@ impl<'a> TypeInferenceContext<'a> {
         let base_type = self.base_type.as_ref()?;
 
         match base_type {
-            CedarTypeKind::EntityUid(euid) => schema
-                .get_entity_type(euid.entity_type())
-                .map(|vet| AttributeCollection::from_attributes(vet.attributes())),
             CedarTypeKind::EntityType(EntityTypeKind::Concrete(et)) => schema
                 .get_entity_type(et)
                 .map(|vet| AttributeCollection::from_attributes(vet.attributes())),

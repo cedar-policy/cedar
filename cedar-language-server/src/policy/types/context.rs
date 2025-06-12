@@ -156,11 +156,6 @@ impl GetType for Var {
 
 impl GetType for Literal {
     fn get_type(&self, _cx: &DocumentContext) -> Option<CedarTypeKind> {
-        match self {
-            Self::Bool(_) => Some(CedarTypeKind::Bool),
-            Self::Long(_) => Some(CedarTypeKind::Long),
-            Self::String(_) => Some(CedarTypeKind::String),
-            Self::EntityUID(entity_uid) => Some(CedarTypeKind::EntityUid(entity_uid.clone())),
-        }
+        Some(self.into())
     }
 }

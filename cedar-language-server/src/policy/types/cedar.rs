@@ -21,12 +21,15 @@ use std::{
     sync::Arc,
 };
 
-use cedar_policy_core::validator::{
-    types::{EntityRecordKind, Primitive, Type},
-    ValidatorSchema,
+use cedar_policy_core::{
+    ast::EntityUID,
+    validator::{
+        types::{EntityRecordKind, Primitive, Type},
+        ValidatorSchema,
+    },
 };
 use cedar_policy_core::{
-    ast::{EntityUID, Literal, Name},
+    ast::{Literal, Name},
     extensions::{datetime, decimal, ipaddr},
 };
 
@@ -82,10 +85,6 @@ pub(crate) enum CedarTypeKind {
     ///
     /// Example: `Action::"view"`, `Action::"edit"`
     Action,
-    /// Entity UID type, representing specific entity instances.
-    ///
-    /// Example: `User::"alice"`, `Photo::"vacation.jpg"`
-    EntityUid(Arc<EntityUID>),
     /// Error type, representing an expression with a type error.
     Error,
 }
@@ -114,9 +113,6 @@ impl CedarTypeKind {
             Self::EntityType(entity_type_kind) => {
                 schema.and_then(|schema| entity_type_kind.attribute_type(attr, schema))
             }
-            Self::EntityUid(euid) => schema.and_then(|schema| {
-                EntityTypeKind::get_entity_attribute_type(euid.entity_type(), attr, schema)
-            }),
             Self::Context(context_kind) => {
                 schema.and_then(|schema| context_kind.attribute_type(schema, attr))
             }
@@ -137,9 +133,6 @@ impl CedarTypeKind {
     #[must_use]
     pub(crate) fn attributes(&self, schema: Option<&ValidatorSchema>) -> Vec<Attribute> {
         match self {
-            Self::EntityUid(euid) => {
-                EntityTypeKind::entity_type_attributes(schema, euid.entity_type())
-            }
             Self::EntityType(et) => et.attributes(schema),
             Self::Record(fields) => fields.attrs.values().cloned().collect(),
             Self::Context(kind) => kind.attributes(schema),
@@ -205,7 +198,6 @@ impl Display for CedarTypeKind {
                 format!("Context<{kind}>")
             }
             Self::EntityType(entity_type_kind) => entity_type_kind.to_string(),
-            Self::EntityUid(..) => "Literal".to_string(),
             Self::Error => "Error".to_string(),
             Self::Action => "actionKind".to_string(),
         };
@@ -237,7 +229,7 @@ impl From<Type> for CedarTypeKind {
                     let record = Record { attrs: m.into() };
                     Self::Record(record)
                 }
-                EntityRecordKind::AnyEntity => Self::EntityType(EntityTypeKind::Any),
+                EntityRecordKind::AnyEntity => Self::Error,
                 EntityRecordKind::Entity(entity_lub) => {
                     // FIXME: This feels like an easy assumption to break. We should handle it gracefully
                     // PANIC SAFETY: LSP is only used with strict validation, so all entities are singleton
@@ -249,6 +241,14 @@ impl From<Type> for CedarTypeKind {
             },
             Type::ExtensionType { name } => Self::Extension(name),
         }
+    }
+}
+
+impl From<&EntityUID> for CedarTypeKind {
+    fn from(euid: &EntityUID) -> Self {
+        CedarTypeKind::EntityType(EntityTypeKind::Concrete(Arc::new(
+            euid.entity_type().clone(),
+        )))
     }
 }
 
@@ -289,19 +289,18 @@ impl ToDocumentationString for CedarTypeKind {
                 ExtensionName(&name.to_string()).to_documentation_string(schema)
             }
             Self::EntityType(kind) => kind.to_documentation_string(schema),
-            Self::EntityUid(euid) => euid.to_documentation_string(schema),
             _ => self.to_string(),
         }
     }
 }
 
-impl From<Literal> for CedarTypeKind {
-    fn from(literal: Literal) -> Self {
+impl From<&Literal> for CedarTypeKind {
+    fn from(literal: &Literal) -> Self {
         match literal {
             Literal::Bool(_) => Self::Bool,
             Literal::Long(_) => Self::Long,
             Literal::String(_) => Self::String,
-            Literal::EntityUID(entity_uid) => Self::EntityUid(entity_uid),
+            Literal::EntityUID(entity_uid) => entity_uid.as_ref().into(),
         }
     }
 }

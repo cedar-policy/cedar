@@ -147,7 +147,6 @@ impl<'a> PolicyGotoSchemaDefinition<'a> {
                     .collect::<Vec<Range>>();
                 Some(ranges)
             }
-            EntityTypeKind::Any => None,
         }
     }
 

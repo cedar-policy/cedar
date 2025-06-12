@@ -158,7 +158,7 @@ impl ToHover for PrincipalConstraint {
         let euid = self.as_inner().get_euid();
         if let Some(euid) = euid {
             if cx.is_cursor_over_loc(euid.loc()) && euid.to_string().contains(word_under_cursor) {
-                let ty = CedarTypeKind::EntityUid(euid.clone());
+                let ty: CedarTypeKind = euid.as_ref().into();
                 let loc = euid.loc()?;
                 return ty.to_hover_with_range(cx, loc.to_range());
             }
@@ -201,7 +201,7 @@ impl ToHover for ResourceConstraint {
         let euid = self.as_inner().get_euid();
         if let Some(euid) = euid {
             if cx.is_cursor_over_loc(euid.loc()) && euid.to_string().contains(word_under_cursor) {
-                let ty = CedarTypeKind::EntityUid(euid.clone());
+                let ty: CedarTypeKind = euid.as_ref().into();
                 let loc = euid.loc()?;
                 return ty.to_hover_with_range(cx, loc.to_range());
             }
@@ -236,6 +236,8 @@ impl ToHover for ResourceConstraint {
 
 #[cfg(test)]
 mod tests {
+    use std::{str::FromStr, sync::Arc};
+
     use super::policy_hover;
     use crate::{
         markdown::{
@@ -252,10 +254,10 @@ mod tests {
             OrDocumentation, PrincipalDocumentation, ResourceDocumentation, SetDocumentation,
             StringDocumentation, SubtractDocumentation,
         },
-        policy::{hover::ToHover, types::cedar::CedarTypeKind},
+        policy::{cedar::EntityTypeKind, hover::ToHover, types::cedar::CedarTypeKind},
         utils::tests::{remove_caret_marker, schema_document_context, schema_info},
     };
-    use cedar_policy_core::ast::{EntityType, EntityUID};
+    use cedar_policy_core::ast::EntityType;
 
     use tracing_test::traced_test;
 
@@ -400,19 +402,19 @@ mod tests {
     schema_hover_test!(
         hover_over_is_entity_type_within_principal_dec,
         r"permit(principal is Us|caret|er, action, resource) when { true };",
-        expr: concrete_entity_type("User")
+        expr: entity_type("User")
     );
 
     schema_hover_test!(
         hover_over_is_entity_type_within_resource_dec,
         r"permit(principal, action, resource is Hot|caret|el) when { true };",
-        expr: concrete_entity_type("Hotel")
+        expr: entity_type("Hotel")
     );
 
     schema_hover_test!(
         hover_over_is_entity_type_within_resource_dec_multiline,
         "permit(principal, \naction, resource \nis\n\n Hot|caret|el) when { true };",
-        expr: concrete_entity_type("Hotel")
+        expr: entity_type("Hotel")
     );
 
     schema_hover_test!(
@@ -634,7 +636,7 @@ mod tests {
     schema_hover_test!(
         hover_over_entity_literal_within_condition,
         r#"permit(principal, action, resource) when { Us|caret|er::"cole" == principal };"#,
-        expr: entity_uid("User", "cole")
+        expr: entity_type("User")
     );
 
     schema_hover_test!(
@@ -646,7 +648,7 @@ mod tests {
     schema_hover_test!(
         hover_over_is_entity_type_within_condition,
         r"permit(principal, action, resource) when { principal is Us|caret|er };",
-        expr: concrete_entity_type("User")
+        expr: entity_type("User")
     );
 
     schema_hover_test!(
@@ -679,15 +681,9 @@ mod tests {
         expr: HasDocumentation
     );
 
-    fn entity_uid(name: &str, id: &str) -> CedarTypeKind {
-        let et = EntityUID::with_eid_and_type(name, id).unwrap();
-        CedarTypeKind::EntityUid(et.into())
-    }
-
-    fn concrete_entity_type(name: &str) -> CedarTypeKind {
-        let et = EntityType::from_normalized_str(name).unwrap();
-        CedarTypeKind::EntityType(crate::policy::types::cedar::EntityTypeKind::Concrete(
-            et.into(),
-        ))
+    fn entity_type(name: &str) -> CedarTypeKind {
+        CedarTypeKind::EntityType(EntityTypeKind::Concrete(Arc::new(
+            EntityType::from_str(name).unwrap(),
+        )))
     }
 }

@@ -80,19 +80,6 @@ impl<'a> IsCompletionItems<'a> {
         }
     }
 
-    fn any_entity_into(&self) -> Vec<CompletionItem> {
-        let Some(schema) = self.schema else {
-            return vec![];
-        };
-
-        schema
-            .entity_types()
-            .map(cedar_policy_core::validator::ValidatorEntityType::name)
-            .unique()
-            .map(Self::entity_type_into)
-            .collect()
-    }
-
     fn any_principal_into(&self) -> Vec<CompletionItem> {
         let Some(schema) = self.schema else {
             return vec![];
@@ -125,7 +112,6 @@ impl<'a> From<IsCompletionItems<'a>> for Vec<CompletionItem> {
                 .iter()
                 .map(|et| IsCompletionItems::entity_type_into(et))
                 .collect(),
-            CedarTypeKind::EntityType(EntityTypeKind::Any) => value.any_entity_into(),
             CedarTypeKind::EntityType(EntityTypeKind::AnyPrincipal) => value.any_principal_into(),
             CedarTypeKind::EntityType(EntityTypeKind::AnyResource) => value.any_resource_into(),
             // not suggesting a concrete entity because its concrete?

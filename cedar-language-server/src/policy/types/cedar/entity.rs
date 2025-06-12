@@ -53,11 +53,6 @@ pub(crate) enum EntityTypeKind {
     /// This is used when the entity could be one of several types, such as
     /// with certain action constraints that allow multiple principal or resource types.
     Set(BTreeSet<Arc<EntityType>>),
-    /// Represents an entity with no type constraints.
-    ///
-    /// This is used when there's no information about what type the entity might be,
-    /// such as in a policy with no constraints (`permit(principal, action, resource)`).
-    Any,
     /// Represents any principal entity type.
     ///
     /// This is specifically used for unconstrained principals when some schema
@@ -92,11 +87,6 @@ impl EntityTypeKind {
             Self::Set(entity_types) => entity_types
                 .iter()
                 .map(|et| Self::get_entity_attribute_type(et, attr, schema))
-                .find(std::option::Option::is_some)
-                .flatten(),
-            Self::Any => schema
-                .entity_types()
-                .map(|et| Self::get_entity_attribute_type(et.name(), attr, schema))
                 .find(std::option::Option::is_some)
                 .flatten(),
             Self::AnyPrincipal => schema
@@ -136,13 +126,6 @@ impl EntityTypeKind {
             Self::Set(entities) => entities
                 .iter()
                 .flat_map(|entity| Self::entity_type_attributes(schema.into(), entity).into_iter())
-                .collect(),
-            Self::Any => schema
-                .entity_types()
-                .map(|entity_type| {
-                    CedarTypeKind::EntityType(Self::Concrete(entity_type.name().clone().into()))
-                })
-                .flat_map(|ct| ct.attributes(Some(schema)).into_iter())
                 .collect(),
             Self::AnyPrincipal => schema
                 .principals()
@@ -186,7 +169,6 @@ impl Display for EntityTypeKind {
                 .iter()
                 .map(std::string::ToString::to_string)
                 .join("|"),
-            Self::Any => "AnyEntity".to_string(),
             Self::AnyPrincipal => "AnyPrincipal".to_string(),
             Self::AnyResource => "AnyResource".to_string(),
         };

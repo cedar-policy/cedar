@@ -155,19 +155,6 @@ impl ToDocumentationString for EntityTypeKind {
                 EntityTypeDocumentation::new(entity_type, schema).to_documentation_string(schema)
             }
             Self::Set(set) => set.to_documentation_string(schema),
-            Self::Any => {
-                let Some(schema) = schema else {
-                    let mut builder = MarkdownBuilder::new();
-                    builder.paragraph("*Schema not available - any entity permitted*");
-                    return builder.build();
-                };
-                let set = schema
-                    .entity_types()
-                    .map(cedar_policy_core::validator::ValidatorEntityType::name)
-                    .collect::<BTreeSet<_>>();
-
-                set.to_documentation_string(Some(schema))
-            }
             Self::AnyPrincipal => {
                 let Some(schema) = schema else {
                     let mut builder = MarkdownBuilder::new();

@@ -176,9 +176,7 @@ impl DocumentContext {
             EntityTypeKind::AnyPrincipal,
         );
         match principal_type {
-            EntityTypeKind::Any | EntityTypeKind::AnyPrincipal => {
-                self.principal_type_from_action_constraint()
-            }
+            EntityTypeKind::AnyPrincipal => self.principal_type_from_action_constraint(),
             entity_type => entity_type,
         }
     }
@@ -191,9 +189,7 @@ impl DocumentContext {
         );
 
         match resource_types {
-            EntityTypeKind::Any | EntityTypeKind::AnyResource => {
-                self.resource_type_from_action_constraint()
-            }
+            EntityTypeKind::AnyResource => self.resource_type_from_action_constraint(),
             entity_type => entity_type,
         }
     }
