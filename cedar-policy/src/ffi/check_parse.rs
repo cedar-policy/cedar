@@ -130,7 +130,6 @@ pub fn check_parse_scope_variables(call: ScopeVariablesParsingCall) -> CheckPars
         }
     };
 
-    // All should be provided, so validate schema, principal, action, and resource
     if let Err(err) =
         crate::api::validate_scope_variables(&principal, &action, &resource, &schema_ref)
     {
