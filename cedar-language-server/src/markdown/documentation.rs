@@ -64,8 +64,8 @@ impl ToDocumentationString for BinaryOp {
             Self::Contains => ContainsDocumentation.to_documentation_string(schema),
             Self::ContainsAll => ContainsAllDocumentation.to_documentation_string(schema),
             Self::ContainsAny => ContainsAnyDocumentation.to_documentation_string(schema),
-            Self::GetTag => "GetTag".to_string(),
-            Self::HasTag => "HasTag".to_string(),
+            Self::GetTag => "getTag".to_string(),
+            Self::HasTag => "hasTag".to_string(),
         }
     }
 }

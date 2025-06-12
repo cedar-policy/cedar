@@ -32,28 +32,6 @@ impl ToDocumentationString for AddDocumentation {
                     must be long integers or evaluation and validation will result in an error. Addition
                     operations that result in overflow will fail at evaluation time, but will pass validation."
                 })
-                .header("Examples:")
-                .paragraph(indoc! {"
-                    Basic examples showing evaluation results and validation status:"
-                })
-                .code_block("cedar", indoc! {"
-                    11 + 0                              //11 //Validates
-                    -1 + 1                              //0 //Validates
-                    9223372036854775807 + 1             //error - overflow //Validates
-                    7 + \"3\"                             //error //Doesn't validate (second operand not long)
-                    \"lamp\" + \"la\"                       //error //Doesn't validate (operands not long)"
-                })
-                .paragraph("Common usage in policies:")
-                .code_block("cedar", indoc! {"
-                    permit (principal, action, resource)
-                    when {
-                        context.budget + context.downloaded > 100
-                    };"
-                })
-                .paragraph(indoc! {"
-                    Note: While overflow errors are caught during evaluation, they are not detected during
-                    validation. All other type errors are caught at both evaluation and validation time."
-                })
                 .build()
     }
 }
@@ -76,23 +54,6 @@ impl ToDocumentationString for SubtractDocumentation {
                 and validation will result in an error. Subtraction operations that result in overflow
                 (or underflow) will fail at evaluation time, but will pass validation."
             })
-            .header("Examples:")
-            .code_block("cedar", indoc! {"
-                -3                                  //-3 //Validates
-                44 - 31                             //13 //Validates
-                5 - (-3)                            //8 //Validates
-                -9223372036854775807 - 2            //error - overflow //Validates
-                7 - \"3\"                             //error //Doesn't validate (second operand not long)"
-            })
-            .paragraph(indoc! {"
-                Note: When using both unary negation and binary subtraction in the same expression,
-                parentheses may be needed to disambiguate. For example:
-                (-9223372036854775807) - 2"
-            })
-            .paragraph(indoc! {"
-                While overflow errors are caught during evaluation, they are not detected during
-                validation. All other type errors are caught at both evaluation and validation time."
-            })
             .build()
     }
 }
@@ -113,23 +74,6 @@ impl ToDocumentationString for MultiplyDocumentation {
             })
             .paragraph(indoc! {"
                 Note: Cedar does not provide an operator for arithmetic division."
-            })
-            .header("Examples:")
-            .paragraph(indoc! {"
-                Assuming resource.value is 3 and context.budget is 4:"
-            })
-            .code_block("cedar", indoc! {"
-                10 * 20                          //200 //Validates
-                5 * (-3)                         //-15 //Validates
-                5 * 0                            //0 //Validates
-                resource.value * 10              //30 //Validates
-                context.budget * resource.value   //12 //Validates
-                9223372036854775807 * 2          //error - overflow //Validates
-                \"5\" * 0                          //error //Doesn't validate (operands must be long)"
-            })
-            .paragraph(indoc! {"
-                While overflow errors are caught during evaluation, they are not detected during
-                validation. All other type errors are caught at both evaluation and validation time."
             })
             .build()
     }
