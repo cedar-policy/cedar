@@ -174,75 +174,18 @@ impl ast::RequestSchema for ValidatorSchema {
         request: &ast::Request,
         extensions: &Extensions<'_>,
     ) -> std::result::Result<(), Self::Error> {
-        use ast::EntityUIDEntry;
-        // first check that principal and resource are of types that exist in
-        // the schema, we can do this check even if action is unknown.
-        if let Some(principal_type) = request.principal().get_type() {
-            if let Some(et) = self.get_entity_type(principal_type) {
-                if let Some(euid) = request.principal().uid() {
-                    if let ValidatorEntityType {
-                        kind: ValidatorEntityTypeKind::Enum(choices),
-                        ..
-                    } = et
-                    {
-                        is_valid_enumerated_entity(&Vec::from(choices.clone().map(Eid::new)), euid)
-                            .map_err(Self::Error::from)?;
-                    }
-                }
-            } else {
-                return Err(request_validation_errors::UndeclaredPrincipalTypeError {
-                    principal_ty: principal_type.clone(),
-                }
-                .into());
-            }
-        }
-        if let Some(resource_type) = request.resource().get_type() {
-            if let Some(et) = self.get_entity_type(resource_type) {
-                if let Some(euid) = request.resource().uid() {
-                    if let ValidatorEntityType {
-                        kind: ValidatorEntityTypeKind::Enum(choices),
-                        ..
-                    } = et
-                    {
-                        is_valid_enumerated_entity(&Vec::from(choices.clone().map(Eid::new)), euid)
-                            .map_err(Self::Error::from)?;
-                    }
-                }
-            } else {
-                return Err(request_validation_errors::UndeclaredResourceTypeError {
-                    resource_ty: resource_type.clone(),
-                }
-                .into());
-            }
-        }
+        let a_uid = request.action().uid(); //used twice so only call once
 
-        // the remaining checks require knowing about the action.
-        match request.action() {
-            EntityUIDEntry::Known { euid: action, .. } => {
-                let validator_action_id = self.get_action_id(action).ok_or_else(|| {
-                    request_validation_errors::UndeclaredActionError {
-                        action: Arc::clone(action),
-                    }
-                })?;
-                if let Some(principal_type) = request.principal().get_type() {
-                    validator_action_id.check_principal_type(principal_type, action)?;
-                }
-                if let Some(principal_type) = request.resource().get_type() {
-                    validator_action_id.check_resource_type(principal_type, action)?;
-                }
-                if let Some(context) = request.context() {
-                    self.validate_context(context, action, extensions)
-                        .map_err(RequestValidationError::from)?;
-                }
-            }
-            EntityUIDEntry::Unknown { .. } => {
-                // We could hypothetically ensure that the concrete parts of the
-                // request are valid for _some_ action, but this is probably more
-                // expensive than we want for this validation step.
-                // Instead, we just let the above checks (that principal and
-                // resource are of types that at least _exist_ in the schema)
-                // suffice.
-            }
+        // Only validate entities if principal, action, and resource UIDs are all available
+        if let (Some(principal_uid), Some(action_uid), Some(resource_uid)) =
+            (request.principal().uid(), a_uid, request.resource().uid())
+        {
+            self.validate_scope_variables(principal_uid, action_uid, resource_uid)
+                .map_err(RequestValidationError::from)?;
+        }
+        if let (Some(context), Some(action)) = (request.context(), a_uid) {
+            self.validate_context(context, action, extensions)
+                .map_err(RequestValidationError::from)?;
         }
         Ok(())
     }
@@ -277,6 +220,62 @@ impl ast::RequestSchema for ValidatorSchema {
             }
             .into());
         }
+        Ok(())
+    }
+
+    /// Validate entities against a schema for a specific action
+    fn validate_scope_variables(
+        &self,
+        principal: &EntityUID,
+        action: &EntityUID,
+        resource: &EntityUID,
+    ) -> std::result::Result<(), RequestValidationError> {
+        let principal_type = principal.entity_type();
+        if let Some(et) = self.get_entity_type(principal_type) {
+            let euid = principal;
+            if let ValidatorEntityType {
+                kind: ValidatorEntityTypeKind::Enum(choices),
+                ..
+            } = et
+            {
+                is_valid_enumerated_entity(&Vec::from(choices.clone().map(Eid::new)), euid)
+                    .map_err(RequestValidationError::InvalidEnumEntity)?;
+            }
+        } else {
+            return Err(request_validation_errors::UndeclaredPrincipalTypeError {
+                principal_ty: principal_type.clone(),
+            }
+            .into());
+        }
+
+        let resource_type = resource.entity_type();
+        if let Some(et) = self.get_entity_type(resource_type) {
+            let euid = resource;
+            if let ValidatorEntityType {
+                kind: ValidatorEntityTypeKind::Enum(choices),
+                ..
+            } = et
+            {
+                is_valid_enumerated_entity(&Vec::from(choices.clone().map(Eid::new)), euid)
+                    .map_err(RequestValidationError::InvalidEnumEntity)?;
+            }
+        } else {
+            return Err(request_validation_errors::UndeclaredResourceTypeError {
+                resource_ty: resource_type.clone(),
+            }
+            .into());
+        }
+
+        let validator_action_id = self.get_action_id(action).ok_or_else(|| {
+            request_validation_errors::UndeclaredActionError {
+                action: Arc::new(action.clone()),
+            }
+        })?;
+
+        let principal_type = principal.entity_type();
+        validator_action_id.check_principal_type(principal_type, &Arc::new(action.clone()))?;
+        let principal_type = resource.entity_type();
+        validator_action_id.check_resource_type(principal_type, &Arc::new(action.clone()))?;
         Ok(())
     }
 }
@@ -333,6 +332,17 @@ impl ast::RequestSchema for CoreSchema<'_> {
         extensions: &Extensions<'a>,
     ) -> std::result::Result<(), Self::Error> {
         self.schema.validate_context(context, action, extensions)
+    }
+
+    /// Validate the entities, returning `Err` if it fails validation
+    fn validate_scope_variables(
+        &self,
+        principal: &EntityUID,
+        action: &EntityUID,
+        resource: &EntityUID,
+    ) -> std::result::Result<(), RequestValidationError> {
+        self.schema
+            .validate_scope_variables(principal, action, resource)
     }
 }
 
