@@ -14,21 +14,22 @@
  * limitations under the License.
  */
 
-use std::collections::{BTreeMap, HashMap};
+pub mod err;
 
 use super::{json::err::TypeMismatchError, EntityTypeDescription, Schema, SchemaType};
-use super::{Eid, EntityUID, Literal};
+use super::{Eid, EntityUID, ExprKind, Literal};
 use crate::ast::{
     BorrowedRestrictedExpr, Entity, PartialValue, PartialValueToRestrictedExprError, RestrictedExpr,
 };
-use crate::entities::ExprKind;
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
+use err::{
+    EntitySchemaConformanceError, InvalidEnumEntity, InvalidEnumEntityError, UndeclaredAction,
+    UnexpectedEntityTypeError,
+};
 use miette::Diagnostic;
 use smol_str::SmolStr;
+use std::collections::{BTreeMap, HashMap};
 use thiserror::Error;
-pub mod err;
-
-use err::{EntitySchemaConformanceError, InvalidEnumEntityError, UnexpectedEntityTypeError};
 
 /// Struct used to check whether entities conform to a schema
 #[derive(Debug, Clone)]
@@ -73,8 +74,7 @@ impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
         // For each ancestor that actually appears in `entity`, ensure the
         // ancestor type is allowed by the schema
         for ancestor_euid in ancestors {
-            validate_euid(self.schema, ancestor_euid)
-                .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
+            validate_euid(self.schema, ancestor_euid)?;
             let ancestor_type = ancestor_euid.entity_type();
             if schema_etype.allowed_parent_types().contains(ancestor_type) {
                 // note that `allowed_parent_types()` was transitively
@@ -144,11 +144,10 @@ impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
                                 err,
                             ));
                         }
-                    }
+                    };
                 }
             }
-            validate_euids_in_partial_value(self.schema, val)
-                .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
+            validate_euids_in_partial_value(self.schema, val)?;
         }
         Ok(())
     }
@@ -195,8 +194,7 @@ impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
             }
         }
         for val in tags.values() {
-            validate_euids_in_partial_value(self.schema, val)
-                .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
+            validate_euids_in_partial_value(self.schema, val)?;
         }
         Ok(())
     }
@@ -209,8 +207,6 @@ impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
         if etype.is_action() {
             self.validate_action(entity)?;
         } else {
-            validate_euid(self.schema, uid)
-                .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
             let schema_etype = self.schema.entity_type(etype).ok_or_else(|| {
                 let suggested_types = self
                     .schema
@@ -222,6 +218,7 @@ impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
                 }
             })?;
 
+            validate_euid(self.schema, uid)?;
             self.validate_entity_attributes(uid, entity.attrs(), &schema_etype)?;
             self.validate_entity_ancestors(uid, entity.ancestors(), &schema_etype)?;
             self.validate_tags(uid, entity.tags(), &schema_etype)?;
@@ -245,12 +242,46 @@ pub fn is_valid_enumerated_entity(
         .map(|_| ())
 }
 
-/// Validate if `euid` is valid, provided that it's of an enumerated type
-pub fn validate_euid(schema: &impl Schema, euid: &EntityUID) -> Result<(), InvalidEnumEntityError> {
-    if let Some(desc) = schema.entity_type(euid.entity_type()) {
+/// Errors returned from `validate_euid()` and friends
+///
+/// This is NOT a publicly exported error type.
+#[derive(Debug, Error, Diagnostic)]
+pub enum ValidateEuidError {
+    /// EUID's type is an enum type, but its value is not one of the declared enum values
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidEnumEntity(#[from] InvalidEnumEntityError),
+    /// EUID's type is an action type, but it is not one of the declared actions
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UndeclaredAction(#[from] UndeclaredAction),
+}
+
+impl From<ValidateEuidError> for EntitySchemaConformanceError {
+    fn from(e: ValidateEuidError) -> Self {
+        match e {
+            ValidateEuidError::InvalidEnumEntity(e) => InvalidEnumEntity::from(e).into(),
+            ValidateEuidError::UndeclaredAction(e) => e.into(),
+        }
+    }
+}
+
+/// Validate if `euid` is valid
+///
+/// As of this writing, the only ways for an `euid` to be invalid are if it is
+/// of enumerated entity type or action type, in which case it needs to have one
+/// of the specific entity IDs declared in the schema.
+pub fn validate_euid(schema: &impl Schema, euid: &EntityUID) -> Result<(), ValidateEuidError> {
+    let entity_type = euid.entity_type();
+    if let Some(desc) = schema.entity_type(entity_type) {
         if let Some(choices) = desc.enum_entity_eids() {
             is_valid_enumerated_entity(&Vec::from(choices), euid)?;
         }
+    }
+    if entity_type.is_action() && schema.action(euid).is_none() {
+        return Err(ValidateEuidError::UndeclaredAction(UndeclaredAction {
+            uid: euid.clone(),
+        }));
     }
     Ok(())
 }
@@ -258,18 +289,18 @@ pub fn validate_euid(schema: &impl Schema, euid: &EntityUID) -> Result<(), Inval
 fn validate_euids_in_subexpressions<'a>(
     exprs: impl IntoIterator<Item = &'a crate::ast::Expr>,
     schema: &impl Schema,
-) -> std::result::Result<(), InvalidEnumEntityError> {
+) -> std::result::Result<(), ValidateEuidError> {
     exprs.into_iter().try_for_each(|e| match e.expr_kind() {
         ExprKind::Lit(Literal::EntityUID(euid)) => validate_euid(schema, euid.as_ref()),
         _ => Ok(()),
     })
 }
 
-/// Validate if enumerated entities in `val` are valid
+/// Validate if enumerated entities and action UIDs in `val` are valid
 pub fn validate_euids_in_partial_value(
     schema: &impl Schema,
     val: &PartialValue,
-) -> Result<(), InvalidEnumEntityError> {
+) -> Result<(), ValidateEuidError> {
     match val {
         PartialValue::Value(val) => validate_euids_in_subexpressions(
             RestrictedExpr::from(val.clone()).subexpressions(),

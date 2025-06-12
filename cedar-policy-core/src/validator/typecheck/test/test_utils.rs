@@ -21,7 +21,8 @@ use cool_asserts::assert_matches;
 use itertools::Itertools;
 use std::{collections::HashSet, hash::Hash, sync::Arc};
 
-use crate::ast::{EntityUID, Expr, PolicyID, Template, ACTION_ENTITY_TYPE};
+use crate::ast::{Context, EntityUID, Expr, PolicyID, Request, Template, ACTION_ENTITY_TYPE};
+use crate::entities::{err::EntitiesError, Entities, EntityJsonParser, TCComputation};
 use crate::extensions::Extensions;
 use crate::parser::{IntoMaybeLoc, Loc, MaybeLoc};
 
@@ -30,8 +31,8 @@ use crate::validator::{
     typecheck::{SingleEnvTypechecker, TypecheckAnswer, Typechecker},
     types::{CapabilitySet, OpenTag, RequestEnv, Type},
     validation_errors::UnexpectedTypeHelp,
-    NamespaceDefinitionWithActionAttributes, RawName, ValidationError, ValidationMode,
-    ValidationWarning, ValidatorSchema,
+    CoreSchema, NamespaceDefinitionWithActionAttributes, RawName, RequestValidationError,
+    ValidationError, ValidationMode, ValidationWarning, ValidatorSchema,
 };
 
 use similar_asserts::assert_eq;
@@ -157,6 +158,7 @@ impl SchemaProvider for ValidatorSchema {
 }
 
 impl SchemaProvider for json_schema::Fragment<RawName> {
+    #[track_caller]
     fn schema(self) -> ValidatorSchema {
         self.try_into()
             .unwrap_or_else(|e| panic!("failed to construct schema: {:?}", miette::Report::new(e)))
@@ -164,6 +166,7 @@ impl SchemaProvider for json_schema::Fragment<RawName> {
 }
 
 impl SchemaProvider for json_schema::NamespaceDefinition<RawName> {
+    #[track_caller]
     fn schema(self) -> ValidatorSchema {
         self.try_into()
             .unwrap_or_else(|e| panic!("failed to construct schema: {:?}", miette::Report::new(e)))
@@ -171,6 +174,7 @@ impl SchemaProvider for json_schema::NamespaceDefinition<RawName> {
 }
 
 impl SchemaProvider for NamespaceDefinitionWithActionAttributes<RawName> {
+    #[track_caller]
     fn schema(self) -> ValidatorSchema {
         self.try_into()
             .unwrap_or_else(|e| panic!("failed to construct schema: {:?}", miette::Report::new(e)))
@@ -178,6 +182,7 @@ impl SchemaProvider for NamespaceDefinitionWithActionAttributes<RawName> {
 }
 
 impl SchemaProvider for &str {
+    #[track_caller]
     fn schema(self) -> ValidatorSchema {
         ValidatorSchema::from_cedarschema_str(self, Extensions::all_available())
             .unwrap_or_else(|e| panic!("failed to construct schema: {:?}", miette::Report::new(e)))
@@ -411,6 +416,83 @@ pub(crate) fn assert_typecheck_fails_empty_schema_without_type(
     expr: &Expr,
 ) -> HashSet<ValidationError> {
     assert_typecheck_fails(empty_schema_file(), expr, None)
+}
+
+/// Assert that the given entities (as a JSON list of entity objects) validate
+/// with the given schema.
+#[track_caller]
+pub(crate) fn assert_entities_validate(
+    entities: serde_json::Value,
+    schema: impl SchemaProvider,
+) -> Entities {
+    let schema = schema.schema();
+    let coreschema = CoreSchema::new(&schema);
+    let ejsonparser = EntityJsonParser::new(
+        Some(&coreschema),
+        Extensions::all_available(),
+        TCComputation::ComputeNow,
+    );
+    ejsonparser.from_json_value(entities).unwrap()
+}
+
+/// Assert that the given entities (as a JSON list of entity objects) do not
+/// validate with the given schema.
+#[track_caller]
+pub(crate) fn assert_entities_do_not_validate(
+    entities: serde_json::Value,
+    schema: impl SchemaProvider,
+) -> EntitiesError {
+    let schema = schema.schema();
+    let coreschema = CoreSchema::new(&schema);
+    let ejsonparser = EntityJsonParser::new(
+        Some(&coreschema),
+        Extensions::all_available(),
+        TCComputation::ComputeNow,
+    );
+    ejsonparser.from_json_value(entities).unwrap_err()
+}
+
+/// Assert that the given request (PARC) validates with the given schema.
+#[track_caller]
+pub(crate) fn assert_request_validates(
+    principal_uid: &str,
+    action_uid: &str,
+    resource_uid: &str,
+    context: serde_json::Value,
+    schema: impl SchemaProvider,
+) -> Request {
+    let schema = schema.schema();
+    Request::new(
+        (principal_uid.parse().unwrap(), None),
+        (action_uid.parse().unwrap(), None),
+        (resource_uid.parse().unwrap(), None),
+        Context::from_json_value(context).unwrap(),
+        Some(&schema),
+        Extensions::all_available(),
+    )
+    .unwrap()
+}
+
+/// Assert that the given request (PARC) does not validate with the given
+/// schema.
+#[track_caller]
+pub(crate) fn assert_request_does_not_validate(
+    principal_uid: &str,
+    action_uid: &str,
+    resource_uid: &str,
+    context: serde_json::Value,
+    schema: impl SchemaProvider,
+) -> RequestValidationError {
+    let schema = schema.schema();
+    Request::new(
+        (principal_uid.parse().unwrap(), None),
+        (action_uid.parse().unwrap(), None),
+        (resource_uid.parse().unwrap(), None),
+        Context::from_json_value(context).unwrap(),
+        Some(&schema),
+        Extensions::all_available(),
+    )
+    .unwrap_err()
 }
 
 /// Assert that the given `HashSet` has exactly one `Diagnostic`. Return it.
