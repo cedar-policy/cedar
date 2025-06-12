@@ -252,26 +252,16 @@ pub(crate) fn get_operator_at_position(position: Position, text: &str) -> Option
     })
 }
 
-pub(crate) fn is_cursor_within_policy_scope(policy_text: &str, cursor_position: Position) -> bool {
-    // Parse the policy to find the scope boundaries
-    let lines: Vec<&str> = policy_text.lines().collect();
-
-    // Early return if the cursor is on a line that doesn't exist
-    if (cursor_position.line as usize) >= lines.len() {
-        return false;
-    }
-
+fn get_policy_scope_ranges(policy_text: &str) -> Vec<Range> {
     // Track policy scope boundaries for all policies
-    let mut policy_scopes: Vec<(Position, Position)> = Vec::new();
+    let mut policy_scopes: Vec<Range> = Vec::new();
     let mut policy_start_pos: Option<Position> = None;
     let mut paren_depth = 0;
     let mut in_effect_keyword = false;
 
     // Identify effect keywords and their parentheses
-    for (line_idx, line) in lines.iter().enumerate() {
-        let mut char_idx = 0;
-
-        while char_idx < line.len() {
+    for (line_idx, line) in policy_text.lines().enumerate() {
+        for (char_idx, char) in line.char_indices() {
             let substring = &line[char_idx..];
 
             // Check for effect keywords
@@ -283,14 +273,13 @@ pub(crate) fn is_cursor_within_policy_scope(policy_text: &str, cursor_position: 
                         .ends_with(|c: char| c.is_alphanumeric() || c == '_'))
             {
                 in_effect_keyword = true;
-                char_idx += 6;
                 continue;
             }
 
             // If we've found an effect keyword, track parentheses
             if in_effect_keyword {
-                match line.as_bytes().get(char_idx) {
-                    Some(b'(') => {
+                match char {
+                    '(' => {
                         paren_depth += 1;
                         if paren_depth == 1 {
                             policy_start_pos = Some(Position {
@@ -299,46 +288,54 @@ pub(crate) fn is_cursor_within_policy_scope(policy_text: &str, cursor_position: 
                             });
                         }
                     }
-                    Some(b')') => {
+                    ')' => {
                         paren_depth -= 1;
                         if let Some(policy_start_pos) =
                             policy_start_pos.take_if(|_| paren_depth == 0)
                         {
                             // Add this policy scope to our list
-                            policy_scopes.push((
-                                policy_start_pos,
-                                Position {
+                            policy_scopes.push(Range {
+                                start: policy_start_pos,
+                                end: Position {
                                     line: line_idx as u32,
                                     character: char_idx as u32,
                                 },
-                            ));
+                            });
                             in_effect_keyword = false;
                         }
                     }
                     _ => {}
                 }
             }
-
-            char_idx += 1;
         }
     }
 
-    // Check if cursor is within any of the identified policy scopes
-    for (start, end) in policy_scopes {
-        // Cursor is after start position
-        let after_start = cursor_position.line > start.line
-            || (cursor_position.line == start.line && cursor_position.character > start.character);
+    policy_scopes
+}
 
-        // Cursor is before end position
-        let before_end = cursor_position.line < end.line
-            || (cursor_position.line == end.line && cursor_position.character <= end.character);
+fn policy_scope_range_containing_cursor(
+    policy_text: &str,
+    cursor_position: Position,
+) -> Option<Range> {
+    get_policy_scope_ranges(policy_text)
+        .into_iter()
+        .find(|scope_range| {
+            // Cursor is after start position
+            let after_start = cursor_position.line > scope_range.start.line
+                || (cursor_position.line == scope_range.start.line
+                    && cursor_position.character > scope_range.start.character);
 
-        if after_start && before_end {
-            return true;
-        }
-    }
+            // Cursor is before end position
+            let before_end = cursor_position.line < scope_range.end.line
+                || (cursor_position.line == scope_range.end.line
+                    && cursor_position.character <= scope_range.end.character);
 
-    false
+            after_start && before_end
+        })
+}
+
+pub(crate) fn is_cursor_within_policy_scope(policy_text: &str, cursor_position: Position) -> bool {
+    policy_scope_range_containing_cursor(policy_text, cursor_position).is_some()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -374,76 +371,9 @@ pub(crate) fn get_policy_scope_variable(
     policy_text: &str,
     cursor_position: Position,
 ) -> ScopeVariableInfo {
-    let lines: Vec<&str> = policy_text.lines().collect();
-    let cursor_line = cursor_position.line as usize;
-
-    // First, identify all policy statements in the file
-    let mut policy_scopes = Vec::new();
-    let mut current_policy_start: Option<(usize, usize)> = None;
-    let mut paren_depth = 0;
-    let mut in_effect_keyword = false;
-
-    for (line_idx, line) in lines.iter().enumerate() {
-        let mut char_idx = 0;
-
-        while char_idx < line.len() {
-            let substring = &line[char_idx..];
-
-            // Check for effect keywords
-            if !in_effect_keyword
-                && (substring.starts_with("permit") || substring.starts_with("forbid"))
-                && (char_idx == 0
-                    || !line[..char_idx]
-                        .trim_end()
-                        .ends_with(|c: char| c.is_alphanumeric() || c == '_'))
-            {
-                in_effect_keyword = true;
-                char_idx += 6;
-                continue;
-            }
-
-            // If we've found an effect keyword, track parentheses
-            if in_effect_keyword {
-                match line.as_bytes().get(char_idx) {
-                    Some(b'(') => {
-                        paren_depth += 1;
-                        if paren_depth == 1 {
-                            current_policy_start = Some((line_idx, char_idx));
-                        }
-                    }
-                    Some(b')') => {
-                        paren_depth -= 1;
-                        if let Some(current_policy_start) =
-                            current_policy_start.take_if(|_| paren_depth == 0)
-                        {
-                            // Add this policy scope to our list
-                            policy_scopes.push((current_policy_start, (line_idx, char_idx)));
-                            in_effect_keyword = false;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            char_idx += 1;
-        }
-    }
-
     // Find the policy that contains the cursor
-    let current_policy =
-        policy_scopes
-            .iter()
-            .find(|&((start_line, start_char), (end_line, end_char))| {
-                let after_start = cursor_line > *start_line
-                    || (cursor_line == *start_line
-                        && (cursor_position.character as usize) > *start_char);
-                let before_end = cursor_line < *end_line
-                    || (cursor_line == *end_line
-                        && (cursor_position.character as usize) <= *end_char);
-                after_start && before_end
-            });
-
-    let Some(((policy_start_line, policy_start_char), _)) = current_policy.copied() else {
+    let Some(policy_range) = policy_scope_range_containing_cursor(policy_text, cursor_position)
+    else {
         return ScopeVariableInfo {
             variable_type: PolicyScopeVariable::None,
             text: "".into(),
@@ -451,20 +381,27 @@ pub(crate) fn get_policy_scope_variable(
     };
 
     // Now find the commas within this policy to determine the variables
-    let mut param_sections = Vec::new();
-    let mut current_start = (policy_start_line, policy_start_char + 1); // +1 to skip the opening parenthesis
+    let mut param_sections: Vec<((usize, usize), (usize, usize))> = Vec::new();
+    let mut current_start = (
+        policy_range.start.line as usize,
+        policy_range.start.character as usize + 1,
+    ); // +1 to skip the opening parenthesis
     let mut comma_positions = Vec::new();
     let mut paren_depth = 1; // Start at 1 because we're inside the opening parenthesis
     let mut bracket_depth = 0;
 
-    'outer: for (line_num, line) in lines.iter().enumerate().skip(policy_start_line) {
-        let start_char = if line_num == policy_start_line {
-            policy_start_char + 1
+    'outer: for (line_num, line) in policy_text
+        .lines()
+        .enumerate()
+        .skip(policy_range.start.line as usize)
+    {
+        let start_char = if line_num == policy_range.start.line as usize {
+            policy_range.start.character + 1
         } else {
             0
         };
 
-        for (char_pos, c) in line.chars().enumerate().skip(start_char) {
+        for (char_pos, c) in line.chars().enumerate().skip(start_char as usize) {
             match c {
                 '(' => paren_depth += 1,
                 ')' => {
@@ -494,8 +431,9 @@ pub(crate) fn get_policy_scope_variable(
     } else {
         let mut index = 0;
         for &(line, pos) in &comma_positions {
-            if cursor_line < line
-                || (cursor_line == line && cursor_position.character <= (pos as u32))
+            if (cursor_position.line as usize) < line
+                || (cursor_position.line as usize == line
+                    && (cursor_position.character as usize) <= pos)
             {
                 break;
             }
@@ -510,13 +448,14 @@ pub(crate) fn get_policy_scope_variable(
     {
         if start_line == end_line {
             // PANIC SAFETY: Line numbers in `param_sections` are always indexes from enumerating `lines()`.
-            #[allow(clippy::indexing_slicing)]
-            lines[*start_line][*start_pos..*end_pos].trim().into()
+            #[allow(clippy::unwrap_used)]
+            let line = policy_text.lines().nth(*start_line as usize).unwrap();
+            line[*start_pos..*end_pos].trim().into()
         } else {
             // Handle multi-line parameters
             let mut text = String::new();
-            for (line_num, item) in lines
-                .iter()
+            for (line_num, item) in policy_text
+                .lines()
                 .enumerate()
                 .take(end_line + 1)
                 .skip(*start_line)
@@ -803,14 +742,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
-    #[traced_test]
-    #[allow(clippy::too_many_lines)]
-    #[allow(clippy::cognitive_complexity)]
-    fn test_is_cursor_within_policy_scope() {
-        // Single-line policy in policy scope
-        let policy =
-            "permit(|caret|pri|caret|ncipal, ac|caret|tion, re|caret|source|caret|) when { true };";
+    fn assert_carets_in_scope(policy: &str) {
         let (policy, carets) = remove_all_caret_markers(policy);
         for p in carets {
             assert!(
@@ -819,10 +751,9 @@ pub(crate) mod tests {
                 insert_caret(&policy, p)
             );
         }
+    }
 
-        // Single-line policy not in policy scope
-        let policy =
-            "|caret|per|caret|mit|caret|(principal, action, resource)|caret| when { |caret|true };";
+    fn assert_carets_not_in_scope(policy: &str) {
         let (policy, carets) = remove_all_caret_markers(policy);
         for p in carets {
             assert!(
@@ -831,132 +762,175 @@ pub(crate) mod tests {
                 insert_caret(&policy, p)
             );
         }
+    }
 
-        // Test case 2: Multi-line policy scope
-        let policy_in_scope = "\
+    #[test]
+    #[traced_test]
+    fn single_line_policy_within_scope() {
+        assert_carets_in_scope(
+            "permit(|caret|pri|caret|ncipal, ac|caret|tion, re|caret|source|caret|) when { true };",
+        );
+    }
+
+    #[test]
+    #[traced_test]
+    fn single_line_policy_outside_scope() {
+        assert_carets_not_in_scope(
+            "|caret|per|caret|mit|caret|(principal, action, resource)|caret| when { |caret|true };",
+        );
+    }
+
+    #[test]
+    #[traced_test]
+    fn multi_line_policy_within_scope() {
+        assert_carets_in_scope(
+            "\
 permit(
     prin|caret|ci|caret|pal,
     ac|caret|ti|caret|on,
     res|caret|our|caret|ce
-)";
-        let (policy, carets) = remove_all_caret_markers(policy_in_scope);
-        for p in carets {
-            assert!(
-                is_cursor_within_policy_scope(&policy, p),
-                "{}",
-                insert_caret(&policy, p)
-            );
-        }
+)",
+        );
+    }
 
-        let policy_out_scope = "\
+    #[test]
+    #[traced_test]
+    fn multi_line_policy_outside_scope() {
+        assert_carets_not_in_scope(
+            "\
 |caret|per|caret|mit(
     principal,
     action,
     resource
-)|caret| when { |caret|true };|caret|";
-        let (policy, carets) = remove_all_caret_markers(policy_out_scope);
-        for p in carets {
-            assert!(
-                !is_cursor_within_policy_scope(&policy, p),
-                "{}",
-                insert_caret(&policy, p)
-            );
-        }
+)|caret| when { |caret|true };|caret|",
+        );
+    }
 
-        // Test case 3: Forbid policy
-        let policy_in_scope = "forbid(prin|caret|ci|caret|pal, ac|caret|ti|caret|on, res|caret|our|caret|ce)";
-        let (policy, carets) = remove_all_caret_markers(policy_in_scope);
-        for p in carets {
-            assert!(
-                is_cursor_within_policy_scope(&policy, p),
-                "{}",
-                insert_caret(&policy, p)
-            );
-        }
+    #[test]
+    #[traced_test]
+    fn forbid_policy_within_scope() {
+        assert_carets_in_scope(
+            "forbid(prin|caret|ci|caret|pal, ac|caret|ti|caret|on, res|caret|our|caret|ce)",
+        );
+    }
 
-        let policy_out_scope = "|caret|for|caret|bid(principal, action, resource)|caret| when { |caret|false };|caret|";
-        let (policy, carets) = remove_all_caret_markers(policy_out_scope);
-        for p in carets {
-            assert!(
-                !is_cursor_within_policy_scope(&policy, p),
-                "{}",
-                insert_caret(&policy, p)
-            );
-        }
+    #[test]
+    #[traced_test]
+    fn forbid_policy_outside_scope() {
+        assert_carets_not_in_scope(
+            "|caret|for|caret|bid(principal, action, resource)|caret| when { |caret|false };|caret|"
+        );
+    }
 
-        // Test case 4: Complex nested policy
-        let policy_in_scope = "\
+    #[test]
+    #[traced_test]
+    fn complex_nested_policy_within_scope() {
+        assert_carets_in_scope(
+            "\
 permit(
     principal in User:|caret|\"al|caret|ice\",
     action in Action::|caret|\"a|caret|ct\",
     resource in Resource::|caret|\"da|caret|ta\"
-)";
-        let (policy, carets) = remove_all_caret_markers(policy_in_scope);
-        for p in carets {
-            assert!(
-                is_cursor_within_policy_scope(&policy, p),
-                "{}",
-                insert_caret(&policy, p)
-            );
-        }
+)",
+        );
+    }
 
-        let policy_out_scope = "\
+    #[test]
+    #[traced_test]
+    fn complex_nested_policy_outside_scope() {
+        assert_carets_not_in_scope(
+            "\
 |caret|per|caret|mit(
     principal in User:\"alice\",
     action in Action::\"act\",
     resource in Resource::\"data\"
-)|caret| when { |caret|true };|caret|";
-        let (policy, carets) = remove_all_caret_markers(policy_out_scope);
-        for p in carets {
-            assert!(
-                !is_cursor_within_policy_scope(&policy, p),
-                "{}",
-                insert_caret(&policy, p)
-            );
-        }
+)|caret| when { |caret|true };|caret|",
+        );
+    }
 
-        // Test case 5: Empty policy
-        let policy_out_scope = "|caret|per|caret|mit()|caret| when { |caret|true };|caret|";
-        let (policy, carets) = remove_all_caret_markers(policy_out_scope);
-        for p in carets {
-            assert!(
-                !is_cursor_within_policy_scope(&policy, p),
-                "{}",
-                insert_caret(&policy, p)
-            );
-        }
+    #[test]
+    #[traced_test]
+    fn empty_policy() {
+        assert_carets_not_in_scope("|caret|per|caret|mit()|caret| when { |caret|true };|caret|");
+    }
 
-        // Test case 6: Comment before policy
-        let policy_in_scope = "// This is a comment\npermit(prin|caret|ci|caret|pal, ac|caret|ti|caret|on, res|caret|our|caret|ce)";
-        let (policy, carets) = remove_all_caret_markers(policy_in_scope);
-        for p in carets {
-            assert!(
-                is_cursor_within_policy_scope(&policy, p),
-                "{}",
-                insert_caret(&policy, p)
-            );
-        }
+    #[test]
+    #[traced_test]
+    fn policy_with_comments_within_scope() {
+        assert_carets_in_scope(
+            "// This is a comment\npermit(prin|caret|ci|caret|pal, ac|caret|ti|caret|on, res|caret|our|caret|ce)"
+        );
+    }
 
-        let policy_out_scope = "|caret|// This is a comment|caret|\n|caret|permit(principal, action, resource)|caret| when { true };|caret|";
-        let (policy, carets) = remove_all_caret_markers(policy_out_scope);
-        for p in carets {
-            assert!(
-                !is_cursor_within_policy_scope(&policy, p),
-                "{}",
-                insert_caret(&policy, p)
-            );
-        }
+    #[test]
+    #[traced_test]
+    fn policy_with_comments_outside_scope() {
+        assert_carets_not_in_scope(
+            "|caret|// This is a comment|caret|\n|caret|permit(principal, action, resource)|caret| when { true };|caret|"
+        );
+    }
 
-        // Test case 7: Invalid input
-        let policy_out_scope = "|caret|invalid|caret| policy|caret| without|caret| effect|caret|";
-        let (policy, carets) = remove_all_caret_markers(policy_out_scope);
+    #[test]
+    #[traced_test]
+    fn invalid_policy_input() {
+        assert_carets_not_in_scope(
+            "|caret|invalid|caret| policy|caret| without|caret| effect|caret|",
+        );
+    }
+
+    fn assert_carets_in_condition(policy: &str) {
+        let (policy, carets) = remove_all_caret_markers(policy);
         for p in carets {
             assert!(
-                !is_cursor_within_policy_scope(&policy, p),
+                is_cursor_in_condition_braces(p, &policy),
                 "{}",
                 insert_caret(&policy, p)
             );
         }
+    }
+
+    fn assert_carets_not_in_condition(policy: &str) {
+        let (policy, carets) = remove_all_caret_markers(policy);
+        for p in carets {
+            assert!(
+                !is_cursor_in_condition_braces(p, &policy),
+                "{}",
+                insert_caret(&policy, p)
+            );
+        }
+    }
+
+    #[test]
+    fn caret_in_condition() {
+        assert_carets_in_condition(
+            "permit(principal, action, resource) when { |caret| true && fa|caret|lse |caret| };",
+        );
+        assert_carets_in_condition(
+            "permit(principal, action, resource) unless { |caret| true && fa|caret|lse |caret| };",
+        );
+        assert_carets_in_condition(
+            "permit(principal, action, resource) when { \n|caret| true\n\n\n &&\n fa|caret|lse |caret|\n };",
+        );
+        assert_carets_in_condition(
+            "permit(principal, action, resource) when { true |caret| } \n unless { |caret| false };",
+        );
+        assert_carets_in_condition(
+            "permit(principal, action, resource) when { 1 + { a: |caret| {|caret| b: 1} |caret|} |caret|}; ",
+        );
+    }
+
+    #[test]
+    fn caret_not_in_cond() {
+        assert_carets_not_in_condition(
+            "permit(principal, action, resource) when { false } |caret|;|caret|",
+        );
+        assert_carets_not_in_condition(
+            "permit(principal, action, resource) |caret|when|caret| { false };",
+        );
+        assert_carets_not_in_condition("|caret|permit(principal, action, |caret| resource);");
+        assert_carets_not_in_condition(
+            "permit(principal, action, resource) when { false } |caret| unless |caret| { true };",
+        );
     }
 
     #[test]
