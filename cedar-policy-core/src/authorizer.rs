@@ -98,11 +98,7 @@ impl Authorizer {
     /// computed.
     pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> (response: Response)
         ensures
-            // TODO: we eventually want the below, but we can't currently handle errors due to Verus limitations,
-            // so for now we just reason about `decision` and `determining_policies`
             response@ == spec_authorizer::is_authorized(q@, entities@, pset@.to_seq())
-            // response@.decision == spec_authorizer::is_authorized(q@, entities@, pset@.to_seq()).decision,
-            // response@.determining_policies == spec_authorizer::is_authorized(q@, entities@, pset@.to_seq()).determining_policies,
     {
         proof {
             // Assumptions and basic setup for the proof
