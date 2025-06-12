@@ -14,8 +14,10 @@
  * limitations under the License.
  */
 use crate::ast::{Eid, EntityType, EntityUID};
-use crate::entities::conformance::err::InvalidEnumEntityError;
-use crate::entities::conformance::{is_valid_enumerated_entity, validate_euids_in_partial_value};
+use crate::entities::conformance::{
+    err::InvalidEnumEntityError, is_valid_enumerated_entity, validate_euids_in_partial_value,
+    ValidateEuidError,
+};
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use crate::validator::{
     ValidatorActionId, ValidatorEntityType, ValidatorEntityTypeKind, ValidatorSchema,
@@ -278,6 +280,50 @@ impl ast::RequestSchema for ValidatorSchema {
         validator_action_id.check_resource_type(principal_type, &Arc::new(action.clone()))?;
         Ok(())
     }
+
+    /// Validate a context against a schema for a specific action
+    fn validate_context<'a>(
+        &self,
+        context: &ast::Context,
+        action: &ast::EntityUID,
+        extensions: &Extensions<'a>,
+    ) -> std::result::Result<(), RequestValidationError> {
+        // Get the action ID
+        let validator_action_id = self.get_action_id(action).ok_or_else(|| {
+            request_validation_errors::UndeclaredActionError {
+                action: Arc::new(action.clone()),
+            }
+        })?;
+
+        // Validate entity UIDs in the context
+        validate_euids_in_partial_value(&CoreSchema::new(&self), &context.clone().into()).map_err(
+            |e| match e {
+                ValidateEuidError::InvalidEnumEntity(e) => {
+                    RequestValidationError::InvalidEnumEntity(e)
+                }
+                ValidateEuidError::UndeclaredAction(e) => {
+                    request_validation_errors::UndeclaredActionError {
+                        action: Arc::new(e.uid),
+                    }
+                    .into()
+                }
+            },
+        )?;
+
+        // Typecheck the context against the expected context type
+        let expected_context_ty = validator_action_id.context_type();
+        if !expected_context_ty
+            .typecheck_partial_value(&context.clone().into(), extensions)
+            .map_err(RequestValidationError::TypeOfContext)?
+        {
+            return Err(request_validation_errors::InvalidContextError {
+                context: context.clone(),
+                action: Arc::new(action.clone()),
+            }
+            .into());
+        }
+        Ok(())
+    }
 }
 
 impl ValidatorActionId {
@@ -344,6 +390,7 @@ impl ast::RequestSchema for CoreSchema<'_> {
         self.schema
             .validate_scope_variables(principal, action, resource)
     }
+
 }
 
 /// Error when the request does not conform to the schema.

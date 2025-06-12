@@ -621,6 +621,7 @@ pub trait RequestSchema {
         extensions: &Extensions<'a>,
     ) -> std::result::Result<(), Self::Error>;
 
+
     /// Validate the entities, returning `Err` if it fails validation
     fn validate_scope_variables(
         &self,
