@@ -15,7 +15,9 @@
  */
 use crate::ast::{Eid, EntityType, EntityUID};
 use crate::entities::conformance::err::InvalidEnumEntityError;
-use crate::entities::conformance::{is_valid_enumerated_entity, validate_euids_in_partial_value, ValidateEuidError};
+use crate::entities::conformance::{
+    is_valid_enumerated_entity, validate_euids_in_partial_value, ValidateEuidError,
+};
 use crate::extensions::{ExtensionFunctionLookupError, Extensions};
 use crate::validator::{
     ValidatorActionId, ValidatorEntityType, ValidatorEntityTypeKind, ValidatorSchema,
@@ -205,15 +207,18 @@ impl ast::RequestSchema for ValidatorSchema {
         })?;
 
         // Validate entity UIDs in the context
-        validate_euids_in_partial_value(&CoreSchema::new(&self), &context.clone().into())
-            .map_err(|err| match err {
-                ValidateEuidError::InvalidEnumEntity(e) => RequestValidationError::InvalidEnumEntity(e),
+        validate_euids_in_partial_value(&CoreSchema::new(&self), &context.clone().into()).map_err(
+            |err| match err {
+                ValidateEuidError::InvalidEnumEntity(e) => {
+                    RequestValidationError::InvalidEnumEntity(e)
+                }
                 ValidateEuidError::UndeclaredAction(e) => RequestValidationError::UndeclaredAction(
                     request_validation_errors::UndeclaredActionError {
                         action: Arc::new(e.uid),
-                    }
+                    },
                 ),
-            })?;
+            },
+        )?;
 
         // Typecheck the context against the expected context type
         let expected_context_ty = validator_action_id.context_type();
