@@ -320,8 +320,7 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
 
         self.send_diagnostics(&document).await;
 
-        self.documents
-            .insert(params.text_document.uri.clone(), document);
+        self.documents.insert(params.text_document.uri, document);
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {

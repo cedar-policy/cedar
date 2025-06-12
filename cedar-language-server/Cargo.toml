@@ -46,8 +46,8 @@ similar-asserts = "1.7.0"
 
 [features]
 default = ["bin"]
-bin = ["tokio", "tower-lsp", "tower-service", "tracing-subscriber", "tracing-appender", "dashmap"]
-wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
+bin = ["dep:tokio", "dep:tower-lsp", "dep:tower-service", "dep:tracing-subscriber", "dep:tracing-appender", "dep:dashmap"]
+wasm = ["dep:serde-wasm-bindgen", "dep:tsify", "dep:wasm-bindgen"]
 
 [[bin]]
 name = "cedar-language-server"

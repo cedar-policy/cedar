@@ -120,7 +120,7 @@ impl<'a> PolicyGotoSchemaDefinition<'a> {
                     .sorted()
                     .filter_map(|et| self.schema.get_entity_type(et))
                     .filter_map(|vet| vet.loc.as_ref())
-                    .map(crate::utils::ToRange::to_range)
+                    .map(ToRange::to_range)
                     .collect::<Vec<Range>>();
                 Some(ranges)
             }
@@ -132,7 +132,7 @@ impl<'a> PolicyGotoSchemaDefinition<'a> {
                     .sorted()
                     .filter_map(|et| self.schema.get_entity_type(et))
                     .filter_map(|vet| vet.loc.as_ref())
-                    .map(crate::utils::ToRange::to_range)
+                    .map(ToRange::to_range)
                     .collect::<Vec<Range>>();
                 Some(ranges)
             }
@@ -275,14 +275,14 @@ impl<'a> PolicyGotoSchemaDefinition<'a> {
                     .action_ids()
                     .filter_map(|action_id| action_id.loc())
                     .unique()
-                    .map(crate::utils::ToRange::to_range)
+                    .map(ToRange::to_range)
                     .collect_vec(),
                 constraint => constraint
                     .iter_euids()
                     .filter_map(|euid| self.schema.get_action_id(euid))
                     .filter_map(|action_id| action_id.loc())
                     .unique()
-                    .map(crate::utils::ToRange::to_range)
+                    .map(ToRange::to_range)
                     .collect_vec(),
             };
 
@@ -314,7 +314,7 @@ impl<'a> PolicyGotoSchemaDefinition<'a> {
                 return attrs
                     .into_iter()
                     .filter_map(|info| info.attr_type.loc.as_ref())
-                    .map(crate::utils::ToRange::to_range)
+                    .map(ToRange::to_range)
                     .collect_vec()
                     .into();
             }

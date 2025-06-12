@@ -51,35 +51,25 @@ pub(crate) enum Document {
 }
 
 impl Document {
-    #[allow(clippy::case_sensitive_file_extension_comparisons)]
-    pub(crate) fn new(
-        text: &str,
-        url: &Url,
-        version: i32,
-        documents: &Documents,
-    ) -> Result<Self, anyhow::Error> {
-        let url = url.clone();
-        let document = if url.path().ends_with(".cedar") {
+    pub(crate) fn try_from_state(state: DocumentState) -> Result<Self, anyhow::Error> {
+        let document = if state.url.path().ends_with(".cedar") {
             Self::Policy(PolicyDocument {
-                state: DocumentState::from_content(text, &url, version, documents),
+                state,
                 schema_url: None,
-                policy_url: url,
             })
-        } else if url.path().ends_with(".cedarschema") {
+        } else if state.url.path().ends_with(".cedarschema") {
             Self::Schema(SchemaDocument {
-                state: DocumentState::from_content(text, &url, version, documents),
+                state,
                 schema_type: SchemaType::CedarSchema,
-                schema_url: url,
             })
-        } else if url.path().ends_with(".cedarschema.json") {
+        } else if state.url.path().ends_with(".cedarschema.json") {
             Self::Schema(SchemaDocument {
-                state: DocumentState::from_content(text, &url, version, documents),
+                state,
                 schema_type: SchemaType::Json,
-                schema_url: url,
             })
-        } else if url.path().ends_with(".cedarentities.json") {
+        } else if state.url.path().ends_with(".cedarentities.json") {
             Self::Entities(EntitiesDocument {
-                state: DocumentState::from_content(text, &url, version, documents),
+                state,
                 schema_url: None,
             })
         } else {
@@ -88,40 +78,24 @@ impl Document {
         Ok(document)
     }
 
+    pub(crate) fn new(
+        text: &str,
+        url: &Url,
+        version: i32,
+        documents: &Documents,
+    ) -> Result<Self, anyhow::Error> {
+        let state = DocumentState::from_content(text, url, version, documents);
+        Self::try_from_state(state)
+    }
+
     #[allow(clippy::case_sensitive_file_extension_comparisons)]
     pub(crate) fn new_url(
         url: &Url,
         version: i32,
         documents: &Documents,
     ) -> Result<Self, anyhow::Error> {
-        let url = url.clone();
-        let document = if url.path().ends_with(".cedar") {
-            Self::Policy(PolicyDocument {
-                state: DocumentState::from_url(&url, version, documents)?,
-                schema_url: None,
-                policy_url: url,
-            })
-        } else if url.path().ends_with(".cedarschema") {
-            Self::Schema(SchemaDocument {
-                state: DocumentState::from_url(&url, version, documents)?,
-                schema_type: SchemaType::CedarSchema,
-                schema_url: url,
-            })
-        } else if url.path().ends_with(".cedarschema.json") {
-            Self::Schema(SchemaDocument {
-                state: DocumentState::from_url(&url, version, documents)?,
-                schema_type: SchemaType::Json,
-                schema_url: url,
-            })
-        } else if url.path().ends_with(".cedarentities.json") {
-            Self::Entities(EntitiesDocument {
-                state: DocumentState::from_url(&url, version, documents)?,
-                schema_url: None,
-            })
-        } else {
-            return Err(anyhow::anyhow!("Unknown document type"));
-        };
-        Ok(document)
+        let state = DocumentState::from_url(url, version, documents)?;
+        Self::try_from_state(state)
     }
 
     #[must_use]
@@ -229,7 +203,7 @@ impl Document {
             Self::Schema(schema_document) => schema_goto_definition(
                 position,
                 &schema_document.into(),
-                &schema_document.schema_url,
+                &schema_document.state.url,
             ),
             Self::Entities(_) => None,
         }
@@ -271,7 +245,7 @@ impl Document {
         match self {
             Self::Policy(policy_document) => {
                 let code_actions =
-                    policy_quickfix_code_actions(&policy_document.policy_url, params.context)?;
+                    policy_quickfix_code_actions(&policy_document.state.url, params.context)?;
                 code_actions
                     .into_iter()
                     .map(CodeActionOrCommand::CodeAction)
@@ -313,7 +287,6 @@ impl Document {
 #[derive(Debug, Clone)]
 pub(crate) struct PolicyDocument {
     state: DocumentState,
-    policy_url: Url,
     schema_url: Option<Url>,
 }
 
@@ -359,7 +332,6 @@ impl From<PolicyDocument> for Document {
 pub(crate) struct SchemaDocument {
     state: DocumentState,
     schema_type: SchemaType,
-    schema_url: Url,
 }
 
 #[derive(Debug, Clone)]
@@ -388,19 +360,19 @@ impl SchemaDocument {
             match &doc {
                 Document::Policy(policy) => {
                     if let Some(schema_url) = &policy.schema_url {
-                        if schema_url == &self.schema_url {
+                        if schema_url == &self.state.url {
                             let d = policy.get_diagnostics_with_schema(self).ok()?;
                             let frag = DiagnosticFragment {
                                 version: policy.state.version,
                                 diagnostics: d,
                             };
-                            diagnostics.insert(policy.policy_url.clone(), frag);
+                            diagnostics.insert(policy.state.url.clone(), frag);
                         }
                     }
                 }
                 Document::Entities(entities) => {
                     if let Some(schema_url) = &entities.schema_url {
-                        if schema_url == &self.schema_url {
+                        if schema_url == &self.state.url {
                             let d = entities.get_diagnostics_with_schema(self).ok()?;
                             let frag = DiagnosticFragment {
                                 version: entities.state.version,
@@ -432,15 +404,15 @@ impl SchemaDocument {
             .for_each(|mut doc| match doc.value_mut() {
                 Document::Policy(policy) => {
                     if let Some(schema_url) = &policy.schema_url {
-                        if schema_url == &self.schema_url {
+                        if schema_url == &self.state.url {
                             policy.schema_url = new_url.cloned();
-                            updated_doc_urls.push(policy.policy_url.clone());
+                            updated_doc_urls.push(policy.state.url.clone());
                         }
                     }
                 }
                 Document::Entities(entities) => {
                     if let Some(schema_url) = &entities.schema_url {
-                        if schema_url == &self.schema_url {
+                        if schema_url == &self.state.url {
                             entities.schema_url = new_url.cloned();
                             updated_doc_urls.push(entities.state.url.clone());
                         }

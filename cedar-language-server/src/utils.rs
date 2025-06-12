@@ -449,7 +449,7 @@ pub(crate) fn get_policy_scope_variable(
         if start_line == end_line {
             // PANIC SAFETY: Line numbers in `param_sections` are always indexes from enumerating `lines()`.
             #[allow(clippy::unwrap_used)]
-            let line = policy_text.lines().nth(*start_line as usize).unwrap();
+            let line = policy_text.lines().nth(*start_line).unwrap();
             line[*start_pos..*end_pos].trim().into()
         } else {
             // Handle multi-line parameters
