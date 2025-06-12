@@ -19,6 +19,9 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Check disk space
+      shell: bash
+      run: df -h
     - name: Install LLVM tools
       shell: bash
       run: rustup component add llvm-tools-preview

@@ -206,7 +206,7 @@ impl ast::RequestSchema for ValidatorSchema {
                 action: action_arc.clone(),
             }
         })?;
-        
+
         // Validate entity UIDs in the context
         validate_euids_in_partial_value(&CoreSchema::new(&self), &context.clone().into()).map_err(
             |e| match e {
