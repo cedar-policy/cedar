@@ -206,12 +206,9 @@ impl ast::RequestSchema for ValidatorSchema {
         })?;
         
         // Validate entity UIDs in the context
-        validate_euids_in_partial_value(
-            &CoreSchema::new(&self),
-            &context.clone().into(),
-        )
-        .map_err(RequestValidationError::InvalidEnumEntity)?;
-        
+        validate_euids_in_partial_value(&CoreSchema::new(&self), &context.clone().into())
+            .map_err(|e| RequestValidationError::InvalidEnumEntity(e.into()))?;
+
         // Typecheck the context against the expected context type
         let expected_context_ty = validator_action_id.context_type();
         if !expected_context_ty
