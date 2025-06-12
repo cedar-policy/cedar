@@ -24,9 +24,14 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use vstd::prelude::*;
+#[macro_use]
+use crate::verus_utils::*;
+use crate::spec::*;
 
 // How many attrs or tags will we store in an error before cutting off for performance reason
 const TOO_MANY_ATTRS: usize = 5;
+
+verus! {
 
 /// Enumeration of the possible errors that can occur during evaluation
 //
@@ -34,6 +39,7 @@ const TOO_MANY_ATTRS: usize = 5;
 // Don't make fields `pub`, don't make breaking changes, and use caution when
 // adding public methods.
 #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
+#[verifier::external_derive]
 pub enum EvaluationError {
     /// Tried to lookup an entity UID, but it didn't exist in the provided
     /// entities
@@ -91,16 +97,26 @@ pub enum EvaluationError {
     #[diagnostic(transparent)]
     NonValue(#[from] evaluation_errors::NonValueError),
 
-    /// Trying to evaluate an expression AST node that gets generated when parsing fails
-    #[cfg(feature = "tolerant-ast")]
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ASTErrorExpr(#[from] evaluation_errors::ASTErrorExprError),
+    // /// Trying to evaluate an expression AST node that gets generated when parsing fails
+    // #[cfg(feature = "tolerant-ast")]
+    // #[error(transparent)]
+    // #[diagnostic(transparent)]
+    // ASTErrorExpr(#[from] evaluation_errors::ASTErrorExprError),
 
     /// Maximum recursion limit reached for expression evaluation
     #[error(transparent)]
     #[diagnostic(transparent)]
     RecursionLimit(#[from] evaluation_errors::RecursionLimitError),
+}
+
+impl View for EvaluationError {
+    type V = spec_ast::Error;
+    uninterp spec fn view(&self) -> Self::V;
+}
+
+
+clone_spec_for!(EvaluationError);
+
 }
 
 impl EvaluationError {
@@ -351,8 +367,11 @@ pub mod evaluation_errors {
     use std::fmt::Write;
     use std::sync::Arc;
     use thiserror::Error;
+    use vstd::prelude::*;
 
     use super::Name;
+
+    verus! {
 
     /// Tried to lookup an entity UID, but it didn't exist in the provided entities
     //
@@ -361,11 +380,15 @@ pub mod evaluation_errors {
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("entity `{uid}` does not exist")]
+    #[verifier::external_body]
+    #[verifier::external_derive]
     pub struct EntityDoesNotExistError {
         /// Entity UID which didn't exist in the provided entities
         pub(crate) uid: Arc<EntityUID>,
         /// Source location
         pub(crate) source_loc: Option<Loc>,
+    }
+
     }
 
     // This and similar `Diagnostic` impls could just be derived with
@@ -381,6 +404,8 @@ pub mod evaluation_errors {
         impl_diagnostic_from_source_loc_opt_field!(source_loc);
     }
 
+    verus! {
+
     /// Tried to get an attribute, but the specified entity didn't have that
     /// attribute
     //
@@ -389,6 +414,8 @@ pub mod evaluation_errors {
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("`{entity}` does not have the {} `{attr_or_tag}`", if *.was_attr { "attribute" } else { "tag" })]
+    #[verifier::external_body]
+    #[verifier::external_derive]
     pub struct EntityAttrDoesNotExistError {
         /// Entity that didn't have the attribute
         pub(crate) entity: Arc<EntityUID>,
@@ -405,6 +432,8 @@ pub mod evaluation_errors {
         pub(crate) total_attrs_or_tags: usize,
         /// Source location
         pub(crate) source_loc: Option<Loc>,
+    }
+
     }
 
     impl Diagnostic for EntityAttrDoesNotExistError {
@@ -455,6 +484,8 @@ pub mod evaluation_errors {
         }
     }
 
+    verus! {
+
     /// Tried to get an attribute of a (non-entity) record, but that record didn't
     /// have that attribute
     //
@@ -463,6 +494,8 @@ pub mod evaluation_errors {
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("record does not have the attribute `{attr}`")]
+    #[verifier::external_body]
+    #[verifier::external_derive]
     pub struct RecordAttrDoesNotExistError {
         /// Name of the attribute we tried to access
         pub(crate) attr: SmolStr,
@@ -472,6 +505,8 @@ pub mod evaluation_errors {
         pub(crate) total_attrs: usize,
         /// Source location
         pub(crate) source_loc: Option<Loc>,
+    }
+
     }
 
     impl Diagnostic for RecordAttrDoesNotExistError {
@@ -495,6 +530,8 @@ pub mod evaluation_errors {
         }
     }
 
+    verus! {
+
     /// Tried to evaluate an operation on values with incorrect types for that
     /// operation
     //
@@ -502,6 +539,8 @@ pub mod evaluation_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
+    #[verifier::external_body]
+    #[verifier::external_derive]
     pub struct TypeError {
         /// Expected one of these types
         pub(crate) expected: NonEmpty<Type>,
@@ -511,6 +550,8 @@ pub mod evaluation_errors {
         pub(crate) advice: Option<String>,
         /// Source location
         pub(crate) source_loc: Option<Loc>,
+    }
+
     }
 
     impl Diagnostic for TypeError {
@@ -541,6 +582,8 @@ pub mod evaluation_errors {
         }
     }
 
+    verus! {
+
     /// Wrong number of arguments provided to an extension function
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
@@ -548,6 +591,8 @@ pub mod evaluation_errors {
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("wrong number of arguments provided to extension function `{function_name}`: expected {expected}, got {actual}")]
+    #[verifier::external_body]
+    #[verifier::external_derive]
     pub struct WrongNumArgumentsError {
         /// arguments to this function
         pub(crate) function_name: Name,
@@ -559,9 +604,13 @@ pub mod evaluation_errors {
         pub(crate) source_loc: Option<Loc>,
     }
 
+    }
+
     impl Diagnostic for WrongNumArgumentsError {
         impl_diagnostic_from_source_loc_opt_field!(source_loc);
     }
+
+    verus! {
 
     /// Overflow during an integer operation
     //
@@ -569,6 +618,7 @@ pub mod evaluation_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
+    #[verifier::external_derive]
     pub enum IntegerOverflowError {
         /// Overflow during a binary operation
         #[error(transparent)]
@@ -579,6 +629,8 @@ pub mod evaluation_errors {
         #[error(transparent)]
         #[diagnostic(transparent)]
         UnaryOp(#[from] UnaryOpOverflowError),
+    }
+
     }
 
     impl IntegerOverflowError {
@@ -597,6 +649,8 @@ pub mod evaluation_errors {
         }
     }
 
+    verus! {
+
     /// Overflow during a binary operation
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
@@ -604,6 +658,8 @@ pub mod evaluation_errors {
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("integer overflow while attempting to {} the values `{arg1}` and `{arg2}`", match .op { BinaryOp::Add => "add", BinaryOp::Sub => "subtract", BinaryOp::Mul => "multiply", _ => "perform an operation on" })]
+    #[verifier::external_body]
+    #[verifier::external_derive]
     pub struct BinaryOpOverflowError {
         /// overflow while evaluating this operator
         pub(crate) op: BinaryOp,
@@ -615,9 +671,13 @@ pub mod evaluation_errors {
         pub(crate) source_loc: Option<Loc>,
     }
 
+    }
+
     impl Diagnostic for BinaryOpOverflowError {
         impl_diagnostic_from_source_loc_opt_field!(source_loc);
     }
+
+    verus! {
 
     /// Overflow during a unary operation
     //
@@ -626,6 +686,8 @@ pub mod evaluation_errors {
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("integer overflow while attempting to {} the value `{arg}`", match .op { UnaryOp::Neg => "negate", _ => "perform an operation on" })]
+    #[verifier::external_body]
+    #[verifier::external_derive]
     pub struct UnaryOpOverflowError {
         /// overflow while evaluating this operator
         pub(crate) op: UnaryOp,
@@ -635,9 +697,13 @@ pub mod evaluation_errors {
         pub(crate) source_loc: Option<Loc>,
     }
 
+    }
+
     impl Diagnostic for UnaryOpOverflowError {
         impl_diagnostic_from_source_loc_opt_field!(source_loc);
     }
+
+    verus! {
 
     /// Not all template slots were linked
     //
@@ -646,6 +712,8 @@ pub mod evaluation_errors {
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("template slot `{slot}` was not linked")]
+    #[verifier::external_body]
+    #[verifier::external_derive]
     pub struct UnlinkedSlotError {
         /// Slot which was not linked
         pub(crate) slot: SlotId,
@@ -653,9 +721,13 @@ pub mod evaluation_errors {
         pub(crate) source_loc: Option<Loc>,
     }
 
+    }
+
     impl Diagnostic for UnlinkedSlotError {
         impl_diagnostic_from_source_loc_opt_field!(source_loc);
     }
+
+    verus! {
 
     /// Evaluation error thrown by an extension function
     //
@@ -664,6 +736,8 @@ pub mod evaluation_errors {
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("error while evaluating `{extension_name}` extension function: {msg}")]
+    #[verifier::external_body]
+    #[verifier::external_derive]
     pub struct ExtensionFunctionExecutionError {
         /// Name of the extension throwing the error
         pub(crate) extension_name: Name,
@@ -673,6 +747,8 @@ pub mod evaluation_errors {
         pub(crate) advice: Option<String>,
         /// Source location
         pub(crate) source_loc: Option<Loc>,
+    }
+
     }
 
     impl Diagnostic for ExtensionFunctionExecutionError {
@@ -690,6 +766,8 @@ pub mod evaluation_errors {
         }
     }
 
+    verus! {
+
     /// This error is raised if an expression contains unknowns and cannot be
     /// reduced to a [`Value`]. In order to return partial results, use the
     /// partial evaluation APIs instead.
@@ -699,11 +777,15 @@ pub mod evaluation_errors {
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("the expression contains unknown(s): `{expr}`")]
+    #[verifier::external_body]
+    #[verifier::external_derive]
     pub struct NonValueError {
         /// Expression that contained unknown(s)
         pub(crate) expr: Expr,
         /// Source location
         pub(crate) source_loc: Option<Loc>,
+    }
+
     }
 
     impl Diagnostic for NonValueError {
@@ -736,6 +818,8 @@ pub mod evaluation_errors {
         }
     }
 
+    verus! {
+
     /// Maximum recursion limit reached for expression evaluation
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
@@ -743,9 +827,13 @@ pub mod evaluation_errors {
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("recursion limit reached")]
+    #[verifier::external_body]
+    #[verifier::external_derive]
     pub struct RecursionLimitError {
         /// Source location
         pub(crate) source_loc: Option<Loc>,
+    }
+
     }
 
     impl Diagnostic for RecursionLimitError {

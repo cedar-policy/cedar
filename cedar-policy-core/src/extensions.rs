@@ -235,17 +235,22 @@ mod extension_initialization_errors {
     }
 }
 
+verus! {
+
 /// Errors thrown when looking up an extension function in [`Extensions`].
 //
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
+#[verifier::external_derive]
 pub enum ExtensionFunctionLookupError {
     /// Tried to call a function that doesn't exist
     #[error(transparent)]
     #[diagnostic(transparent)]
     FuncDoesNotExist(#[from] extension_function_lookup_errors::FuncDoesNotExistError),
+}
+
 }
 
 impl ExtensionFunctionLookupError {
@@ -273,6 +278,9 @@ pub mod extension_function_lookup_errors {
     use crate::parser::Loc;
     use miette::Diagnostic;
     use thiserror::Error;
+    use vstd::prelude::*;
+
+    verus! {
 
     /// Tried to call a function that doesn't exist
     //
@@ -281,11 +289,15 @@ pub mod extension_function_lookup_errors {
     // when adding public methods.
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("extension function `{name}` does not exist")]
+    #[verifier::external_body]
+    #[verifier::external_derive]
     pub struct FuncDoesNotExistError {
         /// Name of the function that doesn't exist
         pub(crate) name: Name,
         /// Source location
         pub(crate) source_loc: Option<Loc>,
+    }
+
     }
 
     impl Diagnostic for FuncDoesNotExistError {

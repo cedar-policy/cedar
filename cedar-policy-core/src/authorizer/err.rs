@@ -19,10 +19,14 @@ use crate::evaluator::EvaluationError;
 use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
+use vstd::prelude::*;
+
+verus! {
 
 /// Errors that can occur during authorization
 // TODO: Verus can't handle this enum for some reason
 #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
+#[verifier::external_derive]
 pub enum AuthorizationError {
     /// An error occurred when evaluating a policy.
     #[error("while evaluating policy `{id}`: {error}")]
@@ -33,6 +37,8 @@ pub enum AuthorizationError {
         #[diagnostic(transparent)]
         error: EvaluationError,
     },
+}
+
 }
 
 /// Errors that occur during concretizing a partial request

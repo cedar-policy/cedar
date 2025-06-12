@@ -425,7 +425,7 @@ impl<'e> Evaluator<'e> {
     /// it doesn't consider whether we're processing a `Permit` policy or a
     /// `Forbid` policy.
     #[verifier::external_body]
-    pub fn evaluate_verus(&self, p: &Policy) -> (res: VerusResultHack<bool>)
+    pub fn evaluate_verus(&self, p: &Policy) -> (res: Result<bool>)
         ensures ({
             &&& res matches Ok(res_b) ==> {
                 &&& spec_evaluator::evaluate(p@.to_expr(), self@.request, self@.entities) matches Ok(v)
@@ -437,7 +437,7 @@ impl<'e> Evaluator<'e> {
             }
         })
     {
-        self.evaluate(p).map_err(|_| ())
+        self.evaluate(p)
     }
 
     } // verus!

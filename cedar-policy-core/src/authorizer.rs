@@ -126,7 +126,7 @@ impl Authorizer {
         // logic from `Authorizer::is_authorized_core_internal()`
         let mut satisfied_permits = vec![];
         let mut satisfied_forbids = vec![];
-        // let mut errors = vec![];
+        let mut errors = vec![];
 
         // Main loop iterating over the policy set and evaluating each policy. Explaining the various iterators:
         //    - `policies_iter` has type `hash_map::Values<'_,PolicyID,Policy>`, Rust exec iterator over `Policy`
@@ -288,11 +288,10 @@ impl Authorizer {
                             spec_ast::Effect::Forbid, policies_ghost_iter@.map_values(|p:Policy| p@).to_set(), q@, entities@, p@
                         );
                     }
-                    // TODO add back errors when we can handle them
-                    // errors.push(AuthorizationError::PolicyEvaluationError {
-                    //     id: id.clone(),
-                    //     error: e,
-                    // });
+                    errors.push(AuthorizationError::PolicyEvaluationError {
+                        id: id.clone(),
+                        error: e,
+                    });
 
                     // // Since Cedar currently only supports `ErrorHandling::Skip`, we never push to `satisfied_permits`
                     // // or `satisfied_forbids` in this error case; so we can just skip it
