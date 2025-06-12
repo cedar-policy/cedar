@@ -155,7 +155,7 @@ fn has_unclosed_policy_elements(text: &str) -> bool {
     parens_count > 0 && in_policy_declaration
 }
 
-pub(crate) fn get_snippets(_partial_input: &str) -> Vec<CompletionItem> {
+pub(crate) fn get_snippets() -> Vec<CompletionItem> {
     // Basic snippets always available
     let mut snippets = vec![
         new_policy_snippet(

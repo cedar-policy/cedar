@@ -102,7 +102,7 @@ impl PolicyCompletionProvider {
         let Some(cst_policy) = self.get_cst_policy(&policy_text, features) else {
             info!("No policy found at cursor position");
             if should_show_policy_snippets(policy_string, self.cursor_position) {
-                return get_snippets(policy_string);
+                return get_snippets();
             }
             return vec![];
         };

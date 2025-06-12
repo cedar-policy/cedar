@@ -11,7 +11,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-cedar-policy-core = { version = "=4.4.0", path = "../cedar-policy-core", features = ["datetime", "tolerant-ast", "extended-schema"] }
+cedar-policy-core = { version = "=4.4.0", path = "../cedar-policy-core", features = ["tolerant-ast", "extended-schema"] }
 cedar-policy-formatter = { version = "=4.4.0", path = "../cedar-policy-formatter", features = ["tolerant-ast"] }
 cedar-policy = { version = "=4.4.0", path = "../cedar-policy", features = ["tolerant-ast"]}
 anyhow = "1.0.95"

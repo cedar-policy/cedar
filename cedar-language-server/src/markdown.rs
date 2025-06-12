@@ -51,14 +51,6 @@ impl MarkdownBuilder {
         self
     }
 
-    pub(crate) fn bullet_list(&mut self, items: &[&str]) -> &mut Self {
-        for item in items {
-            let _ = writeln!(self.content, "* {item}");
-        }
-        self.content.push('\n');
-        self
-    }
-
     pub(crate) fn push_with_new_line(&mut self, text: &str) -> &mut Self {
         self.content.push('\n');
         self.content.push_str(text);
@@ -66,7 +58,7 @@ impl MarkdownBuilder {
         self
     }
 
-    pub(crate) fn build(&self) -> String {
-        self.content.clone()
+    pub(crate) fn build(&mut self) -> String {
+        std::mem::take(&mut self.content)
     }
 }

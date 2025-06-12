@@ -57,22 +57,6 @@ impl ToDocumentationString for ContextDocumentation {
             builder.push_with_new_line(&context_kind_doc);
         }
 
-        builder
-            .header("Using Context in Conditions")
-            .paragraph("Context attributes can be referenced in policy conditions:")
-            .code_block(
-                "cedar",
-                indoc! {"
-            permit(principal, action, resource)
-            when {
-                // Examples of using context
-                context.authentication.mfa_authenticated == true &&
-                context.request.timestamp > \"2023-01-01T00:00:00Z\" &&
-                context.source.ip in IPRange(\"10.0.0.0/24\")
-            };
-            "},
-            );
-
         builder.build()
     }
 }
