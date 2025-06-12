@@ -289,7 +289,7 @@ pub(crate) fn is_cursor_within_policy_scope(policy_text: &str, cursor_position: 
 
             // If we've found an effect keyword, track parentheses
             if in_effect_keyword {
-                match line.as_bytes().get(char_idx).copied() {
+                match line.as_bytes().get(char_idx) {
                     Some(b'(') => {
                         paren_depth += 1;
                         if paren_depth == 1 {
@@ -684,6 +684,7 @@ pub(crate) mod tests {
         policy::{DocumentContext, PolicyLanguageFeatures},
         schema::SchemaInfo,
     };
+    use similar_asserts::assert_eq;
 
     use super::*;
 
@@ -708,6 +709,17 @@ pub(crate) mod tests {
         (format!("{before}{after}"), position)
     }
 
+    pub(crate) fn remove_all_caret_markers(src: impl AsRef<str>) -> (String, Vec<Position>) {
+        let mut src = src.as_ref().to_owned();
+        let mut caret_positions = Vec::new();
+        while src.contains("|caret|") {
+            let (new_src, pos) = remove_caret_marker(src);
+            src = new_src;
+            caret_positions.push(pos);
+        }
+        (src, caret_positions)
+    }
+
     /// Get the byte offset of a position (line and column) in a string,
     /// accounting for the actual position of newlines in the string.
     pub(crate) fn position_byte_offset(src: &str, pos: Position) -> usize {
@@ -723,6 +735,11 @@ pub(crate) mod tests {
         };
 
         line_offset + TryInto::<usize>::try_into(pos.character).unwrap()
+    }
+
+    pub(crate) fn insert_caret(src: &str, pos: Position) -> String {
+        let offset = position_byte_offset(src, pos);
+        format!("{}|caret|{}", &src[..offset], &src[offset..])
     }
 
     /// Given a range - a pair of (line, column) positions - extract the slice
@@ -760,7 +777,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn test_get_operator_() {
+    fn test_get_operator() {
         let test_cases = vec![
             ("a && b", 2, "&&"),
             ("x || y", 2, "||"),
@@ -791,356 +808,397 @@ pub(crate) mod tests {
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::cognitive_complexity)]
     fn test_is_cursor_within_policy_scope() {
-        // Test case 1: Single-line policy
-        let policy1 = "permit(principal, action, resource) when { true };";
+        // Single-line policy in policy scope
+        let policy =
+            "permit(|caret|pri|caret|ncipal, ac|caret|tion, re|caret|source|caret|) when { true };";
+        let (policy, carets) = remove_all_caret_markers(policy);
+        for p in carets {
+            assert!(
+                is_cursor_within_policy_scope(&policy, p),
+                "{}",
+                insert_caret(&policy, p)
+            );
+        }
 
-        // Inside the policy scope
-        assert!(is_cursor_within_policy_scope(
-            policy1,
-            Position {
-                line: 0,
-                character: 10
-            }
-        )); // In 'principal'
-        assert!(is_cursor_within_policy_scope(
-            policy1,
-            Position {
-                line: 0,
-                character: 20
-            }
-        )); // In 'action'
-        assert!(is_cursor_within_policy_scope(
-            policy1,
-            Position {
-                line: 0,
-                character: 30
-            }
-        )); // In 'resource'
+        // Single-line policy not in policy scope
+        let policy =
+            "|caret|per|caret|mit|caret|(principal, action, resource)|caret| when { |caret|true };";
+        let (policy, carets) = remove_all_caret_markers(policy);
+        for p in carets {
+            assert!(
+                !is_cursor_within_policy_scope(&policy, p),
+                "{}",
+                insert_caret(&policy, p)
+            );
+        }
 
-        // Outside the policy scope
-        assert!(!is_cursor_within_policy_scope(
-            policy1,
-            Position {
-                line: 0,
-                character: 0
-            }
-        )); // Before 'permit('
-        assert!(!is_cursor_within_policy_scope(
-            policy1,
-            Position {
-                line: 0,
-                character: 5
-            }
-        )); // In 'permit'
-        assert!(!is_cursor_within_policy_scope(
-            policy1,
-            Position {
-                line: 0,
-                character: 35
-            }
-        )); // After ')'
-        assert!(!is_cursor_within_policy_scope(
-            policy1,
-            Position {
-                line: 1,
-                character: 0
-            }
-        )); // Line out of bounds
-
-        // Test case 2: Multi-line policy
-        let policy2 = "\
+        // Test case 2: Multi-line policy scope
+        let policy_in_scope = "\
 permit(
+    prin|caret|ci|caret|pal,
+    ac|caret|ti|caret|on,
+    res|caret|our|caret|ce
+)";
+        let (policy, carets) = remove_all_caret_markers(policy_in_scope);
+        for p in carets {
+            assert!(
+                is_cursor_within_policy_scope(&policy, p),
+                "{}",
+                insert_caret(&policy, p)
+            );
+        }
+
+        let policy_out_scope = "\
+|caret|per|caret|mit(
     principal,
     action,
     resource
-) when { true };";
-
-        // Inside the policy scope
-        assert!(is_cursor_within_policy_scope(
-            policy2,
-            Position {
-                line: 0,
-                character: 8
-            }
-        )); // After 'permit('
-        assert!(is_cursor_within_policy_scope(
-            policy2,
-            Position {
-                line: 1,
-                character: 4
-            }
-        )); // In 'principal'
-        assert!(is_cursor_within_policy_scope(
-            policy2,
-            Position {
-                line: 2,
-                character: 4
-            }
-        )); // In 'action'
-        assert!(is_cursor_within_policy_scope(
-            policy2,
-            Position {
-                line: 3,
-                character: 4
-            }
-        )); // In 'resource'
-        assert!(is_cursor_within_policy_scope(
-            policy2,
-            Position {
-                line: 3,
-                character: 12
-            }
-        )); // End of 'resource'
-
-        // Outside the policy scope
-        assert!(!is_cursor_within_policy_scope(
-            policy2,
-            Position {
-                line: 0,
-                character: 0
-            }
-        )); // Before 'permit'
-        assert!(!is_cursor_within_policy_scope(
-            policy2,
-            Position {
-                line: 0,
-                character: 6
-            }
-        )); // In 'permit'
-        assert!(!is_cursor_within_policy_scope(
-            policy2,
-            Position {
-                line: 4,
-                character: 1
-            }
-        )); // At closing ')'
-        assert!(!is_cursor_within_policy_scope(
-            policy2,
-            Position {
-                line: 4,
-                character: 2
-            }
-        )); // After ')'
-        assert!(!is_cursor_within_policy_scope(
-            policy2,
-            Position {
-                line: 5,
-                character: 0
-            }
-        )); // After policy
+)|caret| when { |caret|true };|caret|";
+        let (policy, carets) = remove_all_caret_markers(policy_out_scope);
+        for p in carets {
+            assert!(
+                !is_cursor_within_policy_scope(&policy, p),
+                "{}",
+                insert_caret(&policy, p)
+            );
+        }
 
         // Test case 3: Forbid policy
-        let policy3 = "forbid(principal, action, resource) when { false };";
+        let policy_in_scope = "forbid(prin|caret|ci|caret|pal, ac|caret|ti|caret|on, res|caret|our|caret|ce)";
+        let (policy, carets) = remove_all_caret_markers(policy_in_scope);
+        for p in carets {
+            assert!(
+                is_cursor_within_policy_scope(&policy, p),
+                "{}",
+                insert_caret(&policy, p)
+            );
+        }
 
-        // Inside the policy scope
-        assert!(is_cursor_within_policy_scope(
-            policy3,
-            Position {
-                line: 0,
-                character: 10
-            }
-        )); // In 'principal'
-        assert!(is_cursor_within_policy_scope(
-            policy3,
-            Position {
-                line: 0,
-                character: 20
-            }
-        )); // In 'action'
-
-        // Outside the policy scope
-        assert!(!is_cursor_within_policy_scope(
-            policy3,
-            Position {
-                line: 0,
-                character: 0
-            }
-        )); // Before 'forbid'
-        assert!(!is_cursor_within_policy_scope(
-            policy3,
-            Position {
-                line: 0,
-                character: 5
-            }
-        )); // In 'forbid'
-        assert!(!is_cursor_within_policy_scope(
-            policy3,
-            Position {
-                line: 0,
-                character: 35
-            }
-        )); // After ')'
+        let policy_out_scope = "|caret|for|caret|bid(principal, action, resource)|caret| when { |caret|false };|caret|";
+        let (policy, carets) = remove_all_caret_markers(policy_out_scope);
+        for p in carets {
+            assert!(
+                !is_cursor_within_policy_scope(&policy, p),
+                "{}",
+                insert_caret(&policy, p)
+            );
+        }
 
         // Test case 4: Complex nested policy
-        let policy4 = "\
+        let policy_in_scope = "\
 permit(
-principal in [
-User:\"alice\",
-User:\"bob\"
-],
-action,
-resource
-) when { principal.department == \"engineering\" };";
+    principal in User:|caret|\"al|caret|ice\",
+    action in Action::|caret|\"a|caret|ct\",
+    resource in Resource::|caret|\"da|caret|ta\"
+)";
+        let (policy, carets) = remove_all_caret_markers(policy_in_scope);
+        for p in carets {
+            assert!(
+                is_cursor_within_policy_scope(&policy, p),
+                "{}",
+                insert_caret(&policy, p)
+            );
+        }
 
-        // Inside the policy scope
-        assert!(is_cursor_within_policy_scope(
-            policy4,
-            Position {
-                line: 1,
-                character: 0
-            }
-        )); // Start of line after 'permit('
-        assert!(is_cursor_within_policy_scope(
-            policy4,
-            Position {
-                line: 2,
-                character: 10
-            }
-        )); // In User:"alice"
-        assert!(is_cursor_within_policy_scope(
-            policy4,
-            Position {
-                line: 3,
-                character: 10
-            }
-        )); // In User:"bob"
-        assert!(is_cursor_within_policy_scope(
-            policy4,
-            Position {
-                line: 5,
-                character: 10
-            }
-        )); // In 'action'
-        assert!(is_cursor_within_policy_scope(
-            policy4,
-            Position {
-                line: 6,
-                character: 10
-            }
-        )); // In 'resource'
-
-        // Outside the policy scope
-        assert!(!is_cursor_within_policy_scope(
-            policy4,
-            Position {
-                line: 0,
-                character: 0
-            }
-        )); // Before 'permit'
-        assert!(!is_cursor_within_policy_scope(
-            policy4,
-            Position {
-                line: 0,
-                character: 5
-            }
-        )); // In 'permit'
-        assert!(!is_cursor_within_policy_scope(
-            policy4,
-            Position {
-                line: 7,
-                character: 1
-            }
-        )); // At closing ')'
-        assert!(!is_cursor_within_policy_scope(
-            policy4,
-            Position {
-                line: 7,
-                character: 2
-            }
-        )); // After ')'
-        assert!(!is_cursor_within_policy_scope(
-            policy4,
-            Position {
-                line: 8,
-                character: 0
-            }
-        )); // After policy
+        let policy_out_scope = "\
+|caret|per|caret|mit(
+    principal in User:\"alice\",
+    action in Action::\"act\",
+    resource in Resource::\"data\"
+)|caret| when { |caret|true };|caret|";
+        let (policy, carets) = remove_all_caret_markers(policy_out_scope);
+        for p in carets {
+            assert!(
+                !is_cursor_within_policy_scope(&policy, p),
+                "{}",
+                insert_caret(&policy, p)
+            );
+        }
 
         // Test case 5: Empty policy
-        let policy5 = "permit() when { true };";
-
-        // Outside the policy scope (empty policy has no "inside")
-        assert!(!is_cursor_within_policy_scope(
-            policy5,
-            Position {
-                line: 0,
-                character: 8
-            }
-        )); // Between '(' and ')'
-        assert!(!is_cursor_within_policy_scope(
-            policy5,
-            Position {
-                line: 0,
-                character: 0
-            }
-        )); // Before 'permit'
-        assert!(!is_cursor_within_policy_scope(
-            policy5,
-            Position {
-                line: 0,
-                character: 5
-            }
-        )); // In 'permit'
-        assert!(!is_cursor_within_policy_scope(
-            policy5,
-            Position {
-                line: 0,
-                character: 8
-            }
-        )); // After ')'
+        let policy_out_scope = "|caret|per|caret|mit()|caret| when { |caret|true };|caret|";
+        let (policy, carets) = remove_all_caret_markers(policy_out_scope);
+        for p in carets {
+            assert!(
+                !is_cursor_within_policy_scope(&policy, p),
+                "{}",
+                insert_caret(&policy, p)
+            );
+        }
 
         // Test case 6: Comment before policy
-        let policy6 = "// This is a comment\npermit(principal, action, resource) when { true };";
+        let policy_in_scope = "// This is a comment\npermit(prin|caret|ci|caret|pal, ac|caret|ti|caret|on, res|caret|our|caret|ce)";
+        let (policy, carets) = remove_all_caret_markers(policy_in_scope);
+        for p in carets {
+            assert!(
+                is_cursor_within_policy_scope(&policy, p),
+                "{}",
+                insert_caret(&policy, p)
+            );
+        }
 
-        // Inside the policy scope
-        assert!(is_cursor_within_policy_scope(
-            policy6,
-            Position {
-                line: 1,
-                character: 10
-            }
-        )); // In 'principal'
-
-        // Outside the policy scope
-        assert!(!is_cursor_within_policy_scope(
-            policy6,
-            Position {
-                line: 0,
-                character: 5
-            }
-        )); // In comment
-        assert!(!is_cursor_within_policy_scope(
-            policy6,
-            Position {
-                line: 1,
-                character: 0
-            }
-        )); // At start of 'permit'
-        assert!(!is_cursor_within_policy_scope(
-            policy6,
-            Position {
-                line: 1,
-                character: 35
-            }
-        )); // After ')'
+        let policy_out_scope = "|caret|// This is a comment|caret|\n|caret|permit(principal, action, resource)|caret| when { true };|caret|";
+        let (policy, carets) = remove_all_caret_markers(policy_out_scope);
+        for p in carets {
+            assert!(
+                !is_cursor_within_policy_scope(&policy, p),
+                "{}",
+                insert_caret(&policy, p)
+            );
+        }
 
         // Test case 7: Invalid input
-        let policy7 = "invalid policy without effect";
+        let policy_out_scope = "|caret|invalid|caret| policy|caret| without|caret| effect|caret|";
+        let (policy, carets) = remove_all_caret_markers(policy_out_scope);
+        for p in carets {
+            assert!(
+                !is_cursor_within_policy_scope(&policy, p),
+                "{}",
+                insert_caret(&policy, p)
+            );
+        }
+    }
 
-        // No policy scope, should always return false
-        assert!(!is_cursor_within_policy_scope(
-            policy7,
+    #[test]
+    fn get_policy_scope_single_line() {
+        let policy = "permit(principal, action, resource) when { true };";
+
+        let result = get_policy_scope_variable(
+            policy,
             Position {
                 line: 0,
-                character: 0
-            }
-        ));
-        assert!(!is_cursor_within_policy_scope(
-            policy7,
+                character: 10,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "principal");
+
+        let result = get_policy_scope_variable(
+            policy,
             Position {
                 line: 0,
-                character: 10
-            }
-        ));
+                character: 20,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Action);
+        assert_eq!(result.text, "action");
+
+        let result = get_policy_scope_variable(
+            policy,
+            Position {
+                line: 0,
+                character: 30,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
+        assert_eq!(result.text, "resource");
+
+        let result = get_policy_scope_variable(
+            policy,
+            Position {
+                line: 0,
+                character: 0,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::None);
+        assert_eq!(result.text, "");
+    }
+
+    #[test]
+    fn get_policy_scope_multi_line() {
+        let policy = "permit(
+            principal,
+            action,
+            resource
+        );";
+
+        // Test cursor in principal section
+        let result = get_policy_scope_variable(
+            policy,
+            Position {
+                line: 1,
+                character: 4,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "principal");
+
+        // Test cursor in action section
+        let result = get_policy_scope_variable(
+            policy,
+            Position {
+                line: 2,
+                character: 4,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Action);
+        assert_eq!(result.text, "action");
+
+        // Test cursor in resource section
+        let result = get_policy_scope_variable(
+            policy,
+            Position {
+                line: 3,
+                character: 4,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
+        assert_eq!(result.text, "resource");
+    }
+
+    #[test]
+    fn get_policy_scope_in_operator() {
+        let policy = r#"
+        permit(
+            principal in User:"alice",
+            action in [Action::"act"],
+            resource in Resource::"data"
+        );"#;
+
+        // Test cursor in complex principal section
+        let result = get_policy_scope_variable(
+            policy,
+            Position {
+                line: 2,
+                character: 15,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "principal in User:\"alice\"");
+
+        // Test cursor in action section
+        let result = get_policy_scope_variable(
+            policy,
+            Position {
+                line: 3,
+                character: 15,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Action);
+        assert_eq!(result.text, "action in [Action::\"act\"]");
+
+        // Test cursor in complex resource section
+        let result = get_policy_scope_variable(
+            policy,
+            Position {
+                line: 4,
+                character: 15,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
+        assert_eq!(result.text, "resource in Resource::\"data\"");
+    }
+
+    #[test]
+    fn get_policy_scope_eq_operator() {
+        let policy = r#"
+        permit(
+            principal == User:"alice",
+            action == Action::"act",
+            resource == Resource::"data"
+        );"#;
+
+        // Test cursor in complex principal section
+        let result = get_policy_scope_variable(
+            policy,
+            Position {
+                line: 2,
+                character: 15,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "principal == User:\"alice\"");
+
+        // Test cursor in action section
+        let result = get_policy_scope_variable(
+            policy,
+            Position {
+                line: 3,
+                character: 15,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Action);
+        assert_eq!(result.text, "action == Action::\"act\"");
+
+        // Test cursor in complex resource section
+        let result = get_policy_scope_variable(
+            policy,
+            Position {
+                line: 4,
+                character: 15,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
+        assert_eq!(result.text, "resource == Resource::\"data\"");
+    }
+
+    #[test]
+    fn get_policy_scope_is_operator() {
+        let policy = r#"
+        permit(
+            principal is User,
+            action,
+            resource is Resource
+        );"#;
+
+        // Test cursor in complex principal section
+        let result = get_policy_scope_variable(
+            policy,
+            Position {
+                line: 2,
+                character: 15,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "principal is User");
+
+        // Test cursor in action section
+        let result = get_policy_scope_variable(
+            policy,
+            Position {
+                line: 3,
+                character: 15,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Action);
+        assert_eq!(result.text, "action");
+
+        // Test cursor in complex resource section
+        let result = get_policy_scope_variable(
+            policy,
+            Position {
+                line: 4,
+                character: 15,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
+        assert_eq!(result.text, "resource is Resource");
+    }
+
+    #[test]
+    fn test_multiple_policies() {
+        let policies = "permit(principal, action, resource);\nforbid(principal, action, resource);";
+
+        // Test cursor in first policy
+        let result = get_policy_scope_variable(
+            policies,
+            Position {
+                line: 0,
+                character: 10,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "principal");
+
+        // Test cursor in second policy
+        let result = get_policy_scope_variable(
+            policies,
+            Position {
+                line: 1,
+                character: 20,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Action);
+        assert_eq!(result.text, "action");
     }
 }
