@@ -92,6 +92,71 @@ pub fn check_parse_schema_json_str(json: &str) -> Result<String, serde_json::Err
     serde_json::to_string(&ans)
 }
 
+/// Check whether a set of scope variables successfully parses.
+pub fn check_parse_scope_variables(call: ScopeVariablesParsingCall) -> CheckParseAnswer {
+    //move this to other top level function instead, use new parsingcall struct that you make
+    let schema_ref = match call.schema.parse() {
+        Ok((schema, _)) => schema,
+        Err(err) => {
+            return CheckParseAnswer::Failure {
+                errors: vec![err.into()],
+            };
+        }
+    };
+    let principal = match call.principal.parse(Some("principal")) {
+        Ok(principal) => principal,
+        Err(err) => {
+            return CheckParseAnswer::Failure {
+                errors: vec![err.into()],
+            };
+        }
+    };
+
+    let action = match call.action.parse(Some("action")) {
+        Ok(action) => action,
+        Err(err) => {
+            return CheckParseAnswer::Failure {
+                errors: vec![err.into()],
+            };
+        }
+    };
+
+    let resource = match call.resource.parse(Some("resource")) {
+        Ok(resource) => resource,
+        Err(err) => {
+            return CheckParseAnswer::Failure {
+                errors: vec![err.into()],
+            };
+        }
+    };
+
+    // All should be provided, so validate schema, principal, action, and resource
+    if let Err(err) =
+        crate::api::validate_scope_variables(&principal, &action, &resource, &schema_ref)
+    {
+        return CheckParseAnswer::Failure {
+            errors: vec![miette::Report::msg(err).into()],
+        };
+    }
+
+    return CheckParseAnswer::Success;
+}
+
+/// Check whether a set of scope variables successfully parses. Input is a JSON
+/// encoding of [`ScopeVariablesParsingCall`] and output is a JSON encoding of
+/// [`CheckParseAnswer`].
+///
+/// # Errors
+///
+/// Will return `Err` if the input JSON cannot be deserialized as a
+/// [`Entities`].
+pub fn check_parse_scope_variables_json(
+    json: serde_json::Value,
+) -> Result<serde_json::Value, serde_json::Error> {
+    let ans = check_parse_scope_variables(serde_json::from_value(json)?);
+    serde_json::to_value(ans)
+}
+
 /// Check whether a set of entities successfully parses.
 #[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "checkParseEntities"))]
 pub fn check_parse_entities(call: EntitiesParsingCall) -> CheckParseAnswer {
@@ -246,6 +311,19 @@ pub struct EntitiesParsingCall {
     /// Optional schema for schema-based parsing
     #[serde(default)]
     schema: Option<Schema>,
+}
+
+/// Struct containing the input data for [`check_scope_variables()`]
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ScopeVariablesParsingCall {
+    /// Optional Principal entity for schema-based validation
+    principal: EntityUid,
+    /// Optional Action entity for schema-based validation
+    action: EntityUid,
+    /// Optional Resource entity for schema-based validation
+    resource: EntityUid,
+    /// Optional Schema for schema-based validation
+    schema: Schema,
 }
 
 /// Struct containing the input data for [`check_parse_context()`]
@@ -424,6 +502,222 @@ mod test {
         });
         let answer = serde_json::from_value(check_parse_entities_json(call).unwrap()).unwrap();
         assert_check_parse_is_ok(&answer);
+    }
+
+    #[test]
+    fn check_parse_scope_variables_fails_on_invalid_principal() {
+        let call = json!({
+            "principal": {
+                "type": "PhotoApp::Use",
+                "id": "alice"
+            },
+            "action": {
+                "type": "PhotoApp::Action",
+                "id": "view"
+            },
+            "resource": {
+                "type": "PhotoApp::Photo",
+                "id": "photo1"
+            },
+            "schema": {
+                "PhotoApp": {
+                    "commonTypes": {
+                        "PersonType": {
+                            "type": "Record",
+                            "attributes": {
+                                "age": {
+                                    "type": "Long"
+                                },
+                                "name": {
+                                    "type": "String"
+                                }
+                            }
+                        },
+                    },
+                    "entityTypes": {
+                        "User": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {
+                                    "userId": {
+                                        "type": "String"
+                                    },
+                                    "personInformation": {
+                                        "type": "PersonType"
+                                    }
+                                }
+                            },
+                        },
+                        "Photo": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {}
+                            }
+                        }
+                    },
+                    "actions": {
+                        "view": {
+                            "appliesTo": {
+                                "principalTypes": ["User"],
+                                "resourceTypes": ["Photo"]
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        let answer =
+            serde_json::from_value(check_parse_scope_variables_json(call).unwrap()).unwrap();
+        let errs = assert_check_parse_is_err(&answer);
+        assert_exactly_one_error(
+            errs,
+            "principal type `PhotoApp::Use` is not declared in the schema",
+            None,
+        );
+    }
+
+    #[test]
+    fn check_parse_scope_variables_fails_on_invalid_action() {
+        let call = json!({
+            "principal": {
+                "type": "PhotoApp::User",
+                "id": "alice"
+            },
+            "action": {
+                "type": "PhotoApp::Action",
+                "id": "viewPhoto"
+            },
+            "resource": {
+                "type": "PhotoApp::Photo",
+                "id": "photo1"
+            },
+            "schema": {
+                "PhotoApp": {
+                    "commonTypes": {
+                        "PersonType": {
+                            "type": "Record",
+                            "attributes": {
+                                "age": {
+                                    "type": "Long"
+                                },
+                                "name": {
+                                    "type": "String"
+                                }
+                            }
+                        },
+                    },
+                    "entityTypes": {
+                        "User": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {
+                                    "userId": {
+                                        "type": "String"
+                                    },
+                                    "personInformation": {
+                                        "type": "PersonType"
+                                    }
+                                }
+                            },
+                        },
+                        "Photo": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {}
+                            }
+                        }
+                    },
+                    "actions": {
+                        "view": {
+                            "appliesTo": {
+                                "principalTypes": ["User"],
+                                "resourceTypes": ["Photo"]
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        let answer =
+            serde_json::from_value(check_parse_scope_variables_json(call).unwrap()).unwrap();
+        let errs = assert_check_parse_is_err(&answer);
+        assert_exactly_one_error(
+            errs,
+            "request's action `PhotoApp::Action::\"viewPhoto\"` is not declared in the schema",
+            None,
+        );
+    }
+
+    #[test]
+    fn check_parse_scope_variables_fails_on_invalid_resource() {
+        let call = json!({
+            "principal": {
+                "type": "PhotoApp::User",
+                "id": "alice"
+            },
+            "action": {
+                "type": "PhotoApp::Action",
+                "id": "view"
+            },
+            "resource": {
+                "type": "PhotoApp::Album",
+                "id": "photo1"
+            },
+            "schema": {
+                "PhotoApp": {
+                    "commonTypes": {
+                        "PersonType": {
+                            "type": "Record",
+                            "attributes": {
+                                "age": {
+                                    "type": "Long"
+                                },
+                                "name": {
+                                    "type": "String"
+                                }
+                            }
+                        },
+                    },
+                    "entityTypes": {
+                        "User": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {
+                                    "userId": {
+                                        "type": "String"
+                                    },
+                                    "personInformation": {
+                                        "type": "PersonType"
+                                    }
+                                }
+                            },
+                        },
+                        "Photo": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {}
+                            }
+                        }
+                    },
+                    "actions": {
+                        "view": {
+                            "appliesTo": {
+                                "principalTypes": ["User"],
+                                "resourceTypes": ["Photo"]
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        let answer =
+            serde_json::from_value(check_parse_scope_variables_json(call).unwrap()).unwrap();
+        let errs = assert_check_parse_is_err(&answer);
+        assert_exactly_one_error(
+            errs,
+            "resource type `PhotoApp::Album` is not declared in the schema",
+            None,
+        );
     }
 
     #[test]
