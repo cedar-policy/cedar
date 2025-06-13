@@ -14,86 +14,13 @@
  * limitations under the License.
  */
 
-use crate::markdown::MarkdownBuilder;
+use cedar_policy_core::validator::ValidatorSchema;
+
+use crate::impl_documentation_from_markdown_file;
+
 use super::ToDocumentationString;
-use indoc::indoc;
 
-pub(crate) struct AndDocumentation;
-
-impl ToDocumentationString for AndDocumentation {
-    fn to_documentation_string(
-        &self,
-        _schema: Option<&cedar_policy_core::validator::ValidatorSchema>,
-    ) -> String {
-        MarkdownBuilder::new()
-            .header("&& *(AND)*")
-            .header("Usage:")
-            .code_block("cedar", "<boolean> && <boolean>")
-            .paragraph(indoc! {"
-                Binary operator that performs logical AND between two boolean expressions. It evaluates
-                to true only if both operands evaluate to true. Uses short-circuit evaluation: if the
-                first operand is false, the second operand is not evaluated."
-            })
-            .build()
-    }
-}
-
-pub(crate) struct OrDocumentation;
-
-impl ToDocumentationString for OrDocumentation {
-    fn to_documentation_string(
-        &self,
-        _schema: Option<&cedar_policy_core::validator::ValidatorSchema>,
-    ) -> String {
-        MarkdownBuilder::new()
-            .header("|| *(OR)*")
-            .header("Usage:")
-            .code_block("cedar", "<boolean> || <boolean>")
-            .paragraph(indoc! {"
-                Binary operator that performs logical OR between two boolean expressions. It evaluates
-                to true if either operand evaluates to true. Uses short-circuit evaluation: if the
-                first operand is true, the second operand is not evaluated."
-            })
-            .build()
-    }
-}
-
-pub(crate) struct NotDocumentation;
-
-impl ToDocumentationString for NotDocumentation {
-    fn to_documentation_string(
-        &self,
-        _schema: Option<&cedar_policy_core::validator::ValidatorSchema>,
-    ) -> String {
-        MarkdownBuilder::new()
-            .header("! *(NOT)*")
-            .header("Usage:")
-            .code_block("cedar", "!<boolean>")
-            .paragraph(indoc! {"
-            Unary operator that inverts the value of a boolean operand: true becomes false, and
-            false becomes true. If the operand is not a boolean, both evaluation and validation
-            will result in an error."
-            })
-            .build()
-    }
-}
-
-pub(crate) struct IfDocumentation;
-
-impl ToDocumentationString for IfDocumentation {
-    fn to_documentation_string(
-        &self,
-        _schema: Option<&cedar_policy_core::validator::ValidatorSchema>,
-    ) -> String {
-        MarkdownBuilder::new()
-            .header("if *(CONDITIONAL)*")
-            .header("Usage:")
-            .code_block("cedar", "if <boolean> then <T> else <U>")
-            .paragraph(indoc! {"
-                Conditional operator that evaluates based on a boolean condition. Returns the 'then'
-                expression if the condition is true, or the 'else' expression if the condition is
-                false. The condition must evaluate to a boolean value or an error will occur."
-            })
-            .build()
-    }
-}
+impl_documentation_from_markdown_file!(AndDocumentation, "markdown/logical_and.md");
+impl_documentation_from_markdown_file!(OrDocumentation, "markdown/logical_or.md");
+impl_documentation_from_markdown_file!(NotDocumentation, "markdown/logical_not.md");
+impl_documentation_from_markdown_file!(IfDocumentation, "markdown/logical_if.md");

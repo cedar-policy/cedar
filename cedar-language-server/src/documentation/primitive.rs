@@ -14,38 +14,12 @@
  * limitations under the License.
  */
 
-use crate::markdown::MarkdownBuilder;
-use super::ToDocumentationString;
 use cedar_policy_core::validator::ValidatorSchema;
 
-pub(crate) struct LongDocumentation;
+use crate::impl_documentation_from_markdown_file;
 
-impl ToDocumentationString for LongDocumentation {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
-        MarkdownBuilder::new()
-            .header("long *(integer type)*")
-            .paragraph("A whole number without decimals that can range from -9223372036854775808 to 9223372036854775807 (64-bit signed integer).") .build()
-    }
-}
+use super::ToDocumentationString;
 
-pub(crate) struct StringDocumentation;
-
-impl ToDocumentationString for StringDocumentation {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
-        MarkdownBuilder::new()
-            .header("string")
-            .paragraph("A sequence of characters consisting of letters, numbers, or symbols.")
-            .build()
-    }
-}
-
-pub(crate) struct BoolDocumentation;
-
-impl ToDocumentationString for BoolDocumentation {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
-        MarkdownBuilder::new()
-            .header("Boolean")
-            .paragraph("A value that is either `true` or `false`.")
-            .build()
-    }
-}
+impl_documentation_from_markdown_file!(LongDocumentation, "markdown/primitive_long.md");
+impl_documentation_from_markdown_file!(StringDocumentation, "markdown/primitive_string.md");
+impl_documentation_from_markdown_file!(BoolDocumentation, "markdown/primitive_bool.md");

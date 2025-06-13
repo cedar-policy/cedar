@@ -16,13 +16,11 @@
 
 use cedar_policy_core::validator::ValidatorSchema;
 
+use super::ToDocumentationString;
 use crate::{
     markdown::MarkdownBuilder,
     policy::{cedar::EntityTypeKind, DocumentContext},
 };
-use super::ToDocumentationString;
-
-use indoc::indoc;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct PrincipalDocumentation {
@@ -59,19 +57,8 @@ impl ToDocumentationString for PrincipalDocumentation {
     fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
         let mut builder = MarkdownBuilder::new();
 
-        // Add documentation
-        builder
-            .header("Principal")
-            .paragraph(indoc! {"
-                The principal element in a Cedar policy represents a user, service, or other identity
-                that can make a request to perform an action on a resource in your application. If the
-                principal making the request matches the principal defined in this policy statement,
-                then this element matches."
-            })
-            .paragraph(indoc! {"
-                The principal element must be present. If you specify only principal without an expression
-                that constrains its scope, then the policy applies to any principal."
-            });
+        // Include the static documentation
+        builder.push_str(include_str!("markdown/principal.md"));
 
         let Some(entity_type) = &self.entity_type else {
             return builder.build();

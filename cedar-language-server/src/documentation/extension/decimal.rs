@@ -15,97 +15,25 @@
  */
 
 use cedar_policy_core::validator::ValidatorSchema;
-use indoc::indoc;
+
+use crate::impl_documentation_from_markdown_file;
 
 use super::ToDocumentationString;
-use crate::markdown::MarkdownBuilder;
 
-pub(crate) struct DecimalDocumentation;
-
-impl ToDocumentationString for DecimalDocumentation {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
-        MarkdownBuilder::new()
-            .header("decimal() *(parse string and convert to decimal)*")
-            .header("Usage:")
-            .code_block("cedar", "decimal(<string>)")
-            .paragraph(indoc! {"
-                Function that parses the string and tries to convert it to type decimal. If the string doesn't represent
-                a valid decimal value, it generates an error."
-            })
-            .paragraph(indoc! {"
-                To be interpreted successfully as a decimal value, the string must contain a decimal separator (.)
-                and at least one digit before and at least one digit after the separator. There can be no more than
-                4 digits after the separator. The value must be within the valid range of the decimal type, from
-                -922337203685477.5808 to 922337203685477.5807."
-            })
-            .build()
-    }
-}
-
-pub(crate) struct DecimalLessThanDocumentation;
-
-impl ToDocumentationString for DecimalLessThanDocumentation {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
-        MarkdownBuilder::new()
-            .header("lessThan() *(decimal 'less than')*")
-            .header("Usage:")
-            .code_block("cedar", "<decimal>.lessThan(<decimal>)")
-            .paragraph(indoc! {"
-                Function that compares two decimal operands and evaluates to true if the left operand is numerically
-                less than the right operand. If either operand is not a decimal then evaluation (and validation)
-                results in an error."
-            })
-            .build()
-    }
-}
-
-pub(crate) struct DecimalLessThanOrEqualDocumentation;
-
-impl ToDocumentationString for DecimalLessThanOrEqualDocumentation {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
-        MarkdownBuilder::new()
-            .header("lessThanOrEqual() *(decimal 'less than or equal')*")
-            .header("Usage:")
-            .code_block("cedar", "<decimal>.lessThanOrEqual(<decimal>)")
-            .paragraph(indoc! {"
-                Function that compares two decimal operands and evaluates to true if the left operand is numerically
-                less than or equal to the right operand. If either operand is not a decimal then evaluation
-                (and validation) results in an error."
-            })
-            .build()
-    }
-}
-
-pub(crate) struct DecimalGreaterThanDocumentation;
-
-impl ToDocumentationString for DecimalGreaterThanDocumentation {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
-        MarkdownBuilder::new()
-            .header("greaterThan() *(decimal 'greater than')*")
-            .header("Usage:")
-            .code_block("cedar", "<decimal>.greaterThan(<decimal>)")
-            .paragraph(indoc! {"
-                Function that compares two decimal operands and evaluates to true if the left operand is numerically
-                greater than the right operand. If either operand is not a decimal then evaluation (and validation)
-                results in an error."
-            })
-            .build()
-    }
-}
-
-pub(crate) struct DecimalGreaterThanOrEqualDocumentation;
-
-impl ToDocumentationString for DecimalGreaterThanOrEqualDocumentation {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
-        MarkdownBuilder::new()
-            .header("greaterThanOrEqual() *(decimal 'greater than or equal')*")
-            .header("Usage:")
-            .code_block("cedar", "<decimal>.greaterThanOrEqual(<decimal>)")
-            .paragraph(indoc! {"
-                Function that compares two decimal operands and evaluates to true if the left operand is numerically
-                greater than or equal to the right operand. If either operand is not a decimal then evaluation
-                (and validation) results in an error."
-            })
-            .build()
-    }
-}
+impl_documentation_from_markdown_file!(DecimalDocumentation, "../markdown/extension_decimal.md");
+impl_documentation_from_markdown_file!(
+    DecimalLessThanDocumentation,
+    "../markdown/extension_decimal_less_than.md"
+);
+impl_documentation_from_markdown_file!(
+    DecimalLessThanOrEqualDocumentation,
+    "../markdown/extension_decimal_less_than_or_equal.md"
+);
+impl_documentation_from_markdown_file!(
+    DecimalGreaterThanDocumentation,
+    "../markdown/extension_decimal_greater_than.md"
+);
+impl_documentation_from_markdown_file!(
+    DecimalGreaterThanOrEqualDocumentation,
+    "../markdown/extension_decimal_greater_than_or_equal.md"
+);

@@ -14,128 +14,25 @@
  * limitations under the License.
  */
 
-use super::ToDocumentationString;
 use cedar_policy_core::validator::ValidatorSchema;
-use crate::markdown::MarkdownBuilder;
-use indoc::indoc;
 
-pub(crate) struct EqualsDocumentation;
+use crate::impl_documentation_from_markdown_file;
 
-impl ToDocumentationString for EqualsDocumentation {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
-        MarkdownBuilder::new()
-            .header("== *(equality)*")
-            .header("Usage:")
-            .code_block("cedar", "<value> == <value>")
-            .paragraph(indoc! {"
-                Binary operator that compares two operands of any type and evaluates to true only if
-                they are exactly the same type and the same value."
-            })
-            .build()
-    }
-}
+use super::ToDocumentationString;
 
-pub(crate) struct NotEqualsDocumentation;
-
-impl ToDocumentationString for NotEqualsDocumentation {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
-        MarkdownBuilder::new()
-            .header("!= *(inequality)*")
-            .header("Usage:")
-            .code_block("cedar", "<value> != <value>")
-            .paragraph(indoc! {"
-                Binary operator that compares two operands of any type and evaluates to true if the
-                operands have different values or are of different types. You can use != only in when
-                and unless clauses. As with the == operator, the validator only accepts policies that
-                use != on two expressions of (possibly differing) entity type, or the same non-entity type.
-            "})
-            .build()
-    }
-}
-
-pub(crate) struct LessThanDocumentation;
-
-impl ToDocumentationString for LessThanDocumentation {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
-        MarkdownBuilder::new()
-            .header("< *(less than)*")
-            .header("Usage:")
-            .code_block("cedar", "<long> < <long>")
-            .paragraph(indoc! {"
-                Binary operator that compares two long integer operands and evaluates to true
-                if the left operand is numerically less than the right operand. If either
-                operand is not a long then evaluation (and validation) results in an error.
-            "})
-            .build()
-    }
-}
-
-pub(crate) struct LessThanOrEqualsDocumentation;
-
-impl ToDocumentationString for LessThanOrEqualsDocumentation {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
-        MarkdownBuilder::new()
-            .header("<= *(less than or equal)*")
-            .header("Usage:")
-            .code_block("cedar", "<long> <= <long>")
-            .paragraph(indoc! {"
-                Binary operator that compares two long integer operands and evaluates to true
-                if the left operand is numerically less than or equal to the right operand. If either
-                operand is not a long then evaluation (and validation) results in an error.
-            "})
-            .build()
-    }
-}
-
-pub(crate) struct GreaterThanDocumentation;
-
-impl ToDocumentationString for GreaterThanDocumentation {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
-        MarkdownBuilder::new()
-            .header("> *(greater than)*")
-            .header("Usage:")
-            .code_block("cedar", "<long> > <long>")
-            .paragraph(indoc! {"
-                Binary operator that compares two long integer operands and evaluates to true
-                if the left operand is numerically greater than the right operand. If either
-                operand is not a long then evaluation (and validation) results in an error.
-            "})
-            .build()
-    }
-}
-
-pub(crate) struct GreaterThanOrEqualsDocumentation;
-
-impl ToDocumentationString for GreaterThanOrEqualsDocumentation {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
-        MarkdownBuilder::new()
-            .header(">= *(greater than or equal)*")
-            .header("Usage:")
-            .code_block("cedar", "<long> >= <long>")
-            .paragraph(indoc! {"
-                Binary operator that compares two long integer operands and evaluates to true
-                if the left operand is numerically greater than or equal to the right operand. If either
-                operand is not a long then evaluation (and validation) results in an error.
-            "})
-            .build()
-    }
-}
-
-pub(crate) struct LikeDocumentation;
-
-impl ToDocumentationString for LikeDocumentation {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
-        MarkdownBuilder::new()
-            .header("like *(string matching with wildcard)*")
-            .header("Usage:")
-            .code_block("cedar", "<string> like <string possibly with wildcards>")
-            .paragraph(indoc! {"
-                Binary operator that evaluates to true if the string in the left operand matches the pattern string
-                in the right operand. The pattern string can include one or more asterisks (*) as wildcard characters
-                that match 0 or more of any character.
-
-                To match a literal asterisk character, use the escaped \\* sequence in the pattern string.
-            "})
-            .build()
-    }
-}
+impl_documentation_from_markdown_file!(EqualsDocumentation, "markdown/comparison_equals.md");
+impl_documentation_from_markdown_file!(NotEqualsDocumentation, "markdown/comparison_not_equals.md");
+impl_documentation_from_markdown_file!(LessThanDocumentation, "markdown/comparison_less_than.md");
+impl_documentation_from_markdown_file!(
+    LessThanOrEqualsDocumentation,
+    "markdown/comparison_less_than_or_equals.md"
+);
+impl_documentation_from_markdown_file!(
+    GreaterThanDocumentation,
+    "markdown/comparison_greater_than.md"
+);
+impl_documentation_from_markdown_file!(
+    GreaterThanOrEqualsDocumentation,
+    "markdown/comparison_greater_than_or_equals.md"
+);
+impl_documentation_from_markdown_file!(LikeDocumentation, "markdown/comparison_like.md");

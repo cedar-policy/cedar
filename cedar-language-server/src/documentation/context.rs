@@ -15,7 +15,6 @@
  */
 
 use cedar_policy_core::validator::ValidatorSchema;
-use indoc::indoc;
 
 use super::ToDocumentationString;
 use crate::{
@@ -38,19 +37,8 @@ impl ToDocumentationString for ContextDocumentation {
     fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
         let mut builder = MarkdownBuilder::new();
 
-        // Add documentation header and general description
-        builder
-            .header("Context")
-            .paragraph(indoc! {"
-                The context element in a Cedar policy provides additional information about the
-                circumstances of the request being evaluated. This includes details such as the
-                date and time, IP address, authentication methods, or any custom data relevant
-                to authorization decisions.
-            "})
-            .paragraph(indoc! {"
-                Context attributes are passed at evaluation time and can be referenced in policy conditions.
-                These attributes are not persisted within Cedar but are provided with each request.
-            "});
+        // Include the static documentation
+        builder.push_str(include_str!("markdown/context.md"));
 
         // If we have a specific context kind, add its documentation
         if let Some(context_kind) = &self.context_kind {

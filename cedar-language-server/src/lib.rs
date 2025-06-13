@@ -19,10 +19,10 @@
 
 #[cfg(feature = "bin")]
 pub mod document;
+mod documentation;
 mod entities;
 mod lsp;
 mod markdown;
-mod documentation;
 pub mod policy;
 pub mod schema;
 #[cfg(feature = "bin")]
