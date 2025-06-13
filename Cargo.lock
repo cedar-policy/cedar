@@ -300,7 +300,6 @@ dependencies = [
  "cedar-policy-formatter",
  "cool_asserts",
  "dashmap 6.1.0",
- "indoc",
  "itertools 0.14.0",
  "lsp-types",
  "miette",
@@ -1324,12 +1323,6 @@ dependencies = [
  "hashbrown 0.15.2",
  "serde",
 ]
-
-[[package]]
-name = "indoc"
-version = "2.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4c7245a08504955605670dbf141fceab975f15ca21570696aebe9d2e71576bd"
 
 [[package]]
 name = "insta"
