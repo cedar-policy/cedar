@@ -117,7 +117,9 @@ where
         Some(Hover {
             contents: HoverContents::Markup(lsp_types::MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: self.to_documentation_string(cx.schema.as_deref()),
+                value: self
+                    .to_documentation_string(cx.schema.as_deref())
+                    .into_owned(),
             }),
             range: None,
         })

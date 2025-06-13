@@ -152,7 +152,7 @@ impl<'a> From<AttributeAndSchema<'a>> for lsp_types::CompletionItem {
             detail: Some(attr.1.detail().to_string()),
             documentation: Some(Documentation::MarkupContent(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: attr.1.to_documentation_string(attr.0),
+                value: attr.1.to_documentation_string(attr.0).into_owned(),
             })),
             label: attr.1.to_label().to_string(),
             insert_text: Some(attr.1.name().to_string()),

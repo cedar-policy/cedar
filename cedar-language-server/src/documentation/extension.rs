@@ -14,19 +14,15 @@
  * limitations under the License.
  */
 
+use std::borrow::Cow;
+
 use super::ToDocumentationString;
 use cedar_policy_core::validator::ValidatorSchema;
-
-mod decimal;
-mod ip;
-
-pub(crate) use decimal::*;
-pub(crate) use ip::*;
 
 pub(crate) struct ExtensionName<'a>(pub(crate) &'a str);
 
 impl ToDocumentationString for ExtensionName<'_> {
-    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
         match self.0 {
             "ip" => IpDocumentation.to_documentation_string(schema),
             "isIpv4" => IsIpv4Documentation.to_documentation_string(schema),
@@ -43,7 +39,52 @@ impl ToDocumentationString for ExtensionName<'_> {
             "greaterThanOrEqual" => {
                 DecimalGreaterThanOrEqualDocumentation.to_documentation_string(schema)
             }
-            _ => self.0.to_string(),
+            _ => self.0.to_string().into(),
         }
     }
+}
+
+pub(crate) use decimal::*;
+mod decimal {
+    use crate::impl_documentation_from_markdown_file;
+    impl_documentation_from_markdown_file!(
+        DecimalDocumentation,
+        "markdown/extension/decimal/decimal.md"
+    );
+    impl_documentation_from_markdown_file!(
+        DecimalLessThanDocumentation,
+        "markdown/extension/decimal/less_than.md"
+    );
+    impl_documentation_from_markdown_file!(
+        DecimalLessThanOrEqualDocumentation,
+        "markdown/extension/decimal/less_than_or_equal.md"
+    );
+    impl_documentation_from_markdown_file!(
+        DecimalGreaterThanDocumentation,
+        "markdown/extension/decimal/greater_than.md"
+    );
+    impl_documentation_from_markdown_file!(
+        DecimalGreaterThanOrEqualDocumentation,
+        "markdown/extension/decimal/greater_than_or_equal.md"
+    );
+}
+
+pub(crate) use ip::*;
+mod ip {
+    use crate::impl_documentation_from_markdown_file;
+    impl_documentation_from_markdown_file!(IpDocumentation, "markdown/extension/ip/ip.md");
+    impl_documentation_from_markdown_file!(IsIpv4Documentation, "markdown/extension/ip/is_ipv4.md");
+    impl_documentation_from_markdown_file!(IsIpv6Documentation, "markdown/extension/ip/is_ipv6.md");
+    impl_documentation_from_markdown_file!(
+        IsLoopbackDocumentation,
+        "markdown/extension/ip/is_loopback.md"
+    );
+    impl_documentation_from_markdown_file!(
+        IsMulticastDocumentation,
+        "markdown/extension/ip/is_multicast.md"
+    );
+    impl_documentation_from_markdown_file!(
+        IsInRangeDocumentation,
+        "markdown/extension/ip/is_in_range.md"
+    );
 }

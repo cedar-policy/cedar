@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use std::borrow::Cow;
 use std::{collections::BTreeSet, fmt::Display, hash::Hash, sync::Arc};
 
 use cedar_policy_core::ast::EntityUID;
@@ -171,7 +172,7 @@ impl Display for ContextKind {
 }
 
 impl ToDocumentationString for ContextKind {
-    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
         let mut builder = MarkdownBuilder::new();
 
         match self {
@@ -214,7 +215,7 @@ impl ToDocumentationString for ContextKind {
 
                 if actions.is_empty() {
                     builder.paragraph("No actions specified.");
-                    return builder.build();
+                    return builder.build().into();
                 }
 
                 // Truncate the list if it's too long
@@ -259,6 +260,6 @@ impl ToDocumentationString for ContextKind {
             }
         }
 
-        builder.build()
+        builder.build().into()
     }
 }

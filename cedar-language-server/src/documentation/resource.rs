@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use std::borrow::Cow;
+
 use cedar_policy_core::validator::ValidatorSchema;
 
 use super::ToDocumentationString;
@@ -54,19 +56,16 @@ impl From<Option<&DocumentContext>> for ResourceDocumentation {
 }
 
 impl ToDocumentationString for ResourceDocumentation {
-    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
-        let mut builder = MarkdownBuilder::new();
-
-        // Include the static documentation
-        builder.push_str(include_str!("markdown/resource.md"));
-
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
+        let static_docs = include_str!("markdown/resource.md");
         let Some(entity_type) = &self.entity_type else {
-            return builder.build();
+            return static_docs.into();
         };
 
+        let mut builder = MarkdownBuilder::new();
+        builder.push_str(static_docs);
         let entity_type_doc = entity_type.to_documentation_string(schema);
         builder.push_with_new_line(&entity_type_doc);
-
-        builder.build()
+        builder.build().into()
     }
 }

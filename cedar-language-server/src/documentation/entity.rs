@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use std::borrow::Cow;
 use std::{collections::BTreeSet, fmt::Display, ops::Deref};
 
 use cedar_policy_core::ast::{EntityType, EntityUID};
@@ -54,7 +55,7 @@ impl<'a> EntityTypeDocumentation<'a> {
 }
 
 impl ToDocumentationString for EntityTypeDocumentation<'_> {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
+    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
         let mut builder = MarkdownBuilder::new();
         builder
             .header("Type")
@@ -66,12 +67,12 @@ impl ToDocumentationString for EntityTypeDocumentation<'_> {
                 .code_block("cedarschema", attrs);
         }
 
-        builder.build()
+        builder.build().into()
     }
 }
 
 impl ToDocumentationString for EntityType {
-    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
         let mut builder = MarkdownBuilder::new();
         builder
             .header("Type")
@@ -86,12 +87,12 @@ impl ToDocumentationString for EntityType {
             }
         }
 
-        builder.build()
+        builder.build().into()
     }
 }
 
 impl ToDocumentationString for EntityUID {
-    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
         let mut builder = MarkdownBuilder::new();
         builder
             .header("Entity")
@@ -109,7 +110,7 @@ impl ToDocumentationString for EntityUID {
             }
         }
 
-        builder.build()
+        builder.build().into()
     }
 }
 
@@ -117,9 +118,9 @@ impl<D> ToDocumentationString for BTreeSet<D>
 where
     D: Deref<Target = EntityType> + Display,
 {
-    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
         if self.is_empty() {
-            return String::new();
+            return "".into();
         }
 
         if let Ok(entity_type) = self.iter().exactly_one() {
@@ -145,12 +146,12 @@ where
                 }
             }
         }
-        builder.build()
+        builder.build().into()
     }
 }
 
 impl ToDocumentationString for EntityTypeKind {
-    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
         match self {
             Self::Concrete(entity_type) => {
                 EntityTypeDocumentation::new(entity_type, schema).to_documentation_string(schema)
@@ -160,7 +161,7 @@ impl ToDocumentationString for EntityTypeKind {
                 let Some(schema) = schema else {
                     let mut builder = MarkdownBuilder::new();
                     builder.paragraph("*Schema not available - any principal permitted*");
-                    return builder.build();
+                    return builder.build().into();
                 };
                 let set = schema.principals().collect::<BTreeSet<_>>();
 
@@ -170,7 +171,7 @@ impl ToDocumentationString for EntityTypeKind {
                 let Some(schema) = schema else {
                     let mut builder = MarkdownBuilder::new();
                     builder.paragraph("*Schema not available - any resource permitted*");
-                    return builder.build();
+                    return builder.build().into();
                 };
                 let set = schema.resources().collect::<BTreeSet<_>>();
 

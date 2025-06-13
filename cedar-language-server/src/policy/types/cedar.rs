@@ -15,6 +15,7 @@
  */
 
 use std::{
+    borrow::Cow,
     collections::BTreeMap,
     fmt::{Display, Write},
     hash::Hash,
@@ -256,7 +257,7 @@ impl From<&EntityUID> for CedarTypeKind {
 }
 
 impl ToDocumentationString for CedarTypeKind {
-    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
         match self {
             Self::Long => LongDocumentation.to_documentation_string(schema),
             Self::String => StringDocumentation.to_documentation_string(schema),
@@ -283,6 +284,7 @@ impl ToDocumentationString for CedarTypeKind {
                     .code_block("cedar", &code)
                     .paragraph(&format!("*Contains {} fields*", fields.attrs.len()))
                     .build()
+                    .into()
             }
             Self::Set(element_type) => {
                 SetDocumentation::new(element_type.to_string()).to_documentation_string(schema)
@@ -292,7 +294,7 @@ impl ToDocumentationString for CedarTypeKind {
                 ExtensionName(&name.to_string()).to_documentation_string(schema)
             }
             Self::EntityType(kind) => kind.to_documentation_string(schema),
-            _ => self.to_string(),
+            _ => self.to_string().into(),
         }
     }
 }

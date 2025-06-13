@@ -14,25 +14,21 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::validator::ValidatorSchema;
-
 use crate::impl_documentation_from_markdown_file;
 
-use super::ToDocumentationString;
-
-impl_documentation_from_markdown_file!(EqualsDocumentation, "markdown/comparison_equals.md");
-impl_documentation_from_markdown_file!(NotEqualsDocumentation, "markdown/comparison_not_equals.md");
-impl_documentation_from_markdown_file!(LessThanDocumentation, "markdown/comparison_less_than.md");
+impl_documentation_from_markdown_file!(EqualsDocumentation, "markdown/comparison/equals.md");
+impl_documentation_from_markdown_file!(NotEqualsDocumentation, "markdown/comparison/not_equals.md");
+impl_documentation_from_markdown_file!(LessThanDocumentation, "markdown/comparison/less_than.md");
 impl_documentation_from_markdown_file!(
     LessThanOrEqualsDocumentation,
-    "markdown/comparison_less_than_or_equals.md"
+    "markdown/comparison/less_than_or_equals.md"
 );
 impl_documentation_from_markdown_file!(
     GreaterThanDocumentation,
-    "markdown/comparison_greater_than.md"
+    "markdown/comparison/greater_than.md"
 );
 impl_documentation_from_markdown_file!(
     GreaterThanOrEqualsDocumentation,
-    "markdown/comparison_greater_than_or_equals.md"
+    "markdown/comparison/greater_than_or_equals.md"
 );
-impl_documentation_from_markdown_file!(LikeDocumentation, "markdown/comparison_like.md");
+impl_documentation_from_markdown_file!(LikeDocumentation, "markdown/comparison/like.md");
