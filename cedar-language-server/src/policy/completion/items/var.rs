@@ -17,7 +17,7 @@
 use lsp_types::{Documentation, MarkupContent};
 
 use crate::{
-    markdown::{
+    documentation::{
         ActionDocumentation, BoolDocumentation, ContextDocumentation, PrincipalDocumentation,
         ResourceDocumentation, ToDocumentationString,
     },

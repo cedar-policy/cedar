@@ -19,7 +19,7 @@ use std::{collections::BTreeMap, fmt::Display, hash::Hash, sync::Arc};
 use cedar_policy_core::validator::{types::AttributeType, ValidatorSchema};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
 
-use crate::markdown::ToDocumentationString;
+use crate::documentation::ToDocumentationString;
 
 use super::CedarTypeKind;
 

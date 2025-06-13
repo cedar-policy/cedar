@@ -17,7 +17,7 @@
 use std::sync::Arc;
 
 use crate::{
-    markdown::{
+    documentation::{
         ActionDocumentation, EqualsDocumentation, InDocumentation, IsDocumentation,
         PrincipalDocumentation, ResourceDocumentation, ToDocumentationString,
     },
@@ -240,7 +240,7 @@ mod tests {
 
     use super::policy_hover;
     use crate::{
-        markdown::{
+        documentation::{
             ActionDocumentation, AddDocumentation, AndDocumentation, BoolDocumentation,
             ContainsAllDocumentation, ContainsAnyDocumentation, ContainsDocumentation,
             DecimalDocumentation, DecimalGreaterThanDocumentation,

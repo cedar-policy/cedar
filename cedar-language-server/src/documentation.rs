@@ -26,10 +26,11 @@ mod primitive;
 mod principal;
 mod resource;
 
-pub(crate) use action::*;
-pub(crate) use arithmetic::*;
 use cedar_policy_core::ast::{BinaryOp, UnaryOp};
 use cedar_policy_core::validator::ValidatorSchema;
+
+pub(crate) use action::*;
+pub(crate) use arithmetic::*;
 pub(crate) use comparison::*;
 pub(crate) use context::*;
 pub(crate) use extension::*;
@@ -39,7 +40,9 @@ pub(crate) use primitive::*;
 pub(crate) use principal::*;
 pub(crate) use resource::*;
 
-use super::ToDocumentationString;
+pub(crate) trait ToDocumentationString {
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String;
+}
 
 impl ToDocumentationString for UnaryOp {
     fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {

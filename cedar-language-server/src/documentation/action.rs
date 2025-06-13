@@ -16,8 +16,9 @@
 
 use cedar_policy_core::ast::{ActionConstraint, EntityUID};
 
+use super::ToDocumentationString;
 use crate::{
-    markdown::{MarkdownBuilder, ToDocumentationString},
+    markdown::MarkdownBuilder,
     policy::{format_attributes, DocumentContext},
 };
 use cedar_policy_core::validator::{

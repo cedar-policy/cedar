@@ -20,8 +20,9 @@ use cedar_policy_core::ast::{EntityType, EntityUID};
 use cedar_policy_core::validator::ValidatorSchema;
 use itertools::Itertools;
 
+use super::ToDocumentationString;
 use crate::{
-    markdown::{MarkdownBuilder, ToDocumentationString},
+    markdown::MarkdownBuilder,
     policy::{cedar::EntityTypeKind, format_attributes},
 };
 

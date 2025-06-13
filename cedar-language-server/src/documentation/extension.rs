@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use crate::markdown::ToDocumentationString;
+use super::ToDocumentationString;
 use cedar_policy_core::validator::ValidatorSchema;
 
 mod decimal;

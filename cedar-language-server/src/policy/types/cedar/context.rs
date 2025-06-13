@@ -23,8 +23,9 @@ use cedar_policy_core::validator::{
 };
 use itertools::Itertools;
 
+use crate::documentation::ToDocumentationString;
 use crate::{
-    markdown::{MarkdownBuilder, ToDocumentationString},
+    markdown::MarkdownBuilder,
     policy::types::format_attributes,
 };
 

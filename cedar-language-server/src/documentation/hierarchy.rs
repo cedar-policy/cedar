@@ -16,7 +16,8 @@
 
 use cedar_policy_core::validator::ValidatorSchema;
 
-use crate::markdown::{MarkdownBuilder, ToDocumentationString};
+use crate::markdown::MarkdownBuilder;
+use super::ToDocumentationString;
 use indoc::indoc;
 
 pub(crate) struct InDocumentation;

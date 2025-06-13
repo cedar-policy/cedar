@@ -24,7 +24,7 @@ use lsp_types::Hover;
 use smol_str::SmolStr;
 
 use crate::{
-    markdown::{
+    documentation::{
         ActionDocumentation, AndDocumentation, ContextDocumentation, ExtensionName,
         GreaterThanDocumentation, GreaterThanOrEqualsDocumentation, HasDocumentation,
         IfDocumentation, IsDocumentation, LikeDocumentation, NotEqualsDocumentation,

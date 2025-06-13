@@ -43,11 +43,11 @@ pub(crate) use context::*;
 pub(crate) use entity::*;
 pub(crate) use method::*;
 
-use crate::markdown::{
+use crate::{documentation::{
     BoolDocumentation, ContainsAllDocumentation, ContainsAnyDocumentation, ContainsDocumentation,
-    ExtensionName, IsEmptyDocumentation, LongDocumentation, MarkdownBuilder, SetDocumentation,
+    ExtensionName, IsEmptyDocumentation, LongDocumentation, SetDocumentation,
     StringDocumentation, ToDocumentationString,
-};
+}, markdown::MarkdownBuilder};
 
 /// Represents the type system for Cedar policy expressions.
 ///
