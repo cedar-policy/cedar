@@ -14,12 +14,8 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::validator::ValidatorSchema;
-
 use crate::impl_documentation_from_markdown_file;
 
-use super::ToDocumentationString;
-
-impl_documentation_from_markdown_file!(AddDocumentation, "markdown/arithmetic_add.md");
-impl_documentation_from_markdown_file!(SubtractDocumentation, "markdown/arithmetic_subtract.md");
-impl_documentation_from_markdown_file!(MultiplyDocumentation, "markdown/arithmetic_multiply.md");
+impl_documentation_from_markdown_file!(AddDocumentation, "markdown/arithmetic/add.md");
+impl_documentation_from_markdown_file!(SubtractDocumentation, "markdown/arithmetic/subtract.md");
+impl_documentation_from_markdown_file!(MultiplyDocumentation, "markdown/arithmetic/multiply.md");

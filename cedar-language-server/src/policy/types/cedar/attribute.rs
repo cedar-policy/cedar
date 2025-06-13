@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use std::{collections::BTreeMap, fmt::Display, hash::Hash, sync::Arc};
+use std::{borrow::Cow, collections::BTreeMap, fmt::Display, hash::Hash, sync::Arc};
 
 use cedar_policy_core::validator::{types::AttributeType, ValidatorSchema};
 use smol_str::{format_smolstr, SmolStr, ToSmolStr};
@@ -118,9 +118,9 @@ impl Attribute {
 }
 
 impl ToDocumentationString for Attribute {
-    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
         self.cedar_type().map_or_else(
-            || self.name().to_string(),
+            || self.name().to_string().into(),
             |cedar_type| cedar_type.to_documentation_string(schema),
         )
     }

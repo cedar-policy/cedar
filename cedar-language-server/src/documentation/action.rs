@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use std::borrow::Cow;
+
 use cedar_policy_core::ast::{ActionConstraint, EntityUID};
 
 use super::ToDocumentationString;
@@ -50,15 +52,13 @@ impl<'a> From<&'a DocumentContext> for ActionDocumentation<'a> {
 }
 
 impl ToDocumentationString for ActionDocumentation<'_> {
-    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
-        let mut builder = MarkdownBuilder::new();
-
-        // Include the static documentation
-        builder.push_str(include_str!("markdown/action.md"));
-
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
+        let static_docs = include_str!("markdown/action.md");
         let Some(constraint) = &self.constraint else {
-            return builder.build();
+            return static_docs.into();
         };
+        let mut builder = MarkdownBuilder::new();
+        builder.push_str(static_docs);
 
         match constraint {
             ActionConstraint::Any => {
@@ -112,7 +112,7 @@ impl ToDocumentationString for ActionDocumentation<'_> {
             }
         }
 
-        builder.build()
+        builder.build().into()
     }
 }
 

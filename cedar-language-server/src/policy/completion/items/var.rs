@@ -68,7 +68,8 @@ impl From<PrincipalCompletionItem<'_>> for lsp_types::CompletionItem {
             documentation: Documentation::MarkupContent(MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,
                 value: PrincipalDocumentation::from(&value)
-                    .to_documentation_string(value.cx.schema.as_deref()),
+                    .to_documentation_string(value.cx.schema.as_deref())
+                    .into_owned(),
             })
             .into(),
             ..Self::default()
@@ -103,7 +104,8 @@ impl From<ActionCompletionItem<'_>> for lsp_types::CompletionItem {
             documentation: Documentation::MarkupContent(MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,
                 value: ActionDocumentation::from(&value)
-                    .to_documentation_string(value.cx.schema.as_deref()),
+                    .to_documentation_string(value.cx.schema.as_deref())
+                    .into_owned(),
             })
             .into(),
             ..Self::default()
@@ -155,7 +157,8 @@ impl From<ResourceCompletionItem<'_>> for lsp_types::CompletionItem {
             documentation: Documentation::MarkupContent(MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,
                 value: ResourceDocumentation::from(&value)
-                    .to_documentation_string(value.cx.schema.as_deref()),
+                    .to_documentation_string(value.cx.schema.as_deref())
+                    .into_owned(),
             })
             .into(),
             ..Self::default()
@@ -190,7 +193,8 @@ impl From<ContextCompletionIem<'_>> for lsp_types::CompletionItem {
             documentation: Documentation::MarkupContent(MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,
                 value: ContextDocumentation::from(&value)
-                    .to_documentation_string(value.cx.schema.as_deref()),
+                    .to_documentation_string(value.cx.schema.as_deref())
+                    .into_owned(),
             })
             .into(),
             ..Self::default()
@@ -206,7 +210,7 @@ impl From<BoolCompletionItem> for lsp_types::CompletionItem {
             label: value.0.to_string(),
             documentation: Some(Documentation::MarkupContent(MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,
-                value: BoolDocumentation.to_documentation_string(None),
+                value: BoolDocumentation.to_documentation_string(None).into_owned(),
             })),
             kind: Some(lsp_types::CompletionItemKind::CONSTANT),
             ..Self::default()

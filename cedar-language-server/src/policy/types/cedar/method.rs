@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use std::borrow::Cow;
+
 use cedar_policy_core::ast::{Extension, ExtensionFunction};
 use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Documentation,
@@ -45,7 +47,7 @@ pub(crate) struct MethodInfo {
     ///
     /// This will be displayed in IDE tooltips and completion details to help
     /// users understand what the method does.
-    documentation: Option<String>,
+    documentation: Option<Cow<'static, str>>,
 
     /// The parameters accepted by the method.
     ///
@@ -67,7 +69,7 @@ impl MethodInfo {
     #[must_use]
     pub(crate) fn new(
         name: &str,
-        documentation: Option<String>,
+        documentation: Option<Cow<'static, str>>,
         args: Vec<(String, String)>,
         return_type: &str,
     ) -> Self {

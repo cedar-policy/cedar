@@ -1,5 +1,4 @@
-/*
- * Copyright Cedar Contributors
+/* * Copyright Cedar Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,6 +12,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+use std::borrow::Cow;
 
 use cedar_policy_core::validator::ValidatorSchema;
 
@@ -33,23 +34,25 @@ impl SetDocumentation {
 }
 
 impl ToDocumentationString for SetDocumentation {
-    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
-        let element_type = self.0.as_ref().map_or("?", |t| t.as_str());
-        let content = include_str!("markdown/hierarchy_set.md");
-        content.replace("?", element_type)
+    fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
+        let content = include_str!("markdown/hierarchy/set.md");
+        match &self.0 {
+            Some(elem_type) => content.replace("?", elem_type).into(),
+            None => content.into(),
+        }
     }
 }
 
-impl_documentation_from_markdown_file!(InDocumentation, "markdown/hierarchy_in.md");
-impl_documentation_from_markdown_file!(HasDocumentation, "markdown/hierarchy_has.md");
-impl_documentation_from_markdown_file!(IsDocumentation, "markdown/hierarchy_is.md");
-impl_documentation_from_markdown_file!(ContainsDocumentation, "markdown/hierarchy_contains.md");
+impl_documentation_from_markdown_file!(InDocumentation, "markdown/hierarchy/in.md");
+impl_documentation_from_markdown_file!(HasDocumentation, "markdown/hierarchy/has.md");
+impl_documentation_from_markdown_file!(IsDocumentation, "markdown/hierarchy/is.md");
+impl_documentation_from_markdown_file!(ContainsDocumentation, "markdown/hierarchy/contains.md");
 impl_documentation_from_markdown_file!(
     ContainsAllDocumentation,
-    "markdown/hierarchy_contains_all.md"
+    "markdown/hierarchy/contains_all.md"
 );
 impl_documentation_from_markdown_file!(
     ContainsAnyDocumentation,
-    "markdown/hierarchy_contains_any.md"
+    "markdown/hierarchy/contains_any.md"
 );
-impl_documentation_from_markdown_file!(IsEmptyDocumentation, "markdown/hierarchy_is_empty.md");
+impl_documentation_from_markdown_file!(IsEmptyDocumentation, "markdown/hierarchy/is_empty.md");

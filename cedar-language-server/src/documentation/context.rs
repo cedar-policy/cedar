@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use std::borrow::Cow;
+
 use cedar_policy_core::validator::ValidatorSchema;
 
 use super::ToDocumentationString;
@@ -34,19 +36,17 @@ impl ContextDocumentation {
 }
 
 impl ToDocumentationString for ContextDocumentation {
-    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
+    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
+        let static_docs = include_str!("markdown/context.md");
+        let Some(context_kind) = &self.context_kind else {
+            return static_docs.into();
+        };
+
         let mut builder = MarkdownBuilder::new();
-
-        // Include the static documentation
-        builder.push_str(include_str!("markdown/context.md"));
-
-        // If we have a specific context kind, add its documentation
-        if let Some(context_kind) = &self.context_kind {
-            let context_kind_doc = context_kind.to_documentation_string(schema);
-            builder.push_with_new_line(&context_kind_doc);
-        }
-
-        builder.build()
+        builder.push_str(static_docs);
+        let context_kind_doc = context_kind.to_documentation_string(schema);
+        builder.push_with_new_line(&context_kind_doc);
+        builder.build().into()
     }
 }
 

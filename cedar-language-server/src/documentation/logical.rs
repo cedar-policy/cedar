@@ -14,13 +14,9 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::validator::ValidatorSchema;
-
 use crate::impl_documentation_from_markdown_file;
 
-use super::ToDocumentationString;
-
-impl_documentation_from_markdown_file!(AndDocumentation, "markdown/logical_and.md");
-impl_documentation_from_markdown_file!(OrDocumentation, "markdown/logical_or.md");
-impl_documentation_from_markdown_file!(NotDocumentation, "markdown/logical_not.md");
-impl_documentation_from_markdown_file!(IfDocumentation, "markdown/logical_if.md");
+impl_documentation_from_markdown_file!(AndDocumentation, "markdown/logical/and.md");
+impl_documentation_from_markdown_file!(OrDocumentation, "markdown/logical/or.md");
+impl_documentation_from_markdown_file!(NotDocumentation, "markdown/logical/not.md");
+impl_documentation_from_markdown_file!(IfDocumentation, "markdown/logical/if.md");

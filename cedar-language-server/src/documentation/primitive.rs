@@ -14,12 +14,8 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::validator::ValidatorSchema;
-
 use crate::impl_documentation_from_markdown_file;
 
-use super::ToDocumentationString;
-
-impl_documentation_from_markdown_file!(LongDocumentation, "markdown/primitive_long.md");
-impl_documentation_from_markdown_file!(StringDocumentation, "markdown/primitive_string.md");
-impl_documentation_from_markdown_file!(BoolDocumentation, "markdown/primitive_bool.md");
+impl_documentation_from_markdown_file!(LongDocumentation, "markdown/primitive/long.md");
+impl_documentation_from_markdown_file!(StringDocumentation, "markdown/primitive/string.md");
+impl_documentation_from_markdown_file!(BoolDocumentation, "markdown/primitive/bool.md");
