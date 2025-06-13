@@ -15,7 +15,7 @@
  */
 
 use crate::markdown::MarkdownBuilder;
-use crate::markdown::ToDocumentationString;
+use super::ToDocumentationString;
 use cedar_policy_core::validator::ValidatorSchema;
 
 pub(crate) struct LongDocumentation;

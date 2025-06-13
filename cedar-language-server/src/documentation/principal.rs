@@ -17,9 +17,10 @@
 use cedar_policy_core::validator::ValidatorSchema;
 
 use crate::{
-    markdown::{MarkdownBuilder, ToDocumentationString},
+    markdown::MarkdownBuilder,
     policy::{cedar::EntityTypeKind, DocumentContext},
 };
+use super::ToDocumentationString;
 
 use indoc::indoc;
 

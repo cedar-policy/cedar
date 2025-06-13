@@ -14,15 +14,7 @@
  * limitations under the License.
  */
 
-use cedar_policy_core::validator::ValidatorSchema;
 use std::fmt::Write as _;
-
-mod documentation;
-pub(crate) use documentation::*;
-
-pub(crate) trait ToDocumentationString {
-    fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String;
-}
 
 pub(crate) struct MarkdownBuilder {
     content: String,

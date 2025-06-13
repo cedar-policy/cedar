@@ -22,6 +22,7 @@ pub mod document;
 mod entities;
 mod lsp;
 mod markdown;
+mod documentation;
 pub mod policy;
 pub mod schema;
 #[cfg(feature = "bin")]

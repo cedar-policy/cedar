@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-use crate::markdown::{MarkdownBuilder, ToDocumentationString};
+use crate::markdown::MarkdownBuilder;
+use super::ToDocumentationString;
 use indoc::indoc;
 
 pub(crate) struct AndDocumentation;

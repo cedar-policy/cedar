@@ -16,7 +16,7 @@
 
 use lsp_types::{CompletionItem, Documentation, MarkupContent};
 
-use crate::markdown::{DecimalDocumentation, IpDocumentation, ToDocumentationString};
+use crate::documentation::{DecimalDocumentation, IpDocumentation, ToDocumentationString};
 
 pub(crate) struct DecimalCompletionItem;
 

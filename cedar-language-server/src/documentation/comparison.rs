@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 
-use crate::markdown::{MarkdownBuilder, ToDocumentationString};
+use super::ToDocumentationString;
 use cedar_policy_core::validator::ValidatorSchema;
+use crate::markdown::MarkdownBuilder;
 use indoc::indoc;
 
 pub(crate) struct EqualsDocumentation;

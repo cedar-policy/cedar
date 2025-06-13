@@ -20,7 +20,7 @@ use lsp_types::{
     InsertTextFormat, MarkupContent,
 };
 
-use crate::markdown::{ExtensionName, ToDocumentationString};
+use crate::documentation::{ExtensionName, ToDocumentationString};
 
 /// Represents information about a method available on a Cedar type.
 ///
