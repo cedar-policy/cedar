@@ -25,7 +25,6 @@ use cedar_policy_core::validator::{
     types::{EntityRecordKind, Type},
     ValidatorSchema,
 };
-use indoc::indoc;
 use itertools::Itertools;
 
 pub(crate) struct ActionDocumentation<'a> {
@@ -54,16 +53,8 @@ impl ToDocumentationString for ActionDocumentation<'_> {
     fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
         let mut builder = MarkdownBuilder::new();
 
-        builder
-            .header("Action")
-            .paragraph(indoc! {"
-                The action element in a Cedar policy is the action that can be performed on the resource
-                defined by the resource element."
-            })
-            .paragraph(indoc! {"
-                The action element must be present. If you specify only action without an expression
-                that constrains its scope, then the policy applies to any action."
-            });
+        // Include the static documentation
+        builder.push_str(include_str!("markdown/action.md"));
 
         let Some(constraint) = &self.constraint else {
             return builder.build();

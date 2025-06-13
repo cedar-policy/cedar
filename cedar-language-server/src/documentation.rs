@@ -44,6 +44,18 @@ pub(crate) trait ToDocumentationString {
     fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String;
 }
 
+#[macro_export]
+macro_rules! impl_documentation_from_markdown_file {
+    ($i: ident, $f: literal) => {
+        pub(crate) struct $i;
+        impl ToDocumentationString for $i {
+            fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> String {
+                include_str!($f).to_string()
+            }
+        }
+    };
+}
+
 impl ToDocumentationString for UnaryOp {
     fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> String {
         match self {

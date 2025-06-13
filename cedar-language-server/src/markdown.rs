@@ -50,6 +50,11 @@ impl MarkdownBuilder {
         self
     }
 
+    pub(crate) fn push_str(&mut self, text: &str) -> &mut Self {
+        self.content.push_str(text);
+        self
+    }
+
     pub(crate) fn build(&mut self) -> String {
         std::mem::take(&mut self.content)
     }

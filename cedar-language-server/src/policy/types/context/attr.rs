@@ -21,13 +21,14 @@ use lsp_types::{
 };
 
 use crate::{
-    documentation::ToDocumentationString, policy::{
+    documentation::ToDocumentationString,
+    policy::{
         types::{
             cedar::{Attribute, CedarTypeKind},
             GetType,
         },
         DocumentContext,
-    }
+    },
 };
 
 use super::ReceiverContext;
