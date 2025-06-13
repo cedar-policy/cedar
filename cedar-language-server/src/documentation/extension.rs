@@ -39,6 +39,17 @@ impl ToDocumentationString for ExtensionName<'_> {
             "greaterThanOrEqual" => {
                 DecimalGreaterThanOrEqualDocumentation.to_documentation_string(schema)
             }
+            "datetime" => DateTimeDocumentation.to_documentation_string(schema),
+            "duration" => DurationDocumentation.to_documentation_string(schema),
+            "offset" => OffsetDocumentation.to_documentation_string(schema),
+            "durationSince" => DurationSinceDocumentation.to_documentation_string(schema),
+            "toDate" => ToDateDocumentation.to_documentation_string(schema),
+            "toTime" => ToTimeDocumentation.to_documentation_string(schema),
+            "toMilliseconds" => ToMillisecondsDocumentation.to_documentation_string(schema),
+            "toSeconds" => ToSecondsDocumentation.to_documentation_string(schema),
+            "toMinutes" => ToMinutesDocumentation.to_documentation_string(schema),
+            "toHours" => ToHoursDocumentation.to_documentation_string(schema),
+            "toDays" => ToDaysDocumentation.to_documentation_string(schema),
             _ => self.0.to_string().into(),
         }
     }
@@ -86,5 +97,54 @@ mod ip {
     impl_documentation_from_markdown_file!(
         IsInRangeDocumentation,
         "markdown/extension/ip/is_in_range.md"
+    );
+}
+
+pub(crate) use datetime::*;
+mod datetime {
+    use crate::impl_documentation_from_markdown_file;
+    impl_documentation_from_markdown_file!(
+        DateTimeDocumentation,
+        "markdown/extension/datetime/datetime.md"
+    );
+    impl_documentation_from_markdown_file!(
+        DurationDocumentation,
+        "markdown/extension/datetime/duration.md"
+    );
+    impl_documentation_from_markdown_file!(
+        OffsetDocumentation,
+        "markdown/extension/datetime/offset.md"
+    );
+    impl_documentation_from_markdown_file!(
+        DurationSinceDocumentation,
+        "markdown/extension/datetime/duration_since.md"
+    );
+    impl_documentation_from_markdown_file!(
+        ToDateDocumentation,
+        "markdown/extension/datetime/to_date.md"
+    );
+    impl_documentation_from_markdown_file!(
+        ToTimeDocumentation,
+        "markdown/extension/datetime/to_time.md"
+    );
+    impl_documentation_from_markdown_file!(
+        ToMillisecondsDocumentation,
+        "markdown/extension/datetime/to_milliseconds.md"
+    );
+    impl_documentation_from_markdown_file!(
+        ToSecondsDocumentation,
+        "markdown/extension/datetime/to_seconds.md"
+    );
+    impl_documentation_from_markdown_file!(
+        ToMinutesDocumentation,
+        "markdown/extension/datetime/to_minutes.md"
+    );
+    impl_documentation_from_markdown_file!(
+        ToHoursDocumentation,
+        "markdown/extension/datetime/to_hours.md"
+    );
+    impl_documentation_from_markdown_file!(
+        ToDaysDocumentation,
+        "markdown/extension/datetime/to_days.md"
     );
 }

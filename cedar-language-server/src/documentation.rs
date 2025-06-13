@@ -84,8 +84,11 @@ impl ToDocumentationString for BinaryOp {
             Self::Contains => ContainsDocumentation.to_documentation_string(schema),
             Self::ContainsAll => ContainsAllDocumentation.to_documentation_string(schema),
             Self::ContainsAny => ContainsAnyDocumentation.to_documentation_string(schema),
-            Self::GetTag => Cow::Borrowed("getTag"),
-            Self::HasTag => Cow::Borrowed("hasTag"),
+            Self::GetTag => GetTagDocumentation.to_documentation_string(schema),
+            Self::HasTag => HasTagDocumentation.to_documentation_string(schema),
         }
     }
 }
+
+impl_documentation_from_markdown_file!(GetTagDocumentation, "documentation/markdown/get_tag.md");
+impl_documentation_from_markdown_file!(HasTagDocumentation, "documentation/markdown/has_tag.md");
