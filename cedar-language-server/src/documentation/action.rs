@@ -64,27 +64,18 @@ impl ToDocumentationString for ActionDocumentation<'_> {
             ActionConstraint::Any => {
                 builder.header("Available Actions");
                 if let Some(schema) = schema {
-                    let actions = schema.actions().sorted().cloned().collect_vec();
-                    if actions.is_empty() {
-                        builder.paragraph("No actions defined in schema.");
-                    } else {
-                        format_action_list(&mut builder, &actions);
-                    }
+                    format_action_list(&mut builder, schema.actions().sorted());
                 } else {
                     builder.paragraph("*Schema not available - any action permitted*");
                 }
             }
             ActionConstraint::In(entity_uids) => {
-                let entity_uids = entity_uids
-                    .iter()
-                    .sorted()
-                    .map(|euid| euid.as_ref().clone())
-                    .collect_vec();
                 builder
                     .header("Permitted Actions")
                     .paragraph("This policy applies to the following actions:");
 
-                format_action_list(&mut builder, entity_uids.as_slice());
+                let entity_uids = entity_uids.iter().sorted().map(|euid| euid.as_ref());
+                format_action_list(&mut builder, entity_uids);
             }
             ActionConstraint::Eq(entity_uid) => {
                 builder
@@ -116,27 +107,25 @@ impl ToDocumentationString for ActionDocumentation<'_> {
     }
 }
 
-fn format_actions(actions: &[EntityUID]) -> String {
-    actions
-        .iter()
-        .map(std::string::ToString::to_string)
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn format_action_list(builder: &mut MarkdownBuilder, actions: &[EntityUID]) {
+fn format_action_list<'a>(
+    builder: &mut MarkdownBuilder,
+    actions: impl ExactSizeIterator<Item = &'a EntityUID>,
+) {
     const MAX_ACTIONS_TO_SHOW: usize = 10;
-    if actions.is_empty() {
+    let actions_len = actions.len();
+    if actions_len == 0 {
         builder.paragraph("*No actions specified*");
         return;
     }
 
-    let (shown_actions, remaining) = match actions.get(..MAX_ACTIONS_TO_SHOW) {
-        Some(shown_actions) => (shown_actions, actions.len() - MAX_ACTIONS_TO_SHOW),
-        None => (actions, 0),
+    let shown_actions = actions.take(MAX_ACTIONS_TO_SHOW);
+    let remaining = if shown_actions.len() == MAX_ACTIONS_TO_SHOW {
+        actions_len - MAX_ACTIONS_TO_SHOW
+    } else {
+        0
     };
 
-    builder.code_block("cedar", &format_actions(shown_actions));
+    builder.code_block("cedar", &shown_actions.map(ToString::to_string).join("\n"));
 
     if remaining > 0 {
         builder.paragraph(&format!("*... and {remaining} more actions defined*"));
