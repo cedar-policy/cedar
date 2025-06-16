@@ -24,7 +24,9 @@ use smol_str::SmolStr;
 
 use crate::{
     policy::{
-        context::{AttrContext, BinaryOpContext, InKind, IsContext, Op, ReceiverContext},
+        context::{
+            AttrContext, AttrContextKind, BinaryOpContext, InKind, IsContext, Op, ReceiverContext,
+        },
         CompletionContextKind, DocumentContext,
     },
     utils::is_cursor_in_condition_braces,
@@ -80,6 +82,27 @@ impl<'a> ConditionCompletionVisitor<'a> {
             kind => kind,
         }
     }
+
+    fn visit_attr(
+        &mut self,
+        expr: &Arc<Expr>,
+        attr: &SmolStr,
+        loc: Option<&Loc>,
+        context: AttrContextKind,
+    ) -> Option<<Self as ExprVisitor>::Output> {
+        self.visit_expr(expr).or_else(|| {
+            let word = self.cx.get_word_under_cursor();
+            // If cursor is within attribute and matches the current attribute name (or empty attribute)
+            if self.cx.is_cursor_over_loc(loc) && (attr.is_empty() || word == Some(attr)) {
+                return CompletionContextKind::Attr(AttrContext::new(
+                    ReceiverContext::new(expr.clone()),
+                    context,
+                ))
+                .into();
+            }
+            None
+        })
+    }
 }
 
 impl ExprVisitor for ConditionCompletionVisitor<'_> {
@@ -116,26 +139,6 @@ impl ExprVisitor for ConditionCompletionVisitor<'_> {
             }
         }
         None
-    }
-
-    fn visit_get_attr(
-        &mut self,
-        expr: &Arc<Expr>,
-        attr: &SmolStr,
-        loc: Option<&Loc>,
-    ) -> Option<Self::Output> {
-        self.visit_expr(expr).or_else(|| {
-            let word = self.cx.get_word_under_cursor();
-
-            // If cursor is within attribute and matches the current attribute name (or empty attribute)
-            if self.cx.is_cursor_over_loc(loc) && (attr.is_empty() || word == Some(attr)) {
-                return CompletionContextKind::Attr(AttrContext::get(ReceiverContext::new(
-                    expr.clone(),
-                )))
-                .into();
-            }
-            None
-        })
     }
 
     fn visit_is(
@@ -225,19 +228,16 @@ impl ExprVisitor for ConditionCompletionVisitor<'_> {
         attr: &SmolStr,
         loc: Option<&Loc>,
     ) -> Option<Self::Output> {
-        self.visit_expr(expr).or_else(|| {
-            if let Some(loc) = loc {
-                let word = self.cx.get_word_under_cursor();
-                // If cursor is within the 'has' expression and matches the attribute name (or empty attribute)
-                if self.cx.is_cursor_over_loc(loc) && (attr.is_empty() || word == Some(attr)) {
-                    return CompletionContextKind::Attr(AttrContext::has(ReceiverContext::new(
-                        expr.clone(),
-                    )))
-                    .into();
-                }
-            }
-            None
-        })
+        self.visit_attr(expr, attr, loc, AttrContextKind::Has)
+    }
+
+    fn visit_get_attr(
+        &mut self,
+        expr: &Arc<Expr>,
+        attr: &SmolStr,
+        loc: Option<&Loc>,
+    ) -> Option<Self::Output> {
+        self.visit_attr(expr, attr, loc, AttrContextKind::Get)
     }
 
     fn visit_like(

@@ -48,19 +48,8 @@ pub(crate) struct AttrContext {
 
 impl AttrContext {
     #[must_use]
-    pub(crate) fn get(receiver_cx: ReceiverContext) -> Self {
-        Self {
-            receiver_cx,
-            kind: AttrContextKind::Get,
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn has(receiver_cx: ReceiverContext) -> Self {
-        Self {
-            receiver_cx,
-            kind: AttrContextKind::Has,
-        }
+    pub(crate) fn new(receiver_cx: ReceiverContext, kind: AttrContextKind) -> Self {
+        Self { receiver_cx, kind }
     }
 
     #[must_use]

@@ -86,19 +86,13 @@ impl EntityTypeKind {
             }
             Self::Set(entity_types) => entity_types
                 .iter()
-                .map(|et| Self::get_entity_attribute_type(et, attr, schema))
-                .find(std::option::Option::is_some)
-                .flatten(),
+                .find_map(|et| Self::get_entity_attribute_type(et, attr, schema)),
             Self::AnyPrincipal => schema
                 .principals()
-                .map(|et| Self::get_entity_attribute_type(et, attr, schema))
-                .find(std::option::Option::is_some)
-                .flatten(),
+                .find_map(|et| Self::get_entity_attribute_type(et, attr, schema)),
             Self::AnyResource => schema
                 .resources()
-                .map(|et| Self::get_entity_attribute_type(et, attr, schema))
-                .find(std::option::Option::is_some)
-                .flatten(),
+                .find_map(|et| Self::get_entity_attribute_type(et, attr, schema)),
         }
     }
 

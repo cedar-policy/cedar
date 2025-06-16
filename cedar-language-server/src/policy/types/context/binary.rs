@@ -15,7 +15,7 @@
  */
 
 #![allow(clippy::literal_string_with_formatting_args)]
-use std::{collections::HashSet, iter::once, sync::Arc};
+use std::{collections::HashSet, sync::Arc};
 
 use crate::policy::{
     cedar::{CedarTypeKind, EntityTypeKind},
@@ -25,7 +25,10 @@ use crate::policy::{
     },
     DocumentContext, GetType,
 };
-use cedar_policy_core::ast::{EntityUID, Expr, ExprKind, Literal};
+use cedar_policy_core::{
+    ast::{EntityType, EntityUID, Expr, ExprKind, Literal},
+    validator::{ValidatorEntityType, ValidatorSchema},
+};
 use itertools::Itertools;
 use lsp_types::{CompletionItem, CompletionItemKind};
 
@@ -106,6 +109,30 @@ impl CompletionType {
     }
 }
 
+fn entity_type_completion(entity_type: &EntityType) -> CompletionItem {
+    CompletionItem {
+        label: entity_type.to_string(),
+        kind: Some(CompletionItemKind::CLASS),
+        insert_text: Some(format!("{entity_type}::\"${{1:entityId}}\"")),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        ..CompletionItem::default()
+    }
+}
+
+fn action_completion(entity_uid: &EntityUID, completion_type: CompletionType) -> CompletionItem {
+    let text = if completion_type.is_euid() {
+        entity_uid.to_string()
+    } else {
+        entity_uid.eid().escaped().to_string()
+    };
+    CompletionItem {
+        label: text.clone(),
+        kind: Some(CompletionItemKind::ENUM_MEMBER),
+        insert_text: Some(text),
+        ..CompletionItem::default()
+    }
+}
+
 impl BinaryOpContext {
     #[must_use]
     pub(crate) fn new(op: Op, other_side_expr: Arc<Expr>, completion_side_expr: Arc<Expr>) -> Self {
@@ -166,78 +193,38 @@ impl BinaryOpContext {
 
         match other_side {
             CedarTypeKind::EntityType(EntityTypeKind::AnyPrincipal) if complete_type.is_euid() => {
-                schema
-                    .principals()
-                    .map(cedar_policy_core::ast::EntityType::name)
-                    .unique()
-                    .map(|p| CompletionItem {
-                        label: p.to_string(),
-                        kind: Some(CompletionItemKind::CLASS),
-                        insert_text: Some(format!("{p}::\"${{1:entityId}}\"")),
-                        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-                        ..CompletionItem::default()
-                    })
-                    .chain(document_context.get_variable_completions())
-                    .collect()
+                let mut completions = document_context.get_variable_completions();
+                completions.extend(schema.principals().unique().map(entity_type_completion));
+                completions
             }
             CedarTypeKind::EntityType(EntityTypeKind::AnyResource) if complete_type.is_euid() => {
-                schema
-                    .resources()
-                    .map(cedar_policy_core::ast::EntityType::name)
-                    .unique()
-                    .map(|p| CompletionItem {
-                        label: p.to_string(),
-                        kind: Some(CompletionItemKind::CLASS),
-                        insert_text: Some(format!("{p}::\"${{1:entityId}}\"")),
-                        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-                        ..CompletionItem::default()
-                    })
-                    .chain(document_context.get_variable_completions())
-                    .collect()
+                let mut completions = document_context.get_variable_completions();
+                completions.extend(schema.resources().unique().map(entity_type_completion));
+                completions
             }
             CedarTypeKind::EntityType(EntityTypeKind::Concrete(et)) if complete_type.is_euid() => {
-                document_context
-                    .get_variable_completions()
-                    .into_iter()
-                    .chain(vec![CompletionItem {
-                        label: et.to_string(),
-                        kind: Some(CompletionItemKind::SNIPPET),
-                        insert_text: Some(format!("{et}::\"${{1:entityId}}\"")),
-                        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-                        ..CompletionItem::default()
-                    }])
-                    .collect()
+                let mut completions = document_context.get_variable_completions();
+                completions.push(entity_type_completion(&et));
+                completions
             }
-            CedarTypeKind::EntityType(EntityTypeKind::Set(set)) if complete_type.is_euid() => set
-                .into_iter()
-                .map(|et| CompletionItem {
-                    label: et.to_string(),
-                    kind: Some(CompletionItemKind::SNIPPET),
-                    insert_text: Some(format!("{et}::\"${{1:entityId}}\"")),
-                    insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-                    ..CompletionItem::default()
-                })
-                .chain(document_context.get_variable_completions())
-                .collect(),
-            CedarTypeKind::Action => schema
-                .actions()
-                .filter(|euid| !schema.action_groups().contains(euid))
-                .map(|euid| {
-                    let text = if complete_type.is_euid() {
-                        euid.to_string()
-                    } else {
-                        euid.eid().escaped().to_string()
-                    };
-                    CompletionItem {
-                        label: text.clone(),
-                        documentation: Some(lsp_types::Documentation::String(euid.to_string())),
-                        kind: Some(CompletionItemKind::ENUM_MEMBER),
-                        insert_text: Some(text),
-                        ..CompletionItem::default()
-                    }
-                })
-                .chain(document_context.get_variable_completions())
-                .collect(),
+            CedarTypeKind::EntityType(EntityTypeKind::Set(set)) if complete_type.is_euid() => {
+                let mut completions = document_context.get_variable_completions();
+                completions.extend(
+                    set.into_iter()
+                        .map(|et| entity_type_completion(et.as_ref())),
+                );
+                completions
+            }
+            CedarTypeKind::Action => {
+                let mut completions = document_context.get_variable_completions();
+                completions.extend(
+                    schema
+                        .actions()
+                        .filter(|euid| !schema.action_groups().contains(euid))
+                        .map(|euid| action_completion(euid, complete_type)),
+                );
+                completions
+            }
             _ => condition_completions(document_context),
         }
     }
@@ -246,16 +233,19 @@ impl BinaryOpContext {
         other_side: &CedarTypeKind,
         document_context: &DocumentContext,
     ) -> Vec<CompletionItem> {
-        let curr_char = document_context.get_previous_char();
         match other_side {
-            CedarTypeKind::EntityType(..) => vec![equals_euid_snippet(curr_char)]
-                .into_iter()
-                .chain(document_context.get_variable_completions())
-                .collect(),
-            CedarTypeKind::Action => vec![equals_action_euid_snippet(curr_char)]
-                .into_iter()
-                .chain(document_context.get_variable_completions())
-                .collect(),
+            CedarTypeKind::EntityType(..) => {
+                let curr_char = document_context.get_previous_char();
+                let mut completions = document_context.get_variable_completions();
+                completions.push(equals_euid_snippet(curr_char));
+                completions
+            }
+            CedarTypeKind::Action => {
+                let curr_char = document_context.get_previous_char();
+                let mut completions = document_context.get_variable_completions();
+                completions.push(equals_action_euid_snippet(curr_char));
+                completions
+            }
             _ => condition_completions(document_context),
         }
     }
@@ -276,23 +266,15 @@ impl BinaryOpContext {
         }
 
         match other_side {
-            CedarTypeKind::Action => schema
-                .actions()
-                .map(|euid| {
-                    let text = if complete_type.is_euid() {
-                        euid.to_string()
-                    } else {
-                        euid.eid().escaped().to_string()
-                    };
-                    CompletionItem {
-                        label: text.clone(),
-                        kind: Some(CompletionItemKind::ENUM_MEMBER),
-                        insert_text: Some(text),
-                        ..CompletionItem::default()
-                    }
-                })
-                .chain(document_context.get_variable_completions())
-                .collect(),
+            CedarTypeKind::Action => {
+                let mut completions = document_context.get_variable_completions();
+                completions.extend(
+                    schema
+                        .actions()
+                        .map(|euid| action_completion(euid, complete_type)),
+                );
+                completions
+            }
             CedarTypeKind::EntityType(..) if !document_context.is_in_scope_block() => {
                 self.in_completions(other_side, document_context)
             }
@@ -300,7 +282,19 @@ impl BinaryOpContext {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
+    fn in_any_completions<'a>(
+        schema: &'a Arc<ValidatorSchema>,
+        var_entity_types: &'a HashSet<EntityType>,
+    ) -> impl Iterator<Item = CompletionItem> + 'a {
+        schema
+            .entity_types()
+            .filter(|v| v.descendants.intersection(var_entity_types).count() > 0)
+            .map(ValidatorEntityType::name)
+            .chain(var_entity_types)
+            .unique()
+            .map(entity_type_completion)
+    }
+
     fn in_completions(
         &self,
         other_side: CedarTypeKind,
@@ -318,100 +312,58 @@ impl BinaryOpContext {
         match other_side {
             CedarTypeKind::EntityType(EntityTypeKind::AnyPrincipal) if complete_type.is_euid() => {
                 let principals = schema.principals().cloned().collect::<HashSet<_>>();
-                schema
-                    .entity_types()
-                    .filter(|v| v.descendants.intersection(&principals).count() > 0)
-                    .map(cedar_policy_core::validator::ValidatorEntityType::name)
-                    .chain(principals.iter())
-                    .unique()
-                    .map(|p| CompletionItem {
-                        label: p.to_string(),
-                        kind: Some(CompletionItemKind::CLASS),
-                        insert_text: Some(format!("{p}::\"${{1:entityId}}\"")),
-                        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-                        ..CompletionItem::default()
-                    })
-                    .chain(document_context.get_variable_completions())
-                    .collect()
+                let mut completions = document_context.get_variable_completions();
+                completions.extend(Self::in_any_completions(schema, &principals));
+                completions
             }
             CedarTypeKind::EntityType(EntityTypeKind::AnyResource) if complete_type.is_euid() => {
                 let resources = schema.resources().cloned().collect::<HashSet<_>>();
-                schema
-                    .entity_types()
-                    .filter(|v| v.descendants.intersection(&resources).count() > 0)
-                    .map(cedar_policy_core::validator::ValidatorEntityType::name)
-                    .chain(resources.iter())
-                    .unique()
-                    .map(|p| CompletionItem {
-                        label: p.to_string(),
-                        kind: Some(CompletionItemKind::CLASS),
-                        insert_text: Some(format!("{p}::\"${{1:entityId}}\"")),
-                        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-                        ..CompletionItem::default()
-                    })
-                    .chain(document_context.get_variable_completions())
-                    .collect()
+                let mut completions = document_context.get_variable_completions();
+                completions.extend(Self::in_any_completions(schema, &resources));
+                completions
             }
             CedarTypeKind::EntityType(EntityTypeKind::Concrete(et)) if complete_type.is_euid() => {
-                schema
-                    .entity_types()
-                    .filter(|v| v.descendants.contains(&et))
-                    .map(cedar_policy_core::validator::ValidatorEntityType::name)
-                    .chain(once(et.as_ref()))
-                    .unique()
-                    .map(|p| CompletionItem {
-                        label: p.to_string(),
-                        kind: Some(CompletionItemKind::CLASS),
-                        insert_text: Some(format!("{p}::\"${{1:entityId}}\"")),
-                        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-                        ..CompletionItem::default()
-                    })
-                    .chain(document_context.get_variable_completions())
-                    .collect()
+                let mut completions = document_context.get_variable_completions();
+                completions.extend(
+                    schema
+                        .entity_types()
+                        .filter(|v| v.descendants.contains(&et))
+                        .map(ValidatorEntityType::name)
+                        .chain(std::iter::once(et.as_ref()))
+                        .unique()
+                        .map(entity_type_completion),
+                );
+                completions
             }
             CedarTypeKind::EntityType(EntityTypeKind::Set(set)) if complete_type.is_euid() => {
                 let parent_entity_types = schema
                     .entity_types()
                     .filter(|v| !v.descendants.is_empty())
                     .collect_vec();
-                set.iter()
-                    .flat_map(|et| {
-                        parent_entity_types
-                            .iter()
-                            .filter(move |parent| parent.has_descendant_entity_type(et))
-                    })
-                    .map(|vet| vet.name())
-                    .chain(set.iter().map(std::convert::AsRef::as_ref))
-                    .map(|vet| CompletionItem {
-                        label: vet.name().to_string(),
-                        kind: Some(CompletionItemKind::CLASS),
-                        insert_text: Some(format!("{}::\"${{1:entityId}}\"", vet.name())),
-                        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-                        ..CompletionItem::default()
-                    })
-                    .chain(document_context.get_variable_completions())
-                    .collect()
+                let mut completions = document_context.get_variable_completions();
+                completions.extend(
+                    set.iter()
+                        .flat_map(|et| {
+                            parent_entity_types
+                                .iter()
+                                .filter(move |parent| parent.has_descendant_entity_type(et))
+                        })
+                        .map(|vet| vet.name())
+                        .chain(set.iter().map(AsRef::as_ref))
+                        .map(entity_type_completion),
+                );
+                completions
             }
             CedarTypeKind::Action => {
                 let completion_kind =
                     get_completion_type(&self.complete_side_expr, document_context);
-                schema
-                    .action_groups()
-                    .map(|euid| {
-                        let text = if completion_kind.is_euid() {
-                            euid.to_string()
-                        } else {
-                            euid.eid().escaped().to_string()
-                        };
-                        CompletionItem {
-                            label: text.clone(),
-                            kind: Some(CompletionItemKind::ENUM_MEMBER),
-                            insert_text: Some(text),
-                            ..CompletionItem::default()
-                        }
-                    })
-                    .chain(document_context.get_variable_completions())
-                    .collect()
+                let mut completions = document_context.get_variable_completions();
+                completions.extend(
+                    schema
+                        .action_groups()
+                        .map(|euid| action_completion(euid, completion_kind)),
+                );
+                completions
             }
             _ => vec![],
         }
@@ -421,18 +373,17 @@ impl BinaryOpContext {
         other_side: &CedarTypeKind,
         document_context: &DocumentContext,
     ) -> Vec<CompletionItem> {
+        let mut completions = document_context.get_variable_completions();
         let curr_char = document_context.get_previous_char();
-        let iter = match other_side {
-            CedarTypeKind::EntityType(..) => vec![in_entity_snippet(curr_char)].into_iter(),
-            CedarTypeKind::Action => vec![
-                in_action_group_snippet(curr_char),
-                in_action_set_snippet(curr_char),
-            ]
-            .into_iter(),
-            _ => vec![].into_iter(),
+        match other_side {
+            CedarTypeKind::EntityType(..) => completions.push(in_entity_snippet(curr_char)),
+            CedarTypeKind::Action => {
+                completions.push(in_action_group_snippet(curr_char));
+                completions.push(in_action_set_snippet(curr_char));
+            }
+            _ => {}
         };
-        iter.chain(document_context.get_variable_completions())
-            .collect_vec()
+        completions
     }
 }
 
@@ -444,23 +395,21 @@ fn get_completion_type(completion_expr: &Expr, document: &DocumentContext) -> Co
         ExprKind::Set(set) if set.is_empty() => CompletionType::Euid,
         // If cursor is over an error and we are in a set then we are likely trying to type the entire action euid
         ExprKind::Set(set)
-            if set
-                .iter()
-                .filter(|expr| matches!(expr.expr_kind(), ExprKind::Error { .. }))
-                .any(|euid| document.is_cursor_over_loc(euid.source_loc())) =>
+            if set.iter().any(|expr| {
+                matches!(expr.expr_kind(), ExprKind::Error { .. })
+                    && document.is_cursor_over_loc(expr.source_loc())
+            }) =>
         {
             CompletionType::Euid
         }
         ExprKind::Set(set)
-            if set
-                .iter()
-                .filter_map(|expr| {
-                    let ExprKind::Lit(Literal::EntityUID(euid)) = expr.expr_kind() else {
-                        return None;
-                    };
-                    Some(euid)
-                })
-                .any(|euid| document.is_cursor_over_loc(euid.loc())) =>
+            if set.iter().any(|expr| {
+                if let ExprKind::Lit(Literal::EntityUID(euid)) = expr.expr_kind() {
+                    document.is_cursor_over_loc(euid.loc())
+                } else {
+                    false
+                }
+            }) =>
         {
             CompletionType::EntityId
         }

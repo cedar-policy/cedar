@@ -352,20 +352,6 @@ pub(crate) struct ScopeVariableInfo {
     pub(crate) text: SmolStr,
 }
 
-impl ScopeVariableInfo {
-    pub(crate) fn is_in_principal_def(&self) -> bool {
-        self.variable_type == PolicyScopeVariable::Principal
-    }
-
-    pub(crate) fn is_in_action_def(&self) -> bool {
-        self.variable_type == PolicyScopeVariable::Action
-    }
-
-    pub(crate) fn is_in_resource_def(&self) -> bool {
-        self.variable_type == PolicyScopeVariable::Resource
-    }
-}
-
 #[allow(clippy::too_many_lines)]
 pub(crate) fn get_policy_scope_variable(
     policy_text: &str,

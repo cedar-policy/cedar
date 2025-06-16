@@ -39,7 +39,7 @@ use crate::policy::completion::items::{
 use crate::utils::{
     get_char_at_position, get_operator_at_position, get_policy_scope_variable,
     get_word_at_position, is_cursor_in_condition_braces, is_cursor_within_policy_scope,
-    position_within_loc, GetPolicyText, ScopeVariableInfo,
+    position_within_loc, GetPolicyText, PolicyScopeVariable, ScopeVariableInfo,
 };
 
 #[cfg(feature = "wasm")]
@@ -363,23 +363,26 @@ impl DocumentContext {
 
     #[must_use]
     pub(crate) fn get_variable_completions(&self) -> Vec<CompletionItem> {
-        let is_in_principal_def = self.get_scope_variable_info().is_in_principal_def();
-        let is_in_scope_block = self.is_in_scope_block();
-        if self.features.allow_templates && is_in_scope_block && is_in_principal_def {
-            return vec![PrincipalCompletionItem::template(self).into()];
-        } else if is_in_scope_block && is_in_principal_def {
-            return vec![];
-        }
-
-        if self.is_in_scope_block() && self.get_scope_variable_info().is_in_action_def() {
-            return vec![];
-        }
-
-        let is_in_resource_def = self.get_scope_variable_info().is_in_resource_def();
-        if self.features.allow_templates && is_in_scope_block && is_in_resource_def {
-            return vec![ResourceCompletionItem::template(self).into()];
-        } else if is_in_scope_block && is_in_resource_def {
-            return vec![];
+        if self.is_in_scope_block() {
+            let scope_info = self.get_scope_variable_info();
+            match scope_info.variable_type {
+                PolicyScopeVariable::Principal => {
+                    if self.features.allow_templates {
+                        return vec![PrincipalCompletionItem::template(self).into()];
+                    } else {
+                        return vec![];
+                    }
+                }
+                PolicyScopeVariable::Action => return vec![],
+                PolicyScopeVariable::Resource => {
+                    if self.features.allow_templates {
+                        return vec![ResourceCompletionItem::template(self).into()];
+                    } else {
+                        return vec![];
+                    }
+                }
+                PolicyScopeVariable::None => {}
+            }
         }
 
         vec![

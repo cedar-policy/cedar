@@ -537,19 +537,10 @@ impl DocumentState {
 
         let line_start = self.content.line_to_char(line_idx);
         let line = self.content.line(line_idx);
-        let line_utf16_cu = position.character as usize;
-
-        let mut char_count = 0;
-        let mut utf16_count = 0;
-
-        for c in line.chars() {
-            if utf16_count >= line_utf16_cu {
-                break;
-            }
-            utf16_count += c.len_utf16();
-            char_count += 1;
-        }
-
-        line_start + char_count
+        // The default encoding for positions which servers support utf16. We
+        // will need to update this if we support other encoding in the future.
+        // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#positionEncodingKind
+        let char_idx_from_utf16_cu = line.utf16_cu_to_char(position.character as usize);
+        line_start + char_idx_from_utf16_cu
     }
 }
