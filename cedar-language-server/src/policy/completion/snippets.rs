@@ -105,10 +105,8 @@ pub(crate) fn should_show_policy_snippets(text: &str, cursor_position: Position)
 
 /// Gets all text before the cursor position
 fn get_text_before_cursor(text: &str, cursor_position: Position) -> String {
-    let lines: Vec<&str> = text.split('\n').collect();
     let mut result = String::new();
-
-    for (i, line) in lines.iter().enumerate() {
+    for (i, line) in text.lines().enumerate() {
         match i.cmp(&(cursor_position.line as usize)) {
             std::cmp::Ordering::Less => {
                 result.push_str(line);

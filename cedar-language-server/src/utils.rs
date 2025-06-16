@@ -229,26 +229,26 @@ pub(crate) fn get_operator_at_position(position: Position, text: &str) -> Option
     // Check if the extracted string is a valid operator
     operators.iter().find_map(|&op| {
         // Find the position of this operator in our extracted string
-        if let Some(op_start) = potential_operator.find(op) {
-            // Check if our cursor position is within this operator
-            let absolute_op_start = start + op_start;
-            let absolute_op_end = absolute_op_start + op.len();
-            if char_pos >= absolute_op_start && char_pos <= absolute_op_end {
-                let range = Range {
-                    start: Position {
-                        line: position.line,
-                        character: absolute_op_start as u32,
-                    },
-                    end: Position {
-                        line: position.line,
-                        character: absolute_op_end as u32,
-                    },
-                };
+        let op_start = potential_operator.find(op)?;
+        // Check if our cursor position is within this operator
+        let absolute_op_start = start + op_start;
+        let absolute_op_end = absolute_op_start + op.len();
+        if char_pos >= absolute_op_start && char_pos <= absolute_op_end {
+            let range = Range {
+                start: Position {
+                    line: position.line,
+                    character: absolute_op_start as u32,
+                },
+                end: Position {
+                    line: position.line,
+                    character: absolute_op_end as u32,
+                },
+            };
 
-                return Some((op, range));
-            }
+            Some((op, range))
+        } else {
+            None
         }
-        None
     })
 }
 
