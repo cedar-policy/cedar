@@ -485,7 +485,6 @@ mod test {
 
     // We add `PartialOrd` and `Ord` implementations for both `models::Policy` and
     // `models::TemplateBody`, so that these can be sorted for testing purposes
-    impl Eq for models::Policy {}
     impl PartialOrd for models::Policy {
         fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
             Some(self.cmp(other))
