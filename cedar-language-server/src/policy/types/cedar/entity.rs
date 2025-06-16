@@ -157,15 +157,13 @@ impl EntityTypeKind {
 
 impl Display for EntityTypeKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str = match self {
-            Self::Concrete(entity_type) => entity_type.to_string(),
-            Self::Set(btree_set) => btree_set
-                .iter()
-                .map(std::string::ToString::to_string)
-                .join("|"),
-            Self::AnyPrincipal => "AnyPrincipal".to_string(),
-            Self::AnyResource => "AnyResource".to_string(),
-        };
-        write!(f, "{str}")
+        match self {
+            Self::Concrete(entity_type) => write!(f, "{entity_type}"),
+            Self::Set(btree_set) => {
+                write!(f, "{}", btree_set.iter().map(ToString::to_string).join("|"))
+            }
+            Self::AnyPrincipal => write!(f, "AnyPrincipal"),
+            Self::AnyResource => write!(f, "AnyResource"),
+        }
     }
 }

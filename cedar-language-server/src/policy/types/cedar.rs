@@ -175,11 +175,11 @@ impl CedarTypeKind {
 
 impl Display for CedarTypeKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match &self {
-            Self::Bool => "bool".to_string(),
-            Self::Long => "long".to_string(),
-            Self::String => "string".to_string(),
-            Self::Set(element_type) => format!("Set<{element_type}>"),
+        match self {
+            Self::Bool => write!(f, "bool"),
+            Self::Long => write!(f, "long"),
+            Self::String => write!(f, "string"),
+            Self::Set(element_type) => write!(f, "Set<{element_type}>"),
             Self::Record(fields) => {
                 let field_strs: Vec<String> = fields
                     .attrs
@@ -194,18 +194,17 @@ impl Display for CedarTypeKind {
                         )
                     })
                     .collect();
-                format!("{{ {} }}", field_strs.join(", "))
+                write!(f, "{{ {} }}", field_strs.join(", "))
             }
-            Self::Extension(name) => name.to_string(),
-            Self::EmptySet => "Set<?>".to_string(),
+            Self::Extension(name) => write!(f, "{name}"),
+            Self::EmptySet => write!(f, "Set<?>"),
             Self::Context(kind) => {
-                format!("Context<{kind}>")
+                write!(f, "Context<{kind}>")
             }
-            Self::EntityType(entity_type_kind) => entity_type_kind.to_string(),
-            Self::Error => "Error".to_string(),
-            Self::Action => "actionKind".to_string(),
-        };
-        write!(f, "{s}")
+            Self::EntityType(entity_type_kind) => write!(f, "{entity_type_kind}"),
+            Self::Error => write!(f, "Error"),
+            Self::Action => write!(f, "actionKind"),
+        }
     }
 }
 
