@@ -80,6 +80,7 @@ impl SmolStrView for SmolStr {
 
 // BTreeMap
 
+#[cfg(verus_keep_ghost)]
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(K)]

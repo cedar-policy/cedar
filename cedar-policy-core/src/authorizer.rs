@@ -42,7 +42,9 @@ pub use partial_response::PartialResponse;
 use crate::spec::{spec_ast, spec_authorizer};
 use crate::verus_utils::*;
 use vstd::pervasive::ForLoopGhostIteratorNew;
-use vstd::{prelude::*, std_specs::hash::*};
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+use vstd::std_specs::hash::*;
 
 verus! {
 

@@ -458,21 +458,18 @@ fn update_entity_map(
     Ok(())
 }
 
-// NOTE: commented out because of Verus bug https://github.com/verus-lang/verus/issues/1627
-// not required to compile/verify `cedar-policy-core`, but required to compile the other crates
-// uncomment when the issue is fixed!
-// impl IntoIterator for Entities {
-//     type Item = Entity;
+impl IntoIterator for Entities {
+    type Item = Entity;
 
-//     type IntoIter = std::iter::Map<
-//         std::collections::hash_map::IntoValues<EntityUID, Arc<Entity>>,
-//         fn(Arc<Entity>) -> Entity,
-//     >;
+    type IntoIter = std::iter::Map<
+        std::collections::hash_map::IntoValues<EntityUID, Arc<Entity>>,
+        fn(Arc<Entity>) -> Entity,
+    >;
 
-//     fn into_iter(self) -> Self::IntoIter {
-//         self.entities.into_values().map(Arc::unwrap_or_clone)
-//     }
-// }
+    fn into_iter(self) -> Self::IntoIter {
+        self.entities.into_values().map(Arc::unwrap_or_clone)
+    }
+}
 
 impl std::fmt::Display for Entities {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -223,6 +223,7 @@ pub struct Evaluator<'e> {
     unknowns_mapper: UnknownsMapper<'e>,
 }
 
+#[allow(missing_debug_implementations)]
 pub struct SpecEvaluator {
     pub request: spec_ast::Request,
     pub entities: spec_ast::Entities,
