@@ -382,7 +382,7 @@ impl BinaryOpContext {
                 completions.push(in_action_set_snippet(curr_char));
             }
             _ => {}
-        };
+        }
         completions
     }
 }

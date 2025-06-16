@@ -41,6 +41,30 @@ use crate::{
     },
 };
 
+pub(crate) enum CedarUrlKind {
+    Cedar,
+    Schema,
+    JsonSchema,
+    Entities,
+}
+
+impl CedarUrlKind {
+    #[allow(clippy::case_sensitive_file_extension_comparisons)]
+    pub(crate) fn url_kind(url: &Url) -> Option<Self> {
+        if url.path().ends_with(".cedar") {
+            Some(Self::Cedar)
+        } else if url.path().ends_with(".cedarschema") {
+            Some(Self::Schema)
+        } else if url.path().ends_with(".cedarschema.json") {
+            Some(Self::JsonSchema)
+        } else if url.path().ends_with(".cedarentities.json") {
+            Some(Self::Entities)
+        } else {
+            None
+        }
+    }
+}
+
 pub(crate) type Documents = Arc<DashMap<Url, Document>>;
 
 #[derive(Debug, Clone)]
@@ -52,30 +76,25 @@ pub(crate) enum Document {
 
 impl Document {
     pub(crate) fn try_from_state(state: DocumentState) -> Result<Self, anyhow::Error> {
-        let document = if state.url.path().ends_with(".cedar") {
-            Self::Policy(PolicyDocument {
+        match CedarUrlKind::url_kind(&state.url) {
+            Some(CedarUrlKind::Cedar) => Ok(Self::Policy(PolicyDocument {
                 state,
                 schema_url: None,
-            })
-        } else if state.url.path().ends_with(".cedarschema") {
-            Self::Schema(SchemaDocument {
+            })),
+            Some(CedarUrlKind::Schema) => Ok(Self::Schema(SchemaDocument {
                 state,
                 schema_type: SchemaType::CedarSchema,
-            })
-        } else if state.url.path().ends_with(".cedarschema.json") {
-            Self::Schema(SchemaDocument {
+            })),
+            Some(CedarUrlKind::JsonSchema) => Ok(Self::Schema(SchemaDocument {
                 state,
                 schema_type: SchemaType::Json,
-            })
-        } else if state.url.path().ends_with(".cedarentities.json") {
-            Self::Entities(EntitiesDocument {
+            })),
+            Some(CedarUrlKind::Entities) => Ok(Self::Entities(EntitiesDocument {
                 state,
                 schema_url: None,
-            })
-        } else {
-            return Err(anyhow::anyhow!("Unknown document type"));
-        };
-        Ok(document)
+            })),
+            None => Err(anyhow::anyhow!("Unknown document type")),
+        }
     }
 
     pub(crate) fn new(

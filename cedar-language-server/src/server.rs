@@ -17,7 +17,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::document::{Document, Documents};
+use crate::document::{CedarUrlKind, Document, Documents};
 use crate::policy::quickpick_list;
 use crate::schema::SchemaInfo;
 use dashmap::DashMap;
@@ -25,6 +25,7 @@ use ropey::Rope;
 use serde::Deserialize;
 use serde_json::Value;
 use tower_lsp::jsonrpc::{Error, Result};
+#[allow(clippy::wildcard_imports)]
 use tower_lsp::lsp_types::*;
 use tower_lsp::LanguageServer;
 use tracing::info;
@@ -65,7 +66,7 @@ pub trait Client: Clone + Send + Sync {
 #[tower_lsp::async_trait]
 impl Client for tower_lsp::Client {
     async fn log_message(&self, typ: MessageType, message: impl std::fmt::Display + Send) {
-        self.log_message(typ, message).await
+        self.log_message(typ, message).await;
     }
 
     async fn publish_diagnostics(
@@ -74,7 +75,7 @@ impl Client for tower_lsp::Client {
         diagnostics: Vec<Diagnostic>,
         version: Option<i32>,
     ) {
-        self.publish_diagnostics(uri, diagnostics, version).await
+        self.publish_diagnostics(uri, diagnostics, version).await;
     }
 
     async fn code_lens_refresh(&self) -> tower_lsp::jsonrpc::Result<()> {
@@ -127,54 +128,47 @@ impl<ClientT: Client> Backend<ClientT> {
 
     async fn associate_schema(&self, document_uri: Url, schema_uri: Option<Url>) {
         // If schema_uri is None, we're removing the association
-        match schema_uri {
-            Some(uri) => {
-                // Try to load the schema document if it's not already loaded
-                if self.documents.get(&uri).is_none() {
-                    match Document::new_url(&uri, 1, &self.documents) {
-                        Ok(document) => {
-                            self.documents.insert(uri.clone(), document);
-                        }
-                        Err(_) => {
-                            return;
-                        }
-                    }
-                }
-
-                info!("Associating schema! {}", uri);
-                self.client
-                    .log_message(
-                        MessageType::INFO,
-                        format!("Associated schema {} with document {}", uri, document_uri),
-                    )
-                    .await;
-
-                // Set the schema URL using our new method
-                if let Some(mut guard) = self.documents.get_mut(&document_uri) {
-                    guard.value_mut().set_schema_url(Some(uri));
-                    let document = guard.clone();
-                    drop(guard);
-                    self.send_diagnostics(&document).await;
-                }
+        if let Some(uri) = schema_uri {
+            // Try to load the schema document if it's not already loaded
+            if self.documents.get(&uri).is_none() {
+                let Ok(document) = Document::new_url(&uri, 1, &self.documents) else {
+                    return;
+                };
+                self.documents.insert(uri.clone(), document);
             }
-            None => {
-                // Remove schema association
-                info!("Removing schema association");
-                if let Some(mut guard) = self.documents.get_mut(&document_uri) {
-                    guard.value_mut().set_schema_url(None);
-                    let document = guard.clone();
-                    drop(guard);
-                    self.send_diagnostics(&document).await;
-                }
+
+            info!("Associating schema! {uri}");
+            self.client
+                .log_message(
+                    MessageType::INFO,
+                    format!("Associated schema {uri} with document {document_uri}"),
+                )
+                .await;
+
+            // Set the schema URL using our new method
+            if let Some(mut guard) = self.documents.get_mut(&document_uri) {
+                guard.value_mut().set_schema_url(Some(uri));
+                let document = guard.clone();
+                drop(guard);
+                self.send_diagnostics(&document).await;
+            }
+        } else {
+            // Remove schema association
+            info!("Removing schema association");
+            if let Some(mut guard) = self.documents.get_mut(&document_uri) {
+                guard.value_mut().set_schema_url(None);
+                let document = guard.clone();
+                drop(guard);
+                self.send_diagnostics(&document).await;
             }
         }
     }
 
-    async fn convert_schema_format(&self, schema_uri: Url) -> anyhow::Result<SchemaInfo> {
+    fn convert_schema_format(&self, schema_uri: &Url) -> anyhow::Result<SchemaInfo> {
         // Get the schema document
         let schema_document = self
             .documents
-            .get(&schema_uri)
+            .get(schema_uri)
             .ok_or_else(|| anyhow::anyhow!("Schema document not found"))?;
 
         if schema_document.as_schema().is_none() {
@@ -186,10 +180,12 @@ impl<ClientT: Client> Backend<ClientT> {
         drop(schema_document);
 
         // Determine the current schema type
-        let schema_info = if schema_uri.path().ends_with(".cedarschema") {
-            SchemaInfo::cedar_schema(schema_content)
-        } else {
-            SchemaInfo::json_schema(schema_content)
+        let schema_info = match CedarUrlKind::url_kind(schema_uri) {
+            Some(CedarUrlKind::Schema) => SchemaInfo::cedar_schema(schema_content),
+            Some(CedarUrlKind::JsonSchema) => SchemaInfo::json_schema(schema_content),
+            _ => {
+                return Err(anyhow::anyhow!("Unexpected schema document uri"));
+            }
         };
 
         // Convert the schema to the other format
@@ -395,7 +391,7 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
                 };
                 let doc = guard.clone();
                 drop(guard);
-                let _ = self.send_diagnostics(&doc).await;
+                let () = self.send_diagnostics(&doc).await;
             }
         }
 
@@ -462,22 +458,24 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
 
     async fn code_lens(&self, params: CodeLensParams) -> Result<Option<Vec<CodeLens>>> {
         let uri = params.text_document.uri;
-
         // Handle both policy and entity files
-        if uri.path().ends_with(".cedar") || uri.path().ends_with(".cedarentities.json") {
+        if matches!(
+            CedarUrlKind::url_kind(&uri),
+            Some(CedarUrlKind::Cedar | CedarUrlKind::Entities)
+        ) {
             if let Some(doc) = self.documents.get(&uri) {
                 let mut lenses = Vec::new();
                 let schema_url = doc.schema_url().cloned();
 
                 // Add code lenses at the top of the file to manage schema association
                 let schema_association_lens = match schema_url {
-                    Some(schema_uri) => CodeLens {
+                    Some(schema_url) => CodeLens {
                         range: Range {
                             start: Position::new(0, 0),
                             end: Position::new(0, 0),
                         },
                         command: Some(Command {
-                            title: format!("Schema: {} (click to change or remove)", schema_uri),
+                            title: format!("Schema: {schema_url} (click to change or remove)"),
                             command: "cedar.schemaOptions".to_string(),
                             arguments: Some(vec![serde_json::json!({
                                 "document_uri": uri.to_string()
@@ -508,6 +506,7 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
         Ok(None)
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn execute_command(&self, params: ExecuteCommandParams) -> Result<Option<Value>> {
         match params.command.as_str() {
             "cedar.associateSchema" => {
@@ -562,7 +561,7 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
                                 self.client
                                     .log_message(
                                         MessageType::ERROR,
-                                        format!("Failed to export policy to JSON: {}", err),
+                                        format!("Failed to export policy to JSON: {err}"),
                                     )
                                     .await;
                             }
@@ -589,7 +588,7 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
                                 self.client
                                     .log_message(
                                         MessageType::ERROR,
-                                        format!("Failed to get policy picks: {}", err),
+                                        format!("Failed to get policy picks: {err}"),
                                     )
                                     .await;
                             }
@@ -602,7 +601,7 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
                     if let Ok(convert_params) =
                         serde_json::from_value::<TransformSchemaFormatParams>(args.clone())
                     {
-                        match self.convert_schema_format(convert_params.schema_uri).await {
+                        match self.convert_schema_format(&convert_params.schema_uri) {
                             Ok(result) => {
                                 return Ok(Some(
                                     serde_json::to_value(result)
@@ -613,7 +612,7 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
                                 self.client
                                     .log_message(
                                         MessageType::ERROR,
-                                        format!("Failed to convert schema format: {}", err),
+                                        format!("Failed to convert schema format: {err}"),
                                     )
                                     .await;
                                 return Ok(None);

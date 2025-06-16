@@ -96,7 +96,6 @@ impl CedarSchemaParser {
         }
     }
 
-    #[allow(clippy::cast_possible_wrap)]
     pub(crate) fn parse_cedar_schema(&self, doc_text: &str) -> SchemaDefinitions {
         let mut ranges = Vec::new();
         let mut namespace = String::new();

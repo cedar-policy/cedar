@@ -50,7 +50,7 @@ pub(crate) trait ToDocumentationString {
 macro_rules! impl_documentation_from_markdown_file {
     ($i: ident, $f: literal) => {
         pub(crate) struct $i;
-        impl crate::documentation::ToDocumentationString for $i {
+        impl $crate::documentation::ToDocumentationString for $i {
             fn to_documentation_string(
                 &self,
                 _schema: Option<&cedar_policy_core::validator::ValidatorSchema>,

@@ -189,8 +189,7 @@ impl Display for CedarTypeKind {
                             "{}: {}",
                             name,
                             typ.cedar_type()
-                                .map(|ct| ct.to_string())
-                                .unwrap_or_else(|| typ.name().to_string())
+                                .map_or_else(|| typ.name().to_string(), |ct| ct.to_string())
                         )
                     })
                     .collect();

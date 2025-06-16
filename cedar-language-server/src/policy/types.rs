@@ -367,19 +367,19 @@ impl DocumentContext {
             let scope_info = self.get_scope_variable_info();
             match scope_info.variable_type {
                 PolicyScopeVariable::Principal => {
-                    if self.features.allow_templates {
-                        return vec![PrincipalCompletionItem::template(self).into()];
+                    return if self.features.allow_templates {
+                        vec![PrincipalCompletionItem::template(self).into()]
                     } else {
-                        return vec![];
+                        vec![]
                     }
                 }
                 PolicyScopeVariable::Action => return vec![],
                 PolicyScopeVariable::Resource => {
-                    if self.features.allow_templates {
-                        return vec![ResourceCompletionItem::template(self).into()];
+                    return if self.features.allow_templates {
+                        vec![ResourceCompletionItem::template(self).into()]
                     } else {
-                        return vec![];
-                    }
+                        vec![]
+                    };
                 }
                 PolicyScopeVariable::None => {}
             }

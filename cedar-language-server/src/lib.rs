@@ -14,7 +14,13 @@
  * limitations under the License.
  */
 
-#![allow(clippy::cast_possible_truncation)]
+#![warn(clippy::pedantic)]
+#![allow(
+    clippy::missing_errors_doc,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap
+)]
 #![cfg_attr(not(feature = "bin"), allow(dead_code, unused_imports))]
 
 #[cfg(feature = "bin")]

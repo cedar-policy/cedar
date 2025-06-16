@@ -104,24 +104,27 @@ pub(crate) fn should_show_policy_snippets(text: &str, cursor_position: Position)
 }
 
 /// Gets all text before the cursor position
-#[allow(clippy::comparison_chain)]
 fn get_text_before_cursor(text: &str, cursor_position: Position) -> String {
     let lines: Vec<&str> = text.split('\n').collect();
     let mut result = String::new();
 
     for (i, line) in lines.iter().enumerate() {
-        if i < cursor_position.line as usize {
-            result.push_str(line);
-            result.push('\n');
-        } else if i == cursor_position.line as usize {
-            if cursor_position.character as usize <= line.len() {
-                result.push_str(&line[..cursor_position.character as usize]);
-            } else {
+        match i.cmp(&(cursor_position.line as usize)) {
+            std::cmp::Ordering::Less => {
                 result.push_str(line);
+                result.push('\n');
             }
-            break;
-        } else {
-            break;
+            std::cmp::Ordering::Equal => {
+                if cursor_position.character as usize <= line.len() {
+                    result.push_str(&line[..cursor_position.character as usize]);
+                } else {
+                    result.push_str(line);
+                }
+                break;
+            }
+            std::cmp::Ordering::Greater => {
+                break;
+            }
         }
     }
 
@@ -129,7 +132,6 @@ fn get_text_before_cursor(text: &str, cursor_position: Position) -> String {
 }
 
 /// Checks if there are unclosed policy elements in the text
-#[allow(clippy::if_same_then_else)]
 fn has_unclosed_policy_elements(text: &str) -> bool {
     // Look for permit or forbid followed by unclosed parentheses
     let mut parens_count = 0;

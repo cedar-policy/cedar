@@ -125,12 +125,12 @@ fn format_actions(actions: &[EntityUID]) -> String {
 }
 
 fn format_action_list(builder: &mut MarkdownBuilder, actions: &[EntityUID]) {
+    const MAX_ACTIONS_TO_SHOW: usize = 10;
     if actions.is_empty() {
         builder.paragraph("*No actions specified*");
         return;
     }
 
-    const MAX_ACTIONS_TO_SHOW: usize = 10;
     let (shown_actions, remaining) = match actions.get(..MAX_ACTIONS_TO_SHOW) {
         Some(shown_actions) => (shown_actions, actions.len() - MAX_ACTIONS_TO_SHOW),
         None => (actions, 0),

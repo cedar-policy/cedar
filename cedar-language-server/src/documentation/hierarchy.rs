@@ -37,7 +37,7 @@ impl ToDocumentationString for SetDocumentation {
     fn to_documentation_string(&self, _schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
         let content = include_str!("markdown/hierarchy/set.md");
         match &self.0 {
-            Some(elem_type) => content.replace("?", elem_type).into(),
+            Some(elem_type) => content.replace('?', elem_type).into(),
             None => content.into(),
         }
     }
