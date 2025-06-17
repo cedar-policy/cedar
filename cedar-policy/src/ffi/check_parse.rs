@@ -147,8 +147,8 @@ pub fn check_parse_scope_variables(call: ScopeVariablesParsingCall) -> CheckPars
 ///
 /// # Errors
 ///
-/// Will return `Err` if the input JSON cannot be deserialized as a
-/// [`Entities`].
+/// Will return `Err` if the input JSON cannot be deserialized as
+/// scope variables.
 pub fn check_parse_scope_variables_json(
     json: serde_json::Value,
 ) -> Result<serde_json::Value, serde_json::Error> {

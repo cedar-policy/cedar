@@ -856,7 +856,6 @@ pub fn validate_scope_variables(
     resource: &EntityUid,
     schema: &Schema,
 ) -> std::result::Result<(), RequestValidationError> {
-    // Call the validate_context function from coreschema.rs
     Ok(RequestSchema::validate_scope_variables(
         &schema.0,
         Some(&principal.0),
