@@ -209,7 +209,7 @@ impl ast::RequestSchema for ValidatorSchema {
         })?;
 
         // Validate entity UIDs in the context
-        validate_euids_in_partial_value(&CoreSchema::new(&self), &context.clone().into()).map_err(
+        validate_euids_in_partial_value(&CoreSchema::new(self), &context.clone().into()).map_err(
             |e| match e {
                 ValidateEuidError::InvalidEnumEntity(e) => {
                     RequestValidationError::InvalidEnumEntity(e)
@@ -349,7 +349,7 @@ impl ast::RequestSchema for CoreSchema<'_> {
         self.schema.validate_context(context, action, extensions)
     }
 
-    /// Validate the scope_variables, returning `Err` if it fails validation
+    /// Validate the scope variables, returning `Err` if it fails validation
     fn validate_scope_variables(
         &self,
         principal: &EntityUID,
