@@ -176,6 +176,7 @@ impl ast::RequestSchema for ValidatorSchema {
         request: &ast::Request,
         extensions: &Extensions<'_>,
     ) -> std::result::Result<(), Self::Error> {
+
         let a_uid = request.action().uid(); //used twice so only call once
 
         // Only validate entities if principal, action, and resource UIDs are all available
@@ -191,6 +192,7 @@ impl ast::RequestSchema for ValidatorSchema {
         }
         Ok(())
     }
+
     /// Validate a context against a schema for a specific action
     fn validate_context<'a>(
         &self,
@@ -198,12 +200,10 @@ impl ast::RequestSchema for ValidatorSchema {
         action: &ast::EntityUID,
         extensions: &Extensions<'a>,
     ) -> std::result::Result<(), RequestValidationError> {
-        // Following the same logic in validate_request
         // Get the action ID
-        let action_arc = Arc::new(action.clone());
-        let validator_action_id = self.get_action_id(&action_arc).ok_or_else(|| {
+        let validator_action_id = self.get_action_id(action).ok_or_else(|| {
             request_validation_errors::UndeclaredActionError {
-                action: action_arc.clone(),
+                action: Arc::new(action.clone()),
             }
         })?;
 
@@ -230,7 +230,7 @@ impl ast::RequestSchema for ValidatorSchema {
         {
             return Err(request_validation_errors::InvalidContextError {
                 context: context.clone(),
-                action: action_arc,
+                action: Arc::new(action.clone()),
             }
             .into());
         }
@@ -347,7 +347,7 @@ impl ast::RequestSchema for CoreSchema<'_> {
     ) -> std::result::Result<(), Self::Error> {
         self.schema.validate_context(context, action, extensions)
     }
-
+  
     /// Validate the scope_variables, returning `Err` if it fails validation
     fn validate_scope_variables(
         &self,
