@@ -94,7 +94,6 @@ pub fn check_parse_schema_json_str(json: &str) -> Result<String, serde_json::Err
 
 /// Check whether a set of scope variables successfully parses.
 pub fn check_parse_scope_variables(call: ScopeVariablesParsingCall) -> CheckParseAnswer {
-    //move this to other top level function instead, use new parsingcall struct that you make
     let schema_ref = match call.schema.parse() {
         Ok((schema, _)) => schema,
         Err(err) => {
@@ -137,9 +136,9 @@ pub fn check_parse_scope_variables(call: ScopeVariablesParsingCall) -> CheckPars
         return CheckParseAnswer::Failure {
             errors: vec![miette::Report::msg(err).into()],
         };
+    } else {
+        return CheckParseAnswer::Success;
     }
-
-    CheckParseAnswer::Success
 }
 
 /// Check whether a set of scope variables successfully parses. Input is a JSON
@@ -317,13 +316,13 @@ pub struct EntitiesParsingCall {
 /// Struct containing the input data for [`check_scope_variables()`]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ScopeVariablesParsingCall {
-    /// Optional Principal entity for schema-based validation
+    /// Principal entity for schema-based validation
     principal: EntityUid,
-    /// Optional Action entity for schema-based validation
+    /// Action entity for schema-based validation
     action: EntityUid,
-    /// Optional Resource entity for schema-based validation
+    /// Resource entity for schema-based validation
     resource: EntityUid,
-    /// Optional Schema for schema-based validation
+    /// Schema for schema-based validation
     schema: Schema,
 }
 

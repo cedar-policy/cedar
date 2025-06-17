@@ -856,15 +856,12 @@ pub fn validate_scope_variables(
     resource: &EntityUid,
     schema: &Schema,
 ) -> std::result::Result<(), RequestValidationError> {
-    let principal_uid = &principal.0; //EntityUID::from(principal.clone());
-    let action_uid = &action.0; //EntityUID::from(action.clone());
-    let resource_uid = &resource.0; //EntityUID::from(resource.clone());
-                                    // Call the validate_context function from coreschema.rs
+    // Call the validate_context function from coreschema.rs
     Ok(RequestSchema::validate_scope_variables(
         &schema.0,
-        principal_uid,
-        action_uid,
-        resource_uid,
+        &principal.0,
+        &action.0,
+        &resource.0,
     )?)
 }
 
