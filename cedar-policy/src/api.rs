@@ -859,9 +859,9 @@ pub fn validate_scope_variables(
     // Call the validate_context function from coreschema.rs
     Ok(RequestSchema::validate_scope_variables(
         &schema.0,
-        &principal.0,
-        &action.0,
-        &resource.0,
+        Some(&principal.0),
+        Some(&action.0),
+        Some(&resource.0),
     )?)
 }
 

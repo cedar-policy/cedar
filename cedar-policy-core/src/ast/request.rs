@@ -624,9 +624,9 @@ pub trait RequestSchema {
     /// Validate the scope variables, returning `Err` if it fails validation
     fn validate_scope_variables(
         &self,
-        principal: &EntityUID,
-        action: &EntityUID,
-        resource: &EntityUID,
+        principal: Option<&EntityUID>,
+        action: Option<&EntityUID>,
+        resource: Option<&EntityUID>,
     ) -> std::result::Result<(), Self::Error>;
 }
 
@@ -654,9 +654,9 @@ impl RequestSchema for RequestSchemaAllPass {
 
     fn validate_scope_variables(
         &self,
-        _principal: &EntityUID,
-        _action: &EntityUID,
-        _resource: &EntityUID,
+        _principal: Option<&EntityUID>,
+        _action: Option<&EntityUID>,
+        _resource: Option<&EntityUID>,
     ) -> std::result::Result<(), Self::Error> {
         Ok(())
     }

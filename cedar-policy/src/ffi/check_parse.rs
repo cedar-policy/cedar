@@ -133,11 +133,11 @@ pub fn check_parse_scope_variables(call: ScopeVariablesParsingCall) -> CheckPars
     if let Err(err) =
         crate::api::validate_scope_variables(&principal, &action, &resource, &schema_ref)
     {
-        return CheckParseAnswer::Failure {
+        CheckParseAnswer::Failure {
             errors: vec![miette::Report::msg(err).into()],
-        };
+        }
     } else {
-        return CheckParseAnswer::Success;
+        CheckParseAnswer::Success
     }
 }
 
