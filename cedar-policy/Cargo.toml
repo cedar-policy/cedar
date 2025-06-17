@@ -25,7 +25,7 @@ smol_str = { version = "0.3", features = ["serde"] }
 dhat = { version = "0.3.2", optional = true }
 serde_with = "3.13.0"
 nonempty = "0.10"
-prost = { version = "0.14", optional = true }
+prost = { version = "0.13", optional = true }
 
 # wasm dependencies
 serde-wasm-bindgen = { version = "0.6", optional = true }
@@ -35,7 +35,7 @@ semver = "1.0.26"
 lazy_static = "1.5.0"
 
 [build-dependencies]
-prost-build = { version = "0.14", optional = true }
+prost-build = { version = "0.13", optional = true }
 
 [features]
 # by default, enable all Cedar extensions, but not other crate features
