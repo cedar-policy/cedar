@@ -1318,13 +1318,13 @@ fn visualize_entities_parses_as_dot(
     "sample-data/tiny_sandboxes/sample1/policy.cedar",
     "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
     "sample-data/tiny_sandboxes/sample1/tests-missing-reason.json",
-    CedarExitCode::Success
+    CedarExitCode::Failure
 )]
 #[case(
     "sample-data/tiny_sandboxes/sample1/policy.cedar",
     "sample-data/tiny_sandboxes/sample1/schema.cedarschema.json",
     "sample-data/tiny_sandboxes/sample1/tests-unexpected-error.json",
-    CedarExitCode::Success
+    CedarExitCode::Failure
 )]
 #[case(
     "sample-data/tiny_sandboxes/sample1/policy.cedar",
@@ -1396,29 +1396,20 @@ fn visualize_entities_parses_as_dot(
     "sample-data/tiny_sandboxes/sample10/policy.cedar",
     "sample-data/tiny_sandboxes/sample10/schema.cedarschema",
     "sample-data/tiny_sandboxes/sample10/tests-error.json",
-    CedarExitCode::Success
+    CedarExitCode::Failure
 )]
 #[track_caller]
 fn test_run_tests_samples(
     #[case] policies_file: impl Into<String>,
-    #[case] schema_file: impl AsRef<Path>,
+    #[case] _schema_file: impl AsRef<Path>,
     #[case] test_file: impl Into<String>,
     #[case] exit_code: CedarExitCode,
 ) {
     let policies_file = policies_file.into();
-    let schema_file = schema_file.as_ref();
     let test_file = test_file.into();
 
     // Run with JSON schema
     let cmd = RunTestsArgs {
-        schema: SchemaArgs {
-            schema_file: schema_file.into(),
-            schema_format: if schema_file.display().to_string().ends_with(".json") {
-                SchemaFormat::Json
-            } else {
-                SchemaFormat::Cedar
-            },
-        },
         policies: PoliciesArgs {
             policies_file: Some(policies_file.clone()),
             policy_format: PolicyFormat::Cedar,

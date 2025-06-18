@@ -23,7 +23,7 @@ use cedar_policy::entities_errors::EntitiesError;
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 use miette::{miette, Diagnostic, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
 use owo_colors::OwoColorize;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeSet;
 use std::io::{BufReader, Write};
 use std::{
@@ -636,9 +636,6 @@ pub struct PartiallyAuthorizeArgs;
 
 #[derive(Args, Debug)]
 pub struct RunTestsArgs {
-    /// Schema args (incorporated by reference)
-    #[command(flatten)]
-    pub schema: SchemaArgs,
     /// Policies args (incorporated by reference)
     #[command(flatten)]
     pub policies: PoliciesArgs,
@@ -1472,17 +1469,16 @@ pub fn partial_authorize(args: &PartiallyAuthorizeArgs) -> CedarExitCode {
     }
 }
 
+#[derive(Clone, Debug)]
 enum TestResult {
     Pass,
-    Warning,
-    Fail,
+    Fail(String),
 }
 
 /// Compare the test's expected decision against the actual decision
 fn compare_test_decisions(test: &TestCase, ans: &Response) -> TestResult {
-    if ans.decision() == test.expected {
-        // Check for warnings
-        let mut warnings = Vec::new();
+    if ans.decision() == test.decision.into() {
+        let mut errors = Vec::new();
         let reason = ans.diagnostics().reason().collect::<BTreeSet<_>>();
 
         // Check that the declared reason is a subset of the actual reason
@@ -1493,7 +1489,7 @@ fn compare_test_decisions(test: &TestCase, ans: &Response) -> TestResult {
             .collect::<Vec<_>>();
 
         if !missing_reason.is_empty() {
-            warnings.push(format!(
+            errors.push(format!(
                 "missing reason(s): {}",
                 missing_reason
                     .into_iter()
@@ -1506,7 +1502,7 @@ fn compare_test_decisions(test: &TestCase, ans: &Response) -> TestResult {
         // Check that evaluation errors are expected
         let has_error = ans.diagnostics().errors().next().is_some();
         if has_error && !test.has_error {
-            warnings.push(format!(
+            errors.push(format!(
                 "unexpected runtime error(s): {}",
                 ans.diagnostics()
                     .errors()
@@ -1515,91 +1511,89 @@ fn compare_test_decisions(test: &TestCase, ans: &Response) -> TestResult {
                     .join(", ")
             ));
         } else if !has_error && test.has_error {
-            warnings.push("expected error(s) but none were found".to_string());
+            errors.push("expected error(s) but none were found".to_string());
         }
 
-        if warnings.is_empty() {
-            println!("{}", "ok".green());
+        if errors.is_empty() {
             TestResult::Pass
         } else {
-            println!("{}: {}", "warning(s)".yellow(), warnings.join("; "));
-            TestResult::Warning
+            TestResult::Fail(errors.join("; "))
         }
     } else {
-        println!(
-            "{}: expected {:?}, got {:?}",
-            "fail".red(),
-            test.expected,
+        TestResult::Fail(format!(
+            "expected {:?}, got {:?}",
+            test.decision,
             ans.decision()
-        );
-        TestResult::Fail
+        ))
     }
 }
 
 /// Parse the test, validate against schema,
 /// and then check the authorization decision
-fn run_one_test(
-    policies: &PolicySet,
-    schema: Option<&Schema>,
-    test: &serde_json::Value,
-) -> TestResult {
-    if let Some(name) = test["name"].as_str() {
-        print!("  test {} ... ", name);
-    } else {
-        print!("  test (unamed) ... ");
-    }
-
-    let test = match TestCase::from_json_value(test.clone(), schema).into_diagnostic() {
-        Ok(test) => test,
-        Err(e) => {
-            println!("{}:", "error".red());
-            println!("{e:?}");
-            return TestResult::Fail;
-        }
-    };
-
+fn run_one_test(policies: &PolicySet, test: &serde_json::Value) -> Result<TestResult> {
+    let test = TestCase::deserialize(test.clone()).into_diagnostic()?;
     let ans = Authorizer::new().is_authorized(&test.request, &policies, &test.entities);
-
-    compare_test_decisions(&test, &ans)
+    Ok(compare_test_decisions(&test, &ans))
 }
 
 fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
     let policies = args.policies.get_policy_set()?;
-
-    let schema = args.schema.get_schema()?;
     let tests = load_partial_tests(&args.tests)?;
 
     let mut total_fails: usize = 0;
-    let mut total_warnings: usize = 0;
 
     println!("running {} test(s)", tests.len());
     for test in tests.iter() {
-        match run_one_test(&policies, Some(&schema), test) {
-            TestResult::Pass => {}
-            TestResult::Warning => total_warnings += 1,
-            TestResult::Fail => total_fails += 1,
+        if let Some(name) = test["name"].as_str() {
+            print!("  test {} ... ", name);
+        } else {
+            print!("  test (unamed) ... ");
+        }
+        std::io::stdout().flush().into_diagnostic()?;
+
+        match run_one_test(&policies, test) {
+            Ok(TestResult::Pass) => {
+                println!(
+                    "{}",
+                    "ok".if_supports_color(owo_colors::Stream::Stdout, |s| s.green())
+                );
+            }
+            Ok(TestResult::Fail(reason)) => {
+                total_fails += 1;
+                println!(
+                    "{}: {}",
+                    "fail".if_supports_color(owo_colors::Stream::Stdout, |s| s.red()),
+                    reason
+                );
+            }
+            Err(e) => {
+                total_fails += 1;
+                println!(
+                    "{}:\n  {:?}",
+                    "error".if_supports_color(owo_colors::Stream::Stdout, |s| s.red()),
+                    e
+                );
+            }
         }
     }
 
     println!(
-        "results: {} {}, {} {}, {} {}",
-        tests.len() - total_fails - total_warnings,
-        if total_fails == 0 && total_warnings == 0 {
-            "passed".green().to_string()
+        "results: {} {}, {} {}",
+        tests.len() - total_fails,
+        if total_fails == 0 {
+            "passed"
+                .if_supports_color(owo_colors::Stream::Stdout, |s| s.green())
+                .to_string()
         } else {
             "passed".to_string()
         },
         total_fails,
         if total_fails != 0 {
-            "failed".red().to_string()
+            "failed"
+                .if_supports_color(owo_colors::Stream::Stdout, |s| s.red())
+                .to_string()
         } else {
             "failed".to_string()
-        },
-        total_warnings,
-        if total_warnings != 0 {
-            "warning(s)".yellow().to_string()
-        } else {
-            "warning(s)".to_string()
         },
     );
 
@@ -1620,13 +1614,78 @@ pub fn run_tests(args: &RunTestsArgs) -> CedarExitCode {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Copy, Clone, Debug, Deserialize)]
+enum ExpectedDecision {
+    #[serde(rename = "allow")]
+    Allow,
+    #[serde(rename = "deny")]
+    Deny,
+}
+
+impl From<ExpectedDecision> for Decision {
+    fn from(value: ExpectedDecision) -> Self {
+        match value {
+            ExpectedDecision::Allow => Decision::Allow,
+            ExpectedDecision::Deny => Decision::Deny,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
 struct TestCase {
+    #[serde(deserialize_with = "deserialize_request")]
     request: Request,
+    #[serde(deserialize_with = "deserialize_entities")]
     entities: Entities,
-    expected: Decision,
+    decision: ExpectedDecision,
     reason: Vec<String>,
     has_error: bool,
+}
+
+/// Helper function to deserialize a `Request` from JSON (without schema)
+fn deserialize_request<'de, D>(data: D) -> Result<Request, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let qjson = RequestJSON::deserialize(data)?;
+
+    let principal = qjson.principal.parse().map_err(|e| {
+        serde::de::Error::custom(format!(
+            "failed to parse principal `{}`: {}",
+            qjson.principal, e
+        ))
+    })?;
+
+    let action = qjson.action.parse().map_err(|e| {
+        serde::de::Error::custom(format!("failed to parse action `{}`: {}", qjson.action, e))
+    })?;
+
+    let resource = qjson.resource.parse().map_err(|e| {
+        serde::de::Error::custom(format!(
+            "failed to parse resource `{}`: {}",
+            qjson.resource, e
+        ))
+    })?;
+
+    let context = Context::from_json_value(qjson.context.clone(), None).map_err(|e| {
+        serde::de::Error::custom(format!(
+            "failed to parse context `{}`: {}",
+            qjson.context, e
+        ))
+    })?;
+
+    Request::new(principal, action, resource, context, None)
+        .map_err(|e| serde::de::Error::custom(format!("failed to create request: {}", e)))
+}
+
+/// Helper function to deserialize an `Entities` from JSON (without schema)
+fn deserialize_entities<'de, D>(data: D) -> Result<Entities, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(data)?;
+    Entities::from_json_value(value, None)
+        .map_err(|e| serde::de::Error::custom(format!("failed to parse entities: {}", e)))
 }
 
 #[derive(Error, Diagnostic, Debug)]
@@ -1637,78 +1696,10 @@ enum TestCaseError {
     EntityUidParseError(#[from] ParseErrors),
     #[error("error when parsing context JSON")]
     ContextJsonError(#[from] ContextJsonError),
-    #[error("error when parsing expected decision")]
-    DecisionParseError(serde_json::Value),
     #[error("error when validating request against schema")]
     RequestValidationError(#[from] RequestValidationError),
     #[error("error when parsing entities")]
     EntitiesError(#[from] EntitiesError),
-    #[error("missing field `{0}`")]
-    MissingField(String),
-}
-
-impl TestCase {
-    /// Parse a `TestCase` from a JSON value.
-    fn from_json_value(
-        json: serde_json::Value,
-        schema: Option<&Schema>,
-    ) -> Result<Self, TestCaseError> {
-        let qjson: RequestJSON = serde_json::from_value(
-            json.get("request")
-                .ok_or(TestCaseError::MissingField("request".to_string()))?
-                .clone(),
-        )?;
-
-        let principal = qjson.principal.parse()?;
-        let action = qjson.action.parse()?;
-        let resource = qjson.resource.parse()?;
-        let context = Context::from_json_value(qjson.context, schema.map(|s| (s, &action)))?;
-
-        let request = Request::new(principal, action, resource, context, schema)?;
-
-        let entities = Entities::from_json_value(
-            json.get("entities")
-                .ok_or(TestCaseError::MissingField("entities".to_string()))?
-                .clone(),
-            schema,
-        )?;
-
-        let decision = json
-            .get("decision")
-            .ok_or(TestCaseError::MissingField("decision".to_string()))?
-            .clone();
-        let expected = match decision.as_str() {
-            Some("allow") => Decision::Allow,
-            Some("deny") => Decision::Deny,
-            _ => return Err(TestCaseError::DecisionParseError(decision.clone())),
-        };
-
-        let mut reason = Vec::new();
-
-        if let Some(reason_json) = json
-            .get("reason")
-            .ok_or(TestCaseError::MissingField("reason".to_string()))?
-            .as_array()
-        {
-            reason.extend(
-                reason_json
-                    .iter()
-                    .filter_map(|r| Some(r.as_str()?.to_string())),
-            );
-        }
-
-        Ok(Self {
-            request,
-            entities,
-            expected,
-            reason,
-            has_error: json
-                .get("has_error")
-                .ok_or(TestCaseError::MissingField("has_error".to_string()))?
-                .as_bool()
-                .unwrap_or(false),
-        })
-    }
 }
 
 /// Load partially parsed tests from a JSON file
