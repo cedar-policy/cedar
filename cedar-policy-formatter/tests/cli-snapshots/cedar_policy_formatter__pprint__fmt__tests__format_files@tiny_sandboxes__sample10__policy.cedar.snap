@@ -1,3 +1,9 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+assertion_line: 270
+expression: formatted
+input_file: cedar-policy-cli/sample-data/tiny_sandboxes/sample10/policy.cedar
+---
 @id("too-hungry")
 permit (
   principal,
