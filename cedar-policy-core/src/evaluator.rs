@@ -417,8 +417,7 @@ impl<'e> Evaluator<'e> {
 
     verus! {
 
-    /// Duplicate of `evaluate()` but throwing away the error type since Verus currently cannot
-    /// handle it.
+    /// Duplicate of `evaluate()` with a Verus spec.
     /// Evaluate the given `Policy`, returning either a bool or an error.
     /// The bool indicates whether the policy applies, ie, "is satisfied" for the
     /// current `request`.
@@ -432,7 +431,6 @@ impl<'e> Evaluator<'e> {
                 &&& spec_evaluator::evaluate(p@.to_expr(), self@.request, self@.entities) matches Ok(v)
                 &&& v is Prim &&& v->p is Bool &&& v->p->b == res_b
             }
-            // TODO: more precise spec for errors when errors are supported in exec
             &&& res is Err ==> {
                 &&& spec_evaluator::evaluate(p@.to_expr(), self@.request, self@.entities) is Err
             }

@@ -45,7 +45,7 @@ pub open spec fn satisfied_with_effect(effect: Effect, policy: Policy, req: Requ
 
 #[verifier::opaque]
 pub open spec fn satisfied_policies(effect: Effect, policies: Policies, req: Request, entities: Entities) -> Set<PolicyID> {
-    seq_filter_map_option(policies, |p: Policy| satisfied_with_effect(effect, p, req, entities)).to_set()
+    policies.filter_map(|p: Policy| satisfied_with_effect(effect, p, req, entities)).to_set()
 }
 
 #[verifier::opaque]
@@ -67,7 +67,7 @@ pub open spec fn errored(policy: Policy, req: Request, entities: Entities) -> Op
 
 #[verifier::opaque]
 pub open spec fn error_policies(policies: Policies, req: Request, entities: Entities) -> Set<PolicyID> {
-    seq_filter_map_option(policies, |p: Policy| errored(p, req, entities)).to_set()
+    policies.filter_map(|p: Policy| errored(p, req, entities)).to_set()
 }
 
 #[verifier::opaque]
@@ -141,7 +141,7 @@ pub proof fn lemma_satisfied_policies_from_set(effect: Effect, policy_set: Set<P
 {
     reveal(satisfied_policies);
     reveal(satisfied_policies_from_set);
-    lemma_set_seq_filter_map_option(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities))
+    lemma_set_seq_filter_map(policy_set, |p: Policy| satisfied_with_effect(effect, p, req, entities))
 }
 
 pub proof fn lemma_error_policies_from_set(policy_set: Set<Policy>, req: Request, entities: Entities)
@@ -150,7 +150,7 @@ pub proof fn lemma_error_policies_from_set(policy_set: Set<Policy>, req: Request
 {
     reveal(error_policies);
     reveal(error_policies_from_set);
-    lemma_set_seq_filter_map_option(policy_set, |p: Policy| errored(p, req, entities))
+    lemma_set_seq_filter_map(policy_set, |p: Policy| errored(p, req, entities))
 }
 
 pub proof fn lemma_is_authorized_from_set(req: Request, entities: Entities, policy_set: Set<Policy>)

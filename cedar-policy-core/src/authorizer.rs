@@ -373,7 +373,7 @@ impl Authorizer {
 
                 // Establish that determining_policies is correct
                 // (need to commute `.map(...).to_set()` from loop invariant to `.to_set().map(f)` from spec of `Response::new_no_errors`)
-                lemma_seq_to_set_commutes_with_map(satisfied_permits@, |p:PolicyID| p@);
+                satisfied_permits@.lemma_to_set_map_commutes(|p:PolicyID| p@);
             }
             Response::new(
                 Decision::Allow,
@@ -394,7 +394,8 @@ impl Authorizer {
 
                 // Establish that determining_policies is correct
                 // (need to commute `.map(...).to_set()` from loop invariant to `.to_set().map(f)` from spec of `Response::new_no_errors`)
-                lemma_seq_to_set_commutes_with_map(satisfied_forbids@, |p:PolicyID| p@);
+                // lemma_seq_to_set_commutes_with_map(satisfied_forbids@, |p:PolicyID| p@);
+                satisfied_forbids@.lemma_to_set_map_commutes(|p:PolicyID| p@);
             }
             Response::new(
                 Decision::Deny,

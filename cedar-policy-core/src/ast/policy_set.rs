@@ -25,7 +25,6 @@ use std::{borrow::Borrow, sync::Arc};
 use thiserror::Error;
 
 use crate::spec::*;
-use crate::verus_utils::*;
 
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
@@ -621,7 +620,8 @@ impl PolicySet {
                 assert(policies_seq.to_set().map(|p:Policy| p.view()).contains(p@));
                 assert(self.view().contains(p@));
             };
-            lemma_seq_to_set_commutes_with_map(policies_seq, |p: Policy| p.view())
+            policies_seq.lemma_to_set_map_commutes(|p:Policy| p.view());
+            // lemma_seq_to_set_commutes_with_map(policies_seq, |p: Policy| p.view())
             // assert forall |p: Policy| #[trigger] self.view().contains(p@) implies #[trigger] policies_seq.contains(p) by {
             //     assert(policies_seq.to_set().map(|p:Policy| p.view()).contains(p@));
             //     assert(policies_seq.to_set().contains(p));

@@ -161,14 +161,12 @@ pub fn vec_is_empty<T>(v: &Vec<T>) -> (res: bool)
 //         res <==> v@.len() == 0,
 // ;
 
-// Analogous to Lean's `List.filterMap` (https://lean-lang.org/doc/reference/latest//Basic-Types/Linked-Lists/#List___filterMap)
-pub open spec fn seq_filter_map_option<A, B>(s: Seq<A>, f: spec_fn(A) -> Option<B>) -> Seq<B> {
+pub open spec fn seq_filter_map_aux<A, B>(s: Seq<A>, f: spec_fn(A) -> Option<B>) -> Seq<B> {
     s.map_values(f)
      .filter(|x: Option<B>| x is Some)
      .map_values(|x: Option<B>| x.unwrap())
 }
 
-// Like `seq_filter_map_option` but operating on Sets instead
 pub open spec fn set_filter_map_aux<A, B>(s: Set<A>, f: spec_fn(A) -> Option<B>) -> Set<B> {
     s.map(f)
      .filter(|x: Option<B>| x is Some)
@@ -230,6 +228,49 @@ pub proof fn lemma_set_filter_map_aux_equiv<A,B>(st: Set<A>, f: spec_fn(A) -> Op
     }
 }
 
+pub proof fn lemma_seq_filter_map_aux_equiv<A,B>(sq: Seq<A>, f: spec_fn(A) -> Option<B>)
+    ensures
+        sq.map_values(f).filter(|x: Option<B>| x is Some).map_values(|x: Option<B>| x.unwrap()) == sq.filter_map(f)
+    decreases sq.len()
+{
+    if sq.len() == 0 {
+        assert(sq.filter_map(f) =~= Seq::empty());
+        assert(sq.map_values(f).filter(|x: Option<B>| x is Some).map_values(|x: Option<B>| x.unwrap()) =~= Seq::empty());
+    } else {
+        reveal_with_fuel(Seq::filter_map, 2);
+        let rest = sq.drop_last();
+        let last = sq.last();
+        assert(sq == rest.push(last));
+        lemma_seq_filter_map_aux_equiv(rest, f);
+        match f(last) {
+            Some(res) => {
+                assert(sq.filter_map(f) == rest.filter_map(f).push(res));
+                assert(sq.filter_map(f) == rest.map_values(f).filter(|x: Option<B>| x is Some).map_values(|x: Option<B>| x.unwrap()).push(res));
+                calc! { (==)
+                    rest.push(last).map_values(f).filter(|x: Option<B>| x is Some).map_values(|x: Option<B>| x.unwrap());
+                        {lemma_seq_map_values_append(rest, f, last)}
+                    rest.map_values(f).push(f(last)).filter(|x: Option<B>| x is Some).map_values(|x: Option<B>| x.unwrap());
+                        {lemma_seq_filter_values_append_true(rest.map_values(f), |x: Option<B>| x is Some, f(last))}
+                    rest.map_values(f).filter(|x: Option<B>| x is Some).push(f(last)).map_values(|x: Option<B>| x.unwrap());
+                        {lemma_seq_map_values_append(rest.map_values(f).filter(|x: Option<B>| x is Some), |x: Option<B>| x.unwrap(), f(last))}
+                    rest.map_values(f).filter(|x: Option<B>| x is Some).map_values(|x: Option<B>| x.unwrap()).push(res);
+                }
+            },
+            None => {
+                assert(sq.filter_map(f) == rest.filter_map(f));
+                assert(sq.filter_map(f) == rest.map_values(f).filter(|x: Option<B>| x is Some).map_values(|x: Option<B>| x.unwrap()));
+                calc! { (==)
+                    rest.push(last).map_values(f).filter(|x: Option<B>| x is Some).map_values(|x: Option<B>| x.unwrap());
+                        {lemma_seq_map_values_append(rest, f, last)}
+                    rest.map_values(f).push(f(last)).filter(|x: Option<B>| x is Some).map_values(|x: Option<B>| x.unwrap());
+                        { lemma_seq_filter_values_append_false(rest.map_values(f), |x: Option<B>| x is Some, f(last)); }
+                    rest.map_values(f).filter(|x: Option<B>| x is Some).map_values(|x: Option<B>| x.unwrap());
+                }
+            },
+        }
+    }
+}
+
 pub proof fn lemma_set_filter_insert_true<A>(s: Set<A>, f: spec_fn(A) -> bool, a: A)
     requires
         f(a),
@@ -267,41 +308,43 @@ pub proof fn lemma_set_map_insert<A,B>(s: Set<A>, f: spec_fn(A) -> B, a: A)
 }
 
 
-pub proof fn lemma_set_seq_filter_map_option<A, B>(st: Set<A>, f: spec_fn(A) -> Option<B>)
+pub proof fn lemma_set_seq_filter_map<A, B>(st: Set<A>, f: spec_fn(A) -> Option<B>)
     requires
         st.finite(),
     ensures
-        st.filter_map(f) == seq_filter_map_option(st.to_seq(), f).to_set(),
+        st.filter_map(f) == st.to_seq().filter_map(f).to_set(),
     decreases st.len(),
 {
     let sq = st.to_seq();
     assert(st == sq.to_set()) by { st.lemma_to_seq_to_set_id(); };
-    lemma_seq_to_set_commutes_with_map(sq, f);
+    // lemma_seq_to_set_commutes_with_map(sq, f);
+    sq.lemma_to_set_map_commutes(f);
     let st_map = st.map(f);
     let sq_map = sq.map_values(f);
     lemma_seq_to_set_commutes_with_filter(sq_map, |x: Option<B>| x is Some);
     let st_map_filter = st_map.filter(|x: Option<B>| x is Some);
     let sq_map_filter = sq_map.filter(|x: Option<B>| x is Some);
-    lemma_seq_to_set_commutes_with_map(sq_map_filter, |x: Option<B>| x.unwrap());
+    // lemma_seq_to_set_commutes_with_map(sq_map_filter, |x: Option<B>| x.unwrap());
+    sq_map_filter.lemma_to_set_map_commutes(|x: Option<B>| x.unwrap());
     lemma_set_filter_map_aux_equiv(st, f);
+    lemma_seq_filter_map_aux_equiv(sq, f);
 }
 
-pub proof fn lemma_seq_filter_map_option_add<A,B>(s: Seq<A>, f: spec_fn(A) -> Option<B>, a: A)
+pub proof fn lemma_seq_filter_map_add<A,B>(s: Seq<A>, f: spec_fn(A) -> Option<B>, a: A)
     requires f(a) is Some,
     ensures
-        seq_filter_map_option(s.push(a), f) == seq_filter_map_option(s, f).push(f(a).unwrap()),
+        s.push(a).filter_map(f) == s.filter_map(f).push(f(a).unwrap()),
     decreases s.len(),
 {
-    calc! { (==)
-        seq_filter_map_option(s.push(a), f); {}
-        (s.push(a)).map_values(f).filter(|x: Option<B>| x is Some).map_values(|x: Option<B>| x.unwrap());
-            { lemma_seq_map_values_append(s, f, a) }
-        (s.map_values(f).push(f(a))).filter(|x: Option<B>| x is Some).map_values(|x: Option<B>| x.unwrap());
-            { lemma_seq_filter_values_append(s.map_values(f), |x: Option<B>| x is Some, f(a)) }
-        (s.map_values(f).filter(|x: Option<B>| x is Some)).push(f(a)).map_values(|x: Option<B>| x.unwrap());
-            { lemma_seq_map_values_append(s.map_values(f).filter(|x: Option<B>| x is Some), |x: Option<B>| x.unwrap(), f(a)) }
-        (s.map_values(f).filter(|x: Option<B>| x is Some).map_values(|x: Option<B>| x.unwrap())).push(f(a).unwrap()); {}
-        seq_filter_map_option(s, f).push(f(a).unwrap());
+    reveal_with_fuel(Seq::filter_map, 1);
+    assert(s.push(a).last() == a);
+    assert(s.push(a).drop_last() == s);
+    assert(s.push(a).filter_map(f) == s.push(a).drop_last().filter_map(f) + seq![f(a).unwrap()]);
+    if s.len() == 0 {
+    } else {
+        assert_seqs_equal!(s.push(a) == s + seq![a]);
+        assert(s.push(a).filter_map(f) == s.filter_map(f) + seq![f(a).unwrap()]);
+        assert_seqs_equal!(s.filter_map(f) + seq![f(a).unwrap()] == s.filter_map(f).push(f(a).unwrap()));
     }
 }
 
@@ -323,7 +366,7 @@ pub proof fn lemma_seq_map_values_append<A,B>(s: Seq<A>, f: spec_fn(A) -> B, a: 
     });
 }
 
-pub proof fn lemma_seq_filter_values_append<A>(s: Seq<A>, f: spec_fn(A) -> bool, a: A)
+pub proof fn lemma_seq_filter_values_append_true<A>(s: Seq<A>, f: spec_fn(A) -> bool, a: A)
     requires f(a) == true
     ensures
         (s.push(a)).filter(f) == s.filter(f).push(a),
@@ -335,6 +378,18 @@ pub proof fn lemma_seq_filter_values_append<A>(s: Seq<A>, f: spec_fn(A) -> bool,
     assert(s_push_a.drop_last().filter(f) == s.filter(f));
     assert(s_push_a.drop_last().filter(f).push(s_push_a.last()) == s.filter(f).push(a));
     assert(s_push_a.filter(f) == s_push_a.drop_last().filter(f).push(s_push_a.last()));
+}
+
+pub proof fn lemma_seq_filter_values_append_false<A>(s: Seq<A>, f: spec_fn(A) -> bool, a: A)
+    requires f(a) == false
+    ensures
+        (s.push(a)).filter(f) == s.filter(f),
+{
+    reveal_with_fuel(Seq::filter, 1);
+    let s_push_a = s.push(a);
+    assert(s_push_a.last() == a);
+    assert(s_push_a.drop_last() == s);
+    assert(s_push_a.drop_last().filter(f) == s.filter(f));
 }
 
 pub proof fn lemma_seq_take_skip_add<A>(s: Seq<A>, n: int)
@@ -350,28 +405,6 @@ pub broadcast proof fn lemma_seq_map_values_distributes_over_add<A,B>(s1: Seq<A>
     assert_seqs_equal!(s1.map_values(f) + s2.map_values(f) == (s1 + s2).map_values(f));
 }
 
-pub proof fn lemma_seq_to_set_commutes_with_map<A,B>(s: Seq<A>, f: spec_fn(A) -> B)
-    ensures s.to_set().map(f) == s.map_values(f).to_set()
-{
-    assert forall |a: A| #[trigger] s.contains(a) implies s.map_values(f).contains(f(a)) by {
-        assert(exists |i| 0 <= i < s.len() && s[i] == a);
-        let i = choose |i| 0 <= i < s.len() && s[i] == a;
-        assert(s.map_values(f)[i] == f(a));
-    };
-    assert forall |a: A| #[trigger] s.contains(a) implies s.to_set().map(f).contains(f(a)) by {
-        assert(s.to_set().contains(a));
-    };
-    assert forall |a: A| #[trigger] s.contains(a) implies s.map_values(f).to_set().contains(f(a)) by {
-        assert(s.map_values(f).contains(f(a)));
-    };
-    assert forall |a: A| #[trigger] s.map_values(f).contains(f(a)) implies s.to_set().map(f).contains(f(a)) by {
-        assert(exists |i| 0 <= i < s.len() && s.map_values(f)[i] == f(a));
-        let i = choose |i| 0 <= i < s.len() && s.map_values(f)[i] == f(a);
-        assert(s.to_set().contains(s[i]));
-        assert(s.to_set().map(f).contains(f(s[i])));
-    };
-    assert_sets_equal!(s.to_set().map(f) == s.map_values(f).to_set());
-}
 
 pub proof fn lemma_seq_to_set_commutes_with_filter<A>(s: Seq<A>, f: spec_fn(A) -> bool)
     ensures s.to_set().filter(f) == s.filter(f).to_set()
