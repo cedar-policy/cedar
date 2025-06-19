@@ -505,6 +505,73 @@ mod test {
     }
 
     #[test]
+    fn check_parse_scope_variables_succeeds() {
+        let call = json!({
+            "principal": {
+                "type": "PhotoApp::User",
+                "id": "alice"
+            },
+            "action": {
+                "type": "PhotoApp::Action",
+                "id": "view"
+            },
+            "resource": {
+                "type": "PhotoApp::Photo",
+                "id": "photo1"
+            },
+            "schema": {
+                "PhotoApp": {
+                    "commonTypes": {
+                        "PersonType": {
+                            "type": "Record",
+                            "attributes": {
+                                "age": {
+                                    "type": "Long"
+                                },
+                                "name": {
+                                    "type": "String"
+                                }
+                            }
+                        },
+                    },
+                    "entityTypes": {
+                        "User": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {
+                                    "userId": {
+                                        "type": "String"
+                                    },
+                                    "personInformation": {
+                                        "type": "PersonType"
+                                    }
+                                }
+                            },
+                        },
+                        "Photo": {
+                            "shape": {
+                                "type": "Record",
+                                "attributes": {}
+                            }
+                        }
+                    },
+                    "actions": {
+                        "view": {
+                            "appliesTo": {
+                                "principalTypes": ["User"],
+                                "resourceTypes": ["Photo"]
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        let answer =
+            serde_json::from_value(check_parse_scope_variables_json(call).unwrap()).unwrap();
+        assert_check_parse_is_ok(&answer);
+    }
+
+    #[test]
     fn check_parse_scope_variables_fails_on_invalid_principal() {
         let call = json!({
             "principal": {
