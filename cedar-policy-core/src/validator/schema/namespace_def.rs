@@ -62,9 +62,9 @@ use crate::validator::{
 /// _references_.)
 /// For example:
 /// - `N` = [`ConditionalName`]: References to entity/common types are not
-///     yet fully qualified/disambiguated
+///   yet fully qualified/disambiguated
 /// - `N` = [`InternalName`]: All references to entity/common types have been
-///     resolved into fully-qualified [`InternalName`]s
+///   resolved into fully-qualified [`InternalName`]s
 ///
 /// `A` is like `N`, but `A` governs typenames in `appliesTo` fields, while
 /// `N` governs all other type references.

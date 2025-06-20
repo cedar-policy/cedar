@@ -183,12 +183,10 @@ impl ast::RequestSchema for ValidatorSchema {
             request.principal().uid(),
             action_uid,
             request.resource().uid(),
-        )
-        .map_err(RequestValidationError::from)?;
+        )?;
 
         if let (Some(context), Some(action)) = (request.context(), action_uid) {
-            self.validate_context(context, action, extensions)
-                .map_err(RequestValidationError::from)?;
+            self.validate_context(context, action, extensions)?;
         }
         Ok(())
     }

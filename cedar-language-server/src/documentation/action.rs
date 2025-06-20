@@ -74,7 +74,7 @@ impl ToDocumentationString for ActionDocumentation<'_> {
                     .header("Permitted Actions")
                     .paragraph("This policy applies to the following actions:");
 
-                let entity_uids = entity_uids.iter().sorted().map(|euid| euid.as_ref());
+                let entity_uids = entity_uids.iter().sorted().map(AsRef::as_ref);
                 format_action_list(&mut builder, entity_uids);
             }
             ActionConstraint::Eq(entity_uid) => {
