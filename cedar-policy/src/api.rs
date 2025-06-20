@@ -844,6 +844,26 @@ impl Entities {
     }
 }
 
+/// Validates scope variables against the provided schema
+///
+/// Returns Ok(()) if the context is valid according to the schema, or an error otherwise
+///
+/// This validation is already handled by `Request::new`, so there is no need to separately call
+/// if you are validating the whole request
+pub fn validate_scope_variables(
+    principal: &EntityUid,
+    action: &EntityUid,
+    resource: &EntityUid,
+    schema: &Schema,
+) -> std::result::Result<(), RequestValidationError> {
+    Ok(RequestSchema::validate_scope_variables(
+        &schema.0,
+        Some(&principal.0),
+        Some(&action.0),
+        Some(&resource.0),
+    )?)
+}
+
 /// Utilities for defining `IntoIterator` over `Entities`
 pub mod entities {
 
