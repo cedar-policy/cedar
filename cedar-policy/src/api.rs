@@ -67,16 +67,16 @@ use std::sync::Arc;
 // PANIC SAFETY: `CARGO_PKG_VERSION` should return a valid SemVer version string
 #[allow(clippy::unwrap_used)]
 pub(crate) mod version {
-    use lazy_static::lazy_static;
     use semver::Version;
+    use std::sync::LazyLock;
 
-    lazy_static! {
-        // Cedar Rust SDK Semantic Versioning version
-        static ref SDK_VERSION: Version = env!("CARGO_PKG_VERSION").parse().unwrap();
-        // Cedar language version
-        // The patch version field may be unnecessary
-        static ref LANG_VERSION: Version = Version::new(4, 3, 0);
-    }
+    // Cedar Rust SDK Semantic Versioning version
+    static SDK_VERSION: LazyLock<Version> =
+        LazyLock::new(|| env!("CARGO_PKG_VERSION").parse().unwrap());
+    // Cedar language version
+    // The patch version field may be unnecessary
+    static LANG_VERSION: LazyLock<Version> = LazyLock::new(|| Version::new(4, 3, 0));
+
     /// Get the Cedar SDK Semantic Versioning version
     #[allow(clippy::module_name_repetitions)]
     pub fn get_sdk_version() -> Version {
@@ -3251,8 +3251,7 @@ impl Template {
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> String {
         match &self.lossless {
-            LosslessPolicy::Empty => self.ast.to_string(),
-            LosslessPolicy::Est(_) => self.ast.to_string(),
+            LosslessPolicy::Empty | LosslessPolicy::Est(_) => self.ast.to_string(),
             LosslessPolicy::Text { text, .. } => text.clone(),
         }
     }
@@ -3761,8 +3760,7 @@ impl Policy {
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> Option<String> {
         match &self.lossless {
-            LosslessPolicy::Empty => Some(self.ast.to_string()),
-            LosslessPolicy::Est(_) => Some(self.ast.to_string()),
+            LosslessPolicy::Empty | LosslessPolicy::Est(_) => Some(self.ast.to_string()),
             LosslessPolicy::Text { text, slots } => {
                 if slots.is_empty() {
                     Some(text.clone())
@@ -3870,13 +3868,10 @@ pub(crate) enum LosslessPolicy {
 impl LosslessPolicy {
     /// Create a new `LosslessPolicy` from the text of a policy or template.
     fn policy_or_template_text(text: Option<impl Into<String>>) -> Self {
-        match text {
-            None => Self::Empty,
-            Some(text) => Self::Text {
-                text: text.into(),
-                slots: HashMap::new(),
-            },
-        }
+        text.map_or(Self::Empty, |text| Self::Text {
+            text: text.into(),
+            slots: HashMap::new(),
+        })
     }
 
     /// Get the EST representation of this static policy, linked policy, or template.
@@ -4070,14 +4065,14 @@ impl FromStr for Expression {
 ///   - bool, int, and string literals
 ///   - literal `EntityUid`s such as `User::"alice"`
 ///   - extension function calls, where the arguments must be other things
-///       on this list
+///     on this list
 ///   - set and record literals, where the values must be other things on
-///       this list
+///     this list
 ///
 /// That means the following are not allowed in restricted expressions:
 ///   - `principal`, `action`, `resource`, `context`
 ///   - builtin operators and functions, including `.`, `in`, `has`, `like`,
-///       `.contains()`
+///     `.contains()`
 ///   - if-then-else expressions
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
