@@ -60,7 +60,7 @@ impl FromStr for DetailedError {
     type Err = std::convert::Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(DetailedError {
+        Ok(Self {
             message: s.to_string(),
             help: None,
             code: None,

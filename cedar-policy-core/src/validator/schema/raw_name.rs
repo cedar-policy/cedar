@@ -110,14 +110,14 @@ impl RawName {
     ///
     /// This [`RawName`] will resolve as follows:
     /// - If the [`RawName`] already has a non-empty explicit namespace, there
-    ///     is no ambiguity, and it will resolve always and only to itself
+    ///   is no ambiguity, and it will resolve always and only to itself
     /// - Otherwise (if the [`RawName`] does not have an explicit namespace
-    ///     already), then it resolves to the following in priority order:
-    ///     1. The fully-qualified name resulting from prefixing `ns` to this
-    ///         [`RawName`], if that fully-qualified name is declared in the schema
-    ///         (in any schema fragment)
-    ///     2. Itself in the empty namespace, if that name is declared in the schema
-    ///         (in any schema fragment)
+    ///   already), then it resolves to the following in priority order:
+    ///   1. The fully-qualified name resulting from prefixing `ns` to this
+    ///      [`RawName`], if that fully-qualified name is declared in the schema
+    ///      (in any schema fragment)
+    ///   2. Itself in the empty namespace, if that name is declared in the schema
+    ///      (in any schema fragment)
     ///
     /// Note that if the [`RawName`] is the name of a primitive or extension
     /// type (without explicit `__cedar`), it will resolve via (2) above,

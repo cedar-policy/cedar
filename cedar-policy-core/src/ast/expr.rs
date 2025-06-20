@@ -410,7 +410,7 @@ impl<T> Expr<T> {
     where
         T: Clone,
     {
-        let builder = B::new().with_maybe_source_loc(self.source_loc().as_deref());
+        let builder = B::new().with_maybe_source_loc(self.source_loc());
         match self.into_expr_kind() {
             ExprKind::Lit(lit) => builder.val(lit),
             ExprKind::Var(var) => builder.var(var),

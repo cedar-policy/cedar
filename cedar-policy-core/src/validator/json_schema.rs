@@ -89,9 +89,9 @@ pub struct CommonType<N> {
 /// For example:
 /// - `N` = [`RawName`]: This is the schema JSON format exposed to users
 /// - `N` = [`ConditionalName`]: a [`Fragment`] which has been partially
-///     processed, by converting [`RawName`]s into [`ConditionalName`]s
+///   processed, by converting [`RawName`]s into [`ConditionalName`]s
 /// - `N` = [`InternalName`]: a [`Fragment`] in which all names have been
-///     resolved into fully-qualified [`InternalName`]s
+///   resolved into fully-qualified [`InternalName`]s
 #[derive(Educe, Debug, Clone, Deserialize)]
 #[educe(PartialEq, Eq)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
@@ -1887,14 +1887,14 @@ pub enum TypeVariant<N> {
         /// There is no possible ambiguity in the JSON syntax between this and
         /// `Entity`, nor between this and `Type::Common`.
         /// - To represent a must-be-entity-type reference in the JSON syntax,
-        ///     use `{ "type": "Entity", "name": "foo" }`. This ser/de as
-        ///     `Type::Type(TypeVariant::Entity)`.
+        ///   use `{ "type": "Entity", "name": "foo" }`. This ser/de as
+        ///   `Type::Type(TypeVariant::Entity)`.
         /// - To represent a must-be-common-type reference in the JSON syntax,
-        ///     use `{ "type": "foo" }`. This ser/de as
-        ///     `Type::CommonTypeRef`.
+        ///   use `{ "type": "foo" }`. This ser/de as
+        ///   `Type::CommonTypeRef`.
         /// - To represent an either-entity-or-common-type reference in the
-        ///     JSON syntax, use `{ "type": "EntityOrCommon", "name": "foo" }`.
-        ///     This ser/de as `Type::Type(TypeVariant::EntityOrCommon`.
+        ///   JSON syntax, use `{ "type": "EntityOrCommon", "name": "foo" }`.
+        ///   This ser/de as `Type::Type(TypeVariant::EntityOrCommon`.
         ///
         /// You can still use `{ "type": "Entity" }` alone (no `"name"` key) to
         /// indicate a common type named `Entity`, and likewise for
