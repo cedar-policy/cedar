@@ -3562,7 +3562,8 @@ impl Policy {
             ast::EntityReference::EUID(euid) => EntityUid::ref_cast(euid),
             // PANIC SAFETY: This `unwrap` here is safe due the invariant (values total map) on policies.
             #[allow(clippy::unwrap_used)]
-            ast::EntityReference::Slot(_, _) => {
+            ast::EntityReference::Slot(_id, _) => {
+                // TODO: When id is Some, it is a generalized slot and we must handle it differently
                 EntityUid::ref_cast(self.ast.env().get(&slot).unwrap())
             }
         }
