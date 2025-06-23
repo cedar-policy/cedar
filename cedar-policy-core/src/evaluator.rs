@@ -453,7 +453,9 @@ impl<'e> Evaluator<'e> {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
             ExprKind::Slot(id) => slots
                 .get(id)
-                .ok_or_else(|| err::EvaluationError::unlinked_slot(*id, loc.into_maybe_loc()))
+                .ok_or_else(|| {
+                    err::EvaluationError::unlinked_slot(id.clone(), loc.into_maybe_loc())
+                })
                 .map(|euid| PartialValue::from(euid.clone())),
             ExprKind::Var(v) => match v {
                 Var::Principal => Ok(self.principal.evaluate(*v)),

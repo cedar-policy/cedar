@@ -2128,6 +2128,7 @@ impl From<ast::SlotId> for cst::Slot {
         match slot {
             ast::SlotId(ast::ValidSlotId::Principal) => cst::Slot::Principal,
             ast::SlotId(ast::ValidSlotId::Resource) => cst::Slot::Resource,
+            ast::SlotId(ast::ValidSlotId::GeneralizedSlot(id)) => cst::Slot::Other(id.to_smolstr()),
         }
     }
 }
@@ -4260,7 +4261,10 @@ mod tests {
             ),
             (
                 r#"permit(principal is User in ?principal, action, resource);"#,
-                PrincipalConstraint::is_entity_type_in_slot(Arc::new("User".parse().unwrap())),
+                PrincipalConstraint::is_entity_type_in_slot(
+                    Arc::new("User".parse().unwrap()),
+                    None,
+                ),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
             ),
@@ -4283,7 +4287,10 @@ mod tests {
                 r#"permit(principal, action, resource is Folder in ?resource);"#,
                 PrincipalConstraint::any(),
                 ActionConstraint::any(),
-                ResourceConstraint::is_entity_type_in_slot(Arc::new("Folder".parse().unwrap())),
+                ResourceConstraint::is_entity_type_in_slot(
+                    Arc::new("Folder".parse().unwrap()),
+                    None,
+                ),
             ),
         ] {
             let policy = parse_policy_or_template(None, src).unwrap();

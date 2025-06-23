@@ -398,7 +398,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                     Type::any_entity_reference()
                 }))
                 .with_same_source_loc(e)
-                .slot(*slotid),
+                .slot(slotid.clone()),
             ),
 
             // Literal booleans get singleton type according to their value.

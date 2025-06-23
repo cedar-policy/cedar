@@ -56,8 +56,11 @@ impl PolicySet {
             .filter_map(|link| {
                 if &link.new_id == id {
                     self.get_template(&link.template_id).and_then(|template| {
-                        let unwrapped_est_vals: HashMap<SlotId, EntityUidJson> =
-                            link.values.iter().map(|(k, v)| (*k, v.into())).collect();
+                        let unwrapped_est_vals: HashMap<SlotId, EntityUidJson> = link
+                            .values
+                            .iter()
+                            .map(|(k, v)| (k.clone(), v.into()))
+                            .collect();
                         template.link(&unwrapped_est_vals).ok()
                     })
                 } else {

@@ -15,8 +15,8 @@
  */
 
 use super::{FromJsonError, LinkingError};
-use crate::ast;
 use crate::ast::EntityUID;
+use crate::ast::{self, SlotId};
 use crate::entities::json::{
     err::JsonDeserializationError, err::JsonDeserializationErrorContext, EntityUidJson,
 };
@@ -655,20 +655,24 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
                     entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                 })
             }
-            ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::Slot(_)) => {
-                PrincipalConstraint::Eq(EqConstraint::Slot {
-                    slot: ast::SlotId::principal(),
-                })
+            ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::Slot(id, _)) => {
+                let slot = match id {
+                    Some(id) => SlotId::generalized_slot(id),
+                    None => ast::SlotId::principal(),
+                };
+                PrincipalConstraint::Eq(EqConstraint::Slot { slot })
             }
             ast::PrincipalOrResourceConstraint::In(ast::EntityReference::EUID(e)) => {
                 PrincipalConstraint::In(PrincipalOrResourceInConstraint::Entity {
                     entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                 })
             }
-            ast::PrincipalOrResourceConstraint::In(ast::EntityReference::Slot(_)) => {
-                PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot {
-                    slot: ast::SlotId::principal(),
-                })
+            ast::PrincipalOrResourceConstraint::In(ast::EntityReference::Slot(id, _)) => {
+                let slot = match id {
+                    Some(id) => SlotId::generalized_slot(id),
+                    None => ast::SlotId::principal(),
+                };
+                PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot { slot })
             }
             ast::PrincipalOrResourceConstraint::IsIn(entity_type, euid) => {
                 PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
@@ -677,9 +681,13 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
                         ast::EntityReference::EUID(e) => PrincipalOrResourceInConstraint::Entity {
                             entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                         },
-                        ast::EntityReference::Slot(_) => PrincipalOrResourceInConstraint::Slot {
-                            slot: ast::SlotId::principal(),
-                        },
+                        ast::EntityReference::Slot(id, _) => {
+                            let slot = match id {
+                                Some(id) => SlotId::generalized_slot(id),
+                                None => ast::SlotId::principal(),
+                            };
+                            PrincipalOrResourceInConstraint::Slot { slot }
+                        }
                     }),
                 })
             }
@@ -702,20 +710,24 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
                     entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                 })
             }
-            ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::Slot(_)) => {
-                ResourceConstraint::Eq(EqConstraint::Slot {
-                    slot: ast::SlotId::resource(),
-                })
+            ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::Slot(id, _)) => {
+                let slot = match id {
+                    Some(id) => SlotId::generalized_slot(id),
+                    None => SlotId::resource(),
+                };
+                ResourceConstraint::Eq(EqConstraint::Slot { slot })
             }
             ast::PrincipalOrResourceConstraint::In(ast::EntityReference::EUID(e)) => {
                 ResourceConstraint::In(PrincipalOrResourceInConstraint::Entity {
                     entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                 })
             }
-            ast::PrincipalOrResourceConstraint::In(ast::EntityReference::Slot(_)) => {
-                ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot {
-                    slot: ast::SlotId::resource(),
-                })
+            ast::PrincipalOrResourceConstraint::In(ast::EntityReference::Slot(id, _)) => {
+                let slot = match id {
+                    Some(id) => SlotId::generalized_slot(id),
+                    None => SlotId::resource(),
+                };
+                ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot { slot })
             }
             ast::PrincipalOrResourceConstraint::IsIn(entity_type, euid) => {
                 ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
@@ -724,9 +736,14 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
                         ast::EntityReference::EUID(e) => PrincipalOrResourceInConstraint::Entity {
                             entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                         },
-                        ast::EntityReference::Slot(_) => PrincipalOrResourceInConstraint::Slot {
-                            slot: ast::SlotId::resource(),
-                        },
+                        ast::EntityReference::Slot(id, _) => {
+                            let slot = match id {
+                                Some(id) => SlotId::generalized_slot(id),
+                                None => SlotId::resource(),
+                            };
+
+                            PrincipalOrResourceInConstraint::Slot { slot }
+                        }
                     }),
                 })
             }
@@ -753,9 +770,9 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
                 ))),
             ),
             PrincipalConstraint::Eq(EqConstraint::Slot { slot }) => {
-                if slot == ast::SlotId::principal() {
+                if slot == ast::SlotId::principal() || slot.is_generalized_slot() {
                     Ok(ast::PrincipalOrResourceConstraint::Eq(
-                        ast::EntityReference::Slot(None),
+                        ast::EntityReference::Slot(slot.extract_id_out_of_generalized_slot(), None),
                     ))
                 } else {
                     Err(Self::Error::InvalidSlotName)
@@ -767,9 +784,9 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
                 ))),
             ),
             PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot { slot }) => {
-                if slot == ast::SlotId::principal() {
+                if slot == ast::SlotId::principal() || slot.is_generalized_slot() {
                     Ok(ast::PrincipalOrResourceConstraint::In(
-                        ast::EntityReference::Slot(None),
+                        ast::EntityReference::Slot(slot.extract_id_out_of_generalized_slot(), None),
                     ))
                 } else {
                     Err(Self::Error::InvalidSlotName)
@@ -794,10 +811,11 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
                                 ),
                             )
                         }
-                        Some(PrincipalOrResourceInConstraint::Slot { .. }) => {
-                            ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(Arc::new(
-                                entity_type,
-                            ))
+                        Some(PrincipalOrResourceInConstraint::Slot { slot }) => {
+                            ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(
+                                Arc::new(entity_type),
+                                slot.extract_id_out_of_generalized_slot(),
+                            )
                         }
                     })
                 }),
@@ -818,9 +836,9 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
                 ))),
             ),
             ResourceConstraint::Eq(EqConstraint::Slot { slot }) => {
-                if slot == ast::SlotId::resource() {
+                if slot == ast::SlotId::resource() || slot.is_generalized_slot() {
                     Ok(ast::PrincipalOrResourceConstraint::Eq(
-                        ast::EntityReference::Slot(None),
+                        ast::EntityReference::Slot(slot.extract_id_out_of_generalized_slot(), None),
                     ))
                 } else {
                     Err(Self::Error::InvalidSlotName)
@@ -832,9 +850,9 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
                 ))),
             ),
             ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot { slot }) => {
-                if slot == ast::SlotId::resource() {
+                if slot == ast::SlotId::resource() || slot.is_generalized_slot() {
                     Ok(ast::PrincipalOrResourceConstraint::In(
-                        ast::EntityReference::Slot(None),
+                        ast::EntityReference::Slot(slot.extract_id_out_of_generalized_slot(), None),
                     ))
                 } else {
                     Err(Self::Error::InvalidSlotName)
@@ -859,10 +877,11 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
                                 ),
                             )
                         }
-                        Some(PrincipalOrResourceInConstraint::Slot { .. }) => {
-                            ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(Arc::new(
-                                entity_type,
-                            ))
+                        Some(PrincipalOrResourceInConstraint::Slot { slot }) => {
+                            ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(
+                                Arc::new(entity_type),
+                                slot.extract_id_out_of_generalized_slot(),
+                            )
                         }
                     })
                 }),

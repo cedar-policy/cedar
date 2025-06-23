@@ -293,8 +293,8 @@ impl Template {
             Ok(())
         } else {
             Err(LinkingError::from_unbound_and_extras(
-                unbound.into_iter().map(|slot| slot.id),
-                extra.into_iter().copied(),
+                unbound.into_iter().map(|slot| slot.id.clone()),
+                extra.into_iter().cloned(),
             ))
         }
     }
@@ -1331,9 +1331,9 @@ impl PrincipalConstraint {
     }
 
     /// Constrained to be equal to a slot
-    pub fn is_eq_slot() -> Self {
+    pub fn is_eq_slot(id: Option<Id>) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_eq_slot(),
+            constraint: PrincipalOrResourceConstraint::is_eq_slot(id),
         }
     }
 
@@ -1345,16 +1345,16 @@ impl PrincipalConstraint {
     }
 
     /// Hierarchical constraint to Slot
-    pub fn is_in_slot() -> Self {
+    pub fn is_in_slot(id: Option<Id>) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_in_slot(),
+            constraint: PrincipalOrResourceConstraint::is_in_slot(id),
         }
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>) -> Self {
+    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>, id: Option<Id>) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type),
+            constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type, id),
         }
     }
 
@@ -1375,10 +1375,10 @@ impl PrincipalConstraint {
     /// Fill in the Slot, if any, with the given EUID
     pub fn with_filled_slot(self, euid: Arc<EntityUID>) -> Self {
         match self.constraint {
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_)) => Self {
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_, _)) => Self {
                 constraint: PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)),
             },
-            PrincipalOrResourceConstraint::In(EntityReference::Slot(_)) => Self {
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(_, _)) => Self {
                 constraint: PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)),
             },
             _ => self,
@@ -1438,16 +1438,16 @@ impl ResourceConstraint {
     }
 
     /// Constrained to equal a slot.
-    pub fn is_eq_slot() -> Self {
+    pub fn is_eq_slot(id: Option<Id>) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_eq_slot(),
+            constraint: PrincipalOrResourceConstraint::is_eq_slot(id),
         }
     }
 
     /// Constrained to be in a slot
-    pub fn is_in_slot() -> Self {
+    pub fn is_in_slot(id: Option<Id>) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_in_slot(),
+            constraint: PrincipalOrResourceConstraint::is_in_slot(id),
         }
     }
 
@@ -1459,9 +1459,9 @@ impl ResourceConstraint {
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>) -> Self {
+    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>, id: Option<Id>) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type),
+            constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type, id),
         }
     }
 
@@ -1482,10 +1482,10 @@ impl ResourceConstraint {
     /// Fill in the Slot, if any, with the given EUID
     pub fn with_filled_slot(self, euid: Arc<EntityUID>) -> Self {
         match self.constraint {
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_)) => Self {
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_, _)) => Self {
                 constraint: PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)),
             },
-            PrincipalOrResourceConstraint::In(EntityReference::Slot(_)) => Self {
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(_, _)) => Self {
                 constraint: PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)),
             },
             _ => self,
@@ -1511,6 +1511,7 @@ pub enum EntityReference {
     EUID(Arc<EntityUID>),
     /// Template Slot
     Slot(
+        Option<Id>, // If a slot stores None then it is a principal/resource, otherwise it is a generalized slot
         #[educe(PartialEq(ignore))]
         #[educe(PartialOrd(ignore))]
         #[educe(Hash(ignore))]
@@ -1532,7 +1533,13 @@ impl EntityReference {
     pub fn into_expr(&self, slot: SlotId) -> Expr {
         match self {
             EntityReference::EUID(euid) => Expr::val(euid.clone()),
-            EntityReference::Slot(loc) => Expr::slot(slot).with_maybe_source_loc(loc.clone()),
+            EntityReference::Slot(id, loc) => {
+                let slot = match id {
+                    Some(id) => SlotId::generalized_slot(id.clone()),
+                    None => slot,
+                };
+                Expr::slot(slot).with_maybe_source_loc(loc.clone())
+            }
         }
     }
 }
@@ -1628,13 +1635,13 @@ impl PrincipalOrResourceConstraint {
     }
 
     /// Constrained to equal a slot
-    pub fn is_eq_slot() -> Self {
-        PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None))
+    pub fn is_eq_slot(id: Option<Id>) -> Self {
+        PrincipalOrResourceConstraint::Eq(EntityReference::Slot(id, None))
     }
 
     /// Constrained to be in a slot
-    pub fn is_in_slot() -> Self {
-        PrincipalOrResourceConstraint::In(EntityReference::Slot(None))
+    pub fn is_in_slot(id: Option<Id>) -> Self {
+        PrincipalOrResourceConstraint::In(EntityReference::Slot(id, None))
     }
 
     /// Hierarchical constraint.
@@ -1643,8 +1650,8 @@ impl PrincipalOrResourceConstraint {
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>) -> Self {
-        PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot(None))
+    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>, id: Option<Id>) -> Self {
+        PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot(id, None))
     }
 
     /// Type constraint with a hierarchical constraint.
@@ -1705,11 +1712,11 @@ impl PrincipalOrResourceConstraint {
         match self {
             PrincipalOrResourceConstraint::Any => None,
             PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)) => Some(euid),
-            PrincipalOrResourceConstraint::In(EntityReference::Slot(_)) => None,
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(_, _)) => None,
             PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)) => Some(euid),
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_)) => None,
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_, _)) => None,
             PrincipalOrResourceConstraint::IsIn(_, EntityReference::EUID(euid)) => Some(euid),
-            PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot(_)) => None,
+            PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot(_, _)) => None,
             PrincipalOrResourceConstraint::Is(_) => None,
         }
     }
@@ -1966,9 +1973,9 @@ pub(crate) mod test_generators {
         let v = vec![
             PrincipalOrResourceConstraint::any(),
             PrincipalOrResourceConstraint::is_eq(euid.clone()),
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None)),
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None, None)),
             PrincipalOrResourceConstraint::is_in(euid),
-            PrincipalOrResourceConstraint::In(EntityReference::Slot(None)),
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(None, None)),
         ];
 
         v.into_iter()
@@ -2057,7 +2064,7 @@ mod test {
             let t = Arc::new(template);
             let env = t
                 .slots()
-                .map(|slot| (slot.id, EntityUID::with_eid("eid")))
+                .map(|slot| (slot.id.clone(), EntityUID::with_eid("eid")))
                 .collect();
             let _ = Template::link(t, PolicyID::from_string("id"), env).expect("Linking failed");
         }
@@ -2110,7 +2117,7 @@ mod test {
             None,
             Annotations::new(),
             Effect::Forbid,
-            PrincipalConstraint::is_eq_slot(),
+            PrincipalConstraint::is_eq_slot(None),
             ActionConstraint::Any,
             ResourceConstraint::any(),
             Expr::val(true),
@@ -2132,9 +2139,9 @@ mod test {
             None,
             Annotations::new(),
             Effect::Forbid,
-            PrincipalConstraint::is_eq_slot(),
+            PrincipalConstraint::is_eq_slot(None),
             ActionConstraint::Any,
-            ResourceConstraint::is_in_slot(),
+            ResourceConstraint::is_in_slot(None),
             Expr::val(true),
         ));
         assert_matches!(Template::link(t.clone(), iid.clone(), HashMap::new()), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
@@ -2158,9 +2165,9 @@ mod test {
             None,
             Annotations::new(),
             Effect::Permit,
-            PrincipalConstraint::is_in_slot(),
+            PrincipalConstraint::is_in_slot(None),
             ActionConstraint::any(),
-            ResourceConstraint::is_eq_slot(),
+            ResourceConstraint::is_eq_slot(None),
             Expr::val(true),
         ));
 
@@ -2231,7 +2238,7 @@ mod test {
             Some(&e)
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::In(EntityReference::Slot(None)).get_euid(),
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(None, None)).get_euid(),
             None
         );
         assert_eq!(
@@ -2239,7 +2246,7 @@ mod test {
             Some(&e)
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None)).get_euid(),
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None, None)).get_euid(),
             None
         );
         assert_eq!(
@@ -2257,7 +2264,7 @@ mod test {
         assert_eq!(
             PrincipalOrResourceConstraint::IsIn(
                 Arc::new("T".parse().unwrap()),
-                EntityReference::Slot(None)
+                EntityReference::Slot(None, None)
             )
             .get_euid(),
             None
@@ -2318,7 +2325,7 @@ mod test {
 
     #[test]
     fn euid_into_expr() {
-        let e = EntityReference::Slot(None);
+        let e = EntityReference::Slot(None, None);
         assert_eq!(
             e.into_expr(SlotId::principal()),
             Expr::slot(SlotId::principal())
@@ -2332,7 +2339,7 @@ mod test {
 
     #[test]
     fn por_constraint_display() {
-        let t = PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None));
+        let t = PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None, None));
         let s = t.display(PrincipalOrResource::Principal);
         assert_eq!(s, "principal == ?principal");
         let t = PrincipalOrResourceConstraint::Eq(EntityReference::euid(Arc::new(
@@ -2340,6 +2347,12 @@ mod test {
         )));
         let s = t.display(PrincipalOrResource::Principal);
         assert_eq!(s, "principal == test_entity_type::\"test\"");
+        let t = PrincipalOrResourceConstraint::Eq(EntityReference::Slot(
+            "generalized".parse().ok(),
+            None,
+        ));
+        let s = t.display(PrincipalOrResource::Principal);
+        assert_eq!(s, "principal == ?generalized");
     }
 
     #[test]
