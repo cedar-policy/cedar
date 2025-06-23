@@ -17,4 +17,6 @@
 //! Formatter for Cedar policies
 
 mod pprint;
+pub use pprint::lexer::get_token_stream;
+pub use pprint::token::Token;
 pub use pprint::*;

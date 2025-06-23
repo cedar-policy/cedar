@@ -24,7 +24,7 @@ use cedar_policy_core::validator::{
 use itertools::Itertools;
 use lsp_types::{GotoDefinitionResponse, Location, Position, Range, Url};
 
-use crate::utils::{get_word_at_position, position_within_loc, ToRange};
+use crate::utils::{byte_offset_to_position, get_word_at_position, position_within_loc, ToRange};
 
 use super::SchemaInfo;
 
@@ -218,7 +218,7 @@ pub(crate) fn find_common_type_definition(type_name: &str, schema_text: &str) ->
         let start_offset = mat.start();
 
         // Convert character offset to Position (line, character)
-        let start = offset_to_position(schema_text, start_offset);
+        let start = byte_offset_to_position(start_offset, schema_text);
 
         // Find the end of the type definition (looking for semicolon or next type definition)
         let mut end_offset = schema_text[start_offset..]
@@ -235,32 +235,12 @@ pub(crate) fn find_common_type_definition(type_name: &str, schema_text: &str) ->
         end_offset = end_offset.min(schema_text.len());
 
         // Convert end offset to Position
-        let end = offset_to_position(schema_text, end_offset);
+        let end = byte_offset_to_position(end_offset, schema_text);
 
         return Some(Range { start, end });
     }
 
     None
-}
-
-fn offset_to_position(text: &str, offset: usize) -> Position {
-    let mut line = 0;
-    let mut char = 0;
-
-    for (i, c) in text.char_indices() {
-        if i >= offset {
-            break;
-        }
-
-        if c == '\n' {
-            line += 1;
-            char = 0;
-        } else {
-            char += 1;
-        }
-    }
-
-    Position::new(line, char)
 }
 
 #[cfg(test)]

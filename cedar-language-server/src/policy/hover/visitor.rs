@@ -48,7 +48,7 @@ use super::ToHover;
 /// or keyword. It implements the visitor pattern to analyze different expression types
 /// and determine what documentation to display.
 pub(crate) struct HoverVisitor<'a> {
-    token_under_cursor: Token<'a>,
+    token_under_cursor: Token,
     doc_context: &'a DocumentContext,
 }
 
@@ -74,12 +74,12 @@ impl ExprVisitor for HoverVisitor<'_> {
                 }
                 Literal::Long(l) if l.to_string() == self.token_under_cursor => CedarTypeKind::Long,
                 Literal::String(str)
-                    if str.to_string().contains(self.token_under_cursor.inner()) =>
+                    if str.to_string().contains(self.token_under_cursor.as_ref()) =>
                 {
                     CedarTypeKind::String
                 }
                 Literal::EntityUID(euid)
-                    if euid.to_string().contains(self.token_under_cursor.inner()) =>
+                    if euid.to_string().contains(self.token_under_cursor.as_ref()) =>
                 {
                     euid.as_ref().into()
                 }

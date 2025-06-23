@@ -17,6 +17,7 @@
 use std::fmt::Write;
 
 use cedar_policy_core::{ast::Template, parser::Loc};
+use cedar_policy_formatter::{get_token_stream, token::WrappedToken, Token};
 use lsp_types::{Position, Range};
 use miette::SourceSpan;
 use smol_str::SmolStr;
@@ -94,26 +95,44 @@ pub(crate) fn to_lsp_diagnostics<'a>(
     diagnostics
 }
 
-pub(crate) fn to_range(source_span: &SourceSpan, src: &str) -> Range {
-    let text = &src[..source_span.offset()];
-    let start_line = text.chars().filter(|&c| c == '\n').count();
-    let start_col = text.chars().rev().take_while(|&c| c != '\n').count();
+/// Get the byte offset of a position (line and column) in a string,
+/// accounting for the actual position of newlines in the string.
+pub(crate) fn position_byte_offset(src: &str, pos: Position) -> usize {
+    let line_offset = if pos.line == 0 {
+        0
+    } else {
+        1 + src
+            .char_indices()
+            .filter(|(_, c)| c == &'\n')
+            .nth((pos.line - 1) as usize)
+            .unwrap()
+            .0
+    };
 
-    let end = source_span.offset() + source_span.len();
-    let text = &src[..end];
-    let end_line = text.chars().filter(|&c| c == '\n').count();
-    let end_col = text.chars().rev().take_while(|&c| c != '\n').count();
+    let line = &src[line_offset..];
+    let char_idx = line
+        .char_indices()
+        .nth(pos.character as usize)
+        .map(|c| c.0)
+        .unwrap_or(line.len());
 
-    Range {
-        start: Position {
-            line: start_line as u32,
-            character: start_col as u32,
-        },
-        end: Position {
-            line: end_line as u32,
-            character: end_col as u32,
-        },
+    line_offset + char_idx
+}
+
+pub(crate) fn byte_offset_to_position(byte_offset: usize, src: &str) -> Position {
+    let src = &src[..byte_offset];
+    let line = src.chars().filter(|&c| c == '\n').count();
+    let character = src.chars().rev().take_while(|&c| c != '\n').count();
+    Position {
+        line: line as u32,
+        character: character as u32,
     }
+}
+
+pub(crate) fn to_range(source_span: &SourceSpan, src: &str) -> Range {
+    let start = byte_offset_to_position(source_span.offset(), src);
+    let end = byte_offset_to_position(source_span.offset() + source_span.len(), src);
+    Range { start, end }
 }
 
 pub(crate) fn get_char_at_position(position: Position, src: &str) -> Option<char> {
@@ -128,14 +147,22 @@ where
     R: ToRange + 'a,
     I: Into<Option<&'a R>>,
 {
-    let Some(range) = range.into() else {
-        return false;
-    };
-    let range = range.to_range();
-    position.line >= range.start.line
-        && position.line <= range.end.line
-        && (position.line != range.start.line || position.character >= range.start.character)
-        && (position.line != range.end.line || position.character <= range.end.character)
+    range
+        .into()
+        .map(|r| position_with_range(&position, &r.to_range()))
+        .unwrap_or_default()
+}
+
+fn position_with_range(position: &Position, range: &Range) -> bool {
+    // after start position
+    let after_start = position.line > range.start.line
+        || (position.line == range.start.line && position.character >= range.start.character);
+
+    // before end position
+    let before_end = position.line < range.end.line
+        || (position.line == range.end.line && position.character <= range.end.character);
+
+    after_start && before_end
 }
 
 pub(crate) fn get_word_at_position(position: Position, text: &str) -> Option<(&str, Range)> {
@@ -188,150 +215,98 @@ pub(crate) fn get_word_at_position(position: Position, text: &str) -> Option<(&s
     Some((word, range))
 }
 
-pub(crate) fn get_operator_at_position(position: Position, text: &str) -> Option<(&str, Range)> {
-    // Get the line at the cursor position
-    let line = text.lines().nth(position.line as usize)?;
-    let char_pos = position.character as usize;
-
-    // Check if we're within the line bounds
-    if char_pos > line.len() {
-        return None;
-    }
-
-    // Define all possible operators
-    let operators = [
-        "&&", "||", "!=", "==", ">=", "<=", "!", "+", "-", "*", "<", ">",
-    ];
-
-    // Helper function to check if a character could be part of an operator
-    let is_operator_char = |c: char| "!&|=<>+-*".contains(c);
-
-    // Find the start of the operator
-    let start = line[..char_pos]
-        .char_indices()
-        .rev()
-        .find(|(_, c)| !is_operator_char(*c))
-        .map_or(0, |(i, _)| i + 1);
-
-    // Find the end of the operator
-    let end = line[char_pos..]
-        .char_indices()
-        .find(|(_, c)| !is_operator_char(*c))
-        .map_or(line.len(), |(i, _)| char_pos + i);
-
-    // If we're not actually on an operator, return None
-    if start >= end {
-        return None;
-    }
-
-    let potential_operator = line[start..end].to_string();
-
-    // Check if the extracted string is a valid operator
-    operators.iter().find_map(|&op| {
-        // Find the position of this operator in our extracted string
-        let op_start = potential_operator.find(op)?;
-        // Check if our cursor position is within this operator
-        let absolute_op_start = start + op_start;
-        let absolute_op_end = absolute_op_start + op.len();
-        if char_pos >= absolute_op_start && char_pos <= absolute_op_end {
-            let range = Range {
-                start: Position {
-                    line: position.line,
-                    character: absolute_op_start as u32,
-                },
-                end: Position {
-                    line: position.line,
-                    character: absolute_op_end as u32,
-                },
-            };
-
-            Some((op, range))
-        } else {
-            None
-        }
-    })
+pub(crate) fn get_operator_at_position(position: Position, text: &str) -> Option<Token> {
+    let offset = position_byte_offset(text, position);
+    get_token_stream(text)?
+        .0
+        .into_iter()
+        .find(|wrapped_token| {
+            wrapped_token.span.contains(&offset)
+                && matches!(
+                    wrapped_token.token,
+                    Token::And
+                        | Token::Or
+                        | Token::NotEqual
+                        | Token::Equal
+                        | Token::Ge
+                        | Token::Le
+                        | Token::Neg
+                        | Token::Add
+                        | Token::Dash
+                        | Token::Mul
+                        | Token::Lt
+                        | Token::Gt
+                )
+        })
+        .map(|t| t.token)
 }
 
-fn get_policy_scope_ranges(policy_text: &str) -> Vec<Range> {
-    // Track policy scope boundaries for all policies
-    let mut policy_scopes: Vec<Range> = Vec::new();
-    let mut policy_start_pos: Option<Position> = None;
-    let mut paren_depth = 0;
-    let mut in_effect_keyword = false;
+struct PolicyScopeIter<'a> {
+    policy_start_pos: Option<Position>,
+    paren_depth: i32,
+    found_effect_keyword: bool,
+    tokens: <Vec<WrappedToken<'a>> as IntoIterator>::IntoIter,
+    policy_text: &'a str,
+}
 
-    // Identify effect keywords and their parentheses
-    for (line_idx, line) in policy_text.lines().enumerate() {
-        for (char_idx, char) in line.char_indices() {
-            let substring = &line[char_idx..];
+impl<'a> PolicyScopeIter<'a> {
+    fn new(policy_text: &'a str) -> Option<Self> {
+        Some(Self {
+            policy_start_pos: None,
+            paren_depth: 0,
+            found_effect_keyword: false,
+            tokens: get_token_stream(policy_text)?.0.into_iter(),
+            policy_text,
+        })
+    }
+}
 
-            // Check for effect keywords
-            if !in_effect_keyword
-                && (substring.starts_with("permit") || substring.starts_with("forbid"))
-                && (char_idx == 0
-                    || !line[..char_idx]
-                        .trim_end()
-                        .ends_with(|c: char| c.is_alphanumeric() || c == '_'))
-            {
-                in_effect_keyword = true;
-                continue;
-            }
+impl Iterator for PolicyScopeIter<'_> {
+    type Item = Range;
 
-            // If we've found an effect keyword, track parentheses
-            if in_effect_keyword {
-                match char {
-                    '(' => {
-                        paren_depth += 1;
-                        if paren_depth == 1 {
-                            policy_start_pos = Some(Position {
-                                line: line_idx as u32,
-                                character: char_idx as u32,
-                            });
-                        }
-                    }
-                    ')' => {
-                        paren_depth -= 1;
-                        if let Some(policy_start_pos) =
-                            policy_start_pos.take_if(|_| paren_depth == 0)
-                        {
-                            // Add this policy scope to our list
-                            policy_scopes.push(Range {
-                                start: policy_start_pos,
-                                end: Position {
-                                    line: line_idx as u32,
-                                    character: char_idx as u32,
-                                },
-                            });
-                            in_effect_keyword = false;
-                        }
-                    }
-                    _ => {}
+    fn next(&mut self) -> Option<Self::Item> {
+        // Loop until we find a fully policy scope or run out of tokens
+        loop {
+            let token = self.tokens.next()?;
+            match token.token {
+                // Check for effect keywords
+                Token::Permit | Token::Forbid if !self.found_effect_keyword => {
+                    self.found_effect_keyword = true;
                 }
+
+                // If we've found an effect keyword, track parentheses
+                Token::LParen if self.found_effect_keyword => {
+                    if self.paren_depth == 0 {
+                        self.policy_start_pos =
+                            Some(byte_offset_to_position(token.span.start, self.policy_text));
+                    }
+                    self.paren_depth += 1;
+                }
+                Token::RParen if self.found_effect_keyword => {
+                    self.paren_depth -= 1;
+                    if let Some(policy_start_pos) =
+                        self.policy_start_pos.take_if(|_| self.paren_depth == 0)
+                    {
+                        self.found_effect_keyword = false;
+                        // Found a scope. Return it.
+                        return Some(Range {
+                            start: policy_start_pos,
+                            end: byte_offset_to_position(token.span.start, self.policy_text),
+                        });
+                    }
+                }
+                _ => {}
             }
         }
     }
-
-    policy_scopes
 }
 
 fn policy_scope_range_containing_cursor(
     policy_text: &str,
     cursor_position: Position,
 ) -> Option<Range> {
-    get_policy_scope_ranges(policy_text)
-        .into_iter()
-        .find(|scope_range| {
-            // Cursor is after start position
-            let after_start = cursor_position.line > scope_range.start.line
-                || (cursor_position.line == scope_range.start.line
-                    && cursor_position.character > scope_range.start.character);
-
-            // Cursor is before end position
-            let before_end = cursor_position.line < scope_range.end.line
-                || (cursor_position.line == scope_range.end.line
-                    && cursor_position.character <= scope_range.end.character);
-
-            after_start && before_end
-        })
+    PolicyScopeIter::new(policy_text)?
+        .find(|scope_range| position_with_range(&cursor_position, scope_range))
 }
 
 pub(crate) fn is_cursor_within_policy_scope(policy_text: &str, cursor_position: Position) -> bool {
@@ -645,23 +620,6 @@ pub(crate) mod tests {
         (src, caret_positions)
     }
 
-    /// Get the byte offset of a position (line and column) in a string,
-    /// accounting for the actual position of newlines in the string.
-    pub(crate) fn position_byte_offset(src: &str, pos: Position) -> usize {
-        let line_offset = if pos.line == 0 {
-            0
-        } else {
-            1 + src
-                .char_indices()
-                .filter(|(_, c)| c == &'\n')
-                .nth((pos.line - 1).try_into().unwrap())
-                .unwrap()
-                .0
-        };
-
-        line_offset + TryInto::<usize>::try_into(pos.character).unwrap()
-    }
-
     pub(crate) fn insert_caret(src: &str, pos: Position) -> String {
         let offset = position_byte_offset(src, pos);
         format!("{}|caret|{}", &src[..offset], &src[offset..])
@@ -704,16 +662,16 @@ pub(crate) mod tests {
     #[test]
     fn test_get_operator() {
         let test_cases = vec![
-            ("a && b", 2, "&&"),
-            ("x || y", 2, "||"),
-            ("a != b", 2, "!="),
-            ("x == y", 2, "=="),
-            ("a >= b", 2, ">="),
-            ("x <= y", 2, "<="),
-            ("!true", 0, "!"),
-            ("a + b", 2, "+"),
-            ("x - y", 2, "-"),
-            ("a * b", 2, "*"),
+            ("a && b", 2, Token::And),
+            ("x || y", 2, Token::Or),
+            ("a != b", 2, Token::NotEqual),
+            ("x == y", 2, Token::Equal),
+            ("a >= b", 2, Token::Ge),
+            ("x <= y", 2, Token::Le),
+            ("!true", 0, Token::Neg),
+            ("a + b", 2, Token::Add),
+            ("x - y", 2, Token::Dash),
+            ("a * b", 2, Token::Mul),
         ];
 
         for (text, char_pos, expected_op) in test_cases {
@@ -722,9 +680,7 @@ pub(crate) mod tests {
                 character: char_pos,
             };
             let result = get_operator_at_position(position, text);
-            assert!(result.is_some());
-            let (operator, _) = result.unwrap();
-            assert_eq!(operator, expected_op);
+            assert_eq!(result, Some(expected_op));
         }
     }
 
@@ -762,7 +718,7 @@ pub(crate) mod tests {
     #[traced_test]
     fn single_line_policy_outside_scope() {
         assert_carets_not_in_scope(
-            "|caret|per|caret|mit|caret|(principal, action, resource)|caret| when { |caret|true };",
+            "|caret|per|caret|mit(principal, action, resource)|caret| when { |caret|true };",
         );
     }
 

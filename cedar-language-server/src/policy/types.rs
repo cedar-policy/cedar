@@ -119,12 +119,12 @@ impl DocumentContext {
     }
 
     #[must_use]
-    pub(crate) fn get_operator_under_cursor(&self) -> Option<&str> {
-        get_operator_at_position(self.cursor_position, &self.policy_text).map(|w| w.0)
+    pub(crate) fn get_operator_under_cursor(&self) -> Option<cedar_policy_formatter::Token> {
+        get_operator_at_position(self.cursor_position, &self.policy_text)
     }
 
     #[must_use]
-    pub(crate) fn get_token_under_cursor(&self) -> Option<Token<'_>> {
+    pub(crate) fn get_token_under_cursor(&self) -> Option<Token> {
         // Try to get operator first as they're more specific
         if let Some(operator) = self.get_operator_under_cursor() {
             return Some(Token::Operator(operator));
@@ -435,48 +435,41 @@ pub(crate) fn format_attribute(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum Token<'a> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Token {
     Word(String),
-    Operator(&'a str),
+    Operator(cedar_policy_formatter::Token),
 }
 
-impl Token<'_> {
-    #[must_use]
-    pub(crate) fn inner(&self) -> &str {
+impl AsRef<str> for Token {
+    fn as_ref(&self) -> &str {
         match self {
             Self::Word(w) => w,
-            Self::Operator(o) => o,
+            Self::Operator(o) => o.as_ref(),
         }
     }
 }
 
-impl PartialEq<&str> for Token<'_> {
+impl PartialEq<&str> for Token {
     fn eq(&self, other: &&str) -> bool {
-        match self {
-            Self::Word(w) => w == other,
-            Self::Operator(o) => o == other,
-        }
+        self.as_ref() == *other
     }
 }
 
-impl PartialEq<String> for Token<'_> {
+impl PartialEq<Token> for &str {
+    fn eq(&self, other: &Token) -> bool {
+        *self == other.as_ref()
+    }
+}
+
+impl PartialEq<String> for Token {
     fn eq(&self, other: &String) -> bool {
-        match self {
-            Self::Word(w) => w == other,
-            Self::Operator(o) => o == other,
-        }
+        self.as_ref() == other
     }
 }
 
-impl PartialEq<Token<'_>> for &str {
-    fn eq(&self, other: &Token<'_>) -> bool {
-        other == self
-    }
-}
-
-impl PartialEq<Token<'_>> for String {
-    fn eq(&self, other: &Token<'_>) -> bool {
-        other == self
+impl PartialEq<Token> for String {
+    fn eq(&self, other: &Token) -> bool {
+        self == other.as_ref()
     }
 }
