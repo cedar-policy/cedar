@@ -15,8 +15,8 @@
  */
 
 use super::{FromJsonError, LinkingError};
+use crate::ast;
 use crate::ast::EntityUID;
-use crate::ast::{self, SlotId};
 use crate::entities::json::{
     err::JsonDeserializationError, err::JsonDeserializationErrorContext, EntityUidJson,
 };
@@ -657,7 +657,7 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
             }
             ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::Slot(id, _)) => {
                 let slot = match id {
-                    Some(id) => SlotId::generalized_slot(id),
+                    Some(id) => ast::SlotId::generalized_slot(id),
                     None => ast::SlotId::principal(),
                 };
                 PrincipalConstraint::Eq(EqConstraint::Slot { slot })
@@ -669,7 +669,7 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
             }
             ast::PrincipalOrResourceConstraint::In(ast::EntityReference::Slot(id, _)) => {
                 let slot = match id {
-                    Some(id) => SlotId::generalized_slot(id),
+                    Some(id) => ast::SlotId::generalized_slot(id),
                     None => ast::SlotId::principal(),
                 };
                 PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot { slot })
@@ -683,7 +683,7 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
                         },
                         ast::EntityReference::Slot(id, _) => {
                             let slot = match id {
-                                Some(id) => SlotId::generalized_slot(id),
+                                Some(id) => ast::SlotId::generalized_slot(id),
                                 None => ast::SlotId::principal(),
                             };
                             PrincipalOrResourceInConstraint::Slot { slot }
@@ -712,8 +712,8 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
             }
             ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::Slot(id, _)) => {
                 let slot = match id {
-                    Some(id) => SlotId::generalized_slot(id),
-                    None => SlotId::resource(),
+                    Some(id) => ast::SlotId::generalized_slot(id),
+                    None => ast::SlotId::resource(),
                 };
                 ResourceConstraint::Eq(EqConstraint::Slot { slot })
             }
@@ -724,8 +724,8 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
             }
             ast::PrincipalOrResourceConstraint::In(ast::EntityReference::Slot(id, _)) => {
                 let slot = match id {
-                    Some(id) => SlotId::generalized_slot(id),
-                    None => SlotId::resource(),
+                    Some(id) => ast::SlotId::generalized_slot(id),
+                    None => ast::SlotId::resource(),
                 };
                 ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot { slot })
             }
@@ -738,8 +738,8 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
                         },
                         ast::EntityReference::Slot(id, _) => {
                             let slot = match id {
-                                Some(id) => SlotId::generalized_slot(id),
-                                None => SlotId::resource(),
+                                Some(id) => ast::SlotId::generalized_slot(id),
+                                None => ast::SlotId::resource(),
                             };
 
                             PrincipalOrResourceInConstraint::Slot { slot }
