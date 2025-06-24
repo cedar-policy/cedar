@@ -684,6 +684,7 @@ pub(crate) mod tests {
         }
     }
 
+    #[track_caller]
     fn assert_carets_in_scope(policy: &str) {
         let (policy, carets) = remove_all_caret_markers(policy);
         for p in carets {
@@ -695,6 +696,7 @@ pub(crate) mod tests {
         }
     }
 
+    #[track_caller]
     fn assert_carets_not_in_scope(policy: &str) {
         let (policy, carets) = remove_all_caret_markers(policy);
         for p in carets {
@@ -820,6 +822,7 @@ permit(
         );
     }
 
+    #[track_caller]
     fn assert_carets_in_condition(policy: &str) {
         let (policy, carets) = remove_all_caret_markers(policy);
         for p in carets {
@@ -831,6 +834,7 @@ permit(
         }
     }
 
+    #[track_caller]
     fn assert_carets_not_in_condition(policy: &str) {
         let (policy, carets) = remove_all_caret_markers(policy);
         for p in carets {
@@ -1116,5 +1120,120 @@ permit(
         );
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
         assert_eq!(result.text, "action");
+    }
+
+    #[test]
+    fn test_get_word_basic() {
+        let (text, pos) = remove_caret_marker("pe|caret|rmit(principal == User::\"alice\")");
+        let (word, range) = get_word_at_position(pos, &text).unwrap();
+        assert_eq!(word, "permit");
+        assert_eq!(
+            range,
+            Range {
+                start: Position {
+                    line: 0,
+                    character: 0,
+                },
+                end: Position {
+                    line: 0,
+                    character: 6
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_word_colon() {
+        let (text, pos) = remove_caret_marker("permit(principal == |caret|User::\"alice\")");
+        let (word, range) = get_word_at_position(pos, &text).unwrap();
+        assert_eq!(word, "User::");
+        assert_eq!(
+            range,
+            Range {
+                start: Position {
+                    line: 0,
+                    character: 20
+                },
+                end: Position {
+                    line: 0,
+                    character: 26
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_word_eq() {
+        let (text, pos) = remove_caret_marker("permit(principal =|caret|= User::\"alice\")");
+        let (word, range) = get_word_at_position(pos, &text).unwrap();
+        assert_eq!(word, "==");
+        assert_eq!(
+            range,
+            Range {
+                start: Position {
+                    line: 0,
+                    character: 17
+                },
+                end: Position {
+                    line: 0,
+                    character: 19
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_word_multiline() {
+        let (text, pos) = remove_caret_marker(
+            "permit(
+    principal == |caret|PhotoFleet:\"user123\",
+    action == Action::\"view\",
+    resource
+)",
+        );
+
+        let (word, range) = get_word_at_position(pos, &text).unwrap();
+        assert_eq!(word, "PhotoFleet:");
+        assert_eq!(
+            range,
+            Range {
+                start: Position {
+                    line: 1,
+                    character: 17
+                },
+                end: Position {
+                    line: 1,
+                    character: 28
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_word_none() {
+        let (text, pos) =
+            remove_caret_marker("permit(principal, action, resource) when { !|caret|!false };");
+        assert_eq!(get_word_at_position(pos, &text), None);
+
+        let (text, pos) =
+            remove_caret_marker("permit(principal, action, resource) when { [|caret|[false]] };");
+        assert_eq!(get_word_at_position(pos, &text), None);
+
+        let (text, pos) =
+            remove_caret_marker("permit(principal, action, resource) when { [|caret|[false]] };");
+        assert_eq!(get_word_at_position(pos, &text), None);
+
+        let (text, pos) =
+            remove_caret_marker("permit(principal, action, resource) when {|caret|{a: 0}};");
+        assert_eq!(get_word_at_position(pos, &text), None);
+
+        let (text, pos) = remove_caret_marker("permit |caret| (principal, action, resource);");
+        assert_eq!(get_word_at_position(pos, &text), None);
+
+        let (text, pos) = remove_caret_marker("permit(principal, action |caret|, resource);");
+        assert_eq!(get_word_at_position(pos, &text), None);
+
+        let (text, pos) = remove_caret_marker("permit(principal, action\n\n|caret|\n,resource);");
+        assert_eq!(get_word_at_position(pos, &text), None);
     }
 }
