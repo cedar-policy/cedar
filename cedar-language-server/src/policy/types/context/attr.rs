@@ -60,7 +60,7 @@ impl AttrContext {
         let Some(ty) = self.receiver_cx.get_type(document_context) else {
             return vec![];
         };
-        let schema = document_context.schema.as_deref();
+        let schema = document_context.schema();
         let items = AttributeCompletionItems::new(&ty, schema, self.kind);
         items.into()
     }

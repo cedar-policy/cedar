@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-use std::sync::Arc;
-
 use cedar_policy_core::ast::PolicyID;
 use cedar_policy_core::validator::ValidatorSchema;
 use itertools::Itertools;
@@ -67,18 +65,21 @@ pub(crate) fn policy_goto_definition(
         .ok()?;
     let (schema_info, schema_uri) = schema.zip(schema_uri)?;
 
-    let validator = ValidatorSchema::try_from(&schema_info).ok().map(Arc::new)?;
+    let validator = ValidatorSchema::try_from(&schema_info).ok()?;
 
-    let policy = Arc::new(policy);
-    let d_cx = Arc::new(DocumentContext::new(
-        Some(validator.clone()),
+    let d_cx = DocumentContext::new(
+        Some(validator),
         policy,
         position,
         PolicyLanguageFeatures::default(),
-    ));
+    );
+
+    // PANIC_SAFETY: We just constructed `d_cx` with a schema, so it will be present here.
+    #[allow(clippy::unwrap_used)]
+    let validator_ref = d_cx.schema().unwrap();
 
     let schema_ranges =
-        PolicyGotoSchemaDefinition::get_schema_definition_ranges(&d_cx, &validator)?;
+        PolicyGotoSchemaDefinition::get_schema_definition_ranges(&d_cx, validator_ref)?;
     match schema_ranges.into_iter().exactly_one() {
         Ok(range) => {
             let location = Location::new(schema_uri.clone(), range);

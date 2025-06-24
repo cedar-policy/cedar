@@ -151,7 +151,7 @@ impl<'a> PolicyGotoSchemaDefinition<'a> {
     }
 
     fn context_type_to_range(&self, ctx: &ContextKind) -> Option<Vec<Range>> {
-        let schema = self.doc_context.schema.as_ref()?;
+        let schema = self.doc_context.schema()?;
         match ctx {
             ContextKind::AnyContext => schema
                 .action_ids()

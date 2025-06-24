@@ -22,7 +22,6 @@ use cedar_policy_core::{
 };
 use lsp_types::{CompletionItem, Position};
 use process::preprocess_policy;
-use std::sync::Arc;
 use tracing::{error, info};
 
 use crate::{
@@ -67,7 +66,7 @@ impl PolicyCompletionProvider {
     pub(crate) fn get_completions(
         cursor_position: Position,
         policy_string: &str,
-        schema: Option<Arc<ValidatorSchema>>,
+        schema: Option<ValidatorSchema>,
         features: PolicyLanguageFeatures,
     ) -> Vec<CompletionItem> {
         let mut provider = Self::new(cursor_position);
@@ -93,7 +92,7 @@ impl PolicyCompletionProvider {
     fn inner(
         &mut self,
         policy_string: &str,
-        schema: Option<Arc<ValidatorSchema>>,
+        schema: Option<ValidatorSchema>,
         features: PolicyLanguageFeatures,
     ) -> Vec<CompletionItem> {
         let (policy_text, position) = preprocess_policy(policy_string, self.cursor_position);
@@ -112,7 +111,6 @@ impl PolicyCompletionProvider {
             info!("Error parsing policy to policy template");
             return vec![];
         };
-        let policy = Arc::new(policy);
 
         let document_context = DocumentContext::new(schema, policy, self.cursor_position, features);
 

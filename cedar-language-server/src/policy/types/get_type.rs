@@ -61,7 +61,7 @@ impl<'a> TypeInferenceContext<'a> {
 
     #[must_use]
     pub(crate) fn get_base_type_attrs(&'a self) -> Option<AttributeCollection<'a>> {
-        let schema = self.document_context.schema.as_deref()?;
+        let schema = self.document_context.schema()?;
         let base_type = self.base_type.as_ref()?;
 
         match base_type {
@@ -159,7 +159,7 @@ impl<'a> TypeInferenceContext<'a> {
         initial_attrs: AttributeCollection<'a>,
     ) -> Vec<AttributeInfo<'a>> {
         // Early return if we have no schema or empty path
-        let Some(schema) = self.document_context.schema.as_deref() else {
+        let Some(schema) = self.document_context.schema() else {
             return vec![];
         };
 

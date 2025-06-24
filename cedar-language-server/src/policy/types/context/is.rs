@@ -55,7 +55,7 @@ impl IsContext {
             return vec![];
         };
 
-        let is_completions = IsCompletionItems::new(&ty, document_context.schema.as_deref());
+        let is_completions = IsCompletionItems::new(&ty, document_context.schema());
         is_completions.into()
     }
 }

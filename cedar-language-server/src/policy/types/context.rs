@@ -73,9 +73,7 @@ impl GetType for ExprKind {
             }
             Self::GetAttr { expr, attr } | Self::HasAttr { expr, attr } => {
                 let ty = expr.expr_kind().get_type(cx);
-                ty.and_then(|ty| {
-                    ty.attribute_type(attr, cx.schema.as_ref().map(std::convert::AsRef::as_ref))
-                })
+                ty.and_then(|ty| ty.attribute_type(attr, cx.schema()))
             }
             Self::Record(fields) => {
                 let mut record_fields = BTreeMap::new();
@@ -111,15 +109,7 @@ impl GetType for ExprKind {
             Self::GetAttr { expr, attr } | Self::HasAttr { expr, attr } => {
                 let ty = expr.expr_kind().get_type_with_cx(cx);
                 cx.add_attr(attr);
-                ty.and_then(|ty| {
-                    ty.attribute_type(
-                        attr,
-                        cx.document_context
-                            .schema
-                            .as_ref()
-                            .map(std::convert::AsRef::as_ref),
-                    )
-                })
+                ty.and_then(|ty| ty.attribute_type(attr, cx.document_context.schema()))
             }
             Self::Record(fields) => {
                 let mut record_fields = BTreeMap::new();

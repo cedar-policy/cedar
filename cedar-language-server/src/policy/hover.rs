@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-use std::sync::Arc;
-
 use crate::{
     documentation::{
         ActionDocumentation, EqualsDocumentation, InDocumentation, IsDocumentation,
@@ -52,6 +50,7 @@ mod visitor;
 ///
 /// An `Option<Hover>` containing LSP hover information for the element under the cursor,
 /// or `None` if no relevant documentation can be provided.
+#[must_use]
 pub fn policy_hover(
     position: Position,
     policy_string: &str,
@@ -72,30 +71,31 @@ pub fn policy_hover(
         .to_policy_template(PolicyID::from_smolstr("0".into()))
         .ok()?;
 
-    let validator = schema
-        .and_then(|schema| ValidatorSchema::try_from(&schema).ok())
-        .map(Arc::new);
+    let validator = schema.and_then(|schema| ValidatorSchema::try_from(&schema).ok());
 
-    let policy = Arc::new(policy);
-    let d_cx = Arc::new(DocumentContext::new(
+    let d_cx = DocumentContext::new(
         validator,
-        policy.clone(),
+        policy,
         position,
         PolicyLanguageFeatures::default(),
-    ));
+    );
 
     if d_cx.is_in_scope_block() {
         let scope_info = d_cx.get_scope_variable_info();
         match scope_info.variable_type {
-            PolicyScopeVariable::Principal => return policy.principal_constraint().to_hover(&d_cx),
-            PolicyScopeVariable::Action => return policy.action_constraint().to_hover(&d_cx),
-            PolicyScopeVariable::Resource => return policy.resource_constraint().to_hover(&d_cx),
+            PolicyScopeVariable::Principal => {
+                return d_cx.policy.principal_constraint().to_hover(&d_cx)
+            }
+            PolicyScopeVariable::Action => return d_cx.policy.action_constraint().to_hover(&d_cx),
+            PolicyScopeVariable::Resource => {
+                return d_cx.policy.resource_constraint().to_hover(&d_cx)
+            }
             PolicyScopeVariable::None => return None,
         };
     }
 
     let mut hover_visitor = HoverVisitor::new(&d_cx);
-    hover_visitor.visit_expr(&policy.condition())
+    hover_visitor.visit_expr(&d_cx.policy.condition())
 }
 
 trait ToHover {
@@ -117,9 +117,7 @@ where
         Some(Hover {
             contents: HoverContents::Markup(lsp_types::MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: self
-                    .to_documentation_string(cx.schema.as_deref())
-                    .into_owned(),
+                value: self.to_documentation_string(cx.schema()).into_owned(),
             }),
             range: None,
         })

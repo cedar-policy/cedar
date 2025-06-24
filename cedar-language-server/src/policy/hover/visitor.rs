@@ -127,7 +127,7 @@ impl ExprVisitor for HoverVisitor<'_> {
             return expr
                 .expr_kind()
                 .get_type(self.doc_context)
-                .and_then(|ty| ty.attribute_type(attr, self.doc_context.schema.as_deref()))
+                .and_then(|ty| ty.attribute_type(attr, self.doc_context.schema()))
                 .and_then(|ty| ty.to_hover(self.doc_context));
         }
 
@@ -237,7 +237,7 @@ impl ExprVisitor for HoverVisitor<'_> {
             return expr
                 .expr_kind()
                 .get_type(self.doc_context)
-                .and_then(|ty| ty.attribute_type(attr, self.doc_context.schema.as_deref()))
+                .and_then(|ty| ty.attribute_type(attr, self.doc_context.schema()))
                 .and_then(|ty| ty.to_hover(self.doc_context));
         }
 

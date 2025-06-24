@@ -68,7 +68,7 @@ impl From<PrincipalCompletionItem<'_>> for lsp_types::CompletionItem {
             documentation: Documentation::MarkupContent(MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,
                 value: PrincipalDocumentation::from(&value)
-                    .to_documentation_string(value.cx.schema.as_deref())
+                    .to_documentation_string(value.cx.schema())
                     .into_owned(),
             })
             .into(),
@@ -104,7 +104,7 @@ impl From<ActionCompletionItem<'_>> for lsp_types::CompletionItem {
             documentation: Documentation::MarkupContent(MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,
                 value: ActionDocumentation::from(&value)
-                    .to_documentation_string(value.cx.schema.as_deref())
+                    .to_documentation_string(value.cx.schema())
                     .into_owned(),
             })
             .into(),
@@ -157,7 +157,7 @@ impl From<ResourceCompletionItem<'_>> for lsp_types::CompletionItem {
             documentation: Documentation::MarkupContent(MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,
                 value: ResourceDocumentation::from(&value)
-                    .to_documentation_string(value.cx.schema.as_deref())
+                    .to_documentation_string(value.cx.schema())
                     .into_owned(),
             })
             .into(),
@@ -193,7 +193,7 @@ impl From<ContextCompletionIem<'_>> for lsp_types::CompletionItem {
             documentation: Documentation::MarkupContent(MarkupContent {
                 kind: lsp_types::MarkupKind::Markdown,
                 value: ContextDocumentation::from(&value)
-                    .to_documentation_string(value.cx.schema.as_deref())
+                    .to_documentation_string(value.cx.schema())
                     .into_owned(),
             })
             .into(),

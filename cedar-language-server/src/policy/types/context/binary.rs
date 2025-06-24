@@ -159,7 +159,7 @@ impl BinaryOpContext {
             return vec![];
         };
 
-        match (&self.op, document_context.schema.as_ref()) {
+        match (&self.op, document_context.schema()) {
             (Op::Eq, Some(_)) => {
                 self.eq_completions(other_side_type, completion_side_type, document_context)
             }
@@ -182,7 +182,7 @@ impl BinaryOpContext {
         _completion_side: CedarTypeKind,
         document_context: &DocumentContext,
     ) -> Vec<CompletionItem> {
-        let Some(schema) = document_context.schema.as_ref() else {
+        let Some(schema) = document_context.schema() else {
             return vec![];
         };
         let complete_type = get_completion_type(&self.complete_side_expr, document_context);
@@ -255,7 +255,7 @@ impl BinaryOpContext {
         other_side: CedarTypeKind,
         document_context: &DocumentContext,
     ) -> Vec<CompletionItem> {
-        let Some(schema) = document_context.schema.as_ref() else {
+        let Some(schema) = document_context.schema() else {
             return vec![];
         };
 
@@ -283,7 +283,7 @@ impl BinaryOpContext {
     }
 
     fn in_any_completions<'a>(
-        schema: &'a Arc<ValidatorSchema>,
+        schema: &'a ValidatorSchema,
         var_entity_types: &'a HashSet<EntityType>,
     ) -> impl Iterator<Item = CompletionItem> + 'a {
         schema
@@ -300,7 +300,7 @@ impl BinaryOpContext {
         other_side: CedarTypeKind,
         document_context: &DocumentContext,
     ) -> Vec<CompletionItem> {
-        let Some(schema) = document_context.schema.as_ref() else {
+        let Some(schema) = document_context.schema() else {
             return vec![];
         };
         let complete_type = get_completion_type(&self.complete_side_expr, document_context);

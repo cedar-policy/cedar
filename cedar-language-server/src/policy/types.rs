@@ -82,10 +82,10 @@ impl Default for PolicyLanguageFeatures {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct DocumentContext {
-    pub(crate) schema: Option<Arc<ValidatorSchema>>,
-    pub(crate) policy: Arc<Template>,
+    pub(crate) schema: Option<ValidatorSchema>,
+    pub(crate) policy: Template,
     pub(crate) cursor_position: Position,
     is_in_scope: bool,
     pub(crate) policy_text: String,
@@ -95,8 +95,8 @@ pub(crate) struct DocumentContext {
 impl DocumentContext {
     #[must_use]
     pub(crate) fn new(
-        schema: Option<Arc<ValidatorSchema>>,
-        policy: Arc<Template>,
+        schema: Option<ValidatorSchema>,
+        policy: Template,
         cursor_position: Position,
         features: PolicyLanguageFeatures,
     ) -> Self {
@@ -111,6 +111,10 @@ impl DocumentContext {
             cursor_position,
             features,
         }
+    }
+
+    pub(crate) fn schema(&self) -> Option<&ValidatorSchema> {
+        self.schema.as_ref()
     }
 
     #[must_use]
@@ -230,7 +234,7 @@ impl DocumentContext {
                 EntityTypeKind::Concrete(entity_uid.entity_type().clone().into())
             }
             PrincipalOrResourceConstraint::In(EntityReference::EUID(entity_uid)) => {
-                let Some(schema) = self.schema.as_ref() else {
+                let Some(schema) = self.schema() else {
                     return any_type;
                 };
                 let Some(entity_type) = schema.get_entity_type(entity_uid.entity_type()) else {
@@ -299,7 +303,7 @@ impl DocumentContext {
         match self.policy.action_constraint() {
             ActionConstraint::Any | ActionConstraint::ErrorConstraint => any_type,
             ActionConstraint::In(entity_uids) => {
-                let Some(schema) = self.schema.as_deref() else {
+                let Some(schema) = &self.schema else {
                     return any_type;
                 };
 
@@ -326,7 +330,7 @@ impl DocumentContext {
                 EntityTypeKind::Set(entities)
             }
             ActionConstraint::Eq(entity_uid) => {
-                let Some(schema) = self.schema.as_ref() else {
+                let Some(schema) = self.schema() else {
                     return any_type;
                 };
 
