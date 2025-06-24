@@ -357,7 +357,7 @@ impl std::fmt::Display for ValidSlotId {
         let s = match self {
             ValidSlotId::Principal => "principal",
             ValidSlotId::Resource => "resource",
-            ValidSlotId::GeneralizedSlot(id) => &id.to_smolstr(),
+            ValidSlotId::GeneralizedSlot(id) => id.as_ref(),
         };
         write!(f, "?{s}")
     }
