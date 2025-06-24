@@ -319,9 +319,9 @@ impl SlotId {
     }
 
     /// Returns the id if the slot is a `generalized slot`
-    pub fn extract_id_out_of_generalized_slot(&self) -> Option<Id> {
+    pub fn extract_id_out_of_generalized_slot(&self) -> Option<&Id> {
         match self {
-            Self(ValidSlotId::GeneralizedSlot(id)) => Some(id.clone()),
+            Self(ValidSlotId::GeneralizedSlot(id)) => Some(id),
             _ => None,
         }
     }
@@ -349,7 +349,7 @@ pub(crate) enum ValidSlotId {
     Principal,
     #[serde(rename = "?resource")]
     Resource,
-    GeneralizedSlot(Id),
+    GeneralizedSlot(Id), // Slots for generalized templates, for more info see [RFC 98](https://github.com/cedar-policy/rfcs/pull/98).
 }
 
 impl std::fmt::Display for ValidSlotId {

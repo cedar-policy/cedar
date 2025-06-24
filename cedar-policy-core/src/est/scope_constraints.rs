@@ -772,7 +772,10 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
             PrincipalConstraint::Eq(EqConstraint::Slot { slot }) => {
                 if slot == ast::SlotId::principal() || slot.is_generalized_slot() {
                     Ok(ast::PrincipalOrResourceConstraint::Eq(
-                        ast::EntityReference::Slot(slot.extract_id_out_of_generalized_slot(), None),
+                        ast::EntityReference::Slot(
+                            slot.extract_id_out_of_generalized_slot().cloned(),
+                            None,
+                        ),
                     ))
                 } else {
                     Err(Self::Error::InvalidSlotName)
@@ -786,7 +789,10 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
             PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot { slot }) => {
                 if slot == ast::SlotId::principal() || slot.is_generalized_slot() {
                     Ok(ast::PrincipalOrResourceConstraint::In(
-                        ast::EntityReference::Slot(slot.extract_id_out_of_generalized_slot(), None),
+                        ast::EntityReference::Slot(
+                            slot.extract_id_out_of_generalized_slot().cloned(),
+                            None,
+                        ),
                     ))
                 } else {
                     Err(Self::Error::InvalidSlotName)
@@ -814,7 +820,7 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
                         Some(PrincipalOrResourceInConstraint::Slot { slot }) => {
                             ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(
                                 Arc::new(entity_type),
-                                slot.extract_id_out_of_generalized_slot(),
+                                slot.extract_id_out_of_generalized_slot().cloned(),
                             )
                         }
                     })
@@ -838,7 +844,10 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
             ResourceConstraint::Eq(EqConstraint::Slot { slot }) => {
                 if slot == ast::SlotId::resource() || slot.is_generalized_slot() {
                     Ok(ast::PrincipalOrResourceConstraint::Eq(
-                        ast::EntityReference::Slot(slot.extract_id_out_of_generalized_slot(), None),
+                        ast::EntityReference::Slot(
+                            slot.extract_id_out_of_generalized_slot().cloned(),
+                            None,
+                        ),
                     ))
                 } else {
                     Err(Self::Error::InvalidSlotName)
@@ -852,7 +861,10 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
             ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot { slot }) => {
                 if slot == ast::SlotId::resource() || slot.is_generalized_slot() {
                     Ok(ast::PrincipalOrResourceConstraint::In(
-                        ast::EntityReference::Slot(slot.extract_id_out_of_generalized_slot(), None),
+                        ast::EntityReference::Slot(
+                            slot.extract_id_out_of_generalized_slot().cloned(),
+                            None,
+                        ),
                     ))
                 } else {
                     Err(Self::Error::InvalidSlotName)
@@ -880,7 +892,7 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
                         Some(PrincipalOrResourceInConstraint::Slot { slot }) => {
                             ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(
                                 Arc::new(entity_type),
-                                slot.extract_id_out_of_generalized_slot(),
+                                slot.extract_id_out_of_generalized_slot().cloned(),
                             )
                         }
                     })
