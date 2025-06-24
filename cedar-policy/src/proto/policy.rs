@@ -226,7 +226,7 @@ impl From<&models::EntityReference> for ast::EntityReference {
                 match models::entity_reference::Slot::try_from(*slot)
                     .expect("decode should succeed")
                 {
-                    models::entity_reference::Slot::Unit => ast::EntityReference::Slot(None),
+                    models::entity_reference::Slot::Unit => ast::EntityReference::Slot(None, None),
                 }
             }
             models::entity_reference::Data::Euid(euid) => {
@@ -244,7 +244,7 @@ impl From<&ast::EntityReference> for models::EntityReference {
                     models::EntityUid::from(euid.as_ref()),
                 )),
             },
-            ast::EntityReference::Slot(_) => Self {
+            ast::EntityReference::Slot(_, _) => Self {
                 data: Some(models::entity_reference::Data::Slot(
                     models::entity_reference::Slot::Unit.into(),
                 )),
@@ -546,9 +546,9 @@ mod test {
             ast::EntityReference::from(&models::EntityReference::from(&er1))
         );
         assert_eq!(
-            ast::EntityReference::Slot(None),
+            ast::EntityReference::Slot(None, None),
             ast::EntityReference::from(&models::EntityReference::from(
-                &ast::EntityReference::Slot(None)
+                &ast::EntityReference::Slot(None, None)
             ))
         );
 
@@ -709,7 +709,7 @@ mod test {
                 },
             )]),
             ast::Effect::Permit,
-            ast::PrincipalConstraint::is_eq_slot(),
+            ast::PrincipalConstraint::is_eq_slot(None),
             ast::ActionConstraint::Eq(
                 ast::EntityUID::with_eid_and_type("Action", "read")
                     .unwrap()
@@ -779,7 +779,7 @@ mod test {
                 },
             )]),
             ast::Effect::Permit,
-            ast::PrincipalConstraint::is_eq_slot(),
+            ast::PrincipalConstraint::is_eq_slot(None),
             ast::ActionConstraint::Eq(
                 ast::EntityUID::with_eid_and_type("Action", "read")
                     .unwrap()
