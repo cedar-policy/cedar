@@ -14,8 +14,11 @@
  * limitations under the License.
  */
 
+use std::borrow::Cow;
+
 use lsp_types::Position;
 
+// INVARIANT: The length of this marker in characters and bytes must be equal. All characters must be encoded in 1 byte.
 pub(crate) const LSP_MARKER: &str = "__CEDAR_LSP";
 
 /// Preprocesses Cedar policy text to handle incomplete expressions for language server processing.
@@ -56,67 +59,79 @@ pub(crate) const LSP_MARKER: &str = "__CEDAR_LSP";
 pub(crate) fn preprocess_policy(
     original_text: &str,
     original_position: Position,
-) -> (String, Position) {
-    let mut phantom_text = original_text.to_string();
+) -> (Cow<'_, str>, Position) {
+    let mut phantom_text = Cow::Borrowed(original_text);
     let mut adjusted_position = original_position;
-
-    // Find all trailing dots in the entire text
-    let positions: Vec<(usize, usize)> = original_text
-        .lines()
-        .enumerate()
-        .flat_map(|(line_num, line)| {
-            let line_start = original_text
-                .lines()
-                .take(line_num)
-                .map(|l| l.len() + 1)
-                .sum::<usize>();
-
-            line.char_indices()
-                .filter(|(i, c)| {
-                    *c == '.'
-                        && line.chars().nth(i + 1).is_none_or(|next| {
-                            next.is_whitespace() || next == '\n' || next == '}' || next == ')'
-                        })
-                })
-                .map(move |(i, _)| (line_start + i, line_num))
-        })
-        .collect();
-
     // Insert phantom tokens and adjust position if needed
-    let mut offset = 0;
-    for (pos, line_num) in positions {
-        let insert_pos = pos + 1 + offset;
+    for (dot_number, dot_position) in incomplete_dot_positions(original_text).enumerate() {
+        let insert_byte_offset = dot_position.byte_index + 1 + (dot_number * LSP_MARKER.len());
+        phantom_text
+            .to_mut()
+            .insert_str(insert_byte_offset, LSP_MARKER);
 
         // Only adjust cursor position if we're on the same line
-        if line_num as u32 == original_position.line {
-            // Calculate the position relative to the line start
-            let line_start = if original_text.lines().count() > 1 {
-                original_text
-                    .lines()
-                    .take(line_num)
-                    .map(|l| l.len() + 1)
-                    .sum::<usize>()
-            } else {
-                0
-            };
-
-            let pos_in_line = pos - line_start + 1;
-
-            if pos_in_line < original_position.character as usize {
-                adjusted_position.character += LSP_MARKER.len() as u32;
-            }
+        if dot_position.line_number as u32 == original_position.line
+            && dot_position.char_index_in_line + 1 < original_position.character as usize
+        {
+            adjusted_position.character += LSP_MARKER.len() as u32;
         }
-
-        phantom_text.insert_str(insert_pos, LSP_MARKER);
-        offset += LSP_MARKER.len();
     }
 
     (phantom_text, adjusted_position)
 }
 
+#[derive(Debug, Clone)]
+struct DotPosition {
+    /// Line number where we found the dot.
+    line_number: usize,
+    /// Byte index of the dot, _from the beginning of the string_.
+    byte_index: usize,
+    /// Character index of the dot, _in its line_
+    char_index_in_line: usize,
+}
+
+// Returns an iterator over the position of "incomplete" `.` expressions. The
+// expressions is considered incomplete followed by an identifier for the
+// attribute being accessed.
+fn incomplete_dot_positions(text: &str) -> impl Iterator<Item = DotPosition> + '_ {
+    // `scan` accumulates the byte offset for the start of each line while
+    // `enumerate` gives us the number of each line.
+    let lines_with_number_and_byte_offset = text
+        .lines()
+        .scan(0_usize, |acc, line| {
+            let line_start = *acc;
+            *acc += line.len() + 1;
+            Some((line_start, line))
+        })
+        .enumerate();
+
+    lines_with_number_and_byte_offset.flat_map(|(line_number, (line_start_byte, line))| {
+        // `char_indices` gives us the byte index of each character (in the line)
+        // while `enumerate` gives us the number of characters into the line.
+        // These are different if characters are encoded with multiple bytes.
+        let chars_with_character_and_byte_offset = line.char_indices().enumerate();
+
+        chars_with_character_and_byte_offset
+            .zip(line.chars().skip(1).map(Some).chain(std::iter::once(None)))
+            .filter(|((_, (_, c)), next_c)| {
+                *c == '.'
+                    && next_c
+                        .is_none_or(|next_c| next_c.is_whitespace() || matches!(next_c, '}' | ')'))
+            })
+            .map(
+                move |((char_index_in_line, (byte_offset_in_line, _)), _)| DotPosition {
+                    line_number,
+                    byte_index: line_start_byte + byte_offset_in_line,
+                    char_index_in_line,
+                },
+            )
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cool_asserts::assert_matches;
     use similar_asserts::assert_eq;
 
     #[test]
@@ -130,6 +145,20 @@ mod tests {
             r"permit(principal, action, resource) when { principal.hello && action.__CEDAR_LSP };"
         );
 
+        assert_eq!(position, Position::new(0, 0));
+    }
+
+    #[test]
+    fn test_preprocess_correct_unchanged() {
+        let (new_policy, position) = preprocess_policy(
+            r"permit(principal, action, resource) when { principal.hello && resource.bar };",
+            Position::new(0, 0),
+        );
+        assert_eq!(
+            new_policy,
+            r"permit(principal, action, resource) when { principal.hello && resource.bar };"
+        );
+        assert_matches!(new_policy, Cow::Borrowed(_));
         assert_eq!(position, Position::new(0, 0));
     }
 
@@ -224,5 +253,19 @@ mod tests {
             "permit(principal, action, resource) when { principal.__CEDAR_LSP .__CEDAR_LSP .__CEDAR_LSP .__CEDAR_LSP };"
         );
         assert_eq!(position, Position::new(0, 55 + LSP_MARKER.len() as u32));
+    }
+
+    #[test]
+    fn test_preprocess_unicode() {
+        // '¡' is encoded with 2 bytes, so this test will fail if we confuse byte index with character index
+        let (new_policy, position) = preprocess_policy(
+            "permit(principal, action, resource) when { principal[\"¡¡¡¡¡¡¡¡\"] && action. };",
+            Position::new(0, 76),
+        );
+        assert_eq!(
+            new_policy,
+            "permit(principal, action, resource) when { principal[\"¡¡¡¡¡¡¡¡\"] && action.__CEDAR_LSP };",
+        );
+        assert_eq!(position, Position::new(0, 76 + LSP_MARKER.len() as u32));
     }
 }
