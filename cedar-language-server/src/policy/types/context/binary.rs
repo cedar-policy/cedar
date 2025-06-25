@@ -146,7 +146,7 @@ impl BinaryOpContext {
     #[must_use]
     pub(crate) fn get_completions(
         &self,
-        document_context: &DocumentContext,
+        document_context: &DocumentContext<'_>,
     ) -> Vec<CompletionItem> {
         let completion_side_type = self
             .complete_side_expr
@@ -180,7 +180,7 @@ impl BinaryOpContext {
         &self,
         other_side: CedarTypeKind,
         _completion_side: CedarTypeKind,
-        document_context: &DocumentContext,
+        document_context: &DocumentContext<'_>,
     ) -> Vec<CompletionItem> {
         let Some(schema) = document_context.schema() else {
             return vec![];
@@ -231,7 +231,7 @@ impl BinaryOpContext {
 
     fn schemaless_eq(
         other_side: &CedarTypeKind,
-        document_context: &DocumentContext,
+        document_context: &DocumentContext<'_>,
     ) -> Vec<CompletionItem> {
         match other_side {
             CedarTypeKind::EntityType(..) => {
@@ -253,7 +253,7 @@ impl BinaryOpContext {
     fn in_array_completions(
         &self,
         other_side: CedarTypeKind,
-        document_context: &DocumentContext,
+        document_context: &DocumentContext<'_>,
     ) -> Vec<CompletionItem> {
         let Some(schema) = document_context.schema() else {
             return vec![];
@@ -298,7 +298,7 @@ impl BinaryOpContext {
     fn in_completions(
         &self,
         other_side: CedarTypeKind,
-        document_context: &DocumentContext,
+        document_context: &DocumentContext<'_>,
     ) -> Vec<CompletionItem> {
         let Some(schema) = document_context.schema() else {
             return vec![];
@@ -371,7 +371,7 @@ impl BinaryOpContext {
 
     fn schemaless_in_completions(
         other_side: &CedarTypeKind,
-        document_context: &DocumentContext,
+        document_context: &DocumentContext<'_>,
     ) -> Vec<CompletionItem> {
         let mut completions = document_context.get_variable_completions();
         let curr_char = document_context.get_previous_char();
@@ -387,7 +387,7 @@ impl BinaryOpContext {
     }
 }
 
-fn get_completion_type(completion_expr: &Expr, document: &DocumentContext) -> CompletionType {
+fn get_completion_type(completion_expr: &Expr, document: &DocumentContext<'_>) -> CompletionType {
     match completion_expr.expr_kind() {
         // Likely trying to type an entire action euid
         ExprKind::Error { .. } => CompletionType::Euid,

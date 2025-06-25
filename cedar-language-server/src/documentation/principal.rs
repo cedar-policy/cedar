@@ -45,7 +45,7 @@ impl From<EntityTypeKind> for PrincipalDocumentation {
 
 impl<'a, T> From<T> for PrincipalDocumentation
 where
-    T: Into<Option<&'a DocumentContext>>,
+    T: Into<Option<&'a DocumentContext<'a>>>,
 {
     fn from(value: T) -> Self {
         let value = value.into();

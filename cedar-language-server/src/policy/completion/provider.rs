@@ -73,7 +73,7 @@ impl PolicyCompletionProvider {
         provider.inner(policy_string, schema, features)
     }
 
-    fn get_ast_completion_context(document: &DocumentContext) -> CompletionContextKind {
+    fn get_ast_completion_context(document: &DocumentContext<'_>) -> CompletionContextKind {
         ConditionCompletionVisitor::get_completion_context(document)
     }
 
@@ -112,13 +112,14 @@ impl PolicyCompletionProvider {
             return vec![];
         };
 
-        let document_context = DocumentContext::new(schema, policy, self.cursor_position, features);
+        let document_context =
+            DocumentContext::new(schema, policy, &policy_text, self.cursor_position, features);
 
         let context_kind = if document_context.is_in_scope_block() {
             get_scope_completions(
                 self.cursor_position,
                 &document_context.policy,
-                &document_context.policy_text,
+                document_context.policy_text,
             )
         } else {
             Self::get_ast_completion_context(&document_context)

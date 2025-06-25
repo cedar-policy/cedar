@@ -122,7 +122,7 @@ impl CompletionContextKind {
     #[must_use]
     pub(crate) fn into_completion_items(
         self,
-        document_context: &DocumentContext,
+        document_context: &DocumentContext<'_>,
     ) -> Vec<CompletionItem> {
         match self {
             Self::Attr(cx) => cx.get_completions(document_context),

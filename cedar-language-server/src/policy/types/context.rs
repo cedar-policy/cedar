@@ -54,7 +54,7 @@ impl ReceiverContext {
 }
 
 impl GetType for ReceiverContext {
-    fn get_type(&self, cx: &DocumentContext) -> Option<CedarTypeKind> {
+    fn get_type(&self, cx: &DocumentContext<'_>) -> Option<CedarTypeKind> {
         self.receiver.expr_kind().get_type(cx)
     }
 
@@ -64,7 +64,7 @@ impl GetType for ReceiverContext {
 }
 
 impl GetType for ExprKind {
-    fn get_type(&self, cx: &DocumentContext) -> Option<CedarTypeKind> {
+    fn get_type(&self, cx: &DocumentContext<'_>) -> Option<CedarTypeKind> {
         match self {
             Self::Lit(literal) => literal.get_type(cx),
             Self::Var(var) => var.get_type(cx),
@@ -133,7 +133,7 @@ impl GetType for ExprKind {
 }
 
 impl GetType for Var {
-    fn get_type(&self, cx: &DocumentContext) -> Option<CedarTypeKind> {
+    fn get_type(&self, cx: &DocumentContext<'_>) -> Option<CedarTypeKind> {
         let ty = match self {
             Self::Principal => CedarTypeKind::EntityType(cx.resolve_principal_type()),
             Self::Resource => CedarTypeKind::EntityType(cx.resolve_resource_type()),
@@ -145,7 +145,7 @@ impl GetType for Var {
 }
 
 impl GetType for Literal {
-    fn get_type(&self, _cx: &DocumentContext) -> Option<CedarTypeKind> {
+    fn get_type(&self, _cx: &DocumentContext<'_>) -> Option<CedarTypeKind> {
         Some(self.into())
     }
 }

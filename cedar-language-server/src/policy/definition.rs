@@ -45,11 +45,11 @@ mod visitor;
 /// a schema URI to construct the target locations.
 pub(crate) fn policy_goto_definition(
     position: Position,
-    policy: &str,
+    policy_src: &str,
     schema: Option<SchemaInfo>,
     schema_uri: Option<&Url>,
 ) -> Option<GotoDefinitionResponse> {
-    let cst = cedar_policy_core::parser::text_to_cst::parse_policies(policy)
+    let cst = cedar_policy_core::parser::text_to_cst::parse_policies(policy_src)
         .inspect_err(|e| tracing::error!("Error parsing policy to cst: {}", e))
         .ok()?;
 
@@ -66,10 +66,10 @@ pub(crate) fn policy_goto_definition(
     let (schema_info, schema_uri) = schema.zip(schema_uri)?;
 
     let validator = ValidatorSchema::try_from(&schema_info).ok()?;
-
     let d_cx = DocumentContext::new(
         Some(validator),
         policy,
+        policy_src,
         position,
         PolicyLanguageFeatures::default(),
     );

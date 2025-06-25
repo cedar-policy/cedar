@@ -25,19 +25,19 @@ use crate::{
 };
 
 pub(crate) struct PrincipalCompletionItem<'a> {
-    cx: &'a DocumentContext,
+    cx: &'a DocumentContext<'a>,
     template: bool,
 }
 
 impl<'a> PrincipalCompletionItem<'a> {
-    pub(crate) fn template(cx: &'a DocumentContext) -> Self {
+    pub(crate) fn template(cx: &'a DocumentContext<'_>) -> Self {
         Self { cx, template: true }
     }
 }
 
 impl<'a, T> From<T> for PrincipalCompletionItem<'a>
 where
-    T: Into<&'a DocumentContext>,
+    T: Into<&'a DocumentContext<'a>>,
 {
     fn from(cx: T) -> Self {
         Self {
@@ -78,12 +78,12 @@ impl From<PrincipalCompletionItem<'_>> for lsp_types::CompletionItem {
 }
 
 pub(crate) struct ActionCompletionItem<'a> {
-    cx: &'a DocumentContext,
+    cx: &'a DocumentContext<'a>,
 }
 
 impl<'a, T> From<T> for ActionCompletionItem<'a>
 where
-    T: Into<&'a DocumentContext>,
+    T: Into<&'a DocumentContext<'a>>,
 {
     fn from(cx: T) -> Self {
         Self { cx: cx.into() }
@@ -114,19 +114,19 @@ impl From<ActionCompletionItem<'_>> for lsp_types::CompletionItem {
 }
 
 pub(crate) struct ResourceCompletionItem<'a> {
-    cx: &'a DocumentContext,
+    cx: &'a DocumentContext<'a>,
     template: bool,
 }
 
 impl<'a> ResourceCompletionItem<'a> {
-    pub(crate) fn template(cx: &'a DocumentContext) -> Self {
+    pub(crate) fn template(cx: &'a DocumentContext<'_>) -> Self {
         Self { cx, template: true }
     }
 }
 
 impl<'a, T> From<T> for ResourceCompletionItem<'a>
 where
-    T: Into<&'a DocumentContext>,
+    T: Into<&'a DocumentContext<'a>>,
 {
     fn from(cx: T) -> Self {
         Self {
@@ -167,12 +167,12 @@ impl From<ResourceCompletionItem<'_>> for lsp_types::CompletionItem {
 }
 
 pub(crate) struct ContextCompletionIem<'a> {
-    cx: &'a DocumentContext,
+    cx: &'a DocumentContext<'a>,
 }
 
 impl<'a, T> From<T> for ContextCompletionIem<'a>
 where
-    T: Into<&'a DocumentContext>,
+    T: Into<&'a DocumentContext<'a>>,
 {
     fn from(cx: T) -> Self {
         Self { cx: cx.into() }

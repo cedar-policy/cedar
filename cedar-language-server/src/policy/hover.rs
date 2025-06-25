@@ -76,6 +76,7 @@ pub fn policy_hover(
     let d_cx = DocumentContext::new(
         validator,
         policy,
+        policy_string,
         position,
         PolicyLanguageFeatures::default(),
     );
@@ -99,9 +100,13 @@ pub fn policy_hover(
 }
 
 trait ToHover {
-    fn to_hover(&self, cx: &DocumentContext) -> Option<Hover>;
+    fn to_hover(&self, cx: &DocumentContext<'_>) -> Option<Hover>;
 
-    fn to_hover_with_range(&self, cx: &DocumentContext, range: lsp_types::Range) -> Option<Hover> {
+    fn to_hover_with_range(
+        &self,
+        cx: &DocumentContext<'_>,
+        range: lsp_types::Range,
+    ) -> Option<Hover> {
         self.to_hover(cx).map(|mut h| {
             h.range = Some(range);
             h
@@ -113,7 +118,7 @@ impl<T> ToHover for T
 where
     T: ToDocumentationString,
 {
-    fn to_hover(&self, cx: &DocumentContext) -> Option<Hover> {
+    fn to_hover(&self, cx: &DocumentContext<'_>) -> Option<Hover> {
         Some(Hover {
             contents: HoverContents::Markup(lsp_types::MarkupContent {
                 kind: MarkupKind::Markdown,
@@ -125,7 +130,7 @@ where
 }
 
 impl ToHover for ActionConstraint {
-    fn to_hover(&self, cx: &DocumentContext) -> Option<Hover> {
+    fn to_hover(&self, cx: &DocumentContext<'_>) -> Option<Hover> {
         let word_under_cursor = cx.get_word_under_cursor()?;
 
         for euid in self.iter_euids() {
@@ -152,7 +157,7 @@ impl ToHover for ActionConstraint {
 }
 
 impl ToHover for PrincipalConstraint {
-    fn to_hover(&self, cx: &DocumentContext) -> Option<Hover> {
+    fn to_hover(&self, cx: &DocumentContext<'_>) -> Option<Hover> {
         let word_under_cursor = cx.get_word_under_cursor()?;
 
         let euid = self.as_inner().get_euid();
@@ -195,7 +200,7 @@ impl ToHover for PrincipalConstraint {
 }
 
 impl ToHover for ResourceConstraint {
-    fn to_hover(&self, cx: &DocumentContext) -> Option<Hover> {
+    fn to_hover(&self, cx: &DocumentContext<'_>) -> Option<Hover> {
         let word_under_cursor = cx.get_word_under_cursor()?;
 
         let euid = self.as_inner().get_euid();

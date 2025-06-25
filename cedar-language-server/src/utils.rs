@@ -16,7 +16,7 @@
 
 use std::fmt::Write;
 
-use cedar_policy_core::{ast::Template, parser::Loc};
+use cedar_policy_core::parser::Loc;
 use lsp_types::{Position, Range};
 use miette::SourceSpan;
 use smol_str::SmolStr;
@@ -462,23 +462,6 @@ pub(crate) fn ranges_intersect(a: &Range, b: &Range) -> bool {
     a.start <= b.end && b.start <= a.end
 }
 
-pub(crate) trait GetPolicyText {
-    fn get_text(&self) -> &str;
-}
-
-impl GetPolicyText for Template {
-    fn get_text(&self) -> &str {
-        // FIXME: could panic if template is parsed using fast parsing, parsed
-        // from JSON/protobuf, or constructed manually. It seems likely that
-        // none of these will happen in the LSP, but I have not checked this myself.
-        // PANIC SAFETY: see above
-        #[allow(clippy::expect_used)]
-        self.loc()
-            .map(|loc| &loc.src)
-            .expect("Policy should have an LOC.")
-    }
-}
-
 pub(crate) fn is_cursor_in_condition_braces(position: Position, source_text: &str) -> bool {
     #[derive(PartialEq)]
     enum State {
@@ -648,7 +631,7 @@ pub(crate) mod tests {
         SchemaInfo::cedar_schema(schema_str)
     }
 
-    pub(crate) fn schema_document_context(policy: &str, position: Position) -> DocumentContext {
+    pub(crate) fn schema_document_context(policy: &str, position: Position) -> DocumentContext<'_> {
         let template =
             cedar_policy_core::parser::text_to_cst::parse_policy_tolerant(policy).unwrap();
         let ast = template
@@ -657,6 +640,7 @@ pub(crate) mod tests {
         DocumentContext::new(
             Some(schema().into()),
             ast.into(),
+            policy,
             position,
             PolicyLanguageFeatures::default(),
         )
