@@ -101,6 +101,13 @@ impl AsRef<ast::Entity> for Entity {
     }
 }
 
+#[doc(hidden)]
+impl From<ast::Entity> for Entity {
+    fn from(entity: ast::Entity) -> Self {
+        Self(entity)
+    }
+}
+
 impl Entity {
     /// Create a new `Entity` with this Uid, attributes, and parents (and no tags).
     ///
@@ -362,6 +369,13 @@ pub struct Entities(pub(crate) cedar_policy_core::entities::Entities);
 impl AsRef<cedar_policy_core::entities::Entities> for Entities {
     fn as_ref(&self) -> &cedar_policy_core::entities::Entities {
         &self.0
+    }
+}
+
+#[doc(hidden)]
+impl From<cedar_policy_core::entities::Entities> for Entities {
+    fn from(entities: cedar_policy_core::entities::Entities) -> Self {
+        Self(entities)
     }
 }
 
@@ -1801,6 +1815,13 @@ impl AsRef<cedar_policy_core::validator::ValidatorSchema> for Schema {
     }
 }
 
+#[doc(hidden)]
+impl From<cedar_policy_core::validator::ValidatorSchema> for Schema {
+    fn from(schema: cedar_policy_core::validator::ValidatorSchema) -> Self {
+        Self(schema)
+    }
+}
+
 impl FromStr for Schema {
     type Err = CedarSchemaError;
 
@@ -2253,6 +2274,14 @@ impl Eq for PolicySet {}
 impl AsRef<ast::PolicySet> for PolicySet {
     fn as_ref(&self) -> &ast::PolicySet {
         &self.ast
+    }
+}
+
+#[doc(hidden)]
+impl TryFrom<ast::PolicySet> for PolicySet {
+    type Error = PolicySetError;
+    fn try_from(pset: ast::PolicySet) -> Result<Self, Self::Error> {
+        Self::from_ast(pset)
     }
 }
 
@@ -3046,6 +3075,13 @@ impl AsRef<ast::Template> for Template {
     }
 }
 
+#[doc(hidden)]
+impl From<ast::Template> for Template {
+    fn from(template: ast::Template) -> Self {
+        Self::from_ast(template)
+    }
+}
+
 impl Template {
     /// Attempt to parse a [`Template`] from source.
     /// Returns an error if the input is a static policy (i.e., has no slots).
@@ -3405,6 +3441,20 @@ impl Eq for Policy {}
 impl AsRef<ast::Policy> for Policy {
     fn as_ref(&self) -> &ast::Policy {
         &self.ast
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::Policy> for Policy {
+    fn from(policy: ast::Policy) -> Self {
+        Self::from_ast(policy)
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::StaticPolicy> for Policy {
+    fn from(policy: ast::StaticPolicy) -> Self {
+        ast::Policy::from(policy).into()
     }
 }
 
@@ -3962,6 +4012,13 @@ impl AsRef<ast::Expr> for Expression {
     }
 }
 
+#[doc(hidden)]
+impl From<ast::Expr> for Expression {
+    fn from(expr: ast::Expr) -> Self {
+        Self(expr)
+    }
+}
+
 impl Expression {
     /// Create an expression representing a literal string.
     pub fn new_string(value: String) -> Self {
@@ -4380,6 +4437,13 @@ pub struct Request(pub(crate) ast::Request);
 impl AsRef<ast::Request> for Request {
     fn as_ref(&self) -> &ast::Request {
         &self.0
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::Request> for Request {
+    fn from(req: ast::Request) -> Self {
+        Self(req)
     }
 }
 
