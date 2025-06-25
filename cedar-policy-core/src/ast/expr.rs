@@ -64,6 +64,7 @@ pub enum ExprKind<T = ()> {
     Var(Var),
     /// Template Slots
     Slot(SlotId),
+    // TODO(Pratap): just get rid of `unknown` from the expr
     /// Symbolic Unknown for partial-eval
     Unknown(Unknown),
     /// Ternary expression

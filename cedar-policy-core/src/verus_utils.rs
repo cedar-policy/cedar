@@ -317,14 +317,12 @@ pub proof fn lemma_set_seq_filter_map<A, B>(st: Set<A>, f: spec_fn(A) -> Option<
 {
     let sq = st.to_seq();
     assert(st == sq.to_set()) by { st.lemma_to_seq_to_set_id(); };
-    // lemma_seq_to_set_commutes_with_map(sq, f);
     sq.lemma_to_set_map_commutes(f);
     let st_map = st.map(f);
     let sq_map = sq.map_values(f);
     lemma_seq_to_set_commutes_with_filter(sq_map, |x: Option<B>| x is Some);
     let st_map_filter = st_map.filter(|x: Option<B>| x is Some);
     let sq_map_filter = sq_map.filter(|x: Option<B>| x is Some);
-    // lemma_seq_to_set_commutes_with_map(sq_map_filter, |x: Option<B>| x.unwrap());
     sq_map_filter.lemma_to_set_map_commutes(|x: Option<B>| x.unwrap());
     lemma_set_filter_map_aux_equiv(st, f);
     lemma_seq_filter_map_aux_equiv(sq, f);

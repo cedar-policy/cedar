@@ -135,7 +135,7 @@ impl Authorizer {
         // There are two groups of invariants:
         //    - *Structural invariants:* establishing that we iterate correctly through the policy set. Essentially, we show that:
         //          "the policies we've examined already" union "the policies we have yet to examine"        == "all policies in the policy set"
-        //          `policies_ghost_iter@`                union `policies_seq.take(policies_ghost_iter.pos)` == `pset@`
+        //          `policies_ghost_iter@`                union `policies_seq.skip(policies_ghost_iter.pos)` == `pset@`
         //      At the end of the loop, we have therefore examined all of the policies in `pset@`.
         //    - *Semantic invariants:* establishing that `satisfied_permits` and `satisfied_forbids` contain exactly
         //      the satisfied permits and satisfied forbids (respectively) from the policies we have examined so far (`policies_ghost_iter@`),
@@ -175,9 +175,6 @@ impl Authorizer {
                     let (policies_idx, policies_seq) = policies_iter@;
                     &&& policies_seq.map_values(|p: Policy| p@).to_set() == pset@
                     &&& policies_ghost_iter@ == policies_seq.take(policies_ghost_iter.pos)
-                    // &&& policies_ghost_iter@ + policies_seq.skip(policies_ghost_iter.pos) == policies_seq
-                    // &&& policies_ghost_iter@.map_values(|p:Policy| p@) + policies_seq.skip(policies_ghost_iter.pos).map_values(|p:Policy| p@)
-                    //         == (policies_ghost_iter@ + policies_seq.skip(policies_ghost_iter.pos)).map_values(|p:Policy| p@)
                     &&& policies_ghost_iter@.map_values(|p:Policy| p@).to_set()
                             .union(policies_seq.skip(policies_ghost_iter.pos).map_values(|p:Policy| p@).to_set())
                             == pset@
