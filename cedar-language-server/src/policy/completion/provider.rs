@@ -170,6 +170,7 @@ pub(crate) mod tests {
     use itertools::Itertools;
 
     use crate::utils::tests::{remove_caret_marker, schema};
+    use similar_asserts::assert_eq;
     use tracing_test::traced_test;
 
     macro_rules! schema_completion_test {

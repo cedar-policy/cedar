@@ -20,7 +20,6 @@ use cedar_policy_core::{ast::Template, parser::Loc};
 use cedar_policy_formatter::{get_token_stream, token::WrappedToken, Token};
 use lsp_types::{Position, Range};
 use miette::SourceSpan;
-use smol_str::SmolStr;
 
 pub(crate) trait ToRange {
     fn to_range(&self) -> Range;
@@ -322,121 +321,40 @@ pub(crate) enum PolicyScopeVariable {
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct ScopeVariableInfo {
+pub(crate) struct ScopeVariableInfo<'a> {
     pub(crate) variable_type: PolicyScopeVariable,
-    pub(crate) text: SmolStr,
+    pub(crate) text: &'a str,
 }
 
 #[allow(clippy::too_many_lines)]
 pub(crate) fn get_policy_scope_variable(
     policy_text: &str,
     cursor_position: Position,
-) -> ScopeVariableInfo {
-    // Find the policy that contains the cursor
-    let Some(policy_range) = policy_scope_range_containing_cursor(policy_text, cursor_position)
+) -> ScopeVariableInfo<'_> {
+    let Some(scope_var_ranges) = policy_scope_range_containing_cursor(policy_text, cursor_position)
+        .and_then(|range| ScopeVarIter::new(policy_text, range))
     else {
         return ScopeVariableInfo {
             variable_type: PolicyScopeVariable::None,
-            text: "".into(),
+            text: "",
         };
     };
 
-    // Now find the commas within this policy to determine the variables
-    let mut param_sections: Vec<((usize, usize), (usize, usize))> = Vec::new();
-    let mut current_start = (
-        policy_range.start.line as usize,
-        policy_range.start.character as usize + 1,
-    ); // +1 to skip the opening parenthesis
-    let mut comma_positions = Vec::new();
-    let mut paren_depth = 1; // Start at 1 because we're inside the opening parenthesis
-    let mut bracket_depth = 0;
-
-    'outer: for (line_num, line) in policy_text
-        .lines()
-        .enumerate()
-        .skip(policy_range.start.line as usize)
-    {
-        let start_char = if line_num == policy_range.start.line as usize {
-            policy_range.start.character + 1
-        } else {
-            0
+    let cursor_byte_offset = position_byte_offset(policy_text, cursor_position);
+    let Some((var_idx, scope_var_range)) =
+        scope_var_ranges.enumerate().find(|(_, scope_var_range)| {
+            cursor_byte_offset > scope_var_range.start && cursor_byte_offset <= scope_var_range.end
+        })
+    else {
+        return ScopeVariableInfo {
+            variable_type: PolicyScopeVariable::Principal,
+            text: "",
         };
-
-        for (char_pos, c) in line.chars().enumerate().skip(start_char as usize) {
-            match c {
-                '(' => paren_depth += 1,
-                ')' => {
-                    paren_depth -= 1;
-                    if paren_depth == 0 {
-                        // Reached the closing parenthesis of this policy
-                        param_sections.push((current_start, (line_num, char_pos)));
-                        break 'outer;
-                    }
-                }
-                '[' => bracket_depth += 1,
-                ']' => bracket_depth -= 1,
-                ',' if paren_depth == 1 && bracket_depth == 0 => {
-                    // Only count commas at top level (not within arrays)
-                    comma_positions.push((line_num, char_pos));
-                    param_sections.push((current_start, (line_num, char_pos)));
-                    current_start = (line_num, char_pos + 1);
-                }
-                _ => {}
-            }
-        }
-    }
-
-    // Determine which parameter section we're in based on cursor position
-    let param_index = if comma_positions.is_empty() {
-        0
-    } else {
-        let mut index = 0;
-        for &(line, pos) in &comma_positions {
-            if (cursor_position.line as usize) < line
-                || (cursor_position.line as usize == line
-                    && (cursor_position.character as usize) <= pos)
-            {
-                break;
-            }
-            index += 1;
-        }
-        index
     };
 
-    // Extract the text for the current parameter section
-    let text = if let Some(((start_line, start_pos), (end_line, end_pos))) =
-        param_sections.get(param_index)
-    {
-        if start_line == end_line {
-            // PANIC SAFETY: Line numbers in `param_sections` are always indexes from enumerating `lines()`.
-            #[allow(clippy::unwrap_used)]
-            let line = policy_text.lines().nth(*start_line).unwrap();
-            line[*start_pos..*end_pos].trim().into()
-        } else {
-            // Handle multi-line parameters
-            let mut text = String::new();
-            for (line_num, item) in policy_text
-                .lines()
-                .enumerate()
-                .take(end_line + 1)
-                .skip(*start_line)
-            {
-                if line_num == *start_line {
-                    text.push_str(&item[*start_pos..]);
-                } else if line_num == *end_line {
-                    text.push_str(&item[..*end_pos]);
-                } else {
-                    text.push_str(item);
-                }
-                text.push('\n');
-            }
-            text.trim().into()
-        }
-    } else {
-        "".into()
-    };
+    let text = policy_text[scope_var_range.start..scope_var_range.end].trim();
 
-    let variable_type = match param_index {
+    let variable_type = match var_idx {
         0 => PolicyScopeVariable::Principal,
         1 => PolicyScopeVariable::Action,
         2 => PolicyScopeVariable::Resource,
@@ -446,6 +364,69 @@ pub(crate) fn get_policy_scope_variable(
     ScopeVariableInfo {
         variable_type,
         text,
+    }
+}
+
+#[derive(Debug)]
+struct ScopeVarRange {
+    start: usize,
+    end: usize,
+}
+
+struct ScopeVarIter<'a> {
+    current_var_start: usize,
+    scope_start_byte: usize,
+    tokens: <Vec<WrappedToken<'a>> as IntoIterator>::IntoIter,
+}
+
+impl<'a> ScopeVarIter<'a> {
+    fn new(policy_text: &'a str, policy_scope_range: Range) -> Option<Self> {
+        let scope_start_byte = position_byte_offset(policy_text, policy_scope_range.start);
+        let scope_end_byte = position_byte_offset(policy_text, policy_scope_range.end);
+        let policy_scope_text = &policy_text[scope_start_byte..=scope_end_byte];
+        Some(Self {
+            current_var_start: scope_start_byte + 1,
+            scope_start_byte,
+            tokens: get_token_stream(policy_scope_text)?.0.into_iter(),
+        })
+    }
+}
+
+impl Iterator for ScopeVarIter<'_> {
+    type Item = ScopeVarRange;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Track bracket depth to avoid thinking a `,` in a set marks a new variable.
+        let mut bracket_depth = 0;
+        // Track paren depth because you can for some reason write `principal == (User::"alice")` in the scope
+        let mut paren_depth = 0;
+        loop {
+            let token = self.tokens.next()?;
+            match token.token {
+                Token::LBracket => bracket_depth += 1,
+                Token::RBracket => bracket_depth -= 1,
+                Token::LParen => paren_depth += 1,
+                Token::RParen => {
+                    paren_depth -= 1;
+                    if paren_depth <= 0 {
+                        // End of policy scope found.
+                        return Some(ScopeVarRange {
+                            start: self.current_var_start,
+                            end: self.scope_start_byte + token.span.start,
+                        });
+                    }
+                }
+                Token::Comma if bracket_depth == 0 => {
+                    let scope_var_range = ScopeVarRange {
+                        start: self.current_var_start,
+                        end: self.scope_start_byte + token.span.start,
+                    };
+                    self.current_var_start = self.scope_start_byte + token.span.end + 1;
+                    return Some(scope_var_range);
+                }
+                _ => {}
+            }
+        }
     }
 }
 
@@ -971,7 +952,7 @@ permit(
         let policy = r#"
         permit(
             principal in User:"alice",
-            action in [Action::"act"],
+            action in [Action::"act", Action::"other"],
             resource in Resource::"data"
         );"#;
 
@@ -995,7 +976,10 @@ permit(
             },
         );
         assert_eq!(result.variable_type, PolicyScopeVariable::Action);
-        assert_eq!(result.text, "action in [Action::\"act\"]");
+        assert_eq!(
+            result.text,
+            "action in [Action::\"act\", Action::\"other\"]"
+        );
 
         // Test cursor in complex resource section
         let result = get_policy_scope_variable(
@@ -1050,6 +1034,26 @@ permit(
         );
         assert_eq!(result.variable_type, PolicyScopeVariable::Resource);
         assert_eq!(result.text, "resource == Resource::\"data\"");
+    }
+
+    #[test]
+    fn get_policy_scope_paren() {
+        let policy = r#"
+        permit(
+            principal == (User::"alice"),
+            action,
+            resource is Resource
+        );"#;
+
+        let result = get_policy_scope_variable(
+            policy,
+            Position {
+                line: 2,
+                character: 15,
+            },
+        );
+        assert_eq!(result.variable_type, PolicyScopeVariable::Principal);
+        assert_eq!(result.text, "principal == (User::\"alice\")");
     }
 
     #[test]

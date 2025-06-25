@@ -79,7 +79,10 @@ pub(crate) fn get_scope_completions(
     }
 }
 
-fn handle_principal_scope(policy: &Template, info: &ScopeVariableInfo) -> CompletionContextKind {
+fn handle_principal_scope(
+    policy: &Template,
+    info: &ScopeVariableInfo<'_>,
+) -> CompletionContextKind {
     let principal_var = Expr::var(Var::Principal).into();
 
     match policy.principal_constraint().as_inner() {
@@ -98,7 +101,7 @@ fn handle_principal_scope(policy: &Template, info: &ScopeVariableInfo) -> Comple
 
         PrincipalOrResourceConstraint::Is(..) => create_is_context(principal_var),
 
-        PrincipalOrResourceConstraint::Any if PRINCIPAL_IS_REGEX.is_match(&info.text) => {
+        PrincipalOrResourceConstraint::Any if PRINCIPAL_IS_REGEX.is_match(info.text) => {
             create_is_context(principal_var)
         }
 
@@ -106,7 +109,7 @@ fn handle_principal_scope(policy: &Template, info: &ScopeVariableInfo) -> Comple
     }
 }
 
-fn handle_resource_scope(policy: &Template, info: &ScopeVariableInfo) -> CompletionContextKind {
+fn handle_resource_scope(policy: &Template, info: &ScopeVariableInfo<'_>) -> CompletionContextKind {
     let resource_var = Expr::var(Var::Resource).into();
 
     match policy.resource_constraint().as_inner() {
@@ -125,7 +128,7 @@ fn handle_resource_scope(policy: &Template, info: &ScopeVariableInfo) -> Complet
 
         PrincipalOrResourceConstraint::Is(..) => create_is_context(resource_var),
 
-        PrincipalOrResourceConstraint::Any if RESOURCE_IS_REGEX.is_match(&info.text) => {
+        PrincipalOrResourceConstraint::Any if RESOURCE_IS_REGEX.is_match(info.text) => {
             create_is_context(resource_var)
         }
 
@@ -133,7 +136,7 @@ fn handle_resource_scope(policy: &Template, info: &ScopeVariableInfo) -> Complet
     }
 }
 
-fn handle_action_scope(policy: &Template, info: &ScopeVariableInfo) -> CompletionContextKind {
+fn handle_action_scope(policy: &Template, info: &ScopeVariableInfo<'_>) -> CompletionContextKind {
     let action_var = Expr::var(Var::Action).into();
 
     match policy.action_constraint() {
@@ -143,7 +146,7 @@ fn handle_action_scope(policy: &Template, info: &ScopeVariableInfo) -> Completio
             Expr::val(Literal::EntityUID(entity_uid.clone())).into(),
         ),
 
-        ActionConstraint::In(entity_uids) if ACTION_IN_ARRAY.is_match(&info.text) => {
+        ActionConstraint::In(entity_uids) if ACTION_IN_ARRAY.is_match(info.text) => {
             let expr_set = Expr::set(entity_uids.iter().map(|euid| Expr::val(euid.clone()))).into();
             create_binary_op_context(Op::in_array(), action_var, expr_set)
         }
@@ -153,17 +156,17 @@ fn handle_action_scope(policy: &Template, info: &ScopeVariableInfo) -> Completio
             create_binary_op_context(Op::in_entity(), action_var, expr_set)
         }
 
-        ActionConstraint::ErrorConstraint if ACTION_IN_ARRAY.is_match(&info.text) => {
+        ActionConstraint::ErrorConstraint if ACTION_IN_ARRAY.is_match(info.text) => {
             let error_expr = Expr::val(Literal::EntityUID(EntityUID::Error.into())).into();
             create_binary_op_context(Op::in_array(), action_var, error_expr)
         }
 
-        ActionConstraint::ErrorConstraint if ACTION_IN_REGEX.is_match(&info.text) => {
+        ActionConstraint::ErrorConstraint if ACTION_IN_REGEX.is_match(info.text) => {
             let error_expr = Expr::val(Literal::EntityUID(EntityUID::Error.into())).into();
             create_binary_op_context(Op::in_entity(), action_var, error_expr)
         }
 
-        ActionConstraint::ErrorConstraint if ACTION_EQ_REGEX.is_match(&info.text) => {
+        ActionConstraint::ErrorConstraint if ACTION_EQ_REGEX.is_match(info.text) => {
             let error_expr = Expr::val(Literal::EntityUID(EntityUID::Error.into())).into();
             create_binary_op_context(Op::eq(), action_var, error_expr)
         }
