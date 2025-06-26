@@ -69,6 +69,9 @@ impl From<&models::ValidationMode> for cedar_policy_core::validator::ValidationM
             models::ValidationMode::Permissive => {
                 cedar_policy_core::validator::ValidationMode::Permissive
             }
+            models::ValidationMode::Partial => {
+                cedar_policy_core::validator::ValidationMode::Partial
+            }
         }
     }
 }
