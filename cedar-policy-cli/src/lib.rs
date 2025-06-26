@@ -1500,18 +1500,25 @@ fn compare_test_decisions(test: &TestCase, ans: &Response) -> TestResult {
         }
 
         // Check that evaluation errors are expected
-        let has_error = ans.diagnostics().errors().next().is_some();
-        if has_error && !test.has_error {
+        let num_errors = ans.diagnostics().errors().count();
+        if num_errors != test.num_errors {
             errors.push(format!(
-                "unexpected runtime error(s): {}",
-                ans.diagnostics()
-                    .errors()
-                    .map(|e| e.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                "expected {} error(s), but got {} runtime error(s){}",
+                test.num_errors,
+                num_errors,
+                if num_errors == 0 {
+                    "".to_string()
+                } else {
+                    format!(
+                        ": {}",
+                        ans.diagnostics()
+                            .errors()
+                            .map(|e| e.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                },
             ));
-        } else if !has_error && test.has_error {
-            errors.push("expected error(s) but none were found".to_string());
         }
 
         if errors.is_empty() {
@@ -1639,7 +1646,7 @@ struct TestCase {
     entities: Entities,
     decision: ExpectedDecision,
     reason: Vec<String>,
-    has_error: bool,
+    num_errors: usize,
 }
 
 /// Helper function to deserialize a `Request` from JSON (without schema)

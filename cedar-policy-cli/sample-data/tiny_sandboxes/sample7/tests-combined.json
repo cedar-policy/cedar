@@ -106,7 +106,7 @@
     "reason": [
       "policy0"
     ],
-    "has_error": false
+    "num_errors": 0
   },
   {
     "request": {
@@ -215,7 +215,7 @@
     ],
     "decision": "deny",
     "reason": [],
-    "has_error": false
+    "num_errors": 0
   },
   {
     "request": {
@@ -326,7 +326,7 @@
     "reason": [
       "policy0"
     ],
-    "has_error": false
+    "num_errors": 0
   },
   {
     "request": {
@@ -410,7 +410,7 @@
     ],
     "decision": "deny",
     "reason": [],
-    "has_error": false
+    "num_errors": 0
   },
   {
     "request": {
@@ -494,7 +494,7 @@
     ],
     "decision": "deny",
     "reason": [],
-    "has_error": false
+    "num_errors": 0
   },
   {
     "request": {
@@ -596,7 +596,7 @@
     ],
     "decision": "deny",
     "reason": [],
-    "has_error": false
+    "num_errors": 0
   },
   {
     "request": {
@@ -705,6 +705,6 @@
     ],
     "decision": "deny",
     "reason": [],
-    "has_error": false
+    "num_errors": 0
   }
 ]
