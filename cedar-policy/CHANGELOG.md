@@ -22,6 +22,10 @@ Cedar Language Version: TBD
   format. The new functions are deprecated and placed behind the `deprecated-schema-compat` feature. (#1600)
 - `Expression::new_duration`, `Expression::new_datetime`, `RestrictedExpression::new_duration`,
    and `RestrictedExpression::new_datetime` (#1614)
+- Added a function to be able to split a policy set parsed from a single string into its component static
+  policies and templates. The relevant function is `policy_set_text_to_parts` in the `ffi` module (#1629).
+- Implemented [RFC 71 (trailing commas)](https://github.com/cedar-policy/rfcs/blob/main/text/0071-trailing-commas.md)
+  for Cedar policy files. (#1606)
 
 ### Changed
 

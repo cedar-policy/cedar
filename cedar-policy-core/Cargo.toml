@@ -14,9 +14,9 @@ repository.workspace = true
 
 [dependencies]
 serde = { version = "1.0", features = ["derive", "rc"] }
-serde_with = { version = "3.12", features = ["json"] }
+serde_with = { version = "3.13", features = ["json"] }
 serde_json = "1.0"
-lalrpop-util = { version = "0.22.1", features = ["lexer"] }
+lalrpop-util = { version = "0.22.2", features = ["lexer"] }
 lazy_static = "1.4"
 either = "1.15"
 itertools = "0.14"
@@ -60,7 +60,7 @@ tolerant-ast = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 
 [build-dependencies]
-lalrpop = "0.22.1"
+lalrpop = "0.22.2"
 
 [dev-dependencies]
 cool_asserts = "2.0"

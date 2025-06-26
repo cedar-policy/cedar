@@ -19,22 +19,27 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Check disk space
+      shell: bash
+      run: df -h
     - name: Install LLVM tools
       shell: bash
       run: rustup component add llvm-tools-preview
     - name: Install grcov
       shell: bash
-      run: cargo install grcov --version 0.8.20
+      run: cargo install grcov
     - name: Collect coverage profiles
       shell: bash
-      run: zip -0 raw_cov.zip $(find . -name "*.profraw") -q
+      run: |
+        mkdir -p ./target/raw_coverage
+        find . -path ./target/raw_coverage -prune -o -name "*.profraw" -type f -exec mv "{}" ./target/raw_coverage  \;
     # Note: source-based branch coverage is not supported for Rust
     # (see http://github.com/rust-lang/rust/issues/79649)
     - name: Build coverage report
       shell: bash
       run: |
         mkdir -p ./target/coverage
-        grcov raw_cov.zip \
+        grcov ./target/raw_coverage \
             --source-dir . \
             --binary-path ./target/debug/ \
             -t html,cobertura \

@@ -714,13 +714,13 @@ impl Expr {
         self,
         mapping: &BTreeMap<EntityUID, EntityUID>,
     ) -> Result<Self, JsonDeserializationError> {
-        match self.clone() {
+        match self {
             Expr::ExprNoExt(e) => match e {
                 ExprNoExt::Value(v) => Ok(Expr::ExprNoExt(ExprNoExt::Value(
                     v.sub_entity_literals(mapping)?,
                 ))),
-                ExprNoExt::Var(_) => Ok(self),
-                ExprNoExt::Slot(_) => Ok(self),
+                v @ ExprNoExt::Var(_) => Ok(Expr::ExprNoExt(v)),
+                s @ ExprNoExt::Slot(_) => Ok(Expr::ExprNoExt(s)),
                 ExprNoExt::Not { arg } => Ok(Expr::ExprNoExt(ExprNoExt::Not {
                     arg: Arc::new(Arc::unwrap_or_clone(arg).sub_entity_literals(mapping)?),
                 })),
@@ -883,7 +883,7 @@ impl Expr {
     /// Attempt to convert this `est::Expr` into an `ast::Expr`
     ///
     /// `id`: the ID of the policy this `Expr` belongs to, used only for reporting errors
-    pub fn try_into_ast(self, id: ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
+    pub fn try_into_ast(self, id: &ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
         match self {
             Expr::ExprNoExt(ExprNoExt::Value(jsonvalue)) => jsonvalue
                 .into_expr(|| JsonDeserializationErrorContext::Policy { id: id.clone() })
@@ -898,74 +898,74 @@ impl Expr {
                 Ok(ast::Expr::neg(Arc::unwrap_or_clone(arg).try_into_ast(id)?))
             }
             Expr::ExprNoExt(ExprNoExt::Eq { left, right }) => Ok(ast::Expr::is_eq(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::NotEq { left, right }) => Ok(ast::Expr::noteq(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::In { left, right }) => Ok(ast::Expr::is_in(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Less { left, right }) => Ok(ast::Expr::less(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::LessEq { left, right }) => Ok(ast::Expr::lesseq(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Greater { left, right }) => Ok(ast::Expr::greater(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::GreaterEq { left, right }) => Ok(ast::Expr::greatereq(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::And { left, right }) => Ok(ast::Expr::and(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Or { left, right }) => Ok(ast::Expr::or(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Add { left, right }) => Ok(ast::Expr::add(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Sub { left, right }) => Ok(ast::Expr::sub(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Mul { left, right }) => Ok(ast::Expr::mul(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Contains { left, right }) => Ok(ast::Expr::contains(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::ContainsAll { left, right }) => Ok(ast::Expr::contains_all(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::ContainsAny { left, right }) => Ok(ast::Expr::contains_any(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::IsEmpty { arg }) => Ok(ast::Expr::is_empty(
                 Arc::unwrap_or_clone(arg).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::GetTag { left, right }) => Ok(ast::Expr::get_tag(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::HasTag { left, right }) => Ok(ast::Expr::has_tag(
-                Arc::unwrap_or_clone(left).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 Arc::unwrap_or_clone(right).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::GetAttr { left, attr }) => Ok(ast::Expr::get_attr(
@@ -987,7 +987,7 @@ impl Expr {
             }) => ast::EntityType::from_normalized_str(entity_type.as_str())
                 .map_err(FromJsonError::InvalidEntityType)
                 .and_then(|entity_type_name| {
-                    let left: ast::Expr = Arc::unwrap_or_clone(left).try_into_ast(id.clone())?;
+                    let left: ast::Expr = Arc::unwrap_or_clone(left).try_into_ast(id)?;
                     let is_expr = ast::Expr::is_entity_type(left.clone(), entity_type_name);
                     match in_expr {
                         // The AST doesn't have an `... is ... in ..` node, so
@@ -1004,14 +1004,14 @@ impl Expr {
                 then_expr,
                 else_expr,
             }) => Ok(ast::Expr::ite(
-                Arc::unwrap_or_clone(cond_expr).try_into_ast(id.clone())?,
-                Arc::unwrap_or_clone(then_expr).try_into_ast(id.clone())?,
+                Arc::unwrap_or_clone(cond_expr).try_into_ast(id)?,
+                Arc::unwrap_or_clone(then_expr).try_into_ast(id)?,
                 Arc::unwrap_or_clone(else_expr).try_into_ast(id)?,
             )),
             Expr::ExprNoExt(ExprNoExt::Set(elements)) => Ok(ast::Expr::set(
                 elements
                     .into_iter()
-                    .map(|el| el.try_into_ast(id.clone()))
+                    .map(|el| el.try_into_ast(id))
                     .collect::<Result<Vec<_>, FromJsonError>>()?,
             )),
             Expr::ExprNoExt(ExprNoExt::Record(map)) => {
@@ -1019,7 +1019,7 @@ impl Expr {
                 #[allow(clippy::expect_used)]
                 Ok(ast::Expr::record(
                     map.into_iter()
-                        .map(|(k, v)| Ok((k, v.try_into_ast(id.clone())?)))
+                        .map(|(k, v)| Ok((k, v.try_into_ast(id)?)))
                         .collect::<Result<HashMap<SmolStr, _>, FromJsonError>>()?,
                 )
                 .expect("can't have duplicate keys here because the input was already a HashMap"))
@@ -1047,7 +1047,7 @@ impl Expr {
                         Ok(ast::Expr::call_extension_fn(
                             fn_name,
                             args.into_iter()
-                                .map(|arg| arg.try_into_ast(id.clone()))
+                                .map(|arg| arg.try_into_ast(id))
                                 .collect::<Result<_, _>>()?,
                         ))
                     }

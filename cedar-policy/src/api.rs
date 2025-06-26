@@ -44,7 +44,7 @@ pub use ast::Effect;
 pub use authorizer::Decision;
 #[cfg(feature = "partial-eval")]
 use cedar_policy_core::ast::BorrowedRestrictedExpr;
-use cedar_policy_core::ast::{self, RestrictedExpr};
+use cedar_policy_core::ast::{self, RequestSchema, RestrictedExpr};
 use cedar_policy_core::authorizer;
 use cedar_policy_core::entities::{ContextSchema, Dereference};
 use cedar_policy_core::est::{self, TemplateLink};
@@ -98,6 +98,13 @@ pub struct Entity(pub(crate) ast::Entity);
 impl AsRef<ast::Entity> for Entity {
     fn as_ref(&self) -> &ast::Entity {
         &self.0
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::Entity> for Entity {
+    fn from(entity: ast::Entity) -> Self {
+        Self(entity)
     }
 }
 
@@ -362,6 +369,13 @@ pub struct Entities(pub(crate) cedar_policy_core::entities::Entities);
 impl AsRef<cedar_policy_core::entities::Entities> for Entities {
     fn as_ref(&self) -> &cedar_policy_core::entities::Entities {
         &self.0
+    }
+}
+
+#[doc(hidden)]
+impl From<cedar_policy_core::entities::Entities> for Entities {
+    fn from(entities: cedar_policy_core::entities::Entities) -> Self {
+        Self(entities)
     }
 }
 
@@ -1780,6 +1794,13 @@ impl AsRef<cedar_policy_validator::ValidatorSchema> for Schema {
     }
 }
 
+#[doc(hidden)]
+impl From<cedar_policy_validator::ValidatorSchema> for Schema {
+    fn from(schema: cedar_policy_validator::ValidatorSchema) -> Self {
+        Self(schema)
+    }
+}
+
 impl FromStr for Schema {
     type Err = CedarSchemaError;
 
@@ -2195,6 +2216,17 @@ impl std::fmt::Display for EntityNamespace {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+/// A struct representing a `PolicySet` as a series of strings for ser/de.
+/// A `PolicySet` that contains template-linked policies cannot be
+/// represented as this struct.
+pub(crate) struct StringifiedPolicySet {
+    /// The static policies in the set
+    pub policies: Vec<String>,
+    /// The policy templates in the set
+    pub policy_templates: Vec<String>,
+}
+
 /// Represents a set of `Policy`s
 #[derive(Debug, Clone, Default)]
 pub struct PolicySet {
@@ -2219,6 +2251,14 @@ impl Eq for PolicySet {}
 impl AsRef<ast::PolicySet> for PolicySet {
     fn as_ref(&self) -> &ast::PolicySet {
         &self.ast
+    }
+}
+
+#[doc(hidden)]
+impl TryFrom<ast::PolicySet> for PolicySet {
+    type Error = PolicySetError;
+    fn try_from(pset: ast::PolicySet) -> Result<Self, Self::Error> {
+        Self::from_ast(pset)
     }
 }
 
@@ -2373,6 +2413,38 @@ impl PolicySet {
     /// rules.  Policy formatting can be done through the Cedar policy CLI or
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> Option<String> {
+        match self.stringify() {
+            Some(StringifiedPolicySet {
+                policies,
+                policy_templates,
+            }) => {
+                let policies_as_vec = policies
+                    .into_iter()
+                    .chain(policy_templates)
+                    .collect::<Vec<_>>();
+                Some(policies_as_vec.join("\n\n"))
+            }
+            None => None,
+        }
+    }
+
+    /// Get the human-readable Cedar syntax representation of this policy set,
+    /// as a vec of strings. This function is useful to break up a large cedar
+    /// file containing many policies into individual policies.
+    ///
+    /// This will return `None` if there are any linked policies in the policy
+    /// set because they cannot be directly rendered in Cedar syntax. It also
+    /// cannot record policy ids because these cannot be specified in the Cedar
+    /// syntax. The policies may be reordered, so parsing the resulting string
+    /// with [`PolicySet::from_str`] is likely to yield different policy id
+    /// assignments. For these reasons you should prefer serializing as JSON (or protobuf) and
+    /// only using this function to obtain a compact cedar representation,
+    /// perhaps for storage purposes.
+    ///
+    /// This function does not format the policy according to any particular
+    /// rules.  Policy formatting can be done through the Cedar policy CLI or
+    /// the `cedar-policy-formatter` crate.
+    pub(crate) fn stringify(&self) -> Option<StringifiedPolicySet> {
         let policies = self
             .policies
             .values()
@@ -2382,13 +2454,17 @@ impl PolicySet {
             .sorted_by_key(|p| AsRef::<str>::as_ref(p.id()))
             .map(Policy::to_cedar)
             .collect::<Option<Vec<_>>>()?;
-        let templates = self
+        let policy_templates = self
             .templates
             .values()
             .sorted_by_key(|t| AsRef::<str>::as_ref(t.id()))
-            .map(Template::to_cedar);
+            .map(Template::to_cedar)
+            .collect_vec();
 
-        Some(policies.into_iter().chain(templates).join("\n\n"))
+        Some(StringifiedPolicySet {
+            policies,
+            policy_templates,
+        })
     }
 
     /// Create a fresh empty `PolicySet`
@@ -2915,6 +2991,13 @@ impl AsRef<ast::Template> for Template {
     }
 }
 
+#[doc(hidden)]
+impl From<ast::Template> for Template {
+    fn from(template: ast::Template) -> Self {
+        Self::from_ast(template)
+    }
+}
+
 impl Template {
     /// Attempt to parse a [`Template`] from source.
     /// Returns an error if the input is a static policy (i.e., has no slots).
@@ -3254,6 +3337,20 @@ impl Eq for Policy {}
 impl AsRef<ast::Policy> for Policy {
     fn as_ref(&self) -> &ast::Policy {
         &self.ast
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::Policy> for Policy {
+    fn from(policy: ast::Policy) -> Self {
+        Self::from_ast(policy)
+    }
+}
+
+#[doc(hidden)]
+impl From<ast::StaticPolicy> for Policy {
+    fn from(policy: ast::StaticPolicy) -> Self {
+        ast::Policy::from(policy).into()
     }
 }
 
@@ -3773,6 +3870,13 @@ impl AsRef<ast::Expr> for Expression {
     }
 }
 
+#[doc(hidden)]
+impl From<ast::Expr> for Expression {
+    fn from(expr: ast::Expr) -> Self {
+        Self(expr)
+    }
+}
+
 impl Expression {
     /// Create an expression representing a literal string.
     pub fn new_string(value: String) -> Self {
@@ -4194,6 +4298,13 @@ impl AsRef<ast::Request> for Request {
     }
 }
 
+#[doc(hidden)]
+impl From<ast::Request> for Request {
+    fn from(req: ast::Request) -> Self {
+        Self(req)
+    }
+}
+
 impl Request {
     /// Create a [`RequestBuilder`]
     #[doc = include_str!("../experimental_warning.md")]
@@ -4513,6 +4624,26 @@ impl Context {
         other_context: impl IntoIterator<Item = (String, RestrictedExpression)>,
     ) -> Result<Self, ContextCreationError> {
         Self::from_pairs(self.into_iter().chain(other_context))
+    }
+
+    /// Validates this context against the provided schema
+    ///
+    /// Returns Ok(()) if the context is valid according to the schema, or an error otherwise
+    ///
+    /// This validation is already handled by `Request::new`, so there is no need to separately call
+    /// if you are validating the whole request
+    pub fn validate(
+        &self,
+        schema: &crate::Schema,
+        action: &EntityUid,
+    ) -> std::result::Result<(), RequestValidationError> {
+        // Call the validate_context function from coreschema.rs
+        Ok(RequestSchema::validate_context(
+            &schema.0,
+            &self.0,
+            action.as_ref(),
+            Extensions::all_available(),
+        )?)
     }
 }
 
