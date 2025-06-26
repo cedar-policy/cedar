@@ -74,7 +74,7 @@ pub(crate) fn policy_goto_definition(
         PolicyLanguageFeatures::default(),
     );
 
-    // PANIC_SAFETY: We just constructed `d_cx` with a schema, so it will be present here.
+    // PANIC SAFETY: We just constructed `d_cx` with a schema, so it will be present here.
     #[allow(clippy::unwrap_used)]
     let validator_ref = d_cx.schema().unwrap();
 
