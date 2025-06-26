@@ -138,7 +138,7 @@ where
         && (position.line != range.end.line || position.character <= range.end.character)
 }
 
-pub(crate) fn get_word_at_position(position: Position, text: &str) -> Option<(&str, Range)> {
+pub(crate) fn get_word_at_position(position: Position, text: &str) -> Option<&str> {
     // Get the line at the cursor position
     let line = text.lines().nth(position.line as usize)?;
     let char_pos = position.character as usize;
@@ -165,30 +165,10 @@ pub(crate) fn get_word_at_position(position: Position, text: &str) -> Option<(&s
         .map_or(line.len(), |(i, _)| char_pos + i);
 
     // If we're not actually on a word, return None
-    if start >= end {
-        return None;
-    }
-
-    let word = &line[start..end];
-    if word.is_empty() {
-        return None;
-    }
-
-    let range = Range {
-        start: Position {
-            line: position.line,
-            character: start as u32,
-        },
-        end: Position {
-            line: position.line,
-            character: end as u32,
-        },
-    };
-
-    Some((word, range))
+    line.get(start..end).filter(|word| !word.is_empty())
 }
 
-pub(crate) fn get_operator_at_position(position: Position, text: &str) -> Option<(&str, Range)> {
+pub(crate) fn get_operator_at_position(position: Position, text: &str) -> Option<&str> {
     // Get the line at the cursor position
     let line = text.lines().nth(position.line as usize)?;
     let char_pos = position.character as usize;
@@ -219,36 +199,17 @@ pub(crate) fn get_operator_at_position(position: Position, text: &str) -> Option
         .find(|(_, c)| !is_operator_char(*c))
         .map_or(line.len(), |(i, _)| char_pos + i);
 
-    // If we're not actually on an operator, return None
-    if start >= end {
-        return None;
-    }
-
-    let potential_operator = line[start..end].to_string();
+    let potential_operator = line.get(start..end)?;
 
     // Check if the extracted string is a valid operator
-    operators.iter().find_map(|&op| {
+    operators.into_iter().find(|&op| {
         // Find the position of this operator in our extracted string
-        let op_start = potential_operator.find(op)?;
-        // Check if our cursor position is within this operator
-        let absolute_op_start = start + op_start;
-        let absolute_op_end = absolute_op_start + op.len();
-        if char_pos >= absolute_op_start && char_pos <= absolute_op_end {
-            let range = Range {
-                start: Position {
-                    line: position.line,
-                    character: absolute_op_start as u32,
-                },
-                end: Position {
-                    line: position.line,
-                    character: absolute_op_end as u32,
-                },
-            };
-
-            Some((op, range))
-        } else {
-            None
-        }
+        potential_operator.find(op).is_some_and(|op_start| {
+            // Check if our cursor position is within this operator
+            let absolute_op_start = start + op_start;
+            let absolute_op_end = absolute_op_start + op.len();
+            char_pos >= absolute_op_start && char_pos <= absolute_op_end
+        })
     })
 }
 
@@ -721,10 +682,7 @@ pub(crate) mod tests {
                 line: 0,
                 character: char_pos,
             };
-            let result = get_operator_at_position(position, text);
-            assert!(result.is_some());
-            let (operator, _) = result.unwrap();
-            assert_eq!(operator, expected_op);
+            assert_eq!(get_operator_at_position(position, text), Some(expected_op));
         }
     }
 

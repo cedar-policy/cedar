@@ -119,12 +119,12 @@ impl DocumentContext {
 
     #[must_use]
     pub(crate) fn get_word_under_cursor(&self) -> Option<&str> {
-        get_word_at_position(self.cursor_position, &self.policy_text).map(|w| w.0)
+        get_word_at_position(self.cursor_position, &self.policy_text)
     }
 
     #[must_use]
     pub(crate) fn get_operator_under_cursor(&self) -> Option<&str> {
-        get_operator_at_position(self.cursor_position, &self.policy_text).map(|w| w.0)
+        get_operator_at_position(self.cursor_position, &self.policy_text)
     }
 
     #[must_use]
