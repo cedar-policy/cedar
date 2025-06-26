@@ -57,7 +57,9 @@ impl From<&cedar_policy_core::validator::ValidationMode> for models::ValidationM
                 models::ValidationMode::Permissive
             }
             #[cfg(feature = "partial-validate")]
-            cedar_policy_core::validator::ValidationMode::Partial => unimplemented!(),
+            cedar_policy_core::validator::ValidationMode::Partial => {
+                models::ValidationMode::Partial
+            }
         }
     }
 }
@@ -68,6 +70,14 @@ impl From<&models::ValidationMode> for cedar_policy_core::validator::ValidationM
             models::ValidationMode::Strict => cedar_policy_core::validator::ValidationMode::Strict,
             models::ValidationMode::Permissive => {
                 cedar_policy_core::validator::ValidationMode::Permissive
+            }
+            #[cfg(feature = "partial-validate")]
+            models::ValidationMode::Partial => {
+                cedar_policy_core::validator::ValidationMode::Partial
+            }
+            #[cfg(not(feature = "partial-validate"))]
+            models::ValidationMode::Partial => {
+                panic!("Protobuf specifies partial validation, but `partial-validate` feature not enabled in this build")
             }
         }
     }
