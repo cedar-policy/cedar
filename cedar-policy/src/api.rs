@@ -1795,8 +1795,8 @@ impl AsRef<cedar_policy_validator::ValidatorSchema> for Schema {
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_core::validator::ValidatorSchema> for Schema {
-    fn from(schema: cedar_policy_core::validator::ValidatorSchema) -> Self {
+impl From<cedar_policy_validator::ValidatorSchema> for Schema {
+    fn from(schema: cedar_policy_validator::ValidatorSchema) -> Self {
         Self(schema)
     }
 }
