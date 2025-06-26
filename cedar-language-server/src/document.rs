@@ -212,12 +212,15 @@ impl Document {
 
     #[must_use]
     pub(crate) fn definition(&self, position: Position) -> Option<GotoDefinitionResponse> {
-        let text = self.state().content.to_string();
         match self {
             Self::Policy(policy_document) => {
                 let schema = policy_document.get_schema_info();
-
-                policy_goto_definition(position, &text, schema, policy_document.schema_url.as_ref())
+                policy_goto_definition(
+                    position,
+                    &self.text(),
+                    schema,
+                    policy_document.schema_url.as_ref(),
+                )
             }
             Self::Schema(schema_document) => schema_goto_definition(
                 position,
@@ -250,11 +253,10 @@ impl Document {
 
     #[must_use]
     pub(crate) fn hover(&self, position: Position) -> Option<Hover> {
-        let text = self.state().content.to_string();
         match self {
             Self::Policy(policy_document) => {
                 let schema = policy_document.get_schema_info();
-                policy_hover(position, &text, schema)
+                policy_hover(position, &self.text(), schema)
             }
             Self::Schema(_) | Self::Entities(_) => None,
         }
