@@ -57,7 +57,9 @@ impl From<&cedar_policy_core::validator::ValidationMode> for models::ValidationM
                 models::ValidationMode::Permissive
             }
             #[cfg(feature = "partial-validate")]
-            cedar_policy_core::validator::ValidationMode::Partial => models::ValidationMode::Partial,
+            cedar_policy_core::validator::ValidationMode::Partial => {
+                models::ValidationMode::Partial
+            }
         }
     }
 }
