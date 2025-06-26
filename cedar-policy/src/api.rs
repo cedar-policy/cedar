@@ -4116,6 +4116,12 @@ impl FromStr for Expression {
     }
 }
 
+impl std::fmt::Display for Expression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &self.0)
+    }
+}
+
 /// "Restricted" expressions are used for attribute values and `context`.
 ///
 /// Restricted expressions can contain only the following:
