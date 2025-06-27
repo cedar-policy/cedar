@@ -28,11 +28,11 @@ mod annotation;
 pub use annotation::*;
 
 use crate::ast::EntityUID;
-use crate::ast::{self, Annotation};
+use crate::ast::{self, Annotation, GeneralizedSlotsAnnotation};
 use crate::entities::json::{err::JsonDeserializationError, EntityUidJson};
 use crate::expr_builder::ExprBuilder;
 use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
-use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
+use crate::parser::util::{flatten_tuple_2, flatten_tuple_5};
 #[cfg(feature = "tolerant-ast")]
 use crate::parser::Loc;
 use crate::parser::{cst, IntoMaybeLoc};
@@ -70,6 +70,9 @@ pub struct Policy {
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
     annotations: Annotations,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "GeneralizedSlotsAnnotation::is_empty")]
+    generalized_slots_annotation: GeneralizedSlotsAnnotation,
 }
 
 /// Serde JSON structure for a `when` or `unless` clause in the EST format
@@ -103,6 +106,7 @@ impl Policy {
                 .map(|clause| clause.link(vals))
                 .collect::<Result<Vec<_>, _>>()?,
             annotations: self.annotations,
+            generalized_slots_annotation: self.generalized_slots_annotation,
         })
     }
 
@@ -122,6 +126,7 @@ impl Policy {
                 .map(|clause| clause.sub_entity_literals(mapping))
                 .collect::<Result<Vec<_>, _>>()?,
             annotations: self.annotations,
+            generalized_slots_annotation: self.generalized_slots_annotation,
         })
     }
 
@@ -184,6 +189,9 @@ impl TryFrom<cst::Policy> for Policy {
                 loc: l.into_maybe_loc(),
             })
         });
+
+        let maybe_generalized_slots_annotation = Ok(GeneralizedSlotsAnnotation::default());
+
         let maybe_conditions = ParseErrors::transpose(policy.conds.into_iter().map(|node| {
             let (cond, loc) = node.into_inner();
             let cond = cond.ok_or_else(|| {
@@ -192,9 +200,16 @@ impl TryFrom<cst::Policy> for Policy {
             cond.try_into()
         }));
 
-        let (effect, annotations, (principal, action, resource), conditions) = flatten_tuple_4(
+        let (
+            effect,
+            annotations,
+            generalized_slots_annotation,
+            (principal, action, resource),
+            conditions,
+        ) = flatten_tuple_5(
             maybe_effect,
             maybe_annotations,
+            maybe_generalized_slots_annotation,
             maybe_scope,
             maybe_conditions,
         )?;
@@ -205,6 +220,7 @@ impl TryFrom<cst::Policy> for Policy {
             resource: resource.into(),
             conditions,
             annotations: Annotations(annotations),
+            generalized_slots_annotation,
         })
     }
 }
@@ -302,6 +318,7 @@ impl Policy {
                     )
                 })
                 .collect(),
+            self.generalized_slots_annotation,
             self.effect,
             self.principal.try_into()?,
             self.action.try_into()?,
@@ -352,6 +369,10 @@ impl From<ast::Policy> for Policy {
                     .map(|(k, v)| (k.clone(), Some(v.clone())))
                     .collect(),
             ),
+            generalized_slots_annotation: ast
+                .generalized_slots_annotation()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
         }
     }
 }
@@ -373,6 +394,10 @@ impl From<ast::Template> for Policy {
                     .map(|(k, v)| (k.clone(), Some(v.clone())))
                     .collect(),
             ),
+            generalized_slots_annotation: ast
+                .generalized_slots_annotation()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
         }
     }
 }

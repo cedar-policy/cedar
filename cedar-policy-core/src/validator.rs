@@ -429,6 +429,7 @@ mod test {
             ast::PolicyID::from_string("template"),
             ast::PolicyID::from_string("link1"),
             values,
+            HashMap::new(),
         )
         .expect("Linking failed!");
         let result = validator.validate(&set, ValidationMode::default());
@@ -448,6 +449,7 @@ mod test {
             ast::PolicyID::from_string("template"),
             ast::PolicyID::from_string("link2"),
             values,
+            HashMap::new(),
         )
         .expect("Linking failed!");
         let result = validator.validate(&set, ValidationMode::default());
@@ -482,6 +484,7 @@ mod test {
             ast::PolicyID::from_string("template"),
             ast::PolicyID::from_string("link3"),
             values,
+            HashMap::new(),
         )
         .expect("Linking failed!");
         let result = validator.validate(&set, ValidationMode::default());
