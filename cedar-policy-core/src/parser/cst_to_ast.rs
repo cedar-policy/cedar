@@ -36,13 +36,14 @@
 use super::err::{parse_errors, ParseError, ParseErrors, ToASTError, ToASTErrorKind};
 use super::node::Node;
 use super::unescape::{to_pattern, to_unescaped_string};
-use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
+use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4, flatten_tuple_5};
 use super::{cst, AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 #[cfg(feature = "tolerant-ast")]
 use crate::ast::expr_allows_errors::ExprWithErrsBuilder;
 use crate::ast::{
-    self, ActionConstraint, CallStyle, Integer, PatternElem, PolicySetError, PrincipalConstraint,
-    PrincipalOrResourceConstraint, ResourceConstraint, UnreservedId,
+    self, ActionConstraint, CallStyle, GeneralizedSlotsAnnotation, Integer, PatternElem,
+    PolicySetError, PrincipalConstraint, PrincipalOrResourceConstraint, ResourceConstraint,
+    UnreservedId,
 };
 use crate::expr_builder::ExprBuilder;
 use crate::fuzzy_match::fuzzy_search_limited;
@@ -319,6 +320,8 @@ impl Node<Option<cst::Policy>> {
         // convert scope
         let maybe_scope = policy.extract_scope();
 
+        let maybe_generalized_slots_annotation = Ok(GeneralizedSlotsAnnotation::default());
+
         // convert conditions
         let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
             let (e, is_when) = c.to_expr::<ast::ExprBuilder<()>>()?;
@@ -339,11 +342,23 @@ impl Node<Option<cst::Policy>> {
             }
         }));
 
-        let (effect, annotations, (principal, action, resource), conds) =
-            flatten_tuple_4(maybe_effect, maybe_annotations, maybe_scope, maybe_conds)?;
+        let (
+            effect,
+            annotations,
+            generalized_slots_annotation,
+            (principal, action, resource),
+            conds,
+        ) = flatten_tuple_5(
+            maybe_effect,
+            maybe_annotations,
+            maybe_generalized_slots_annotation,
+            maybe_scope,
+            maybe_conds,
+        )?;
         Ok(construct_template_policy(
             id,
             annotations.into(),
+            generalized_slots_annotation,
             effect,
             principal,
             action,
@@ -417,6 +432,8 @@ impl Node<Option<cst::Policy>> {
         // convert scope
         let maybe_scope = policy.extract_scope_tolerant_ast();
 
+        let maybe_generalized_slots_annotation = Ok(GeneralizedSlotsAnnotation::default());
+
         // convert conditions
         let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
             let (e, is_when) = c.to_expr::<ExprWithErrsBuilder<()>>()?;
@@ -436,11 +453,23 @@ impl Node<Option<cst::Policy>> {
             }
         }));
 
-        let (effect, annotations, (principal, action, resource), conds) =
-            flatten_tuple_4(maybe_effect, maybe_annotations, maybe_scope, maybe_conds)?;
+        let (
+            effect,
+            annotations,
+            generalized_slots_annotation,
+            (principal, action, resource),
+            conds,
+        ) = flatten_tuple_5(
+            maybe_effect,
+            maybe_annotations,
+            maybe_generalized_slots_annotation,
+            maybe_scope,
+            maybe_conds,
+        )?;
         Ok(construct_template_policy(
             id,
             annotations.into(),
+            generalized_slots_annotation,
             effect,
             principal,
             action,
@@ -2336,6 +2365,7 @@ impl Node<Option<cst::RecInit>> {
 fn construct_template_policy(
     id: ast::PolicyID,
     annotations: ast::Annotations,
+    generalized_slots_annotation: ast::GeneralizedSlotsAnnotation,
     effect: ast::Effect,
     principal: ast::PrincipalConstraint,
     action: ast::ActionConstraint,
@@ -2348,6 +2378,7 @@ fn construct_template_policy(
             id,
             loc.into_maybe_loc(),
             annotations,
+            generalized_slots_annotation,
             effect,
             principal,
             action,

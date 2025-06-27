@@ -1207,7 +1207,7 @@ impl From<EntityUID> for ActionEntityUID<Name> {
 /// this [`Type`], including recursively.
 /// See notes on [`Fragment`].
 #[derive(Educe, Debug, Clone, Serialize)]
-#[educe(PartialEq(bound(N: PartialEq)), Eq, PartialOrd, Ord(bound(N: Ord)))]
+#[educe(PartialEq(bound(N: PartialEq)), Eq, PartialOrd, Ord(bound(N: Ord)), Hash(bound(N: Hash)))]
 // This enum is `untagged` with these variants as a workaround to a serde
 // limitation. It is not possible to have the known variants on one enum, and
 // then, have catch-all variant for any unrecognized tag in the same enum that
@@ -1773,7 +1773,7 @@ impl<N> From<TypeVariant<N>> for Type<N> {
 /// this [`RecordType`], including recursively.
 /// See notes on [`Fragment`].
 #[derive(Educe, Debug, Clone, Serialize, Deserialize)]
-#[educe(PartialEq, Eq, PartialOrd, Ord)]
+#[educe(PartialEq, Eq, PartialOrd, Ord, Hash(bound(N: Hash)))]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -1850,7 +1850,7 @@ impl RecordType<ConditionalName> {
 /// this [`TypeVariant`], including recursively.
 /// See notes on [`Fragment`].
 #[derive(Educe, Debug, Clone, Serialize, Deserialize)]
-#[educe(PartialEq(bound(N: PartialEq)), Eq, PartialOrd, Ord(bound(N: Ord)))]
+#[educe(PartialEq(bound(N: PartialEq)), Eq, PartialOrd, Ord(bound(N: Ord)), Hash(bound(N: Hash)))]
 #[serde(tag = "type")]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -2130,7 +2130,7 @@ impl<'a> arbitrary::Arbitrary<'a> for Type<RawName> {
 /// unknown fields for [`TypeOfAttribute`] should be passed to [`Type`] where
 /// they will be denied (`<https://github.com/serde-rs/serde/issues/1600>`).
 #[derive(Educe, Debug, Clone, Serialize, Deserialize)]
-#[educe(PartialEq, Eq, PartialOrd, Ord)]
+#[educe(PartialEq, Eq, PartialOrd, Ord, Hash(bound(N: Hash)))]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 pub struct TypeOfAttribute<N> {
     /// Underlying type of the attribute

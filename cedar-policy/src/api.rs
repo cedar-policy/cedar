@@ -2761,6 +2761,7 @@ impl PolicySet {
             template_id.into(),
             new_id.clone().into(),
             unwrapped_vals.clone(),
+            HashMap::new(),
         )?;
 
         // PANIC SAFETY: `lossless.link()` will not fail after `ast.link()` succeeds
@@ -4929,7 +4930,11 @@ pub fn eval_expression(
     let eval = Evaluator::new(request.0.clone(), &entities.0, all_ext);
     Ok(EvalResult::from(
         // Evaluate under the empty slot map, as an expression should not have slots
-        eval.interpret(&expr.0, &ast::SlotEnv::new())?,
+        eval.interpret(
+            &expr.0,
+            &ast::SlotEnv::new(),
+            &ast::GeneralizedSlotEnv::new(),
+        )?,
     ))
 }
 

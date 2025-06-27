@@ -17,10 +17,10 @@
 #![allow(clippy::use_self)]
 
 use super::models;
-use cedar_policy_core::validator::types;
-use cedar_policy_core::{ast, parser::IntoMaybeLoc};
+use cedar_policy_core::validator::{json_schema, types, RawName};
+use cedar_policy_core::{ast, est, parser::IntoMaybeLoc};
 use nonempty::NonEmpty;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{BTreeMap, HashMap};
 
 impl From<&cedar_policy_core::validator::ValidatorSchema> for models::Schema {
@@ -300,6 +300,109 @@ impl From<&types::AttributeType> for models::AttributeType {
         Self {
             attr_type: Some(models::Type::from(&v.attr_type)),
             is_required: v.is_required,
+        }
+    }
+}
+
+impl From<&models::TemplateType> for json_schema::Type<RawName> {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &models::TemplateType) -> Self {
+        let ty_variant = match &v.data.as_ref().expect("data field should exist") {
+            &models::template_type::Data::Other(t) => json_schema::TypeVariant::EntityOrCommon {
+                type_name: t.into(),
+            },
+            &models::template_type::Data::SetElem(t) => json_schema::TypeVariant::Set {
+                element: Box::new((&**t).into()),
+            },
+            &models::template_type::Data::Record(s) => {
+                json_schema::TypeVariant::Record(template_model_to_attributes(&s.attrs))
+            }
+        };
+        json_schema::Type::Type {
+            ty: ty_variant,
+            loc: None,
+        }
+    }
+}
+
+// PANIC SAFETY: experimental feature
+#[allow(clippy::fallible_impl_from)]
+impl From<&json_schema::Type<RawName>> for models::TemplateType {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used, clippy::panic)]
+    fn from(v: &json_schema::Type<RawName>) -> Self {
+        match v {
+            json_schema::Type::Type { ty, loc: _ } => match &ty {
+                json_schema::TypeVariant::Record(r) => {
+                    let record: models::template_type::Record = models::template_type::Record {
+                        attrs: template_attributes_to_model(r),
+                    };
+                    Self {
+                        data: Some(models::template_type::Data::Record(record)),
+                    }
+                }
+                json_schema::TypeVariant::EntityOrCommon { type_name } => Self {
+                    data: Some(models::template_type::Data::Other(type_name.into())),
+                },
+                json_schema::TypeVariant::Set { element } => Self {
+                    data: Some(models::template_type::Data::SetElem(Box::new(
+                        (&**element).into(),
+                    ))),
+                },
+                _ => panic!("TypeVariant<RawName> should not have any other fields"),
+            },
+            json_schema::Type::CommonTypeRef { .. } => {
+                panic!("Type<RawName> should not have any other fields")
+            }
+        }
+    }
+}
+
+fn template_model_to_attributes(
+    v: &HashMap<String, models::AttributeTemplateType>,
+) -> json_schema::RecordType<RawName> {
+    json_schema::RecordType {
+        attributes: v
+            .iter()
+            .map(|(key, value)| (key.to_smolstr(), value.into()))
+            .collect(),
+        additional_attributes: false,
+    }
+}
+
+fn template_attributes_to_model(
+    v: &json_schema::RecordType<RawName>,
+) -> HashMap<String, models::AttributeTemplateType> {
+    v.attributes
+        .iter()
+        .map(|(key, value)| (key.to_string(), value.into()))
+        .collect()
+}
+
+impl From<&models::AttributeTemplateType> for json_schema::TypeOfAttribute<RawName> {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &models::AttributeTemplateType) -> Self {
+        let ty: json_schema::Type<RawName> = (v.attr_type.as_ref().unwrap()).into();
+        let annotations = est::Annotations::default();
+        let required = v.is_required;
+
+        Self {
+            ty,
+            annotations,
+            required,
+            #[cfg(feature = "extended-schema")]
+            loc: None,
+        }
+    }
+}
+
+impl From<&json_schema::TypeOfAttribute<RawName>> for models::AttributeTemplateType {
+    fn from(v: &json_schema::TypeOfAttribute<RawName>) -> Self {
+        Self {
+            attr_type: Some((&v.ty).into()),
+            is_required: v.required,
         }
     }
 }

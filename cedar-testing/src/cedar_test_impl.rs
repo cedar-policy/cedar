@@ -309,7 +309,7 @@ impl CedarTestImplementation for RustEngine {
             Extensions::none()
         };
         let evaluator = Evaluator::new(request.clone(), entities, exts);
-        let result = evaluator.interpret(expr, &HashMap::default());
+        let result = evaluator.interpret(expr, &HashMap::default(), &HashMap::default());
         let response = result.ok() == expected;
         TestResult::Success(response)
     }

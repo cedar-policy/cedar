@@ -127,7 +127,7 @@ impl TryFrom<PolicySet> for ast::PolicySet {
             values,
         } in value.template_links
         {
-            ast_pset.link(template_id, new_id, values)?;
+            ast_pset.link(template_id, new_id, values, HashMap::new())?; // Chore: This will be changed for when internal generalized templates functions are done
         }
 
         Ok(ast_pset)

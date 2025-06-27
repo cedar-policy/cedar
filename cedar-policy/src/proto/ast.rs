@@ -17,6 +17,7 @@
 #![allow(clippy::use_self)]
 
 use super::models;
+use cedar_policy_core::validator::RawName;
 use cedar_policy_core::{
     ast, evaluator::RestrictedEvaluator, extensions::Extensions, FromNormalizedStr,
 };
@@ -48,6 +49,14 @@ impl From<&models::Name> for ast::Name {
     }
 }
 
+// PANIC SAFETY: experimental feature
+#[allow(clippy::fallible_impl_from)]
+impl From<&models::Name> for RawName {
+    fn from(v: &models::Name) -> Self {
+        RawName::from_name(ast::InternalName::from(v))
+    }
+}
+
 impl From<&models::Name> for ast::EntityType {
     fn from(v: &models::Name) -> Self {
         ast::EntityType::from(ast::Name::from(v))
@@ -69,6 +78,12 @@ impl From<&ast::InternalName> for models::Name {
 impl From<&ast::Name> for models::Name {
     fn from(v: &ast::Name) -> Self {
         Self::from(v.as_ref())
+    }
+}
+
+impl From<&RawName> for models::Name {
+    fn from(v: &RawName) -> Self {
+        Self::from(&(v.clone().qualify_with(None)))
     }
 }
 
@@ -502,10 +517,15 @@ impl From<&ast::Literal> for models::expr::Literal {
 }
 
 impl From<&models::SlotId> for ast::SlotId {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::unwrap_used, clippy::expect_used)]
     fn from(v: &models::SlotId) -> Self {
-        match v {
-            models::SlotId::Principal => ast::SlotId::principal(),
-            models::SlotId::Resource => ast::SlotId::resource(),
+        match v.data.as_ref().expect("data field should exist") {
+            models::slot_id::Data::Principal(_) => ast::SlotId::principal(),
+            models::slot_id::Data::Resource(_) => ast::SlotId::resource(),
+            models::slot_id::Data::GeneralizedSlot(s) => {
+                ast::SlotId::generalized_slot(s.parse().unwrap())
+            }
         }
     }
 }
@@ -514,14 +534,26 @@ impl From<&models::SlotId> for ast::SlotId {
 #[allow(clippy::fallible_impl_from)]
 impl From<&ast::SlotId> for models::SlotId {
     // PANIC SAFETY: experimental feature
-    #[allow(clippy::panic)]
+    #[allow(clippy::expect_used)]
     fn from(v: &ast::SlotId) -> Self {
         if v.is_principal() {
-            models::SlotId::Principal
+            Self {
+                data: Some(models::slot_id::Data::Principal(
+                    models::slot_id::Any::Unit.into(),
+                )),
+            }
         } else if v.is_resource() {
-            models::SlotId::Resource
+            Self {
+                data: Some(models::slot_id::Data::Resource(
+                    models::slot_id::Any::Unit.into(),
+                )),
+            }
         } else {
-            panic!("Slot other than principal or resource")
+            // It must be a generalized slot
+            let id = v.extract_id_out_of_generalized_slot().expect("Invariant: Every key in generalized values must be a generalized slot and every generalized slot has an Id");
+            Self {
+                data: Some(models::slot_id::Data::GeneralizedSlot(id.to_string())),
+            }
         }
     }
 }
@@ -709,6 +741,12 @@ mod test {
         assert_eq!(
             orig_slot2,
             ast::SlotId::from(&models::SlotId::from(&orig_slot2))
+        );
+
+        let orig_slot3 = ast::SlotId::generalized_slot("generalized".parse().unwrap());
+        assert_eq!(
+            orig_slot3,
+            ast::SlotId::from(&models::SlotId::from(&orig_slot3))
         );
     }
 
