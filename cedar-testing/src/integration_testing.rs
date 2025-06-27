@@ -22,19 +22,17 @@
 #![allow(clippy::expect_used)]
 
 use crate::cedar_test_impl::*;
-use cedar_policy::{Decision, PolicyId, ValidationMode};
-use cedar_policy_core::ast::{EntityUID, PolicySet, Request};
-use cedar_policy_core::entities::{self, json::err::JsonDeserializationErrorContext, Entities};
-use cedar_policy_core::extensions::Extensions;
 #[cfg(feature = "entity-manifest")]
-use cedar_policy_core::validator::entity_manifest::compute_entity_manifest;
-use cedar_policy_core::validator::ValidatorSchema;
-use cedar_policy_core::{jsonvalue::JsonValueWithNoDuplicateKeys, parser};
+use cedar_policy::{compute_entity_manifest, Validator};
+use cedar_policy::{
+    Context, Decision, Entities, EntityUid, PolicyId, PolicySet, Request, Schema, ValidationMode,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     env,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 /// JSON representation of our integration test file format
@@ -69,22 +67,22 @@ pub struct JsonRequest {
     /// Examples:
     /// * `{ "__entity": { "type": "User", "id": "123abc" } }`
     /// * `{ "type": "User", "id": "123abc" }`
-    pub principal: JsonValueWithNoDuplicateKeys,
+    pub principal: serde_json::Value,
     /// Action for the request, in either explicit or implicit `__entity` form
     ///
     /// Examples:
     /// * `{ "__entity": { "type": "Action", "id": "view" } }`
     /// * `{ "type": "Action", "id": "view" }`
-    pub action: JsonValueWithNoDuplicateKeys,
+    pub action: serde_json::Value,
     /// Resource for the request, in either explicit or implicit `__entity` form
     ///
     /// Examples:
     /// * `{ "__entity": { "type": "User", "id": "123abc" } }`
     /// * `{ "type": "User", "id": "123abc" }`
-    pub resource: JsonValueWithNoDuplicateKeys,
+    pub resource: serde_json::Value,
     /// Context for the request. This should be a JSON object, not any other kind
     /// of JSON value
-    pub context: JsonValueWithNoDuplicateKeys,
+    pub context: serde_json::Value,
     /// Whether to enable request validation for this request
     #[serde(default = "constant_true")]
     pub validate_request: bool,
@@ -141,8 +139,8 @@ pub fn parse_policies_from_test(test: &JsonTest) -> PolicySet {
     let policy_file = resolve_integration_test_path(&test.policies);
     let policies_text = std::fs::read_to_string(policy_file)
         .unwrap_or_else(|e| panic!("error loading policy file {}: {e}", test.policies));
-    parser::parse_policyset(&policies_text)
-        .unwrap_or_else(|e| panic!("error parsing policy in file {}: {e}", &test.policies))
+    PolicySet::from_str(&policies_text)
+        .unwrap_or_else(|e| panic!("error parsing policy file {}: {e}", &test.policies))
 }
 
 /// Given a `JsonTest`, parse the provided schema file.
@@ -150,11 +148,11 @@ pub fn parse_policies_from_test(test: &JsonTest) -> PolicySet {
 /// On failure to load or parse schema file.
 // PANIC SAFETY this is testing code
 #[allow(clippy::panic)]
-pub fn parse_schema_from_test(test: &JsonTest) -> ValidatorSchema {
+pub fn parse_schema_from_test(test: &JsonTest) -> Schema {
     let schema_file = resolve_integration_test_path(&test.schema);
     let schema_text = std::fs::read_to_string(schema_file)
         .unwrap_or_else(|e| panic!("error loading schema file {}: {e}", &test.schema));
-    ValidatorSchema::from_cedarschema_str(&schema_text, Extensions::all_available())
+    Schema::from_cedarschema_str(&schema_text)
         .unwrap_or_else(|e| panic!("error parsing schema in {}: {e}", &test.schema))
         .0
 }
@@ -164,32 +162,21 @@ pub fn parse_schema_from_test(test: &JsonTest) -> ValidatorSchema {
 /// On failure to load or parse entities file.
 // PANIC SAFETY this is testing code
 #[allow(clippy::panic)]
-pub fn parse_entities_from_test(test: &JsonTest, schema: &ValidatorSchema) -> Entities {
+pub fn parse_entities_from_test(test: &JsonTest, schema: &Schema) -> Entities {
     let entity_file = resolve_integration_test_path(&test.entities);
     let json = std::fs::OpenOptions::new()
         .read(true)
         .open(entity_file)
         .unwrap_or_else(|e| panic!("error opening entity file {}: {e}", &test.entities));
 
-    let schema = cedar_policy_core::validator::CoreSchema::new(schema);
-    let eparser = entities::EntityJsonParser::new(
-        Some(&schema),
-        Extensions::all_available(),
-        entities::TCComputation::ComputeNow,
-    );
-    eparser
-        .from_json_file(json)
+    Entities::from_json_file(json, Some(schema))
         .unwrap_or_else(|e| panic!("error parsing entities in {}: {e}", &test.entities))
 }
 
 // PANIC SAFETY this is testing code
 #[allow(clippy::panic)]
-fn parse_entity_uid(json: JsonValueWithNoDuplicateKeys, error_string: &str) -> EntityUID {
-    let parsed: entities::EntityUidJson =
-        serde_json::from_value(json.into()).unwrap_or_else(|e| panic!("{}: {e}", error_string));
-    parsed
-        .into_euid(|| JsonDeserializationErrorContext::EntityUid)
-        .unwrap_or_else(|e| panic!("{}: {e}", error_string))
+fn parse_entity_uid(json: serde_json::Value, error_string: &str) -> EntityUid {
+    EntityUid::from_json(json).unwrap_or_else(|e| panic!("{}: {e}", error_string))
 }
 
 /// Given a `JsonRequest`, parse (and optionally validate) the provided request.
@@ -199,7 +186,7 @@ fn parse_entity_uid(json: JsonValueWithNoDuplicateKeys, error_string: &str) -> E
 #[allow(clippy::panic)]
 pub fn parse_request_from_test(
     json_request: &JsonRequest,
-    schema: &ValidatorSchema,
+    schema: &Schema,
     test_name: &str,
 ) -> Request {
     let error_string = format!(
@@ -218,33 +205,23 @@ pub fn parse_request_from_test(
     );
     let resource = parse_entity_uid(json_request.resource.clone(), &error_string);
 
-    let context_schema = cedar_policy_core::validator::context_schema_for_action(schema, &action)
-        .unwrap_or_else(|| {
+    let context = Context::from_json_value(json_request.context.clone(), Some((schema, &action)))
+        .unwrap_or_else(|e| {
             panic!(
-                "Unknown action {} for request \"{}\" in {}",
-                action, json_request.description, test_name
+                "Failed to parse context for request \"{}\" in {}: {e}",
+                json_request.description, test_name
             )
         });
-    let context =
-        entities::ContextJsonParser::new(Some(&context_schema), Extensions::all_available())
-            .from_json_value(json_request.context.clone().into())
-            .unwrap_or_else(|e| {
-                panic!(
-                    "Failed to parse context for request \"{}\" in {}: {e}",
-                    json_request.description, test_name
-                )
-            });
     Request::new(
-        (principal, None),
-        (action, None),
-        (resource, None),
+        principal,
+        action,
+        resource,
         context,
         if json_request.validate_request {
             Some(schema)
         } else {
             None
         },
-        Extensions::all_available(),
     )
     .unwrap_or_else(|e| {
         panic!(
@@ -305,14 +282,14 @@ fn check_matches_json(
 pub fn perform_integration_test(
     policies: &PolicySet,
     entities: &Entities,
-    schema: &ValidatorSchema,
+    schema: &Schema,
     should_validate: bool,
     requests: Vec<JsonRequest>,
     test_name: &str,
     test_impl: &impl CedarTestImplementation,
 ) {
     let validation_result = test_impl
-        .validate(schema, policies, ValidationMode::default().into())
+        .validate(schema, policies, ValidationMode::default())
         .expect("Validation failed");
     if should_validate {
         assert!(
@@ -347,16 +324,14 @@ pub fn perform_integration_test(
         // now check that entity slicing arrives at the same decision
         #[cfg(feature = "entity-manifest")]
         if should_validate {
-            let entity_manifest = compute_entity_manifest(
-                &cedar_policy_core::validator::Validator::new(schema.clone()),
-                policies,
-            )
-            .expect("test failed");
+            let entity_manifest =
+                compute_entity_manifest(&Validator::new(schema.clone()), policies)
+                    .expect("test failed");
             let entity_slice = entity_manifest
-                .slice_entities(entities, &request)
+                .slice_entities(entities.as_ref(), request.as_ref())
                 .expect("test failed");
             let slice_response = test_impl
-                .is_authorized(&request, policies, &entity_slice)
+                .is_authorized(&request, policies, &entity_slice.into())
                 .expect("Authorization failed");
             check_matches_json(
                 &slice_response,
