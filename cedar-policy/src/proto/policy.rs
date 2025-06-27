@@ -54,7 +54,7 @@ impl From<&models::Policy> for ast::LiteralPolicy {
         for (key, value) in &v.generalized_values {
             generalized_values.insert(
                 ast::SlotId::generalized_slot(ast::Id::from_normalized_str(key).unwrap()),
-                ast::RestrictedExpr::new(ast::Expr::from(value)).unwrap(),
+                ast::RestrictedExpr::new(ast::Expr::from(value)).expect("binding is not a value"),
             );
         }
 
@@ -206,24 +206,22 @@ impl From<&ast::SlotTypePosition> for models::SlotTypePosition {
     fn from(v: &ast::SlotTypePosition) -> Self {
         match v {
             ast::SlotTypePosition::TyPosition(ty, pos) => {
-                let ty: models::TemplateType = models::TemplateType::from(ty);
-                let pos: models::slot_type_position::ScopePosition =
-                    models::slot_type_position::ScopePosition::from(pos);
+                let ty = models::TemplateType::from(ty);
+                let pos = models::slot_type_position::ScopePosition::from(pos);
                 Self {
                     ty: Some(ty),
                     pos: Some(pos.into()),
                 }
             }
             ast::SlotTypePosition::Ty(ty) => {
-                let ty: models::TemplateType = models::TemplateType::from(ty);
+                let ty = models::TemplateType::from(ty);
                 Self {
                     ty: Some(ty),
                     pos: None,
                 }
             }
             ast::SlotTypePosition::Position(pos) => {
-                let pos: models::slot_type_position::ScopePosition =
-                    models::slot_type_position::ScopePosition::from(pos);
+                let pos = models::slot_type_position::ScopePosition::from(pos);
                 Self {
                     ty: None,
                     pos: Some(pos.into()),
