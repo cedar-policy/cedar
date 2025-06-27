@@ -45,15 +45,14 @@ use super::{
 ///
 /// An `Option<Vec<CompletionItem>>` containing appropriate LSP completion items for the
 /// current context, or `None` if completions cannot be provided.
+#[must_use]
 pub fn policy_completions(
     position: Position,
     policy: &str,
     schema: Option<SchemaInfo>,
     features: PolicyLanguageFeatures,
 ) -> Option<Vec<CompletionItem>> {
-    let validator = schema
-        .and_then(|schema| ValidatorSchema::try_from(&schema).ok())
-        .map(Arc::new);
+    let validator = schema.and_then(|schema| ValidatorSchema::try_from(&schema).ok());
 
     let completions =
         PolicyCompletionProvider::get_completions(position, policy, validator, features);
@@ -123,14 +122,13 @@ impl CompletionContextKind {
     #[must_use]
     pub(crate) fn into_completion_items(
         self,
-        document_context: &DocumentContext,
+        document_context: &DocumentContext<'_>,
     ) -> Vec<CompletionItem> {
         match self {
             Self::Attr(cx) => cx.get_completions(document_context),
             Self::Is(cx) => cx.get_completions(document_context),
             Self::EntityLiteral { entity_uid } => {
-                EntityUIDCompletionItems::new(&entity_uid, document_context.schema.as_deref())
-                    .into()
+                EntityUIDCompletionItems::new(&entity_uid, document_context.schema()).into()
             }
             Self::BinaryOp(cx) => cx.get_completions(document_context),
             Self::Identity(completion_items) => completion_items,

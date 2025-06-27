@@ -501,7 +501,7 @@ async fn goto_definition() {
         .unwrap();
     assert_matches!(def, GotoDefinitionResponse::Scalar(def) => {
         assert_eq!(uri, def.uri);
-        assert_eq!("entity Entity;", slice_range(src.as_str(), def.range));
+        assert_eq!("entity Entity;", slice_range(&src, def.range));
     })
 }
 

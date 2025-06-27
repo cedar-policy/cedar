@@ -270,7 +270,7 @@ pub(crate) fn in_entity_snippet(curr_char: Option<char>) -> CompletionItem {
     }
 }
 
-pub(crate) fn condition_completions(doc_cx: &DocumentContext) -> Vec<CompletionItem> {
+pub(crate) fn condition_completions(doc_cx: &DocumentContext<'_>) -> Vec<CompletionItem> {
     vec![
         PrincipalCompletionItem::from(doc_cx).into(),
         ActionCompletionItem::from(doc_cx).into(),

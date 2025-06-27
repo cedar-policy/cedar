@@ -39,7 +39,7 @@ use crate::policy::completion::items::{
 use crate::utils::{
     get_char_at_position, get_operator_at_position, get_policy_scope_variable,
     get_word_at_position, is_cursor_in_condition_braces, is_cursor_within_policy_scope,
-    position_within_loc, GetPolicyText, PolicyScopeVariable, ScopeVariableInfo,
+    position_within_loc, PolicyScopeVariable, ScopeVariableInfo,
 };
 
 #[cfg(feature = "wasm")]
@@ -82,27 +82,27 @@ impl Default for PolicyLanguageFeatures {
     }
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct DocumentContext {
-    pub(crate) schema: Option<Arc<ValidatorSchema>>,
-    pub(crate) policy: Arc<Template>,
+#[derive(Debug)]
+pub(crate) struct DocumentContext<'a> {
+    pub(crate) schema: Option<ValidatorSchema>,
+    pub(crate) policy: Template,
     pub(crate) cursor_position: Position,
     is_in_scope: bool,
-    pub(crate) policy_text: String,
+    pub(crate) policy_text: &'a str,
     features: PolicyLanguageFeatures,
 }
 
-impl DocumentContext {
+impl<'a> DocumentContext<'a> {
     #[must_use]
     pub(crate) fn new(
-        schema: Option<Arc<ValidatorSchema>>,
-        policy: Arc<Template>,
+        schema: Option<ValidatorSchema>,
+        policy: Template,
+        policy_text: &'a str,
         cursor_position: Position,
         features: PolicyLanguageFeatures,
     ) -> Self {
-        let policy_text = policy.get_text().to_string();
-        let is_in_scope = is_cursor_within_policy_scope(&policy_text, cursor_position);
-        let is_in_cond = is_cursor_in_condition_braces(cursor_position, &policy_text);
+        let is_in_scope = is_cursor_within_policy_scope(policy_text, cursor_position);
+        let is_in_cond = is_cursor_in_condition_braces(cursor_position, policy_text);
         Self {
             schema,
             is_in_scope: is_in_scope && !is_in_cond,
@@ -113,14 +113,18 @@ impl DocumentContext {
         }
     }
 
+    pub(crate) fn schema(&self) -> Option<&ValidatorSchema> {
+        self.schema.as_ref()
+    }
+
     #[must_use]
     pub(crate) fn get_word_under_cursor(&self) -> Option<&str> {
-        get_word_at_position(self.cursor_position, &self.policy_text).map(|w| w.0)
+        get_word_at_position(self.cursor_position, &self.policy_text)
     }
 
     #[must_use]
     pub(crate) fn get_operator_under_cursor(&self) -> Option<&str> {
-        get_operator_at_position(self.cursor_position, &self.policy_text).map(|w| w.0)
+        get_operator_at_position(self.cursor_position, &self.policy_text)
     }
 
     #[must_use]
@@ -138,9 +142,9 @@ impl DocumentContext {
         None
     }
 
-    pub(crate) fn is_cursor_over_loc<'a, T>(&self, loc: T) -> bool
+    pub(crate) fn is_cursor_over_loc<'b, T>(&self, loc: T) -> bool
     where
-        T: Into<Option<&'a Loc>>,
+        T: Into<Option<&'b Loc>>,
     {
         position_within_loc(self.cursor_position, loc.into())
     }
@@ -151,12 +155,12 @@ impl DocumentContext {
             self.cursor_position.line,
             self.cursor_position.character - 1,
         );
-        get_char_at_position(p, &self.policy_text)
+        get_char_at_position(p, self.policy_text)
     }
 
     #[must_use]
     pub(crate) fn get_char_at_position(&self) -> Option<char> {
-        get_char_at_position(self.cursor_position, &self.policy_text)
+        get_char_at_position(self.cursor_position, self.policy_text)
     }
 
     #[must_use]
@@ -166,7 +170,7 @@ impl DocumentContext {
 
     #[must_use]
     pub(crate) fn get_scope_variable_info(&self) -> ScopeVariableInfo {
-        get_policy_scope_variable(&self.policy_text, self.cursor_position)
+        get_policy_scope_variable(self.policy_text, self.cursor_position)
     }
 
     #[must_use]
@@ -230,7 +234,7 @@ impl DocumentContext {
                 EntityTypeKind::Concrete(entity_uid.entity_type().clone().into())
             }
             PrincipalOrResourceConstraint::In(EntityReference::EUID(entity_uid)) => {
-                let Some(schema) = self.schema.as_ref() else {
+                let Some(schema) = self.schema() else {
                     return any_type;
                 };
                 let Some(entity_type) = schema.get_entity_type(entity_uid.entity_type()) else {
@@ -287,19 +291,19 @@ impl DocumentContext {
             EntityTypeKind::AnyResource,
         )
     }
-    fn entity_type_from_action_constraint<'a, F, I>(
-        &'a self,
+    fn entity_type_from_action_constraint<'b, F, I>(
+        &'b self,
         entity_extractor: F,
         any_type: EntityTypeKind,
     ) -> EntityTypeKind
     where
-        I: Iterator<Item = &'a EntityType>,
-        F: Fn(&'a ValidatorSchema, &EntityUID) -> Option<I>,
+        I: Iterator<Item = &'b EntityType>,
+        F: Fn(&'b ValidatorSchema, &EntityUID) -> Option<I>,
     {
         match self.policy.action_constraint() {
             ActionConstraint::Any | ActionConstraint::ErrorConstraint => any_type,
             ActionConstraint::In(entity_uids) => {
-                let Some(schema) = self.schema.as_deref() else {
+                let Some(schema) = &self.schema else {
                     return any_type;
                 };
 
@@ -326,7 +330,7 @@ impl DocumentContext {
                 EntityTypeKind::Set(entities)
             }
             ActionConstraint::Eq(entity_uid) => {
-                let Some(schema) = self.schema.as_ref() else {
+                let Some(schema) = self.schema() else {
                     return any_type;
                 };
 
@@ -355,7 +359,7 @@ impl DocumentContext {
         }
     }
 
-    fn get_schema_type<'a>(&'a self, entity_type: &EntityType) -> Option<&'a ValidatorEntityType> {
+    fn get_schema_type<'b>(&'b self, entity_type: &EntityType) -> Option<&'b ValidatorEntityType> {
         self.schema
             .as_ref()
             .and_then(|s| s.get_entity_type(entity_type))

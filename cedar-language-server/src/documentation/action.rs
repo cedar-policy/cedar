@@ -45,8 +45,8 @@ impl<'a> From<&'a ActionConstraint> for ActionDocumentation<'a> {
     }
 }
 
-impl<'a> From<&'a DocumentContext> for ActionDocumentation<'a> {
-    fn from(value: &'a DocumentContext) -> Self {
+impl<'a> From<&'a DocumentContext<'_>> for ActionDocumentation<'a> {
+    fn from(value: &'a DocumentContext<'_>) -> Self {
         value.policy.action_constraint().into()
     }
 }
