@@ -516,7 +516,6 @@ impl From<&ast::Literal> for models::expr::Literal {
     }
 }
 
-// PANIC SAFETY: experimental feature
 #[allow(clippy::fallible_impl_from)]
 impl From<&models::SlotId> for ast::SlotId {
     // PANIC SAFETY: experimental feature

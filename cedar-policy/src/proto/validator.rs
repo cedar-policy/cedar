@@ -310,10 +310,10 @@ impl From<&models::TemplateType> for json_schema::Type<RawName> {
     fn from(v: &models::TemplateType) -> Self {
         let ty_variant = match &v.data.as_ref().expect("data field should exist") {
             models::template_type::Data::Other(t) => json_schema::TypeVariant::EntityOrCommon {
-                type_name: t.into(),
+                type_name: RawName::from(t),
             },
             models::template_type::Data::SetElem(t) => json_schema::TypeVariant::Set {
-                element: Box::new((&**t).into()),
+                element: Box::new(json_schema::Type::from(&**t)),
             },
             models::template_type::Data::Record(s) => {
                 json_schema::TypeVariant::Record(template_model_to_attributes(&s.attrs))
@@ -343,11 +343,13 @@ impl From<&json_schema::Type<RawName>> for models::TemplateType {
                     }
                 }
                 json_schema::TypeVariant::EntityOrCommon { type_name } => Self {
-                    data: Some(models::template_type::Data::Other(type_name.into())),
+                    data: Some(models::template_type::Data::Other(models::Name::from(
+                        type_name,
+                    ))),
                 },
                 json_schema::TypeVariant::Set { element } => Self {
                     data: Some(models::template_type::Data::SetElem(Box::new(
-                        (&**element).into(),
+                        models::TemplateType::from(&**element),
                     ))),
                 },
                 _ => panic!("TypeVariant<RawName> should not have any other fields"),
@@ -365,7 +367,7 @@ fn template_model_to_attributes(
     json_schema::RecordType {
         attributes: v
             .iter()
-            .map(|(key, value)| (key.to_smolstr(), value.into()))
+            .map(|(key, value)| (key.to_smolstr(), json_schema::TypeOfAttribute::from(value)))
             .collect(),
         additional_attributes: false,
     }
@@ -376,7 +378,7 @@ fn template_attributes_to_model(
 ) -> HashMap<String, models::AttributeTemplateType> {
     v.attributes
         .iter()
-        .map(|(key, value)| (key.to_string(), value.into()))
+        .map(|(key, value)| (key.to_string(), models::AttributeTemplateType::from(value)))
         .collect()
 }
 
@@ -384,7 +386,7 @@ impl From<&models::AttributeTemplateType> for json_schema::TypeOfAttribute<RawNa
     // PANIC SAFETY: experimental feature
     #[allow(clippy::unwrap_used)]
     fn from(v: &models::AttributeTemplateType) -> Self {
-        let ty: json_schema::Type<RawName> = (v.attr_type.as_ref().unwrap()).into();
+        let ty: json_schema::Type<RawName> = json_schema::Type::from(v.attr_type.as_ref().unwrap());
         let annotations = est::Annotations::default();
         let required = v.is_required;
 
@@ -401,7 +403,7 @@ impl From<&models::AttributeTemplateType> for json_schema::TypeOfAttribute<RawNa
 impl From<&json_schema::TypeOfAttribute<RawName>> for models::AttributeTemplateType {
     fn from(v: &json_schema::TypeOfAttribute<RawName>) -> Self {
         Self {
-            attr_type: Some((&v.ty).into()),
+            attr_type: Some(models::TemplateType::from(&v.ty)),
             is_required: v.required,
         }
     }

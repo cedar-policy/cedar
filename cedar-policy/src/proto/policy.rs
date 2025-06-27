@@ -19,6 +19,7 @@
 use super::models;
 use cedar_policy_core::{
     ast::{self, GeneralizedSlotsAnnotation},
+    validator::json_schema,
     FromNormalizedStr,
 };
 use std::collections::HashMap;
@@ -53,7 +54,7 @@ impl From<&models::Policy> for ast::LiteralPolicy {
         for (key, value) in &v.generalized_values {
             generalized_values.insert(
                 ast::SlotId::generalized_slot(ast::Id::from_normalized_str(key).unwrap()),
-                ast::RestrictedExpr::new(value.into()).unwrap(),
+                ast::RestrictedExpr::new(ast::Expr::from(value)).unwrap(),
             );
         }
 
@@ -88,8 +89,8 @@ impl From<&ast::LiteralPolicy> for models::Policy {
             .generalized_values()
             .iter()
             .map(|(key, value)| {
-                let expr: ast::Expr = value.clone().into();
-                let models_expr: models::Expr = (&expr).into();
+                let expr = ast::Expr::from(value.clone());
+                let models_expr= models::Expr::from(&expr);
                 (
                     key.extract_id_out_of_generalized_slot()
                         .expect("Invariant: Every key in generalized values must be a generalized slot and every generalized slot has an Id")
@@ -126,8 +127,8 @@ impl From<&ast::Policy> for models::Policy {
             .generalized_env()
             .iter()
             .map(|(key, value)| {
-                let expr: ast::Expr = value.clone().into();
-                let models_expr: models::Expr = (&expr).into();
+                let expr= ast::Expr::from(value.clone());
+                let models_expr = models::Expr::from(&expr);
                 (
                     key.extract_id_out_of_generalized_slot()
                         .expect("Invariant: Every key in generalized values must be a generalized slot and every generalized slot has an Id")
@@ -186,8 +187,8 @@ impl From<&models::SlotTypePosition> for ast::SlotTypePosition {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::panic, clippy::unwrap_used)]
     fn from(v: &models::SlotTypePosition) -> Self {
-        let ty = v.ty.clone().map(|v| (&v).into());
-        let pos: Option<ast::ScopePosition> = (v.pos)
+        let ty = v.ty.clone().map(|v| json_schema::Type::from(&v));
+        let pos = (v.pos)
             .map(|v| (&models::slot_type_position::ScopePosition::try_from(v).unwrap()).into());
 
         match (ty, pos) {
@@ -205,22 +206,24 @@ impl From<&ast::SlotTypePosition> for models::SlotTypePosition {
     fn from(v: &ast::SlotTypePosition) -> Self {
         match v {
             ast::SlotTypePosition::TyPosition(ty, pos) => {
-                let ty: models::TemplateType = ty.into();
-                let pos: models::slot_type_position::ScopePosition = pos.into();
+                let ty: models::TemplateType = models::TemplateType::from(ty);
+                let pos: models::slot_type_position::ScopePosition =
+                    models::slot_type_position::ScopePosition::from(pos);
                 Self {
                     ty: Some(ty),
                     pos: Some(pos.into()),
                 }
             }
             ast::SlotTypePosition::Ty(ty) => {
-                let ty: models::TemplateType = ty.into();
+                let ty: models::TemplateType = models::TemplateType::from(ty);
                 Self {
                     ty: Some(ty),
                     pos: None,
                 }
             }
             ast::SlotTypePosition::Position(pos) => {
-                let pos: models::slot_type_position::ScopePosition = pos.into();
+                let pos: models::slot_type_position::ScopePosition =
+                    models::slot_type_position::ScopePosition::from(pos);
                 Self {
                     ty: None,
                     pos: Some(pos.into()),
@@ -240,7 +243,7 @@ impl From<&models::TemplateBody> for ast::TemplateBody {
             .map(|(key, value)| {
                 (
                     ast::SlotId::generalized_slot(ast::Id::from_normalized_str(key).unwrap()),
-                    value.into(),
+                    ast::SlotTypePosition::from(value),
                 )
             })
             .collect();
@@ -297,7 +300,7 @@ impl From<&ast::TemplateBody> for models::TemplateBody {
 
         let generalized_slots_annotation: HashMap<String, models::SlotTypePosition> = v
             .generalized_slots_annotation()
-            .map(|(k, v)| (k.extract_id_out_of_generalized_slot().expect("Invariant: Every key in generalized values must be a generalized slot and every generalized slot has an Id").to_string(), v.into()))
+            .map(|(k, v)| (k.extract_id_out_of_generalized_slot().expect("Invariant: Every key in generalized values must be a generalized slot and every generalized slot has an Id").to_string(), models::SlotTypePosition::from(v)))
             .collect();
 
         Self {
@@ -628,7 +631,7 @@ impl TryFrom<&models::PolicySet> for ast::PolicySet {
 
 #[cfg(test)]
 mod test {
-    use cedar_policy_core::validator::{json_schema, RawName};
+    use cedar_policy_core::validator::RawName;
     use std::sync::Arc;
 
     use super::*;
