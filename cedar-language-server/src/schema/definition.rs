@@ -70,7 +70,7 @@ pub(crate) fn schema_goto_definition(
 ) -> Option<GotoDefinitionResponse> {
     let validator = ValidatorSchema::try_from(schema).ok().map(Arc::new)?;
 
-    let word_under_cursor = get_word_at_position(position, &schema.text)?.0;
+    let word_under_cursor = get_word_at_position(position, &schema.text)?;
 
     let cx = FindDefinitionContext::new(&validator, position, word_under_cursor, &schema.text);
     let et_range = validator.find_definition(&cx)?;

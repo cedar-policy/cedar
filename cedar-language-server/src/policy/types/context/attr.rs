@@ -55,12 +55,12 @@ impl AttrContext {
     #[must_use]
     pub(crate) fn get_completions(
         &self,
-        document_context: &DocumentContext,
+        document_context: &DocumentContext<'_>,
     ) -> Vec<CompletionItem> {
         let Some(ty) = self.receiver_cx.get_type(document_context) else {
             return vec![];
         };
-        let schema = document_context.schema.as_deref();
+        let schema = document_context.schema();
         let items = AttributeCompletionItems::new(&ty, schema, self.kind);
         items.into()
     }

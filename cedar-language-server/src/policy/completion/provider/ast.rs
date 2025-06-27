@@ -38,12 +38,12 @@ use crate::{
 /// within policy condition blocks(the `when/unless {...}` section of a policy) and determines what kind
 /// of completions should be offered to the user.
 pub(crate) struct ConditionCompletionVisitor<'a> {
-    cx: &'a DocumentContext,
+    cx: &'a DocumentContext<'a>,
 }
 
 impl<'a> ConditionCompletionVisitor<'a> {
     /// Creates a new completion visitor with the given document context.
-    fn new(document_context: &'a DocumentContext) -> Self {
+    fn new(document_context: &'a DocumentContext<'_>) -> Self {
         Self {
             cx: document_context,
         }
@@ -54,12 +54,12 @@ impl<'a> ConditionCompletionVisitor<'a> {
     /// This is the main entry point for obtaining completion suggestions based on where the
     /// cursor is positioned within a Cedar policy's conditions.
     pub(crate) fn get_completion_context(
-        document_context: &DocumentContext,
+        document_context: &DocumentContext<'_>,
     ) -> CompletionContextKind {
         let expr = document_context.policy.non_scope_constraints();
         if !is_cursor_in_condition_braces(
             document_context.cursor_position,
-            &document_context.policy_text,
+            document_context.policy_text,
         ) {
             return CompletionContextKind::None;
         }

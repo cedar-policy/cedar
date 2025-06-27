@@ -65,10 +65,8 @@ pub(crate) fn get_scope_completions(
 ) -> CompletionContextKind {
     let info = get_policy_scope_variable(policy_str, position);
 
-    if let Some((word, _)) = get_word_at_position(position, policy_str) {
-        if word.ends_with(':') {
-            return CompletionContextKind::None;
-        }
+    if get_word_at_position(position, policy_str).is_some_and(|w| w.ends_with(':')) {
+        return CompletionContextKind::None;
     }
 
     match info.variable_type {

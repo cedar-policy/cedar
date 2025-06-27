@@ -43,14 +43,14 @@ impl From<EntityTypeKind> for ResourceDocumentation {
     }
 }
 
-impl From<&DocumentContext> for ResourceDocumentation {
-    fn from(value: &DocumentContext) -> Self {
+impl From<&DocumentContext<'_>> for ResourceDocumentation {
+    fn from(value: &DocumentContext<'_>) -> Self {
         value.resolve_resource_type().into()
     }
 }
 
-impl From<Option<&DocumentContext>> for ResourceDocumentation {
-    fn from(value: Option<&DocumentContext>) -> Self {
+impl From<Option<&DocumentContext<'_>>> for ResourceDocumentation {
+    fn from(value: Option<&DocumentContext<'_>>) -> Self {
         value.map(Into::into).unwrap_or_default()
     }
 }

@@ -61,12 +61,12 @@ use crate::{
 /// * Action definitions (e.g., `Action::"view"`)
 /// * Context definitions and their attributes
 pub(crate) struct PolicyGotoSchemaDefinition<'a> {
-    doc_context: &'a DocumentContext,
+    doc_context: &'a DocumentContext<'a>,
     schema: &'a ValidatorSchema,
 }
 
 impl<'a> PolicyGotoSchemaDefinition<'a> {
-    fn new(cx: &'a DocumentContext, schema: &'a ValidatorSchema) -> Self {
+    fn new(cx: &'a DocumentContext<'_>, schema: &'a ValidatorSchema) -> Self {
         PolicyGotoSchemaDefinition {
             doc_context: cx,
             schema,
@@ -74,7 +74,7 @@ impl<'a> PolicyGotoSchemaDefinition<'a> {
     }
 
     pub(crate) fn get_schema_definition_ranges(
-        cx: &DocumentContext,
+        cx: &DocumentContext<'_>,
         schema: &ValidatorSchema,
     ) -> Option<Vec<Range>> {
         let mut visitor = PolicyGotoSchemaDefinition::new(cx, schema);
@@ -151,7 +151,7 @@ impl<'a> PolicyGotoSchemaDefinition<'a> {
     }
 
     fn context_type_to_range(&self, ctx: &ContextKind) -> Option<Vec<Range>> {
-        let schema = self.doc_context.schema.as_ref()?;
+        let schema = self.doc_context.schema()?;
         match ctx {
             ContextKind::AnyContext => schema
                 .action_ids()
