@@ -75,7 +75,7 @@ pub(crate) mod version {
         LazyLock::new(|| env!("CARGO_PKG_VERSION").parse().unwrap());
     // Cedar language version
     // The patch version field may be unnecessary
-    static LANG_VERSION: LazyLock<Version> = LazyLock::new(|| Version::new(4, 3, 0));
+    static LANG_VERSION: LazyLock<Version> = LazyLock::new(|| Version::new(4, 4, 0));
 
     /// Get the Cedar SDK Semantic Versioning version
     #[allow(clippy::module_name_repetitions)]
