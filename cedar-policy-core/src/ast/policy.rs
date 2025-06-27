@@ -279,7 +279,6 @@ impl Template {
     /// and that no extra values are bound in values
     /// This upholds invariant (values total map)
     pub fn check_binding(
-        // Should we enforce that the keyspace between values and generalized_values are disjoint here?
         template: &Template,
         values: &HashMap<SlotId, EntityUID>,
         generalized_values: &HashMap<SlotId, RestrictedExpr>,
