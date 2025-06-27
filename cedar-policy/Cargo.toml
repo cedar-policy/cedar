@@ -11,8 +11,8 @@ homepage.workspace = true
 repository = "https://github.com/cedar-policy/cedar"
 
 [dependencies]
-cedar-policy-core = { version = "=4.4.0", path = "../cedar-policy-core" }
-cedar-policy-formatter = { version = "=4.4.0", path = "../cedar-policy-formatter" }
+cedar-policy-core = { version = "=4.5.0", path = "../cedar-policy-core" }
+cedar-policy-formatter = { version = "=4.5.0", path = "../cedar-policy-formatter" }
 ref-cast = "1.0"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
@@ -77,7 +77,7 @@ miette = { version = "7.6.0", features = ["fancy"] }
 cool_asserts = "2.0"
 criterion = "0.6"
 globset = "0.4"
-cedar-policy-core = { version = "=4.4.0", features = [
+cedar-policy-core = { version = "=4.5.0", features = [
     "test-util",
 ], path = "../cedar-policy-core" }
 # NON-CRYPTOGRAPHIC random number generators
