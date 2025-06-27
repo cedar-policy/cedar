@@ -1,0 +1,11 @@
+entity UserGroup;
+entity User in [UserGroup] {
+    hungry_level: Long
+};
+entity Snack {
+    min_hungry_level: Long
+};
+action eat appliesTo {
+    principal: [User],
+    resource: [Snack]
+};

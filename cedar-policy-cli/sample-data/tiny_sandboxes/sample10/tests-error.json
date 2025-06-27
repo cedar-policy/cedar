@@ -1,0 +1,45 @@
+[
+  {
+    "request": {
+      "principal": "User::\"U0\"",
+      "action": "Action::\"eat\"",
+      "resource": "Snack::\"S0\"",
+      "context": {}
+    },
+    "entities": [
+      {
+        "uid": {
+          "type": "Snack",
+          "id": "S0"
+        },
+        "attrs": {
+          "min_hungry_level": 9223372036854775807
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "User",
+          "id": "U0"
+        },
+        "attrs": {
+          "hungry_level": 9223372036854775807
+        },
+        "parents": []
+      },
+      {
+        "uid": {
+          "type": "Action",
+          "id": "eat"
+        },
+        "attrs": {},
+        "parents": []
+      }
+    ],
+    "decision": "allow",
+    "reason": [
+      "too-hungry"
+    ],
+    "num_errors": 0
+  }
+]
