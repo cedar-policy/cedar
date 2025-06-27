@@ -620,6 +620,14 @@ pub trait RequestSchema {
         action: &EntityUID,
         extensions: &Extensions<'a>,
     ) -> std::result::Result<(), Self::Error>;
+
+    /// Validate the scope variables, returning `Err` if it fails validation
+    fn validate_scope_variables(
+        &self,
+        principal: Option<&EntityUID>,
+        action: Option<&EntityUID>,
+        resource: Option<&EntityUID>,
+    ) -> std::result::Result<(), Self::Error>;
 }
 
 /// A `RequestSchema` that does no validation and always reports a passing result
@@ -640,6 +648,15 @@ impl RequestSchema for RequestSchemaAllPass {
         _context: &Context,
         _action: &EntityUID,
         _extensions: &Extensions<'a>,
+    ) -> std::result::Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn validate_scope_variables(
+        &self,
+        _principal: Option<&EntityUID>,
+        _action: Option<&EntityUID>,
+        _resource: Option<&EntityUID>,
     ) -> std::result::Result<(), Self::Error> {
         Ok(())
     }

@@ -24,14 +24,14 @@
 
 mod id;
 #[cfg(feature = "entity-manifest")]
-use cedar_policy_validator::entity_manifest;
+use cedar_policy_core::validator::entity_manifest;
 // TODO (#1157) implement wrappers for these structs before they become public
 #[cfg(feature = "entity-manifest")]
-pub use cedar_policy_validator::entity_manifest::{
+pub use cedar_policy_core::validator::entity_manifest::{
     AccessTrie, EntityManifest, EntityRoot, Fields, RootAccessTrie,
 };
-use cedar_policy_validator::json_schema;
-use cedar_policy_validator::typecheck::{PolicyCheck, Typechecker};
+use cedar_policy_core::validator::json_schema;
+use cedar_policy_core::validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;
 
 #[cfg(feature = "deprecated-schema-compat")]
@@ -283,7 +283,7 @@ impl Entity {
         value: serde_json::Value,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -298,7 +298,7 @@ impl Entity {
         src: impl AsRef<str>,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -310,7 +310,7 @@ impl Entity {
     /// Parse an entity from a JSON reader
     /// If a schema is provided, it is handled identically to [`Entities::from_json_str`]
     pub fn from_json_file(f: impl Read, schema: Option<&Schema>) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -439,7 +439,7 @@ impl Entities {
         cedar_policy_core::entities::Entities::from_entities(
             entities.into_iter().map(|e| e.0),
             schema
-                .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
+                .map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0))
                 .as_ref(),
             cedar_policy_core::entities::TCComputation::ComputeNow,
             Extensions::all_available(),
@@ -472,7 +472,7 @@ impl Entities {
             self.0.add_entities(
                 entities.into_iter().map(|e| Arc::new(e.0)),
                 schema
-                    .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
+                    .map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0))
                     .as_ref(),
                 cedar_policy_core::entities::TCComputation::ComputeNow,
                 Extensions::all_available(),
@@ -519,7 +519,7 @@ impl Entities {
             self.0.upsert_entities(
                 entities.into_iter().map(|e| Arc::new(e.0)),
                 schema
-                    .map(|s| cedar_policy_validator::CoreSchema::new(&s.0))
+                    .map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0))
                     .as_ref(),
                 cedar_policy_core::entities::TCComputation::ComputeNow,
                 Extensions::all_available(),
@@ -552,7 +552,7 @@ impl Entities {
         json: &str,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -592,7 +592,7 @@ impl Entities {
         json: serde_json::Value,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -633,7 +633,7 @@ impl Entities {
         json: impl std::io::Read,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -699,7 +699,7 @@ impl Entities {
     /// # assert_eq!(ip, EvalResult::ExtensionValue("ip(\"10.0.1.101\")".to_string()));
     /// ```
     pub fn from_json_str(json: &str, schema: Option<&Schema>) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -757,7 +757,7 @@ impl Entities {
         json: serde_json::Value,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -793,7 +793,7 @@ impl Entities {
         json: impl std::io::Read,
         schema: Option<&Schema>,
     ) -> Result<Self, EntitiesError> {
-        let schema = schema.map(|s| cedar_policy_validator::CoreSchema::new(&s.0));
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
         let eparser = cedar_policy_core::entities::EntityJsonParser::new(
             schema.as_ref(),
             Extensions::all_available(),
@@ -856,6 +856,26 @@ impl Entities {
         self.0.to_dot_str(&mut dot_str).unwrap();
         dot_str
     }
+}
+
+/// Validates scope variables against the provided schema
+///
+/// Returns Ok(()) if the context is valid according to the schema, or an error otherwise
+///
+/// This validation is already handled by `Request::new`, so there is no need to separately call
+/// if you are validating the whole request
+pub fn validate_scope_variables(
+    principal: &EntityUid,
+    action: &EntityUid,
+    resource: &EntityUid,
+    schema: &Schema,
+) -> std::result::Result<(), RequestValidationError> {
+    Ok(RequestSchema::validate_scope_variables(
+        &schema.0,
+        Some(&principal.0),
+        Some(&action.0),
+        Some(&resource.0),
+    )?)
 }
 
 /// Utilities for defining `IntoIterator` over `Entities`
@@ -1386,7 +1406,7 @@ pub enum ValidationMode {
 }
 
 #[doc(hidden)]
-impl From<ValidationMode> for cedar_policy_validator::ValidationMode {
+impl From<ValidationMode> for cedar_policy_core::validator::ValidationMode {
     fn from(mode: ValidationMode) -> Self {
         match mode {
             ValidationMode::Strict => Self::Strict,
@@ -1401,11 +1421,11 @@ impl From<ValidationMode> for cedar_policy_validator::ValidationMode {
 /// Validator object, which provides policy validation and typechecking.
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
-pub struct Validator(cedar_policy_validator::Validator);
+pub struct Validator(cedar_policy_core::validator::Validator);
 
 #[doc(hidden)] // because this converts to a private/internal type
-impl AsRef<cedar_policy_validator::Validator> for Validator {
-    fn as_ref(&self) -> &cedar_policy_validator::Validator {
+impl AsRef<cedar_policy_core::validator::Validator> for Validator {
+    fn as_ref(&self) -> &cedar_policy_core::validator::Validator {
         &self.0
     }
 }
@@ -1414,7 +1434,7 @@ impl Validator {
     /// Construct a new `Validator` to validate policies using the given
     /// `Schema`.
     pub fn new(schema: Schema) -> Self {
-        Self(cedar_policy_validator::Validator::new(schema.0))
+        Self(cedar_policy_core::validator::Validator::new(schema.0))
     }
 
     /// Get the `Schema` this `Validator` is using.
@@ -1457,27 +1477,28 @@ impl Validator {
 /// used to validate a policy.
 #[derive(Debug, Clone)]
 pub struct SchemaFragment {
-    value: cedar_policy_validator::ValidatorSchemaFragment<
-        cedar_policy_validator::ConditionalName,
-        cedar_policy_validator::ConditionalName,
+    value: cedar_policy_core::validator::ValidatorSchemaFragment<
+        cedar_policy_core::validator::ConditionalName,
+        cedar_policy_core::validator::ConditionalName,
     >,
-    lossless: cedar_policy_validator::json_schema::Fragment<cedar_policy_validator::RawName>,
+    lossless:
+        cedar_policy_core::validator::json_schema::Fragment<cedar_policy_core::validator::RawName>,
 }
 
 #[doc(hidden)] // because this converts to a private/internal type
 impl
     AsRef<
-        cedar_policy_validator::ValidatorSchemaFragment<
-            cedar_policy_validator::ConditionalName,
-            cedar_policy_validator::ConditionalName,
+        cedar_policy_core::validator::ValidatorSchemaFragment<
+            cedar_policy_core::validator::ConditionalName,
+            cedar_policy_core::validator::ConditionalName,
         >,
     > for SchemaFragment
 {
     fn as_ref(
         &self,
-    ) -> &cedar_policy_validator::ValidatorSchemaFragment<
-        cedar_policy_validator::ConditionalName,
-        cedar_policy_validator::ConditionalName,
+    ) -> &cedar_policy_core::validator::ValidatorSchemaFragment<
+        cedar_policy_core::validator::ConditionalName,
+        cedar_policy_core::validator::ConditionalName,
     > {
         &self.value
     }
@@ -1673,7 +1694,7 @@ impl SchemaFragment {
     /// Create a [`SchemaFragment`] from a string containing JSON in the
     /// JSON schema format.
     pub fn from_json_str(src: &str) -> Result<Self, SchemaError> {
-        let lossless = cedar_policy_validator::json_schema::Fragment::from_json_str(src)?;
+        let lossless = cedar_policy_core::validator::json_schema::Fragment::from_json_str(src)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
@@ -1683,7 +1704,7 @@ impl SchemaFragment {
     /// Create a [`SchemaFragment`] from a JSON value (which should be an
     /// object of the shape required for the JSON schema format).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
-        let lossless = cedar_policy_validator::json_schema::Fragment::from_json_value(json)?;
+        let lossless = cedar_policy_core::validator::json_schema::Fragment::from_json_value(json)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
@@ -1695,7 +1716,7 @@ impl SchemaFragment {
         r: impl std::io::Read,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
         let (lossless, warnings) =
-            cedar_policy_validator::json_schema::Fragment::from_cedarschema_file(
+            cedar_policy_core::validator::json_schema::Fragment::from_cedarschema_file(
                 r,
                 Extensions::all_available(),
             )?;
@@ -1713,7 +1734,7 @@ impl SchemaFragment {
         src: &str,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
         let (lossless, warnings) =
-            cedar_policy_validator::json_schema::Fragment::from_cedarschema_str(
+            cedar_policy_core::validator::json_schema::Fragment::from_cedarschema_str(
                 src,
                 Extensions::all_available(),
             )?;
@@ -1729,7 +1750,7 @@ impl SchemaFragment {
     /// Create a [`SchemaFragment`] directly from a JSON file (which should
     /// contain an object of the shape required for the JSON schema format).
     pub fn from_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
-        let lossless = cedar_policy_validator::json_schema::Fragment::from_json_file(file)?;
+        let lossless = cedar_policy_core::validator::json_schema::Fragment::from_json_file(file)?;
         Ok(Self {
             value: lossless.clone().try_into()?,
             lossless,
@@ -1762,7 +1783,7 @@ impl TryInto<Schema> for SchemaFragment {
     /// any undeclared entity types are referenced in the schema fragment.
     fn try_into(self) -> Result<Schema, Self::Error> {
         Ok(Schema(
-            cedar_policy_validator::ValidatorSchema::from_schema_fragments(
+            cedar_policy_core::validator::ValidatorSchema::from_schema_fragments(
                 [self.value],
                 Extensions::all_available(),
             )?,
@@ -1785,18 +1806,18 @@ impl FromStr for SchemaFragment {
 /// Object containing schema information used by the validator.
 #[repr(transparent)]
 #[derive(Debug, Clone, RefCast)]
-pub struct Schema(pub(crate) cedar_policy_validator::ValidatorSchema);
+pub struct Schema(pub(crate) cedar_policy_core::validator::ValidatorSchema);
 
 #[doc(hidden)] // because this converts to a private/internal type
-impl AsRef<cedar_policy_validator::ValidatorSchema> for Schema {
-    fn as_ref(&self) -> &cedar_policy_validator::ValidatorSchema {
+impl AsRef<cedar_policy_core::validator::ValidatorSchema> for Schema {
+    fn as_ref(&self) -> &cedar_policy_core::validator::ValidatorSchema {
         &self.0
     }
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_validator::ValidatorSchema> for Schema {
-    fn from(schema: cedar_policy_validator::ValidatorSchema) -> Self {
+impl From<cedar_policy_core::validator::ValidatorSchema> for Schema {
+    fn from(schema: cedar_policy_core::validator::ValidatorSchema) -> Self {
         Self(schema)
     }
 }
@@ -1824,7 +1845,7 @@ impl Schema {
         fragments: impl IntoIterator<Item = SchemaFragment>,
     ) -> Result<Self, SchemaError> {
         Ok(Self(
-            cedar_policy_validator::ValidatorSchema::from_schema_fragments(
+            cedar_policy_core::validator::ValidatorSchema::from_schema_fragments(
                 fragments.into_iter().map(|f| f.value),
                 Extensions::all_available(),
             )?,
@@ -1835,7 +1856,7 @@ impl Schema {
     /// shape required for the JSON schema format).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
         Ok(Self(
-            cedar_policy_validator::ValidatorSchema::from_json_value(
+            cedar_policy_core::validator::ValidatorSchema::from_json_value(
                 json,
                 Extensions::all_available(),
             )?,
@@ -1846,7 +1867,7 @@ impl Schema {
     /// shape.
     pub fn from_json_str(json: &str) -> Result<Self, SchemaError> {
         Ok(Self(
-            cedar_policy_validator::ValidatorSchema::from_json_str(
+            cedar_policy_core::validator::ValidatorSchema::from_json_str(
                 json,
                 Extensions::all_available(),
             )?,
@@ -1857,7 +1878,7 @@ impl Schema {
     /// appropriate shape.
     pub fn from_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
         Ok(Self(
-            cedar_policy_validator::ValidatorSchema::from_json_file(
+            cedar_policy_core::validator::ValidatorSchema::from_json_file(
                 file,
                 Extensions::all_available(),
             )?,
@@ -1868,10 +1889,11 @@ impl Schema {
     pub fn from_cedarschema_file(
         file: impl std::io::Read,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning> + 'static), CedarSchemaError> {
-        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_cedarschema_file(
-            file,
-            Extensions::all_available(),
-        )?;
+        let (schema, warnings) =
+            cedar_policy_core::validator::ValidatorSchema::from_cedarschema_file(
+                file,
+                Extensions::all_available(),
+            )?;
         Ok((Self(schema), warnings))
     }
 
@@ -1879,10 +1901,11 @@ impl Schema {
     pub fn from_cedarschema_str(
         src: &str,
     ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
-        let (schema, warnings) = cedar_policy_validator::ValidatorSchema::from_cedarschema_str(
-            src,
-            Extensions::all_available(),
-        )?;
+        let (schema, warnings) =
+            cedar_policy_core::validator::ValidatorSchema::from_cedarschema_str(
+                src,
+                Extensions::all_available(),
+            )?;
         Ok((Self(schema), warnings))
     }
 
@@ -1979,7 +2002,7 @@ impl Schema {
     /// according to this schema.
     pub fn request_envs(&self) -> impl Iterator<Item = RequestEnv> + '_ {
         self.0
-            .unlinked_request_envs(cedar_policy_validator::ValidationMode::Strict)
+            .unlinked_request_envs(cedar_policy_core::validator::ValidationMode::Strict)
             .map(Into::into)
     }
 
@@ -2075,8 +2098,8 @@ impl ValidationResult {
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_validator::ValidationResult> for ValidationResult {
-    fn from(r: cedar_policy_validator::ValidationResult) -> Self {
+impl From<cedar_policy_core::validator::ValidationResult> for ValidationResult {
+    fn from(r: cedar_policy_core::validator::ValidationResult) -> Self {
         let (errors, warnings) = r.into_errors_and_warnings();
         Self {
             validation_errors: errors.map(ValidationError::from).collect(),
@@ -2173,7 +2196,7 @@ impl Diagnostic for ValidationResult {
 pub fn confusable_string_checker<'a>(
     templates: impl Iterator<Item = &'a Template> + 'a,
 ) -> impl Iterator<Item = ValidationWarning> + 'a {
-    cedar_policy_validator::confusable_string_checks(templates.map(|t| &t.ast))
+    cedar_policy_core::validator::confusable_string_checks(templates.map(|t| &t.ast))
         .map(std::convert::Into::into)
 }
 
@@ -2911,10 +2934,10 @@ impl RequestEnv {
 }
 
 #[doc(hidden)]
-impl From<cedar_policy_validator::types::RequestEnv<'_>> for RequestEnv {
-    fn from(renv: cedar_policy_validator::types::RequestEnv<'_>) -> Self {
+impl From<cedar_policy_core::validator::types::RequestEnv<'_>> for RequestEnv {
+    fn from(renv: cedar_policy_core::validator::types::RequestEnv<'_>) -> Self {
         match renv {
-            cedar_policy_validator::types::RequestEnv::DeclaredAction {
+            cedar_policy_core::validator::types::RequestEnv::DeclaredAction {
                 principal,
                 action,
                 resource,
@@ -2926,7 +2949,7 @@ impl From<cedar_policy_validator::types::RequestEnv<'_>> for RequestEnv {
             },
             // PANIC SAFETY: partial validation is not enabled and hence `RequestEnv::UndeclaredAction` should not show up
             #[allow(clippy::unreachable)]
-            cedar_policy_validator::types::RequestEnv::UndeclaredAction => {
+            cedar_policy_core::validator::types::RequestEnv::UndeclaredAction => {
                 unreachable!("used unsupported feature")
             }
         }
@@ -2938,7 +2961,10 @@ impl From<cedar_policy_validator::types::RequestEnv<'_>> for RequestEnv {
 /// This function is called by [`Template::get_valid_request_envs`] and
 /// [`Policy::get_valid_request_envs`]
 fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item = RequestEnv> {
-    let tc = Typechecker::new(&s.0, cedar_policy_validator::ValidationMode::default());
+    let tc = Typechecker::new(
+        &s.0,
+        cedar_policy_core::validator::ValidationMode::default(),
+    );
     tc.typecheck_by_request_env(ast)
         .into_iter()
         .filter_map(|(env, pc)| {
@@ -4612,7 +4638,7 @@ impl Context {
         schema: &Schema,
         action: &EntityUid,
     ) -> Result<impl ContextSchema, ContextJsonError> {
-        cedar_policy_validator::context_schema_for_action(&schema.0, action.as_ref())
+        cedar_policy_core::validator::context_schema_for_action(&schema.0, action.as_ref())
             .ok_or_else(|| ContextJsonError::missing_action(action.clone()))
     }
 
@@ -4938,7 +4964,7 @@ action CreateList in Create appliesTo {
     fn common_types_extended() {
         use cool_asserts::assert_matches;
 
-        use cedar_policy_validator::{
+        use cedar_policy_core::validator::{
             types::{EntityRecordKind, Type},
             ValidatorCommonType,
         };
@@ -4975,7 +5001,7 @@ action CreateList in Create appliesTo {
         // Assert that attributes that are resolved from common types still get source locations
         let t = attrs.get_attr("tasks").unwrap();
         assert!(t.loc.is_some());
-        assert_matches!(&t.attr_type, cedar_policy_validator::types::Type::Set { ref element_type } => {
+        assert_matches!(&t.attr_type, cedar_policy_core::validator::types::Type::Set { ref element_type } => {
             let el = *element_type.clone().unwrap();
             assert_matches!(el, Type::EntityOrRecord(EntityRecordKind::Record { attrs, .. }) => {
                 assert!(attrs.get_attr("name").unwrap().loc.is_some());

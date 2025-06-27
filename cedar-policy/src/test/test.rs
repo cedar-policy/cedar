@@ -4127,7 +4127,7 @@ mod schema_based_parsing_tests {
         ));
 
         // Parsing will fail if we change the TC setting
-        let schema = cedar_policy_validator::CoreSchema::new(&schema.0);
+        let schema = cedar_policy_core::validator::CoreSchema::new(&schema.0);
         let parser_assume_computed = entities::EntityJsonParser::new(
             Some(&schema),
             Extensions::all_available(),
