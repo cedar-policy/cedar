@@ -516,15 +516,17 @@ impl From<&ast::Literal> for models::expr::Literal {
     }
 }
 
+// PANIC SAFETY: experimental feature
+#[allow(clippy::fallible_impl_from)]
 impl From<&models::SlotId> for ast::SlotId {
     // PANIC SAFETY: experimental feature
-    #[allow(clippy::unwrap_used, clippy::expect_used)]
+    #[allow(clippy::expect_used, clippy::unwrap_used)]
     fn from(v: &models::SlotId) -> Self {
         match v.data.as_ref().expect("data field should exist") {
             models::slot_id::Data::Principal(_) => ast::SlotId::principal(),
             models::slot_id::Data::Resource(_) => ast::SlotId::resource(),
             models::slot_id::Data::GeneralizedSlot(s) => {
-                ast::SlotId::generalized_slot(s.parse().unwrap())
+                ast::SlotId::generalized_slot(ast::Id::from_normalized_str(s).unwrap())
             }
         }
     }

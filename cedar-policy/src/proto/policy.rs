@@ -17,9 +17,8 @@
 #![allow(clippy::use_self)]
 
 use super::models;
-use cedar_policy_core::validator::{json_schema, RawName};
 use cedar_policy_core::{
-    ast::{self, GeneralizedSlotsAnnotation, ScopePosition},
+    ast::{self, GeneralizedSlotsAnnotation},
     FromNormalizedStr,
 };
 use std::collections::HashMap;
@@ -51,10 +50,10 @@ impl From<&models::Policy> for ast::LiteralPolicy {
         }
 
         let mut generalized_values: ast::GeneralizedSlotEnv = HashMap::new();
-        for (k, v) in &v.generalized_values {
+        for (key, value) in &v.generalized_values {
             generalized_values.insert(
-                ast::SlotId::generalized_slot(k.parse().unwrap()),
-                ast::RestrictedExpr::new(v.into()).unwrap(),
+                ast::SlotId::generalized_slot(ast::Id::from_normalized_str(key).unwrap()),
+                ast::RestrictedExpr::new(value.into()).unwrap(),
             );
         }
 
@@ -240,7 +239,7 @@ impl From<&models::TemplateBody> for ast::TemplateBody {
             .iter()
             .map(|(key, value)| {
                 (
-                    ast::SlotId::generalized_slot(key.parse().unwrap()),
+                    ast::SlotId::generalized_slot(ast::Id::from_normalized_str(key).unwrap()),
                     value.into(),
                 )
             })
@@ -357,10 +356,19 @@ impl From<&models::EntityReference> for ast::EntityReference {
     #[allow(clippy::expect_used)]
     fn from(v: &models::EntityReference) -> Self {
         match v.data.as_ref().expect("data field should exist") {
-            models::entity_reference::Data::Slot(slot) => match &slot.slot {
-                Some(id) => ast::EntityReference::Slot(Some(id.parse().unwrap()), None),
-                None => ast::EntityReference::Slot(None, None),
-            },
+            models::entity_reference::Data::Slot(slot) => {
+                slot.slot
+                    .as_ref()
+                    .map_or(ast::EntityReference::Slot(None, None), |id| {
+                        ast::EntityReference::Slot(
+                            Some(
+                                ast::Id::from_normalized_str(id)
+                                    .expect("the string provided is not a valid identifier"),
+                            ),
+                            None,
+                        )
+                    })
+            }
             models::entity_reference::Data::Euid(euid) => {
                 ast::EntityReference::euid(ast::EntityUID::from(euid).into())
             }
@@ -376,20 +384,20 @@ impl From<&ast::EntityReference> for models::EntityReference {
                     models::EntityUid::from(euid.as_ref()),
                 )),
             },
-            ast::EntityReference::Slot(id, _) => match id {
-                Some(id) => Self {
+            ast::EntityReference::Slot(id, _) => id.as_ref().map_or(
+                Self {
+                    data: Some(models::entity_reference::Data::Slot(
+                        models::entity_reference::Slot { slot: None },
+                    )),
+                },
+                |id| Self {
                     data: Some(models::entity_reference::Data::Slot(
                         models::entity_reference::Slot {
                             slot: Some(id.to_string()),
                         },
                     )),
                 },
-                None => Self {
-                    data: Some(models::entity_reference::Data::Slot(
-                        models::entity_reference::Slot { slot: None },
-                    )),
-                },
-            },
+            ),
         }
     }
 }
@@ -620,6 +628,7 @@ impl TryFrom<&models::PolicySet> for ast::PolicySet {
 
 #[cfg(test)]
 mod test {
+    use cedar_policy_core::validator::{json_schema, RawName};
     use std::sync::Arc;
 
     use super::*;

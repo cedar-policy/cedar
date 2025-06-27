@@ -309,13 +309,13 @@ impl From<&models::TemplateType> for json_schema::Type<RawName> {
     #[allow(clippy::expect_used)]
     fn from(v: &models::TemplateType) -> Self {
         let ty_variant = match &v.data.as_ref().expect("data field should exist") {
-            &models::template_type::Data::Other(t) => json_schema::TypeVariant::EntityOrCommon {
+            models::template_type::Data::Other(t) => json_schema::TypeVariant::EntityOrCommon {
                 type_name: t.into(),
             },
-            &models::template_type::Data::SetElem(t) => json_schema::TypeVariant::Set {
+            models::template_type::Data::SetElem(t) => json_schema::TypeVariant::Set {
                 element: Box::new((&**t).into()),
             },
-            &models::template_type::Data::Record(s) => {
+            models::template_type::Data::Record(s) => {
                 json_schema::TypeVariant::Record(template_model_to_attributes(&s.attrs))
             }
         };
@@ -382,7 +382,7 @@ fn template_attributes_to_model(
 
 impl From<&models::AttributeTemplateType> for json_schema::TypeOfAttribute<RawName> {
     // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[allow(clippy::unwrap_used)]
     fn from(v: &models::AttributeTemplateType) -> Self {
         let ty: json_schema::Type<RawName> = (v.attr_type.as_ref().unwrap()).into();
         let annotations = est::Annotations::default();
