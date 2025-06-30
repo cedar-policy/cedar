@@ -17,7 +17,7 @@
 use std::borrow::Cow;
 
 use cedar_policy_core::ast::{Extension, ExtensionFunction};
-use lsp_types::{
+use tower_lsp_server::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Documentation,
     InsertTextFormat, MarkupContent,
 };
@@ -90,7 +90,7 @@ impl MethodInfo {
     pub(crate) fn documentation(&self) -> Option<Documentation> {
         let d = self.documentation.as_ref()?;
         Some(Documentation::MarkupContent(MarkupContent {
-            kind: lsp_types::MarkupKind::Markdown,
+            kind: tower_lsp_server::lsp_types::MarkupKind::Markdown,
             value: d.to_string(),
         }))
     }

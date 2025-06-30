@@ -16,7 +16,7 @@
 
 use cedar_policy_core::{parser::AsLocRef, validator::ValidatorSchema};
 use itertools::Itertools;
-use lsp_types::FoldingRange;
+use tower_lsp_server::lsp_types::{self, FoldingRange};
 
 use crate::utils::ToRange;
 

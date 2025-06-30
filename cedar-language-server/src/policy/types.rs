@@ -30,8 +30,8 @@ use cedar_policy_core::validator::{
     ValidatorEntityType,
 };
 use itertools::Itertools;
-use lsp_types::{CompletionItem, Position};
 use serde::{Deserialize, Serialize};
+use tower_lsp_server::lsp_types::{CompletionItem, Position};
 
 use crate::policy::completion::items::{
     ActionCompletionItem, ContextCompletionIem, PrincipalCompletionItem, ResourceCompletionItem,

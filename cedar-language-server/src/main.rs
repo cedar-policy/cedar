@@ -15,7 +15,7 @@
  */
 
 use cedar_language_server::server::Backend;
-use tower_lsp::{LspService, Server};
+use tower_lsp_server::{LspService, Server};
 use tracing::info;
 
 #[tokio::main]
