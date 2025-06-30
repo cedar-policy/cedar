@@ -17,7 +17,7 @@
 use cedar_policy_core::ast::PolicyID;
 use cedar_policy_core::validator::ValidatorSchema;
 use itertools::Itertools;
-use lsp_types::{GotoDefinitionResponse, Location, Position, Url};
+use tower_lsp_server::lsp_types::{GotoDefinitionResponse, Location, Position, Uri};
 use visitor::PolicyGotoSchemaDefinition;
 
 use crate::{schema::SchemaInfo, utils::position_within_loc};
@@ -47,7 +47,7 @@ pub(crate) fn policy_goto_definition(
     position: Position,
     policy_src: &str,
     schema: Option<SchemaInfo>,
-    schema_uri: Option<&Url>,
+    schema_uri: Option<&Uri>,
 ) -> Option<GotoDefinitionResponse> {
     let cst = cedar_policy_core::parser::text_to_cst::parse_policies(policy_src)
         .inspect_err(|e| tracing::error!("Error parsing policy to cst: {}", e))
@@ -101,7 +101,7 @@ pub(crate) fn policy_goto_definition(
 mod tests {
     use std::{sync::LazyLock, vec};
 
-    use lsp_types::Url;
+    use tower_lsp_server::lsp_types::{self, Uri};
     use tracing_test::traced_test;
 
     use crate::utils::tests::slice_range;
@@ -110,14 +110,14 @@ mod tests {
         utils::tests::{remove_caret_marker, schema_info},
     };
 
-    static URL: LazyLock<Url> = LazyLock::new(|| Url::parse("https://example.net").ok().unwrap());
+    static URI: LazyLock<Uri> = LazyLock::new(|| "https://example.net".parse().ok().unwrap());
 
     #[track_caller]
     fn goto_def_test(policy: &str, schema: SchemaInfo, mut expected: Vec<&str>) {
         let (policy, position) = remove_caret_marker(policy);
 
         let ranges =
-            super::policy_goto_definition(position, &policy, Some(schema.clone()), Some(&*URL));
+            super::policy_goto_definition(position, &policy, Some(schema.clone()), Some(&*URI));
 
         let mut actual = match ranges {
             Some(lsp_types::GotoDefinitionResponse::Scalar(location)) => {
