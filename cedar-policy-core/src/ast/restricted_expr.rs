@@ -21,7 +21,7 @@ use super::{
 use crate::entities::json::err::JsonSerializationError;
 use crate::extensions::Extensions;
 use crate::parser::err::ParseErrors;
-use crate::parser::{self, Loc};
+use crate::parser::{self, MaybeLoc};
 use miette::Diagnostic;
 use smol_str::{SmolStr, ToSmolStr};
 use std::hash::{Hash, Hasher};
@@ -87,7 +87,7 @@ impl RestrictedExpr {
     }
 
     /// Return the `RestrictedExpr`, but with the new `source_loc` (or `None`).
-    pub fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
+    pub fn with_maybe_source_loc(self, source_loc: MaybeLoc) -> Self {
         Self(self.0.with_maybe_source_loc(source_loc))
     }
 
@@ -687,7 +687,7 @@ mod test {
     use super::*;
     use crate::ast::expression_construction_errors;
     use crate::parser::err::{ParseError, ToASTError, ToASTErrorKind};
-    use crate::parser::Loc;
+    use crate::parser::{IntoMaybeLoc, Loc};
     use std::str::FromStr;
     use std::sync::Arc;
 
@@ -761,7 +761,7 @@ mod test {
                         }
                         .into()
                     ),
-                    Some(Loc::new(0..32, Arc::from(str)))
+                    Loc::new(0..32, Arc::from(str)).into_maybe_loc()
                 )))
             )),
         )

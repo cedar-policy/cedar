@@ -18,14 +18,14 @@
 // PANIC SAFETY benchmarking
 #![allow(clippy::expect_used)]
 
-use std::str::FromStr;
+use std::{hint::black_box, str::FromStr};
 
 use cedar_policy::{
     Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid, Policy, PolicySet, Request,
     RestrictedExpression,
 };
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let auth = Authorizer::new();

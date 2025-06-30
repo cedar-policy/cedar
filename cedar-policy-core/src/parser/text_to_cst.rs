@@ -43,22 +43,30 @@ fn parse_collect_errors<'a, P, T>(
         &P,
         &mut Vec<err::RawErrorRecovery<'a>>,
         &Arc<str>,
+        bool,
         &'a str,
     ) -> Result<T, err::RawParseError<'a>>,
+    keep_src: bool,
     text: &'a str,
 ) -> Result<T, err::ParseErrors> {
+    // We don't need to copy the source if we won't keep it
+    let shared_src = if keep_src {
+        Arc::from(text)
+    } else {
+        Arc::from("")
+    };
     let mut errs = Vec::new();
-    let result = parse(parser, &mut errs, &Arc::from(text), text);
+    let result = parse(parser, &mut errs, &shared_src, keep_src, text);
 
     let errors = errs
         .into_iter()
-        .map(|rc| err::ToCSTError::from_raw_err_recovery(rc, Arc::from(text)))
+        .map(|rc| err::ToCSTError::from_raw_err_recovery(rc, Arc::clone(&shared_src)))
         .map(Into::into);
     let parsed = match result {
         Ok(parsed) => parsed,
         Err(e) => {
             return Err(err::ParseErrors::new(
-                err::ToCSTError::from_raw_parse_err(e, Arc::from(text)).into(),
+                err::ToCSTError::from_raw_parse_err(e, Arc::clone(&shared_src)).into(),
                 errors,
             ));
         }
@@ -79,12 +87,13 @@ fn parse_collect_errors_tolerant<'a, P, T>(
         &P,
         &mut Vec<err::RawErrorRecovery<'a>>,
         &Arc<str>,
+        bool,
         &'a str,
     ) -> Result<T, err::RawParseError<'a>>,
     text: &'a str,
 ) -> Result<T, err::ParseErrors> {
     let mut errs = Vec::new();
-    let result = parse(parser, &mut errs, &Arc::from(text), text);
+    let result = parse(parser, &mut errs, &Arc::from(text), true, text);
 
     let errors = errs
         .into_iter()
@@ -115,37 +124,59 @@ lazy_static::lazy_static! {
 
 /// Create CST for multiple policies from text
 pub fn parse_policies(text: &str) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
-    parse_collect_errors(&*POLICIES_PARSER, grammar::PoliciesParser::parse, text)
+    parse_collect_errors(
+        &*POLICIES_PARSER,
+        grammar::PoliciesParser::parse,
+        true,
+        text,
+    )
 }
 
 /// Create CST for one policy statement from text
 pub fn parse_policy(text: &str) -> Result<Node<Option<cst::Policy>>, err::ParseErrors> {
-    parse_collect_errors(&*POLICY_PARSER, grammar::PolicyParser::parse, text)
+    parse_collect_errors(&*POLICY_PARSER, grammar::PolicyParser::parse, true, text)
 }
 
 /// Create CST for one Expression from text
 pub fn parse_expr(text: &str) -> Result<Node<Option<cst::Expr>>, err::ParseErrors> {
-    parse_collect_errors(&*EXPR_PARSER, grammar::ExprParser::parse, text)
+    parse_collect_errors(&*EXPR_PARSER, grammar::ExprParser::parse, true, text)
 }
 
 /// Create CST for one Entity Ref (i.e., UID) from text
 pub fn parse_ref(text: &str) -> Result<Node<Option<cst::Ref>>, err::ParseErrors> {
-    parse_collect_errors(&*REF_PARSER, grammar::RefParser::parse, text)
+    parse_collect_errors(&*REF_PARSER, grammar::RefParser::parse, true, text)
 }
 
 /// Create CST for one Primary value from text
 pub fn parse_primary(text: &str) -> Result<Node<Option<cst::Primary>>, err::ParseErrors> {
-    parse_collect_errors(&*PRIMARY_PARSER, grammar::PrimaryParser::parse, text)
+    parse_collect_errors(&*PRIMARY_PARSER, grammar::PrimaryParser::parse, true, text)
 }
 
 /// Parse text as a Name, or fail if it does not parse as a Name
 pub fn parse_name(text: &str) -> Result<Node<Option<cst::Name>>, err::ParseErrors> {
-    parse_collect_errors(&*NAME_PARSER, grammar::NameParser::parse, text)
+    parse_collect_errors(&*NAME_PARSER, grammar::NameParser::parse, true, text)
 }
 
 /// Parse text as an identifier, or fail if it does not parse as an identifier
 pub fn parse_ident(text: &str) -> Result<Node<Option<cst::Ident>>, err::ParseErrors> {
-    parse_collect_errors(&*IDENT_PARSER, grammar::IdentParser::parse, text)
+    parse_collect_errors(&*IDENT_PARSER, grammar::IdentParser::parse, true, text)
+}
+
+/// Create CST for multiple policies from text, but without retaining source information
+#[cfg(feature = "raw-parsing")]
+pub fn parse_policies_raw(text: &str) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
+    parse_collect_errors(
+        &*POLICIES_PARSER,
+        grammar::PoliciesParser::parse,
+        false,
+        text,
+    )
+}
+
+/// Create CST for one policy statement from text, but without retaining source information
+#[cfg(feature = "raw-parsing")]
+pub fn parse_policy_raw(text: &str) -> Result<Node<Option<cst::Policy>>, err::ParseErrors> {
+    parse_collect_errors(&*POLICY_PARSER, grammar::PolicyParser::parse, false, text)
 }
 
 /// Create CST for one policy statement from text - allows CST error nodes on certain parse failures
@@ -167,6 +198,7 @@ pub fn parse_policies_tolerant(
 pub fn parse_expr_tolerant(text: &str) -> Result<Node<Option<cst::Expr>>, err::ParseErrors> {
     parse_collect_errors_tolerant(&*EXPR_PARSER, grammar::ExprParser::parse, text)
 }
+
 // PANIC SAFETY unit test code
 #[allow(clippy::panic)]
 // PANIC SAFETY unit test code
@@ -1056,7 +1088,7 @@ mod tests {
             permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
             "#;
         let policies = POLICIES_PARSER
-            .parse(&mut Vec::new(), &Arc::from(src), src)
+            .parse(&mut Vec::new(), &Arc::from(src), false, src)
             .expect("parser error")
             .node
             .expect("no data");
@@ -1229,7 +1261,7 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `!`")
-                .exactly_one_underline_with_label("!", "expected identifier")
+                .exactly_one_underline_with_label("!", "expected `)` or identifier")
                 .build(),
         );
 
@@ -1243,14 +1275,14 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `!`")
-                .exactly_one_underline_with_label("!", "expected identifier")
+                .exactly_one_underline_with_label("!", "expected `)` or identifier")
                 .build(),
         );
         expect_some_error_matches(
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `+`")
-                .exactly_one_underline_with_label("+", "expected identifier")
+                .exactly_one_underline_with_label("+", "expected `)` or identifier")
                 .build(),
         );
         expect_n_errors(src, &errs, 2);
@@ -1264,7 +1296,7 @@ mod tests {
             src,
             &errs,
             &ExpectedErrorMessageBuilder::error("unexpected token `!`")
-                .exactly_one_underline_with_label("!", "expected identifier")
+                .exactly_one_underline_with_label("!", "expected `)` or identifier")
                 .build(),
         );
     }
@@ -1419,6 +1451,294 @@ mod tests {
         };
         "#,
         );
+    }
+
+    #[cfg(feature = "raw-parsing")]
+    mod raw_parsing {
+        use super::*;
+
+        #[track_caller]
+        fn assert_parse_raw_succeeds<T>(
+            parse: impl FnOnce(&str) -> Result<Node<Option<T>>, err::ParseErrors>,
+            text: &str,
+        ) {
+            let cst_node = parse(text)
+                .unwrap_or_else(|errs| panic!("failed to parse:\n{:?}", miette::Report::new(errs)));
+            assert!(cst_node.loc.is_none());
+        }
+
+        #[test]
+        fn comments_has() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
+                r#"
+                    permit(principal, action,resource)
+                    when{ principal //comment p
+                    has //comment has
+                    age //comment
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_like() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
+                r#"
+                    permit(principal, action,resource)
+                    when{ principal //comment p
+                    like //comment like
+
+                    age //comment
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_and() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
+                r#"
+                    permit(principal, action,resource)
+                    when{ 1 //comment p
+                    &&  //comment &&
+                        //comment &&
+                    "hello" //comment
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_or() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
+                r#"
+                    permit(principal, action,resource)
+                    when{ 1 //comment 1
+                        //  comment 1
+                    ||  //comment ||
+                        //comments ||
+                    "hello" //comment
+                            //comment hello
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_add() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
+                r#"
+                    permit(principal, action,resource)
+                    when{ 1 //comment 1
+                            //comment 1_2
+                    + //comment +
+                    //comment +
+                    2 //comment 2
+                        //comment 2
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_paren() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
+                r#"
+                    permit(principal, action,resource)
+                    when{
+                    ( //comment 1
+                        ( //comment 2
+                    1
+                        ) //comment 3
+                    ) //comment 4
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_set() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
+                r#"
+                    permit(principal, action,resource)
+                    when{
+                    [ // comment 1
+                    "hello" //comment 2
+                    , // comment 3
+                    // comment 3-2
+                    1 //comment 4
+                        //comment 5
+                    ]  //comment 5-0
+
+                    .  //comment 5-1
+
+                    contains //comment 5-2
+
+                    ( //comment 6
+
+                    "a"  //comment 7
+
+                    ) //comment 20
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_if() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
+                r#"
+                    permit(principal, action,resource)
+                    when{
+                    ( //comment open outer
+                    ( //comment open inner
+                    if //comment if
+                    1             //comment
+                    < //comment <
+                    2 //commment 2
+                    then // comment then
+                    "hello" //comment hello
+                    else  //comment else
+                        1 //comment 1
+                        ) //comment close inner
+                        ) //comment close outer
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_member_access() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
+                r#"
+                    permit(principal, action,resource)
+                    when{ principal. //comment .
+                    age // comment age
+                    };
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_principal() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
+                r#"
+                    permit(principal //comment 1
+                    ==
+                    User::"alice" //comment 3
+                    ,  //comment 4
+                    action,resource);
+                "#,
+            );
+        }
+
+        #[test]
+        fn comments_annotation() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
+                r#"
+                //comment policy
+                // comment policy 2
+                @anno("good annotation")  // comments after annotation
+                // comments after annotation 2
+                        permit(principal //comment 1
+                        ==
+                        User::"alice" //comment 3
+                        ,  //comment 4
+                        action,resource);
+                    "#,
+            );
+        }
+
+        #[test]
+        fn comments_policy() {
+            // single line comments (`// ...`) are valid anywhere
+            assert_parse_raw_succeeds(
+                parse_policy_raw,
+                r#"
+                    //comment policy 1
+                    //comment policy 2
+                    permit( //comment 3
+                       // comment 4
+                    principal //comment principal
+                    == //comment == 1
+                       //comment == 2
+                    User::"alice" //comment alice
+                    , //comment comma 1
+                                //comment comma 2
+                    action //comment action 1
+                    //comment action 2
+                    , //comment comma action
+                    resource // comment resource
+                    )
+                    //comment 5
+                    //comment 6
+                    ;
+                "#,
+            );
+            //multi-line comments (`/* ... */`) are not allowed
+            let src = r#" /* multi-line
+                comment */
+                    permit(principal, action, resource)
+                    when{
+                        one.two
+                    };
+                "#;
+            assert_parse_fails(parse_policy_raw, src);
+        }
+
+        #[test]
+        fn multiple_policies() {
+            assert_parse_raw_succeeds(
+                parse_policies_raw,
+                r#"
+                    permit(
+                        principal in Group::"jane_friends",  // Policy c1
+                        action in [PhotoOp::"view", PhotoOp::"comment"],
+                        resource in Album::"jane_trips",
+                        context:Group
+                    );
+                    forbid(principal, action, resource)           // Policy c2
+                    when   { "private" in resource.tags }  // resource.tags is a set of strings
+                    unless { resource in user.account };
+                    "#,
+            );
+        }
+    }
+
+    #[test]
+    fn trailing_comma() {
+        assert_parse_succeeds(
+            parse_policy,
+            r#"
+        permit(principal, action, resource,);
+        "#,
+        );
+        assert_parse_succeeds(parse_expr, r#"foo(a, b, c,)"#);
+        assert_parse_succeeds(parse_expr, r#"[A, B, C,]"#);
+        assert_parse_succeeds(parse_expr, r#"{ A: B, C: D, }"#);
+        assert_parse_succeeds(parse_ref, r#"Principal::{uid: "123", role: "admin",}"#);
     }
 
     #[test]

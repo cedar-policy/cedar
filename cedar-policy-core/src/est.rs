@@ -31,11 +31,11 @@ use crate::ast::EntityUID;
 use crate::ast::{self, Annotation};
 use crate::entities::json::{err::JsonDeserializationError, EntityUidJson};
 use crate::expr_builder::ExprBuilder;
-use crate::parser::cst;
 use crate::parser::err::{parse_errors, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::util::{flatten_tuple_2, flatten_tuple_4};
 #[cfg(feature = "tolerant-ast")]
 use crate::parser::Loc;
+use crate::parser::{cst, IntoMaybeLoc};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::collections::{BTreeMap, HashMap};
@@ -172,7 +172,7 @@ impl TryFrom<cst::Policy> for Policy {
                 return Err(ParseErrors::singleton(ToASTError::new(
                     ToASTErrorKind::CSTErrorNode,
                     // Since we don't have a loc when doing this transformation, we create an arbitrary one
-                    Some(Loc::new(0..1, "CSTErrorNode".into())),
+                    Loc::new(0..1, "CSTErrorNode".into()).into_maybe_loc(),
                 )));
             }
         };
@@ -181,7 +181,7 @@ impl TryFrom<cst::Policy> for Policy {
         let maybe_annotations = policy.get_ast_annotations(|v, l| {
             Some(Annotation {
                 val: v?,
-                loc: l.cloned(),
+                loc: l.into_maybe_loc(),
             })
         });
         let maybe_conditions = ParseErrors::transpose(policy.conds.into_iter().map(|node| {
@@ -283,7 +283,7 @@ impl Policy {
         let mut conditions_iter = self
             .conditions
             .into_iter()
-            .map(|cond| cond.try_into_ast(id.clone()));
+            .map(|cond| cond.try_into_ast(&id));
         let conditions = match conditions_iter.next() {
             None => ast::Expr::val(true),
             Some(first) => ast::ExprBuilder::with_data(())
@@ -325,7 +325,7 @@ impl Clause {
         }
     }
     /// `id` is the ID of the policy the clause belongs to, used only for reporting errors
-    fn try_into_ast(self, id: ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
+    fn try_into_ast(self, id: &ast::PolicyID) -> Result<ast::Expr, FromJsonError> {
         match self {
             Clause::When(expr) => Self::filter_slots(expr.try_into_ast(id)?, true),
             Clause::Unless(expr) => {

@@ -17,6 +17,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use anyhow::{anyhow, Ok};
+use cedar_policy_core::validator::{CoreSchema, ValidatorSchema};
 use cedar_policy_core::{
     ast::PartialValue,
     entities::{conformance::EntitySchemaConformanceChecker, Schema},
@@ -33,15 +34,11 @@ use cedar_policy_core::{
 };
 use cedar_policy_core::{
     entities::{
-        conformance::{
-            err::{EntitySchemaConformanceError, UnexpectedEntityTypeError},
-            validate_euid,
-        },
+        conformance::{err::UnexpectedEntityTypeError, validate_euid},
         EntityTypeDescription,
     },
     transitive_closure::{compute_tc, TCNode},
 };
-use cedar_policy_validator::{CoreSchema, ValidatorSchema};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
@@ -280,8 +277,7 @@ impl PartialEntity {
             }
             return Ok(());
         }
-        validate_euid(&core_schema, uid)
-            .map_err(|e| EntitySchemaConformanceError::InvalidEnumEntity(e.into()))?;
+        validate_euid(&core_schema, uid)?;
         let schema_etype = core_schema.entity_type(etype).ok_or_else(|| {
             let suggested_types = core_schema
                 .entity_types_with_basename(&etype.name().basename())
@@ -405,11 +401,11 @@ impl PartialEntities {
 mod tests {
     use std::collections::{BTreeMap, HashMap, HashSet};
 
+    use cedar_policy_core::validator::ValidatorSchema;
     use cedar_policy_core::{
         ast::{EntityUID, Value},
         extensions::Extensions,
     };
-    use cedar_policy_validator::ValidatorSchema;
     use cool_asserts::assert_matches;
 
     use super::{parse_ejson, validate_parents, EntityJson, PartialEntities, PartialEntity};

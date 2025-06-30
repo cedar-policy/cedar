@@ -1,14 +1,14 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use anyhow::{anyhow, Ok};
+use cedar_policy_core::validator::{
+    types::RequestEnv, CoreSchema, RequestValidationError, ValidationMode, ValidatorEntityType,
+    ValidatorEntityTypeKind, ValidatorSchema,
+};
 use cedar_policy_core::{
     ast::{Context, Eid, EntityType, EntityUID, EntityUIDEntry, PartialValue, Request, Value},
     entities::conformance::{is_valid_enumerated_entity, validate_euids_in_partial_value},
     extensions::Extensions,
-};
-use cedar_policy_validator::{
-    types::RequestEnv, CoreSchema, RequestValidationError, ValidationMode, ValidatorEntityType,
-    ValidatorEntityTypeKind, ValidatorSchema,
 };
 use smol_str::SmolStr;
 
@@ -151,8 +151,7 @@ impl PartialRequest {
             }
             if let Some(m) = &self.context {
                 let ctx = PartialValue::Value(Value::record_arc(m.clone(), None));
-                validate_euids_in_partial_value(&core_schema, &ctx)
-                    .map_err(RequestValidationError::InvalidEnumEntity)?;
+                validate_euids_in_partial_value(&core_schema, &ctx)?;
                 let expected_context_ty = action_id.context_type();
                 if !expected_context_ty
                     .typecheck_partial_value(&ctx, Extensions::all_available())

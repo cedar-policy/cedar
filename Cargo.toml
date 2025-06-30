@@ -2,12 +2,13 @@
 members = [
 	"cedar-policy",
 	"cedar-policy-core",
-	"cedar-policy-validator",
 	"cedar-policy-formatter",
 	"cedar-policy-cli",
 	"cedar-testing",
-	"cedar-wasm"
-, "cedar-partial-evaluation"]
+	"cedar-wasm",
+	"cedar-language-server",
+    "cedar-partial-evaluation",
+]
 
 resolver = "2"
 
@@ -23,7 +24,7 @@ debug = "line-tables-only"  # this adds more debug symbols/info to the binary th
 [workspace.package]
 # Check the minimum supported Rust version with `cargo install cargo-msrv && cargo msrv --min 1.X.0` where `X` is something lower than the version noted here (to confirm that versions lower than the one noted here _don't_ work)
 rust-version = "1.82"
-version = "4.4.0"
+version = "4.5.0"
 homepage = "https://cedarpolicy.com"
 keywords = ["cedar", "authorization", "policy", "security"]
 categories = ["compilers", "config"]

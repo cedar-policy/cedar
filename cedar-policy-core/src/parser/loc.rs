@@ -16,6 +16,24 @@
 
 use std::sync::Arc;
 
+/// Represents an optional `Loc`.
+#[cfg(not(feature = "raw-parsing"))]
+pub type MaybeLoc = Option<Loc>;
+
+/// Represents an optional `Loc`.
+///
+/// This definition uses heap allocation (Box) to reduce the memory
+/// footprint of structures containing `MaybeLoc`.
+///
+/// The computational performance compared to the unboxed `Option<Loc>` depends on its value:
+/// - `Some` case: Slightly slower due to heap allocation and indirect access
+/// - `None` case: More memory efficient as no space is reserved for the location data
+///
+/// When the `raw-parsing` feature is enabled, we use this type and avoid
+/// storing locations during parsing, maximizing the parsing performance.
+#[cfg(feature = "raw-parsing")]
+pub type MaybeLoc = Option<Box<Loc>>;
+
 /// Represents a source location: index/range, and a reference to the source
 /// code which that index/range indexes into
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -71,6 +89,89 @@ impl From<Loc> for miette::SourceSpan {
 impl From<&Loc> for miette::SourceSpan {
     fn from(loc: &Loc) -> Self {
         loc.span
+    }
+}
+
+/// Trait to define conversions to `Option<&Loc>`
+pub trait AsLocRef {
+    /// Automatic conversion to `Option<&Loc>`
+    fn as_loc_ref(&self) -> Option<&Loc>;
+}
+
+impl AsLocRef for Option<Loc> {
+    #[inline]
+    fn as_loc_ref(&self) -> Option<&Loc> {
+        self.as_ref()
+    }
+}
+
+impl AsLocRef for Option<Box<Loc>> {
+    #[inline]
+    fn as_loc_ref(&self) -> Option<&Loc> {
+        self.as_deref()
+    }
+}
+
+/// Trait to define conversions into `MaybeLoc`
+pub trait IntoMaybeLoc {
+    /// Automatic conversion to `MaybeLoc`
+    fn into_maybe_loc(self) -> MaybeLoc;
+}
+
+impl IntoMaybeLoc for Loc {
+    #[inline]
+    fn into_maybe_loc(self) -> MaybeLoc {
+        #[cfg(not(feature = "raw-parsing"))]
+        {
+            Some(self)
+        }
+        #[cfg(feature = "raw-parsing")]
+        {
+            Some(Box::new(self))
+        }
+    }
+}
+
+impl IntoMaybeLoc for Option<Loc> {
+    #[inline]
+    fn into_maybe_loc(self) -> MaybeLoc {
+        #[cfg(not(feature = "raw-parsing"))]
+        {
+            self
+        }
+        #[cfg(feature = "raw-parsing")]
+        {
+            self.map(Box::new)
+        }
+    }
+}
+
+impl IntoMaybeLoc for Option<&Loc> {
+    #[inline]
+    #[allow(clippy::single_option_map)]
+    fn into_maybe_loc(self) -> MaybeLoc {
+        #[cfg(not(feature = "raw-parsing"))]
+        {
+            self.cloned()
+        }
+        #[cfg(feature = "raw-parsing")]
+        {
+            self.map(|loc| Box::new(loc.clone()))
+        }
+    }
+}
+
+impl IntoMaybeLoc for Option<Box<Loc>> {
+    #[inline]
+    fn into_maybe_loc(self) -> MaybeLoc {
+        #[cfg(not(feature = "raw-parsing"))]
+        {
+            self.map(|loc| *loc)
+        }
+        #[cfg(feature = "raw-parsing")]
+        {
+            self
+        }
     }
 }
 

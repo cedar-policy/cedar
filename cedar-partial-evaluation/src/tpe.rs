@@ -1,9 +1,9 @@
 use anyhow::anyhow;
-use cedar_policy_core::{ast::PolicySet, extensions::Extensions};
-use cedar_policy_validator::{
+use cedar_policy_core::validator::{
     typecheck::{PolicyCheck, Typechecker},
     ValidatorSchema,
 };
+use cedar_policy_core::{ast::PolicySet, extensions::Extensions};
 
 use crate::{
     entities::PartialEntities, evaluator::Evaluator, request::PartialRequest, residual::Residual,
@@ -22,7 +22,7 @@ pub fn tpe_policies(
     let env = request
         .find_request_env(schema)
         .ok_or(anyhow!("can't find a matching request environment"))?;
-    let tc = Typechecker::new(schema, cedar_policy_validator::ValidationMode::Strict);
+    let tc = Typechecker::new(schema, cedar_policy_core::validator::ValidationMode::Strict);
     let mut exprs = Vec::new();
     for p in ps.policies() {
         if !p.is_static() {
@@ -55,12 +55,12 @@ pub fn tpe_policies(
 
 #[cfg(test)]
 mod tests {
+    use cedar_policy_core::validator::ValidatorSchema;
     use cedar_policy_core::{
         ast::{Eid, EntityUID, Expr, PolicySet},
         extensions::Extensions,
         parser::parse_policyset,
     };
-    use cedar_policy_validator::ValidatorSchema;
     use std::{
         collections::{BTreeMap, HashMap, HashSet},
         sync::Arc,
@@ -195,12 +195,12 @@ action Delete appliesTo {
 mod tinytodo {
     use std::{collections::BTreeMap, sync::Arc};
 
+    use cedar_policy_core::validator::ValidatorSchema;
     use cedar_policy_core::{
         ast::{Eid, Expr, PolicySet},
         extensions::Extensions,
         parser::parse_policyset,
     };
-    use cedar_policy_validator::ValidatorSchema;
     use serde_json::json;
 
     use crate::{

@@ -1,10 +1,10 @@
 use std::{collections::BTreeMap, sync::Arc};
 
+use cedar_policy_core::validator::types::Type;
 use cedar_policy_core::{
     ast::{self, BinaryOp, EntityType, Expr, Name, Pattern, UnaryOp, Value, Var},
     expr_builder::ExprBuilder,
 };
-use cedar_policy_validator::types::Type;
 use smol_str::SmolStr;
 
 #[derive(Debug, Clone)]

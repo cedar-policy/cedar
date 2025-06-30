@@ -29,6 +29,18 @@ jobs:
       RUSTFLAGS: '-D warnings -F unsafe-code'
 
     steps:
+      - name: Check initialize disk space
+        shell: bash
+        run: df -h
+      # Based on https://github.com/easimon/maximize-build-space
+      - name: Free disk space
+        shell: bash
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+      - name: Check final disk space
+        shell: bash
+        run: df -h
       - name: Set environment variables for coverage collection
         if: ${{ inputs.collect_coverage }} && ${{ matrix.toolchain }} == 'stable'
         shell: bash

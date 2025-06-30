@@ -787,6 +787,49 @@ mod policy_set_tests {
         );
     }
 
+    #[test]
+    fn policyset_fmt_static() {
+        const STATIC_POLICY_TEXT: &str = "permit(principal,action,resource);";
+        let mut pset = PolicySet::new();
+        let policy0 = Policy::parse(Some(PolicyId::new("policy0")), STATIC_POLICY_TEXT)
+            .expect("Failed to parse");
+        let policy1 = Policy::parse(Some(PolicyId::new("policy1")), STATIC_POLICY_TEXT)
+            .expect("Failed to parse");
+        pset.add(policy0).unwrap();
+        pset.add(policy1).unwrap();
+        let policy_fmt = format!("{}", pset);
+        let mut expected_fmt = String::from(STATIC_POLICY_TEXT);
+        expected_fmt.push('\n');
+        expected_fmt.push_str(STATIC_POLICY_TEXT);
+        assert_eq!(expected_fmt, policy_fmt);
+    }
+
+    #[test]
+    fn policyset_fmt_template() {
+        const TEMPLATE_TEXT: &str = "permit(principal == ?principal,action,resource);";
+        const LINKED_POLICY_TEXT: &str = "permit(principal == Test::\"test\", action, resource);";
+        let mut pset = PolicySet::new();
+        let template0 = Template::parse(Some(PolicyId::new("template0")), TEMPLATE_TEXT)
+            .expect("Failed to parse");
+        let template1 = Template::parse(Some(PolicyId::new("template1")), TEMPLATE_TEXT)
+            .expect("Failed to parse");
+        pset.add_template(template0).unwrap();
+        pset.add_template(template1).unwrap();
+        let env0: HashMap<SlotId, EntityUid> =
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("template0"), PolicyId::new("linked0"), env0)
+            .expect("Failed to link");
+        let env1: HashMap<SlotId, EntityUid> =
+            HashMap::from([(SlotId::principal(), EntityUid::from_strs("Test", "test"))]);
+        pset.link(PolicyId::new("template1"), PolicyId::new("linked1"), env1)
+            .expect("Failed to link");
+        let policy_fmt = format!("{}", pset);
+        let mut expected_fmt = String::from(LINKED_POLICY_TEXT);
+        expected_fmt.push('\n');
+        expected_fmt.push_str(LINKED_POLICY_TEXT);
+        assert_eq!(expected_fmt, policy_fmt);
+    }
+
     #[cfg(feature = "partial-eval")]
     #[test]
     fn unknown_entities() {
@@ -4127,7 +4170,7 @@ mod schema_based_parsing_tests {
         ));
 
         // Parsing will fail if we change the TC setting
-        let schema = cedar_policy_validator::CoreSchema::new(&schema.0);
+        let schema = cedar_policy_core::validator::CoreSchema::new(&schema.0);
         let parser_assume_computed = entities::EntityJsonParser::new(
             Some(&schema),
             Extensions::all_available(),
@@ -7276,12 +7319,12 @@ mod version_tests {
 
     #[test]
     fn test_sdk_version() {
-        assert_eq!(get_sdk_version().to_string(), "4.4.0");
+        assert_eq!(get_sdk_version().to_string(), "4.5.0");
     }
 
     #[test]
     fn test_lang_version() {
-        assert_eq!(get_lang_version().to_string(), "4.3.0");
+        assert_eq!(get_lang_version().to_string(), "4.4.0");
     }
 }
 
@@ -7991,5 +8034,40 @@ mod test_entities_api {
         entities = entities.upsert_entities(vec![e1_updated], None).unwrap();
         assert_eq!(entities.len(), 2);
         assert!(entities.is_ancestor_of(&e2_uid, &e1_uid));
+    }
+}
+
+#[cfg(feature = "raw-parsing")]
+mod raw_parsing {
+    use crate::{Policy, PolicyId, PolicySet, Template};
+
+    #[test]
+    fn policyset_raw_parsing() {
+        const PSET_TEXT: &str = r#"
+            forbid(principal,action,resource)
+            when{ context has suspicion };
+
+            permit(
+                principal == Account::"jane",
+                action,
+                resource == Album::"jane_vacation"
+            );
+        "#;
+        let pset = PolicySet::parse_raw(PSET_TEXT).unwrap();
+        assert_eq!(pset.num_of_policies(), 2);
+    }
+
+    #[test]
+    fn policy_raw_parsing() {
+        const STATIC_POLICY_TEXT: &str = "permit(principal,action,resource);";
+        Policy::parse_raw(Some(PolicyId::new("policy0")), STATIC_POLICY_TEXT)
+            .expect("Failed to parse");
+    }
+
+    #[test]
+    fn template_raw_parsing() {
+        const TEMPLATE_TEXT: &str = "permit(principal == ?principal,action,resource);";
+        Template::parse_raw(Some(PolicyId::new("template0")), TEMPLATE_TEXT)
+            .expect("Failed to parse");
     }
 }

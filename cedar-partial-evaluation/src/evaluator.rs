@@ -1,10 +1,10 @@
 use std::{collections::BTreeMap, sync::Arc};
 
+use cedar_policy_core::validator::types::Type;
 use cedar_policy_core::{
     ast::{self, BinaryOp, EntityUID, Expr, ExprKind, PartialValue, Set, Value, ValueKind, Var},
     extensions::Extensions,
 };
-use cedar_policy_validator::types::Type;
 
 use crate::{
     entities::PartialEntities,
@@ -693,6 +693,7 @@ mod tests {
         i64,
     };
 
+    use cedar_policy_core::validator::{types::Type, ValidatorSchema};
     use cedar_policy_core::{
         ast::{
             BinaryOp, EntityUID, ExprBuilder, Literal, Pattern, PatternElem, UnaryOp, Value,
@@ -702,7 +703,6 @@ mod tests {
         extensions::Extensions,
         FromNormalizedStr,
     };
-    use cedar_policy_validator::{types::Type, ValidatorSchema};
     use cool_asserts::assert_matches;
 
     use crate::{

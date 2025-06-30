@@ -15,7 +15,7 @@
  */
 
 use crate::parser::err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind};
-use crate::parser::Loc;
+use crate::parser::{IntoMaybeLoc, Loc};
 use std::fmt::Display;
 use std::str::FromStr;
 
@@ -56,7 +56,7 @@ pub trait FromNormalizedStr: FromStr<Err = ParseErrors> + Display {
                     src: s.to_string(),
                     normalized_src,
                 },
-                Some(Loc::new(diff_byte, s.into())),
+                Some(Loc::new(diff_byte, s.into())).into_maybe_loc(),
             ))))
         }
     }

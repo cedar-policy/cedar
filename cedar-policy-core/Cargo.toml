@@ -14,9 +14,9 @@ repository.workspace = true
 
 [dependencies]
 serde = { version = "1.0", features = ["derive", "rc"] }
-serde_with = { version = "3.12", features = ["json"] }
-serde_json = "1.0"
-lalrpop-util = { version = "0.22.1", features = ["lexer"] }
+serde_with = { version = "3.13", features = ["json"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+lalrpop-util = { version = "0.22.2", features = ["lexer"] }
 lazy_static = "1.4"
 either = "1.15"
 itertools = "0.14"
@@ -29,6 +29,7 @@ arbitrary = { version = "1", features = ["derive"], optional = true }
 miette = { version = "7.6.0", features = ["serde"] }
 nonempty = { version = "0.10.0", features = ["serialize"] }
 educe = "0.6.0"
+unicode-security = "0.1.0"
 
 # decimal extension requires regex
 regex = { version = "1.8", features = ["unicode"], optional = true }
@@ -55,14 +56,22 @@ arbitrary = ["dep:arbitrary"]
 test-util = []
 
 # Experimental features.
+partial-validate = []
 partial-eval = []
 tolerant-ast = []
+entity-manifest = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
+experimental = ["tolerant-ast", "extended-schema", "entity-manifest", "partial-validate", "partial-eval"]
+extended-schema = []
+
+# Feature for raw parsing
+raw-parsing = []
 
 [build-dependencies]
-lalrpop = "0.22.1"
+lalrpop = "0.22.2"
 
 [dev-dependencies]
+similar-asserts = "1.7.0"
 cool_asserts = "2.0"
 miette = { version = "7.6.0", features = ["fancy"] }
 
