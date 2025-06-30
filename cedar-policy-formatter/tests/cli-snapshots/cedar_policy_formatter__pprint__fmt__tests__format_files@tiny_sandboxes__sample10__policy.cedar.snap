@@ -1,0 +1,26 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+assertion_line: 270
+expression: formatted
+input_file: cedar-policy-cli/sample-data/tiny_sandboxes/sample10/policy.cedar
+---
+@id("too-hungry")
+permit (
+  principal,
+  action == Action::"eat",
+  resource
+)
+when { principal.hungry_level >= resource.min_hungry_level };
+
+@id("not-too-hungry")
+forbid (
+  principal,
+  action == Action::"eat",
+  resource
+)
+when
+{
+  principal.hungry_level < 0 ||
+  resource.min_hungry_level < 0 ||
+  principal.hungry_level + resource.min_hungry_level >= 100
+};
