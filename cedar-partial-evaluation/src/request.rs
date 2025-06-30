@@ -6,7 +6,7 @@ use cedar_policy_core::validator::{
     ValidatorEntityTypeKind, ValidatorSchema,
 };
 use cedar_policy_core::{
-    ast::{Context, Eid, EntityType, EntityUID, EntityUIDEntry, PartialValue, Request, Value},
+    ast::{Context, Eid, EntityType, EntityUID, PartialValue, Request, Value},
     entities::conformance::{is_valid_enumerated_entity, validate_euids_in_partial_value},
     extensions::Extensions,
 };
@@ -198,18 +198,9 @@ impl RequestBuilder<'_> {
                 std::result::Result::Ok(resource),
                 Some(context),
             ) => Some(Request::new_unchecked(
-                EntityUIDEntry::Known {
-                    euid: Arc::new(principal.clone()),
-                    loc: principal.loc().cloned(),
-                },
-                EntityUIDEntry::Known {
-                    euid: Arc::new(action.clone()),
-                    loc: action.loc().cloned(),
-                },
-                EntityUIDEntry::Known {
-                    euid: Arc::new(resource.clone()),
-                    loc: resource.loc().cloned(),
-                },
+                principal.into(),
+                action.clone().into(),
+                resource.into(),
                 Some(Context::Value(context.clone())),
             )),
             _ => None,
