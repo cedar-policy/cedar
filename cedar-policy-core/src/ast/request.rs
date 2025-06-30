@@ -141,6 +141,17 @@ impl EntityUIDEntry {
         }
     }
 
+    /// Evaluate the entry to a value, None if not concrete
+    pub fn evaluate_concrete(&self, var: Var) -> Option<Value> {
+        match self {
+            EntityUIDEntry::Known { euid, loc } => Some(Value::new(
+                Arc::unwrap_or_clone(Arc::clone(euid)),
+                loc.clone(),
+            )),
+            EntityUIDEntry::Unknown { ty, loc } => None,
+        }
+    }
+
     /// Create an entry with a concrete EntityUID and the given source location
     pub fn known(euid: EntityUID, loc: Option<Loc>) -> Self {
         Self::Known {
