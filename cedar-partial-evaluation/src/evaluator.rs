@@ -601,7 +601,6 @@ impl Evaluator<'_> {
             // PANIC SAFETY: TPE currently only works on static policies
             #[allow(clippy::unreachable)]
             ExprKind::Slot(_) => unreachable!("we should not unexpect slot for now"),
-            #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => Residual::Error(ty),
             ExprKind::UnaryApp { op, arg } => {
                 let arg = self.interpret(arg);
