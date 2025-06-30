@@ -16,7 +16,7 @@ cedar-policy-formatter = { version = "=4.5.0", path = "../cedar-policy-formatter
 cedar-policy = { version = "=4.5.0", path = "../cedar-policy", features = ["tolerant-ast"]}
 anyhow = "1.0.95"
 itertools = "0.14.0"
-lsp-types = "0.94.1"
+lsp-types = "0.97.0"
 miette = "7.4.0"
 ropey = "1.6.1"
 smol_str = "0.3"
