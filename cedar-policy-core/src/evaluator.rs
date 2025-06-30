@@ -26,8 +26,8 @@ use std::sync::Arc;
 
 pub mod concrete;
 mod err;
-// #[cfg(feature = "tolerant-ast")]
-// use crate::evaluator::EvaluationError::ASTErrorExpr;
+#[cfg(feature = "tolerant-ast")]
+use crate::evaluator::EvaluationError::ASTErrorExpr;
 pub use err::evaluation_errors;
 pub use err::EvaluationError;
 pub(crate) use err::*;
