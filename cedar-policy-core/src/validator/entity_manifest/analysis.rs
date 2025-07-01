@@ -35,13 +35,12 @@ pub(crate) enum WrappedAccessPaths {
 /// produces an [`EntityManifestAnalysisResult`].
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct EntityManifestAnalysisResult {
-    /// The `store` stores all of the data paths this sub-expression
-    /// including those in `resulting_paths`.
+    /// Stores all of the paths that were accessed.
     ///
     /// Intermediate paths may be using in
     /// auxillery computation of the expression (an if statement's condition for example),
     /// so it's important to consider all the paths in the store.
-    pub(crate) store: AccessDag,
+    pub(crate) accessed_paths: AccessPaths,
     /// `resulting_paths` stores a the set of values this expression could evaluate to
     /// represented symbolically as data paths.
     /// See [`WrappedAccessPaths`] for more details.
@@ -58,32 +57,30 @@ impl EntityManifestAnalysisResult {
     }
 
     /// Create an analysis result that starts with a cedar variable
-    pub fn from_root(root: EntityRoot) -> Self {
+    pub fn from_root(root: EntityRoot, store: &mut AccessDag) -> Self {
         // Create a new AccessPath from the root
         let variant = match &root {
             EntityRoot::Literal(euid) => AccessPathVariant::Literal(euid.clone()),
             EntityRoot::Var(var) => AccessPathVariant::Var(*var),
         };
 
-        // Create a new AccessPathDag
-        let mut store = AccessDag::default();
-
         // Add the path to the store
         let path = store.add_path(variant);
 
         // Create the resulting_paths
-        let resulting_paths = Rc::new(WrappedAccessPaths::AccessPath(path));
+        let resulting_paths = Rc::new(WrappedAccessPaths::AccessPath(path.clone()));
+        let accessed_paths = AccessPaths::from_path(path);
 
         Self {
-            store,
+            accessed_paths,
             resulting_paths,
         }
     }
 
     /// Extend all the access paths with this attr,
     /// adding all the new paths to the global trie.
-    pub fn get_or_has_attr(mut self, attr: &SmolStr) -> Self {
-        self.resulting_paths = self.resulting_paths.get_or_has_attr(attr, &mut self.store);
+    pub fn get_or_has_attr(mut self, attr: &SmolStr, store: &mut AccessDag) -> Self {
+        self.resulting_paths = self.resulting_paths.get_or_has_attr(attr, store);
         self
     }
 
@@ -99,6 +96,7 @@ impl EntityManifestAnalysisResult {
         of: &AccessPath,
         // The acess paths for the ancestors
         access_paths: &Rc<WrappedAccessPaths>,
+        store: &mut AccessDag,
     ) -> Self {
         // Convert the ancestors_trie to AccessPaths
         // PANIC SAFETY: The typechecker should ensure that ancestors_trie can be
@@ -115,7 +113,9 @@ impl EntityManifestAnalysisResult {
             };
 
             // Add this new path to the store
-            self.store.add_path(ancestor_variant);
+            let res = store.add_path(ancestor_variant);
+            // Add the path to accessed_paths
+            self.accessed_paths.insert(res);
         }
 
         self
