@@ -165,7 +165,7 @@ pub(crate) fn load_entities(
 
     let mut reachable_access_paths = AccessPaths::default();
     for path in access_paths.paths() {
-        reachable_access_paths.extend(path.subpaths(manifest.store));
+        reachable_access_paths.extend(path.subpaths(&manifest.dag));
     }
 
     let context = request.context().ok_or(PartialRequestError {})?;
