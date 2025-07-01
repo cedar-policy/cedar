@@ -46,10 +46,68 @@ use crate::validator::{
 };
 use crate::validator::{ValidationResult, Validator};
 
+/// Stores paths for a specific request type, including the request type,
+/// access dag, and access paths.
+#[doc = include_str!("../../experimental_warning.md")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PathsForRequestType {
+    /// The request type
+    pub(crate) request_type: RequestType,
+    /// The backing store for the paths, a directed acyclic graph
+    pub(crate) dag: AccessDag,
+    /// The set of access paths required for this request type
+    pub(crate) access_paths: AccessPaths,
+}
+
+impl PathsForRequestType {
+    /// Create a new PathsForRequestType
+    pub fn new(request_type: RequestType) -> Self {
+        Self {
+            request_type,
+            dag: AccessDag::default(),
+            access_paths: AccessPaths::default(),
+        }
+    }
+
+    /// Get the request type
+    pub fn request_type(&self) -> &RequestType {
+        &self.request_type
+    }
+
+    /// Get the access dag
+    pub fn dag(&self) -> &AccessDag {
+        &self.dag
+    }
+
+    /// Get mutable access to the access dag
+    pub fn dag_mut(&mut self) -> &mut AccessDag {
+        &mut self.dag
+    }
+
+    /// Get the access paths
+    pub fn access_paths(&self) -> &AccessPaths {
+        &self.access_paths
+    }
+
+    /// Get mutable access to the access paths
+    pub fn access_paths_mut(&mut self) -> &mut AccessPaths {
+        &mut self.access_paths
+    }
+}
+
+impl Default for PathsForRequestType {
+    fn default() -> Self {
+        // This should never be called, but we need to implement Default
+        // to satisfy the Entry::or_default() method
+        panic!("PathsForRequestType::default() should never be called");
+    }
+}
+
 /// Data structure storing what data is needed based on the the [`RequestType`].
 ///
 /// For each request type, the [`EntityManifest`] stores
-/// a [`RootAccessTrie`] of data to retrieve.
+/// a [`PathsForRequestType`] containing the access dag and paths to retrieve.
 ///
 /// `T` represents an optional type annotation on each
 /// node in the [`AccessTrie`].
@@ -61,13 +119,10 @@ use crate::validator::{ValidationResult, Validator};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EntityManifest {
-    /// The backing store for the entity manifest,
-    /// a directed acyclic graph storing a set of paths
-    pub(crate) dag: AccessDag,
-    /// A map from request types to sets of [`AccessPath`].
+    /// A map from request types to PathsForRequestType.
     /// For each request, stores what access paths are required.
     #[serde_as(as = "Vec<(_, _)>")]
-    pub(crate) per_action: HashMap<RequestType, AccessPaths>,
+    pub(crate) per_action: HashMap<RequestType, PathsForRequestType>,
 }
 
 /// A backing store for a set of access paths
@@ -436,62 +491,7 @@ impl PartialEq for EntityManifest {
 
 impl Eq for EntityManifest {}
 
-impl EntityManifest {
-    pub fn new() -> Self {
-        Self {
-            dag: AccessDag::default(),
-            per_action: HashMap::new(),
-        }
-    }
-
-    /// Check if this manifest is a subset of another manifest
-    ///
-    /// A manifest is a subset of another if unioning the other with this doesn't change the other.
-    fn is_subset_of(&self, other: &Self) -> bool {
-        // Clone the other manifest so we can union with it
-        let mut other_clone = other.clone();
-
-        // Union this manifest into the clone
-        other_clone.union_with(self);
-
-        // Check if the clone is still equal to the original
-        other_clone.dag.manifest_store.len() == other.dag.manifest_store.len()
-            && other_clone.per_action.len() == other.per_action.len()
-    }
-
-    /// Union this entity manifest with another entity manifest
-    ///
-    /// This adds all paths from the other manifest to this manifest,
-    /// and updates the per_action map to include the paths from the other manifest.
-    ///
-    /// Returns a mapping from paths in the other manifest to paths in this manifest.
-    pub fn union_with(&mut self, other: &EntityManifest) -> PathMapping {
-        let mut path_mapping = PathMapping::new();
-
-        // First, add all paths from the other manifest to this manifest
-        // and build a mapping from paths in the other manifest to paths in this manifest
-        for i in 0..other.dag.manifest_store.len() {
-            let variant = &other.dag.manifest_store[i];
-            let mapped_variant = self.map_variant(variant, &mut path_mapping);
-            let new_path = self.dag.add_path(mapped_variant);
-            path_mapping.path_map.insert(i, new_path.id);
-        }
-
-        // Now, update the per_action map to include the paths from the other manifest
-        for (request_type, access_paths) in &other.per_action {
-            let entry = self.per_action.entry(request_type.clone()).or_default();
-
-            // Map each path from the other manifest to this manifest
-            for path in &access_paths.paths {
-                if let Some(mapped_path) = path_mapping.map_path(path) {
-                    entry.insert(mapped_path);
-                }
-            }
-        }
-
-        path_mapping
-    }
-
+impl PathsForRequestType {
     /// Map a variant from the source manifest to the target manifest
     ///
     /// This method recursively maps a variant and its children from the source manifest
@@ -563,10 +563,77 @@ impl EntityManifest {
             self.dag.add_path(default_variant)
         }
     }
+}
+
+impl EntityManifest {
+    pub fn new() -> Self {
+        Self {
+            per_action: HashMap::new(),
+        }
+    }
+
+    /// Check if this manifest is a subset of another manifest
+    ///
+    /// A manifest is a subset of another if unioning the other with this doesn't change the other.
+    fn is_subset_of(&self, other: &Self) -> bool {
+        // Clone the other manifest so we can union with it
+        let mut other_clone = other.clone();
+
+        // Union this manifest into the clone
+        other_clone.union_with(self);
+
+        // Check if the clone is still equal to the original
+        other_clone.per_action.len() == other.per_action.len()
+            && other_clone
+                .per_action
+                .iter()
+                .all(|(request_type, paths_for_request_type)| {
+                    if let Some(other_paths) = other.per_action.get(request_type) {
+                        paths_for_request_type.dag.manifest_store.len()
+                            == other_paths.dag.manifest_store.len()
+                    } else {
+                        false
+                    }
+                })
+    }
+
+    /// Union this entity manifest with another entity manifest
+    ///
+    /// This adds all paths from the other manifest to this manifest,
+    /// and updates the per_action map to include the paths from the other manifest.
+    ///
+    /// Returns a mapping from paths in the other manifest to paths in this manifest.
+    pub fn union_with(&mut self, other: &EntityManifest) {
+        // Update the per_action map to include the paths from the other manifest
+        for (request_type, other_paths_for_request_type) in &other.per_action {
+            let mut path_mapping = PathMapping::new();
+            let my_path_for_request_type = self
+                .per_action
+                .entry(request_type.clone())
+                .or_insert_with(|| PathsForRequestType::new(request_type.clone()));
+
+            // First, add all paths from the other manifest to this manifest
+            // and build a mapping from paths in the other manifest to paths in this manifest
+            for i in 0..other_paths_for_request_type.dag.manifest_store.len() {
+                let variant = &other_paths_for_request_type.dag.manifest_store[i];
+                let mapped_variant =
+                    my_path_for_request_type.map_variant(variant, &mut path_mapping);
+                let new_path = my_path_for_request_type.dag.add_path(mapped_variant);
+                path_mapping.path_map.insert(i, new_path.id);
+            }
+
+            // Map each path from the other manifest to this manifest
+            for path in &other_paths_for_request_type.access_paths.paths {
+                if let Some(mapped_path) = path_mapping.map_path(path) {
+                    my_path_for_request_type.access_paths.insert(mapped_path);
+                }
+            }
+        }
+    }
 
     /// Get the contents of the entity manifest
     /// indexed by the type of the request.
-    pub fn per_action(&self) -> &HashMap<RequestType, AccessPaths> {
+    pub fn per_action(&self) -> &HashMap<RequestType, PathsForRequestType> {
         &self.per_action
     }
 
@@ -599,12 +666,14 @@ impl EntityManifest {
     pub fn to_human_format(&self) -> HumanEntityManifest {
         let mut per_action = HashMap::new();
 
-        for (request_type, access_paths) in &self.per_action {
+        for (request_type, paths_for_request_type) in &self.per_action {
             let mut path_expressions = Vec::new();
 
-            for path in &access_paths.paths {
+            for path in &paths_for_request_type.access_paths.paths {
                 // PANIC SAFETY: these access paths come directly from the same manifest, so conversion succeeds
-                path_expressions.push(ExprStr::new(self.access_path_to_expr(path).unwrap()));
+                path_expressions.push(ExprStr::new(
+                    self.access_path_to_expr(path, request_type).unwrap(),
+                ));
             }
 
             per_action.insert(request_type.clone(), path_expressions);
@@ -614,33 +683,43 @@ impl EntityManifest {
     }
 
     /// Convert an AccessPath to a Cedar expression
-    fn access_path_to_expr(&self, path: &AccessPath) -> Result<ast::Expr, AccessPathNotFoundError> {
-        // Find the variant for this path
-        if let Some(variant) = self.dag.manifest_store.get(path.id) {
-            Ok(match variant {
-                AccessPathVariant::Literal(euid) => {
-                    Expr::val(Literal::EntityUID(std::sync::Arc::new(euid.clone())))
-                }
-                AccessPathVariant::Var(var) => Expr::var(*var),
-                AccessPathVariant::String(s) => Expr::val(Literal::String(s.clone())),
-                AccessPathVariant::Attribute { of, attr } => {
-                    let base_expr = self.access_path_to_expr(of)?;
-                    Expr::get_attr(base_expr, attr.clone())
-                }
-                AccessPathVariant::Tag { of, tag } => {
-                    let base_expr = self.access_path_to_expr(of)?;
-                    let tag_expr = self.access_path_to_expr(tag)?;
-                    Expr::get_tag(base_expr, tag_expr)
-                }
-                AccessPathVariant::Ancestor { of, ancestor } => {
-                    // For ancestor relationships, use the in keyword
-                    let ancestor_expr = self.access_path_to_expr(ancestor)?;
-                    let entity_expr = self.access_path_to_expr(of)?;
-                    Expr::is_in(entity_expr, ancestor_expr)
-                }
-            })
+    fn access_path_to_expr(
+        &self,
+        path: &AccessPath,
+        request_type: &RequestType,
+    ) -> Result<ast::Expr, AccessPathNotFoundError> {
+        // Find the paths for this request type
+        if let Some(paths_for_request_type) = self.per_action.get(request_type) {
+            // Find the variant for this path
+            if let Some(variant) = paths_for_request_type.dag.manifest_store.get(path.id) {
+                Ok(match variant {
+                    AccessPathVariant::Literal(euid) => {
+                        Expr::val(Literal::EntityUID(std::sync::Arc::new(euid.clone())))
+                    }
+                    AccessPathVariant::Var(var) => Expr::var(*var),
+                    AccessPathVariant::String(s) => Expr::val(Literal::String(s.clone())),
+                    AccessPathVariant::Attribute { of, attr } => {
+                        let base_expr = self.access_path_to_expr(of, request_type)?;
+                        Expr::get_attr(base_expr, attr.clone())
+                    }
+                    AccessPathVariant::Tag { of, tag } => {
+                        let base_expr = self.access_path_to_expr(of, request_type)?;
+                        let tag_expr = self.access_path_to_expr(tag, request_type)?;
+                        Expr::get_tag(base_expr, tag_expr)
+                    }
+                    AccessPathVariant::Ancestor { of, ancestor } => {
+                        // For ancestor relationships, use the in keyword
+                        let ancestor_expr = self.access_path_to_expr(ancestor, request_type)?;
+                        let entity_expr = self.access_path_to_expr(of, request_type)?;
+                        Expr::is_in(entity_expr, ancestor_expr)
+                    }
+                })
+            } else {
+                // return an error, you used an access path with the wrong entity manifest
+                Err(AccessPathNotFoundError { path_id: path.id })
+            }
         } else {
-            // return an error, you used an access path with the wrong entity manifest
+            // return an error, you used an access path with the wrong request type
             Err(AccessPathNotFoundError { path_id: path.id })
         }
     }
@@ -740,16 +819,17 @@ impl HumanEntityManifest {
         let mut manifest = EntityManifest::new();
 
         for (request_type, path_expressions) in &self.per_action {
-            let mut access_paths = AccessPaths::default();
+            let mut paths_for_request_type = PathsForRequestType::new(request_type.clone());
 
             for expr_str in path_expressions {
-                let path = self.expr_to_access_path(&expr_str.expr, &mut manifest.dag)?;
-                access_paths.insert(path);
+                let path =
+                    self.expr_to_access_path(&expr_str.expr, &mut paths_for_request_type.dag)?;
+                paths_for_request_type.access_paths.insert(path);
             }
 
             manifest
                 .per_action
-                .insert(request_type.clone(), access_paths);
+                .insert(request_type.clone(), paths_for_request_type);
         }
 
         // Add type annotations
