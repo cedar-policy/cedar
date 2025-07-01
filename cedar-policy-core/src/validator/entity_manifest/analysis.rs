@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use smol_str::SmolStr;
 
 use crate::validator::{
-    entity_manifest::{AccessPath, AccessTrie, EntityRoot, RootAccessTrie},
+    entity_manifest::{AccessPath, AccessPathDag, AccessPathVariant, AccessPaths, EntityRoot},
     types::{EntityRecordKind, Type},
 };
 
@@ -23,26 +23,29 @@ pub(crate) enum WrappedAccessPaths {
     /// The union of two [`WrappedAccessPaths`], denoting that
     /// all access paths from both are required.
     /// This is useful for join points in the analysis (`if`, set literals, ect)
-    Union(Box<WrappedAccessPaths>, Box<WrappedAccessPaths>),
+    Union(Rc<WrappedAccessPaths>, Rc<WrappedAccessPaths>),
     /// A record literal, each field having access paths.
-    RecordLiteral(HashMap<SmolStr, Box<WrappedAccessPaths>>),
+    RecordLiteral(HashMap<SmolStr, Rc<WrappedAccessPaths>>),
     /// A set literal containing access paths.
     /// Used to note that this type is wrapped in a literal set.
-    SetLiteral(Box<WrappedAccessPaths>),
+    SetLiteral(Rc<WrappedAccessPaths>),
 }
 
 /// During Entity Manifest analysis, each sub-expression
 /// produces an [`EntityManifestAnalysisResult`].
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct EntityManifestAnalysisResult {
-    /// INVARIANT: The `global_trie` stores all of the data paths this sub-expression
-    /// could have accessed, including all those in `resulting_paths`.
-    pub(crate) global_trie: RootAccessTrie,
-    /// `resulting_paths` stores a list of `AccessPathRecord`,
-    /// Each representing a data path
-    /// (possibly wrapped in a record literal)
-    /// that could be accessed using the `.` operator.
-    pub(crate) resulting_paths: WrappedAccessPaths,
+    /// The `store` stores all of the data paths this sub-expression
+    /// including those in `resulting_paths`.
+    ///
+    /// Intermediate paths may be using in
+    /// auxillery computation of the expression (an if statement's condition for example),
+    /// so it's important to consider all the paths in the store.
+    pub(crate) store: AccessPathDag,
+    /// `resulting_paths` stores a the set of values this expression could evaluate to
+    /// represented symbolically as data paths.
+    /// See [`WrappedAccessPaths`] for more details.
+    pub(crate) resulting_paths: Rc<WrappedAccessPaths>,
 }
 
 impl EntityManifestAnalysisResult {
@@ -54,24 +57,26 @@ impl EntityManifestAnalysisResult {
         self
     }
 
-    /// Union two [`EntityManifestAnalysisResult`]s together,
-    /// keeping the paths from both global tries and concatenating
-    /// the resulting paths.
-    pub fn union(mut self, other: Self) -> Self {
-        self.global_trie = self.global_trie.union(other.global_trie);
-        self.resulting_paths = WrappedAccessPaths::Union(
-            Box::new(self.resulting_paths),
-            Box::new(other.resulting_paths),
-        );
-        self
-    }
-
     /// Create an analysis result that starts with a cedar variable
     pub fn from_root(root: EntityRoot) -> Self {
-        let path = AccessPath { root, path: vec![] };
+        // Create a new AccessPath from the root
+        let variant = match &root {
+            EntityRoot::Literal(euid) => AccessPathVariant::Literal(euid.clone()),
+            EntityRoot::Var(var) => AccessPathVariant::Var(*var),
+        };
+
+        // Create a new AccessPathDag
+        let mut store = AccessPathDag::default();
+
+        // Add the path to the store
+        let path = store.add_path(variant);
+
+        // Create the resulting_paths
+        let resulting_paths = Rc::new(WrappedAccessPaths::AccessPath(path));
+
         Self {
-            global_trie: path.to_root_access_trie(),
-            resulting_paths: WrappedAccessPaths::AccessPath(path),
+            store,
+            resulting_paths,
         }
     }
 
@@ -79,54 +84,61 @@ impl EntityManifestAnalysisResult {
     /// adding all the new paths to the global trie.
     pub fn get_or_has_attr(mut self, attr: &SmolStr) -> Self {
         self.resulting_paths = self.resulting_paths.get_or_has_attr(attr);
-
-        self.restore_global_trie_invariant()
-    }
-
-    /// Restores the `global_trie` invariant by adding all paths
-    /// in `resulting_paths` to the `global_trie`.
-    /// This is necessary after modifying the `resulting_paths`.
-    pub(crate) fn restore_global_trie_invariant(mut self) -> Self {
-        self.global_trie.add_wrapped_access_paths(
-            &self.resulting_paths,
-            false,
-            &Default::default(),
-        );
         self
     }
 
-    /// Add the ancestors required flag to all of the
-    /// resulting paths for this analysis result, but only set it
-    /// for entity types.
-    /// Add the ancestors required flag to all of the resulting
-    /// paths for this path record.
-    pub(crate) fn with_ancestors_required(mut self, ancestors_trie: &RootAccessTrie) -> Self {
-        self.global_trie
-            .add_wrapped_access_paths(&self.resulting_paths, false, ancestors_trie);
-        self
+    /// Add an ancestors required path for each of the wrapped access paths given.
+    pub(crate) fn with_ancestors_required(
+        mut self,
+        ancestors_trie: &Rc<WrappedAccessPaths>,
+    ) -> Self {
     }
 
     /// For equality or containment checks, all paths in the type
     /// are required.
     /// This function extends the paths with the fields mentioned
-    /// by the type, adding these to the global trie.
+    /// by the type, adding these to the internal store.
     ///
     /// It also drops the resulting paths, since these checks result
     /// in booleans.
-    pub(crate) fn full_type_required(mut self, ty: &Type) -> Self {
-        let mut paths = Default::default();
-        std::mem::swap(&mut self.resulting_paths, &mut paths);
-
-        self.global_trie = self.global_trie.union(paths.full_type_required(ty));
-
-        self
+    pub(crate) fn full_type_required(&mut self, ty: &Type) {
+        self.resulting_paths.full_type_required(ty, &mut self.store);
     }
 }
 
 impl WrappedAccessPaths {
+    /// Convert the [`WrappedAccessPaths`] to a [`AccessPaths`].
+    /// Returns [`None`] when the wrapped access paths represent a record or set literal.
+    fn to_access_paths(self: &Rc<Self>) -> Option<AccessPaths> {
+        let mut access_paths = AccessPaths::default();
+        if self.add_to_access_paths(&mut access_paths) {
+            Some(access_paths)
+        } else {
+            None
+        }
+    }
+
+    /// Returns if true if it was successful (no struct or set literals encountered.
+    fn add_to_access_paths(self: &Rc<Self>, paths: &mut AccessPaths) -> bool {
+        match &**self {
+            WrappedAccessPaths::Empty => true,
+            WrappedAccessPaths::AccessPath(path) => {
+                paths.paths.insert(path.clone());
+                true
+            }
+            WrappedAccessPaths::Union(left, right) => {
+                // Both must succeed for the operation to be successful
+                left.add_to_access_paths(paths) && right.add_to_access_paths(paths)
+            }
+            // Record and set literals cannot be directly added to access paths
+            WrappedAccessPaths::RecordLiteral(_) => false,
+            WrappedAccessPaths::SetLiteral(_) => false,
+        }
+    }
+
     /// Add accessting this attribute to all access paths
-    fn get_or_has_attr(self, attr: &SmolStr) -> Self {
-        match self {
+    fn get_or_has_attr(self: Rc<Self>, attr: &SmolStr) -> Rc<Self> {
+        Rc::new(match self {
             WrappedAccessPaths::AccessPath(mut access_path) => {
                 access_path.path.push(attr.clone());
                 WrappedAccessPaths::AccessPath(access_path)
@@ -147,14 +159,13 @@ impl WrappedAccessPaths {
                 panic!("Attempted to dereference a set literal.")
             }
             WrappedAccessPaths::Empty => WrappedAccessPaths::Empty,
-            WrappedAccessPaths::Union(left, right) => WrappedAccessPaths::Union(
-                Box::new(left.get_or_has_attr(attr)),
-                Box::new(right.get_or_has_attr(attr)),
-            ),
-        }
+            WrappedAccessPaths::Union(left, right) => {
+                WrappedAccessPaths::Union(left.get_or_has_attr(attr), right.get_or_has_attr(attr))
+            }
+        })
     }
 
-    fn full_type_required(self, ty: &Type) -> RootAccessTrie {
+    fn full_type_required(self, ty: &Type) -> AccessDag {
         match self {
             WrappedAccessPaths::AccessPath(path) => {
                 let leaf_trie = type_to_access_trie(ty);
@@ -165,7 +176,7 @@ impl WrappedAccessPaths {
                     attrs: record_attrs,
                     ..
                 }) => {
-                    let mut res = RootAccessTrie::new();
+                    let mut res = AccessDag::new();
                     for (attr, attr_ty) in record_attrs.iter() {
                         // PANIC SAFETY: Record literals should have attributes that match the type.
                         #[allow(clippy::panic)]
@@ -199,26 +210,26 @@ impl WrappedAccessPaths {
                     panic!("Found set literal when expected {} type", ty);
                 }
             },
-            WrappedAccessPaths::Empty => RootAccessTrie::new(),
+            WrappedAccessPaths::Empty => AccessDag::new(),
             WrappedAccessPaths::Union(left, right) => left
                 .full_type_required(ty)
                 .union(right.full_type_required(ty)),
         }
     }
 
-    pub(crate) fn to_ancestor_access_trie(&self) -> RootAccessTrie {
-        let mut trie = RootAccessTrie::default();
+    pub(crate) fn to_ancestor_access_trie(&self) -> AccessDag {
+        let mut trie = AccessDag::default();
         trie.add_wrapped_access_paths(self, true, &Default::default());
         trie
     }
 }
 
-impl RootAccessTrie {
+impl AccessDag {
     pub(crate) fn add_wrapped_access_paths(
         &mut self,
         path: &WrappedAccessPaths,
         is_ancestor: bool,
-        ancestors_trie: &RootAccessTrie,
+        ancestors_trie: &AccessDag,
     ) {
         match path {
             WrappedAccessPaths::AccessPath(access_path) => {
@@ -251,8 +262,8 @@ impl RootAccessTrie {
     }
 }
 
-/// Compute the full [`AccessTrie`] required for the type.
-fn type_to_access_trie(ty: &Type) -> AccessTrie {
+/// Compute the full access paths required for the type and add them to the store.
+fn type_to_access_paths(ty: &Type, store: &mut AccessPathDag, path: &AccessPath) -> AccessPaths {
     match ty {
         // if it's not an entity or record, slice ends here
         Type::ExtensionType { .. }
@@ -260,34 +271,42 @@ fn type_to_access_trie(ty: &Type) -> AccessTrie {
         | Type::True
         | Type::False
         | Type::Primitive { .. }
-        | Type::Set { .. } => AccessTrie::new(),
-        Type::EntityOrRecord(record_type) => entity_or_record_to_access_trie(record_type),
+        | Type::Set { .. } => AccessPaths::default(),
+        Type::EntityOrRecord(record_type) => {
+            entity_or_record_to_access_paths(record_type, store, path)
+        }
     }
 }
 
-/// Compute the full [`AccessTrie`] for the given entity or record type.
-fn entity_or_record_to_access_trie(ty: &EntityRecordKind) -> AccessTrie {
+/// Compute the full access paths for the given entity or record type and add them to the store.
+fn entity_or_record_to_access_paths(
+    ty: &EntityRecordKind,
+    store: &mut AccessPathDag,
+    path: &AccessPath,
+) -> AccessPaths {
     match ty {
         EntityRecordKind::ActionEntity { attrs, .. } | EntityRecordKind::Record { attrs, .. } => {
-            let mut fields = HashMap::new();
+            let mut paths = AccessPaths::default();
             for (attr_name, attr_type) in attrs.iter() {
-                fields.insert(
-                    attr_name.clone(),
-                    Box::new(type_to_access_trie(&attr_type.attr_type)),
-                );
-            }
-            AccessTrie {
-                children: fields,
-                ancestors_trie: Default::default(),
-                is_ancestor: false,
-                node_type: None,
-            }
-        }
+                // Create a new path for this attribute
+                let attr_variant = AccessPathVariant::Attribute {
+                    of: path.clone(),
+                    attr: attr_name.clone(),
+                };
+                let attr_path = store.add_path(attr_variant);
 
+                // Add this path to the result
+                paths.insert(attr_path.clone());
+
+                // Recursively process the attribute's type
+                let attr_paths = type_to_access_paths(&attr_type.attr_type, store, &attr_path);
+                paths = paths.add_paths(attr_paths);
+            }
+            paths
+        }
         EntityRecordKind::Entity(_) | EntityRecordKind::AnyEntity => {
-            // no need to load data for entities, which are compared
-            // using ids
-            AccessTrie::new()
+            // no need to load data for entities, which are compared using ids
+            AccessPaths::default()
         }
     }
 }
