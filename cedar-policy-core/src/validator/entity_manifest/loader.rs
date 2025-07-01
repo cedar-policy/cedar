@@ -33,7 +33,7 @@ use crate::validator::entity_manifest::{
     slicing::{
         EntitySliceError, PartialContextError, PartialEntityError, WrongNumberOfEntitiesError,
     },
-    AccessTrie, EntityManifest, EntityRoot, PartialRequestError, AccessDag,
+    EntityManifest, EntityRoot, PartialRequestError, AccessDag,
 };
 
 /// A request that an entity be loaded.
