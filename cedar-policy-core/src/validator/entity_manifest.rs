@@ -62,7 +62,7 @@ use crate::validator::{ValidationResult, Validator};
 pub struct EntityManifest {
     /// The backing store for the entity manifest,
     /// a directed acyclic graph storing a set of paths
-    pub(crate) dag: AccessPathDag,
+    pub(crate) dag: AccessDag,
     /// A map from request types to sets of [`AccessPath`].
     /// For each request, stores what access paths are required.
     #[serde_as(as = "Vec<(_, _)>")]
@@ -74,7 +74,7 @@ pub struct EntityManifest {
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct AccessPathDag {
+pub(crate) struct AccessDag {
     /// A map from [`AccessPathInternal`] to the [`AccessPath`], which
     /// indexes the `manifest_store`.
     /// This allows us to de-duplicate equivalent access paths using the "hash cons"
@@ -87,7 +87,7 @@ pub(crate) struct AccessPathDag {
 
 /// Stores a set of access paths.
 #[doc = include_str!("../../experimental_warning.md")]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AccessPaths {
     paths: HashSet<AccessPath>,
 }
@@ -257,7 +257,7 @@ pub enum EntityManifestFromJsonError {
     MismatchedEntityManifest(#[from] MismatchedEntityManifestError),
 }
 
-impl AccessPathDag {
+impl AccessDag {
     pub(crate) fn add_path(&mut self, variant: AccessPathVariant) -> AccessPath {
         // Check if the variant already exists in the hash_cons map
         if let Some(path) = self.manifest_hash_cons.get(&variant) {
