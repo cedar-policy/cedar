@@ -22,10 +22,10 @@ use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 
 use crate::ast::{
-    self, BinaryOp, EntityUID, Expr, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
+    self, BinaryOp, EntityUID, Expr, ExprBuilder, ExprKind, Literal, PolicySet, RequestType,
+    UnaryOp, Var,
 };
 use crate::entities::err::EntitiesError;
-use crate::expr_builder::ExprBuilder;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -86,7 +86,8 @@ pub(crate) struct AccessDag {
     /// The backing store of access paths in the entity manifest.
     /// Each entry is the variant for the corresponding AccessPath with the same ID.
     pub(crate) manifest_store: Vec<AccessPathVariant>,
-    
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
     pub(crate) types: Option<Vec<Type>>,
 }
 
@@ -465,7 +466,7 @@ impl EntityManifest {
         // and build a mapping from paths in the other manifest to paths in this manifest
         for i in 0..other.dag.manifest_store.len() {
             let variant = &other.dag.manifest_store[i];
-            let mapped_variant = self.map_variant(variant, &path_mapping);
+            let mapped_variant = self.map_variant(variant, &mut path_mapping);
             let new_path = self.dag.add_path(mapped_variant);
             path_mapping.path_map.insert(i, new_path.id);
         }
@@ -486,48 +487,70 @@ impl EntityManifest {
     }
 
     /// Map a variant from the source manifest to the target manifest
+    ///
+    /// This method recursively maps a variant and its children from the source manifest
+    /// to the target manifest, creating new paths in the target manifest as needed.
     fn map_variant(
-        &self,
+        &mut self,
         variant: &AccessPathVariant,
-        path_mapping: &PathMapping,
+        path_mapping: &mut PathMapping,
     ) -> AccessPathVariant {
         match variant {
             AccessPathVariant::Literal(euid) => AccessPathVariant::Literal(euid.clone()),
             AccessPathVariant::Var(var) => AccessPathVariant::Var(*var),
             AccessPathVariant::String(s) => AccessPathVariant::String(s.clone()),
             AccessPathVariant::Attribute { of, attr } => {
-                let mapped_of = path_mapping
-                    .map_path(of)
-                    .unwrap_or_else(|| AccessPath { id: 0 }); // Fallback to path 0 if not found
+                // Recursively map the 'of' path
+                let mapped_of = self.map_path_or_create(of, path_mapping);
+
                 AccessPathVariant::Attribute {
                     of: mapped_of,
                     attr: attr.clone(),
                 }
             }
             AccessPathVariant::Tag { of, tag } => {
-                let mapped_of = path_mapping
-                    .map_path(of)
-                    .unwrap_or_else(|| AccessPath { id: 0 });
-                let mapped_tag = path_mapping
-                    .map_path(tag)
-                    .unwrap_or_else(|| AccessPath { id: 0 });
+                // Recursively map both paths
+                let mapped_of = self.map_path_or_create(of, path_mapping);
+                let mapped_tag = self.map_path_or_create(tag, path_mapping);
+
                 AccessPathVariant::Tag {
                     of: mapped_of,
                     tag: mapped_tag,
                 }
             }
             AccessPathVariant::Ancestor { of, ancestor } => {
-                let mapped_of = path_mapping
-                    .map_path(of)
-                    .unwrap_or_else(|| AccessPath { id: 0 });
-                let mapped_ancestor = path_mapping
-                    .map_path(ancestor)
-                    .unwrap_or_else(|| AccessPath { id: 0 });
+                // Recursively map both paths
+                let mapped_of = self.map_path_or_create(of, path_mapping);
+                let mapped_ancestor = self.map_path_or_create(ancestor, path_mapping);
+
                 AccessPathVariant::Ancestor {
                     of: mapped_of,
                     ancestor: mapped_ancestor,
                 }
             }
+        }
+    }
+
+    /// Helper method to map a path or create a new one if it doesn't exist in the mapping
+    fn map_path_or_create(&mut self, path: &AccessPath, path_mapping: &mut PathMapping) -> AccessPath {
+        // Check if the path is already mapped
+        if let Some(mapped_path) = path_mapping.map_path(path) {
+            return mapped_path;
+        }
+
+        // If not, get the variant for this path from the source manifest
+        // and recursively map it to create a new path in the target manifest
+        if let Ok(variant) = path.get_variant(&self.dag).clone() {
+            let variant = variant.clone();
+            let mapped_variant = self.map_variant(&variant, path_mapping);
+            let new_path = self.dag.add_path(mapped_variant);
+            path_mapping.path_map.insert(path.id, new_path.id);
+            new_path
+        } else {
+            // If we can't find the variant, create a safe default
+            // This should rarely happen in practice
+            let default_variant = AccessPathVariant::Var(Var::Principal);
+            self.dag.add_path(default_variant)
         }
     }
 
@@ -586,24 +609,24 @@ impl EntityManifest {
         if let Some(variant) = self.dag.manifest_store.get(path.id) {
             Ok(match variant {
                 AccessPathVariant::Literal(euid) => {
-                    ExprBuilder::new().val(Literal::EntityUID(std::sync::Arc::new(euid.clone())))
+                    Expr::val(Literal::EntityUID(std::sync::Arc::new(euid.clone())))
                 }
                 AccessPathVariant::Var(var) => ExprBuilder::new().var(*var),
-                AccessPathVariant::String(s) => ExprBuilder::new().val(Literal::String(s.clone())),
+                AccessPathVariant::String(s) => Expr::val(Literal::String(s.clone())),
                 AccessPathVariant::Attribute { of, attr } => {
-                    let base_expr = self.access_path_to_expr(of);
+                    let base_expr = self.access_path_to_expr(of)?;
                     ExprBuilder::new().get_attr(base_expr, attr.clone())
                 }
                 AccessPathVariant::Tag { of, tag } => {
-                    let base_expr = self.access_path_to_expr(of);
-                    let tag_expr = self.access_path_to_expr(tag);
+                    let base_expr = self.access_path_to_expr(of)?;
+                    let tag_expr = self.access_path_to_expr(tag)?;
                     ExprBuilder::new().get_tag(base_expr, tag_expr)
                 }
                 AccessPathVariant::Ancestor { of, ancestor } => {
                     // For ancestor relationships, we use a special extension function
                     // isAncestorOf(ancestor, entity)
-                    let ancestor_expr = self.access_path_to_expr(ancestor);
-                    let entity_expr = self.access_path_to_expr(of);
+                    let ancestor_expr = self.access_path_to_expr(ancestor)?;
+                    let entity_expr = self.access_path_to_expr(of)?;
                     ExprBuilder::new().call_extension_fn(
                         "isAncestorOf".parse().unwrap(),
                         vec![ancestor_expr, entity_expr],
@@ -612,7 +635,7 @@ impl EntityManifest {
             })
         } else {
             // return an error, you used an access path with the wrong entity manifest
-            return Err(AccessPathNotFoundError { path_id: path.id });
+            Err(AccessPathNotFoundError { path_id: path.id })
         }
     }
 
