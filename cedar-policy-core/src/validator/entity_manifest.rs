@@ -22,8 +22,7 @@ use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 
 use crate::ast::{
-    self, BinaryOp, EntityUID, Expr, ExprBuilder, ExprKind, Literal, PolicySet, RequestType,
-    UnaryOp, Var,
+    self, BinaryOp, EntityUID, Expr, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
 };
 use crate::entities::err::EntitiesError;
 use miette::Diagnostic;
@@ -95,6 +94,7 @@ pub(crate) struct AccessDag {
 #[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AccessPaths {
+    /// The set of access paths
     paths: HashSet<AccessPath>,
 }
 
@@ -106,6 +106,7 @@ pub struct AccessPaths {
 #[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AccessPath {
+    /// The unique identifier for this path in the AccessDag
     id: usize,
 }
 
@@ -121,7 +122,12 @@ pub enum AccessPathVariant {
     /// A literal Cedar string
     String(SmolStr),
     /// A record or entity attribute
-    Attribute { of: AccessPath, attr: SmolStr },
+    Attribute {
+        /// The entity whose attribute is being requested
+        of: AccessPath,
+        /// The requested attribute
+        attr: SmolStr,
+    },
     /// An entity tag access
     Tag {
         /// The entity whose tag is requested
@@ -369,10 +375,10 @@ impl AccessPath {
         &self,
         store: &'a AccessDag,
     ) -> Result<&'a AccessPathVariant, AccessPathNotFoundError> {
-        if self.id >= store.manifest_store.len() {
-            return Err(AccessPathNotFoundError { path_id: self.id });
-        }
-        Ok(&store.manifest_store[self.id])
+        store
+            .manifest_store
+            .get(self.id)
+            .ok_or_else(|| AccessPathNotFoundError { path_id: self.id })
     }
 }
 
@@ -1147,9 +1153,8 @@ fn analyze_expr_access_paths(
     }
 }
 
-// Old tests dont touch for now
 #[cfg(test)]
-mod entity_slice_tests {
+mod entity_manifest_tests {
     use crate::{ast::PolicyID, extensions::Extensions, parser::parse_policy};
 
     use super::*;

@@ -18,17 +18,16 @@
 //! Loads entities based on the entity manifest.
 
 use std::{
-    collections::{btree_map, hash_map, BTreeMap, HashMap, HashSet},
+    collections::{btree_map, hash_map, HashMap, HashSet},
     sync::Arc,
 };
 
 use crate::{
-    ast::{Context, Entity, EntityUID, Literal, PartialValue, Request, Value, ValueKind, Var},
+    ast::{Entity, EntityUID, PartialValue, Request, Value, ValueKind},
     entities::{Entities, NoEntitiesSchema, TCComputation},
     extensions::Extensions,
     validator::entity_manifest::AccessPaths,
 };
-use smol_str::SmolStr;
 
 use crate::validator::entity_manifest::{
     slicing::{
