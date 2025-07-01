@@ -16,7 +16,7 @@
 
 //! This module contains the Cedar concrete evaluator.
 
-use crate::ast::*;
+use crate::ast::{Integer, Set, *};
 use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
@@ -28,13 +28,17 @@ use super::err::EvaluationError;
 use super::err::EvaluationError::ASTErrorExpr;
 use super::err::*;
 use evaluation_errors::*;
-use itertools::{Either, Itertools};
 use nonempty::nonempty;
 use smol_str::SmolStr;
 
 // Temporary, until more refactoring can be done
 use crate::evaluator::*;
 
+use vstd::prelude::*;
+
+verus! {
+
+#[verifier::external_body]
 pub struct Evaluator<'e> {
     /// `Principal` for the current request
     principal: EntityUIDEntry,
@@ -54,11 +58,35 @@ pub struct Evaluator<'e> {
     extensions: &'e Extensions<'e>,
 }
 
+impl vstd::view::View for Evaluator<'_> {
+    type V = SpecEvaluator;
+    uninterp spec fn view(&self) -> SpecEvaluator;
+        // SpecEvaluator {
+        //     request: spec_ast::Request {
+        //         principal: self.principal.view(),
+        //         action: self.action.view(),
+        //         resource: self.resource.view(),
+        //         context: self.context.view(),
+        //     },
+        //     entities: self.entities.view(),
+        // }
+}
+
+}
+
 impl<'e> Evaluator<'e> {
+    verus! {
+
     /// Create a fresh `Evaluator` for the given `request`, which uses the given
     /// `Entities` to resolve entity references. Use the given `Extension`s when
     /// evaluating.
-    pub fn new(q: Request, entities: &'e Entities, extensions: &'e Extensions<'e>) -> Self {
+    #[verifier::external_body] // axiomatized for now
+    pub fn new(q: Request, entities: &'e Entities, extensions: &'e Extensions<'e>) -> (res: Self)
+        ensures (res@ == SpecEvaluator {
+            request: q@,
+            entities: entities@,
+        })
+    {
         Self {
             principal: q.principal,
             action: q.action,
@@ -74,31 +102,33 @@ impl<'e> Evaluator<'e> {
         }
     }
 
-    // verus! {
+    }
 
-    // /// Duplicate of `evaluate()` with a Verus spec.
-    // /// Evaluate the given `Policy`, returning either a bool or an error.
-    // /// The bool indicates whether the policy applies, ie, "is satisfied" for the
-    // /// current `request`.
-    // /// This is _different than_ "if the current `request` should be allowed" --
-    // /// it doesn't consider whether we're processing a `Permit` policy or a
-    // /// `Forbid` policy.
-    // #[verifier::external_body]
-    // pub fn evaluate_verus(&self, p: &Policy) -> (res: Result<bool>)
-    //     ensures ({
-    //         &&& res matches Ok(res_b) ==> {
-    //             &&& spec_evaluator::evaluate(p@.to_expr(), self@.request, self@.entities) matches Ok(v)
-    //             &&& v is Prim &&& v->p is Bool &&& v->p->b == res_b
-    //         }
-    //         &&& res is Err ==> {
-    //             &&& spec_evaluator::evaluate(p@.to_expr(), self@.request, self@.entities) is Err
-    //         }
-    //     })
-    // {
-    //     self.evaluate(p)
-    // }
+    verus! {
 
-    // } // verus!
+    /// Duplicate of `evaluate()` with a Verus spec.
+    /// Evaluate the given `Policy`, returning either a bool or an error.
+    /// The bool indicates whether the policy applies, ie, "is satisfied" for the
+    /// current `request`.
+    /// This is _different than_ "if the current `request` should be allowed" --
+    /// it doesn't consider whether we're processing a `Permit` policy or a
+    /// `Forbid` policy.
+    #[verifier::external_body]
+    pub fn evaluate_verus(&self, p: &Policy) -> (res: Result<bool>)
+        ensures ({
+            &&& res matches Ok(res_b) ==> {
+                &&& spec_evaluator::evaluate(p@.to_expr(), self@.request, self@.entities) matches Ok(v)
+                &&& v is Prim &&& v->p is Bool &&& v->p->b == res_b
+            }
+            &&& res is Err ==> {
+                &&& spec_evaluator::evaluate(p@.to_expr(), self@.request, self@.entities) is Err
+            }
+        })
+    {
+        self.evaluate(p)
+    }
+
+    } // verus!
 
     /// Evaluate the given `Policy`, returning either a bool or an error.
     /// The bool indicates whether the policy applies, ie, "is satisfied" for the

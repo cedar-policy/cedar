@@ -22,6 +22,7 @@
 
 use crate::ast::*;
 use crate::entities::Entities;
+use crate::evaluator::concrete::Evaluator as ConcreteEvaluator;
 use crate::evaluator::Evaluator;
 use crate::extensions::Extensions;
 use itertools::{Either, Itertools};
@@ -119,7 +120,7 @@ impl Authorizer {
             spec_authorizer::lemma_is_authorized_from_set(q@, entities@, pset@);
         }
 
-        let eval = Evaluator::new(q.clone(), entities, self.extensions);
+        let eval = ConcreteEvaluator::new(q.clone(), entities, self.extensions);
 
         // logic from `Authorizer::is_authorized_core_internal()`
         let mut satisfied_permits = vec![];
