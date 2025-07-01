@@ -24,6 +24,21 @@ jobs:
       cedar_policy_ref: ${{ github.ref }}
       cedar_spec_ref: ${{ needs.get-branch-name.outputs.branch_name }}
 
+  build-cedar-lean-ffi:
+    needs: get-branch-name
+    uses: cedar-policy/cedar-spec/.github/workflows/build_and_test_ffi_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_spec_ref: ${{ needs.get-branch-name.outputs.branch_name }}
+  
+
+  build-cedar-lean-cli:
+    needs: get-branch-name
+    uses: cedar-policy/cedar-spec/.github/workflows/build_and_test_cli_reusable.yml@main
+    with:
+      cedar_policy_ref: ${{ github.ref }}
+      cedar_spec_ref: ${{ needs.get-branch-name.outputs.branch_name }}
+
   build-cedar-java:
     needs: get-branch-name
     uses: cedar-policy/cedar-java/.github/workflows/run_cedar_java_reusable.yml@main
