@@ -316,7 +316,7 @@ fn entity_or_record_to_access_paths(
 
                 // Recursively process the attribute's type
                 let attr_paths = type_to_access_paths(&attr_type.attr_type, store, &attr_path);
-                paths = paths.extend(attr_paths);
+                paths.extend(attr_paths);
             }
             paths
         }

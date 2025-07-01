@@ -20,14 +20,12 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
-use std::str::FromStr;
-use std::sync::Arc;
 
 use crate::ast::{
-    BinaryOp, EntityUID, Expr, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
+    self, BinaryOp, EntityUID, Expr, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
 };
 use crate::entities::err::EntitiesError;
-use crate::est;
+use crate::expr_builder::ExprBuilder;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -61,7 +59,7 @@ use crate::validator::{ValidationResult, Validator};
 // when adding public methods.
 #[doc = include_str!("../../experimental_warning.md")]
 #[serde_as]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EntityManifest {
     /// The backing store for the entity manifest,
@@ -86,7 +84,10 @@ pub(crate) struct AccessDag {
     #[serde_as(as = "Vec<(_, _)>")]
     pub(crate) manifest_hash_cons: HashMap<AccessPathVariant, AccessPath>,
     /// The backing store of access paths in the entity manifest.
-    pub(crate) manifest_store: Vec<AccessPath>,
+    /// Each entry is the variant for the corresponding AccessPath with the same ID.
+    pub(crate) manifest_store: Vec<AccessPathVariant>,
+    
+    pub(crate) types: Option<Vec<Type>>,
 }
 
 /// Stores a set of access paths.
@@ -295,14 +296,83 @@ pub enum ConversionError {
     MismatchedEntityManifest(#[from] MismatchedEntityManifestError),
 }
 
-/// A human-readable format for entity manifests
+/// A human-readable format for entity manifests.
+/// Currently used only for testing.
 #[doc = include_str!("../../experimental_warning.md")]
+#[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct HumanEntityManifest {
+pub(crate) struct HumanEntityManifest {
     /// A map from request types to lists of path expressions
     #[serde_as(as = "Vec<(_, _)>")]
-    pub per_action: HashMap<RequestType, Vec<est::expr::Expr>>,
+    pub per_action: HashMap<RequestType, Vec<ExprStr>>,
+}
+
+/// Wrapper for ast::Expr that serializes to a string with the expr inside
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ExprStr {
+    /// The wrapped expression
+    pub expr: ast::Expr,
+}
+
+impl ExprStr {
+    pub(crate) fn new(expr: ast::Expr) -> Self {
+        ExprStr { expr }
+    }
+}
+
+impl Serialize for ExprStr {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // Serialize the expression as a string
+        serializer.serialize_str(&self.expr.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for ExprStr {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // Deserialize from a string by parsing it as a Cedar expression
+        let expr_str = String::deserialize(deserializer)?;
+        let expr = crate::parser::parse_expr(&expr_str)
+            .map_err(|e| serde::de::Error::custom(format!("Failed to parse expression: {}", e)))?;
+
+        Ok(ExprStr { expr })
+    }
+}
+
+impl From<ast::Expr> for ExprStr {
+    fn from(expr: ast::Expr) -> Self {
+        ExprStr { expr }
+    }
+}
+
+/// Error when an access path is not found in the entity manifest
+#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
+#[error("access path not found in entity manifest. This may indicate that you are using the wrong entity manifest with this path")]
+pub struct AccessPathNotFoundError {
+    /// The ID of the path that was not found
+    pub(crate) path_id: usize,
+}
+
+impl AccessPath {
+    /// Get the variant for this path
+    ///
+    /// Returns an error if the path is not found in the entity manifest,
+    /// which may indicate that you are using the wrong entity manifest with this path.
+    pub fn get_variant<'a>(
+        &self,
+        store: &'a AccessDag,
+    ) -> Result<&'a AccessPathVariant, AccessPathNotFoundError> {
+        if self.id >= store.manifest_store.len() {
+            return Err(AccessPathNotFoundError { path_id: self.id });
+        }
+        Ok(&store.manifest_store[self.id])
+    }
 }
 
 impl AccessDag {
@@ -318,21 +388,146 @@ impl AccessDag {
         let path = AccessPath { id };
 
         // Add the variant to the hash_cons map
-        self.manifest_hash_cons.insert(variant, path.clone());
+        self.manifest_hash_cons
+            .insert(variant.clone(), path.clone());
 
-        // Add the new AccessPath to the manifest_store
-        self.manifest_store.push(path.clone());
+        // Add the variant to the manifest_store
+        self.manifest_store.push(variant);
 
         // Return the new AccessPath
         path
     }
 }
 
+/// A mapping from paths in one manifest to paths in another manifest
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PathMapping {
+    /// Maps from source path IDs to target path IDs
+    pub(crate) path_map: HashMap<usize, usize>,
+}
+
+impl PathMapping {
+    /// Create a new empty path mapping
+    pub fn new() -> Self {
+        Self {
+            path_map: HashMap::new(),
+        }
+    }
+
+    /// Map a path from the source manifest to the target manifest
+    pub fn map_path(&self, path: &AccessPath) -> Option<AccessPath> {
+        self.path_map.get(&path.id).map(|&id| AccessPath { id })
+    }
+}
+
+impl PartialEq for EntityManifest {
+    fn eq(&self, other: &Self) -> bool {
+        // Check if self is a subset of other and other is a subset of self
+        self.is_subset_of(other) && other.is_subset_of(self)
+    }
+}
+
+impl Eq for EntityManifest {}
+
 impl EntityManifest {
     pub fn new() -> Self {
         Self {
             dag: AccessDag::default(),
             per_action: HashMap::new(),
+        }
+    }
+
+    /// Check if this manifest is a subset of another manifest
+    ///
+    /// A manifest is a subset of another if unioning the other with this doesn't change the other.
+    fn is_subset_of(&self, other: &Self) -> bool {
+        // Clone the other manifest so we can union with it
+        let mut other_clone = other.clone();
+
+        // Union this manifest into the clone
+        other_clone.union_with(self);
+
+        // Check if the clone is still equal to the original
+        other_clone.dag.manifest_store.len() == other.dag.manifest_store.len()
+            && other_clone.per_action.len() == other.per_action.len()
+    }
+
+    /// Union this entity manifest with another entity manifest
+    ///
+    /// This adds all paths from the other manifest to this manifest,
+    /// and updates the per_action map to include the paths from the other manifest.
+    ///
+    /// Returns a mapping from paths in the other manifest to paths in this manifest.
+    pub fn union_with(&mut self, other: &EntityManifest) -> PathMapping {
+        let mut path_mapping = PathMapping::new();
+
+        // First, add all paths from the other manifest to this manifest
+        // and build a mapping from paths in the other manifest to paths in this manifest
+        for i in 0..other.dag.manifest_store.len() {
+            let variant = &other.dag.manifest_store[i];
+            let mapped_variant = self.map_variant(variant, &path_mapping);
+            let new_path = self.dag.add_path(mapped_variant);
+            path_mapping.path_map.insert(i, new_path.id);
+        }
+
+        // Now, update the per_action map to include the paths from the other manifest
+        for (request_type, access_paths) in &other.per_action {
+            let entry = self.per_action.entry(request_type.clone()).or_default();
+
+            // Map each path from the other manifest to this manifest
+            for path in &access_paths.paths {
+                if let Some(mapped_path) = path_mapping.map_path(path) {
+                    entry.insert(mapped_path);
+                }
+            }
+        }
+
+        path_mapping
+    }
+
+    /// Map a variant from the source manifest to the target manifest
+    fn map_variant(
+        &self,
+        variant: &AccessPathVariant,
+        path_mapping: &PathMapping,
+    ) -> AccessPathVariant {
+        match variant {
+            AccessPathVariant::Literal(euid) => AccessPathVariant::Literal(euid.clone()),
+            AccessPathVariant::Var(var) => AccessPathVariant::Var(*var),
+            AccessPathVariant::String(s) => AccessPathVariant::String(s.clone()),
+            AccessPathVariant::Attribute { of, attr } => {
+                let mapped_of = path_mapping
+                    .map_path(of)
+                    .unwrap_or_else(|| AccessPath { id: 0 }); // Fallback to path 0 if not found
+                AccessPathVariant::Attribute {
+                    of: mapped_of,
+                    attr: attr.clone(),
+                }
+            }
+            AccessPathVariant::Tag { of, tag } => {
+                let mapped_of = path_mapping
+                    .map_path(of)
+                    .unwrap_or_else(|| AccessPath { id: 0 });
+                let mapped_tag = path_mapping
+                    .map_path(tag)
+                    .unwrap_or_else(|| AccessPath { id: 0 });
+                AccessPathVariant::Tag {
+                    of: mapped_of,
+                    tag: mapped_tag,
+                }
+            }
+            AccessPathVariant::Ancestor { of, ancestor } => {
+                let mapped_of = path_mapping
+                    .map_path(of)
+                    .unwrap_or_else(|| AccessPath { id: 0 });
+                let mapped_ancestor = path_mapping
+                    .map_path(ancestor)
+                    .unwrap_or_else(|| AccessPath { id: 0 });
+                AccessPathVariant::Ancestor {
+                    of: mapped_of,
+                    ancestor: mapped_ancestor,
+                }
+            }
         }
     }
 
@@ -370,68 +565,68 @@ impl EntityManifest {
     /// Convert this EntityManifest to a human-readable format
     pub fn to_human_format(&self) -> HumanEntityManifest {
         let mut per_action = HashMap::new();
-        
+
         for (request_type, access_paths) in &self.per_action {
             let mut path_expressions = Vec::new();
-            
+
             for path in &access_paths.paths {
-                path_expressions.push(self.access_path_to_expr(path));
+                // PANIC SAFETY: these access paths come directly from the same manifest, so conversion succeeds
+                path_expressions.push(ExprStr::new(self.access_path_to_expr(path).unwrap()));
             }
-            
+
             per_action.insert(request_type.clone(), path_expressions);
         }
-        
+
         HumanEntityManifest { per_action }
     }
-    
+
     /// Convert an AccessPath to a Cedar expression
-    fn access_path_to_expr(&self, path: &AccessPath) -> est::expr::Expr {
+    fn access_path_to_expr(&self, path: &AccessPath) -> Result<ast::Expr, AccessPathNotFoundError> {
         // Find the variant for this path
-        if let Some((variant, _)) = self.dag.manifest_hash_cons.iter().find(|(_, p)| p.id == path.id) {
-            match variant {
+        if let Some(variant) = self.dag.manifest_store.get(path.id) {
+            Ok(match variant {
                 AccessPathVariant::Literal(euid) => {
-                    est::expr::Builder::new().val(Literal::EntityUID(Box::new(euid.clone())))
+                    ExprBuilder::new().val(Literal::EntityUID(std::sync::Arc::new(euid.clone())))
                 }
-                AccessPathVariant::Var(var) => {
-                    est::expr::Builder::new().var(*var)
-                }
-                AccessPathVariant::String(s) => {
-                    est::expr::Builder::new().val(Literal::String(s.clone()))
-                }
+                AccessPathVariant::Var(var) => ExprBuilder::new().var(*var),
+                AccessPathVariant::String(s) => ExprBuilder::new().val(Literal::String(s.clone())),
                 AccessPathVariant::Attribute { of, attr } => {
                     let base_expr = self.access_path_to_expr(of);
-                    est::expr::Builder::new().get_attr(base_expr, attr.clone())
+                    ExprBuilder::new().get_attr(base_expr, attr.clone())
                 }
                 AccessPathVariant::Tag { of, tag } => {
                     let base_expr = self.access_path_to_expr(of);
                     let tag_expr = self.access_path_to_expr(tag);
-                    est::expr::Builder::new().get_tag(base_expr, tag_expr)
+                    ExprBuilder::new().get_tag(base_expr, tag_expr)
                 }
                 AccessPathVariant::Ancestor { of, ancestor } => {
                     // For ancestor relationships, we use a special extension function
                     // isAncestorOf(ancestor, entity)
                     let ancestor_expr = self.access_path_to_expr(ancestor);
                     let entity_expr = self.access_path_to_expr(of);
-                    est::expr::Builder::new().call_extension_fn(
+                    ExprBuilder::new().call_extension_fn(
                         "isAncestorOf".parse().unwrap(),
                         vec![ancestor_expr, entity_expr],
                     )
                 }
-            }
+            })
         } else {
-            // This should never happen if the DAG is well-formed
-            est::expr::Builder::new().val(Literal::String(format!("unknown_path_{}", path.id).into()))
+            // return an error, you used an access path with the wrong entity manifest
+            return Err(AccessPathNotFoundError { path_id: path.id });
         }
     }
-    
+
     /// Convert this EntityManifest to a human-readable JSON string
     pub fn to_human_json_string(&self) -> Result<String, serde_json::Error> {
         let human = self.to_human_format();
         serde_json::to_string_pretty(&human)
     }
-    
+
     /// Create an EntityManifest from a human-readable JSON string
-    pub fn from_human_json_str(json: &str, schema: &ValidatorSchema) -> Result<Self, ConversionError> {
+    pub fn from_human_json_str(
+        json: &str,
+        schema: &ValidatorSchema,
+    ) -> Result<Self, ConversionError> {
         let human: HumanEntityManifest = serde_json::from_str(json)?;
         human.to_entity_manifest(schema)
     }
@@ -444,92 +639,88 @@ impl HumanEntityManifest {
             per_action: HashMap::new(),
         }
     }
-    
-    /// Convert this HumanEntityManifest to a DAG-based EntityManifest
-    pub fn to_entity_manifest(&self, schema: &ValidatorSchema) -> Result<EntityManifest, ConversionError> {
-        let mut manifest = EntityManifest::new();
-        
-        for (request_type, path_expressions) in &self.per_action {
-            let mut access_paths = AccessPaths::default();
-            
-            for expr in path_expressions {
-                let path = self.expr_to_access_path(expr, &mut manifest.dag)?;
-                access_paths.insert(path);
-            }
-            
-            manifest.per_action.insert(request_type.clone(), access_paths);
-        }
-        
-        // Add type annotations
-        manifest.to_typed(schema).map_err(|e| e.into())
-    }
-    
-    /// Convert a Cedar expression to an AccessPath
-    fn expr_to_access_path(&self, expr: &est::expr::Expr, dag: &mut AccessDag) -> Result<AccessPath, PathExpressionParseError> {
-        match expr {
-            est::expr::Expr::ExprNoExt(est::expr::ExprNoExt::Value(value)) => {
+
+    /// Convert an AST Cedar expression to an AccessPath
+    fn expr_to_access_path(
+        &self,
+        expr: &ast::Expr,
+        dag: &mut AccessDag,
+    ) -> Result<AccessPath, PathExpressionParseError> {
+        match expr.expr_kind() {
+            ast::ExprKind::Lit(lit) => {
                 // Handle literal values
-                match value {
-                    crate::entities::json::CedarValueJson::EntityEscape { __entity } => {
-                        match EntityUID::try_from(__entity.clone()) {
-                            Ok(euid) => Ok(dag.add_path(AccessPathVariant::Literal(euid))),
-                            Err(_) => Err(PathExpressionParseError::InvalidRoot("Invalid entity UID".to_string())),
-                        }
+                match lit {
+                    ast::Literal::EntityUID(euid) => {
+                        Ok(dag.add_path(AccessPathVariant::Literal((**euid).clone())))
                     }
-                    crate::entities::json::CedarValueJson::String(s) => {
+                    ast::Literal::String(s) => {
                         Ok(dag.add_path(AccessPathVariant::String(s.clone())))
                     }
-                    _ => Err(PathExpressionParseError::InvalidRoot("Unsupported literal type".to_string())),
+                    _ => Err(PathExpressionParseError::InvalidRoot(
+                        "Unsupported literal type".to_string(),
+                    )),
                 }
             }
-            est::expr::Expr::ExprNoExt(est::expr::ExprNoExt::Var(var)) => {
+            ast::ExprKind::Var(var) => {
                 // Handle variables (principal, resource, action, context)
                 Ok(dag.add_path(AccessPathVariant::Var(*var)))
             }
-            est::expr::Expr::ExprNoExt(est::expr::ExprNoExt::GetAttr { left, attr }) => {
+            ast::ExprKind::GetAttr { expr, attr } => {
                 // Handle attribute access (e.g., principal.attr)
-                let base_path = self.expr_to_access_path(&Arc::unwrap_or_clone(left.clone()), dag)?;
+                let base_path = self.expr_to_access_path(expr, dag)?;
                 Ok(dag.add_path(AccessPathVariant::Attribute {
                     of: base_path,
                     attr: attr.clone(),
                 }))
             }
-            est::expr::Expr::ExprNoExt(est::expr::ExprNoExt::GetTag { left, right }) => {
+            ast::ExprKind::BinaryApp {
+                op: ast::BinaryOp::GetTag,
+                arg1,
+                arg2,
+            } => {
                 // Handle tag access (e.g., principal.getTag("tag"))
-                let base_path = self.expr_to_access_path(&Arc::unwrap_or_clone(left.clone()), dag)?;
-                let tag_path = self.expr_to_access_path(&Arc::unwrap_or_clone(right.clone()), dag)?;
+                let base_path = self.expr_to_access_path(arg1, dag)?;
+                let tag_path = self.expr_to_access_path(arg2, dag)?;
                 Ok(dag.add_path(AccessPathVariant::Tag {
                     of: base_path,
                     tag: tag_path,
                 }))
             }
-            est::expr::Expr::ExtFuncCall(ext_func_call) => {
-                // Handle extension function calls
-                if let Some((func_name, args)) = ext_func_call.call.iter().next() {
-                    if func_name == "isAncestorOf" && args.len() == 2 {
-                        // Handle isAncestorOf(ancestor, entity)
-                        let ancestor_path = self.expr_to_access_path(&args[0], dag)?;
-                        let entity_path = self.expr_to_access_path(&args[1], dag)?;
-                        Ok(dag.add_path(AccessPathVariant::Ancestor {
-                            of: entity_path,
-                            ancestor: ancestor_path,
-                        }))
-                    } else {
-                        Err(PathExpressionParseError::GeneralError(format!("Unsupported extension function: {}", func_name)))
-                    }
-                } else {
-                    Err(PathExpressionParseError::GeneralError("Invalid extension function call".to_string()))
-                }
-            }
-            _ => Err(PathExpressionParseError::GeneralError("Unsupported expression type".to_string())),
+            _ => Err(PathExpressionParseError::GeneralError(
+                "Unsupported expression type".to_string(),
+            )),
         }
     }
-    
+
+    /// Convert this HumanEntityManifest to a DAG-based EntityManifest
+    pub fn to_entity_manifest(
+        &self,
+        schema: &ValidatorSchema,
+    ) -> Result<EntityManifest, ConversionError> {
+        let mut manifest = EntityManifest::new();
+
+        for (request_type, path_expressions) in &self.per_action {
+            let mut access_paths = AccessPaths::default();
+
+            for expr_str in path_expressions {
+                let path = self.expr_to_access_path(&expr_str.expr, &mut manifest.dag)?;
+                access_paths.insert(path);
+            }
+
+            manifest
+                .per_action
+                .insert(request_type.clone(), access_paths);
+        }
+
+        // Add type annotations
+        manifest.to_typed(schema).map_err(|e| e.into())
+    }
+
     /// Convert this HumanEntityManifest to a JSON string
     pub fn to_json_string(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
     }
-    
+
     /// Create a HumanEntityManifest from a JSON string
     pub fn from_json_str(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
@@ -606,6 +797,11 @@ impl AccessPaths {
         let mut paths = HashSet::new();
         paths.insert(path);
         Self { paths }
+    }
+
+    /// Get a reference to the paths.
+    pub fn paths(&self) -> &HashSet<AccessPath> {
+        &self.paths
     }
 }
 
@@ -984,34 +1180,6 @@ when {
         let validator = Validator::new(schema());
 
         let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected_rust = EntityManifest {
-            per_action: HashMap::from([(
-                RequestType {
-                    principal: "User".parse().unwrap(),
-                    resource: "Document".parse().unwrap(),
-                    action: r#"Action::"Read""#.parse().unwrap(),
-                },
-                AccessDag {
-                    trie: HashMap::from([(
-                        EntityRoot::Var(Var::Principal),
-                        AccessTrie {
-                            children: HashMap::from([(
-                                SmolStr::new_static("name"),
-                                Box::new(AccessTrie {
-                                    children: HashMap::new(),
-                                    ancestors_trie: AccessDag::new(),
-                                    is_ancestor: false,
-                                    node_type: Some(Type::primitive_string()),
-                                }),
-                            )]),
-                            ancestors_trie: AccessDag::new(),
-                            is_ancestor: false,
-                            node_type: Some(Type::named_entity_reference("User".parse().unwrap())),
-                        },
-                    )]),
-                },
-            )]),
-        };
         let expected = serde_json::json! ({
           "perAction": [
             [
@@ -1052,7 +1220,6 @@ when {
         let expected_manifest =
             EntityManifest::from_json_value(expected, validator.schema()).unwrap();
         assert_eq!(entity_manifest, expected_manifest);
-        assert_eq!(entity_manifest, expected_rust);
     }
 
     #[test]
@@ -1065,27 +1232,23 @@ when {
         let validator = Validator::new(schema());
 
         let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected = serde_json::json!(
-        {
-          "perAction": [
-            [
-              {
-                "principal": "User",
-                "action": {
-                  "ty": "Action",
-                  "eid": "Read"
-                },
-                "resource": "Document"
-              },
-              {
-                "trie": [
-                ]
-              }
-            ]
-          ]
+
+        // Define the human manifest using the json! macro
+        let human_json = serde_json::json!({
+            "perAction": {
+                "User::Action::\"Read\"::Document": []
+            }
         });
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
+
+        // Convert the JSON value to a HumanEntityManifest
+        let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
+
+        // Convert the human manifest to an EntityManifest
+        let expected_manifest = human_manifest
+            .to_entity_manifest(validator.schema())
+            .unwrap();
+
+        // Compare the computed manifest with the expected manifest
         assert_eq!(entity_manifest, expected_manifest);
     }
 
