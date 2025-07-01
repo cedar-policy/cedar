@@ -64,11 +64,13 @@ impl PathsForRequestType {
         // Initialize the types vector with None for each path in the DAG
         let mut types = vec![None; typed_paths.dag.manifest_store.len()];
 
-        // Process each access path
-        for path in &typed_paths.access_paths.paths {
-            // Type the path and all its subpaths
-            self.type_path_and_subpaths(
-                path,
+        // Process each access path in topological order
+        // Since the DAG structure ensures that all dependencies are processed before dependents,
+        // we can simply iterate through the paths in order of their IDs
+        for path_id in 0..typed_paths.dag.manifest_store.len() {
+            let path = AccessPath { id: path_id };
+            self.type_path(
+                &path,
                 &self.request_type,
                 schema,
                 &mut types,
@@ -82,8 +84,8 @@ impl PathsForRequestType {
         Ok(typed_paths)
     }
 
-    /// Helper method to type a path and all its subpaths
-    fn type_path_and_subpaths(
+    /// Helper method to type a single path
+    fn type_path(
         &self,
         path: &AccessPath,
         request_type: &RequestType,
@@ -99,7 +101,7 @@ impl PathsForRequestType {
         // Get the variant for this path
         let variant = match path.get_variant(dag) {
             Ok(v) => v,
-            Err(e) => return Err(AccessPathNotFoundError { path_id: path.id }),
+            Err(e) => return Err(AccessPathNotFoundError { path_id: path.id }.into()),
         };
 
         match variant {
@@ -127,16 +129,20 @@ impl PathsForRequestType {
                 // Store the type in the types vector
                 types[path.id] = Some(ty);
             }
-            AccessPathVariant::Literal(_) => {}
+            AccessPathVariant::Literal(lit) => {
+                let ty = &Type::euid_literal(lit, schema).ok_or_else(|| {
+                    MismatchedMissingEntityError {
+                        entity: lit.clone(),
+                    }
+                })?;
+                types[path.id] = Some(ty.clone());
+            }
             AccessPathVariant::String(_) => {
                 // String literals have String type
                 types[path.id] = Some(Type::primitive_string());
             }
             AccessPathVariant::Attribute { of, attr } => {
-                // First, ensure the base path is typed
-                self.type_path_and_subpaths(of, request_type, schema, types, dag)?;
-
-                // Get the type of the base expression
+                // Get the type of the base expression (should already be typed)
                 let of_type = types[of.id]
                     .as_ref()
                     .ok_or_else(|| MismatchedNotStrictSchemaError {})?;
@@ -148,7 +154,7 @@ impl PathsForRequestType {
                             EntityRecordKind::Record {
                                 attrs,
                                 open_attributes: _,
-                            } => attrs,
+                            } => attrs.clone(),
                             EntityRecordKind::AnyEntity => {
                                 return Err(MismatchedNotStrictSchemaError {}.into());
                             }
@@ -162,7 +168,7 @@ impl PathsForRequestType {
                                     .ok_or(MismatchedNotStrictSchemaError {})?;
                                 entity_ty.attributes().clone()
                             }
-                            EntityRecordKind::ActionEntity { name: _, attrs } => attrs,
+                            EntityRecordKind::ActionEntity { name: _, attrs } => attrs.clone(),
                         };
 
                         // Get the attribute type
@@ -179,29 +185,15 @@ impl PathsForRequestType {
                     }
                 }
             }
-            AccessPathVariant::Tag { of, tag } => {
-                // First, ensure the base paths are typed
-                self.type_path_and_subpaths(of, request_type, schema, types, dag)?;
-                self.type_path_and_subpaths(tag, request_type, schema, types, dag)?;
-
+            AccessPathVariant::Tag { of: _, tag: _ } => {
                 // Tags are not fully supported yet, but we'll handle them as strings
                 types[path.id] = Some(Type::primitive_string());
             }
-            AccessPathVariant::Ancestor { of, ancestor } => {
-                // First, ensure the base paths are typed
-                self.type_path_and_subpaths(of, request_type, schema, types, dag)?;
-                self.type_path_and_subpaths(ancestor, request_type, schema, types, dag)?;
-
+            AccessPathVariant::Ancestor { of: _, ancestor: _ } => {
                 // Ancestor checks result in boolean values
                 types[path.id] = Some(Type::True);
             }
         };
-
-        // Process all children of this path
-        let children = path.children(dag);
-        for child in children {
-            self.type_path_and_subpaths(&child, request_type, schema, types, dag)?;
-        }
 
         Ok(())
     }
