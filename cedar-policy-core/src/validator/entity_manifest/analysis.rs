@@ -22,7 +22,7 @@ pub(crate) enum WrappedAccessPaths {
     AccessPath(AccessPath),
     /// The union of two [`WrappedAccessPaths`], denoting that
     /// all access paths from both are required.
-    /// This is useful for join points in the analysis (`if`, set literals, ect)
+    /// This is useful for join points in the analysis (`if`, set literals, etc.)
     Union(Rc<WrappedAccessPaths>, Rc<WrappedAccessPaths>),
     /// A record literal, each field having access paths.
     RecordLiteral(HashMap<SmolStr, Rc<WrappedAccessPaths>>),
@@ -37,11 +37,11 @@ pub(crate) enum WrappedAccessPaths {
 pub(crate) struct EntityManifestAnalysisResult {
     /// Stores all of the paths that were accessed.
     ///
-    /// Intermediate paths may be using in
-    /// auxillery computation of the expression (an if statement's condition for example),
+    /// Intermediate paths may be used in
+    /// auxiliary computation of the expression (an if statement's condition for example),
     /// so it's important to consider all the paths in the store.
     pub(crate) accessed_paths: AccessPaths,
-    /// `resulting_paths` stores a the set of values this expression could evaluate to
+    /// `resulting_paths` stores the set of values this expression could evaluate to
     /// represented symbolically as data paths.
     /// See [`WrappedAccessPaths`] for more details.
     pub(crate) resulting_paths: Rc<WrappedAccessPaths>,
@@ -77,10 +77,16 @@ impl EntityManifestAnalysisResult {
         }
     }
 
-    /// Extend all the access paths with this attr,
-    /// adding all the new paths to the global trie.
+    /// Extend all the access paths with this attribute,
+    /// adding all the new paths to the global store.
     pub fn get_or_has_attr(mut self, attr: &SmolStr, store: &mut AccessDag) -> Self {
         self.resulting_paths = self.resulting_paths.get_or_has_attr(attr, store);
+
+        // ensure that all the resulting access paths are in the accessed set
+        if let Some(paths) = self.resulting_paths.to_access_paths() {
+            self.accessed_paths.extend(paths)
+        }
+
         self
     }
 
@@ -94,7 +100,7 @@ impl EntityManifestAnalysisResult {
         mut self,
         // The path whose ancestors are required.
         of: &AccessPath,
-        // The acess paths for the ancestors
+        // The access paths for the ancestors
         access_paths: &Rc<WrappedAccessPaths>,
         store: &mut AccessDag,
     ) -> Self {
@@ -128,8 +134,23 @@ impl EntityManifestAnalysisResult {
     ///
     /// It also drops the resulting paths, since these checks result
     /// in booleans.
-    pub(crate) fn full_type_required(&mut self, ty: &Type) {
-        self.resulting_paths.full_type_required(ty, &mut self.store);
+    pub(crate) fn full_type_required(&mut self, ty: &Type, store: &mut AccessDag) {
+        self.resulting_paths.full_type_required(ty, store);
+    }
+
+    /// Union this analysis result with another, taking the union of the resulting paths.
+    /// Takes ownership of self and returns self after mutating it.
+    pub(crate) fn union(mut self, other: Self) -> Self {
+        // Extend the accessed paths
+        self.accessed_paths.extend(other.accessed_paths);
+
+        // Create a union of the resulting paths
+        self.resulting_paths = Rc::new(WrappedAccessPaths::Union(
+            Rc::clone(&self.resulting_paths),
+            other.resulting_paths,
+        ));
+
+        self
     }
 }
 
@@ -145,7 +166,8 @@ impl WrappedAccessPaths {
         }
     }
 
-    /// Returns if true if it was successful (no struct or set literals encountered.
+    /// Adds the access paths from this WrappedAccessPaths to the provided AccessPaths collection.
+    /// Returns true if successful (no record or set literals encountered), false otherwise.
     fn add_to_access_paths(self: &Rc<Self>, paths: &mut AccessPaths) -> bool {
         match &**self {
             WrappedAccessPaths::Empty => true,
@@ -294,7 +316,7 @@ fn entity_or_record_to_access_paths(
 
                 // Recursively process the attribute's type
                 let attr_paths = type_to_access_paths(&attr_type.attr_type, store, &attr_path);
-                paths = paths.add_paths(attr_paths);
+                paths = paths.extend(attr_paths);
             }
             paths
         }

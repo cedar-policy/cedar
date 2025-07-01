@@ -19,11 +19,15 @@
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
+use std::rc::Rc;
+use std::str::FromStr;
+use std::sync::Arc;
 
 use crate::ast::{
     BinaryOp, EntityUID, Expr, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
 };
 use crate::entities::err::EntitiesError;
+use crate::est;
 use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -257,6 +261,50 @@ pub enum EntityManifestFromJsonError {
     MismatchedEntityManifest(#[from] MismatchedEntityManifestError),
 }
 
+/// Error when parsing a path expression
+#[derive(Debug, Error)]
+pub enum PathExpressionParseError {
+    /// Invalid root expression
+    #[error("Invalid root expression: {0}")]
+    InvalidRoot(String),
+    /// Invalid tag expression
+    #[error("Invalid tag expression: {0}")]
+    InvalidTagExpression(String),
+    /// Invalid attribute expression
+    #[error("Invalid attribute expression: {0}")]
+    InvalidAttributeExpression(String),
+    /// Invalid ancestor expression
+    #[error("Invalid ancestor expression: {0}")]
+    InvalidAncestorExpression(String),
+    /// General parsing error
+    #[error("Error parsing path expression: {0}")]
+    GeneralError(String),
+}
+
+/// Error when converting between human-readable and DAG-based entity manifests
+#[derive(Debug, Error)]
+pub enum ConversionError {
+    /// Error parsing a path expression
+    #[error(transparent)]
+    ParseError(#[from] PathExpressionParseError),
+    /// Error serializing or deserializing JSON
+    #[error(transparent)]
+    SerdeError(#[from] serde_json::Error),
+    /// A mismatched entity manifest error
+    #[error(transparent)]
+    MismatchedEntityManifest(#[from] MismatchedEntityManifestError),
+}
+
+/// A human-readable format for entity manifests
+#[doc = include_str!("../../experimental_warning.md")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HumanEntityManifest {
+    /// A map from request types to lists of path expressions
+    #[serde_as(as = "Vec<(_, _)>")]
+    pub per_action: HashMap<RequestType, Vec<est::expr::Expr>>,
+}
+
 impl AccessDag {
     pub(crate) fn add_path(&mut self, variant: AccessPathVariant) -> AccessPath {
         // Check if the variant already exists in the hash_cons map
@@ -318,12 +366,233 @@ impl EntityManifest {
             Err(e) => Err(e.into()),
         }
     }
+
+    /// Convert this EntityManifest to a human-readable format
+    pub fn to_human_format(&self) -> HumanEntityManifest {
+        let mut per_action = HashMap::new();
+        
+        for (request_type, access_paths) in &self.per_action {
+            let mut path_expressions = Vec::new();
+            
+            for path in &access_paths.paths {
+                path_expressions.push(self.access_path_to_expr(path));
+            }
+            
+            per_action.insert(request_type.clone(), path_expressions);
+        }
+        
+        HumanEntityManifest { per_action }
+    }
+    
+    /// Convert an AccessPath to a Cedar expression
+    fn access_path_to_expr(&self, path: &AccessPath) -> est::expr::Expr {
+        // Find the variant for this path
+        if let Some((variant, _)) = self.dag.manifest_hash_cons.iter().find(|(_, p)| p.id == path.id) {
+            match variant {
+                AccessPathVariant::Literal(euid) => {
+                    est::expr::Builder::new().val(Literal::EntityUID(Box::new(euid.clone())))
+                }
+                AccessPathVariant::Var(var) => {
+                    est::expr::Builder::new().var(*var)
+                }
+                AccessPathVariant::String(s) => {
+                    est::expr::Builder::new().val(Literal::String(s.clone()))
+                }
+                AccessPathVariant::Attribute { of, attr } => {
+                    let base_expr = self.access_path_to_expr(of);
+                    est::expr::Builder::new().get_attr(base_expr, attr.clone())
+                }
+                AccessPathVariant::Tag { of, tag } => {
+                    let base_expr = self.access_path_to_expr(of);
+                    let tag_expr = self.access_path_to_expr(tag);
+                    est::expr::Builder::new().get_tag(base_expr, tag_expr)
+                }
+                AccessPathVariant::Ancestor { of, ancestor } => {
+                    // For ancestor relationships, we use a special extension function
+                    // isAncestorOf(ancestor, entity)
+                    let ancestor_expr = self.access_path_to_expr(ancestor);
+                    let entity_expr = self.access_path_to_expr(of);
+                    est::expr::Builder::new().call_extension_fn(
+                        "isAncestorOf".parse().unwrap(),
+                        vec![ancestor_expr, entity_expr],
+                    )
+                }
+            }
+        } else {
+            // This should never happen if the DAG is well-formed
+            est::expr::Builder::new().val(Literal::String(format!("unknown_path_{}", path.id).into()))
+        }
+    }
+    
+    /// Convert this EntityManifest to a human-readable JSON string
+    pub fn to_human_json_string(&self) -> Result<String, serde_json::Error> {
+        let human = self.to_human_format();
+        serde_json::to_string_pretty(&human)
+    }
+    
+    /// Create an EntityManifest from a human-readable JSON string
+    pub fn from_human_json_str(json: &str, schema: &ValidatorSchema) -> Result<Self, ConversionError> {
+        let human: HumanEntityManifest = serde_json::from_str(json)?;
+        human.to_entity_manifest(schema)
+    }
+}
+
+impl HumanEntityManifest {
+    /// Create a new empty HumanEntityManifest
+    pub fn new() -> Self {
+        Self {
+            per_action: HashMap::new(),
+        }
+    }
+    
+    /// Convert this HumanEntityManifest to a DAG-based EntityManifest
+    pub fn to_entity_manifest(&self, schema: &ValidatorSchema) -> Result<EntityManifest, ConversionError> {
+        let mut manifest = EntityManifest::new();
+        
+        for (request_type, path_expressions) in &self.per_action {
+            let mut access_paths = AccessPaths::default();
+            
+            for expr in path_expressions {
+                let path = self.expr_to_access_path(expr, &mut manifest.dag)?;
+                access_paths.insert(path);
+            }
+            
+            manifest.per_action.insert(request_type.clone(), access_paths);
+        }
+        
+        // Add type annotations
+        manifest.to_typed(schema).map_err(|e| e.into())
+    }
+    
+    /// Convert a Cedar expression to an AccessPath
+    fn expr_to_access_path(&self, expr: &est::expr::Expr, dag: &mut AccessDag) -> Result<AccessPath, PathExpressionParseError> {
+        match expr {
+            est::expr::Expr::ExprNoExt(est::expr::ExprNoExt::Value(value)) => {
+                // Handle literal values
+                match value {
+                    crate::entities::json::CedarValueJson::EntityEscape { __entity } => {
+                        match EntityUID::try_from(__entity.clone()) {
+                            Ok(euid) => Ok(dag.add_path(AccessPathVariant::Literal(euid))),
+                            Err(_) => Err(PathExpressionParseError::InvalidRoot("Invalid entity UID".to_string())),
+                        }
+                    }
+                    crate::entities::json::CedarValueJson::String(s) => {
+                        Ok(dag.add_path(AccessPathVariant::String(s.clone())))
+                    }
+                    _ => Err(PathExpressionParseError::InvalidRoot("Unsupported literal type".to_string())),
+                }
+            }
+            est::expr::Expr::ExprNoExt(est::expr::ExprNoExt::Var(var)) => {
+                // Handle variables (principal, resource, action, context)
+                Ok(dag.add_path(AccessPathVariant::Var(*var)))
+            }
+            est::expr::Expr::ExprNoExt(est::expr::ExprNoExt::GetAttr { left, attr }) => {
+                // Handle attribute access (e.g., principal.attr)
+                let base_path = self.expr_to_access_path(&Arc::unwrap_or_clone(left.clone()), dag)?;
+                Ok(dag.add_path(AccessPathVariant::Attribute {
+                    of: base_path,
+                    attr: attr.clone(),
+                }))
+            }
+            est::expr::Expr::ExprNoExt(est::expr::ExprNoExt::GetTag { left, right }) => {
+                // Handle tag access (e.g., principal.getTag("tag"))
+                let base_path = self.expr_to_access_path(&Arc::unwrap_or_clone(left.clone()), dag)?;
+                let tag_path = self.expr_to_access_path(&Arc::unwrap_or_clone(right.clone()), dag)?;
+                Ok(dag.add_path(AccessPathVariant::Tag {
+                    of: base_path,
+                    tag: tag_path,
+                }))
+            }
+            est::expr::Expr::ExtFuncCall(ext_func_call) => {
+                // Handle extension function calls
+                if let Some((func_name, args)) = ext_func_call.call.iter().next() {
+                    if func_name == "isAncestorOf" && args.len() == 2 {
+                        // Handle isAncestorOf(ancestor, entity)
+                        let ancestor_path = self.expr_to_access_path(&args[0], dag)?;
+                        let entity_path = self.expr_to_access_path(&args[1], dag)?;
+                        Ok(dag.add_path(AccessPathVariant::Ancestor {
+                            of: entity_path,
+                            ancestor: ancestor_path,
+                        }))
+                    } else {
+                        Err(PathExpressionParseError::GeneralError(format!("Unsupported extension function: {}", func_name)))
+                    }
+                } else {
+                    Err(PathExpressionParseError::GeneralError("Invalid extension function call".to_string()))
+                }
+            }
+            _ => Err(PathExpressionParseError::GeneralError("Unsupported expression type".to_string())),
+        }
+    }
+    
+    /// Convert this HumanEntityManifest to a JSON string
+    pub fn to_json_string(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
+    }
+    
+    /// Create a HumanEntityManifest from a JSON string
+    pub fn from_json_str(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
+    }
+}
+
+impl AccessPath {
+    /// Get the immediate children of this path
+    pub fn children(&self, store: &AccessDag) -> Vec<AccessPath> {
+        // Get the variant for this path
+        if let Some(variant) = store.manifest_hash_cons.iter().find_map(|(variant, path)| {
+            if path.id == self.id {
+                Some(variant)
+            } else {
+                None
+            }
+        }) {
+            // Return children based on the variant
+            match variant {
+                AccessPathVariant::Attribute { of, .. } => {
+                    vec![of.clone()]
+                }
+                AccessPathVariant::Tag { of, tag } => {
+                    vec![of.clone(), tag.clone()]
+                }
+                AccessPathVariant::Ancestor { of, ancestor } => {
+                    vec![of.clone(), ancestor.clone()]
+                }
+                // Literal, Var, and String variants don't have children
+                _ => vec![],
+            }
+        } else {
+            vec![]
+        }
+    }
+
+    /// Helper method to collect all subpaths into the provided set
+    /// This is more efficient than creating new AccessPaths objects and extending them
+    pub fn collect_subpaths_into(&self, store: &AccessDag, paths: &mut HashSet<AccessPath>) {
+        // Add self to the paths
+        paths.insert(self.clone());
+
+        // Get immediate children
+        let children = self.children(store);
+
+        // Recursively collect subpaths for each child
+        for child in children {
+            child.collect_subpaths_into(store, paths);
+        }
+    }
+
+    /// Get all subpaths of this path, including itself.
+    pub fn subpaths(&self, store: &AccessDag) -> AccessPaths {
+        let mut paths = HashSet::new();
+        self.collect_subpaths_into(store, &mut paths);
+        AccessPaths { paths }
+    }
 }
 
 impl AccessPaths {
     /// Add all the access paths from another [`AccessPaths`]
     /// to this one, mutably.
-    pub fn add_paths(&mut self, other: Self) {
+    pub fn extend(&mut self, other: Self) {
         self.paths.extend(other.paths)
     }
 
@@ -361,15 +630,16 @@ pub fn compute_entity_manifest(
         // typecheck the policy and get all the request environments
         let request_envs = typechecker.typecheck_by_request_env(policy.template());
         for (request_env, policy_check) in request_envs {
-            let new_primary_slice = match policy_check {
+            let result = match policy_check {
                 PolicyCheck::Success(typechecked_expr) => {
-                    // compute the trie from the typechecked expr
+                    // compute the access paths from the typechecked expr
                     // using static analysis
-                    entity_manifest_from_expr(&typechecked_expr).map(|val| val.global_trie)
+                    analyze_expr_access_paths(&typechecked_expr, &mut manifest.dag)
+                        .map(|val| val.accessed_paths)
                 }
                 PolicyCheck::Irrelevant(_, _) => {
                     // this policy is irrelevant, so we need no data
-                    Ok(AccessDag::new())
+                    Ok(AccessPaths::default())
                 }
 
                 // PANIC SAFETY: policy check should not fail after full strict validation above.
@@ -382,12 +652,12 @@ pub fn compute_entity_manifest(
             let request_type = request_env
                 .to_request_type()
                 .ok_or(PartialRequestError {})?;
-            match manifest.entry(request_type) {
+            match manifest.per_action.entry(request_type) {
                 Entry::Occupied(mut occupied) => {
-                    occupied.get_mut().union_mut(new_primary_slice);
+                    occupied.get_mut().extend(result);
                 }
                 Entry::Vacant(vacant) => {
-                    vacant.insert(new_primary_slice);
+                    vacant.insert(result);
                 }
             }
         }
@@ -399,68 +669,109 @@ pub fn compute_entity_manifest(
 }
 
 /// A static analysis on type-annotated cedar expressions.
-/// Computes the [`RootAccessTrie`] representing all the data required
-/// to evaluate the expression.
-fn entity_manifest_from_expr(
+/// Computes the access paths required to evaluate the expression.
+///
+/// This function populates the provided `AccessDag` store with paths
+/// and returns an `EntityManifestAnalysisResult` containing both accessed paths
+/// and resulting paths.
+fn analyze_expr_access_paths(
     expr: &Expr<Option<Type>>,
+    store: &mut AccessDag,
 ) -> Result<EntityManifestAnalysisResult, EntityManifestError> {
     match expr.expr_kind() {
         ExprKind::Slot(slot_id) => {
             if slot_id.is_principal() {
-                Ok(EntityManifestAnalysisResult::from_root(EntityRoot::Var(
-                    Var::Principal,
-                )))
+                Ok(EntityManifestAnalysisResult::from_root(
+                    EntityRoot::Var(Var::Principal),
+                    store,
+                ))
             } else {
                 assert!(slot_id.is_resource());
-                Ok(EntityManifestAnalysisResult::from_root(EntityRoot::Var(
-                    Var::Resource,
-                )))
+                Ok(EntityManifestAnalysisResult::from_root(
+                    EntityRoot::Var(Var::Resource),
+                    store,
+                ))
             }
         }
-        ExprKind::Var(var) => Ok(EntityManifestAnalysisResult::from_root(EntityRoot::Var(
-            *var,
-        ))),
+
+        ExprKind::Var(var) => Ok(EntityManifestAnalysisResult::from_root(
+            EntityRoot::Var(*var),
+            store,
+        )),
+
         ExprKind::Lit(Literal::EntityUID(literal)) => Ok(EntityManifestAnalysisResult::from_root(
             EntityRoot::Literal((**literal).clone()),
+            store,
         )),
+
         ExprKind::Unknown(_) => Err(PartialExpressionError {})?,
 
-        // Non-entity literals need no fields to be loaded.
+        // Non-entity literals need no fields to be loaded
         ExprKind::Lit(_) => Ok(EntityManifestAnalysisResult::default()),
+
         ExprKind::If {
             test_expr,
             then_expr,
             else_expr,
-        } => Ok(entity_manifest_from_expr(test_expr)?
-            .empty_paths()
-            .union(entity_manifest_from_expr(then_expr)?)
-            .union(entity_manifest_from_expr(else_expr)?)),
+        } => {
+            // For if expressions, the test condition is accessed but not part of the result
+            let test_result = analyze_expr_access_paths(test_expr, store)?.empty_paths();
+            let then_result = analyze_expr_access_paths(then_expr, store)?;
+            let else_result = analyze_expr_access_paths(else_expr, store)?;
+
+            // Create a result with test condition paths and union of then/else branches
+            let mut result = test_result.union(then_result.clone());
+            result = result.union(else_result.clone());
+
+            // Create a union of then/else for resulting paths
+            result.resulting_paths = Rc::new(WrappedAccessPaths::Union(
+                then_result.resulting_paths,
+                else_result.resulting_paths,
+            ));
+
+            Ok(result)
+        }
+
         ExprKind::And { left, right }
         | ExprKind::Or { left, right }
         | ExprKind::BinaryApp {
             op: BinaryOp::Less | BinaryOp::LessEq | BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul,
             arg1: left,
             arg2: right,
-        } => Ok(entity_manifest_from_expr(left)?
-            .empty_paths()
-            .union(entity_manifest_from_expr(right)?.empty_paths())),
+        } => {
+            // For these operations, both sides are accessed but the result is a primitive
+            Ok(analyze_expr_access_paths(left, store)?
+                .union(analyze_expr_access_paths(right, store)?)
+                .empty_paths())
+        }
+
         ExprKind::UnaryApp { op, arg } => {
             match op {
-                // these unary ops are on primitive types, so they are simple
-                UnaryOp::Not | UnaryOp::Neg => Ok(entity_manifest_from_expr(arg)?.empty_paths()),
+                // These unary ops are on primitive types
+                UnaryOp::Not | UnaryOp::Neg => {
+                    // Get the result from the argument and empty the resulting paths
+                    Ok(analyze_expr_access_paths(arg, store)?.empty_paths())
+                }
+
                 UnaryOp::IsEmpty => {
-                    // PANIC SAFETY: Typechecking succeeded, so type annotations are present.
+                    let mut arg_result = analyze_expr_access_paths(arg, store)?;
+
+                    // PANIC SAFETY: Typechecking succeeded, so type annotations are present
                     #[allow(clippy::expect_used)]
                     let ty = arg
                         .data()
                         .as_ref()
                         .expect("Expected annotated types after typechecking");
-                    Ok(entity_manifest_from_expr(arg)?
-                        .full_type_required(ty)
-                        .empty_paths())
+
+                    // For isEmpty, we need all fields of the type
+                    arg_result.full_type_required(ty, store);
+
+                    // Result is a boolean, so empty the resulting paths
+                    Ok(arg_result.empty_paths())
                 }
             }
         }
+
         ExprKind::BinaryApp {
             op:
                 op @ (BinaryOp::Eq
@@ -472,34 +783,42 @@ fn entity_manifest_from_expr(
             arg2,
         } => {
             // First, find the data paths for each argument
-            let mut arg1_res = entity_manifest_from_expr(arg1)?;
-            let arg2_res = entity_manifest_from_expr(arg2)?;
+            let mut arg1_result = analyze_expr_access_paths(arg1, store)?;
+            let mut arg2_result = analyze_expr_access_paths(arg2, store)?;
 
-            // PANIC SAFETY: Typechecking succeeded, so type annotations are present.
+            // PANIC SAFETY: Typechecking succeeded, so type annotations are present
             #[allow(clippy::expect_used)]
             let ty1 = arg1
                 .data()
                 .as_ref()
                 .expect("Expected annotated types after typechecking");
-            // PANIC SAFETY: Typechecking succeeded, so type annotations are present.
+
             #[allow(clippy::expect_used)]
             let ty2 = arg2
                 .data()
                 .as_ref()
                 .expect("Expected annotated types after typechecking");
 
-            // For the `in` operator, we need the ancestors of entities.
+            // For the `in` operator, we need to handle ancestors
             if matches!(op, BinaryOp::In) {
-                arg1_res = arg1_res.with_ancestors_required(&arg2_res.resulting_paths);
+                // Get the first path from arg1_result (if any)
+                if let Some(path) = arg1_result.accessed_paths.paths.iter().next().cloned() {
+                    arg1_result = arg1_result.with_ancestors_required(
+                        &path,
+                        &arg2_result.resulting_paths,
+                        store,
+                    );
+                }
             }
 
-            // Load all fields using `full_type_required`, since
-            // these operations do equality checks.
-            Ok(arg1_res
-                .full_type_required(ty1)
-                .union(arg2_res.full_type_required(ty2))
-                .empty_paths())
+            // Load all fields using `full_type_required` for equality checks
+            arg1_result.full_type_required(ty1, store);
+            arg2_result.full_type_required(ty2, store);
+
+            // Union the results and empty the resulting paths since the result is a boolean
+            Ok(arg1_result.union(arg2_result).empty_paths())
         }
+
         ExprKind::BinaryApp {
             op: BinaryOp::GetTag | BinaryOp::HasTag,
             arg1: _,
@@ -508,64 +827,87 @@ fn entity_manifest_from_expr(
             feature: "entity tags".into(),
         }
         .into()),
-        ExprKind::ExtensionFunctionApp { fn_name: _, args } => {
-            // WARNING: this code assumes that extension functions
-            // all take primitives as inputs and produce
-            // primitives as outputs.
-            // If not, we would need to use logic similar to the Eq binary operator.
 
-            let mut res = EntityManifestAnalysisResult::default();
+        ExprKind::ExtensionFunctionApp { fn_name: _, args } => {
+            // Collect paths from all arguments
+            let mut result = EntityManifestAnalysisResult::default();
 
             for arg in args.iter() {
-                res = res.union(entity_manifest_from_expr(arg)?);
+                result = result.union(analyze_expr_access_paths(arg, store)?);
             }
-            Ok(res)
+
+            // Extension functions return primitives, so empty the resulting paths
+            Ok(result.empty_paths())
         }
+
         ExprKind::Like { expr, pattern: _ }
         | ExprKind::Is {
             expr,
             entity_type: _,
         } => {
-            // drop paths since boolean returned
-            Ok(entity_manifest_from_expr(expr)?.empty_paths())
+            // These operations return booleans, so get the result and empty the resulting paths
+            Ok(analyze_expr_access_paths(expr, store)?.empty_paths())
         }
+
         ExprKind::Set(contents) => {
-            let mut res = EntityManifestAnalysisResult::default();
+            let mut result = EntityManifestAnalysisResult::default();
+            let mut element_paths = Vec::new();
 
-            // take union of all of the contents
+            // Collect paths from all set elements
             for expr in &**contents {
-                let content = entity_manifest_from_expr(expr)?;
-
-                res = res.union(content);
+                let element_result = analyze_expr_access_paths(expr, store)?;
+                result = result.union(element_result.clone());
+                element_paths.push(element_result.resulting_paths);
             }
 
-            // now, wrap result in a set
-            res.resulting_paths = WrappedAccessPaths::SetLiteral(Box::new(res.resulting_paths));
+            // Combine all element paths into a union
+            let mut combined_paths = Rc::new(WrappedAccessPaths::Empty);
+            for path in element_paths {
+                combined_paths = Rc::new(WrappedAccessPaths::Union(combined_paths, path));
+            }
 
-            Ok(res)
+            // Wrap the combined paths in a SetLiteral
+            result.resulting_paths = Rc::new(WrappedAccessPaths::SetLiteral(combined_paths));
+
+            Ok(result)
         }
+
         ExprKind::Record(content) => {
+            let mut result = EntityManifestAnalysisResult::default();
             let mut record_contents = HashMap::new();
-            let mut global_trie = AccessDag::default();
 
+            // Collect paths from all record fields
             for (key, child_expr) in content.iter() {
-                let res = entity_manifest_from_expr(child_expr)?;
-                record_contents.insert(key.clone(), Box::new(res.resulting_paths));
-
-                global_trie = global_trie.union(res.global_trie);
+                let field_result = analyze_expr_access_paths(child_expr, store)?;
+                result = result.union(field_result.clone());
+                record_contents.insert(key.clone(), field_result.resulting_paths);
             }
 
-            Ok(EntityManifestAnalysisResult {
-                resulting_paths: WrappedAccessPaths::RecordLiteral(record_contents),
-                global_trie,
-            })
+            // Create a RecordLiteral with all field paths
+            result.resulting_paths = Rc::new(WrappedAccessPaths::RecordLiteral(record_contents));
+
+            Ok(result)
         }
+
         ExprKind::GetAttr { expr, attr } => {
-            Ok(entity_manifest_from_expr(expr)?.get_or_has_attr(attr))
+            // Get the base expression result
+            let base_result = analyze_expr_access_paths(expr, store)?;
+
+            // Apply the attribute access
+            let result = base_result.get_or_has_attr(attr, store);
+
+            Ok(result)
         }
-        ExprKind::HasAttr { expr, attr } => Ok(entity_manifest_from_expr(expr)?
-            .get_or_has_attr(attr)
-            .empty_paths()),
+
+        ExprKind::HasAttr { expr, attr } => {
+            // Similar to GetAttr, but the result is a boolean
+            let base_result = analyze_expr_access_paths(expr, store)?;
+            let result = base_result.get_or_has_attr(attr, store);
+
+            // HasAttr returns a boolean, so empty the resulting paths
+            Ok(result.empty_paths())
+        }
+
         #[cfg(feature = "tolerant-ast")]
         ExprKind::Error { .. } => Err(EntityManifestError::UnsupportedCedarFeature(
             UnsupportedCedarFeatureError {
@@ -575,6 +917,7 @@ fn entity_manifest_from_expr(
     }
 }
 
+// Old tests dont touch for now
 #[cfg(test)]
 mod entity_slice_tests {
     use crate::{ast::PolicyID, extensions::Extensions, parser::parse_policy};
