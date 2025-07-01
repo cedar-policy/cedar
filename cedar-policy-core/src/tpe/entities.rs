@@ -16,8 +16,9 @@
 
 //! This module contains partial entities.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
-
+use crate::entities::conformance::err::EntitySchemaConformanceError;
+use crate::evaluator::EvaluationError;
+use crate::transitive_closure::TcError;
 use crate::validator::{CoreSchema, ValidatorSchema};
 use crate::{
     ast::PartialValue,
@@ -40,10 +41,11 @@ use crate::{
     },
     transitive_closure::{compute_tc, TCNode},
 };
-use anyhow::{anyhow, Ok};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde_as]
@@ -91,42 +93,40 @@ pub struct PartialEntity {
     pub tags: Option<BTreeMap<SmolStr, Value>>,
 }
 
+/// Error thrown when encountered an action
+#[derive(Debug, Error)]
+#[error("Unexpected action: `{}`", .action)]
+pub struct UnexpectedActionError {
+    pub(super) action: EntityUID,
+}
+
+/// Error thrown when deserializing a [`PartialEntity`]
+#[derive(Debug, Error)]
+pub enum JsonDeserializationError {
+    /// Error thrown when deserializing concrete components
+    #[error(transparent)]
+    Concrete(#[from] crate::entities::json::err::JsonDeserializationError),
+    /// Error thrown when encountered an action
+    /// Actions are automatically inserted from a schema
+    #[error(transparent)]
+    UnexpectedAction(#[from] UnexpectedActionError),
+    /// Error thrown when a restricted expression does not evaluate to a value
+    #[error(transparent)]
+    RestrictedExprEvaluation(#[from] EvaluationError),
+}
+
 /// Parse an [`EntityJson`] into a [`PartialEntity`] according to `schema`
-pub fn parse_ejson(e: EntityJson, schema: &ValidatorSchema) -> anyhow::Result<PartialEntity> {
+pub fn parse_ejson(
+    e: EntityJson,
+    schema: &ValidatorSchema,
+) -> std::result::Result<PartialEntity, JsonDeserializationError> {
     let uid = e
         .uid
         .into_euid(|| JsonDeserializationErrorContext::EntityUid)?;
     let core_schema = CoreSchema::new(schema);
 
     if uid.is_action() {
-        if e.attrs.is_none() || e.parents.is_none() || e.tags.is_none() {
-            return Err(anyhow!("actions can't have unknown attrs/parents/tags"));
-        }
-        if let Some(attrs) = &e.attrs {
-            if !attrs.map.is_empty() {
-                return Err(anyhow!("actions can't have attrs"));
-            }
-        }
-        if let Some(tags) = &e.tags {
-            if !tags.map.is_empty() {
-                return Err(anyhow!("actions can't have tags"));
-            }
-        }
-        let mut parents = HashSet::new();
-        if let Some(es) = &e.parents {
-            for e in es {
-                parents.insert(
-                    e.clone()
-                        .into_euid(|| JsonDeserializationErrorContext::EntityUid)?,
-                );
-            }
-        }
-        return Ok(PartialEntity {
-            uid,
-            attrs: Some(BTreeMap::default()),
-            ancestors: Some(parents),
-            tags: Some(BTreeMap::default()),
-        });
+        return Err(UnexpectedActionError { action: uid }.into());
     }
     let vparser = ValueParser::new(Extensions::all_available());
     let eval = RestrictedEvaluator::new(Extensions::all_available());
@@ -153,10 +153,23 @@ pub fn parse_ejson(e: EntityJson, schema: &ValidatorSchema) -> anyhow::Result<Pa
                             )?,
                         ))
                     } else {
-                        Err(anyhow::anyhow!("unknown entity type"))
+                        Err(JsonDeserializationError::Concrete(
+                            crate::entities::json::err::JsonDeserializationError::from(
+                                EntitySchemaConformanceError::UnexpectedEntityType(
+                                    UnexpectedEntityTypeError {
+                                        uid: uid.clone(),
+                                        suggested_types: core_schema
+                                            .entity_types_with_basename(
+                                                &uid.entity_type().name().basename(),
+                                            )
+                                            .collect(),
+                                    },
+                                ),
+                            ),
+                        ))
                     }
                 })
-                .collect::<anyhow::Result<BTreeMap<_, _>>>()
+                .collect::<std::result::Result<BTreeMap<_, _>, _>>()
         })
         .transpose()?;
 
@@ -166,13 +179,13 @@ pub fn parse_ejson(e: EntityJson, schema: &ValidatorSchema) -> anyhow::Result<Pa
             parents
                 .into_iter()
                 .map(|parent| {
-                    Ok(
-                        parent.into_euid(|| JsonDeserializationErrorContext::EntityParents {
+                    parent
+                        .into_euid(|| JsonDeserializationErrorContext::EntityParents {
                             uid: uid.clone(),
-                        })?,
-                    )
+                        })
+                        .map_err(JsonDeserializationError::Concrete)
                 })
-                .collect::<anyhow::Result<HashSet<_>>>()
+                .collect::<std::result::Result<HashSet<_>, _>>()
         })
         .transpose()?;
 
@@ -199,10 +212,23 @@ pub fn parse_ejson(e: EntityJson, schema: &ValidatorSchema) -> anyhow::Result<Pa
                             )?,
                         ))
                     } else {
-                        Err(anyhow::anyhow!("unknown entity type"))
+                        Err(JsonDeserializationError::Concrete(
+                            crate::entities::json::err::JsonDeserializationError::from(
+                                EntitySchemaConformanceError::UnexpectedEntityType(
+                                    UnexpectedEntityTypeError {
+                                        uid: uid.clone(),
+                                        suggested_types: core_schema
+                                            .entity_types_with_basename(
+                                                &uid.entity_type().name().basename(),
+                                            )
+                                            .collect(),
+                                    },
+                                ),
+                            ),
+                        ))
                     }
                 })
-                .collect::<anyhow::Result<BTreeMap<_, _>>>()
+                .collect::<std::result::Result<BTreeMap<_, _>, _>>()
         })
         .transpose()?;
 
@@ -240,6 +266,34 @@ impl TCNode<EntityUID> for PartialEntity {
     fn reset_edges(&mut self) {}
 }
 
+/// Error thrown when validating a [`PartialEntity`]
+#[derive(Debug, Error)]
+pub enum EntityValidationError {
+    /// Error thrown when validating concrete components
+    #[error(transparent)]
+    Concrete(#[from] EntitySchemaConformanceError),
+    /// Error thrown when an action component is unknown
+    #[error(transparent)]
+    UnknownActionComponent(#[from] UnknownActionComponentError),
+    /// Error thrown when an action's ancestors do not match the schema
+    #[error(transparent)]
+    MismatchedActionAncestors(#[from] MismatchedActionAncestorsError),
+}
+
+/// Error thrown when an action has unknown ancestors/attrs/tags
+#[derive(Debug, Error)]
+#[error("action `{}` has unknown ancestors/attrs/tags", .action)]
+pub struct UnknownActionComponentError {
+    pub(super) action: EntityUID,
+}
+
+/// Error thrown when an action's ancestors do not match the schema
+#[derive(Debug, Error)]
+#[error("action `{}`'s ancestors do not match the schema", .action)]
+pub struct MismatchedActionAncestorsError {
+    pub(super) action: EntityUID,
+}
+
 impl PartialEntity {
     pub(crate) fn add_ancestor(&mut self, uid: EntityUID) {
         // PANIC SAFETY: this method should be only called on entities that have known ancestors
@@ -251,23 +305,37 @@ impl PartialEntity {
     }
 
     /// Valiate `self` according to `schema`
-    pub fn validate(&self, schema: &ValidatorSchema) -> anyhow::Result<()> {
+    pub fn validate(
+        &self,
+        schema: &ValidatorSchema,
+    ) -> std::result::Result<(), EntityValidationError> {
         let core_schema = CoreSchema::new(schema);
         let uid = &self.uid;
         let etype = uid.entity_type();
 
         if self.uid.is_action() {
             if self.attrs.is_none() || self.tags.is_none() {
-                return Err(anyhow!("actions can't have unknown attrs or tags"));
+                return Err(UnknownActionComponentError {
+                    action: uid.clone(),
+                }
+                .into());
             }
             if let Some(attrs) = &self.attrs {
-                if !attrs.is_empty() {
-                    return Err(anyhow!("actions can't have attrs"));
+                if let Some((attr, _)) = attrs.first_key_value() {
+                    return Err(EntitySchemaConformanceError::unexpected_entity_attr(
+                        uid.clone(),
+                        attr.clone(),
+                    )
+                    .into());
                 }
             }
             if let Some(tags) = &self.tags {
-                if !tags.is_empty() {
-                    return Err(anyhow!("actions can't have tags"));
+                if let Some((tag, _)) = tags.first_key_value() {
+                    return Err(EntitySchemaConformanceError::unexpected_entity_tag(
+                        uid.clone(),
+                        tag.clone(),
+                    )
+                    .into());
                 }
             }
             if let Some(action) = core_schema.action(uid) {
@@ -275,26 +343,38 @@ impl PartialEntity {
                     let schema_ancestors: HashSet<EntityUID> =
                         action.ancestors().cloned().collect();
                     if &schema_ancestors != ancestors {
-                        return Err(anyhow!("action ancestors doesn't conform to schema"));
+                        return Err(MismatchedActionAncestorsError {
+                            action: uid.clone(),
+                        }
+                        .into());
                     }
                 } else {
-                    return Err(anyhow!("actions can't have unknown ancestors"));
+                    return Err(UnknownActionComponentError {
+                        action: uid.clone(),
+                    }
+                    .into());
                 }
             } else {
-                return Err(anyhow!("action not found in schema"));
+                return Err(EntitySchemaConformanceError::UndeclaredAction(
+                    crate::entities::conformance::err::UndeclaredAction { uid: uid.clone() },
+                )
+                .into());
             }
             return Ok(());
         }
-        validate_euid(&core_schema, uid)?;
-        let schema_etype = core_schema.entity_type(etype).ok_or_else(|| {
-            let suggested_types = core_schema
-                .entity_types_with_basename(&etype.name().basename())
-                .collect();
-            UnexpectedEntityTypeError {
-                uid: uid.clone(),
-                suggested_types,
-            }
-        })?;
+        validate_euid(&core_schema, uid).map_err(EntitySchemaConformanceError::from)?;
+        let schema_etype = core_schema
+            .entity_type(etype)
+            .ok_or_else(|| {
+                let suggested_types = core_schema
+                    .entity_types_with_basename(&etype.name().basename())
+                    .collect();
+                UnexpectedEntityTypeError {
+                    uid: uid.clone(),
+                    suggested_types,
+                }
+            })
+            .map_err(EntitySchemaConformanceError::from)?;
         let checker =
             EntitySchemaConformanceChecker::new(&core_schema, Extensions::all_available());
         if let Some(ancestors) = &self.ancestors {
@@ -318,27 +398,53 @@ impl PartialEntity {
     }
 }
 
-// Validate if parents are well-formed
-// i.e., if parents of any parent of a `PartialEntity` should not be unknown
+/// Error thrown when an ancestor of an ancestor is unknown
+#[derive(Debug, Error)]
+#[error("`{}`'s ancestor `{}` has unknown ancestors", .uid, .ancestor)]
+pub struct AncestorValidationError {
+    pub(crate) uid: EntityUID,
+    pub(crate) ancestor: EntityUID,
+}
+
+// Validate if ancestors are well-formed
+// i.e., ancestors of any ancestor of a `PartialEntity` should not be unknown
 // This ensures that we can always compute a TC for entities with concrete
-// parents
-pub(crate) fn validate_parents(entities: &HashMap<EntityUID, PartialEntity>) -> anyhow::Result<()> {
+// ancestors
+pub(crate) fn validate_ancestors(
+    entities: &HashMap<EntityUID, PartialEntity>,
+) -> std::result::Result<(), AncestorValidationError> {
     for e in entities.values() {
         if let Some(ancestors) = e.ancestors.as_ref() {
             for ancestor in ancestors {
                 if let Some(ancestor_entity) = entities.get(ancestor) {
                     if ancestor_entity.ancestors.is_none() {
-                        return Err(anyhow::anyhow!(
-                            "{} has invalid ancestor {}",
-                            e.uid,
-                            ancestor
-                        ));
+                        return Err(AncestorValidationError {
+                            uid: e.uid.clone(),
+                            ancestor: ancestor.clone(),
+                        });
                     }
                 }
             }
         }
     }
     Ok(())
+}
+
+/// Error thrown when constructing [`PartialEntities`]
+#[derive(Debug, Error)]
+pub enum EntitiesError {
+    /// Error thrown when validating concrete components
+    #[error(transparent)]
+    Deserialization(#[from] JsonDeserializationError),
+    /// Error thrown when validating a [`PartialEntity`]
+    #[error(transparent)]
+    Validation(#[from] EntityValidationError),
+    /// Error thrown when validating the ancestors of a [`PartialEntity`]
+    #[error(transparent)]
+    AncestorValidation(#[from] AncestorValidationError),
+    /// Error thrown when computing TC
+    #[error(transparent)]
+    TCComputation(#[from] TcError<EntityUID>),
 }
 
 /// The partial entity store
@@ -356,22 +462,22 @@ impl PartialEntities {
     }
 
     /// Compute transitive closure
-    pub fn compute_tc(&mut self) -> anyhow::Result<()> {
-        Ok(compute_tc(&mut self.entities, true)?)
+    pub fn compute_tc(&mut self) -> std::result::Result<(), TcError<EntityUID>> {
+        compute_tc(&mut self.entities, true)
     }
 
     /// Construct `PartialEntities` from an iterator
     pub fn from_entities(
         entities: impl Iterator<Item = (EntityUID, PartialEntity)>,
         schema: &ValidatorSchema,
-    ) -> anyhow::Result<Self> {
+    ) -> std::result::Result<Self, EntitiesError> {
         let mut entities = Self {
             entities: entities.collect(),
         };
         for e in entities.entities.values() {
             e.validate(schema)?;
         }
-        validate_parents(&entities.entities)?;
+        validate_ancestors(&entities.entities)?;
         entities.compute_tc()?;
         Ok(entities)
     }
@@ -385,13 +491,13 @@ impl PartialEntities {
         }
     }
 
-    /// Construct `PartialEntities` from a JSON list
+    /// Construct [`PartialEntities`] from a JSON list
     pub fn from_json_value(
         value: serde_json::Value,
         schema: &ValidatorSchema,
-    ) -> anyhow::Result<Self> {
+    ) -> std::result::Result<Self, EntitiesError> {
         let entities: Vec<EntityJson> = serde_json::from_value(value)
-            .map_err(|e| anyhow::anyhow!("failed to parse entities: {}", e))?;
+            .map_err(|e| JsonDeserializationError::Concrete(e.into()))?;
         let mut partial_entities = PartialEntities::default();
         for e in entities {
             let partial_entity = parse_ejson(e, schema)?;
@@ -400,8 +506,21 @@ impl PartialEntities {
                 .entities
                 .insert(partial_entity.uid.clone(), partial_entity);
         }
-        validate_parents(&partial_entities.entities)?;
+        validate_ancestors(&partial_entities.entities)?;
         partial_entities.compute_tc()?;
+
+        // Insert actions from the schema
+        for (uid, action) in &schema.actions {
+            partial_entities.entities.insert(
+                uid.clone(),
+                PartialEntity {
+                    uid: uid.clone(),
+                    attrs: Some(BTreeMap::default()),
+                    ancestors: Some(action.ancestors().cloned().collect()),
+                    tags: Some(BTreeMap::default()),
+                },
+            );
+        }
         Ok(partial_entities)
     }
 }
@@ -417,7 +536,7 @@ mod tests {
     };
     use cool_asserts::assert_matches;
 
-    use super::{parse_ejson, validate_parents, EntityJson, PartialEntities, PartialEntity};
+    use super::{parse_ejson, validate_ancestors, EntityJson, PartialEntities, PartialEntity};
 
     #[track_caller]
     fn basic_schema() -> ValidatorSchema {
@@ -517,7 +636,7 @@ mod tests {
     fn invalid_hierarchy() {
         let uid_a: EntityUID = r#"A::"a""#.parse().unwrap();
         let uid_b: EntityUID = r#"A::"b""#.parse().unwrap();
-        assert!(validate_parents(&HashMap::from_iter([
+        assert!(validate_ancestors(&HashMap::from_iter([
             (
                 uid_a.clone(),
                 PartialEntity {

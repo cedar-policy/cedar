@@ -100,7 +100,7 @@ pub enum JsonDeserializationError {
     /// listed below, among other things.
     #[error(transparent)]
     #[diagnostic(transparent)]
-    EntitySchemaConformance(EntitySchemaConformanceError),
+    EntitySchemaConformance(#[from] EntitySchemaConformanceError),
     /// During schema-based parsing, encountered this attribute on a record, but
     /// that attribute shouldn't exist on that record
     #[error(transparent)]
