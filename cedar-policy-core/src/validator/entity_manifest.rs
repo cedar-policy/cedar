@@ -283,8 +283,7 @@ impl AccessDag {
 impl EntityManifest {
     pub fn new() -> Self {
         Self {
-            manifest_hash_cons: HashMap::new(),
-            manifest_store: Vec::new(),
+            dag: AccessDag::default(),
             per_action: HashMap::new(),
         }
     }
@@ -330,7 +329,14 @@ impl AccessPaths {
 
     /// Add a path to the set.
     pub fn insert(&mut self, path: AccessPath) {
-        self.paths.insert(path)
+        self.paths.insert(path);
+    }
+
+    /// A set with a single element.
+    pub fn from_path(path: AccessPath) -> Self {
+        let mut paths = HashSet::new();
+        paths.insert(path);
+        Self { paths }
     }
 }
 
@@ -389,11 +395,7 @@ pub fn compute_entity_manifest(
 
     // PANIC SAFETY: entity manifest cannot be out of date, since it was computed from the schema given
     #[allow(clippy::unwrap_used)]
-    Ok(EntityManifest {
-        per_action: manifest,
-    }
-    .to_typed(validator.schema())
-    .unwrap())
+    Ok(manifest.to_typed(validator.schema()).unwrap())
 }
 
 /// A static analysis on type-annotated cedar expressions.

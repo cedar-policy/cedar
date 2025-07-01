@@ -26,6 +26,7 @@ use crate::{
     ast::{Context, Entity, EntityUID, Literal, PartialValue, Request, Value, ValueKind, Var},
     entities::{Entities, NoEntitiesSchema, TCComputation},
     extensions::Extensions,
+    validator::entity_manifest::AccessPaths,
 };
 use smol_str::SmolStr;
 
@@ -33,7 +34,7 @@ use crate::validator::entity_manifest::{
     slicing::{
         EntitySliceError, PartialContextError, PartialEntityError, WrongNumberOfEntitiesError,
     },
-    EntityManifest, EntityRoot, PartialRequestError, AccessDag,
+    AccessDag, EntityManifest, EntityRoot, PartialRequestError,
 };
 
 /// A request that an entity be loaded.
@@ -43,8 +44,9 @@ use crate::validator::entity_manifest::{
 pub(crate) struct EntityRequest {
     /// The id of the entity requested
     pub(crate) entity_id: EntityUID,
-    /// The fieds of the entity requested
-    pub(crate) access_trie: AccessTrie,
+    /// The fields of the entity requested, a set of paths
+    /// each with root `entity_id`.
+    pub(crate) access_trie: AccessPaths,
 }
 
 /// An entity request may be an entity or `None` when
@@ -55,7 +57,7 @@ pub(crate) type EntityAnswer = Option<Entity>;
 /// pruned using `prune_child_entity_dereferences`.
 pub(crate) struct EntityRequestRef<'a> {
     entity_id: EntityUID,
-    access_trie: &'a AccessTrie,
+    access_trie: &'a AccessPaths,
 }
 
 impl EntityRequestRef<'_> {
@@ -80,18 +82,18 @@ pub(crate) struct AncestorsRequest {
 /// Implement [`EntityLoader`] to easily load entities using their ids
 /// into a Cedar [`Entities`] store.
 /// The most basic implementation loads full entities (including all ancestors) in the `load_entities` method and loads the context in the `load_context` method.
-/// More advanced implementations make use of the [`AccessTrie`]s provided to load partial entities and context, as well as the `load_ancestors` method to load particular ancestors.
+/// More advanced implementations make use of the [`AccessPaths`]s provided to load partial entities and context, as well as the `load_ancestors` method to load particular ancestors.
 ///
 /// Warning: `load_entities` is called multiple times. If database
 /// consistency is required, this API should not be used. Instead, use the entity manifest directly.
 pub(crate) trait EntityLoader {
     /// `load_entities` is called multiple times to load entities based on their ids.
     /// For each entity request in the `to_load` vector, expects one loaded entity in the resulting vector.
-    /// Each [`EntityRequest`] comes with an [`AccessTrie`], which can optionally be used.
-    /// Only fields mentioned in the entity's [`AccessTrie`] are needed, but it is sound to provide other fields as well.
-    /// Note that the same entity may be requested multiple times, with different [`AccessTrie`]s.
+    /// Each [`EntityRequest`] comes with [`AccessPaths`], which can optionally be used.
+    /// Only fields mentioned in the entity's [`AccessPaths`] are needed, but it is sound to provide other fields as well.
+    /// Note that the same entity may be requested multiple times, with different [`AccessPaths`]s.
     ///
-    /// Either `load_entities` must load all the ancestors of each entity, unless `load_ancestors` is implemented.
+    /// `load_entities` must load all the ancestors of each entity unless `load_ancestors` is implemented.
     fn load_entities(
         &mut self,
         to_load: &[EntityRequest],
@@ -152,47 +154,6 @@ fn initial_entities_to_load<'a>(
     }
 
     Ok(to_load)
-}
-
-impl AccessTrie {
-    /// Removes any entity dereferences in the children of this trie,
-    /// recursively.
-    /// These can be included in [`EntityRequest`]s, which don't include
-    /// referenced entities.
-    pub(crate) fn prune_child_entity_dereferences(&self) -> AccessTrie {
-        let children = self
-            .children
-            .iter()
-            .map(|(k, v)| (k.clone(), Box::new(v.prune_entity_dereferences())))
-            .collect();
-
-        AccessTrie {
-            children,
-            ancestors_trie: self.ancestors_trie.clone(),
-            is_ancestor: self.is_ancestor,
-            node_type: self.node_type.clone(),
-        }
-    }
-
-    pub(crate) fn prune_entity_dereferences(&self) -> AccessTrie {
-        // PANIC SAFETY: Node types should always be present on entity manifests after creation.
-        #[allow(clippy::unwrap_used)]
-        let children = if self.node_type.as_ref().unwrap().is_entity_type() {
-            HashMap::new()
-        } else {
-            self.children
-                .iter()
-                .map(|(k, v)| (k.clone(), Box::new(v.prune_entity_dereferences())))
-                .collect()
-        };
-
-        AccessTrie {
-            children,
-            ancestors_trie: self.ancestors_trie.clone(),
-            is_ancestor: self.is_ancestor,
-            node_type: self.node_type.clone(),
-        }
-    }
 }
 
 /// Loads entities based on the entity manifest, request, and
