@@ -41,16 +41,3 @@ impl EntityManifest {
         todo!()
     }
 }
-
-impl AccessDag {
-    /// Type-annotate this primary slice, given the type of
-    /// the request and the schema.
-    pub(crate) fn to_typed(
-        &self,
-        request_type: &RequestType,
-        schema: &ValidatorSchema,
-    ) -> Result<AccessDag, MismatchedEntityManifestError> {
-        // TODO add types
-        todo!()
-    }
-}
