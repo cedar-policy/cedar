@@ -43,7 +43,7 @@ pub struct Evaluator<'e> {
     /// `Resource` for the current request
     resource: EntityUIDEntry,
     /// `Context` for the current request; this will be a Record type
-    context: Value,
+    context: Option<Value>,
     /// Entities which we use to resolve entity references.
     ///
     /// This is a reference, because the `Evaluator` doesn't need ownership of
@@ -65,8 +65,8 @@ impl<'e> Evaluator<'e> {
             resource: q.resource,
             context: {
                 match q.context {
-                    None => todo!("concrete::Evaluator::new with None context"),
-                    Some(ctx) => todo!("concrete::Evaluator::new with Some context"), // ctx.into(),
+                    Some(Context::Value(attrs)) => Some(Value::record_arc(attrs, None)),
+                    _ => None,
                 }
             },
             entities,
@@ -165,7 +165,10 @@ impl<'e> Evaluator<'e> {
                     .resource
                     .evaluate_concrete(*v)
                     .ok_or(err::EvaluationError::non_value(expr.clone())),
-                Var::Context => Ok(self.context.clone()),
+                Var::Context => self
+                    .context
+                    .clone()
+                    .ok_or(err::EvaluationError::non_value(expr.clone())),
             },
             ExprKind::Unknown(u) => Err(err::EvaluationError::non_value(expr.clone())),
             ExprKind::If {
@@ -4532,43 +4535,5 @@ pub(crate) mod test {
             "#).unwrap()), Err(EvaluationError::RecordAttrDoesNotExist(err)) => {
             assert_eq!(err.attr, "d");
         });
-    }
-
-    #[test]
-    fn typed_unknown_entity_id() {
-        let mut q = basic_request();
-        let entities = basic_entities();
-        q.principal = EntityUIDEntry::unknown_with_type(
-            EntityType::from_str("different_test_type").expect("must parse"),
-            None,
-        );
-        q.resource = EntityUIDEntry::unknown_with_type(
-            EntityType::from_str("other_different_test_type").expect("must parse"),
-            None,
-        );
-        let eval = Evaluator::new(q, &entities, Extensions::none());
-
-        let e = Expr::is_entity_type(Expr::var(Var::Principal), EntityUID::test_entity_type());
-        let r = eval.eval_expr(&e).unwrap();
-        assert_eq!(r, Value::from(false));
-
-        let e = Expr::is_eq(
-            Expr::var(Var::Principal),
-            Expr::val(EntityUID::with_eid("something")),
-        );
-        let r = eval.eval_expr(&e).unwrap();
-        assert_eq!(r, Value::from(false));
-
-        let e = Expr::noteq(
-            Expr::val(EntityUID::with_eid("something")),
-            Expr::var(Var::Principal),
-        );
-        let r = eval.eval_expr(&e).unwrap();
-        assert_eq!(r, Value::from(true));
-
-        // Two differently typed unknowns should not be equal
-        let e = Expr::is_eq(Expr::var(Var::Principal), Expr::var(Var::Resource));
-        let r = eval.eval_expr(&e).unwrap();
-        assert_eq!(r, Value::from(false));
     }
 }
