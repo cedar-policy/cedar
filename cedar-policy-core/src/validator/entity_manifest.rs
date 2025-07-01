@@ -532,7 +532,11 @@ impl EntityManifest {
     }
 
     /// Helper method to map a path or create a new one if it doesn't exist in the mapping
-    fn map_path_or_create(&mut self, path: &AccessPath, path_mapping: &mut PathMapping) -> AccessPath {
+    fn map_path_or_create(
+        &mut self,
+        path: &AccessPath,
+        path_mapping: &mut PathMapping,
+    ) -> AccessPath {
         // Check if the path is already mapped
         if let Some(mapped_path) = path_mapping.map_path(path) {
             return mapped_path;
@@ -611,26 +615,22 @@ impl EntityManifest {
                 AccessPathVariant::Literal(euid) => {
                     Expr::val(Literal::EntityUID(std::sync::Arc::new(euid.clone())))
                 }
-                AccessPathVariant::Var(var) => ExprBuilder::new().var(*var),
+                AccessPathVariant::Var(var) => Expr::var(*var),
                 AccessPathVariant::String(s) => Expr::val(Literal::String(s.clone())),
                 AccessPathVariant::Attribute { of, attr } => {
                     let base_expr = self.access_path_to_expr(of)?;
-                    ExprBuilder::new().get_attr(base_expr, attr.clone())
+                    Expr::get_attr(base_expr, attr.clone())
                 }
                 AccessPathVariant::Tag { of, tag } => {
                     let base_expr = self.access_path_to_expr(of)?;
                     let tag_expr = self.access_path_to_expr(tag)?;
-                    ExprBuilder::new().get_tag(base_expr, tag_expr)
+                    Expr::get_tag(base_expr, tag_expr)
                 }
                 AccessPathVariant::Ancestor { of, ancestor } => {
-                    // For ancestor relationships, we use a special extension function
-                    // isAncestorOf(ancestor, entity)
+                    // For ancestor relationships, use the in keyword
                     let ancestor_expr = self.access_path_to_expr(ancestor)?;
                     let entity_expr = self.access_path_to_expr(of)?;
-                    ExprBuilder::new().call_extension_fn(
-                        "isAncestorOf".parse().unwrap(),
-                        vec![ancestor_expr, entity_expr],
-                    )
+                    Expr::is_in(entity_expr, ancestor_expr)
                 }
             })
         } else {
@@ -696,19 +696,30 @@ impl HumanEntityManifest {
                     attr: attr.clone(),
                 }))
             }
-            ast::ExprKind::BinaryApp {
-                op: ast::BinaryOp::GetTag,
-                arg1,
-                arg2,
-            } => {
-                // Handle tag access (e.g., principal.getTag("tag"))
-                let base_path = self.expr_to_access_path(arg1, dag)?;
-                let tag_path = self.expr_to_access_path(arg2, dag)?;
-                Ok(dag.add_path(AccessPathVariant::Tag {
-                    of: base_path,
-                    tag: tag_path,
-                }))
-            }
+            ast::ExprKind::BinaryApp { op, arg1, arg2 } => match op {
+                ast::BinaryOp::GetTag => {
+                    // Handle tag access (e.g., principal.getTag("tag"))
+                    let base_path = self.expr_to_access_path(arg1, dag)?;
+                    let tag_path = self.expr_to_access_path(arg2, dag)?;
+                    Ok(dag.add_path(AccessPathVariant::Tag {
+                        of: base_path,
+                        tag: tag_path,
+                    }))
+                }
+                ast::BinaryOp::In => {
+                    // Handle ancestor relationship (e.g., principal in resource)
+                    let entity_path = self.expr_to_access_path(arg1, dag)?;
+                    let ancestor_path = self.expr_to_access_path(arg2, dag)?;
+                    Ok(dag.add_path(AccessPathVariant::Ancestor {
+                        of: entity_path,
+                        ancestor: ancestor_path,
+                    }))
+                }
+                _ => Err(PathExpressionParseError::GeneralError(format!(
+                    "Unsupported binary operator: {:?}",
+                    op
+                ))),
+            },
             _ => Err(PathExpressionParseError::GeneralError(
                 "Unsupported expression type".to_string(),
             )),
