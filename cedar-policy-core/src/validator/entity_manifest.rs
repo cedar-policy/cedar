@@ -17,7 +17,7 @@
 //! Entity Manifest definition and static analysis.
 
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 
 use crate::ast::{
@@ -60,19 +60,77 @@ use crate::validator::{ValidationResult, Validator};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EntityManifest {
-    /// A map from request types to [`RootAccessTrie`]s.
+    /// The backing store for the entity manifest,
+    /// a directed acyclic graph storing a set of paths
+    pub(crate) dag: AccessPathDag,
+    /// A map from request types to sets of [`AccessPath`].
+    /// For each request, stores what access paths are required.
     #[serde_as(as = "Vec<(_, _)>")]
-    pub(crate) per_action: HashMap<RequestType, RootAccessTrie>,
+    pub(crate) per_action: HashMap<RequestType, AccessPaths>,
 }
 
-/// A map of data fields to [`AccessTrie`]s.
-/// The keys to this map form the edges in the access trie,
-/// pointing to sub-tries.
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
+/// A backing store for a set of access paths
+/// stored as a directed acyclic graph.
+#[serde_as]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AccessPathDag {
+    /// A map from [`AccessPathInternal`] to the [`AccessPath`], which
+    /// indexes the `manifest_store`.
+    /// This allows us to de-duplicate equivalent access paths using the "hash cons"
+    /// programming trick.
+    #[serde_as(as = "Vec<(_, _)>")]
+    pub(crate) manifest_hash_cons: HashMap<AccessPathVariant, AccessPath>,
+    /// The backing store of access paths in the entity manifest.
+    pub(crate) manifest_store: Vec<AccessPath>,
+}
+
+/// Stores a set of access paths.
 #[doc = include_str!("../../experimental_warning.md")]
-pub type Fields = HashMap<SmolStr, Box<AccessTrie>>;
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AccessPaths {
+    paths: HashSet<AccessPath>,
+}
+
+/// Represents a path of data involving a sequence of
+/// attribute or tag accesses, ending in a cedar variable or literal.
+/// Internally represented as a single integer into a backing store
+/// (a directed acyclic graph).
+/// Hashing an [`AccessPath`] is extremely cheap, so resulting data can be cached.
+#[doc = include_str!("../../experimental_warning.md")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct AccessPath {
+    id: usize,
+}
+
+/// Turn an [`AccessPath`] into a [`AccessPathVariant`] in order to perform pattern matching.
+/// Stores the access path's constructor and children.
+#[doc = include_str!("../../experimental_warning.md")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AccessPathVariant {
+    /// Literal entity ids
+    Literal(EntityUID),
+    /// A Cedar variable
+    Var(Var),
+    /// A literal Cedar string
+    String(SmolStr),
+    /// A record or entity attribute
+    Attribute { of: AccessPath, attr: SmolStr },
+    /// An entity tag access
+    Tag {
+        /// The entity whose tag is requested
+        of: AccessPath,
+        /// The accesspath computing the requested tag (may be a literal string)
+        tag: AccessPath,
+    },
+    /// Whether this entity has a particular ancestor is requested
+    Ancestor {
+        /// The entity whose ancestor is requested
+        of: AccessPath,
+        /// The ancestor whose presence is requested
+        ancestor: AccessPath,
+    },
+}
 
 /// The root of a data path or [`RootAccessTrie`].
 // CAUTION: this type is publicly exported in `cedar-policy`.
@@ -95,75 +153,6 @@ impl Display for EntityRoot {
             EntityRoot::Var(v) => write!(f, "{v}"),
         }
     }
-}
-
-/// A trie describing a set of data paths to retrieve.
-///
-/// Each edge in the trie is either a record or entity dereference.
-///
-/// If an entity or record field does not exist in the backing store,
-/// it is safe to stop loading data at that point.
-///
-/// `T` represents an optional type annotation on each
-/// node in the [`AccessTrie`].
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[doc = include_str!("../../experimental_warning.md")]
-#[serde_as]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RootAccessTrie {
-    /// The data that needs to be loaded, organized by root.
-    #[serde_as(as = "Vec<(_, _)>")]
-    pub(crate) trie: HashMap<EntityRoot, AccessTrie>,
-}
-
-/// A Trie representing a set of data paths to load,
-/// starting implicitly from a Cedar value.
-///
-/// `T` represents an optional type annotation on each
-/// node in the [`AccessTrie`].
-///
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[doc = include_str!("../../experimental_warning.md")]
-#[serde_as]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AccessTrie {
-    /// Child data of this entity slice.
-    /// The keys are edges in the trie pointing to sub-trie values.
-    #[serde_as(as = "Vec<(_, _)>")]
-    pub(crate) children: Fields,
-    /// `ancestors_trie` is another [`RootAccessTrie`] representing
-    /// all of the ancestors of this entity that are required.
-    /// The ancestors trie is a subset of the original [`RootAccessTrie`].
-    /// See the [`RootAccessTrie::is_ancestor`] annotation.
-    pub(crate) ancestors_trie: RootAccessTrie,
-    /// When ancestors are required, each node marked `is_ancestor`
-    /// represents an ancestor or set of ancestors that are required.
-    /// An ancestor trie can be thought of as a set of pointers to
-    /// nodes in the original trie, one `is_ancestor`-marked node per pointer.
-    pub(crate) is_ancestor: bool,
-    /// The type of this node in the [`AccessTrie`].
-    /// From the public API, this field should always be `Some`.
-    /// It is `None` after deserialization or after first being constructed, but it is type annotated right away.
-    #[serde(skip_serializing)]
-    #[serde(skip_deserializing)]
-    pub(crate) node_type: Option<Type>,
-}
-
-/// An access path represents path of fields, starting with an [`EntityRoot`].
-/// Fields may be record fields or entity fields.
-/// If an access path ends with an entity type, it may also require the ancestors of the entity.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct AccessPath {
-    /// The root variable that begins the data path
-    pub root: EntityRoot,
-    /// The path of fields of entities or structs
-    pub path: Vec<SmolStr>,
 }
 
 /// Error when expressions are partial during entity
@@ -268,10 +257,41 @@ pub enum EntityManifestFromJsonError {
     MismatchedEntityManifest(#[from] MismatchedEntityManifestError),
 }
 
+impl AccessPathDag {
+    pub(crate) fn add_path(&mut self, variant: AccessPathVariant) -> AccessPath {
+        // Check if the variant already exists in the hash_cons map
+        if let Some(path) = self.manifest_hash_cons.get(&variant) {
+            // If it does, return the existing AccessPath
+            return path.clone();
+        }
+
+        // If it doesn't exist, create a new AccessPath with the next available ID
+        let id = self.manifest_store.len();
+        let path = AccessPath { id };
+
+        // Add the variant to the hash_cons map
+        self.manifest_hash_cons.insert(variant, path.clone());
+
+        // Add the new AccessPath to the manifest_store
+        self.manifest_store.push(path.clone());
+
+        // Return the new AccessPath
+        path
+    }
+}
+
 impl EntityManifest {
+    pub fn new() -> Self {
+        Self {
+            manifest_hash_cons: HashMap::new(),
+            manifest_store: Vec::new(),
+            per_action: HashMap::new(),
+        }
+    }
+
     /// Get the contents of the entity manifest
     /// indexed by the type of the request.
-    pub fn per_action(&self) -> &HashMap<RequestType, RootAccessTrie> {
+    pub fn per_action(&self) -> &HashMap<RequestType, AccessPaths> {
         &self.per_action
     }
 
@@ -301,143 +321,16 @@ impl EntityManifest {
     }
 }
 
-/// Union two tries by combining the fields.
-fn union_fields_mut(first: &mut Fields, second: Fields) {
-    for (key, value) in second {
-        match first.entry(key) {
-            Entry::Occupied(mut occupied) => {
-                occupied.get_mut().union_mut(*value);
-            }
-            Entry::Vacant(vacant) => {
-                vacant.insert(value);
-            }
-        }
-    }
-}
-
-impl AccessPath {
-    /// Convert a [`AccessPath`] into corresponding [`RootAccessTrie`].
-    pub fn to_root_access_trie(&self) -> RootAccessTrie {
-        self.to_root_access_trie_with_leaf(AccessTrie::default())
+impl AccessPaths {
+    /// Add all the access paths from another [`AccessPaths`]
+    /// to this one, mutably.
+    pub fn add_paths(&mut self, other: Self) {
+        self.paths.extend(other.paths)
     }
 
-    /// Convert an [`AccessPath`] to a [`RootAccessTrie`], and also
-    /// add a full trie as the leaf at the end.
-    pub(crate) fn to_root_access_trie_with_leaf(&self, leaf_trie: AccessTrie) -> RootAccessTrie {
-        let mut current = leaf_trie;
-
-        // reverse the path, visiting the last access first
-        for field in self.path.iter().rev() {
-            let mut fields = HashMap::new();
-            fields.insert(field.clone(), Box::new(current));
-
-            current = AccessTrie {
-                ancestors_trie: Default::default(),
-                is_ancestor: false,
-                children: fields,
-                node_type: None,
-            };
-        }
-
-        let mut primary_map = HashMap::new();
-
-        // special case: if the path is completely empty,
-        // no need to insert anything
-        if current != AccessTrie::new() {
-            primary_map.insert(self.root.clone(), current);
-        }
-        RootAccessTrie { trie: primary_map }
-    }
-}
-
-impl RootAccessTrie {
-    /// Get the trie as a hash map from [`EntityRoot`]
-    /// to sub-[`AccessTrie`]s.
-    pub fn trie(&self) -> &HashMap<EntityRoot, AccessTrie> {
-        &self.trie
-    }
-}
-
-impl RootAccessTrie {
-    /// Create an empty [`RootAccessTrie`] that requests nothing.
-    pub fn new() -> Self {
-        Self {
-            trie: Default::default(),
-        }
-    }
-}
-
-impl RootAccessTrie {
-    /// Union two [`RootAccessTrie`]s together.
-    /// The new trie requests the data from both of the original.
-    pub fn union(mut self, other: Self) -> Self {
-        self.union_mut(other);
-        self
-    }
-
-    /// Like [`RootAccessTrie::union`], but modifies the current trie.
-    pub fn union_mut(&mut self, other: Self) {
-        for (key, value) in other.trie {
-            match self.trie.entry(key) {
-                Entry::Occupied(mut occupied) => {
-                    occupied.get_mut().union_mut(value);
-                }
-                Entry::Vacant(vacant) => {
-                    vacant.insert(value);
-                }
-            }
-        }
-    }
-}
-
-impl Default for RootAccessTrie {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl AccessTrie {
-    /// Union two [`AccessTrie`]s together.
-    /// The new trie requests the data from both of the original.
-    pub fn union(mut self, other: Self) -> Self {
-        self.union_mut(other);
-        self
-    }
-
-    /// Like [`AccessTrie::union`], but modifies the current trie.
-    pub fn union_mut(&mut self, other: Self) {
-        union_fields_mut(&mut self.children, other.children);
-        self.ancestors_trie.union_mut(other.ancestors_trie);
-        self.is_ancestor = self.is_ancestor || other.is_ancestor;
-    }
-
-    /// Get the children of this [`AccessTrie`].
-    pub fn children(&self) -> &Fields {
-        &self.children
-    }
-
-    /// Get a boolean which is true if this trie
-    /// requires all ancestors of the entity to be loaded.
-    pub fn ancestors_required(&self) -> &RootAccessTrie {
-        &self.ancestors_trie
-    }
-}
-
-impl AccessTrie {
-    /// A new trie that requests no data.
-    pub(crate) fn new() -> Self {
-        Self {
-            children: Default::default(),
-            ancestors_trie: Default::default(),
-            is_ancestor: false,
-            node_type: None,
-        }
-    }
-}
-
-impl Default for AccessTrie {
-    fn default() -> Self {
-        Self::new()
+    /// Add a path to the set.
+    pub fn insert(&mut self, path: AccessPath) {
+        self.paths.insert(path)
     }
 }
 
@@ -454,7 +347,7 @@ pub fn compute_entity_manifest(
         return Err(EntityManifestError::Validation(validation_res));
     }
 
-    let mut manifest: HashMap<RequestType, RootAccessTrie> = HashMap::new();
+    let mut manifest = EntityManifest::new();
 
     let typechecker = Typechecker::new(validator.schema(), ValidationMode::Strict);
     // now, for each policy we add the data it requires to the manifest
@@ -470,7 +363,7 @@ pub fn compute_entity_manifest(
                 }
                 PolicyCheck::Irrelevant(_, _) => {
                     // this policy is irrelevant, so we need no data
-                    Ok(RootAccessTrie::new())
+                    Ok(AccessDag::new())
                 }
 
                 // PANIC SAFETY: policy check should not fail after full strict validation above.
@@ -595,8 +488,7 @@ fn entity_manifest_from_expr(
 
             // For the `in` operator, we need the ancestors of entities.
             if matches!(op, BinaryOp::In) {
-                arg1_res = arg1_res
-                    .with_ancestors_required(&arg2_res.resulting_paths.to_ancestor_access_trie());
+                arg1_res = arg1_res.with_ancestors_required(&arg2_res.resulting_paths);
             }
 
             // Load all fields using `full_type_required`, since
@@ -652,7 +544,7 @@ fn entity_manifest_from_expr(
         }
         ExprKind::Record(content) => {
             let mut record_contents = HashMap::new();
-            let mut global_trie = RootAccessTrie::default();
+            let mut global_trie = AccessDag::default();
 
             for (key, child_expr) in content.iter() {
                 let res = entity_manifest_from_expr(child_expr)?;
@@ -754,7 +646,7 @@ when {
                     resource: "Document".parse().unwrap(),
                     action: r#"Action::"Read""#.parse().unwrap(),
                 },
-                RootAccessTrie {
+                AccessDag {
                     trie: HashMap::from([(
                         EntityRoot::Var(Var::Principal),
                         AccessTrie {
@@ -762,12 +654,12 @@ when {
                                 SmolStr::new_static("name"),
                                 Box::new(AccessTrie {
                                     children: HashMap::new(),
-                                    ancestors_trie: RootAccessTrie::new(),
+                                    ancestors_trie: AccessDag::new(),
                                     is_ancestor: false,
                                     node_type: Some(Type::primitive_string()),
                                 }),
                             )]),
-                            ancestors_trie: RootAccessTrie::new(),
+                            ancestors_trie: AccessDag::new(),
                             is_ancestor: false,
                             node_type: Some(Type::named_entity_reference("User".parse().unwrap())),
                         },

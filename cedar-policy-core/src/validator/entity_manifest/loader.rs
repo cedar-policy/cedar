@@ -33,7 +33,7 @@ use crate::validator::entity_manifest::{
     slicing::{
         EntitySliceError, PartialContextError, PartialEntityError, WrongNumberOfEntitiesError,
     },
-    AccessTrie, EntityManifest, EntityRoot, PartialRequestError, RootAccessTrie,
+    AccessTrie, EntityManifest, EntityRoot, PartialRequestError, AccessDag,
 };
 
 /// A request that an entity be loaded.
@@ -110,7 +110,7 @@ pub(crate) trait EntityLoader {
 }
 
 fn initial_entities_to_load<'a>(
-    root_access_trie: &'a RootAccessTrie,
+    root_access_trie: &'a AccessDag,
     context: &Context,
     request: &Request,
     required_ancestors: &mut HashSet<EntityUID>,
@@ -542,7 +542,7 @@ fn find_remaining_entities_value<'a>(
 /// to find the entity ids that are required.
 fn compute_ancestors_request(
     entity_id: EntityUID,
-    ancestors_trie: &RootAccessTrie,
+    ancestors_trie: &AccessDag,
     entities: &HashMap<EntityUID, Entity>,
     context: &Context,
     request: &Request,

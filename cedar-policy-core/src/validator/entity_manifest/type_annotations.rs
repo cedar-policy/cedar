@@ -23,7 +23,7 @@ use crate::ast::{RequestType, Var};
 use crate::validator::{
     entity_manifest::{
         AccessTrie, EntityManifest, EntityRoot, Fields, MismatchedEntityManifestError,
-        MismatchedMissingEntityError, MismatchedNotStrictSchemaError, RootAccessTrie,
+        MismatchedMissingEntityError, MismatchedNotStrictSchemaError, AccessDag,
     },
     types::{Attributes, EntityRecordKind, Type},
     ValidatorSchema,
@@ -43,7 +43,7 @@ impl EntityManifest {
                         .iter()
                         .map(|(key, val)| Ok((key.clone(), val.to_typed(key, schema)?)))
                         .collect::<Result<
-                            HashMap<RequestType, RootAccessTrie>,
+                            HashMap<RequestType, AccessDag>,
                             MismatchedEntityManifestError,
                         >>()?,
             },
@@ -51,15 +51,15 @@ impl EntityManifest {
     }
 }
 
-impl RootAccessTrie {
+impl AccessDag {
     /// Type-annotate this primary slice, given the type of
     /// the request and the schema.
     pub(crate) fn to_typed(
         &self,
         request_type: &RequestType,
         schema: &ValidatorSchema,
-    ) -> Result<RootAccessTrie, MismatchedEntityManifestError> {
-        Ok(RootAccessTrie {
+    ) -> Result<AccessDag, MismatchedEntityManifestError> {
+        Ok(AccessDag {
             trie: self
                 .trie
                 .iter()
