@@ -21,16 +21,47 @@ pub mod evaluator;
 pub mod request;
 pub mod residual;
 
-use crate::validator::{
-    typecheck::{PolicyCheck, Typechecker},
-    ValidatorSchema,
-};
+use thiserror::Error;
+
 use crate::{ast::PolicySet, extensions::Extensions};
-use anyhow::anyhow;
+use crate::{
+    tpe::errors::{NoMatchingReqEnvError, NonstaticPolicyError},
+    validator::{
+        typecheck::{PolicyCheck, Typechecker},
+        ValidationError, ValidatorSchema,
+    },
+};
 
 use crate::tpe::{
     entities::PartialEntities, evaluator::Evaluator, request::PartialRequest, residual::Residual,
 };
+
+/// Errors for TPE
+#[derive(Debug, Error)]
+pub enum TPEError {
+    /// Error thrown when there is no matching request environment according to
+    /// a schema
+    #[error(transparent)]
+    NoMatchingReqEnv(#[from] NoMatchingReqEnvError),
+    /// Error thrown when TPE is applied to a non-static policy
+    #[error(transparent)]
+    NonstaticPolicy(#[from] NonstaticPolicyError),
+    /// Error thrown when the typechecker fails to typecheck a policy
+    #[error("Failed validation: {:#?}", .0)]
+    Validation(Vec<ValidationError>),
+}
+
+mod errors {
+    use thiserror::Error;
+
+    #[derive(Debug, Error)]
+    #[error("Can't find a matching request environment")]
+    pub struct NoMatchingReqEnvError;
+
+    #[derive(Debug, Error)]
+    #[error("Found a non-static policy")]
+    pub struct NonstaticPolicyError;
+}
 
 /// Type-aware partial-evaluation on a `PolicySet`.
 /// Both `request` and `entities` should be valid and hence be constructed
@@ -41,15 +72,15 @@ pub fn tpe_policies(
     request: &PartialRequest,
     entities: &PartialEntities,
     schema: &ValidatorSchema,
-) -> anyhow::Result<Vec<Residual>> {
+) -> std::result::Result<Vec<Residual>, TPEError> {
     let env = request
         .find_request_env(schema)
-        .ok_or(anyhow!("can't find a matching request environment"))?;
+        .ok_or(NoMatchingReqEnvError)?;
     let tc = Typechecker::new(schema, crate::validator::ValidationMode::Strict);
     let mut exprs = Vec::new();
     for p in ps.policies() {
         if !p.is_static() {
-            return Err(anyhow!("policy must be static"));
+            return Err(NonstaticPolicyError.into());
         }
         let t = p.template();
         match tc.typecheck_by_single_request_env(t, &env) {
@@ -57,13 +88,13 @@ pub fn tpe_policies(
                 exprs.push(expr);
             }
             PolicyCheck::Fail(errs) => {
-                return Err(anyhow!("failed validation : {errs:#?}"));
+                return Err(TPEError::Validation(errs));
             }
             PolicyCheck::Irrelevant(errs, expr) => {
                 if errs.is_empty() {
                     exprs.push(expr);
                 } else {
-                    return Err(anyhow!("failed validation : {errs:#?}"));
+                    return Err(TPEError::Validation(errs));
                 }
             }
         }

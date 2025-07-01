@@ -18,16 +18,19 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
+use crate::ast::RequestSchema;
+use crate::validator::request_validation_errors::{
+    UndeclaredActionError, UndeclaredPrincipalTypeError, UndeclaredResourceTypeError,
+};
 use crate::validator::{
-    types::RequestEnv, CoreSchema, RequestValidationError, ValidationMode, ValidatorEntityType,
+    types::RequestEnv, RequestValidationError, ValidationMode, ValidatorEntityType,
     ValidatorEntityTypeKind, ValidatorSchema,
 };
 use crate::{
-    ast::{Context, Eid, EntityType, EntityUID, PartialValue, Request, Value},
-    entities::conformance::{is_valid_enumerated_entity, validate_euids_in_partial_value},
+    ast::{Context, Eid, EntityType, EntityUID, Request, Value},
+    entities::conformance::is_valid_enumerated_entity,
     extensions::Extensions,
 };
-use anyhow::{anyhow, Ok};
 use smol_str::SmolStr;
 
 /// Partial EntityUID
@@ -126,15 +129,13 @@ impl PartialRequest {
     }
 
     // Validate `self` with `schema`
-    pub(crate) fn validate(&self, schema: &ValidatorSchema) -> anyhow::Result<()> {
-        let core_schema = CoreSchema::new(schema);
+    pub(crate) fn validate(
+        &self,
+        schema: &ValidatorSchema,
+    ) -> std::result::Result<(), RequestValidationError> {
         if let Some(action_id) = schema.get_action_id(&self.action) {
-            if !action_id.is_applicable_principal_type(&self.principal.ty) {
-                return Err(anyhow::anyhow!("principal type not applicable"));
-            }
-            if !action_id.is_applicable_resource_type(&self.resource.ty) {
-                return Err(anyhow::anyhow!("resource type not applicable"));
-            }
+            action_id.check_principal_type(&self.principal.ty, &self.action.clone().into())?;
+            action_id.check_resource_type(&self.resource.ty, &self.action.clone().into())?;
             if let Some(principal_ty) = schema.get_entity_type(&self.principal.ty) {
                 if let std::result::Result::Ok(uid) = self.principal.clone().try_into() {
                     if let ValidatorEntityType {
@@ -149,7 +150,10 @@ impl PartialRequest {
                     }
                 }
             } else {
-                return Err(anyhow::anyhow!("principal type not found"));
+                return Err(UndeclaredPrincipalTypeError {
+                    principal_ty: self.principal.ty.clone(),
+                }
+                .into());
             }
             if let Some(resource_ty) = schema.get_entity_type(&self.resource.ty) {
                 if let std::result::Result::Ok(uid) = self.resource.clone().try_into() {
@@ -165,22 +169,24 @@ impl PartialRequest {
                     }
                 }
             } else {
-                return Err(anyhow::anyhow!("resource type not found"));
+                return Err(UndeclaredResourceTypeError {
+                    resource_ty: self.resource.ty.clone(),
+                }
+                .into());
             }
             if let Some(m) = &self.context {
-                let ctx = PartialValue::Value(Value::record_arc(m.clone(), None));
-                validate_euids_in_partial_value(&core_schema, &ctx)?;
-                let expected_context_ty = action_id.context_type();
-                if !expected_context_ty
-                    .typecheck_partial_value(&ctx, Extensions::all_available())
-                    .map_err(RequestValidationError::TypeOfContext)?
-                {
-                    return Err(anyhow!("invalid context value type"));
-                }
+                schema.validate_context(
+                    &Context::Value(m.clone()),
+                    &self.action,
+                    Extensions::all_available(),
+                )?;
             }
             Ok(())
         } else {
-            Err(anyhow::anyhow!("action not found"))
+            Err(UndeclaredActionError {
+                action: self.action.clone().into(),
+            }
+            .into())
         }
     }
 }
@@ -197,6 +203,7 @@ pub struct RequestBuilder<'e> {
     pub env: RequestEnv<'e>,
 }
 
+use anyhow::anyhow;
 impl RequestBuilder<'_> {
     /// Try to get a concrete `Request`
     pub fn get_request(&self) -> Option<Request> {
