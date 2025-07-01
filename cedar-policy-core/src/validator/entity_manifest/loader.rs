@@ -53,22 +53,6 @@ pub(crate) struct EntityRequest {
 /// the entity is not present.
 pub(crate) type EntityAnswer = Option<Entity>;
 
-/// The entity request before sub-entitity tries have been
-/// pruned using `prune_child_entity_dereferences`.
-pub(crate) struct EntityRequestRef<'a> {
-    entity_id: EntityUID,
-    access_trie: &'a AccessPaths,
-}
-
-impl EntityRequestRef<'_> {
-    fn to_request(&self) -> EntityRequest {
-        EntityRequest {
-            entity_id: self.entity_id.clone(),
-            access_trie: self.access_trie.prune_child_entity_dereferences(),
-        }
-    }
-}
-
 /// A request that the ancestors of an entity be loaded.
 /// Optionally, the `ancestors` set may be used to just load ancestors in the set.
 #[derive(Debug)]
@@ -97,6 +81,7 @@ pub(crate) trait EntityLoader {
     fn load_entities(
         &mut self,
         to_load: &[EntityRequest],
+        store: AccessDag,
     ) -> Result<Vec<EntityAnswer>, EntitySliceError>;
 
     /// Optionally, `load_entities` can forgo loading ancestors in the entity hierarchy.
@@ -163,7 +148,7 @@ pub(crate) fn load_entities(
     request: &Request,
     loader: &mut dyn EntityLoader,
 ) -> Result<Entities, EntitySliceError> {
-    let Some(root_access_trie) = manifest
+    let Some(access_paths) = manifest
         .per_action
         .get(&request.to_request_type().ok_or(PartialRequestError {})?)
     else {
@@ -177,6 +162,12 @@ pub(crate) fn load_entities(
             Err(err) => return Err(err.into()),
         };
     };
+
+    let mut reachable_access_paths = AccessPaths();
+    for path in access_paths {
+        reachable_access_paths.extend(path.subpaths());
+    }
+
 
     let context = request.context().ok_or(PartialRequestError {})?;
 
@@ -378,222 +369,5 @@ fn merge_values(v1: Value, v2: Value) -> Value {
         _ => {
             panic!("attempting to merge values of different kinds!")
         }
-    }
-}
-
-/// Given a context value and an access trie, find all of the remaining
-/// entities in the context.
-/// Also keep track of required ancestors when encountering the `is_ancestor` flag.
-fn find_remaining_entities_context<'a>(
-    context_value: &Arc<BTreeMap<SmolStr, Value>>,
-    fields: &'a AccessTrie,
-    required_ancestors: &mut HashSet<EntityUID>,
-) -> Result<Vec<EntityRequestRef<'a>>, EntitySliceError> {
-    let mut remaining = vec![];
-    for (field, slice) in &fields.children {
-        if let Some(value) = context_value.get(field) {
-            find_remaining_entities_value(&mut remaining, value, slice, required_ancestors)?;
-        }
-        // the attribute may not be present, since the schema can define
-        // attributes that are optional
-    }
-    Ok(remaining)
-}
-
-/// This helper function finds all entity references that need to be
-/// loaded given an already-loaded [`Entity`] and corresponding [`Fields`].
-/// Returns pairs of entity and slices that need to be loaded.
-/// Also, any sets marked `is_ancestor` are added to the `required_ancestors` set.
-fn find_remaining_entities<'a>(
-    entity: &Entity,
-    fields: &'a AccessTrie,
-    required_ancestors: &mut HashSet<EntityUID>,
-) -> Result<Vec<EntityRequestRef<'a>>, EntitySliceError> {
-    let mut remaining = vec![];
-    for (field, slice) in &fields.children {
-        if let Some(pvalue) = entity.get(field) {
-            let PartialValue::Value(value) = pvalue else {
-                return Err(PartialEntityError {}.into());
-            };
-            find_remaining_entities_value(&mut remaining, value, slice, required_ancestors)?;
-        }
-        // the attribute may not be present, since the schema can define
-        // attributes that are optional
-    }
-
-    Ok(remaining)
-}
-
-/// Like `find_remaining_entities`, but for values.
-/// Any sets that are marked `is_ancestor` are added to the `required_ancestors` set.
-fn find_remaining_entities_value<'a>(
-    remaining: &mut Vec<EntityRequestRef<'a>>,
-    value: &Value,
-    trie: &'a AccessTrie,
-    required_ancestors: &mut HashSet<EntityUID>,
-) -> Result<(), EntitySliceError> {
-    // unless this is an entity id, ancestors should not be required
-    assert!(
-        trie.ancestors_trie == Default::default()
-            || matches!(value.value_kind(), ValueKind::Lit(Literal::EntityUID(_)))
-    );
-
-    // unless this is an entity id or set, it should not be an
-    // ancestor
-    assert!(
-        !trie.is_ancestor
-            || matches!(
-                value.value_kind(),
-                ValueKind::Lit(Literal::EntityUID(_)) | ValueKind::Set(_)
-            )
-    );
-
-    match value.value_kind() {
-        ValueKind::Lit(literal) => {
-            if let Literal::EntityUID(entity_id) = literal {
-                // no need to add to ancestors set here because
-                // we are creating an entity request.
-
-                remaining.push(EntityRequestRef {
-                    entity_id: (**entity_id).clone(),
-                    access_trie: trie,
-                });
-            }
-        }
-        ValueKind::Set(set) => {
-            // when this is an ancestor, request all of the entities
-            // in this set
-            if trie.is_ancestor {
-                for val in set.iter() {
-                    match val.value_kind() {
-                        ValueKind::Lit(Literal::EntityUID(id)) => {
-                            required_ancestors.insert((**id).clone());
-                        }
-                        // PANIC SAFETY: see assert above- ancestor annotation is only valid on sets of entities or entities
-                        #[allow(clippy::panic)]
-                        _ => {
-                            panic!(
-                                "Found is_ancestor on set of non-entity-type {}",
-                                val.value_kind()
-                            );
-                        }
-                    }
-                }
-            }
-        }
-        ValueKind::ExtensionValue(_) => (),
-        ValueKind::Record(record) => {
-            for (field, child_slice) in &trie.children {
-                // only need to slice if field is present
-                if let Some(value) = record.get(field) {
-                    find_remaining_entities_value(
-                        remaining,
-                        value,
-                        child_slice,
-                        required_ancestors,
-                    )?;
-                }
-            }
-        }
-    };
-    Ok(())
-}
-
-/// Traverse the already-loaded entities using the ancestors trie
-/// to find the entity ids that are required.
-fn compute_ancestors_request(
-    entity_id: EntityUID,
-    ancestors_trie: &AccessDag,
-    entities: &HashMap<EntityUID, Entity>,
-    context: &Context,
-    request: &Request,
-) -> Result<AncestorsRequest, EntitySliceError> {
-    // similar to load_entities, we traverse the access trie
-    // this time using the already-loaded entities and looking for
-    // is_ancestor tags.
-    let mut ancestors = HashSet::new();
-
-    let mut to_visit = initial_entities_to_load(ancestors_trie, context, request, &mut ancestors)?;
-
-    while !to_visit.is_empty() {
-        let mut next_to_visit = vec![];
-        for entity_request in to_visit {
-            // check the is_ancestor flag for entities
-            // the is_ancestor flag on sets of entities is handled by find_remaining_entities
-            if entity_request.access_trie.is_ancestor {
-                ancestors.insert(entity_request.entity_id.clone());
-            }
-
-            if let Some(entity) = entities.get(&entity_request.entity_id) {
-                next_to_visit.extend(find_remaining_entities(
-                    entity,
-                    entity_request.access_trie,
-                    &mut ancestors,
-                )?);
-            }
-        }
-        to_visit = next_to_visit;
-    }
-
-    Ok(AncestorsRequest {
-        entity_id,
-        ancestors,
-    })
-}
-
-#[cfg(test)]
-mod test {
-    use crate::ast::Value;
-    use smol_str::ToSmolStr;
-
-    use super::merge_values;
-
-    #[test]
-    fn test_merge_values() {
-        assert_eq!(
-            merge_values(Value::new(1, None), Value::new(1, None)),
-            Value::new(1, None),
-        );
-        assert_eq!(
-            merge_values(
-                Value::set([Value::new(1, None), Value::new(2, None)], None),
-                Value::set([Value::new(1, None), Value::new(2, None)], None),
-            ),
-            Value::set([Value::new(1, None), Value::new(2, None)], None),
-        );
-        assert_eq!(
-            merge_values(
-                Value::record([("a".to_smolstr(), Value::new(1, None))], None),
-                Value::record([("a".to_smolstr(), Value::new(1, None))], None),
-            ),
-            Value::record([("a".to_smolstr(), Value::new(1, None))], None),
-        );
-        assert_eq!(
-            merge_values(
-                Value::empty_record(None),
-                Value::record([("a".to_smolstr(), Value::new(1, None))], None),
-            ),
-            Value::record([("a".to_smolstr(), Value::new(1, None))], None),
-        );
-        assert_eq!(
-            merge_values(
-                Value::record([("a".to_smolstr(), Value::new(1, None))], None),
-                Value::empty_record(None),
-            ),
-            Value::record([("a".to_smolstr(), Value::new(1, None))], None),
-        );
-        assert_eq!(
-            merge_values(
-                Value::record([("a".to_smolstr(), Value::new(1, None))], None),
-                Value::record([("b".to_smolstr(), Value::new(2, None))], None),
-            ),
-            Value::record(
-                [
-                    ("a".to_smolstr(), Value::new(1, None)),
-                    ("b".to_smolstr(), Value::new(2, None))
-                ],
-                None
-            ),
-        );
     }
 }
