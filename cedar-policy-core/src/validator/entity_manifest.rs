@@ -311,6 +311,9 @@ pub enum MismatchedEntityManifestError {
     /// Found a schema that isn't valid in strict mode
     #[error(transparent)]
     MismatchedNotStrictSchema(#[from] MismatchedNotStrictSchemaError),
+    /// Used wrong entity manifest
+    #[error(transparent)]
+    AccessPathNotFoundError(#[from] AccessPathNotFoundError),
 }
 
 /// An error generated when parsing entity manifests from json
