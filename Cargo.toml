@@ -7,7 +7,6 @@ members = [
 	"cedar-testing",
 	"cedar-wasm",
 	"cedar-language-server",
-	"cedar-partial-evaluation",
 ]
 
 resolver = "2"

@@ -1,17 +1,36 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+//! This module contains the type-aware partial evaluator.
+
 use std::{collections::BTreeMap, sync::Arc};
 
-use cedar_policy_core::validator::types::Type;
-use cedar_policy_core::{
+use crate::validator::types::Type;
+use crate::{
     ast::{self, BinaryOp, EntityUID, Expr, ExprKind, PartialValue, Set, Value, ValueKind, Var},
     extensions::Extensions,
 };
 
 use crate::{
-    entities::PartialEntities,
-    request::PartialRequest,
-    residual::{Residual, ResidualKind},
+    tpe::entities::PartialEntities,
+    tpe::request::PartialRequest,
+    tpe::residual::{Residual, ResidualKind},
 };
 
+/// The partial evaluator
 #[derive(Debug)]
 pub struct Evaluator<'e> {
     pub(crate) request: PartialRequest,
@@ -20,6 +39,9 @@ pub struct Evaluator<'e> {
 }
 
 impl Evaluator<'_> {
+    /// Interpret a typed expression into a residual
+    /// This function always succeeds because it wraps an error encountered
+    /// into a `ResidualKind::Error`
     pub fn interpret(&self, e: &Expr<Option<Type>>) -> Residual {
         // PANIC SAFETY: the validator should produce expressions with types
         #[allow(clippy::expect_used)]
@@ -255,24 +277,18 @@ impl Evaluator<'_> {
                         Residual::Concrete { value: v2, .. },
                     ) => match op {
                         BinaryOp::Eq | BinaryOp::Less | BinaryOp::LessEq => {
-                            if let Ok(v) = cedar_policy_core::evaluator::binary_relation(
-                                *op,
-                                v1,
-                                v2,
-                                self.extensions,
-                            ) {
+                            if let Ok(v) =
+                                crate::evaluator::binary_relation(*op, v1, v2, self.extensions)
+                            {
                                 Residual::Concrete { value: v, ty }
                             } else {
                                 Residual::Error(ty)
                             }
                         }
                         BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
-                            if let Ok(v) = cedar_policy_core::evaluator::binary_arith(
-                                *op,
-                                v1.clone(),
-                                v2.clone(),
-                                None,
-                            ) {
+                            if let Ok(v) =
+                                crate::evaluator::binary_arith(*op, v1.clone(), v2.clone(), None)
+                            {
                                 Residual::Concrete { value: v, ty }
                             } else {
                                 Residual::Error(ty)
@@ -601,14 +617,13 @@ impl Evaluator<'_> {
             // PANIC SAFETY: TPE currently only works on static policies
             #[allow(clippy::unreachable)]
             ExprKind::Slot(_) => unreachable!("we should not unexpect slot for now"),
+            #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => Residual::Error(ty),
             ExprKind::UnaryApp { op, arg } => {
                 let arg = self.interpret(arg);
                 match &arg {
                     Residual::Concrete { value, .. } => {
-                        if let Ok(v) =
-                            cedar_policy_core::evaluator::unary_app(*op, value.clone(), None)
-                        {
+                        if let Ok(v) = crate::evaluator::unary_app(*op, value.clone(), None) {
                             Residual::Concrete { value: v, ty }
                         } else {
                             Residual::Error(ty)
@@ -692,8 +707,8 @@ mod tests {
         i64,
     };
 
-    use cedar_policy_core::validator::{types::Type, ValidatorSchema};
-    use cedar_policy_core::{
+    use crate::validator::{types::Type, ValidatorSchema};
+    use crate::{
         ast::{
             BinaryOp, EntityUID, ExprBuilder, Literal, Pattern, PatternElem, UnaryOp, Value,
             ValueKind, Var,
@@ -705,9 +720,9 @@ mod tests {
     use cool_asserts::assert_matches;
 
     use crate::{
-        entities::{PartialEntities, PartialEntity},
-        request::{PartialEntityUID, PartialRequest},
-        residual::{Residual, ResidualKind},
+        tpe::entities::{PartialEntities, PartialEntity},
+        tpe::request::{PartialEntityUID, PartialRequest},
+        tpe::residual::{Residual, ResidualKind},
     };
 
     use super::Evaluator;

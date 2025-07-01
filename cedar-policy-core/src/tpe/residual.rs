@@ -1,16 +1,48 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+//! This module contains the residual.
+
 use std::{collections::BTreeMap, sync::Arc};
 
-use cedar_policy_core::validator::types::Type;
-use cedar_policy_core::{
+use crate::validator::types::Type;
+use crate::{
     ast::{self, BinaryOp, EntityType, Expr, Name, Pattern, UnaryOp, Value, Var},
     expr_builder::ExprBuilder,
 };
 use smol_str::SmolStr;
 
+/// The residual produced by TPE
 #[derive(Debug, Clone)]
 pub enum Residual {
-    Partial { kind: ResidualKind, ty: Type },
-    Concrete { value: Value, ty: Type },
+    /// TPE produces a partial expression
+    Partial {
+        /// The kind of partial expression
+        kind: ResidualKind,
+        /// Type of the partial expression
+        ty: Type,
+    },
+    /// TPE produces a concrete value
+    Concrete {
+        /// The concrete value
+        value: Value,
+        /// Type of the value
+        ty: Type,
+    },
+    /// TPE errors
     Error(Type),
 }
 
@@ -24,10 +56,12 @@ impl TryFrom<Residual> for Value {
     }
 }
 
+/// The kind of partial expression
 #[derive(Debug, Clone)]
 pub enum ResidualKind {
     /// Variable
     Var(Var),
+    /// If-then-else expression
     If {
         /// Condition for the ternary expression. Must evaluate to Bool type
         test_expr: Arc<Residual>,

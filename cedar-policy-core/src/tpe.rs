@@ -1,11 +1,34 @@
-use anyhow::anyhow;
-use cedar_policy_core::validator::{
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+//! This module contains the type-aware partial evaluator.
+
+pub mod entities;
+pub mod evaluator;
+pub mod request;
+pub mod residual;
+
+use crate::validator::{
     typecheck::{PolicyCheck, Typechecker},
     ValidatorSchema,
 };
-use cedar_policy_core::{ast::PolicySet, extensions::Extensions};
+use crate::{ast::PolicySet, extensions::Extensions};
+use anyhow::anyhow;
 
-use crate::{
+use crate::tpe::{
     entities::PartialEntities, evaluator::Evaluator, request::PartialRequest, residual::Residual,
 };
 
@@ -22,7 +45,7 @@ pub fn tpe_policies(
     let env = request
         .find_request_env(schema)
         .ok_or(anyhow!("can't find a matching request environment"))?;
-    let tc = Typechecker::new(schema, cedar_policy_core::validator::ValidationMode::Strict);
+    let tc = Typechecker::new(schema, crate::validator::ValidationMode::Strict);
     let mut exprs = Vec::new();
     for p in ps.policies() {
         if !p.is_static() {
@@ -55,8 +78,8 @@ pub fn tpe_policies(
 
 #[cfg(test)]
 mod tests {
-    use cedar_policy_core::validator::ValidatorSchema;
-    use cedar_policy_core::{
+    use crate::validator::ValidatorSchema;
+    use crate::{
         ast::{Eid, EntityUID, Expr, PolicySet},
         extensions::Extensions,
         parser::parse_policyset,
@@ -66,7 +89,7 @@ mod tests {
         sync::Arc,
     };
 
-    use crate::{
+    use crate::tpe::{
         entities::{PartialEntities, PartialEntity},
         request::{PartialEntityUID, PartialRequest},
         residual::Residual,
@@ -195,15 +218,15 @@ action Delete appliesTo {
 mod tinytodo {
     use std::{collections::BTreeMap, sync::Arc};
 
-    use cedar_policy_core::validator::ValidatorSchema;
-    use cedar_policy_core::{
+    use crate::validator::ValidatorSchema;
+    use crate::{
         ast::{Eid, Expr, PolicySet},
         extensions::Extensions,
         parser::parse_policyset,
     };
     use serde_json::json;
 
-    use crate::{
+    use crate::tpe::{
         entities::PartialEntities,
         request::{PartialEntityUID, PartialRequest},
         residual::Residual,

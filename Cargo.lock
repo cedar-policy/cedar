@@ -322,19 +322,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cedar-partial-evaluation"
-version = "4.5.0"
-dependencies = [
- "anyhow",
- "cedar-policy-core",
- "cool_asserts",
- "serde",
- "serde_json",
- "serde_with",
- "smol_str",
-]
-
-[[package]]
 name = "cedar-policy"
 version = "4.5.0"
 dependencies = [
@@ -390,6 +377,7 @@ dependencies = [
 name = "cedar-policy-core"
 version = "4.5.0"
 dependencies = [
+ "anyhow",
  "arbitrary",
  "chrono",
  "cool_asserts",

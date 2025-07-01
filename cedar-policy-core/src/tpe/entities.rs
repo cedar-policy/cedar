@@ -14,15 +14,16 @@
  * limitations under the License.
  */
 
+//! This module contains partial entities.
+
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use anyhow::{anyhow, Ok};
-use cedar_policy_core::validator::{CoreSchema, ValidatorSchema};
-use cedar_policy_core::{
+use crate::validator::{CoreSchema, ValidatorSchema};
+use crate::{
     ast::PartialValue,
     entities::{conformance::EntitySchemaConformanceChecker, Schema},
 };
-use cedar_policy_core::{
+use crate::{
     ast::{EntityUID, Value},
     entities::{
         json::{err::JsonDeserializationErrorContext, ValueParser},
@@ -32,13 +33,14 @@ use cedar_policy_core::{
     extensions::Extensions,
     jsonvalue::JsonValueWithNoDuplicateKeys,
 };
-use cedar_policy_core::{
+use crate::{
     entities::{
         conformance::{err::UnexpectedEntityTypeError, validate_euid},
         EntityTypeDescription,
     },
     transitive_closure::{compute_tc, TCNode},
 };
+use anyhow::{anyhow, Ok};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
@@ -46,7 +48,7 @@ use smol_str::SmolStr;
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde_as]
 #[serde(transparent)]
-pub struct DeduplicatedMap {
+struct DeduplicatedMap {
     #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
     pub map: HashMap<SmolStr, JsonValueWithNoDuplicateKeys>,
 }
@@ -76,14 +78,20 @@ pub struct EntityJson {
     tags: Option<DeduplicatedMap>,
 }
 
+/// The partial entity
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PartialEntity {
+    /// The uid of the partial entity
     pub uid: EntityUID,
+    /// Optional attributes
     pub attrs: Option<BTreeMap<SmolStr, Value>>,
+    /// Optional ancestors
     pub ancestors: Option<HashSet<EntityUID>>,
+    /// Optional tags
     pub tags: Option<BTreeMap<SmolStr, Value>>,
 }
 
+/// Parse an [`EntityJson`] into a [`PartialEntity`] according to `schema`
 pub fn parse_ejson(e: EntityJson, schema: &ValidatorSchema) -> anyhow::Result<PartialEntity> {
     let uid = e
         .uid
@@ -333,6 +341,7 @@ pub(crate) fn validate_parents(entities: &HashMap<EntityUID, PartialEntity>) -> 
     Ok(())
 }
 
+/// The partial entity store
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PartialEntities {
     /// Important internal invariant: for any `Entities` object that exists,
@@ -401,8 +410,8 @@ impl PartialEntities {
 mod tests {
     use std::collections::{BTreeMap, HashMap, HashSet};
 
-    use cedar_policy_core::validator::ValidatorSchema;
-    use cedar_policy_core::{
+    use crate::validator::ValidatorSchema;
+    use crate::{
         ast::{EntityUID, Value},
         extensions::Extensions,
     };
