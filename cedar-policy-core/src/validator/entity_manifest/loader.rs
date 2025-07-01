@@ -46,7 +46,7 @@ pub(crate) struct EntityRequest {
     pub(crate) entity_id: EntityUID,
     /// The fields of the entity requested, a set of paths
     /// each with root `entity_id`.
-    pub(crate) access_trie: AccessPaths,
+    pub(crate) access_paths: AccessPaths,
 }
 
 /// An entity request may be an entity or `None` when
@@ -96,50 +96,50 @@ pub(crate) trait EntityLoader {
     ) -> Result<Vec<HashSet<EntityUID>>, EntitySliceError>;
 }
 
-fn initial_entities_to_load<'a>(
-    root_access_trie: &'a AccessDag,
-    context: &Context,
-    request: &Request,
-    required_ancestors: &mut HashSet<EntityUID>,
-) -> Result<Vec<EntityRequestRef<'a>>, EntitySliceError> {
-    let Context::Value(context_value) = &context else {
-        return Err(PartialContextError {}.into());
-    };
+// fn initial_entities_to_load<'a>(
+//     root_access_trie: &'a AccessDag,
+//     context: &Context,
+//     request: &Request,
+//     required_ancestors: &mut HashSet<EntityUID>,
+// ) -> Result<Vec<EntityRequestRef<'a>>, EntitySliceError> {
+//     let Context::Value(context_value) = &context else {
+//         return Err(PartialContextError {}.into());
+//     };
 
-    let mut to_load = match root_access_trie.trie.get(&EntityRoot::Var(Var::Context)) {
-        Some(access_trie) => {
-            find_remaining_entities_context(context_value, access_trie, required_ancestors)?
-        }
-        _ => vec![],
-    };
+//     let mut to_load = match root_access_trie.trie.get(&EntityRoot::Var(Var::Context)) {
+//         Some(access_trie) => {
+//             find_remaining_entities_context(context_value, access_trie, required_ancestors)?
+//         }
+//         _ => vec![],
+//     };
 
-    for (key, access_trie) in &root_access_trie.trie {
-        to_load.push(EntityRequestRef {
-            entity_id: match key {
-                EntityRoot::Var(Var::Principal) => request
-                    .principal()
-                    .uid()
-                    .ok_or(PartialRequestError {})?
-                    .clone(),
-                EntityRoot::Var(Var::Action) => request
-                    .action()
-                    .uid()
-                    .ok_or(PartialRequestError {})?
-                    .clone(),
-                EntityRoot::Var(Var::Resource) => request
-                    .resource()
-                    .uid()
-                    .ok_or(PartialRequestError {})?
-                    .clone(),
-                EntityRoot::Literal(lit) => lit.clone(),
-                EntityRoot::Var(Var::Context) => continue,
-            },
-            access_trie,
-        });
-    }
+//     for (key, access_trie) in &root_access_trie.trie {
+//         to_load.push(EntityRequestRef {
+//             entity_id: match key {
+//                 EntityRoot::Var(Var::Principal) => request
+//                     .principal()
+//                     .uid()
+//                     .ok_or(PartialRequestError {})?
+//                     .clone(),
+//                 EntityRoot::Var(Var::Action) => request
+//                     .action()
+//                     .uid()
+//                     .ok_or(PartialRequestError {})?
+//                     .clone(),
+//                 EntityRoot::Var(Var::Resource) => request
+//                     .resource()
+//                     .uid()
+//                     .ok_or(PartialRequestError {})?
+//                     .clone(),
+//                 EntityRoot::Literal(lit) => lit.clone(),
+//                 EntityRoot::Var(Var::Context) => continue,
+//             },
+//             access_trie,
+//         });
+//     }
 
-    Ok(to_load)
-}
+//     Ok(to_load)
+// }
 
 /// Loads entities based on the entity manifest, request, and
 /// the implemented [`EntityLoader`].
@@ -163,105 +163,105 @@ pub(crate) fn load_entities(
         };
     };
 
-    let mut reachable_access_paths = AccessPaths();
-    for path in access_paths {
-        reachable_access_paths.extend(path.subpaths());
+    let mut reachable_access_paths = AccessPaths::default();
+    for path in access_paths.paths() {
+        reachable_access_paths.extend(path.subpaths(manifest.store));
     }
-
 
     let context = request.context().ok_or(PartialRequestError {})?;
 
     let mut entities: HashMap<EntityUID, Entity> = Default::default();
+    todo!()
     // entity requests in progress
-    let mut to_load: Vec<EntityRequestRef<'_>> =
-        initial_entities_to_load(root_access_trie, context, request, &mut Default::default())?;
-    // later, find the ancestors of these entities using their ancestor tries
-    let mut to_find_ancestors = vec![];
+    // let mut to_load: Vec<EntityRequestRef<'_>> =
+    //     initial_entities_to_load(root_access_trie, context, request, &mut Default::default())?;
+    // // later, find the ancestors of these entities using their ancestor tries
+    // let mut to_find_ancestors = vec![];
 
-    // Main loop of loading entities, one batch at a time
-    while !to_load.is_empty() {
-        // first, record the entities in `to_find_ancestors`
-        for entity_request in &to_load {
-            to_find_ancestors.push((
-                entity_request.entity_id.clone(),
-                &entity_request.access_trie.ancestors_trie,
-            ));
-        }
+    // // Main loop of loading entities, one batch at a time
+    // while !to_load.is_empty() {
+    //     // first, record the entities in `to_find_ancestors`
+    //     for entity_request in &to_load {
+    //         to_find_ancestors.push((
+    //             entity_request.entity_id.clone(),
+    //             &entity_request.access_trie.ancestors_trie,
+    //         ));
+    //     }
 
-        let new_entities = loader.load_entities(
-            &to_load
-                .iter()
-                .map(|entity_ref| entity_ref.to_request())
-                .collect::<Vec<_>>(),
-        )?;
-        if new_entities.len() != to_load.len() {
-            return Err(WrongNumberOfEntitiesError {
-                expected: to_load.len(),
-                got: new_entities.len(),
-            }
-            .into());
-        }
+    //     let new_entities = loader.load_entities(
+    //         &to_load
+    //             .iter()
+    //             .map(|entity_ref| entity_ref.to_request())
+    //             .collect::<Vec<_>>(),
+    //     )?;
+    //     if new_entities.len() != to_load.len() {
+    //         return Err(WrongNumberOfEntitiesError {
+    //             expected: to_load.len(),
+    //             got: new_entities.len(),
+    //         }
+    //         .into());
+    //     }
 
-        let mut next_to_load = vec![];
-        for (entity_request, loaded_maybe) in to_load.into_iter().zip(new_entities) {
-            if let Some(loaded) = loaded_maybe {
-                next_to_load.extend(find_remaining_entities(
-                    &loaded,
-                    entity_request.access_trie,
-                    &mut Default::default(),
-                )?);
-                match entities.entry(entity_request.entity_id) {
-                    hash_map::Entry::Occupied(o) => {
-                        // If the entity is already present in the slice, then
-                        // we need to be careful not to clobber its existing
-                        // attributes.  This can happen when an entity is
-                        // referenced by both an entity literal and a variable.
-                        let (k, v) = o.remove_entry();
-                        let merged = merge_entities(v, loaded);
-                        entities.insert(k, merged);
-                    }
-                    hash_map::Entry::Vacant(v) => {
-                        v.insert(loaded);
-                    }
-                }
-            }
-        }
+    //     let mut next_to_load = vec![];
+    //     for (entity_request, loaded_maybe) in to_load.into_iter().zip(new_entities) {
+    //         if let Some(loaded) = loaded_maybe {
+    //             next_to_load.extend(find_remaining_entities(
+    //                 &loaded,
+    //                 entity_request.access_trie,
+    //                 &mut Default::default(),
+    //             )?);
+    //             match entities.entry(entity_request.entity_id) {
+    //                 hash_map::Entry::Occupied(o) => {
+    //                     // If the entity is already present in the slice, then
+    //                     // we need to be careful not to clobber its existing
+    //                     // attributes.  This can happen when an entity is
+    //                     // referenced by both an entity literal and a variable.
+    //                     let (k, v) = o.remove_entry();
+    //                     let merged = merge_entities(v, loaded);
+    //                     entities.insert(k, merged);
+    //                 }
+    //                 hash_map::Entry::Vacant(v) => {
+    //                     v.insert(loaded);
+    //                 }
+    //             }
+    //         }
+    //     }
 
-        to_load = next_to_load;
-    }
+    //     to_load = next_to_load;
+    // }
 
-    // now that all the entities are loaded
-    // we need to load their ancestors
-    let mut ancestors_requests = vec![];
-    for (entity_id, ancestors_trie) in to_find_ancestors {
-        ancestors_requests.push(compute_ancestors_request(
-            entity_id,
-            ancestors_trie,
-            &entities,
-            context,
-            request,
-        )?);
-    }
+    // // now that all the entities are loaded
+    // // we need to load their ancestors
+    // let mut ancestors_requests = vec![];
+    // for (entity_id, ancestors_trie) in to_find_ancestors {
+    //     ancestors_requests.push(compute_ancestors_request(
+    //         entity_id,
+    //         ancestors_trie,
+    //         &entities,
+    //         context,
+    //         request,
+    //     )?);
+    // }
 
-    let loaded_ancestors = loader.load_ancestors(&ancestors_requests)?;
-    for (request, ancestors) in ancestors_requests.into_iter().zip(loaded_ancestors) {
-        if let Some(entity) = entities.get_mut(&request.entity_id) {
-            ancestors
-                .into_iter()
-                .for_each(|ancestor| entity.add_parent(ancestor));
-        }
-    }
+    // let loaded_ancestors = loader.load_ancestors(&ancestors_requests)?;
+    // for (request, ancestors) in ancestors_requests.into_iter().zip(loaded_ancestors) {
+    //     if let Some(entity) = entities.get_mut(&request.entity_id) {
+    //         ancestors
+    //             .into_iter()
+    //             .for_each(|ancestor| entity.add_parent(ancestor));
+    //     }
+    // }
 
-    // finally, convert the loaded entities into a Cedar Entities store
-    match Entities::from_entities(
-        entities.into_values(),
-        None::<&NoEntitiesSchema>,
-        TCComputation::AssumeAlreadyComputed,
-        Extensions::all_available(),
-    ) {
-        Ok(entities) => Ok(entities),
-        Err(e) => Err(e.into()),
-    }
+    // // finally, convert the loaded entities into a Cedar Entities store
+    // match Entities::from_entities(
+    //     entities.into_values(),
+    //     None::<&NoEntitiesSchema>,
+    //     TCComputation::AssumeAlreadyComputed,
+    //     Extensions::all_available(),
+    // ) {
+    //     Ok(entities) => Ok(entities),
+    //     Err(e) => Err(e.into()),
+    // }
 }
 
 /// Merge the contents of two entities in the slice. Combines the attributes
