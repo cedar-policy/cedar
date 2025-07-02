@@ -28,7 +28,7 @@ use crate::{
     ast::{Entity, EntityUID, PartialValue, Request, Value, ValueKind, Var},
     entities::{Entities, NoEntitiesSchema, TCComputation},
     extensions::Extensions,
-    validator::entity_manifest::{AccessPath, AccessPathVariant, AccessPaths},
+    validator::entity_manifest::{AccessPath, AccessPathVariant, AccessPaths, PathsForRequestType},
 };
 
 use crate::validator::entity_manifest::{
@@ -48,15 +48,32 @@ pub(crate) struct EntityRequest {
     /// The requested tags for the entity
     pub(crate) tags: HashSet<String>,
     /// A trie containing the access paths needed for this entity
-    pub(crate) access_paths: AccessTrie,
+    pub(crate) access_trie: AccessTrie,
 }
 
 /// A trie containing what attributes of an entity or record
 /// are requested.
 /// Children [`AccessTrie`] describe what fields of child records are requested.
-#[derive(Debug)]
+/// These don't recur into other entities.
+#[derive(Debug, Clone)]
 pub(crate) struct AccessTrie {
     fields: HashMap<SmolStr, Box<AccessTrie>>,
+}
+
+impl AccessTrie {
+    /// Creates a new empty AccessTrie
+    pub(crate) fn new() -> Self {
+        Self {
+            fields: HashMap::new(),
+        }
+    }
+
+    /// Gets or creates a field in this AccessTrie
+    pub(crate) fn get_or_create_field(&mut self, field: &SmolStr) -> &mut Box<AccessTrie> {
+        self.fields
+            .entry(field.clone())
+            .or_insert_with(|| Box::new(AccessTrie::new()))
+    }
 }
 
 /// An entity request may be an entity or `None` when
@@ -104,6 +121,216 @@ pub(crate) trait EntityLoader {
         &mut self,
         entities: &[AncestorsRequest],
     ) -> Result<Vec<HashSet<EntityUID>>, EntitySliceError>;
+}
+
+impl PathsForRequestType {
+    /// Build a hashmap of parent paths for all reachable paths
+    fn build_parents_map(
+        &self,
+        reachable_paths: &HashSet<AccessPath>,
+    ) -> HashMap<AccessPath, Vec<AccessPath>> {
+        let mut parents_map = HashMap::new();
+
+        // Initialize the map with empty vectors for all paths
+        for path in reachable_paths {
+            parents_map.insert(path.clone(), Vec::new());
+        }
+
+        // Populate the map with parent-child relationships
+        for path in reachable_paths {
+            // Get all children of this path
+            let children = path.children(&self.dag);
+
+            for child in children {
+                // Add this path as a parent of the child
+                if let Some(child_parents) = parents_map.get_mut(&child) {
+                    child_parents.push(path.clone());
+                }
+            }
+        }
+
+        parents_map
+    }
+
+    /// Helper function to get the manifest dependent entity paths of an access path
+    /// A manifest dependent entity for node A is a node B such that A ->* B points to B
+    /// with a path such that no intermediate nodes are entity typed
+    fn get_manifest_dependent_entities(
+        &self,
+        path: &AccessPath,
+        parents_map: &HashMap<AccessPath, Vec<AccessPath>>,
+    ) -> Vec<AccessPath> {
+        let mut result = Vec::new();
+        let mut visited = HashSet::new();
+        let mut queue = Vec::new();
+
+        // Start with the current path
+        queue.push(path.clone());
+        visited.insert(path.clone());
+
+        while let Some(current) = queue.pop() {
+            // Skip the starting node when checking if it's an entity
+            if &current != path && self.is_entity_path(&current) {
+                // Found an entity parent
+                result.push(current);
+                // Don't explore beyond this entity
+                continue;
+            }
+
+            // Get the parents of the current path
+            if let Some(parents) = parents_map.get(&current) {
+                for parent in parents {
+                    if !visited.contains(parent) {
+                        visited.insert(parent.clone());
+                        queue.push(parent.clone());
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
+    /// For each reachable [`AccessPath`] in the path with
+    /// an entity type, computes the [`AccessTrie`] needed
+    /// for that entity.
+    ///
+    /// This is a helper which computes the access tries needed during
+    /// entity loading with the [`EntityLoader`] API.
+    fn compute_access_tries(&self) -> HashMap<AccessPath, AccessTrie> {
+        // First, compute all reachable paths
+        let reachable_paths = self.reachable_paths();
+
+        // Build a parents map for efficient parent lookup
+        let parents_map = self.build_parents_map(&reachable_paths);
+
+        // Find all entity paths among the reachable paths
+        let entity_paths = self.get_entity_paths(&reachable_paths);
+
+        // Build the AccessTrie for each entity path
+        let mut result = HashMap::new();
+        for entity_path in entity_paths {
+            let trie =
+                self.build_access_trie_for_entity(&entity_path, &reachable_paths, &parents_map);
+            if !trie.fields.is_empty() {
+                result.insert(entity_path, trie);
+            }
+        }
+
+        result
+    }
+
+    /// Helper function to determine if a path has an entity type
+    fn is_entity_path(&self, path: &AccessPath) -> bool {
+        // Check if we have type information
+        if let Some(types) = &self.dag.types {
+            if path.id < types.len() {
+                // Check if the type is an entity type
+                use crate::validator::types::EntityRecordKind;
+                match &types[path.id] {
+                    crate::validator::types::Type::EntityOrRecord(kind) => {
+                        matches!(
+                            kind,
+                            EntityRecordKind::Entity(_) | EntityRecordKind::AnyEntity
+                        )
+                    }
+                    _ => false,
+                }
+            } else {
+                false
+            }
+        } else {
+            // Without type information, check if it's a root path (Literal or Var)
+            if let Ok(variant) = path.get_variant(&self.dag) {
+                matches!(
+                    variant,
+                    AccessPathVariant::Literal(_) | AccessPathVariant::Var(_)
+                )
+            } else {
+                false
+            }
+        }
+    }
+
+    /// Helper function to get all entity paths among the reachable paths
+    fn get_entity_paths(&self, reachable_paths: &HashSet<AccessPath>) -> HashSet<AccessPath> {
+        reachable_paths
+            .iter()
+            .filter(|path| self.is_entity_path(path))
+            .cloned()
+            .collect()
+    }
+
+    /// Recursively build the AccessTrie for an entity path
+    fn build_access_trie_for_entity(
+        &self,
+        entity_path: &AccessPath,
+        reachable_paths: &HashSet<AccessPath>,
+        parents_map: &HashMap<AccessPath, Vec<AccessPath>>,
+    ) -> AccessTrie {
+        let mut trie = AccessTrie::new();
+
+        // Get all direct children (attributes) of this entity path
+        for child in entity_path.children(&self.dag) {
+            // Get the attribute name if this is an attribute relationship
+            let attr = if let Ok(variant) = child.get_variant(&self.dag) {
+                if let AccessPathVariant::Attribute { attr, .. } = variant {
+                    attr.clone()
+                } else {
+                    continue; // Skip non-attribute relationships
+                }
+            } else {
+                continue; // Skip if we can't get the variant
+            };
+
+            // Use child as the child_path
+            let child_path = child;
+            // Skip if the child path is also an entity (don't recur into sub-entities)
+            if self.is_entity_path(&child_path) {
+                continue;
+            }
+
+            // Get the manifest dependent entities of this child path
+            let dependent_entities = self.get_manifest_dependent_entities(&child_path, parents_map);
+
+            // Skip if this child has other dependent entities besides the current entity
+            // This ensures we don't include fields that belong to other entities
+            if dependent_entities.iter().any(|p| p != entity_path) {
+                continue;
+            }
+
+            // Get or create the field in the trie
+            let field_trie = trie.get_or_create_field(&attr);
+
+            // Recursively build the trie for this field's children
+            let child_trie =
+                self.build_access_trie_for_entity(&child_path, reachable_paths, parents_map);
+
+            // Merge the child trie into the field trie
+            if !child_trie.fields.is_empty() {
+                *field_trie = Box::new(child_trie);
+            }
+        }
+
+        trie
+    }
+
+    /// Computes all reachable paths.
+    /// Currently inefficient in the presense of sharing between paths
+    /// because it uses the subpaths method.
+    fn reachable_paths(&self) -> HashSet<AccessPath> {
+        let mut result = HashSet::new();
+
+        // Iterate through all access paths in the PathsForRequestType
+        for path in &self.access_paths.paths {
+            // For each path, get all its subpaths (including itself)
+            // and add them to the result set
+            let subpaths = path.subpaths(&self.dag);
+            result.extend(subpaths.paths().clone());
+        }
+
+        result
+    }
 }
 
 // fn initial_entities_to_load<'a>(
@@ -158,10 +385,12 @@ pub(crate) fn load_entities(
     request: &Request,
     loader: &mut dyn EntityLoader,
 ) -> Result<Entities, EntitySliceError> {
+    // Get the PathsForRequestType for this request type
     let Some(for_request) = manifest
         .per_action
         .get(&request.to_request_type().ok_or(PartialRequestError {})?)
     else {
+        // If there's no entry for this request type, return empty entities
         match Entities::from_entities(
             vec![],
             None::<&NoEntitiesSchema>,
@@ -173,226 +402,230 @@ pub(crate) fn load_entities(
         };
     };
 
-    let mut reachable_access_paths = AccessPaths::default();
-    for path in for_request.access_paths.paths() {
-        reachable_access_paths.extend(path.subpaths(&for_request.dag));
-    }
+    // Compute the access tries for all entities
+    let access_tries = for_request.compute_access_tries();
 
-    let context = request.context().ok_or(PartialRequestError {})?;
+    // Build a map of entity paths to their dependent entities
+    let reachable_paths = for_request.reachable_paths();
+    let parents_map = for_request.build_parents_map(&reachable_paths);
 
-    let mut entities: HashMap<EntityUID, Entity> = Default::default();
+    // Create a map to track which entities we've already processed
+    let mut processed_entities = HashSet::new();
 
-    // Step 1: Identify all leaf nodes in the reachable_access_paths
-    // A leaf node is a path that doesn't appear as a parent in any other path
-    let mut leaf_paths = HashSet::new();
-    let mut parent_paths = HashSet::new();
+    // Create initial entity requests for entities that need to be loaded
+    let mut to_load = Vec::new();
+    let mut entities_map = HashMap::new();
+    let mut to_find_ancestors = Vec::new();
 
-    // First, collect all paths that are parents
-    for path in &reachable_access_paths.paths {
-        match path.get_variant(&for_request.dag) {
-            Ok(variant) => match variant {
-                AccessPathVariant::Attribute { of, .. } => {
-                    parent_paths.insert(of.clone());
-                }
-                AccessPathVariant::Tag { of, tag } => {
-                    parent_paths.insert(of.clone());
-                    parent_paths.insert(tag.clone());
-                }
-                AccessPathVariant::Ancestor { of, ancestor } => {
-                    parent_paths.insert(of.clone());
-                    parent_paths.insert(ancestor.clone());
-                }
-                _ => {}
-            },
-            Err(_) => continue, // Skip paths that can't be found in the DAG
-        }
-    }
-
-    // Then, identify leaf paths (paths that are not parents)
-    for path in &reachable_access_paths.paths {
-        if !parent_paths.contains(path) {
-            leaf_paths.insert(path.clone());
-        }
-    }
-
-    // Step 2: Process paths in layers, starting from leaf nodes and moving up
-    let mut processed_paths = HashSet::new();
-    let mut to_process = leaf_paths;
-    let mut entity_requests = Vec::new();
-    let mut entity_id_map: HashMap<AccessPath, EntityUID> = HashMap::new();
-
-    // Process each layer until no more paths are left to process
-    while !to_process.is_empty() {
-        let current_layer = to_process;
-        to_process = HashSet::new();
-        let mut next_layer_paths = HashSet::new();
-
-        // Group paths by entity ID for batch loading
-        let mut path_groups: HashMap<EntityUID, AccessPaths> = HashMap::new();
-
-        // Process current layer paths
-        for path in current_layer {
-            if processed_paths.contains(&path) {
-                continue;
-            }
-
-            processed_paths.insert(path.clone());
-
-            // Determine the entity ID for this path
-            let entity_id = match path.get_variant(&for_request.dag) {
-                Ok(variant) => match variant {
-                    AccessPathVariant::Literal(euid) => euid.clone(),
-                    AccessPathVariant::Var(var) => match var {
-                        Var::Principal => request
-                            .principal()
-                            .uid()
-                            .ok_or(PartialRequestError {})?
-                            .clone(),
-                        Var::Action => request
-                            .action()
-                            .uid()
-                            .ok_or(PartialRequestError {})?
-                            .clone(),
-                        Var::Resource => request
-                            .resource()
-                            .uid()
-                            .ok_or(PartialRequestError {})?
-                            .clone(),
-                        Var::Context => continue, // Context is handled separately
-                    },
-                    AccessPathVariant::Attribute { of, .. } => {
-                        // If we have the entity ID for the parent path, use it
-                        if let Some(parent_id) = entity_id_map.get(of) {
-                            // Add the parent path to the next layer if not processed
-                            if !processed_paths.contains(of) {
-                                next_layer_paths.insert(of.clone());
-                            }
-                            parent_id.clone()
-                        } else {
-                            // Otherwise, add the parent path to the next layer
-                            next_layer_paths.insert(of.clone());
-                            continue; // Skip this path for now
-                        }
-                    }
-                    AccessPathVariant::Tag { of, .. } => {
-                        // Similar to attribute, we need the parent entity ID
-                        if let Some(parent_id) = entity_id_map.get(of) {
-                            if !processed_paths.contains(of) {
-                                next_layer_paths.insert(of.clone());
-                            }
-                            parent_id.clone()
-                        } else {
-                            next_layer_paths.insert(of.clone());
-                            continue;
-                        }
-                    }
-                    AccessPathVariant::Ancestor { of, .. } => {
-                        // For ancestors, we need the entity whose ancestors we're checking
-                        if let Some(entity_id) = entity_id_map.get(of) {
-                            if !processed_paths.contains(of) {
-                                next_layer_paths.insert(of.clone());
-                            }
-                            entity_id.clone()
-                        } else {
-                            next_layer_paths.insert(of.clone());
-                            continue;
-                        }
-                    }
-                    AccessPathVariant::String(_) => continue, // String literals don't need entity loading
-                },
-                Err(_) => continue, // Skip paths that can't be found in the DAG
-            };
-
-            // Map this path to its entity ID for future reference
-            entity_id_map.insert(path.clone(), entity_id.clone());
-
-            // Group paths by entity ID
-            path_groups
-                .entry(entity_id)
-                .or_insert_with(AccessPaths::default)
-                .insert(path);
-        }
-
-        // Create entity requests for this layer
-        for (entity_id, access_paths) in path_groups {
-            entity_requests.push(EntityRequest {
-                entity_id,
-                access_paths,
-            });
-        }
-
-        // If we have entity requests, load them
-        if !entity_requests.is_empty() {
-            let loaded_entities =
-                loader.load_entities(&entity_requests, for_request.dag.clone())?;
-
-            if loaded_entities.len() != entity_requests.len() {
-                return Err(WrongNumberOfEntitiesError {
-                    expected: entity_requests.len(),
-                    got: loaded_entities.len(),
-                }
-                .into());
-            }
-
-            // Process loaded entities
-            for (request, entity_option) in entity_requests.iter().zip(loaded_entities) {
-                if let Some(entity) = entity_option {
-                    // Merge with existing entity if it exists
-                    match entities.entry(request.entity_id.clone()) {
-                        hash_map::Entry::Occupied(o) => {
-                            let (k, v) = o.remove_entry();
-                            let merged = merge_entities(v, entity);
-                            entities.insert(k, merged);
-                        }
-                        hash_map::Entry::Vacant(v) => {
-                            v.insert(entity);
-                        }
-                    }
+    // Add requests for principal, action, and resource if they have access tries
+    if let Some(principal_uid) = request.principal().uid() {
+        for (entity_path, trie) in &access_tries {
+            if let Ok(variant) = entity_path.get_variant(&for_request.dag) {
+                if let AccessPathVariant::Var(Var::Principal) = variant {
+                    to_load.push(EntityRequest {
+                        entity_id: principal_uid.clone(),
+                        tags: HashSet::new(), // No tags for now
+                        access_trie: (*trie).clone(),
+                    });
+                    processed_entities.insert(principal_uid.clone());
+                    break;
                 }
             }
-
-            // Clear entity requests for the next layer
-            entity_requests.clear();
         }
-
-        // Add next layer paths to process
-        to_process = next_layer_paths;
     }
 
-    // Step 3: Load ancestors for all entities
+    if let Some(action_uid) = request.action().uid() {
+        for (entity_path, trie) in &access_tries {
+            if let Ok(variant) = entity_path.get_variant(&for_request.dag) {
+                if let AccessPathVariant::Var(Var::Action) = variant {
+                    to_load.push(EntityRequest {
+                        entity_id: action_uid.clone(),
+                        tags: HashSet::new(), // No tags for now
+                        access_trie: (*trie).clone(),
+                    });
+                    processed_entities.insert(action_uid.clone());
+                    break;
+                }
+            }
+        }
+    }
+
+    if let Some(resource_uid) = request.resource().uid() {
+        for (entity_path, trie) in &access_tries {
+            if let Ok(variant) = entity_path.get_variant(&for_request.dag) {
+                if let AccessPathVariant::Var(Var::Resource) = variant {
+                    to_load.push(EntityRequest {
+                        entity_id: resource_uid.clone(),
+                        tags: HashSet::new(), // No tags for now
+                        access_trie: (*trie).clone(),
+                    });
+                    processed_entities.insert(resource_uid.clone());
+                    break;
+                }
+            }
+        }
+    }
+
+    // Add requests for literal entities
+    for (entity_path, trie) in &access_tries {
+        if let Ok(variant) = entity_path.get_variant(&for_request.dag) {
+            if let AccessPathVariant::Literal(euid) = variant {
+                if !processed_entities.contains(euid) {
+                    to_load.push(EntityRequest {
+                        entity_id: euid.clone(),
+                        tags: HashSet::new(), // No tags for now
+                        access_trie: (*trie).clone(),
+                    });
+                    processed_entities.insert(euid.clone());
+                }
+            }
+        }
+    }
+
+    // If there's nothing to load, return empty entities
+    if to_load.is_empty() {
+        match Entities::from_entities(
+            vec![],
+            None::<&NoEntitiesSchema>,
+            TCComputation::AssumeAlreadyComputed,
+            Extensions::all_available(),
+        ) {
+            Ok(entities) => return Ok(entities),
+            Err(err) => return Err(err.into()),
+        };
+    }
+
+    // Main loop of loading entities, one batch at a time
+    while !to_load.is_empty() {
+        // Record entities for ancestor loading later
+        for entity_request in &to_load {
+            to_find_ancestors.push(entity_request.entity_id.clone());
+        }
+
+        // Load the current batch of entities
+        let loaded_entities = loader.load_entities(&to_load, for_request.dag.clone())?;
+
+        if loaded_entities.len() != to_load.len() {
+            return Err(WrongNumberOfEntitiesError {
+                expected: to_load.len(),
+                got: loaded_entities.len(),
+            }
+            .into());
+        }
+
+        // Process loaded entities and prepare next batch to load
+        let mut next_to_load = Vec::new();
+
+        for (entity_request, entity_maybe) in to_load.into_iter().zip(loaded_entities) {
+            if let Some(entity) = entity_maybe {
+                // Find entity paths that correspond to this entity
+                for (entity_path, trie) in &access_tries {
+                    if let Ok(variant) = entity_path.get_variant(&for_request.dag) {
+                        let matches = match variant {
+                            AccessPathVariant::Literal(euid) => euid == &entity_request.entity_id,
+                            AccessPathVariant::Var(Var::Principal) => {
+                                request.principal().uid() == Some(&entity_request.entity_id)
+                            }
+                            AccessPathVariant::Var(Var::Resource) => {
+                                request.resource().uid() == Some(&entity_request.entity_id)
+                            }
+                            AccessPathVariant::Var(Var::Action) => {
+                                request.action().uid() == Some(&entity_request.entity_id)
+                            }
+                            _ => false,
+                        };
+
+                        if matches {
+                            // Find dependent entities for this entity path
+                            let dependent_entities = for_request
+                                .get_manifest_dependent_entities(entity_path, &parents_map);
+
+                            // Add dependent entities to the next batch if they haven't been processed yet
+                            for dependent_path in dependent_entities {
+                                if let Ok(dependent_variant) =
+                                    dependent_path.get_variant(&for_request.dag)
+                                {
+                                    if let Some(dependent_euid) = match dependent_variant {
+                                        AccessPathVariant::Literal(euid) => Some(euid.clone()),
+                                        AccessPathVariant::Var(Var::Principal) => {
+                                            request.principal().uid().cloned()
+                                        }
+                                        AccessPathVariant::Var(Var::Resource) => {
+                                            request.resource().uid().cloned()
+                                        }
+                                        AccessPathVariant::Var(Var::Action) => {
+                                            request.action().uid().cloned()
+                                        }
+                                        _ => None,
+                                    } {
+                                        if !processed_entities.contains(&dependent_euid) {
+                                            // Get the access trie for this dependent entity
+                                            let dependent_trie = access_tries
+                                                .get(&dependent_path)
+                                                .map(|t| (*t).clone())
+                                                .unwrap_or_else(AccessTrie::new);
+
+                                            next_to_load.push(EntityRequest {
+                                                entity_id: dependent_euid.clone(),
+                                                tags: HashSet::new(),
+                                                access_trie: dependent_trie,
+                                            });
+                                            processed_entities.insert(dependent_euid);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Add or merge the entity into our map
+                match entities_map.entry(entity_request.entity_id) {
+                    hash_map::Entry::Occupied(o) => {
+                        // If the entity is already present, merge it
+                        let (k, v) = o.remove_entry();
+                        let merged = merge_entities(v, entity);
+                        entities_map.insert(k, merged);
+                    }
+                    hash_map::Entry::Vacant(v) => {
+                        v.insert(entity);
+                    }
+                }
+            }
+        }
+
+        // Update to_load for the next iteration
+        to_load = next_to_load;
+    }
+
+    // Load ancestors for all entities
     let mut ancestors_requests = Vec::new();
-    for (entity_id, _) in &entities {
-        // Create an ancestors request for each entity
+
+    for entity_id in to_find_ancestors {
+        // For now, we don't have specific ancestor requirements
+        // so we just request all ancestors
         ancestors_requests.push(AncestorsRequest {
-            entity_id: entity_id.clone(),
-            ancestors: HashSet::new(), // Load all ancestors
+            entity_id,
+            ancestors: HashSet::new(), // Empty set means all ancestors
         });
     }
 
     if !ancestors_requests.is_empty() {
         let loaded_ancestors = loader.load_ancestors(&ancestors_requests)?;
 
-        if loaded_ancestors.len() != ancestors_requests.len() {
-            return Err(WrongNumberOfEntitiesError {
-                expected: ancestors_requests.len(),
-                got: loaded_ancestors.len(),
-            }
-            .into());
-        }
-
         // Add ancestors to entities
         for (request, ancestors) in ancestors_requests.into_iter().zip(loaded_ancestors) {
-            if let Some(entity) = entities.get_mut(&request.entity_id) {
-                ancestors
-                    .into_iter()
-                    .for_each(|ancestor| entity.add_parent(ancestor));
+            if let Some(entity) = entities_map.get_mut(&request.entity_id) {
+                for ancestor in ancestors {
+                    entity.add_parent(ancestor);
+                }
             }
         }
     }
 
-    // Finally, convert the loaded entities into a Cedar Entities store
+    // Convert the loaded entities into a Cedar Entities store
     match Entities::from_entities(
-        entities.into_values(),
+        entities_map.into_values(),
         None::<&NoEntitiesSchema>,
         TCComputation::AssumeAlreadyComputed,
         Extensions::all_available(),
@@ -400,98 +633,6 @@ pub(crate) fn load_entities(
         Ok(entities) => Ok(entities),
         Err(e) => Err(e.into()),
     }
-
-    // Old code using trie
-    // entity requests in progress
-    // let mut to_load: Vec<EntityRequestRef<'_>> =
-    //     initial_entities_to_load(root_access_trie, context, request, &mut Default::default())?;
-    // // later, find the ancestors of these entities using their ancestor tries
-    // let mut to_find_ancestors = vec![];
-
-    // // Main loop of loading entities, one batch at a time
-    // while !to_load.is_empty() {
-    //     // first, record the entities in `to_find_ancestors`
-    //     for entity_request in &to_load {
-    //         to_find_ancestors.push((
-    //             entity_request.entity_id.clone(),
-    //             &entity_request.access_trie.ancestors_trie,
-    //         ));
-    //     }
-
-    //     let new_entities = loader.load_entities(
-    //         &to_load
-    //             .iter()
-    //             .map(|entity_ref| entity_ref.to_request())
-    //             .collect::<Vec<_>>(),
-    //     )?;
-    //     if new_entities.len() != to_load.len() {
-    //         return Err(WrongNumberOfEntitiesError {
-    //             expected: to_load.len(),
-    //             got: new_entities.len(),
-    //         }
-    //         .into());
-    //     }
-
-    //     let mut next_to_load = vec![];
-    //     for (entity_request, loaded_maybe) in to_load.into_iter().zip(new_entities) {
-    //         if let Some(loaded) = loaded_maybe {
-    //             next_to_load.extend(find_remaining_entities(
-    //                 &loaded,
-    //                 entity_request.access_trie,
-    //                 &mut Default::default(),
-    //             )?);
-    //             match entities.entry(entity_request.entity_id) {
-    //                 hash_map::Entry::Occupied(o) => {
-    //                     // If the entity is already present in the slice, then
-    //                     // we need to be careful not to clobber its existing
-    //                     // attributes.  This can happen when an entity is
-    //                     // referenced by both an entity literal and a variable.
-    //                     let (k, v) = o.remove_entry();
-    //                     let merged = merge_entities(v, loaded);
-    //                     entities.insert(k, merged);
-    //                 }
-    //                 hash_map::Entry::Vacant(v) => {
-    //                     v.insert(loaded);
-    //                 }
-    //             }
-    //         }
-    //     }
-
-    //     to_load = next_to_load;
-    // }
-
-    // // now that all the entities are loaded
-    // // we need to load their ancestors
-    // let mut ancestors_requests = vec![];
-    // for (entity_id, ancestors_trie) in to_find_ancestors {
-    //     ancestors_requests.push(compute_ancestors_request(
-    //         entity_id,
-    //         ancestors_trie,
-    //         &entities,
-    //         context,
-    //         request,
-    //     )?);
-    // }
-
-    // let loaded_ancestors = loader.load_ancestors(&ancestors_requests)?;
-    // for (request, ancestors) in ancestors_requests.into_iter().zip(loaded_ancestors) {
-    //     if let Some(entity) = entities.get_mut(&request.entity_id) {
-    //         ancestors
-    //             .into_iter()
-    //             .for_each(|ancestor| entity.add_parent(ancestor));
-    //     }
-    // }
-
-    // // finally, convert the loaded entities into a Cedar Entities store
-    // match Entities::from_entities(
-    //     entities.into_values(),
-    //     None::<&NoEntitiesSchema>,
-    //     TCComputation::AssumeAlreadyComputed,
-    //     Extensions::all_available(),
-    // ) {
-    //     Ok(entities) => Ok(entities),
-    //     Err(e) => Err(e.into()),
-    // }
 }
 
 /// Merge the contents of two entities in the slice. Combines the attributes
