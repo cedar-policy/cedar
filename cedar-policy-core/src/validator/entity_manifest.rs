@@ -141,10 +141,8 @@ impl PathsForRequestType {
 /// Data structure storing what data is needed based on the the [`RequestType`].
 ///
 /// For each request type, the [`EntityManifest`] stores
-/// a [`PathsForRequestType`] containing the access dag and paths to retrieve.
+/// a [`PathsForRequestType`] containing the data paths needed for that request type.
 ///
-/// `T` represents an optional type annotation on each
-/// node in the [`AccessTrie`].
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
@@ -161,6 +159,12 @@ pub struct EntityManifest {
 
 /// A backing store for a set of access paths
 /// stored as a directed acyclic graph.
+///
+/// Edges in the graph denote a data dependency.
+/// For example, an attribute may depend on the principal entity
+/// or a record in another entity.
+///
+/// After construction, the dag is annotated with the types of all of the access paths.
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
