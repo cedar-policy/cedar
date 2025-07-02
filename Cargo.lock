@@ -377,7 +377,6 @@ dependencies = [
 name = "cedar-policy-core"
 version = "4.5.0"
 dependencies = [
- "anyhow",
  "arbitrary",
  "chrono",
  "cool_asserts",
