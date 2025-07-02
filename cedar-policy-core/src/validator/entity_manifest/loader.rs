@@ -28,7 +28,9 @@ use crate::{
     ast::{Entity, EntityUID, Literal, PartialValue, Request, Value, ValueKind, Var},
     entities::{Entities, NoEntitiesSchema, TCComputation},
     extensions::Extensions,
-    validator::entity_manifest::{AccessPath, AccessPathVariant, AccessPaths, PathsForRequestType},
+    validator::entity_manifest::{
+        manifest_helpers::AccessTrie, slicing::ExpectedEntityTypeError, AccessPath, AccessPathVariant, AccessPaths, PathsForRequestType
+    },
 };
 
 use crate::validator::entity_manifest::{
@@ -45,35 +47,12 @@ use crate::validator::entity_manifest::{
 pub(crate) struct EntityRequest {
     /// The id of the entity requested
     pub(crate) entity_id: EntityUID,
+    /// The access path that resulted in this entity
+    pub(crate) access_path: AccessPath,
     /// The requested tags for the entity TODO set these during loading
     pub(crate) tags: HashSet<String>,
     /// A trie containing the access paths needed for this entity
     pub(crate) access_trie: AccessTrie,
-}
-
-/// A trie containing what attributes of an entity or record
-/// are requested.
-/// Children [`AccessTrie`] describe what fields of child records are requested.
-/// These don't recur into other entities.
-#[derive(Debug, Clone)]
-pub(crate) struct AccessTrie {
-    pub(crate) fields: HashMap<SmolStr, Box<AccessTrie>>,
-}
-
-impl AccessTrie {
-    /// Creates a new empty AccessTrie
-    pub(crate) fn new() -> Self {
-        Self {
-            fields: HashMap::new(),
-        }
-    }
-
-    /// Gets or creates a field in this AccessTrie
-    pub(crate) fn get_or_create_field(&mut self, field: &SmolStr) -> &mut Box<AccessTrie> {
-        self.fields
-            .entry(field.clone())
-            .or_insert_with(|| Box::new(AccessTrie::new()))
-    }
 }
 
 /// An entity request may be an entity or `None` when
@@ -123,269 +102,78 @@ pub(crate) trait EntityLoader {
     ) -> Result<Vec<HashSet<EntityUID>>, EntitySliceError>;
 }
 
-impl PathsForRequestType {
-    /// Build a hashmap of dependent paths for all reachable paths
-    fn build_dependents_map(
-        &self,
-        reachable_paths: &HashSet<AccessPath>,
-    ) -> HashMap<AccessPath, Vec<AccessPath>> {
-        let mut dependents_map = HashMap::new();
+/// Helper function to determine the initial entities to load based on the access tries
+fn initial_entities_to_load(
+    access_tries: &HashMap<AccessPath, AccessTrie>,
+    for_request: &PathsForRequestType,
+    request: &Request,
+) -> Vec<EntityRequest> {
+    let mut to_load = Vec::new();
 
-        // Initialize the map with empty vectors for all paths
-        for path in reachable_paths {
-            dependents_map.insert(path.clone(), Vec::new());
-        }
-
-        // Populate the map with parent-child relationships
-        for path in reachable_paths {
-            // Get all children of this path
-            let children = path.children(&self.dag);
-
-            for child in children {
-                // Add this path as a parent of the child
-                if let Some(child_dependents) = dependents_map.get_mut(&child) {
-                    child_dependents.push(path.clone());
-                }
-            }
-        }
-
-        dependents_map
-    }
-
-    /// Helper function to get the manifest dependent entity paths of an access path
-    /// A manifest dependent entity for node A is a node B such that A ->* B points to B
-    /// with a path such that no intermediate nodes are entity typed
-    fn get_manifest_dependent_entities(
-        &self,
-        path: &AccessPath,
-        dependents_map: &HashMap<AccessPath, Vec<AccessPath>>,
-    ) -> Vec<AccessPath> {
-        let mut result = Vec::new();
-        let mut visited = HashSet::new();
-        let mut queue = Vec::new();
-
-        // Start with the current path
-        queue.push(path.clone());
-        visited.insert(path.clone());
-
-        while let Some(current) = queue.pop() {
-            // Skip the starting node when checking if it's an entity
-            if &current != path && self.is_entity_path(&current) {
-                // Found an entity parent
-                result.push(current);
-                // Don't explore beyond this entity
-                continue;
-            }
-
-            // Get the dependents of the current path
-            if let Some(dependents) = dependents_map.get(&current) {
-                for dependent in dependents {
-                    if !visited.contains(dependent) {
-                        visited.insert(dependent.clone());
-                        queue.push(dependent.clone());
-                    }
-                }
-            }
-        }
-
-        result
-    }
-
-    /// For each reachable [`AccessPath`] in the path with
-    /// an entity type, computes the [`AccessTrie`] needed
-    /// for that entity.
-    ///
-    /// This is a helper which computes the access tries needed during
-    /// entity loading with the [`EntityLoader`] API.
-    fn compute_access_tries(&self) -> HashMap<AccessPath, AccessTrie> {
-        // First, compute all reachable paths
-        let reachable_paths = self.reachable_paths();
-
-        // Build a dependents map for efficient dependent lookup
-        let dependents_map = self.build_dependents_map(&reachable_paths);
-
-        // Find all entity paths among the reachable paths
-        let entity_paths = self.get_entity_paths(&reachable_paths);
-
-        // Build the AccessTrie for each entity path
-        let mut result = HashMap::new();
-        for entity_path in entity_paths {
-            let trie = self.build_access_trie_for_entity(&entity_path, &dependents_map);
-
-            if !trie.fields.is_empty() {
-                result.insert(entity_path, trie);
-            }
-        }
-
-        result
-    }
-
-    /// Helper function to determine if a path has an entity type
-    fn is_entity_path(&self, path: &AccessPath) -> bool {
-        // Check if we have type information
-        if let Some(types) = &self.dag.types {
-            if path.id < types.len() {
-                // Check if the type is an entity type
-                use crate::validator::types::EntityRecordKind;
-                // PANIC SAFETY: types are computed for all paths in the manifest
-                #[allow(clippy::unwrap_used)]
-                match types.get(path.id).unwrap() {
-                    crate::validator::types::Type::EntityOrRecord(kind) => {
-                        matches!(
-                            kind,
-                            EntityRecordKind::Entity(_) | EntityRecordKind::AnyEntity
-                        )
-                    }
-                    _ => false,
-                }
-            } else {
-                false
-            }
-        } else {
-            // Without type information, check if it's a root path (Literal or Var)
-            if let Ok(variant) = path.get_variant(&self.dag) {
-                matches!(
-                    variant,
-                    AccessPathVariant::Literal(_) | AccessPathVariant::Var(_)
-                )
-            } else {
-                false
-            }
-        }
-    }
-
-    /// Helper function to get all entity paths among the reachable paths
-    fn get_entity_paths(&self, reachable_paths: &HashSet<AccessPath>) -> HashSet<AccessPath> {
-        reachable_paths
-            .iter()
-            .filter(|path| self.is_entity_path(path))
-            .cloned()
-            .collect()
-    }
-
-    /// Recursively build the AccessTrie for an entity path
-    fn build_access_trie_for_entity(
-        &self,
-        entity_path: &AccessPath,
-        dependents_map: &HashMap<AccessPath, Vec<AccessPath>>,
-    ) -> AccessTrie {
-        // Create a new trie for this entity
-        let mut trie = AccessTrie::new();
-
-        // Use a recursive helper to build the trie
-        self.build_trie_recursive(entity_path, &mut trie, dependents_map, &mut HashSet::new());
-
-        trie
-    }
-
-    /// Recursive helper function to build the AccessTrie
-    /// Traverses the dependents map starting from the entity path
-    fn build_trie_recursive(
-        &self,
-        path: &AccessPath,
-        trie: &mut AccessTrie,
-        dependents_map: &HashMap<AccessPath, Vec<AccessPath>>,
-        visited: &mut HashSet<AccessPath>,
-    ) {
-        // Mark this path as visited to avoid cycles
-        visited.insert(path.clone());
-
-        // Get all dependents of this path
-        if let Some(dependents) = dependents_map.get(path) {
-            for dependent in dependents {
-                // Skip if we've already visited this path
-                if visited.contains(dependent) {
-                    continue;
-                }
-
-                // Check if this is an attribute path
-                if let Ok(variant) = dependent.get_variant(&self.dag) {
-                    match variant {
-                        AccessPathVariant::Attribute { attr, .. } => {
-                            // Get or create the field in the trie
-                            let field_trie = trie.get_or_create_field(attr);
-
-                            // If this is an entity, don't continue building the trie
-                            if !self.is_entity_path(dependent) {
-                                self.build_trie_recursive(
-                                    dependent,
-                                    field_trie,
-                                    dependents_map,
-                                    visited,
-                                );
-                            }
-                        }
-                        _ => {
-                            // For non-attribute paths, nothing is required
-                        }
-                    }
+    // Add requests for principal, action, and resource if they have access tries
+    if let Some(principal_uid) = request.principal().uid() {
+        for (access_path, trie) in access_tries.iter() {
+            if let Ok(variant) = access_path.get_variant(&for_request.dag) {
+                if let AccessPathVariant::Var(Var::Principal) = variant {
+                    to_load.push(EntityRequest {
+                        entity_id: principal_uid.clone(),
+                        tags: HashSet::new(), // No tags for now
+                        access_trie: (*trie).clone(),
+                        access_path: access_path.clone(),
+                    });
+                    break;
                 }
             }
         }
     }
 
-    /// Computes all reachable paths.
-    /// Currently inefficient in the presense of sharing between paths
-    /// because it uses the subpaths method.
-    fn reachable_paths(&self) -> HashSet<AccessPath> {
-        let mut result = HashSet::new();
-
-        // Iterate through all access paths in the PathsForRequestType
-        for path in &self.access_paths.paths {
-            // For each path, get all its subpaths (including itself)
-            // and add them to the result set
-            let subpaths = path.subpaths(&self.dag);
-            result.extend(subpaths.paths().clone());
+    if let Some(action_uid) = request.action().uid() {
+        for (entity_path, trie) in access_tries.iter() {
+            if let Ok(variant) = entity_path.get_variant(&for_request.dag) {
+                if let AccessPathVariant::Var(Var::Action) = variant {
+                    to_load.push(EntityRequest {
+                        entity_id: action_uid.clone(),
+                        tags: HashSet::new(), // No tags for now
+                        access_trie: (*trie).clone(),
+                        access_path: entity_path.clone(),
+                    });
+                }
+            }
         }
-
-        result
     }
+
+    if let Some(resource_uid) = request.resource().uid() {
+        for (access_path, trie) in access_tries.iter() {
+            if let Ok(variant) = access_path.get_variant(&for_request.dag) {
+                if let AccessPathVariant::Var(Var::Resource) = variant {
+                    to_load.push(EntityRequest {
+                        entity_id: resource_uid.clone(),
+                        tags: HashSet::new(), // No tags for now
+                        access_trie: (*trie).clone(),
+                        access_path: access_path.clone(),
+                    });
+                    break;
+                }
+            }
+        }
+    }
+
+    // Add requests for literal entities
+    for (access_path, trie) in access_tries.iter() {
+        if let Ok(variant) = access_path.get_variant(&for_request.dag) {
+            if let AccessPathVariant::Literal(euid) = variant {
+                to_load.push(EntityRequest {
+                    entity_id: euid.clone(),
+                    tags: HashSet::new(), // No tags for now
+                    access_trie: (*trie).clone(),
+                    access_path: access_path.clone(),
+                });
+            }
+        }
+    }
+
+    to_load
 }
-
-// fn initial_entities_to_load<'a>(
-//     root_access_trie: &'a AccessDag,
-//     context: &Context,
-//     request: &Request,
-//     required_ancestors: &mut HashSet<EntityUID>,
-// ) -> Result<Vec<EntityRequestRef<'a>>, EntitySliceError> {
-//     let Context::Value(context_value) = &context else {
-//         return Err(PartialContextError {}.into());
-//     };
-
-//     let mut to_load = match root_access_trie.trie.get(&EntityRoot::Var(Var::Context)) {
-//         Some(access_trie) => {
-//             find_remaining_entities_context(context_value, access_trie, required_ancestors)?
-//         }
-//         _ => vec![],
-//     };
-
-//     for (key, access_trie) in &root_access_trie.trie {
-//         to_load.push(EntityRequestRef {
-//             entity_id: match key {
-//                 EntityRoot::Var(Var::Principal) => request
-//                     .principal()
-//                     .uid()
-//                     .ok_or(PartialRequestError {})?
-//                     .clone(),
-//                 EntityRoot::Var(Var::Action) => request
-//                     .action()
-//                     .uid()
-//                     .ok_or(PartialRequestError {})?
-//                     .clone(),
-//                 EntityRoot::Var(Var::Resource) => request
-//                     .resource()
-//                     .uid()
-//                     .ok_or(PartialRequestError {})?
-//                     .clone(),
-//                 EntityRoot::Literal(lit) => lit.clone(),
-//                 EntityRoot::Var(Var::Context) => continue,
-//             },
-//             access_trie,
-//         });
-//     }
-
-//     Ok(to_load)
-// }
 
 /// Loads entities based on the entity manifest, request, and
 /// the implemented [`EntityLoader`].
@@ -417,78 +205,12 @@ pub(crate) fn load_entities(
     // Build a map of entity paths to their dependent entities
     let reachable_paths = for_request.reachable_paths();
     let dependents_map = for_request.build_dependents_map(&reachable_paths);
+    let dependent_entities_map = for_request.build_dependent_entities_map(&dependents_map);
 
-    // Create a map to track which entities we've already processed
-    let mut processed_entities = HashSet::new();
-
-    // Create initial entity requests for entities that need to be loaded
-    let mut to_load = Vec::new();
+    // Get initial entities to load and track processed entities
+    let mut to_load = initial_entities_to_load(&access_tries, for_request, request);
     let mut entities_map = HashMap::new();
-
-    // Add requests for principal, action, and resource if they have access tries
-    if let Some(principal_uid) = request.principal().uid() {
-        for (entity_path, trie) in &access_tries {
-            if let Ok(variant) = entity_path.get_variant(&for_request.dag) {
-                if let AccessPathVariant::Var(Var::Principal) = variant {
-                    to_load.push(EntityRequest {
-                        entity_id: principal_uid.clone(),
-                        tags: HashSet::new(), // No tags for now
-                        access_trie: (*trie).clone(),
-                    });
-                    processed_entities.insert(principal_uid.clone());
-                    break;
-                }
-            }
-        }
-    }
-
-    if let Some(action_uid) = request.action().uid() {
-        for (entity_path, trie) in &access_tries {
-            if let Ok(variant) = entity_path.get_variant(&for_request.dag) {
-                if let AccessPathVariant::Var(Var::Action) = variant {
-                    to_load.push(EntityRequest {
-                        entity_id: action_uid.clone(),
-                        tags: HashSet::new(), // No tags for now
-                        access_trie: (*trie).clone(),
-                    });
-                    processed_entities.insert(action_uid.clone());
-                    break;
-                }
-            }
-        }
-    }
-
-    if let Some(resource_uid) = request.resource().uid() {
-        for (entity_path, trie) in &access_tries {
-            if let Ok(variant) = entity_path.get_variant(&for_request.dag) {
-                if let AccessPathVariant::Var(Var::Resource) = variant {
-                    to_load.push(EntityRequest {
-                        entity_id: resource_uid.clone(),
-                        tags: HashSet::new(), // No tags for now
-                        access_trie: (*trie).clone(),
-                    });
-                    processed_entities.insert(resource_uid.clone());
-                    break;
-                }
-            }
-        }
-    }
-
-    // Add requests for literal entities
-    for (entity_path, trie) in &access_tries {
-        if let Ok(variant) = entity_path.get_variant(&for_request.dag) {
-            if let AccessPathVariant::Literal(euid) = variant {
-                if !processed_entities.contains(euid) {
-                    to_load.push(EntityRequest {
-                        entity_id: euid.clone(),
-                        tags: HashSet::new(), // No tags for now
-                        access_trie: (*trie).clone(),
-                    });
-                    processed_entities.insert(euid.clone());
-                }
-            }
-        }
-    }
+    let mut visited_paths = HashSet::new();
 
     // If there's nothing to load, return empty entities
     if to_load.is_empty() {
@@ -505,6 +227,7 @@ pub(crate) fn load_entities(
 
     // Main loop of loading entities, one batch at a time
     while !to_load.is_empty() {
+        eprintln!("to load: {:?}", to_load);
         // Load the current batch of entities
         let loaded_entities = loader.load_entities(&to_load, for_request.dag.clone())?;
 
@@ -521,65 +244,41 @@ pub(crate) fn load_entities(
 
         for (entity_request, entity_maybe) in to_load.into_iter().zip(loaded_entities) {
             if let Some(entity) = entity_maybe {
-                // Find entity paths that correspond to this entity
-                for (entity_path, trie) in &access_tries {
-                    if let Ok(variant) = entity_path.get_variant(&for_request.dag) {
-                        let matches = match variant {
-                            AccessPathVariant::Literal(euid) => euid == &entity_request.entity_id,
-                            AccessPathVariant::Var(Var::Principal) => {
-                                request.principal().uid() == Some(&entity_request.entity_id)
-                            }
-                            AccessPathVariant::Var(Var::Resource) => {
-                                request.resource().uid() == Some(&entity_request.entity_id)
-                            }
-                            AccessPathVariant::Var(Var::Action) => {
-                                request.action().uid() == Some(&entity_request.entity_id)
-                            }
-                            _ => false,
-                        };
+                let entity_path = entity_request.access_path;
 
-                        if matches {
-                            // Find dependent entities for this entity path
-                            let dependent_entities = for_request
-                                .get_manifest_dependent_entities(entity_path, &dependents_map);
+                // Find dependent entities for this entity path
+                let dependent_entities = dependent_entities_map
+                    .get(&entity_path)
+                    .unwrap_or(&vec![])
+                    .clone();
 
-                            // Add dependent entities to the next batch if they haven't been processed yet
-                            for dependent_path in dependent_entities {
-                                if let Ok(dependent_variant) =
-                                    dependent_path.get_variant(&for_request.dag)
-                                {
-                                    if let Some(dependent_euid) = match dependent_variant {
-                                        AccessPathVariant::Literal(euid) => Some(euid.clone()),
-                                        AccessPathVariant::Var(Var::Principal) => {
-                                            request.principal().uid().cloned()
-                                        }
-                                        AccessPathVariant::Var(Var::Resource) => {
-                                            request.resource().uid().cloned()
-                                        }
-                                        AccessPathVariant::Var(Var::Action) => {
-                                            request.action().uid().cloned()
-                                        }
-                                        _ => None,
-                                    } {
-                                        if !processed_entities.contains(&dependent_euid) {
-                                            // Get the access trie for this dependent entity
-                                            let dependent_trie = access_tries
-                                                .get(&dependent_path)
-                                                .map(|t| (*t).clone())
-                                                .unwrap_or_else(AccessTrie::new);
-
-                                            next_to_load.push(EntityRequest {
-                                                entity_id: dependent_euid.clone(),
-                                                tags: HashSet::new(),
-                                                access_trie: dependent_trie,
-                                            });
-                                            processed_entities.insert(dependent_euid);
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                // Add dependent entities to the next batch if they haven't been processed yet
+                for dependent_path in dependent_entities {
+                    if !visited_paths.insert(&dependent_path) {
+                        continue;
                     }
+
+                    // get the id of the dependent path using the entity store
+                    let dependent_val =
+                        dependent_path.compute_value(&entities_map, &for_request.dag, request)?;
+
+                    let dependent_id = match dependent_val.value_kind() {
+                        ValueKind::Lit(literal) => literal.clone(),
+                        _ => return Err(ExpectedEntityTypeError(dependent_val.clone())),
+                    };
+
+                    // Get the access trie for this dependent entity
+                    let dependent_trie = access_tries
+                        .get(&dependent_path)
+                        .map(|t| (*t).clone())
+                        .unwrap_or_else(AccessTrie::new);
+
+                    next_to_load.push(EntityRequest {
+                        entity_id: dependent_id.clone(),
+                        tags: HashSet::new(),
+                        access_trie: dependent_trie,
+                        access_path: dependent_path.clone(),
+                    });
                 }
 
                 // Add or merge the entity into our map
@@ -607,7 +306,9 @@ pub(crate) fn load_entities(
     // compute ancestors requests by finding all AccessPathVariant::Ancestor variants
     // look up the entity ids in the Entities store using the paths
     // then create an ancestor request
-    for path in reachable_paths {
+    // Convert HashSet to Vec for iteration
+    let reachable_paths_vec: Vec<AccessPath> = reachable_paths.into_iter().collect();
+    for path in reachable_paths_vec {
         match path.get_variant(&for_request.dag) {
             Ok(AccessPathVariant::Ancestor { of, ancestor }) => {
                 // Extract EntityUID from the Value
