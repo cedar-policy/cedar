@@ -410,7 +410,7 @@ mod request_builder_tests {
 
     #[track_caller]
     fn request() -> PartialRequest {
-        PartialRequest::new_unchecked(
+        PartialRequest::new(
             PartialEntityUID {
                 ty: "A".parse().unwrap(),
                 eid: None,
@@ -421,7 +421,9 @@ mod request_builder_tests {
             },
             r#"Action::"a""#.parse().unwrap(),
             None,
+            &schema(),
         )
+        .unwrap()
     }
 
     #[test]

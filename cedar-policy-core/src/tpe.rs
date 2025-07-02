@@ -22,6 +22,9 @@ pub mod evaluator;
 pub mod request;
 pub mod residual;
 
+use std::collections::HashMap;
+
+use crate::ast::PolicyID;
 use crate::tpe::err::{NonstaticPolicyError, TPEError};
 use crate::validator::{
     typecheck::{PolicyCheck, Typechecker},
@@ -42,10 +45,10 @@ pub fn tpe_policies(
     request: &PartialRequest,
     entities: &PartialEntities,
     schema: &ValidatorSchema,
-) -> std::result::Result<Vec<Residual>, TPEError> {
+) -> std::result::Result<HashMap<PolicyID, Residual>, TPEError> {
     let env = request.find_request_env(schema)?;
     let tc = Typechecker::new(schema, crate::validator::ValidationMode::Strict);
-    let mut exprs = Vec::new();
+    let mut exprs = HashMap::new();
     for p in ps.policies() {
         if !p.is_static() {
             return Err(NonstaticPolicyError.into());
@@ -53,14 +56,14 @@ pub fn tpe_policies(
         let t = p.template();
         match tc.typecheck_by_single_request_env(t, &env) {
             PolicyCheck::Success(expr) => {
-                exprs.push(expr);
+                exprs.insert(p.id(), expr);
             }
             PolicyCheck::Fail(errs) => {
                 return Err(TPEError::Validation(errs));
             }
             PolicyCheck::Irrelevant(errs, expr) => {
                 if errs.is_empty() {
-                    exprs.push(expr);
+                    exprs.insert(p.id(), expr);
                 } else {
                     return Err(TPEError::Validation(errs));
                 }
@@ -72,14 +75,21 @@ pub fn tpe_policies(
         entities,
         extensions: Extensions::all_available(),
     };
-    Ok(exprs.iter().map(|expr| evaluator.interpret(expr)).collect())
+    Ok(exprs
+        .into_iter()
+        .map(|(id, expr)| (id.clone(), evaluator.interpret(&expr)))
+        .collect())
 }
 
 #[cfg(test)]
 mod tests {
+    use cool_asserts::assert_matches;
+
+    use crate::ast::{Annotation, AnyId, BinaryOp, Literal, Value, ValueKind, Var};
+    use crate::tpe::residual::{Residual, ResidualKind};
     use crate::validator::ValidatorSchema;
     use crate::{
-        ast::{Eid, EntityUID, Expr, PolicySet},
+        ast::{Eid, EntityUID, PolicySet},
         extensions::Extensions,
         parser::parse_policyset,
     };
@@ -91,7 +101,6 @@ mod tests {
     use crate::tpe::{
         entities::{PartialEntities, PartialEntity},
         request::{PartialEntityUID, PartialRequest},
-        residual::Residual,
     };
 
     use super::tpe_policies;
@@ -100,6 +109,7 @@ mod tests {
         parse_policyset(
             r#"
         // Users can view public documents.
+@id("0")
 permit (
   principal,
   action == Action::"View",
@@ -108,6 +118,7 @@ permit (
   resource.isPublic
 };
 
+@id("1")
 // Users can view owned documents if they are mfa-authenticated.
 permit (
   principal,
@@ -118,6 +129,7 @@ permit (
   resource.owner == principal
 };
 
+@id("2")
 // Users can delete owned documents if they are mfa-authenticated
 // and on the company network.
 permit (
@@ -205,11 +217,46 @@ action Delete appliesTo {
         let schema = rfc_schema();
         let request = rfc_request();
         let entities = rfc_entities();
-        let residuals: Vec<Residual> =
-            tpe_policies(&policies, &request, &entities, &schema).unwrap();
-        for residual in residuals {
-            println!("{}", Expr::try_from(residual).unwrap());
-        }
+        let residuals = tpe_policies(&policies, &request, &entities, &schema).unwrap();
+        let id = AnyId::new_unchecked("id");
+        let policy0 = policies
+            .static_policies()
+            .find(|p| matches!(p.annotation(&id), Some(Annotation {val, ..}) if val == "0"))
+            .unwrap();
+        let policy1 = policies
+            .static_policies()
+            .find(|p| matches!(p.annotation(&id), Some(Annotation {val, ..}) if val == "1"))
+            .unwrap();
+        let policy2 = policies
+            .static_policies()
+            .find(|p| matches!(p.annotation(&id), Some(Annotation {val, ..}) if val == "2"))
+            .unwrap();
+        // resource["isPublic"]
+        assert_matches!(residuals.get(policy0.id()), Some(Residual::Partial{kind: ResidualKind::GetAttr { expr, attr }, ..}) => {
+            assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Resource), .. });
+            assert_eq!(attr, "isPublic");
+        });
+        // (resource["owner"]) == User::"Alice"
+        assert_matches!(residuals.get(policy1.id()), Some(Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, arg2 }, .. }) => {
+            assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::GetAttr { expr, attr }, .. } => {
+                assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Resource), .. });
+                assert_eq!(attr, "owner");
+            });
+            assert_matches!(arg2.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(uid)), ..}, .. } => {
+                assert_eq!(uid.as_ref(), &EntityUID::from_components("User".parse().unwrap(), Eid::new("Alice"), None));
+            });
+        });
+        // false
+        assert_matches!(
+            residuals.get(policy2.id()),
+            Some(Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(false)),
+                    ..
+                },
+                ..
+            })
+        );
     }
 }
 
@@ -217,18 +264,20 @@ action Delete appliesTo {
 mod tinytodo {
     use std::{collections::BTreeMap, sync::Arc};
 
+    use crate::ast::{Annotation, AnyId, BinaryOp, EntityUID, Literal, Value, ValueKind, Var};
+    use crate::tpe::residual::{Residual, ResidualKind};
     use crate::validator::ValidatorSchema;
     use crate::{
-        ast::{Eid, Expr, PolicySet},
+        ast::{Eid, PolicySet},
         extensions::Extensions,
         parser::parse_policyset,
     };
+    use cool_asserts::assert_matches;
     use serde_json::json;
 
     use crate::tpe::{
         entities::PartialEntities,
         request::{PartialEntityUID, PartialRequest},
-        residual::Residual,
     };
 
     use super::tpe_policies;
@@ -284,6 +333,7 @@ action EditShare appliesTo {
         parse_policyset(
             r#"
         // Policy 0: Any User can create a list and see what lists they own
+@id("0")
 permit (
     principal,
     action in [Action::"CreateList", Action::"GetLists"],
@@ -291,6 +341,7 @@ permit (
 );
 
 // Policy 1: A User can perform any action on a List they own
+@id("1")
 permit (
   principal,
   action,
@@ -299,6 +350,7 @@ permit (
 when { resource.owner == principal };
 
 // Policy 2: A User can see a List if they are either a reader or editor
+@id("2")
 permit (
     principal,
     action == Action::"GetList",
@@ -306,6 +358,7 @@ permit (
 )
 when { principal in resource.readers || principal in resource.editors };
 
+@id("3")
 // Policy 3: A User can update a List and its tasks if they are an editor
 permit (
     principal,
@@ -317,32 +370,6 @@ permit (
     resource
 )
 when { principal in resource.editors };
-
-// Policy 4: Admins can perform any action on any resource
-// @id("admin-omnipotence")
-// permit (
-//    principal in Team::"admin",
-//    action,
-//    resource in Application::"TinyTodo"
-// );
-// 
-// Policy 5: Interns may not create new task lists
-// forbid (
-//     principal in Team::"interns",
-//     action == Action::"CreateList",
-//     resource == Application::"TinyTodo"
-// );
-//
-// Policy 6: No access if not high rank and at location DEF, 
-// or at resource's owner's location
-// forbid(
-//     principal,
-//     action,
-//     resource is List
-// ) unless {
-//     principal.joblevel > 6 && principal.location like "DEF*" ||
-//     principal.location == resource.owner.location
-// };
         "#,
         )
         .unwrap()
@@ -387,10 +414,76 @@ when { principal in resource.editors };
         let schema = schema();
         let request = partial_request();
         let entities = partial_entities();
-        let residuals: Vec<Residual> =
-            tpe_policies(&policies, &request, &entities, &schema).unwrap();
-        for residual in residuals {
-            println!("{}", Expr::try_from(residual).unwrap());
-        }
+        let residuals = tpe_policies(&policies, &request, &entities, &schema).unwrap();
+        let id = AnyId::new_unchecked("id");
+        let policy0 = policies
+            .static_policies()
+            .find(|p| matches!(p.annotation(&id), Some(Annotation {val, ..}) if val == "0"))
+            .unwrap();
+        let policy1 = policies
+            .static_policies()
+            .find(|p| matches!(p.annotation(&id), Some(Annotation {val, ..}) if val == "1"))
+            .unwrap();
+        let policy2 = policies
+            .static_policies()
+            .find(|p| matches!(p.annotation(&id), Some(Annotation {val, ..}) if val == "2"))
+            .unwrap();
+        let policy3 = policies
+            .static_policies()
+            .find(|p| matches!(p.annotation(&id), Some(Annotation {val, ..}) if val == "3"))
+            .unwrap();
+        // false
+        assert_matches!(
+            residuals.get(policy0.id()),
+            Some(Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(false)),
+                    ..
+                },
+                ..
+            })
+        );
+        // (resource["owner"]) == User::"aaron"
+        assert_matches!(residuals.get(policy1.id()), Some(Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::Eq, arg1, arg2 }, .. }) => {
+            assert_matches!(arg1.as_ref(), Residual::Partial { kind: ResidualKind::GetAttr { expr, attr }, .. } => {
+                assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Resource), .. });
+                assert_eq!(attr, "owner");
+            });
+            assert_matches!(arg2.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(uid)), ..}, .. } => {
+                assert_eq!(uid.as_ref(), &EntityUID::from_components("User".parse().unwrap(), Eid::new("aaron"), None));
+            });
+        });
+        // (User::"aaron" in (resource["readers"])) || (User::"aaron" in (resource["editors"]))
+        assert_matches!(residuals.get(policy2.id()), Some(Residual::Partial { kind: ResidualKind::Or{ left, right }, .. }) => {
+                    assert_matches!(left.as_ref(), Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::In, arg1, arg2 }, .. } => {
+        assert_matches!(arg1.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(uid)), ..}, .. } => {
+                        assert_eq!(uid.as_ref(), &EntityUID::from_components("User".parse().unwrap(), Eid::new("aaron"), None));
+                    });
+                        assert_matches!(arg2.as_ref(), Residual::Partial { kind: ResidualKind::GetAttr { expr, attr }, .. } => {
+                            assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Resource), .. });
+                            assert_eq!(attr, "readers");
+                        });
+                    });
+                    assert_matches!(right.as_ref(), Residual::Partial { kind: ResidualKind::BinaryApp { op: BinaryOp::In, arg1, arg2 }, .. } => {
+                       assert_matches!(arg1.as_ref(), Residual::Concrete { value: Value { value: ValueKind::Lit(Literal::EntityUID(uid)), ..}, .. } => {
+                        assert_eq!(uid.as_ref(), &EntityUID::from_components("User".parse().unwrap(), Eid::new("aaron"), None));
+                    });
+                        assert_matches!(arg2.as_ref(), Residual::Partial { kind: ResidualKind::GetAttr { expr, attr }, .. } => {
+                            assert_matches!(expr.as_ref(), Residual::Partial { kind: ResidualKind::Var(Var::Resource), .. });
+                            assert_eq!(attr, "editors");
+                        });
+                    });
+                });
+        // false
+        assert_matches!(
+            residuals.get(policy3.id()),
+            Some(Residual::Concrete {
+                value: Value {
+                    value: ValueKind::Lit(Literal::Bool(false)),
+                    ..
+                },
+                ..
+            })
+        );
     }
 }
