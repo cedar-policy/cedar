@@ -32,9 +32,9 @@ use smol_str::SmolStr;
 use thiserror::Error;
 
 pub(crate) mod analysis;
-mod human_format;
-mod entity_slice_tests;
 mod entity_manifest_tests;
+mod entity_slice_tests;
+mod human_format;
 mod loader;
 pub mod slicing;
 mod type_annotations;
@@ -43,13 +43,13 @@ use crate::validator::entity_manifest::analysis::{
     EntityManifestAnalysisResult, WrappedAccessPaths,
 };
 // Re-export types from human_format module
-pub use human_format::{ConversionError, ExprStr, HumanEntityManifest, PathExpressionParseError};
 use crate::validator::{
     typecheck::{PolicyCheck, Typechecker},
     types::Type,
     ValidationMode, ValidatorSchema,
 };
 use crate::validator::{ValidationResult, Validator};
+pub use human_format::{ConversionError, ExprStr, HumanEntityManifest, PathExpressionParseError};
 
 /// Stores paths for a specific request type, including the request type,
 /// access dag, and access paths.
@@ -842,14 +842,8 @@ fn analyze_expr_access_paths(
 
             // For the `in` operator, we need to handle ancestors
             if matches!(op, BinaryOp::In) {
-                // Get the first path from arg1_result (if any)
-                if let Some(path) = arg1_result.accessed_paths.paths.iter().next().cloned() {
-                    arg1_result = arg1_result.with_ancestors_required(
-                        &path,
-                        &arg2_result.resulting_paths,
-                        store,
-                    );
-                }
+                arg1_result =
+                    arg1_result.with_ancestors_required(&arg2_result.resulting_paths, store);
             }
 
             // Load all fields using `full_type_required` for equality checks
@@ -957,4 +951,3 @@ fn analyze_expr_access_paths(
         )),
     }
 }
-
