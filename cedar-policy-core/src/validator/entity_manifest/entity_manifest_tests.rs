@@ -609,7 +609,7 @@ when {
             .to_entity_manifest(validator.schema())
             .unwrap();
 
-        assert_eq!(entity_manifest, expected_manifest);
+        assert_manifests_equal(&entity_manifest, &expected_manifest);
     }
 
     #[test]
@@ -667,6 +667,6 @@ when {
             .to_entity_manifest(validator.schema())
             .unwrap();
 
-        assert_eq!(entity_manifest, expected_manifest);
+        assert_manifests_equal(&entity_manifest, &expected_manifest);
     }
 }

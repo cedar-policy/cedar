@@ -333,3 +333,4 @@ fn entity_or_record_to_access_paths(
             AccessPaths::default()
         }
     }
+}
