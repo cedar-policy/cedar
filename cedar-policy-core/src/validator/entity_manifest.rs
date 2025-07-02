@@ -96,14 +96,6 @@ impl PathsForRequestType {
     }
 }
 
-impl Default for PathsForRequestType {
-    fn default() -> Self {
-        // This should never be called, but we need to implement Default
-        // to satisfy the Entry::or_default() method
-        panic!("PathsForRequestType::default() should never be called");
-    }
-}
-
 /// Data structure storing what data is needed based on the the [`RequestType`].
 ///
 /// For each request type, the [`EntityManifest`] stores
@@ -953,7 +945,7 @@ pub fn compute_entity_manifest(
                 .to_request_type()
                 .ok_or(PartialRequestError {})?;
 
-            let mut per_request = match manifest.per_action.entry(request_type) {
+            let mut per_request = match manifest.per_action.entry(request_type.clone()) {
                 Entry::Occupied(mut occupied) => occupied.remove(),
                 Entry::Vacant(vacant) => PathsForRequestType::new(request_type.clone()),
             };
