@@ -29,7 +29,8 @@ use crate::{
     entities::{Entities, NoEntitiesSchema, TCComputation},
     extensions::Extensions,
     validator::entity_manifest::{
-        manifest_helpers::AccessTrie, slicing::ExpectedEntityTypeError, AccessPath, AccessPathVariant, AccessPaths, PathsForRequestType
+        manifest_helpers::AccessTrie, slicing::ExpectedEntityTypeError, AccessPath,
+        AccessPathVariant, AccessPaths, PathsForRequestType,
     },
 };
 
@@ -53,6 +54,16 @@ pub(crate) struct EntityRequest {
     pub(crate) tags: HashSet<String>,
     /// A trie containing the access paths needed for this entity
     pub(crate) access_trie: AccessTrie,
+}
+
+impl EntityRequest {
+    pub(crate) fn is_empty(&self) -> bool {
+        if self.tags.is_empty() {
+            self.access_trie.is_empty()
+        } else {
+            false
+        }
+    }
 }
 
 /// An entity request may be an entity or `None` when
@@ -182,6 +193,8 @@ pub(crate) fn load_entities(
     request: &Request,
     loader: &mut dyn EntityLoader,
 ) -> Result<Entities, EntitySliceError> {
+    eprintln!("manifest: {}", manifest.to_human_json_string().unwrap());
+
     // Get the PathsForRequestType for this request type
     let Some(for_request) = manifest
         .per_action
@@ -209,21 +222,8 @@ pub(crate) fn load_entities(
 
     // Get initial entities to load and track processed entities
     let mut to_load = initial_entities_to_load(&access_tries, for_request, request);
-    let mut entities_map = HashMap::new();
+    let mut entities_map: HashMap<EntityUID, Entity> = HashMap::new();
     let mut visited_paths = HashSet::new();
-
-    // If there's nothing to load, return empty entities
-    if to_load.is_empty() {
-        match Entities::from_entities(
-            vec![],
-            None::<&NoEntitiesSchema>,
-            TCComputation::AssumeAlreadyComputed,
-            Extensions::all_available(),
-        ) {
-            Ok(entities) => return Ok(entities),
-            Err(err) => return Err(err.into()),
-        };
-    }
 
     // Main loop of loading entities, one batch at a time
     while !to_load.is_empty() {
@@ -239,59 +239,64 @@ pub(crate) fn load_entities(
             .into());
         }
 
-        // Process loaded entities and prepare next batch to load
-        let mut next_to_load = Vec::new();
-
-        for (entity_request, entity_maybe) in to_load.into_iter().zip(loaded_entities) {
+        for entity_maybe in loaded_entities.into_iter() {
             if let Some(entity) = entity_maybe {
-                let entity_path = entity_request.access_path;
-
-                // Find dependent entities for this entity path
-                let dependent_entities = dependent_entities_map
-                    .get(&entity_path)
-                    .unwrap_or(&vec![])
-                    .clone();
-
-                // Add dependent entities to the next batch if they haven't been processed yet
-                for dependent_path in dependent_entities {
-                    if !visited_paths.insert(dependent_path.clone()) {
-                        continue;
-                    }
-
-                    // get the id of the dependent path using the entity store
-                    let dependent_val =
-                        dependent_path.compute_value(&entities_map, &for_request.dag, request)?;
-
-                    let dependent_id = match dependent_val.value_kind() {
-                        ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
-                        _ => return Err(ExpectedEntityTypeError { found_value: dependent_val.clone() }.into()),
-                    };
-
-                    // Get the access trie for this dependent entity
-                    let dependent_trie = access_tries
-                        .get(&dependent_path)
-                        .map(|t| (*t).clone())
-                        .unwrap_or_else(AccessTrie::new);
-
-                    next_to_load.push(EntityRequest {
-                        entity_id: dependent_id.clone(),
-                        tags: HashSet::new(),
-                        access_trie: dependent_trie,
-                        access_path: dependent_path.clone(),
-                    });
-                }
-
                 // Add or merge the entity into our map
-                match entities_map.entry(entity_request.entity_id) {
+                match entities_map.entry(entity.uid().clone()) {
                     hash_map::Entry::Occupied(o) => {
                         // If the entity is already present, merge it
                         let (k, v) = o.remove_entry();
-                        let merged = merge_entities(v, entity);
+                        let merged = merge_entities(v, entity.clone());
                         entities_map.insert(k, merged);
                     }
                     hash_map::Entry::Vacant(v) => {
-                        v.insert(entity);
+                        v.insert(entity.clone());
                     }
+                }
+            }
+        }
+
+        // Process loaded entities and prepare next batch to load
+        let mut next_to_load = Vec::new();
+
+        for entity_request in to_load.into_iter() {
+            eprintln!("entity request: {:?}", entity_request);
+            let entity_path = entity_request.access_path;
+
+            // Find dependent entities for this entity path
+            let dependent_entities = dependent_entities_map
+                .get(&entity_path)
+                .unwrap_or(&vec![])
+                .clone();
+
+            // Add dependent entities to the next batch if they haven't been processed yet
+            for dependent_path in dependent_entities {
+                if !visited_paths.insert(dependent_path.clone()) {
+                    continue;
+                }
+
+                // get the id of the dependent path using the entity store
+                let dependent_val =
+                    dependent_path.compute_value(&entities_map, &for_request.dag, request)?;
+
+                let dependent_id = match dependent_val.value_kind() {
+                    ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
+                    _ => {
+                        return Err(ExpectedEntityTypeError {
+                            found_value: dependent_val.clone(),
+                        }
+                        .into())
+                    }
+                };
+
+                // Get the access trie for this dependent entity if any
+                if let Some(dependent_trie) = access_tries.get(&dependent_path) {
+                    next_to_load.push(EntityRequest {
+                        entity_id: dependent_id.clone(),
+                        tags: HashSet::new(),
+                        access_trie: dependent_trie.clone(),
+                        access_path: dependent_path.clone(),
+                    });
                 }
             }
         }
@@ -306,41 +311,38 @@ pub(crate) fn load_entities(
     // compute ancestors requests by finding all AccessPathVariant::Ancestor variants
     // look up the entity ids in the Entities store using the paths
     // then create an ancestor request
-    // Convert HashSet to Vec for iteration
-    let reachable_paths_vec: Vec<AccessPath> = reachable_paths.into_iter().collect();
-    for path in reachable_paths_vec {
-        match path.get_variant(&for_request.dag) {
-            Ok(AccessPathVariant::Ancestor { of, ancestor }) => {
-                // Extract EntityUID from the Value
-                let of_val_result = of.compute_value(&entities_map, &for_request.dag, request)?;
-                let ancestor_val_result =
-                    ancestor.compute_value(&entities_map, &for_request.dag, request)?;
+    for path in reachable_paths.iter() {
+        if let Ok(AccessPathVariant::Ancestor { of, ancestor }) = path.get_variant(&for_request.dag)
+        {
+            // Extract EntityUID from the Value
+            let of_val_result = of.compute_value(&entities_map, &for_request.dag, request)?;
+            let ancestor_val_result =
+                ancestor.compute_value(&entities_map, &for_request.dag, request)?;
 
-                // Extract the EntityUID from the Value
-                let of_val = match of_val_result.value_kind() {
-                    ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
-                    _ => panic!("Expected EntityUID, got {:?}", of_val_result),
-                };
+            // Extract the EntityUID from the Value
+            let of_val = match of_val_result.value_kind() {
+                ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
+                _ => panic!("Expected EntityUID, got {:?}", of_val_result),
+            };
 
-                let ancestor_val = match ancestor_val_result.value_kind() {
-                    ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
-                    _ => panic!("Expected EntityUID, got {:?}", ancestor_val_result),
-                };
+            let ancestor_val = match ancestor_val_result.value_kind() {
+                ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
+                _ => panic!("Expected EntityUID, got {:?}", ancestor_val_result),
+            };
 
-                // if there is an existing ancestor request, add to it
-                // otherwise make a new one
-                let ancestor_request =
-                    ancestors_requests
-                        .entry(of_val.clone())
-                        .or_insert_with(|| AncestorsRequest {
-                            entity_id: of_val.clone(),
-                            ancestors: HashSet::new(),
-                        });
-                ancestor_request.ancestors.insert(ancestor_val);
-            }
-            _ => {}
+            // if there is an existing ancestor request, add to it
+            // otherwise make a new one
+            let ancestor_request =
+                ancestors_requests
+                    .entry(of_val.clone())
+                    .or_insert_with(|| AncestorsRequest {
+                        entity_id: of_val.clone(),
+                        ancestors: HashSet::new(),
+                    });
+            ancestor_request.ancestors.insert(ancestor_val);
         }
     }
+    eprintln!("ancestors requests: {:?}", ancestors_requests);
 
     if !ancestors_requests.is_empty() {
         // Convert HashMap to Vec for the loader API
