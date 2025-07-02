@@ -99,6 +99,34 @@ pub enum Var {
     Context
 }
 
+impl Var {
+    #[verifier::inline]
+    pub open spec fn eqEntityUID(self, uid: EntityUID) -> Expr {
+        Expr::BinaryApp {
+            bop: BinaryOp::Eq,
+            a: Box::new(Expr::Var { v: self }),
+            b: Box::new(Expr::Lit { p: Prim::EntityUID { uid } })
+        }
+    }
+
+    #[verifier::inline]
+    pub open spec fn inEntityUID(self, uid: EntityUID) -> Expr {
+        Expr::BinaryApp {
+            bop: BinaryOp::Mem,
+            a: Box::new(Expr::Var { v: self }),
+            b: Box::new(Expr::Lit { p: Prim::EntityUID { uid } })
+        }
+    }
+
+    #[verifier::inline]
+    pub open spec fn isEntityType(self, ety: EntityType) -> Expr {
+        Expr::UnaryApp {
+            uop: UnaryOp::Is { ety },
+            expr: Box::new(Expr::Var { v: self }),
+        }
+    }
+}
+
 pub enum UnaryOp {
     Not,
     Neg,
@@ -157,7 +185,12 @@ pub enum Expr {
     // },
 }
 
-
+impl Expr {
+    #[verifier::inline]
+    pub open spec fn and(a: Expr, b: Expr) -> Expr {
+        Expr::And{ a: Box::new(a), b: Box::new(b) }
+    }
+}
 
 /////////////////////////////////////////////////////
 // POLICIES: see cedar-lean/Cedar/Spec/Polciy.lean //
@@ -176,17 +209,61 @@ pub enum Scope {
     IsMem { ety: EntityType, entity: EntityUID },
 }
 
+impl Scope {
+    #[verifier::opaque]
+    pub open spec fn to_expr(self, v: Var) -> Expr {
+        match self {
+            Scope::Any => Expr::Lit { p: Prim::Bool { b: true } },
+            Scope::Eq { entity: uid } => v.eqEntityUID(uid),
+            Scope::Mem { entity: uid } => v.inEntityUID(uid),
+            Scope::Is { ety: ety } => v.isEntityType(ety),
+            Scope::IsMem { ety: ety, entity: uid } => Expr::and(v.isEntityType(ety), v.inEntityUID(uid)),
+        }
+    }
+}
+
 pub struct PrincipalScope {
     pub principal_scope: Scope,
+}
+
+impl PrincipalScope {
+    #[verifier::inline]
+    pub open spec fn to_expr(self) -> Expr {
+        self.principal_scope.to_expr(Var::Principal)
+    }
 }
 
 pub struct ResourceScope {
     pub resource_scope: Scope,
 }
 
+impl ResourceScope {
+    #[verifier::inline]
+    pub open spec fn to_expr(self) -> Expr {
+        self.resource_scope.to_expr(Var::Resource)
+    }
+}
+
 pub enum ActionScope {
     ActionScope { scope: Scope },
     ActionInAny { ls: Seq<EntityUID> },
+}
+
+impl ActionScope {
+    #[verifier::inline]
+    pub open spec fn to_expr(self) -> Expr {
+        match self {
+            ActionScope::ActionScope { scope: s } => s.to_expr(Var::Action),
+            ActionScope::ActionInAny { ls: es } => {
+                let exprs = es.map_values(|e:EntityUID| Expr::Lit { p: Prim::EntityUID { uid: e } });
+                Expr::BinaryApp {
+                    bop: BinaryOp::Mem,
+                    a: Box::new(Expr::Var { v: Var::Action }),
+                    b: Box::new(Expr::Set { ls: exprs })
+                }
+            }
+        }
+    }
 }
 
 pub type PolicyID = Seq<char>;
@@ -201,20 +278,49 @@ pub struct Condition {
     pub body: Expr
 }
 
+impl Condition {
+    #[verifier::inline]
+    pub open spec fn to_expr(self) -> Expr {
+        match self.kind {
+            ConditionKind::When => self.body,
+            ConditionKind::Unless => Expr::UnaryApp {
+                uop: UnaryOp::Not,
+                expr: Box::new(self.body)
+            }
+        }
+    }
+}
+
 pub type Conditions = Seq<Condition>;
+
+// Can't write `impl Conditions` since `Conditions` is a type synonym
+#[verifier::inline]
+pub open spec fn conditions_to_expr(conditions: Conditions) -> Expr {
+    conditions.fold_right(
+        |c:Condition, expr:Expr| Expr::and(c.to_expr(), expr),
+        Expr::Lit { p: Prim::Bool { b: true } })
+}
 
 pub struct Policy {
     pub id: PolicyID,
     pub effect: Effect,
-    pub prinicpal_scope: PrincipalScope,
+    pub principal_scope: PrincipalScope,
     pub action_scope: ActionScope,
     pub resource_scope: ResourceScope,
     pub condition: Conditions,
 }
 
 impl Policy {
-    // TODO(Pratap): implement as part of evaluator
-    pub uninterp spec fn to_expr(self) -> Expr;
+    #[verifier::opaque]
+    pub open spec fn to_expr(self) -> Expr {
+        Expr::and(
+            self.principal_scope.to_expr(),
+            Expr::and(
+                self.action_scope.to_expr(),
+                Expr::and(
+                    self.resource_scope.to_expr(),
+                    conditions_to_expr(self.condition))))
+    }
 }
 
 pub type Policies = Seq<Policy>;
