@@ -23,10 +23,10 @@ use std::{
 };
 
 use crate::{
-    ast::{Entity, EntityUID, PartialValue, Request, Value, ValueKind},
+    ast::{Entity, EntityUID, PartialValue, Request, Value, ValueKind, Var},
     entities::{Entities, NoEntitiesSchema, TCComputation},
     extensions::Extensions,
-    validator::entity_manifest::AccessPaths,
+    validator::entity_manifest::{AccessPath, AccessPathVariant, AccessPaths},
 };
 
 use crate::validator::entity_manifest::{
@@ -170,7 +170,215 @@ pub(crate) fn load_entities(
     let context = request.context().ok_or(PartialRequestError {})?;
 
     let mut entities: HashMap<EntityUID, Entity> = Default::default();
-    todo!()
+    
+    // Step 1: Identify all leaf nodes in the reachable_access_paths
+    // A leaf node is a path that doesn't appear as a parent in any other path
+    let mut leaf_paths = HashSet::new();
+    let mut parent_paths = HashSet::new();
+    
+    // First, collect all paths that are parents
+    for path in &reachable_access_paths.paths {
+        match path.get_variant(&for_request.dag) {
+            Ok(variant) => match variant {
+                AccessPathVariant::Attribute { of, .. } => {
+                    parent_paths.insert(of.clone());
+                }
+                AccessPathVariant::Tag { of, tag } => {
+                    parent_paths.insert(of.clone());
+                    parent_paths.insert(tag.clone());
+                }
+                AccessPathVariant::Ancestor { of, ancestor } => {
+                    parent_paths.insert(of.clone());
+                    parent_paths.insert(ancestor.clone());
+                }
+                _ => {}
+            },
+            Err(_) => continue, // Skip paths that can't be found in the DAG
+        }
+    }
+    
+    // Then, identify leaf paths (paths that are not parents)
+    for path in &reachable_access_paths.paths {
+        if !parent_paths.contains(path) {
+            leaf_paths.insert(path.clone());
+        }
+    }
+    
+    // Step 2: Process paths in layers, starting from leaf nodes and moving up
+    let mut processed_paths = HashSet::new();
+    let mut to_process = leaf_paths;
+    let mut entity_requests = Vec::new();
+    let mut entity_id_map: HashMap<AccessPath, EntityUID> = HashMap::new();
+    
+    // Process each layer until no more paths are left to process
+    while !to_process.is_empty() {
+        let current_layer = to_process;
+        to_process = HashSet::new();
+        let mut next_layer_paths = HashSet::new();
+        
+        // Group paths by entity ID for batch loading
+        let mut path_groups: HashMap<EntityUID, AccessPaths> = HashMap::new();
+        
+        // Process current layer paths
+        for path in current_layer {
+            if processed_paths.contains(&path) {
+                continue;
+            }
+            
+            processed_paths.insert(path.clone());
+            
+            // Determine the entity ID for this path
+            let entity_id = match path.get_variant(&for_request.dag) {
+                Ok(variant) => match variant {
+                    AccessPathVariant::Literal(euid) => euid.clone(),
+                    AccessPathVariant::Var(var) => match var {
+                        Var::Principal => request.principal().uid().ok_or(PartialRequestError {})?.clone(),
+                        Var::Action => request.action().uid().ok_or(PartialRequestError {})?.clone(),
+                        Var::Resource => request.resource().uid().ok_or(PartialRequestError {})?.clone(),
+                        Var::Context => continue, // Context is handled separately
+                    },
+                    AccessPathVariant::Attribute { of, .. } => {
+                        // If we have the entity ID for the parent path, use it
+                        if let Some(parent_id) = entity_id_map.get(of) {
+                            // Add the parent path to the next layer if not processed
+                            if !processed_paths.contains(of) {
+                                next_layer_paths.insert(of.clone());
+                            }
+                            parent_id.clone()
+                        } else {
+                            // Otherwise, add the parent path to the next layer
+                            next_layer_paths.insert(of.clone());
+                            continue; // Skip this path for now
+                        }
+                    },
+                    AccessPathVariant::Tag { of, .. } => {
+                        // Similar to attribute, we need the parent entity ID
+                        if let Some(parent_id) = entity_id_map.get(of) {
+                            if !processed_paths.contains(of) {
+                                next_layer_paths.insert(of.clone());
+                            }
+                            parent_id.clone()
+                        } else {
+                            next_layer_paths.insert(of.clone());
+                            continue;
+                        }
+                    },
+                    AccessPathVariant::Ancestor { of, .. } => {
+                        // For ancestors, we need the entity whose ancestors we're checking
+                        if let Some(entity_id) = entity_id_map.get(of) {
+                            if !processed_paths.contains(of) {
+                                next_layer_paths.insert(of.clone());
+                            }
+                            entity_id.clone()
+                        } else {
+                            next_layer_paths.insert(of.clone());
+                            continue;
+                        }
+                    },
+                    AccessPathVariant::String(_) => continue, // String literals don't need entity loading
+                },
+                Err(_) => continue, // Skip paths that can't be found in the DAG
+            };
+            
+            // Map this path to its entity ID for future reference
+            entity_id_map.insert(path.clone(), entity_id.clone());
+            
+            // Group paths by entity ID
+            path_groups
+                .entry(entity_id)
+                .or_insert_with(AccessPaths::default)
+                .insert(path);
+        }
+        
+        // Create entity requests for this layer
+        for (entity_id, access_paths) in path_groups {
+            entity_requests.push(EntityRequest {
+                entity_id,
+                access_paths,
+            });
+        }
+        
+        // If we have entity requests, load them
+        if !entity_requests.is_empty() {
+            let loaded_entities = loader.load_entities(&entity_requests, for_request.dag.clone())?;
+            
+            if loaded_entities.len() != entity_requests.len() {
+                return Err(WrongNumberOfEntitiesError {
+                    expected: entity_requests.len(),
+                    got: loaded_entities.len(),
+                }
+                .into());
+            }
+            
+            // Process loaded entities
+            for (request, entity_option) in entity_requests.iter().zip(loaded_entities) {
+                if let Some(entity) = entity_option {
+                    // Merge with existing entity if it exists
+                    match entities.entry(request.entity_id.clone()) {
+                        hash_map::Entry::Occupied(o) => {
+                            let (k, v) = o.remove_entry();
+                            let merged = merge_entities(v, entity);
+                            entities.insert(k, merged);
+                        }
+                        hash_map::Entry::Vacant(v) => {
+                            v.insert(entity);
+                        }
+                    }
+                }
+            }
+            
+            // Clear entity requests for the next layer
+            entity_requests.clear();
+        }
+        
+        // Add next layer paths to process
+        to_process = next_layer_paths;
+    }
+    
+    // Step 3: Load ancestors for all entities
+    let mut ancestors_requests = Vec::new();
+    for (entity_id, _) in &entities {
+        // Create an ancestors request for each entity
+        ancestors_requests.push(AncestorsRequest {
+            entity_id: entity_id.clone(),
+            ancestors: HashSet::new(), // Load all ancestors
+        });
+    }
+    
+    if !ancestors_requests.is_empty() {
+        let loaded_ancestors = loader.load_ancestors(&ancestors_requests)?;
+        
+        if loaded_ancestors.len() != ancestors_requests.len() {
+            return Err(WrongNumberOfEntitiesError {
+                expected: ancestors_requests.len(),
+                got: loaded_ancestors.len(),
+            }
+            .into());
+        }
+        
+        // Add ancestors to entities
+        for (request, ancestors) in ancestors_requests.into_iter().zip(loaded_ancestors) {
+            if let Some(entity) = entities.get_mut(&request.entity_id) {
+                ancestors
+                    .into_iter()
+                    .for_each(|ancestor| entity.add_parent(ancestor));
+            }
+        }
+    }
+    
+    // Finally, convert the loaded entities into a Cedar Entities store
+    match Entities::from_entities(
+        entities.into_values(),
+        None::<&NoEntitiesSchema>,
+        TCComputation::AssumeAlreadyComputed,
+        Extensions::all_available(),
+    ) {
+        Ok(entities) => Ok(entities),
+        Err(e) => Err(e.into()),
+    }
+
+
+    // Old code using trie
     // entity requests in progress
     // let mut to_load: Vec<EntityRequestRef<'_>> =
     //     initial_entities_to_load(root_access_trie, context, request, &mut Default::default())?;

@@ -36,8 +36,6 @@ mod level_validate;
 mod coreschema;
 #[cfg(feature = "entity-manifest")]
 pub mod entity_manifest;
-#[cfg(feature = "entity-manifest")]
-mod entity_manifest_tests;
 pub use coreschema::*;
 mod diagnostics;
 pub use diagnostics::*;
