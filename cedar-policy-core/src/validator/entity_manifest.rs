@@ -949,36 +949,34 @@ pub fn compute_entity_manifest(
         // typecheck the policy and get all the request environments
         let request_envs = typechecker.typecheck_by_request_env(policy.template());
         for (request_env, policy_check) in request_envs {
-            let result = match policy_check {
+            let request_type = request_env
+                .to_request_type()
+                .ok_or(PartialRequestError {})?;
+
+            let mut per_request = match manifest.per_action.entry(request_type) {
+                Entry::Occupied(mut occupied) => occupied.remove(),
+                Entry::Vacant(vacant) => PathsForRequestType::new(request_type.clone()),
+            };
+
+            match policy_check {
                 PolicyCheck::Success(typechecked_expr) => {
                     // compute the access paths from the typechecked expr
                     // using static analysis
-                    analyze_expr_access_paths(&typechecked_expr, &mut manifest.dag)
-                        .map(|val| val.accessed_paths)
+                    let res = analyze_expr_access_paths(&typechecked_expr, &mut per_request.dag)?;
+                    // add the result to the per_request
+                    per_request.access_paths.extend(res.accessed_paths);
                 }
-                PolicyCheck::Irrelevant(_, _) => {
-                    // this policy is irrelevant, so we need no data
-                    Ok(AccessPaths::default())
-                }
+                PolicyCheck::Irrelevant(_, _) => {}
 
                 // PANIC SAFETY: policy check should not fail after full strict validation above.
                 #[allow(clippy::panic)]
                 PolicyCheck::Fail(_errors) => {
                     panic!("Policy check failed after validation succeeded")
                 }
-            }?;
+            };
 
-            let request_type = request_env
-                .to_request_type()
-                .ok_or(PartialRequestError {})?;
-            match manifest.per_action.entry(request_type) {
-                Entry::Occupied(mut occupied) => {
-                    occupied.get_mut().extend(result);
-                }
-                Entry::Vacant(vacant) => {
-                    vacant.insert(result);
-                }
-            }
+            // add the per action entry back
+            manifest.per_action.insert(request_type, per_request);
         }
     }
 
