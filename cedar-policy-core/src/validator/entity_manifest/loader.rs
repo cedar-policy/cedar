@@ -45,7 +45,7 @@ use crate::validator::entity_manifest::{
 pub(crate) struct EntityRequest {
     /// The id of the entity requested
     pub(crate) entity_id: EntityUID,
-    /// The requested tags for the entity
+    /// The requested tags for the entity TODO set these during loading
     pub(crate) tags: HashSet<String>,
     /// A trie containing the access paths needed for this entity
     pub(crate) access_trie: AccessTrie,
@@ -124,16 +124,16 @@ pub(crate) trait EntityLoader {
 }
 
 impl PathsForRequestType {
-    /// Build a hashmap of parent paths for all reachable paths
-    fn build_parents_map(
+    /// Build a hashmap of dependent paths for all reachable paths
+    fn build_dependents_map(
         &self,
         reachable_paths: &HashSet<AccessPath>,
     ) -> HashMap<AccessPath, Vec<AccessPath>> {
-        let mut parents_map = HashMap::new();
+        let mut dependents_map = HashMap::new();
 
         // Initialize the map with empty vectors for all paths
         for path in reachable_paths {
-            parents_map.insert(path.clone(), Vec::new());
+            dependents_map.insert(path.clone(), Vec::new());
         }
 
         // Populate the map with parent-child relationships
@@ -143,13 +143,13 @@ impl PathsForRequestType {
 
             for child in children {
                 // Add this path as a parent of the child
-                if let Some(child_parents) = parents_map.get_mut(&child) {
-                    child_parents.push(path.clone());
+                if let Some(child_dependents) = dependents_map.get_mut(&child) {
+                    child_dependents.push(path.clone());
                 }
             }
         }
 
-        parents_map
+        dependents_map
     }
 
     /// Helper function to get the manifest dependent entity paths of an access path
@@ -158,7 +158,7 @@ impl PathsForRequestType {
     fn get_manifest_dependent_entities(
         &self,
         path: &AccessPath,
-        parents_map: &HashMap<AccessPath, Vec<AccessPath>>,
+        dependents_map: &HashMap<AccessPath, Vec<AccessPath>>,
     ) -> Vec<AccessPath> {
         let mut result = Vec::new();
         let mut visited = HashSet::new();
@@ -177,12 +177,12 @@ impl PathsForRequestType {
                 continue;
             }
 
-            // Get the parents of the current path
-            if let Some(parents) = parents_map.get(&current) {
-                for parent in parents {
-                    if !visited.contains(parent) {
-                        visited.insert(parent.clone());
-                        queue.push(parent.clone());
+            // Get the dependents of the current path
+            if let Some(dependents) = dependents_map.get(&current) {
+                for dependent in dependents {
+                    if !visited.contains(dependent) {
+                        visited.insert(dependent.clone());
+                        queue.push(dependent.clone());
                     }
                 }
             }
@@ -201,8 +201,8 @@ impl PathsForRequestType {
         // First, compute all reachable paths
         let reachable_paths = self.reachable_paths();
 
-        // Build a parents map for efficient parent lookup
-        let parents_map = self.build_parents_map(&reachable_paths);
+        // Build a dependents map for efficient dependent lookup
+        let dependents_map = self.build_dependents_map(&reachable_paths);
 
         // Find all entity paths among the reachable paths
         let entity_paths = self.get_entity_paths(&reachable_paths);
@@ -210,8 +210,8 @@ impl PathsForRequestType {
         // Build the AccessTrie for each entity path
         let mut result = HashMap::new();
         for entity_path in entity_paths {
-            let trie =
-                self.build_access_trie_for_entity(&entity_path, &reachable_paths, &parents_map);
+            let trie = self.build_access_trie_for_entity(&entity_path, &dependents_map);
+
             if !trie.fields.is_empty() {
                 result.insert(entity_path, trie);
             }
@@ -227,7 +227,9 @@ impl PathsForRequestType {
             if path.id < types.len() {
                 // Check if the type is an entity type
                 use crate::validator::types::EntityRecordKind;
-                match &types[path.id] {
+                // PANIC SAFETY: types are computed for all paths in the manifest
+                #[allow(clippy::unwrap_used)]
+                match types.get(path.id).unwrap() {
                     crate::validator::types::Type::EntityOrRecord(kind) => {
                         matches!(
                             kind,
@@ -265,54 +267,64 @@ impl PathsForRequestType {
     fn build_access_trie_for_entity(
         &self,
         entity_path: &AccessPath,
-        reachable_paths: &HashSet<AccessPath>,
-        parents_map: &HashMap<AccessPath, Vec<AccessPath>>,
+        dependents_map: &HashMap<AccessPath, Vec<AccessPath>>,
     ) -> AccessTrie {
+        // Create a new trie for this entity
         let mut trie = AccessTrie::new();
 
-        // Get all direct children (attributes) of this entity path
-        for child in entity_path.children(&self.dag) {
-            // Get the attribute name if this is an attribute relationship
-            let attr = if let Ok(variant) = child.get_variant(&self.dag) {
-                if let AccessPathVariant::Attribute { attr, .. } = variant {
-                    attr.clone()
-                } else {
-                    continue; // Skip non-attribute relationships
-                }
-            } else {
-                continue; // Skip if we can't get the variant
-            };
-
-            // Use child as the child_path
-            let child_path = child;
-            // Skip if the child path is also an entity (don't recur into sub-entities)
-            if self.is_entity_path(&child_path) {
-                continue;
-            }
-
-            // Get the manifest dependent entities of this child path
-            let dependent_entities = self.get_manifest_dependent_entities(&child_path, parents_map);
-
-            // Skip if this child has other dependent entities besides the current entity
-            // This ensures we don't include fields that belong to other entities
-            if dependent_entities.iter().any(|p| p != entity_path) {
-                continue;
-            }
-
-            // Get or create the field in the trie
-            let field_trie = trie.get_or_create_field(&attr);
-
-            // Recursively build the trie for this field's children
-            let child_trie =
-                self.build_access_trie_for_entity(&child_path, reachable_paths, parents_map);
-
-            // Merge the child trie into the field trie
-            if !child_trie.fields.is_empty() {
-                *field_trie = Box::new(child_trie);
-            }
-        }
+        // Use a recursive helper to build the trie
+        self.build_trie_recursive(entity_path, &mut trie, dependents_map, &mut HashSet::new());
 
         trie
+    }
+
+    /// Recursive helper function to build the AccessTrie
+    /// Traverses the dependents map starting from the entity path
+    fn build_trie_recursive(
+        &self,
+        path: &AccessPath,
+        trie: &mut AccessTrie,
+        dependents_map: &HashMap<AccessPath, Vec<AccessPath>>,
+        visited: &mut HashSet<AccessPath>,
+    ) {
+        // Mark this path as visited to avoid cycles
+        visited.insert(path.clone());
+
+        // Get all dependents of this path
+        if let Some(dependents) = dependents_map.get(path) {
+            for dependent in dependents {
+                // Skip if we've already visited this path
+                if visited.contains(dependent) {
+                    continue;
+                }
+
+                // Check if this is an attribute path
+                if let Ok(variant) = dependent.get_variant(&self.dag) {
+                    match variant {
+                        AccessPathVariant::Attribute { attr, .. } => {
+                            // If this is an entity, don't recur into it
+                            if self.is_entity_path(dependent) {
+                                continue;
+                            }
+
+                            // Get or create the field in the trie
+                            let field_trie = trie.get_or_create_field(attr);
+
+                            // Recursively build the trie for this field's dependents
+                            self.build_trie_recursive(
+                                dependent,
+                                field_trie,
+                                dependents_map,
+                                visited,
+                            );
+                        }
+                        _ => {
+                            // For non-attribute paths, nothing is required
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Computes all reachable paths.
@@ -407,7 +419,7 @@ pub(crate) fn load_entities(
 
     // Build a map of entity paths to their dependent entities
     let reachable_paths = for_request.reachable_paths();
-    let parents_map = for_request.build_parents_map(&reachable_paths);
+    let dependents_map = for_request.build_dependents_map(&reachable_paths);
 
     // Create a map to track which entities we've already processed
     let mut processed_entities = HashSet::new();
@@ -538,7 +550,7 @@ pub(crate) fn load_entities(
                         if matches {
                             // Find dependent entities for this entity path
                             let dependent_entities = for_request
-                                .get_manifest_dependent_entities(entity_path, &parents_map);
+                                .get_manifest_dependent_entities(entity_path, &dependents_map);
 
                             // Add dependent entities to the next batch if they haven't been processed yet
                             for dependent_path in dependent_entities {
