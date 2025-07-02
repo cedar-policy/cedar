@@ -2,8 +2,12 @@ use std::{collections::HashMap, rc::Rc};
 
 use smol_str::SmolStr;
 
+use crate::ast::{BinaryOp, Expr, ExprKind, Literal, UnaryOp, Var};
 use crate::validator::{
-    entity_manifest::{AccessDag, AccessPath, AccessPathVariant, AccessPaths, EntityRoot},
+    entity_manifest::{
+        AccessDag, AccessPath, AccessPathVariant, AccessPaths, EntityManifestError, EntityRoot,
+        PartialExpressionError, UnsupportedCedarFeatureError,
+    },
     types::{EntityRecordKind, Type},
 };
 
@@ -98,30 +102,34 @@ impl EntityManifestAnalysisResult {
     /// should prevent this, since ancestors are required of literals.
     pub(crate) fn with_ancestors_required(
         mut self,
-        // The path whose ancestors are required.
-        of: &AccessPath,
         // The access paths for the ancestors
         access_paths: &Rc<WrappedAccessPaths>,
         store: &mut AccessDag,
     ) -> Self {
         // Convert the ancestors_trie to AccessPaths
-        // PANIC SAFETY: The typechecker should ensure that ancestors_trie can be
-        // converted to AccessPaths (i.e., it doesn't contain record or set literals).
+        // PANIC SAFETY: The typechecker should ensure that the rhs of `in` is entity typed,
+        // and so can be converted to AccessPaths (i.e., it doesn't contain record or set literals).
         #[allow(clippy::unwrap_used)]
         let access_paths = access_paths.to_access_paths().unwrap();
 
-        // For each path in the resulting_paths, add an ancestor relationship with each path from ancestors_trie
-        for ancestor_path in &access_paths.paths {
-            // Create an Ancestor variant that links the self_path to the ancestor_path
-            let ancestor_variant = AccessPathVariant::Ancestor {
-                of: of.clone(),
-                ancestor: ancestor_path.clone(),
-            };
+        // PANIC SAFETY: The typechecker shoudl ensure the lhs of `in` is entity typed.
+        #[allow(clippy::unwrap_used)]
+        let my_paths = self.resulting_paths.to_access_paths().unwrap();
 
-            // Add this new path to the store
-            let res = store.add_path(ancestor_variant);
-            // Add the path to accessed_paths
-            self.accessed_paths.insert(res);
+        // For each path in the resulting_paths, add an ancestor relationship with each path from ancestors_trie
+        for of in &my_paths.paths {
+            for ancestor_path in &access_paths.paths {
+                // Create an Ancestor variant that links the self_path to the ancestor_path
+                let ancestor_variant = AccessPathVariant::Ancestor {
+                    of: of.clone(),
+                    ancestor: ancestor_path.clone(),
+                };
+
+                // Add this new path to the store
+                let res = store.add_path(ancestor_variant);
+                // Add the path to accessed_paths
+                self.accessed_paths.insert(res);
+            }
         }
 
         self
@@ -325,4 +333,3 @@ fn entity_or_record_to_access_paths(
             AccessPaths::default()
         }
     }
-}
