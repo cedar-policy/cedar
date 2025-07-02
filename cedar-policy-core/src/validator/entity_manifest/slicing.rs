@@ -189,11 +189,59 @@ impl EntityLoader for EntitySlicer<'_> {
 }
 
 impl AccessTrie {
+    /// Given an entities store, an entity id, and a resulting store
+    /// Slice the entities and put them in the resulting store.
     fn slice_entity(&self, entity: &Entity) -> Result<Entity, EntitySliceError> {
-        todo!()
+        let mut new_entity = HashMap::<SmolStr, PartialValue>::new();
+        for (field, slice) in &self.fields {
+            // only slice when field is available
+            if let Some(pval) = entity.get(field).cloned() {
+                let PartialValue::Value(val) = pval else {
+                    return Err(PartialEntityError {}.into());
+                };
+                let sliced = slice.slice_val(&val)?;
+
+                new_entity.insert(field.clone(), PartialValue::Value(sliced));
+            }
+        }
+
+        Ok(Entity::new_with_attr_partial_value(
+            entity.uid().clone(),
+            new_entity,
+            Default::default(),
+            Default::default(),
+            [], // TODO: entity slicing does not yet support tags
+        ))
     }
 
     fn slice_val(&self, val: &Value) -> Result<Value, EntitySliceError> {
-        todo!()
+        Ok(match val.value_kind() {
+            ValueKind::Lit(Literal::EntityUID(_)) => {
+                // entities shouldn't need to be dereferenced
+                assert!(self.fields.is_empty());
+                val.clone()
+            }
+            ValueKind::Set(_) | ValueKind::ExtensionValue(_) | ValueKind::Lit(_) => {
+                if !self.fields.is_empty() {
+                    return Err(IncompatibleEntityManifestError {
+                        non_record_entity_value: val.clone(),
+                    }
+                    .into());
+                }
+
+                val.clone()
+            }
+            ValueKind::Record(record) => {
+                let mut new_map = BTreeMap::<SmolStr, Value>::new();
+                for (field, slice) in &self.fields {
+                    // only slice when field is available
+                    if let Some(v) = record.get(field) {
+                        new_map.insert(field.clone(), slice.slice_val(v)?);
+                    }
+                }
+
+                Value::new(ValueKind::record(new_map), None)
+            }
+        })
     }
 }
