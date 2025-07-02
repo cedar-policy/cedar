@@ -254,7 +254,7 @@ pub(crate) fn load_entities(
 
                 // Add dependent entities to the next batch if they haven't been processed yet
                 for dependent_path in dependent_entities {
-                    if !visited_paths.insert(&dependent_path) {
+                    if !visited_paths.insert(dependent_path.clone()) {
                         continue;
                     }
 
@@ -263,8 +263,8 @@ pub(crate) fn load_entities(
                         dependent_path.compute_value(&entities_map, &for_request.dag, request)?;
 
                     let dependent_id = match dependent_val.value_kind() {
-                        ValueKind::Lit(literal) => literal.clone(),
-                        _ => return Err(ExpectedEntityTypeError(dependent_val.clone())),
+                        ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
+                        _ => return Err(ExpectedEntityTypeError { found_value: dependent_val.clone() }.into()),
                     };
 
                     // Get the access trie for this dependent entity
