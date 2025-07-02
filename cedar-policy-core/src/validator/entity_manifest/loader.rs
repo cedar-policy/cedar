@@ -25,7 +25,7 @@ use std::{
 use smol_str::SmolStr;
 
 use crate::{
-    ast::{Entity, EntityUID, PartialValue, Request, Value, ValueKind, Var},
+    ast::{Entity, EntityUID, Literal, PartialValue, Request, Value, ValueKind, Var},
     entities::{Entities, NoEntitiesSchema, TCComputation},
     extensions::Extensions,
     validator::entity_manifest::{AccessPath, AccessPathVariant, AccessPaths, PathsForRequestType},
@@ -302,21 +302,18 @@ impl PathsForRequestType {
                 if let Ok(variant) = dependent.get_variant(&self.dag) {
                     match variant {
                         AccessPathVariant::Attribute { attr, .. } => {
-                            // If this is an entity, don't recur into it
-                            if self.is_entity_path(dependent) {
-                                continue;
-                            }
-
                             // Get or create the field in the trie
                             let field_trie = trie.get_or_create_field(attr);
 
-                            // Recursively build the trie for this field's dependents
-                            self.build_trie_recursive(
-                                dependent,
-                                field_trie,
-                                dependents_map,
-                                visited,
-                            );
+                            // If this is an entity, don't continue building the trie
+                            if !self.is_entity_path(dependent) {
+                                self.build_trie_recursive(
+                                    dependent,
+                                    field_trie,
+                                    dependents_map,
+                                    visited,
+                                );
+                            }
                         }
                         _ => {
                             // For non-attribute paths, nothing is required
@@ -427,7 +424,6 @@ pub(crate) fn load_entities(
     // Create initial entity requests for entities that need to be loaded
     let mut to_load = Vec::new();
     let mut entities_map = HashMap::new();
-    let mut to_find_ancestors = Vec::new();
 
     // Add requests for principal, action, and resource if they have access tries
     if let Some(principal_uid) = request.principal().uid() {
@@ -509,11 +505,6 @@ pub(crate) fn load_entities(
 
     // Main loop of loading entities, one batch at a time
     while !to_load.is_empty() {
-        // Record entities for ancestor loading later
-        for entity_request in &to_load {
-            to_find_ancestors.push(entity_request.entity_id.clone());
-        }
-
         // Load the current batch of entities
         let loaded_entities = loader.load_entities(&to_load, for_request.dag.clone())?;
 
@@ -611,15 +602,43 @@ pub(crate) fn load_entities(
     }
 
     // Load ancestors for all entities
-    let mut ancestors_requests = Vec::new();
+    let mut ancestors_requests = HashMap::new();
 
-    for entity_id in to_find_ancestors {
-        // For now, we don't have specific ancestor requirements
-        // so we just request all ancestors
-        ancestors_requests.push(AncestorsRequest {
-            entity_id,
-            ancestors: HashSet::new(), // Empty set means all ancestors
-        });
+    // compute ancestors requests by finding all AccessPathVariant::Ancestor variants
+    // look up the entity ids in the Entities store using the paths
+    // then create an ancestor request
+    for path in reachable_paths {
+        match path.get_variant(&for_request.dag) {
+            Ok(AccessPathVariant::Ancestor { of, ancestor }) => {
+                // Extract EntityUID from the Value
+                let of_val_result = of.compute_value(&entities_map, &for_request.dag, request)?;
+                let ancestor_val_result =
+                    ancestor.compute_value(&entities_map, &for_request.dag, request)?;
+
+                // Extract the EntityUID from the Value
+                let of_val = match of_val_result.value_kind() {
+                    ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
+                    _ => panic!("Expected EntityUID, got {:?}", of_val_result),
+                };
+
+                let ancestor_val = match ancestor_val_result.value_kind() {
+                    ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
+                    _ => panic!("Expected EntityUID, got {:?}", ancestor_val_result),
+                };
+
+                // if there is an existing ancestor request, add to it
+                // otherwise make a new one
+                let ancestor_request =
+                    ancestors_requests
+                        .entry(of_val)
+                        .or_insert_with(|| AncestorsRequest {
+                            entity_id: of_val,
+                            ancestors: HashSet::new(),
+                        });
+                ancestor_request.ancestors.insert(ancestor_val);
+            }
+            _ => {}
+        }
     }
 
     if !ancestors_requests.is_empty() {
