@@ -31,6 +31,7 @@ use serde_with::serde_as;
 use smol_str::SmolStr;
 use thiserror::Error;
 
+pub(crate) mod manifest_helpers;
 pub(crate) mod analysis;
 #[cfg(test)]
 mod entity_manifest_tests;
@@ -108,7 +109,9 @@ impl PathsForRequestType {
         // First, add all paths from the other manifest to this manifest
         // and build a mapping from paths in the other manifest to paths in this manifest
         for i in 0..other.dag.manifest_store.len() {
-            let variant = &other.dag.manifest_store[i];
+            // PANIC SAFETY: Iterating over length of vector and not mutating it
+            #[allow(clippy::panic)]
+            let variant = &other.dag.manifest_store.get(i).unwrap();
             let mapped_variant = self.map_variant(variant, &mut path_mapping);
             let new_path = self.dag.add_path(mapped_variant);
             path_mapping.path_map.insert(i, new_path.id);

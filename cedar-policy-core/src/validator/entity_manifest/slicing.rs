@@ -5,6 +5,7 @@ use std::fmt::Display;
 
 use crate::entities::err::EntitiesError;
 use crate::entities::Dereference;
+use crate::validator::entity_manifest::manifest_helpers::AccessTrie;
 use crate::{
     ast::{Entity, EntityUID, Literal, PartialValue, Request, Value, ValueKind},
     entities::Entities,
@@ -14,7 +15,7 @@ use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::validator::entity_manifest::loader::{
-    load_entities, AccessTrie, AncestorsRequest, EntityAnswer, EntityLoader, EntityRequest,
+    load_entities, AncestorsRequest, EntityAnswer, EntityLoader, EntityRequest,
 };
 use crate::validator::entity_manifest::{
     AccessDag, AccessPath, AccessPathVariant, AccessPaths, EntityManifest, PartialRequestError,
