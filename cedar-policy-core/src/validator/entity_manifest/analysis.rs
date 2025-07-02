@@ -143,7 +143,9 @@ impl EntityManifestAnalysisResult {
     /// It also drops the resulting paths, since these checks result
     /// in booleans.
     pub(crate) fn full_type_required(&mut self, ty: &Type, store: &mut AccessDag) {
-        self.resulting_paths.full_type_required(ty, store);
+        let type_paths = self.resulting_paths.full_type_required(ty, store);
+        self.accessed_paths.extend(type_paths);
+        self.resulting_paths = Default::default();
     }
 
     /// Union this analysis result with another, taking the union of the resulting paths.
@@ -232,29 +234,31 @@ impl WrappedAccessPaths {
 
     /// For equality or containment checks, all paths in the type
     /// are required.
-    /// This function extends the paths with the fields mentioned
-    /// by the type, adding these to the provided store.
-    fn full_type_required(self: &Rc<Self>, ty: &Type, store: &mut AccessDag) {
+    /// This function returns all the paths the type specifies, starting from
+    /// these wrapped access paths.
+    fn full_type_required(self: &Rc<Self>, ty: &Type, store: &mut AccessDag) -> AccessPaths {
         match &**self {
             WrappedAccessPaths::AccessPath(path) => {
                 // Use type_to_access_paths to compute the full access paths for the type
                 // and add them to the store
-                let _paths = type_to_access_paths(ty, store, path);
+                type_to_access_paths(ty, store, path)
             }
             WrappedAccessPaths::RecordLiteral(literal_fields) => match ty {
                 Type::EntityOrRecord(EntityRecordKind::Record {
                     attrs: record_attrs,
                     ..
                 }) => {
+                    let mut res = AccessPaths::default();
                     for (attr, attr_ty) in record_attrs.iter() {
                         // PANIC SAFETY: Record literals should have attributes that match the type.
                         #[allow(clippy::panic)]
                         if let Some(field) = literal_fields.get(attr) {
-                            field.full_type_required(&attr_ty.attr_type, store);
+                            res.extend(field.full_type_required(&attr_ty.attr_type, store));
                         } else {
                             panic!("Missing field {attr} in record literal");
                         }
                     }
+                    res
                 }
                 // PANIC SAFETY: Typechecking should identify record literals as record types.
                 #[allow(clippy::panic)]
@@ -269,7 +273,7 @@ impl WrappedAccessPaths {
                     let ele_type = element_type
                         .as_ref()
                         .expect("Expected concrete set type after typechecking");
-                    elements.full_type_required(ele_type, store);
+                    elements.full_type_required(ele_type, store)
                 }
                 // PANIC SAFETY: Typechecking should identify set literals as set types.
                 #[allow(clippy::panic)]
@@ -277,11 +281,10 @@ impl WrappedAccessPaths {
                     panic!("Found set literal when expected {} type", ty);
                 }
             },
-            WrappedAccessPaths::Empty => {}
-            WrappedAccessPaths::Union(left, right) => {
-                left.full_type_required(ty, store);
-                right.full_type_required(ty, store);
-            }
+            WrappedAccessPaths::Empty => AccessPaths::default(),
+            WrappedAccessPaths::Union(left, right) => left
+                .full_type_required(ty, store)
+                .extend_owned(right.full_type_required(ty, store)),
         }
     }
 }

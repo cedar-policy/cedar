@@ -16,8 +16,7 @@
 
 //! Tests using an entity manifest to reduce the size of the entity store.
 
-#[cfg(test)]
-mod entity_slice_tests {
+
     use similar_asserts::assert_eq;
     use std::collections::{BTreeMap, BTreeSet};
 
@@ -637,13 +636,6 @@ action Read appliesTo {
                     },
                     "parents": [],
                 },
-                {
-                    "uid" : { "type" : "User", "id" : "oliver"},
-                    "attrs" : {
-                    },
-                    "parents" : [
-                    ]
-                },
             ]
         );
 
@@ -956,4 +948,3 @@ action Read appliesTo {
             &manifest,
         );
     }
-}

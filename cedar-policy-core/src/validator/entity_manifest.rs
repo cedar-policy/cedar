@@ -32,7 +32,9 @@ use smol_str::SmolStr;
 use thiserror::Error;
 
 pub(crate) mod analysis;
+#[cfg(test)]
 mod entity_manifest_tests;
+#[cfg(test)]
 mod entity_slice_tests;
 mod human_format;
 mod loader;
@@ -671,6 +673,12 @@ impl AccessPaths {
     /// to this one, mutably.
     pub fn extend(&mut self, other: Self) {
         self.paths.extend(other.paths)
+    }
+
+    /// Owned version of extend.
+    pub fn extend_owned(mut self, other: Self) -> Self {
+        self.extend(other);
+        self
     }
 
     /// Add a path to the set.
