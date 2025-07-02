@@ -47,7 +47,7 @@ impl PathsForRequestType {
     ) -> HashMap<AccessPath, Vec<AccessPath>> {
         let mut dependent_entities_map = HashMap::new();
 
-        for (path, dependents) in dependents_map {
+        for (path, _dependents) in dependents_map {
             let dependent_entities = self.get_manifest_dependent_entities(path, dependents_map);
             dependent_entities_map.insert(path.clone(), dependent_entities);
         }
@@ -63,35 +63,31 @@ impl PathsForRequestType {
         path: &AccessPath,
         dependents_map: &HashMap<AccessPath, Vec<AccessPath>>,
     ) -> Vec<AccessPath> {
-        let mut result = Vec::new();
+        let mut result = HashSet::new();
         let mut visited = HashSet::new();
         let mut queue = Vec::new();
 
         // Start with the current path
         queue.push(path.clone());
-        visited.insert(path.clone());
 
         while let Some(current) = queue.pop() {
-            // Skip the starting node when checking if it's an entity
-            if &current != path && self.is_entity_path(&current) {
-                // Found an entity parent
-                result.push(current);
-                // Don't explore beyond this entity
-                continue;
-            }
-
             // Get the dependents of the current path
             if let Some(dependents) = dependents_map.get(&current) {
                 for dependent in dependents {
-                    if !visited.contains(dependent) {
-                        visited.insert(dependent.clone());
-                        queue.push(dependent.clone());
+                    if visited.insert(dependent) {
+                        // if it has an entity type, add it to the result
+                        if self.is_entity_path(dependent) {
+                            result.insert(dependent.clone());
+                        } else {
+                            // otherwise add to the queue
+                            queue.push(dependent.clone());
+                        }
                     }
                 }
             }
         }
 
-        result
+        result.into_iter().collect()
     }
 
     /// For each reachable [`AccessPath`] in the path with
@@ -147,15 +143,8 @@ impl PathsForRequestType {
                 false
             }
         } else {
-            // Without type information, check if it's a root path (Literal or Var)
-            if let Ok(variant) = path.get_variant(&self.dag) {
-                matches!(
-                    variant,
-                    AccessPathVariant::Literal(_) | AccessPathVariant::Var(_)
-                )
-            } else {
-                false
-            }
+            // PANIC SAFETY: all manifests are typed after their creation.
+            panic!("Entity manifest lacked types after its creation");
         }
     }
 
@@ -205,23 +194,18 @@ impl PathsForRequestType {
 
                 // Check if this is an attribute path
                 if let Ok(variant) = dependent.get_variant(&self.dag) {
-                    match variant {
-                        AccessPathVariant::Attribute { attr, .. } => {
-                            // Get or create the field in the trie
-                            let field_trie = trie.get_or_create_field(attr);
+                    if let AccessPathVariant::Attribute { attr, .. } = variant {
+                        // Get or create the field in the trie
+                        let field_trie = trie.get_or_create_field(attr);
 
-                            // If this is an entity, don't continue building the trie
-                            if !self.is_entity_path(dependent) {
-                                self.build_trie_recursive(
-                                    dependent,
-                                    field_trie,
-                                    dependents_map,
-                                    visited,
-                                );
-                            }
-                        }
-                        _ => {
-                            // For non-attribute paths, nothing is required
+                        // If this is an entity, don't continue building the trie
+                        if !self.is_entity_path(dependent) {
+                            self.build_trie_recursive(
+                                dependent,
+                                field_trie,
+                                dependents_map,
+                                visited,
+                            );
                         }
                     }
                 }
@@ -256,6 +240,10 @@ pub(crate) struct AccessTrie {
 }
 
 impl AccessTrie {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.fields.is_empty()
+    }
+
     /// Creates a new empty AccessTrie
     pub(crate) fn new() -> Self {
         Self {

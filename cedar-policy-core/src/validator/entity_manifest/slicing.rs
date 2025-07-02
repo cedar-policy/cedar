@@ -431,6 +431,7 @@ impl AccessPath {
 
             AccessPathVariant::Ancestor { of, ancestor } => {
                 // PANIC SAFETY: Ancestor nodes are not computed by the loader.
+                #[allow(clippy::panic)]
                 panic!("Attempting to compute value for ancestor node");
             }
 
