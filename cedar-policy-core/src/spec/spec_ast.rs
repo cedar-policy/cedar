@@ -60,6 +60,24 @@ pub enum Prim {
     EntityUID { uid: EntityUID },
 }
 
+impl Prim {
+    #[verifier::inline]
+    pub open spec fn ptrue() -> Prim {
+        Prim::Bool { b : true }
+    }
+
+    #[verifier::inline]
+    pub open spec fn pfalse() -> Prim {
+        Prim::Bool { b : false }
+    }
+
+    #[verifier::inline]
+    pub open spec fn entity_uid(uid: EntityUID) -> Prim {
+        Prim::EntityUID { uid }
+    }
+}
+
+
 pub type Attr = Seq<char>;
 
 
@@ -104,8 +122,8 @@ impl Var {
     pub open spec fn eqEntityUID(self, uid: EntityUID) -> Expr {
         Expr::BinaryApp {
             bop: BinaryOp::Eq,
-            a: Box::new(Expr::Var { v: self }),
-            b: Box::new(Expr::Lit { p: Prim::EntityUID { uid } })
+            a: Box::new(Expr::var(self)),
+            b: Box::new(Expr::lit(Prim::entity_uid(uid)))
         }
     }
 
@@ -113,8 +131,8 @@ impl Var {
     pub open spec fn inEntityUID(self, uid: EntityUID) -> Expr {
         Expr::BinaryApp {
             bop: BinaryOp::Mem,
-            a: Box::new(Expr::Var { v: self }),
-            b: Box::new(Expr::Lit { p: Prim::EntityUID { uid } })
+            a: Box::new(Expr::var(self)),
+            b: Box::new(Expr::lit(Prim::entity_uid(uid)))
         }
     }
 
@@ -122,7 +140,7 @@ impl Var {
     pub open spec fn isEntityType(self, ety: EntityType) -> Expr {
         Expr::UnaryApp {
             uop: UnaryOp::Is { ety },
-            expr: Box::new(Expr::Var { v: self }),
+            expr: Box::new(Expr::var(self)),
         }
     }
 }
@@ -187,8 +205,23 @@ pub enum Expr {
 
 impl Expr {
     #[verifier::inline]
+    pub open spec fn lit(p: Prim) -> Expr {
+        Expr::Lit { p }
+    }
+
+    #[verifier::inline]
+    pub open spec fn var(v: Var) -> Expr {
+        Expr::Var { v }
+    }
+
+    #[verifier::inline]
     pub open spec fn and(a: Expr, b: Expr) -> Expr {
-        Expr::And{ a: Box::new(a), b: Box::new(b) }
+        Expr::And { a: Box::new(a), b: Box::new(b) }
+    }
+
+    #[verifier::inline]
+    pub open spec fn set(ls: Seq<Expr>) -> Expr {
+        Expr::Set { ls }
     }
 }
 
@@ -213,7 +246,7 @@ impl Scope {
     #[verifier::opaque]
     pub open spec fn to_expr(self, v: Var) -> Expr {
         match self {
-            Scope::Any => Expr::Lit { p: Prim::Bool { b: true } },
+            Scope::Any => Expr::lit(Prim::ptrue()),
             Scope::Eq { entity: uid } => v.eqEntityUID(uid),
             Scope::Mem { entity: uid } => v.inEntityUID(uid),
             Scope::Is { ety: ety } => v.isEntityType(ety),
@@ -255,11 +288,11 @@ impl ActionScope {
         match self {
             ActionScope::ActionScope { scope: s } => s.to_expr(Var::Action),
             ActionScope::ActionInAny { ls: es } => {
-                let exprs = es.map_values(|e:EntityUID| Expr::Lit { p: Prim::EntityUID { uid: e } });
+                let exprs = es.map_values(|e:EntityUID| Expr::lit(Prim::entity_uid(e)));
                 Expr::BinaryApp {
                     bop: BinaryOp::Mem,
-                    a: Box::new(Expr::Var { v: Var::Action }),
-                    b: Box::new(Expr::Set { ls: exprs })
+                    a: Box::new(Expr::var(Var::Action)),
+                    b: Box::new(Expr::set(exprs))
                 }
             }
         }
@@ -298,7 +331,7 @@ pub type Conditions = Seq<Condition>;
 pub open spec fn conditions_to_expr(conditions: Conditions) -> Expr {
     conditions.fold_right(
         |c:Condition, expr:Expr| Expr::and(c.to_expr(), expr),
-        Expr::Lit { p: Prim::Bool { b: true } })
+        Expr::lit(Prim::ptrue()))
 }
 
 pub struct Policy {
