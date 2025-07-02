@@ -101,6 +101,7 @@ impl PartialRequest {
         req.validate(schema)?;
         Ok(req)
     }
+
     /// Like `new` but do not perform any validation
     pub fn new_unchecked(
         principal: PartialEntityUID,
@@ -367,5 +368,122 @@ impl<'s> RequestBuilder<'s> {
         } else {
             return Err(RequestBuilderError::UnknownContextCandidate);
         }
+    }
+}
+
+#[cfg(test)]
+mod request_builder_tests {
+    use std::{collections::BTreeMap, sync::Arc};
+
+    use cool_asserts::assert_matches;
+    use std::str::FromStr;
+
+    use crate::{
+        ast::{Context, EntityUID},
+        extensions::Extensions,
+        tpe::{
+            err::RequestBuilderError,
+            request::{PartialEntityUID, PartialRequest, RequestBuilder},
+        },
+        validator::ValidatorSchema,
+    };
+
+    #[track_caller]
+    fn schema() -> ValidatorSchema {
+        ValidatorSchema::from_cedarschema_str(
+            r#"
+        entity A enum ["foo"];
+        entity B;
+        action a appliesTo {
+          principal: A,
+          resource: B,
+          context: {
+            "" : A,
+          }
+        };
+        "#,
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0
+    }
+
+    #[track_caller]
+    fn request() -> PartialRequest {
+        PartialRequest::new_unchecked(
+            PartialEntityUID {
+                ty: "A".parse().unwrap(),
+                eid: None,
+            },
+            PartialEntityUID {
+                ty: "B".parse().unwrap(),
+                eid: None,
+            },
+            r#"Action::"a""#.parse().unwrap(),
+            None,
+        )
+    }
+
+    #[test]
+    fn build() {
+        let schema = schema();
+        let request = request();
+        let mut builder = RequestBuilder::new(request, &schema).expect("should succeed");
+
+        // add principal of incorrect type
+        assert_matches!(
+            builder.add_principal(&r#"B::"""#.parse().unwrap()),
+            Err(RequestBuilderError::IncorrectPrincipalEntityType(_))
+        );
+        // add invalid principal
+        assert_matches!(
+            builder.add_principal(&r#"A::"""#.parse().unwrap()),
+            Err(RequestBuilderError::InvalidPrincipalCandidate(_))
+        );
+        // add a principal
+        assert_matches!(
+            builder.add_principal(&r#"A::"foo""#.parse().unwrap()),
+            Ok(_)
+        );
+        // then we can't add it again
+        assert_matches!(
+            builder.add_principal(&r#"A::"foo""#.parse().unwrap()),
+            Err(RequestBuilderError::ExistingPrincipal(_))
+        );
+        // and we're not done
+        assert_matches!(builder.get_request(), None);
+        // add resource
+        assert_matches!(builder.add_resource(&r#"B::"foo""#.parse().unwrap()), Ok(_));
+        // so we can't do it again
+        assert_matches!(
+            builder.add_resource(&r#"B::"foo""#.parse().unwrap()),
+            Err(RequestBuilderError::ExistingResource(_))
+        );
+        // add a context of incorrect type
+        assert_matches!(
+            builder.add_context(&Context::Value(Arc::new(BTreeMap::from_iter([(
+                "".into(),
+                1.into()
+            )])))),
+            Err(RequestBuilderError::IllTypedContextCandidate(_))
+        );
+        // add a context
+        assert_matches!(
+            builder.add_context(&Context::Value(Arc::new(BTreeMap::from_iter([(
+                "".into(),
+                EntityUID::from_str(r#"A::"foo""#).unwrap().into(),
+            )])))),
+            Ok(_)
+        );
+        // can't do it again
+        assert_matches!(
+            builder.add_context(&Context::Value(Arc::new(BTreeMap::from_iter([(
+                "".into(),
+                EntityUID::from_str(r#"A::"foo""#).unwrap().into(),
+            )])))),
+            Err(RequestBuilderError::ExistingContext)
+        );
+        // and we're done
+        assert_matches!(builder.get_request(), Some(_));
     }
 }
