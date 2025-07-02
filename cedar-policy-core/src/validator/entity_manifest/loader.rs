@@ -57,7 +57,7 @@ pub(crate) struct EntityRequest {
 /// These don't recur into other entities.
 #[derive(Debug, Clone)]
 pub(crate) struct AccessTrie {
-    fields: HashMap<SmolStr, Box<AccessTrie>>,
+    pub(crate) fields: HashMap<SmolStr, Box<AccessTrie>>,
 }
 
 impl AccessTrie {
