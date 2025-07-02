@@ -147,7 +147,7 @@ pub(crate) fn load_entities(
     request: &Request,
     loader: &mut dyn EntityLoader,
 ) -> Result<Entities, EntitySliceError> {
-    let Some(access_paths) = manifest
+    let Some(for_request) = manifest
         .per_action
         .get(&request.to_request_type().ok_or(PartialRequestError {})?)
     else {
@@ -163,8 +163,8 @@ pub(crate) fn load_entities(
     };
 
     let mut reachable_access_paths = AccessPaths::default();
-    for path in access_paths.paths() {
-        reachable_access_paths.extend(path.subpaths(&manifest.dag));
+    for path in for_request.access_paths.paths() {
+        reachable_access_paths.extend(path.subpaths(&for_request.dag));
     }
 
     let context = request.context().ok_or(PartialRequestError {})?;

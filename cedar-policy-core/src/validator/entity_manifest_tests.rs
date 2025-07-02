@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod entity_manifest_tests {
-    use crate::validator::entity_manifest::{compute_entity_manifest, EntityManifest, HumanEntityManifest};
+    use crate::validator::entity_manifest::{
+        compute_entity_manifest, EntityManifest, HumanEntityManifest,
+    };
     use crate::{
         ast::PolicyID, extensions::Extensions, parser::parse_policy, validator::ValidatorSchema,
     };
@@ -22,14 +24,13 @@ mod entity_manifest_tests {
     use smol_str::SmolStr;
     use thiserror::Error;
 
-
     use crate::validator::entity_manifest::analysis::{
         EntityManifestAnalysisResult, WrappedAccessPaths,
     };
     use crate::validator::{
         typecheck::{PolicyCheck, Typechecker},
         types::Type,
-        ValidationMode, 
+        ValidationMode,
     };
     use crate::validator::{ValidationResult, Validator};
 
@@ -93,10 +94,12 @@ when {
         let validator = Validator::new(schema());
 
         let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected = serde_json::json! ({
-          "perAction": [
-            [
-              {
+
+        // Define the human manifest using the json! macro
+        let human_json = serde_json::json!({
+            "perAction":
+                  [[
+                  {
                 "principal": "User",
                 "action": {
                   "ty": "Action",
@@ -104,34 +107,18 @@ when {
                 },
                 "resource": "Document"
               },
-              {
-                "trie": [
-                  [
-                    {
-                      "var": "principal"
-                    },
-                    {
-                      "children": [
-                        [
-                          "name",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                      "isAncestor": false
-                    }
-                  ]
-                ]
-              }
-            ]
-          ]
+                  ["principal.name"]
+                  ]],
         });
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
+
+        // Convert the JSON value to a HumanEntityManifest
+        let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
+
+        // Convert the human manifest to an EntityManifest
+        let expected_manifest = human_manifest
+            .to_entity_manifest(validator.schema())
+            .unwrap();
+
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -197,72 +184,30 @@ action Read appliesTo {
         let validator = Validator::new(schema);
 
         let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected = serde_json::json!(
-        {
-          "perAction": [
-            [
-              {
-                "principal": "User",
-                "action": {
-                  "ty": "Action",
-                  "eid": "Read"
-                },
-                "resource": "Document"
-              },
-              {
-                "trie": [
-                  [
-                    {
-                      "var": "principal"
+        
+        // Define the human manifest using the json! macro
+        let human_json = serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "Read"
                     },
-                    {
-                      "children": [
-                        [
-                          "manager",
-                          {
-                            "children": [],
-                            "ancestorsTrie": {
-                              "trie": [
-                                [
-                                  {
-                                    "var": "resource",
-                                  },
-                                  {
-                                    "children": [],
-                                    "isAncestor": true,
-                                    "ancestorsTrie": { "trie": [] }
-                                  }
-                                ]
-                              ]
-                            },
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": {
-                              "trie": [
-                                [
-                                  {
-                                    "var": "resource",
-                                  },
-                                  {
-                                    "children": [],
-                                    "isAncestor": true,
-                                    "ancestorsTrie": { "trie": [] }
-                                  }
-                                ]
-                              ]
-                            },
-                      "isAncestor": false
-                    }
-                  ]
-                ]
-              }
-            ]
-          ]
+                    "resource": "Document"
+                },
+                ["principal in resource", "principal.manager in resource"]
+            ]]
         });
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
+
+        // Convert the JSON value to a HumanEntityManifest
+        let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
+
+        // Convert the human manifest to an EntityManifest
+        let expected_manifest = human_manifest
+            .to_entity_manifest(validator.schema())
+            .unwrap();
+
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -304,79 +249,43 @@ action Read appliesTo {
         let validator = Validator::new(schema);
 
         let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected = serde_json::json!(
-        {
-          "perAction": [
-            [
-              {
-                "principal": "User",
-                "action": {
-                  "ty": "Action",
-                  "eid": "Read"
-                },
-                "resource": "Document"
-              },
-              {
-                "trie": [
-                  [
+        
+        // Define the human manifest using the json! macro
+        let human_json = serde_json::json!({
+            "perAction": [
+                [
                     {
-                      "var": "principal"
+                        "principal": "User",
+                        "action": {
+                            "ty": "Action",
+                            "eid": "Read"
+                        },
+                        "resource": "Document"
                     },
+                    ["principal.name"]
+                ],
+                [
                     {
-                      "children": [
-                        [
-                          "name",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                      "isAncestor": false
-                    }
-                  ]
-                ]
-              }
-            ],
-            [
-              {
-                "principal": "OtherUserType",
-                "action": {
-                  "ty": "Action",
-                  "eid": "Read"
-                },
-                "resource": "Document"
-              },
-              {
-                "trie": [
-                  [
-                    {
-                      "var": "principal"
+                        "principal": "OtherUserType",
+                        "action": {
+                            "ty": "Action",
+                            "eid": "Read"
+                        },
+                        "resource": "Document"
                     },
-                    {
-                      "children": [
-                        [
-                          "name",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                      "isAncestor": false
-                    }
-                  ]
+                    ["principal.name"]
                 ]
-              }
             ]
-          ]
-            });
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
+        });
+
+        // Convert the JSON value to a HumanEntityManifest
+        let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
+
+        // Convert the human manifest to an EntityManifest
+        let expected_manifest = human_manifest
+            .to_entity_manifest(validator.schema())
+            .unwrap();
+
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -439,63 +348,30 @@ action Read appliesTo {
         let validator = Validator::new(schema);
 
         let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected = serde_json::json!(
-        {
-          "perAction": [
-            [
-              {
-                "principal": "User",
-                "action": {
-                  "ty": "Action",
-                  "eid": "Read"
-                },
-                "resource": "Document"
-              },
-              {
-                "trie": [
-                  [
-                    {
-                      "var": "resource"
+        
+        // Define the human manifest using the json! macro
+        let human_json = serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "Read"
                     },
-                    {
-                      "children": [
-                        [
-                          "metadata",
-                          {
-                            "children": [
-                              [
-                                "owner",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                                  "isAncestor": false
-                                }
-                              ]
-                            ],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ],
-                        [
-                          "readers",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                      "isAncestor": false
-                    }
-                  ],
-                ]
-              }
-            ]
-          ]
+                    "resource": "Document"
+                },
+                ["resource.readers", "resource.metadata.owner"]
+            ]]
         });
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
+
+        // Convert the JSON value to a HumanEntityManifest
+        let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
+
+        // Convert the human manifest to an EntityManifest
+        let expected_manifest = human_manifest
+            .to_entity_manifest(validator.schema())
+            .unwrap();
+
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -541,63 +417,30 @@ action BeSad appliesTo {
         let validator = Validator::new(schema);
 
         let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected = serde_json::json!(
-        {
-          "perAction": [
-            [
-              {
-                "principal": "User",
-                "action": {
-                  "ty": "Action",
-                  "eid": "BeSad"
-                },
-                "resource": "Document"
-              },
-              {
-                "trie": [
-                  [
-                    {
-                      "var": "principal"
+        
+        // Define the human manifest using the json! macro
+        let human_json = serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "BeSad"
                     },
-                    {
-                      "children": [
-                        [
-                          "metadata",
-                          {
-                            "children": [
-                              [
-                                "nickname",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                                  "isAncestor": false
-                                }
-                              ],
-                              [
-                                "friends",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                                  "isAncestor": false
-                                }
-                              ]
-                            ],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                      "isAncestor": false
-                    }
-                  ]
-                ]
-              }
-            ]
-          ]
+                    "resource": "Document"
+                },
+                ["principal.metadata.nickname", "principal.metadata.friends"]
+            ]]
         });
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
+
+        // Convert the JSON value to a HumanEntityManifest
+        let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
+
+        // Convert the human manifest to an EntityManifest
+        let expected_manifest = human_manifest
+            .to_entity_manifest(validator.schema())
+            .unwrap();
+
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -640,99 +483,35 @@ action Hello appliesTo {
         let validator = Validator::new(schema);
 
         let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected = serde_json::json!(
-        {
-          "perAction": [
-            [
-              {
-                "principal": "User",
-                "action": {
-                  "ty": "Action",
-                  "eid": "Hello"
+        
+        // Define the human manifest using the json! macro
+        let human_json = serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "Hello"
+                    },
+                    "resource": "User"
                 },
-                "resource": "User"
-              },
-              {
-                "trie": [
-                  [
-                    {
-                      "var": "resource"
-                    },
-                    {
-                      "children": [
-                        [
-                          "metadata",
-                          {
-                            "children": [
-                              [
-                                "friends",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                                  "isAncestor": false
-                                }
-                              ],
-                              [
-                                "nickname",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                                  "isAncestor": false
-                                }
-                              ]
-                            ],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                    }
-                  ],
-                  [
-                    {
-                      "var": "principal"
-                    },
-                    {
-                      "children": [
-                        [
-                          "metadata",
-                          {
-                            "children": [
-                              [
-                                "nickname",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                                  "isAncestor": false
-                                }
-                              ],
-                              [
-                                "friends",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                                  "isAncestor": false
-                                }
-                              ]
-                            ],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                      "isAncestor": false
-                    }
-                  ]
+                [
+                    "principal.metadata.nickname", 
+                    "principal.metadata.friends",
+                    "resource.metadata.nickname",
+                    "resource.metadata.friends"
                 ]
-              }
-            ]
-          ]
+            ]]
         });
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
+
+        // Convert the JSON value to a HumanEntityManifest
+        let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
+
+        // Convert the human manifest to an EntityManifest
+        let expected_manifest = human_manifest
+            .to_entity_manifest(validator.schema())
+            .unwrap();
+
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -755,104 +534,35 @@ when {
         pset.add(policy.into()).expect("should succeed");
 
         let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected = serde_json::json! ( {
-          "perAction": [
-            [
-              {
-                "principal": "User",
-                "action": {
-                  "ty": "Action",
-                  "eid": "Read"
+        
+        // Define the human manifest using the json! macro
+        let human_json = serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "Read"
+                    },
+                    "resource": "Document"
                 },
-                "resource": "Document"
-              },
-              {
-                "trie": [
-                  [
-                    {
-                      "var": "principal"
-                    },
-                    {
-                      "children": [
-                        [
-                          "name",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                    }
-                  ],
-                  [
-                    {
-                      "literal": {
-                        "ty": "User",
-                        "eid": "oliver"
-                      }
-                    },
-                    {
-                      "children": [
-                        [
-                          "name",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                    }
-                  ],
-                  [
-                    {
-                      "var": "resource"
-                    },
-                    {
-                      "children": [
-                        [
-                          "viewer",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ],
-                        [
-                          "owner",
-                          {
-                            "children": [
-                              [
-                                "name",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                                }
-                              ]
-                            ],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                    }
-                  ]
+                [
+                    "principal.name",
+                    "User::\"oliver\".name",
+                    "resource.owner.name",
+                    "resource.viewer"
                 ]
-              }
-            ]
-          ]
-        }
-        );
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
+            ]]
+        });
+
+        // Convert the JSON value to a HumanEntityManifest
+        let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
+
+        // Convert the human manifest to an EntityManifest
+        let expected_manifest = human_manifest
+            .to_entity_manifest(validator.schema())
+            .unwrap();
+
         assert_eq!(entity_manifest, expected_manifest);
     }
 
@@ -883,82 +593,34 @@ when {
         pset.add(policy.into()).expect("should succeed");
 
         let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected = serde_json::json! ( {
-          "perAction": [
-            [
-              {
-                "principal": "User",
-                "action": {
-                  "ty": "Action",
-                  "eid": "Read"
+        
+        // Define the human manifest using the json! macro
+        let human_json = serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "Read"
+                    },
+                    "resource": "Document"
                 },
-                "resource": "Document"
-              },
-              {
-                "trie": [
-                  [
-                    {
-                      "var": "principal"
-                    },
-                    {
-                      "children": [
-                        [
-                          "name",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                    }
-                  ],
-                  [
-                    {
-                      "var": "resource"
-                    },
-                    {
-                      "children": [
-                        [
-                          "viewer",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ],
-                        [
-                          "owner",
-                          {
-                            "children": [
-                              [
-                                "name",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                                  "isAncestor": false
-                                }
-                              ]
-                            ],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                      "isAncestor": false
-                    }
-                  ]
+                [
+                    "principal.name",
+                    "resource.viewer",
+                    "resource.owner.name"
                 ]
-              }
-            ]
-          ]
-        }
-        );
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
+            ]]
+        });
+
+        // Convert the JSON value to a HumanEntityManifest
+        let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
+
+        // Convert the human manifest to an EntityManifest
+        let expected_manifest = human_manifest
+            .to_entity_manifest(validator.schema())
+            .unwrap();
+
         assert_eq!(entity_manifest, expected_manifest);
     }
 }
