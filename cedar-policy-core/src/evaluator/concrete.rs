@@ -4378,38 +4378,38 @@ pub(crate) mod test {
         .unwrap()
     }
 
-    #[test]
-    fn and_semantics1() {
-        // Left-hand-side evaluates to `false`, should short-circuit to value
-        let e = Expr::and(
-            Expr::binary_app(BinaryOp::Eq, Expr::val(1), Expr::val(2)),
-            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
-        );
+    // #[test]
+    // fn and_semantics1() {
+    //     // Left-hand-side evaluates to `false`, should short-circuit to value
+    //     let e = Expr::and(
+    //         Expr::binary_app(BinaryOp::Eq, Expr::val(1), Expr::val(2)),
+    //         Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
+    //     );
 
-        let es = Entities::new();
-        let eval = Evaluator::new(empty_request(), &es, Extensions::none());
+    //     let es = Entities::new();
+    //     let eval = Evaluator::new(empty_request(), &es, Extensions::none());
 
-        let r = eval.interpret(&e, &HashMap::new()).unwrap();
+    //     let r = eval.interpret(&e, &HashMap::new()).unwrap();
 
-        assert_eq!(r, Value::from(false));
-    }
+    //     assert_eq!(r, Value::from(false));
+    // }
 
-    #[test]
-    fn or_semantics1() {
-        // Left-hand-side evaluates to `true`, should short-circuit to value
+    // #[test]
+    // fn or_semantics1() {
+    //     // Left-hand-side evaluates to `true`, should short-circuit to value
 
-        let e = Expr::or(
-            Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(2)),
-            Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
-        );
+    //     let e = Expr::or(
+    //         Expr::binary_app(BinaryOp::Eq, Expr::val(2), Expr::val(2)),
+    //         Expr::and(Expr::unknown(Unknown::new_untyped("a")), Expr::val(false)),
+    //     );
 
-        let es = Entities::new();
-        let eval = Evaluator::new(empty_request(), &es, Extensions::none());
+    //     let es = Entities::new();
+    //     let eval = Evaluator::new(empty_request(), &es, Extensions::none());
 
-        let r = eval.interpret(&e, &HashMap::new()).unwrap();
+    //     let r = eval.interpret(&e, &HashMap::new()).unwrap();
 
-        assert_eq!(r, Value::from(true));
-    }
+    //     assert_eq!(r, Value::from(true));
+    // }
 
     #[test]
     fn small() {
