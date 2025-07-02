@@ -22,6 +22,8 @@ use std::{
     sync::Arc,
 };
 
+use smol_str::SmolStr;
+
 use crate::{
     ast::{Entity, EntityUID, PartialValue, Request, Value, ValueKind, Var},
     entities::{Entities, NoEntitiesSchema, TCComputation},
@@ -43,9 +45,18 @@ use crate::validator::entity_manifest::{
 pub(crate) struct EntityRequest {
     /// The id of the entity requested
     pub(crate) entity_id: EntityUID,
-    /// The fields of the entity requested, a set of paths
-    /// each with root `entity_id`.
-    pub(crate) access_paths: AccessPaths,
+    /// The requested tags for the entity
+    pub(crate) tags: HashSet<String>,
+    /// A trie containing the access paths needed for this entity
+    pub(crate) access_paths: AccessTrie,
+}
+
+/// A trie containing what attributes of an entity or record
+/// are requested.
+/// Children [`AccessTrie`] describe what fields of child records are requested.
+#[derive(Debug)]
+pub(crate) struct AccessTrie {
+    fields: HashMap<SmolStr, Box<AccessTrie>>,
 }
 
 /// An entity request may be an entity or `None` when
@@ -170,12 +181,12 @@ pub(crate) fn load_entities(
     let context = request.context().ok_or(PartialRequestError {})?;
 
     let mut entities: HashMap<EntityUID, Entity> = Default::default();
-    
+
     // Step 1: Identify all leaf nodes in the reachable_access_paths
     // A leaf node is a path that doesn't appear as a parent in any other path
     let mut leaf_paths = HashSet::new();
     let mut parent_paths = HashSet::new();
-    
+
     // First, collect all paths that are parents
     for path in &reachable_access_paths.paths {
         match path.get_variant(&for_request.dag) {
@@ -196,45 +207,57 @@ pub(crate) fn load_entities(
             Err(_) => continue, // Skip paths that can't be found in the DAG
         }
     }
-    
+
     // Then, identify leaf paths (paths that are not parents)
     for path in &reachable_access_paths.paths {
         if !parent_paths.contains(path) {
             leaf_paths.insert(path.clone());
         }
     }
-    
+
     // Step 2: Process paths in layers, starting from leaf nodes and moving up
     let mut processed_paths = HashSet::new();
     let mut to_process = leaf_paths;
     let mut entity_requests = Vec::new();
     let mut entity_id_map: HashMap<AccessPath, EntityUID> = HashMap::new();
-    
+
     // Process each layer until no more paths are left to process
     while !to_process.is_empty() {
         let current_layer = to_process;
         to_process = HashSet::new();
         let mut next_layer_paths = HashSet::new();
-        
+
         // Group paths by entity ID for batch loading
         let mut path_groups: HashMap<EntityUID, AccessPaths> = HashMap::new();
-        
+
         // Process current layer paths
         for path in current_layer {
             if processed_paths.contains(&path) {
                 continue;
             }
-            
+
             processed_paths.insert(path.clone());
-            
+
             // Determine the entity ID for this path
             let entity_id = match path.get_variant(&for_request.dag) {
                 Ok(variant) => match variant {
                     AccessPathVariant::Literal(euid) => euid.clone(),
                     AccessPathVariant::Var(var) => match var {
-                        Var::Principal => request.principal().uid().ok_or(PartialRequestError {})?.clone(),
-                        Var::Action => request.action().uid().ok_or(PartialRequestError {})?.clone(),
-                        Var::Resource => request.resource().uid().ok_or(PartialRequestError {})?.clone(),
+                        Var::Principal => request
+                            .principal()
+                            .uid()
+                            .ok_or(PartialRequestError {})?
+                            .clone(),
+                        Var::Action => request
+                            .action()
+                            .uid()
+                            .ok_or(PartialRequestError {})?
+                            .clone(),
+                        Var::Resource => request
+                            .resource()
+                            .uid()
+                            .ok_or(PartialRequestError {})?
+                            .clone(),
                         Var::Context => continue, // Context is handled separately
                     },
                     AccessPathVariant::Attribute { of, .. } => {
@@ -250,7 +273,7 @@ pub(crate) fn load_entities(
                             next_layer_paths.insert(of.clone());
                             continue; // Skip this path for now
                         }
-                    },
+                    }
                     AccessPathVariant::Tag { of, .. } => {
                         // Similar to attribute, we need the parent entity ID
                         if let Some(parent_id) = entity_id_map.get(of) {
@@ -262,7 +285,7 @@ pub(crate) fn load_entities(
                             next_layer_paths.insert(of.clone());
                             continue;
                         }
-                    },
+                    }
                     AccessPathVariant::Ancestor { of, .. } => {
                         // For ancestors, we need the entity whose ancestors we're checking
                         if let Some(entity_id) = entity_id_map.get(of) {
@@ -274,22 +297,22 @@ pub(crate) fn load_entities(
                             next_layer_paths.insert(of.clone());
                             continue;
                         }
-                    },
+                    }
                     AccessPathVariant::String(_) => continue, // String literals don't need entity loading
                 },
                 Err(_) => continue, // Skip paths that can't be found in the DAG
             };
-            
+
             // Map this path to its entity ID for future reference
             entity_id_map.insert(path.clone(), entity_id.clone());
-            
+
             // Group paths by entity ID
             path_groups
                 .entry(entity_id)
                 .or_insert_with(AccessPaths::default)
                 .insert(path);
         }
-        
+
         // Create entity requests for this layer
         for (entity_id, access_paths) in path_groups {
             entity_requests.push(EntityRequest {
@@ -297,11 +320,12 @@ pub(crate) fn load_entities(
                 access_paths,
             });
         }
-        
+
         // If we have entity requests, load them
         if !entity_requests.is_empty() {
-            let loaded_entities = loader.load_entities(&entity_requests, for_request.dag.clone())?;
-            
+            let loaded_entities =
+                loader.load_entities(&entity_requests, for_request.dag.clone())?;
+
             if loaded_entities.len() != entity_requests.len() {
                 return Err(WrongNumberOfEntitiesError {
                     expected: entity_requests.len(),
@@ -309,7 +333,7 @@ pub(crate) fn load_entities(
                 }
                 .into());
             }
-            
+
             // Process loaded entities
             for (request, entity_option) in entity_requests.iter().zip(loaded_entities) {
                 if let Some(entity) = entity_option {
@@ -326,15 +350,15 @@ pub(crate) fn load_entities(
                     }
                 }
             }
-            
+
             // Clear entity requests for the next layer
             entity_requests.clear();
         }
-        
+
         // Add next layer paths to process
         to_process = next_layer_paths;
     }
-    
+
     // Step 3: Load ancestors for all entities
     let mut ancestors_requests = Vec::new();
     for (entity_id, _) in &entities {
@@ -344,10 +368,10 @@ pub(crate) fn load_entities(
             ancestors: HashSet::new(), // Load all ancestors
         });
     }
-    
+
     if !ancestors_requests.is_empty() {
         let loaded_ancestors = loader.load_ancestors(&ancestors_requests)?;
-        
+
         if loaded_ancestors.len() != ancestors_requests.len() {
             return Err(WrongNumberOfEntitiesError {
                 expected: ancestors_requests.len(),
@@ -355,7 +379,7 @@ pub(crate) fn load_entities(
             }
             .into());
         }
-        
+
         // Add ancestors to entities
         for (request, ancestors) in ancestors_requests.into_iter().zip(loaded_ancestors) {
             if let Some(entity) = entities.get_mut(&request.entity_id) {
@@ -365,7 +389,7 @@ pub(crate) fn load_entities(
             }
         }
     }
-    
+
     // Finally, convert the loaded entities into a Cedar Entities store
     match Entities::from_entities(
         entities.into_values(),
@@ -376,7 +400,6 @@ pub(crate) fn load_entities(
         Ok(entities) => Ok(entities),
         Err(e) => Err(e.into()),
     }
-
 
     // Old code using trie
     // entity requests in progress

@@ -99,6 +99,43 @@ impl PathsForRequestType {
     pub fn access_paths_mut(&mut self) -> &mut AccessPaths {
         &mut self.access_paths
     }
+
+    /// Add all paths from `other` to `self`
+    fn union_with(&mut self, other: &Self) -> PathMapping {
+        let mut path_mapping = PathMapping::new();
+        // First, add all paths from the other manifest to this manifest
+        // and build a mapping from paths in the other manifest to paths in this manifest
+        for i in 0..other.dag.manifest_store.len() {
+            let variant = &other.dag.manifest_store[i];
+            let mapped_variant = self.map_variant(variant, &mut path_mapping);
+            let new_path = self.dag.add_path(mapped_variant);
+            path_mapping.path_map.insert(i, new_path.id);
+        }
+
+        // Map each path from the other manifest to this manifest
+        for path in &other.access_paths.paths {
+            if let Some(mapped_path) = path_mapping.map_path(path) {
+                self.access_paths.insert(mapped_path);
+            }
+        }
+
+        path_mapping
+    }
+
+    /// Leaf nodes like variables and literal ids don't need to be loaded.
+    /// Variables are included in the request.
+    /// We prune these from the set of access paths required.
+    fn prune_leafs(&mut self) {
+        let mut to_remove = Vec::new();
+        for path in &self.access_paths.paths {
+            if path.is_leaf(&self.dag) {
+                to_remove.push(path.clone());
+            }
+        }
+        for path in to_remove {
+            self.access_paths.remove(&path);
+        }
+    }
 }
 
 /// Data structure storing what data is needed based on the the [`RequestType`].
@@ -485,27 +522,36 @@ impl EntityManifest {
 
     /// Check if this manifest is a subset of another manifest
     ///
-    /// A manifest is a subset of another if unioning the other with this doesn't change the other.
+    /// A manifest is a subset of another if all access paths from one are reachable from the other.
     fn is_subset_of(&self, other: &Self) -> bool {
-        // Clone the other manifest so we can union with it
-        let mut other_clone = other.clone();
+        // For each request type, check that the other is a subset
+        for (request_type, my_paths) in &self.per_action {
+            let Some(other_paths) = other.per_action.get(request_type) else {
+                return false;
+            };
+            let mut other_clone = other_paths.clone();
 
-        // Union this manifest into the clone
-        other_clone.union_with(self);
+            let mapping = other_clone.union_with(my_paths);
 
-        // Check if the clone is still equal to the original
-        other_clone.per_action.len() == other.per_action.len()
-            && other_clone
-                .per_action
-                .iter()
-                .all(|(request_type, paths_for_request_type)| {
-                    if let Some(other_paths) = other.per_action.get(request_type) {
-                        paths_for_request_type.dag.manifest_store.len()
-                            == other_paths.dag.manifest_store.len()
-                    } else {
-                        false
-                    }
-                })
+            // now find all the reachable paths in other
+            let mut reachable = HashSet::new();
+            for path in other_paths.access_paths.paths() {
+                let subpaths = path.subpaths(&other_paths.dag);
+                reachable.extend(subpaths.paths().clone());
+            }
+
+            // now check that all paths in self are in reachable
+            for path in my_paths.access_paths.paths() {
+                let Some(mapped) = mapping.map_path(path) else {
+                    return false;
+                };
+                if !reachable.contains(&mapped) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /// Union this entity manifest with another entity manifest
@@ -517,28 +563,12 @@ impl EntityManifest {
     pub fn union_with(&mut self, other: &EntityManifest) {
         // Update the per_action map to include the paths from the other manifest
         for (request_type, other_paths_for_request_type) in &other.per_action {
-            let mut path_mapping = PathMapping::new();
             let my_path_for_request_type = self
                 .per_action
                 .entry(request_type.clone())
                 .or_insert_with(|| PathsForRequestType::new(request_type.clone()));
 
-            // First, add all paths from the other manifest to this manifest
-            // and build a mapping from paths in the other manifest to paths in this manifest
-            for i in 0..other_paths_for_request_type.dag.manifest_store.len() {
-                let variant = &other_paths_for_request_type.dag.manifest_store[i];
-                let mapped_variant =
-                    my_path_for_request_type.map_variant(variant, &mut path_mapping);
-                let new_path = my_path_for_request_type.dag.add_path(mapped_variant);
-                path_mapping.path_map.insert(i, new_path.id);
-            }
-
-            // Map each path from the other manifest to this manifest
-            for path in &other_paths_for_request_type.access_paths.paths {
-                if let Some(mapped_path) = path_mapping.map_path(path) {
-                    my_path_for_request_type.access_paths.insert(mapped_path);
-                }
-            }
+            my_path_for_request_type.union_with(other_paths_for_request_type);
         }
     }
 
@@ -575,6 +605,11 @@ impl EntityManifest {
 }
 
 impl AccessPath {
+    /// If there are no children, this is a leaf node
+    pub fn is_leaf(&self, store: &AccessDag) -> bool {
+        self.children(store).is_empty()
+    }
+
     /// Get the immediate children of this path
     pub fn children(&self, store: &AccessDag) -> Vec<AccessPath> {
         // Get the variant for this path
@@ -650,6 +685,11 @@ impl AccessPaths {
     pub fn paths(&self) -> &HashSet<AccessPath> {
         &self.paths
     }
+
+    /// Remove a path
+    pub fn remove(&mut self, path: &AccessPath) {
+        self.paths.remove(path);
+    }
 }
 
 /// Computes an [`EntityManifest`] from the schema and policies.
@@ -698,6 +738,9 @@ pub fn compute_entity_manifest(
                     panic!("Policy check failed after validation succeeded")
                 }
             };
+
+            // prune leafs, which are included in the request and don't need to be loaded
+            per_request.prune_leafs();
 
             // add the per action entry back
             manifest.per_action.insert(request_type, per_request);
