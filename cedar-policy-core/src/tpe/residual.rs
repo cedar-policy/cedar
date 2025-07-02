@@ -155,6 +155,7 @@ pub enum ResidualKind {
 }
 
 /// Conversion from `Residual` to `Expr` so that we can use the concrete evaluator for re-authorization
+// PANIC SAFETY: Residual to Expr conversion should always succeed
 #[allow(clippy::fallible_impl_from)]
 impl From<Residual> for Expr {
     fn from(value: Residual) -> Expr {
