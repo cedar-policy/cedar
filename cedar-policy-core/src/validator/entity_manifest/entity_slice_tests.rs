@@ -25,7 +25,8 @@ mod entity_slice_tests {
         ast::{Context, Entity, EntityUID, PolicyID, PolicySet, Request},
         entities::{Dereference, Entities, EntityJsonParser, TCComputation},
         extensions::Extensions,
-        parser::{self, parse_policy}, validator::entity_manifest::EntityManifest,
+        parser::{self, parse_policy},
+        validator::entity_manifest::EntityManifest,
     };
 
     use crate::validator::{
@@ -375,13 +376,6 @@ when {
                     },
                     "parents" : [
                         { "type" : "Document", "id" : "dummy"}
-                    ]
-                },
-                {
-                    "uid" : { "type" : "User", "id" : "george"},
-                    "attrs" : {
-                    },
-                    "parents" : [
                     ]
                 },
             ]

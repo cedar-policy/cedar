@@ -311,7 +311,7 @@ impl AccessPath {
             // then extract the attribute from it
             AccessPathVariant::Attribute { of, attr } => {
                 // First, compute the value of the base entity/record
-                let base_value = of.compute_value(entities, store, request)?;
+                let base_value = of.compute_value(entities_map, store, request)?;
 
                 match base_value.value_kind() {
                     // If it's an entity UID, look up the entity and get the attribute
@@ -361,7 +361,7 @@ impl AccessPath {
             // then extract the tag from it
             AccessPathVariant::Tag { of, tag } => {
                 // First, compute the value of the base entity
-                let base_value = of.compute_value(entities, store, request)?;
+                let base_value = of.compute_value(entities_map, store, request)?;
 
                 match base_value.value_kind() {
                     // If it's an entity UID, look up the entity and get the tag

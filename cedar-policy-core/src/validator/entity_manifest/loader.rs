@@ -630,9 +630,9 @@ pub(crate) fn load_entities(
                 // otherwise make a new one
                 let ancestor_request =
                     ancestors_requests
-                        .entry(of_val)
+                        .entry(of_val.clone())
                         .or_insert_with(|| AncestorsRequest {
-                            entity_id: of_val,
+                            entity_id: of_val.clone(),
                             ancestors: HashSet::new(),
                         });
                 ancestor_request.ancestors.insert(ancestor_val);
@@ -642,10 +642,16 @@ pub(crate) fn load_entities(
     }
 
     if !ancestors_requests.is_empty() {
-        let loaded_ancestors = loader.load_ancestors(&ancestors_requests)?;
+        // Convert HashMap to Vec for the loader API
+        let ancestors_requests_vec: Vec<AncestorsRequest> = ancestors_requests
+            .into_iter()
+            .map(|(_entity_id, request)| request)
+            .collect();
+
+        let loaded_ancestors = loader.load_ancestors(&ancestors_requests_vec)?;
 
         // Add ancestors to entities
-        for (request, ancestors) in ancestors_requests.into_iter().zip(loaded_ancestors) {
+        for (request, ancestors) in ancestors_requests_vec.into_iter().zip(loaded_ancestors) {
             if let Some(entity) = entities_map.get_mut(&request.entity_id) {
                 for ancestor in ancestors {
                     entity.add_parent(ancestor);
