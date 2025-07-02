@@ -200,7 +200,7 @@ impl<'e> Evaluator<'e> {
                     .clone()
                     .ok_or(err::EvaluationError::non_value(expr.clone())),
             },
-            ExprKind::Unknown(u) => Err(err::EvaluationError::non_value(expr.clone())),
+            // ExprKind::Unknown(u) => Err(err::EvaluationError::non_value(expr.clone())),
             ExprKind::If {
                 test_expr,
                 then_expr,
@@ -557,83 +557,6 @@ impl<'e> Evaluator<'e> {
                     &v,
                 ))
             }
-        }
-    }
-
-    /// Evaluate a binary operation between a residual expression (left) and a value (right). If despite the unknown contained in the residual, concrete result
-    /// can be obtained (using the type annotation on the residual), it is returned.
-    fn short_circuit_residual_and_value(
-        &self,
-        e1: &Expr,
-        v2: &Value,
-        op: BinaryOp,
-    ) -> Option<PartialValue> {
-        match op {
-            // Since these operators are commutative, we can use just one order, and have one implementation of the actual logic
-            BinaryOp::Add | BinaryOp::Eq | BinaryOp::Mul | BinaryOp::ContainsAny => {
-                self.short_circuit_value_and_residual(v2, e1, op)
-            }
-            _ => None,
-        }
-    }
-
-    /// Evaluate a binary operation between a value (left) and a residual expression (right). If despite the unknown contained in the residual, concrete result
-    /// can be obtained (using the type annotation on the residual), it is returned.
-    fn short_circuit_value_and_residual(
-        &self,
-        v1: &Value,
-        e2: &Expr,
-        op: BinaryOp,
-    ) -> Option<PartialValue> {
-        match (op, v1.value_kind(), e2.expr_kind()) {
-            // We detect comparing a typed unknown entity id to a literal entity id, and short-circuit to false if the literal is not the same type
-            (
-                BinaryOp::Eq,
-                ValueKind::Lit(Literal::EntityUID(uid1)),
-                ExprKind::Unknown(Unknown {
-                    type_annotation:
-                        Some(Type::Entity {
-                            ty: type_of_unknown,
-                        }),
-                    ..
-                }),
-            ) => {
-                if uid1.entity_type() != type_of_unknown {
-                    Some(false.into())
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    }
-
-    fn short_circuit_two_typed_residuals(
-        &self,
-        e1: &Expr,
-        e2: &Expr,
-        op: BinaryOp,
-    ) -> Option<PartialValue> {
-        match (op, e1.expr_kind(), e2.expr_kind()) {
-            // We detect comparing two typed unknown entities, and return false if they don't have the same type.
-            (
-                BinaryOp::Eq,
-                ExprKind::Unknown(Unknown {
-                    type_annotation: Some(Type::Entity { ty: t1 }),
-                    ..
-                }),
-                ExprKind::Unknown(Unknown {
-                    type_annotation: Some(Type::Entity { ty: t2 }),
-                    ..
-                }),
-            ) => {
-                if t1 != t2 {
-                    Some(false.into())
-                } else {
-                    None
-                }
-            }
-            _ => None,
         }
     }
 }

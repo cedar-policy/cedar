@@ -64,9 +64,8 @@ pub enum ExprKind<T = ()> {
     Var(Var),
     /// Template Slots
     Slot(SlotId),
-    // TODO(Pratap): just get rid of `unknown` from the expr
-    /// Symbolic Unknown for partial-eval
-    Unknown(Unknown),
+    // /// Symbolic Unknown for partial-eval
+    // Unknown(Unknown),
     /// Ternary expression
     If {
         /// Condition for the ternary expression. Must evaluate to Bool type
@@ -305,7 +304,7 @@ impl<T> Expr<T> {
             matches!(
                 e.expr_kind(),
                 ExprKind::Lit(_)
-                    | ExprKind::Unknown(_)
+                    // | ExprKind::Unknown(_)
                     | ExprKind::Set(_)
                     | ExprKind::Var(_)
                     | ExprKind::Record(_)
@@ -329,7 +328,7 @@ impl<T> Expr<T> {
             ExprKind::Lit(l) => Some(l.type_of()),
             ExprKind::Var(_) => None,
             ExprKind::Slot(_) => None,
-            ExprKind::Unknown(u) => u.type_annotation.clone(),
+            // ExprKind::Unknown(u) => u.type_annotation.clone(),
             ExprKind::If {
                 then_expr,
                 else_expr,
@@ -412,7 +411,8 @@ impl Expr {
 
     /// Create an `Expr` that's just a single `Unknown`.
     pub fn unknown(u: Unknown) -> Self {
-        ExprBuilder::new().unknown(u)
+        // ExprBuilder::new().unknown(u)
+        todo!("Expr::unknown has been deleted")
     }
 
     /// Create an `Expr` that's just this literal `Var`
@@ -614,15 +614,16 @@ impl Expr {
 
     /// Check if an expression contains any symbolic unknowns
     pub fn contains_unknown(&self) -> bool {
-        self.subexpressions()
-            .any(|e| matches!(e.expr_kind(), ExprKind::Unknown(_)))
+        false
+        // self.subexpressions()
+        //     .any(|e| matches!(e.expr_kind(), ExprKind::Unknown(_)))
     }
 
     /// Get all unknowns in an expression
     pub fn unknowns(&self) -> impl Iterator<Item = &Unknown> {
         self.subexpressions()
             .filter_map(|subexpr| match subexpr.expr_kind() {
-                ExprKind::Unknown(u) => Some(u),
+                // ExprKind::Unknown(u) => Some(u),
                 _ => None,
             })
     }
@@ -666,7 +667,7 @@ impl Expr {
     ) -> Result<Expr, T::Err> {
         match self.expr_kind() {
             ExprKind::Lit(_) => Ok(self.clone()),
-            ExprKind::Unknown(u @ Unknown { name, .. }) => T::substitute(u, definitions.get(name)),
+            //ExprKind::Unknown(u @ Unknown { name, .. }) => T::substitute(u, definitions.get(name)),
             ExprKind::Var(_) => Ok(self.clone()),
             ExprKind::Slot(_) => Ok(self.clone()),
             ExprKind::If {
@@ -908,10 +909,10 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
         self.with_expr_kind(ExprKind::Lit(v.into()))
     }
 
-    /// Create an `Unknown` `Expr`
-    fn unknown(self, u: Unknown) -> Expr<T> {
-        self.with_expr_kind(ExprKind::Unknown(u))
-    }
+    // /// Create an `Unknown` `Expr`
+    // fn unknown(self, u: Unknown) -> Expr<T> {
+    //     self.with_expr_kind(ExprKind::Unknown(u))
+    // }
 
     /// Create an `Expr` that's just this literal `Var`
     fn var(self, v: Var) -> Expr<T> {
@@ -1336,16 +1337,16 @@ impl<T> Expr<T> {
             (Lit(lit), Lit(lit1)) => lit == lit1,
             (Var(v), Var(v1)) => v == v1,
             (Slot(s), Slot(s1)) => s == s1,
-            (
-                Unknown(self::Unknown {
-                    name: name1,
-                    type_annotation: ta_1,
-                }),
-                Unknown(self::Unknown {
-                    name: name2,
-                    type_annotation: ta_2,
-                }),
-            ) => (name1 == name2) && (ta_1 == ta_2),
+            // (
+            //     Unknown(self::Unknown {
+            //         name: name1,
+            //         type_annotation: ta_1,
+            //     }),
+            //     Unknown(self::Unknown {
+            //         name: name2,
+            //         type_annotation: ta_2,
+            //     }),
+            // ) => (name1 == name2) && (ta_1 == ta_2),
             (
                 If {
                     test_expr,
@@ -1456,7 +1457,7 @@ impl<T> Expr<T> {
             ExprKind::Lit(lit) => lit.hash(state),
             ExprKind::Var(v) => v.hash(state),
             ExprKind::Slot(s) => s.hash(state),
-            ExprKind::Unknown(u) => u.hash(state),
+            // ExprKind::Unknown(u) => u.hash(state),
             ExprKind::If {
                 test_expr,
                 then_expr,

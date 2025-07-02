@@ -256,20 +256,20 @@ pub fn typecheck_restricted_expr_against_schematype(
     };
 
     match expr.expr_kind() {
-        // Check for `unknowns`.  Unless explicitly annotated, we don't have the
-        // information to know whether the unknown value matches the expected type.
-        // For now we consider this as passing -- we can't really report a type
-        // error <https://github.com/cedar-policy/cedar/issues/418>.
-        ExprKind::Unknown(u) => match u.type_annotation.clone().and_then(SchemaType::from_ty) {
-            Some(ty) => {
-                if &ty == expected_ty {
-                    return Ok(());
-                } else {
-                    return type_mismatch_err();
-                }
-            }
-            None => return Ok(()),
-        },
+        // // Check for `unknowns`.  Unless explicitly annotated, we don't have the
+        // // information to know whether the unknown value matches the expected type.
+        // // For now we consider this as passing -- we can't really report a type
+        // // error <https://github.com/cedar-policy/cedar/issues/418>.
+        // ExprKind::Unknown(u) => match u.type_annotation.clone().and_then(SchemaType::from_ty) {
+        //     Some(ty) => {
+        //         if &ty == expected_ty {
+        //             return Ok(());
+        //         } else {
+        //             return type_mismatch_err();
+        //         }
+        //     }
+        //     None => return Ok(()),
+        // },
         // Check for extension function calls. Restricted expressions permit all
         // extension function calls, including those that aren't constructors.
         // Checking the return type here before matching on the expected type lets

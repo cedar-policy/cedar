@@ -370,7 +370,7 @@ impl TryFrom<Expr> for ValueKind {
         let loc = expr.source_loc().cloned();
         match expr.into_expr_kind() {
             ExprKind::Lit(lit) => Ok(Self::Lit(lit)),
-            ExprKind::Unknown(_) => Err(NotValue::NotValue { loc }),
+            // ExprKind::Unknown(_) => Err(NotValue::NotValue { loc }),
             ExprKind::Var(_) => Err(NotValue::NotValue { loc }),
             ExprKind::Slot(_) => Err(NotValue::NotValue { loc }),
             ExprKind::If { .. } => Err(NotValue::NotValue { loc }),

@@ -22,7 +22,7 @@ use smol_str::SmolStr;
 use crate::{
     ast::{
         BinaryOp, EntityType, ExpressionConstructionError, Literal, Name, Pattern, SlotId, UnaryOp,
-        Unknown, Var,
+        Var,
     },
     parser::{cst, Loc},
 };
@@ -94,8 +94,8 @@ pub trait ExprBuilder: Clone {
     /// Create an `Expr` that's just this literal `Var`
     fn var(self, v: Var) -> Self::Expr;
 
-    /// Create an `Unknown` `Expr`
-    fn unknown(self, u: Unknown) -> Self::Expr;
+    // /// Create an `Unknown` `Expr`
+    // fn unknown(self, u: Unknown) -> Self::Expr;
 
     /// Create an `Expr` that's just this `SlotId`
     fn slot(self, s: SlotId) -> Self::Expr;

@@ -93,8 +93,8 @@ impl std::fmt::Debug for Extension {
 pub enum ExtensionOutputValue {
     /// A concrete value from an extension call
     Known(Value),
-    /// An unknown returned from an extension call
-    Unknown(Unknown),
+    // /// An unknown returned from an extension call
+    // Unknown(Unknown),
 }
 
 impl<T> From<T> for ExtensionOutputValue
@@ -342,7 +342,7 @@ impl ExtensionFunction {
     pub fn call(&self, args: &[Value]) -> evaluator::Result<PartialValue> {
         match (self.func)(args)? {
             ExtensionOutputValue::Known(v) => Ok(PartialValue::Value(v)),
-            ExtensionOutputValue::Unknown(u) => Ok(PartialValue::Residual(Expr::unknown(u))),
+            // ExtensionOutputValue::Unknown(u) => Ok(PartialValue::Residual(Expr::unknown(u))),
         }
     }
 

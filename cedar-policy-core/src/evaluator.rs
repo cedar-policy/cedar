@@ -319,7 +319,7 @@ impl<'e> RestrictedEvaluator<'e> {
                     Either::Right(residuals) => Ok(Expr::set(residuals).into()),
                 }
             }
-            ExprKind::Unknown(u) => Ok(PartialValue::unknown(u.clone())),
+            // ExprKind::Unknown(u) => Ok(PartialValue::unknown(u.clone())),
             ExprKind::Record(map) => {
                 let map = map
                     .iter()
@@ -528,7 +528,7 @@ impl<'e> Evaluator<'e> {
                 Var::Resource => Ok(self.resource.evaluate(*v)),
                 Var::Context => Ok(self.context.clone()),
             },
-            ExprKind::Unknown(u) => self.unknown_to_partialvalue(u),
+            // ExprKind::Unknown(u) => self.unknown_to_partialvalue(u),
             ExprKind::If {
                 test_expr,
                 then_expr,
@@ -820,16 +820,16 @@ impl<'e> Evaluator<'e> {
                         Ok((v.get_as_entity()?.entity_type() == entity_type).into())
                     }
                     PartialValue::Residual(r) => {
-                        if let ExprKind::Unknown(Unknown {
-                            type_annotation:
-                                Some(Type::Entity {
-                                    ty: type_of_unknown,
-                                }),
-                            ..
-                        }) = r.expr_kind()
-                        {
-                            return Ok((type_of_unknown == entity_type).into());
-                        }
+                        // if let ExprKind::Unknown(Unknown {
+                        //     type_annotation:
+                        //         Some(Type::Entity {
+                        //             ty: type_of_unknown,
+                        //         }),
+                        //     ..
+                        // }) = r.expr_kind()
+                        // {
+                        //     return Ok((type_of_unknown == entity_type).into());
+                        // }
                         Ok(Expr::is_entity_type(r, entity_type.clone()).into())
                     }
                 }
@@ -872,12 +872,12 @@ impl<'e> Evaluator<'e> {
         }
     }
 
-    // Never map unknowns when feature flag is not set
-    #[cfg(not(feature = "partial-eval"))]
-    #[inline(always)]
-    fn unknown_to_partialvalue(&self, u: &Unknown) -> Result<PartialValue> {
-        Ok(PartialValue::Residual(Expr::unknown(u.clone())))
-    }
+    // // Never map unknowns when feature flag is not set
+    // #[cfg(not(feature = "partial-eval"))]
+    // #[inline(always)]
+    // fn unknown_to_partialvalue(&self, u: &Unknown) -> Result<PartialValue> {
+    //     Ok(PartialValue::Residual(Expr::unknown(u.clone())))
+    // }
 
     // Try resolving a named Unknown into a Value
     #[cfg(feature = "partial-eval")]
@@ -1039,7 +1039,7 @@ impl<'e> Evaluator<'e> {
                     .map(|pv| match pv {
                         PartialValue::Value(_) => Ok(pv.clone()),
                         PartialValue::Residual(e) => match e.expr_kind() {
-                            ExprKind::Unknown(u) => self.unknown_to_partialvalue(u),
+                            // ExprKind::Unknown(u) => self.unknown_to_partialvalue(u),
                             _ => Ok(pv.clone()),
                         },
                     })
@@ -1094,24 +1094,24 @@ impl<'e> Evaluator<'e> {
         op: BinaryOp,
     ) -> Option<PartialValue> {
         match (op, v1.value_kind(), e2.expr_kind()) {
-            // We detect comparing a typed unknown entity id to a literal entity id, and short-circuit to false if the literal is not the same type
-            (
-                BinaryOp::Eq,
-                ValueKind::Lit(Literal::EntityUID(uid1)),
-                ExprKind::Unknown(Unknown {
-                    type_annotation:
-                        Some(Type::Entity {
-                            ty: type_of_unknown,
-                        }),
-                    ..
-                }),
-            ) => {
-                if uid1.entity_type() != type_of_unknown {
-                    Some(false.into())
-                } else {
-                    None
-                }
-            }
+            // // We detect comparing a typed unknown entity id to a literal entity id, and short-circuit to false if the literal is not the same type
+            // (
+            //     BinaryOp::Eq,
+            //     ValueKind::Lit(Literal::EntityUID(uid1)),
+            //     ExprKind::Unknown(Unknown {
+            //         type_annotation:
+            //             Some(Type::Entity {
+            //                 ty: type_of_unknown,
+            //             }),
+            //         ..
+            //     }),
+            // ) => {
+            //     if uid1.entity_type() != type_of_unknown {
+            //         Some(false.into())
+            //     } else {
+            //         None
+            //     }
+            // }
             _ => None,
         }
     }
@@ -1123,24 +1123,24 @@ impl<'e> Evaluator<'e> {
         op: BinaryOp,
     ) -> Option<PartialValue> {
         match (op, e1.expr_kind(), e2.expr_kind()) {
-            // We detect comparing two typed unknown entities, and return false if they don't have the same type.
-            (
-                BinaryOp::Eq,
-                ExprKind::Unknown(Unknown {
-                    type_annotation: Some(Type::Entity { ty: t1 }),
-                    ..
-                }),
-                ExprKind::Unknown(Unknown {
-                    type_annotation: Some(Type::Entity { ty: t2 }),
-                    ..
-                }),
-            ) => {
-                if t1 != t2 {
-                    Some(false.into())
-                } else {
-                    None
-                }
-            }
+            // // We detect comparing two typed unknown entities, and return false if they don't have the same type.
+            // (
+            //     BinaryOp::Eq,
+            //     ExprKind::Unknown(Unknown {
+            //         type_annotation: Some(Type::Entity { ty: t1 }),
+            //         ..
+            //     }),
+            //     ExprKind::Unknown(Unknown {
+            //         type_annotation: Some(Type::Entity { ty: t2 }),
+            //         ..
+            //     }),
+            // ) => {
+            //     if t1 != t2 {
+            //         Some(false.into())
+            //     } else {
+            //         None
+            //     }
+            // }
             _ => None,
         }
     }

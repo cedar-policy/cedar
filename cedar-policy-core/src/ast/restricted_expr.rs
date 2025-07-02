@@ -194,7 +194,7 @@ impl RestrictedExpr {
     /// `None` if it is not an `Unknown`
     pub fn as_unknown(&self) -> Option<&Unknown> {
         match self.expr_kind() {
-            ExprKind::Unknown(u) => Some(u),
+            // ExprKind::Unknown(u) => Some(u),
             _ => None,
         }
     }
@@ -404,7 +404,7 @@ impl<'a> BorrowedRestrictedExpr<'a> {
     /// `None` if it is not an `Unknown`
     pub fn as_unknown(&self) -> Option<&Unknown> {
         match self.expr_kind() {
-            ExprKind::Unknown(u) => Some(u),
+            // ExprKind::Unknown(u) => Some(u),
             _ => None,
         }
     }
@@ -464,7 +464,7 @@ impl<'a> BorrowedRestrictedExpr<'a> {
 fn is_restricted(expr: &Expr) -> Result<(), RestrictedExpressionError> {
     match expr.expr_kind() {
         ExprKind::Lit(_) => Ok(()),
-        ExprKind::Unknown(_) => Ok(()),
+        // ExprKind::Unknown(_) => Ok(()),
         ExprKind::Var(_) => Err(restricted_expr_errors::InvalidRestrictedExpressionError {
             feature: "variables".into(),
             expr: expr.clone(),

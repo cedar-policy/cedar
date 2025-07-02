@@ -456,12 +456,12 @@ impl ExprBuilder for Builder {
         Expr::ExprNoExt(ExprNoExt::Slot(slot))
     }
 
-    /// An extension call with one arg, which is the name of the unknown
-    fn unknown(self, u: ast::Unknown) -> Expr {
-        Expr::ExtFuncCall(ExtFuncCall {
-            call: HashMap::from([("unknown".to_smolstr(), vec![Builder::new().val(u.name)])]),
-        })
-    }
+    // /// An extension call with one arg, which is the name of the unknown
+    // fn unknown(self, u: ast::Unknown) -> Expr {
+    //     Expr::ExtFuncCall(ExtFuncCall {
+    //         call: HashMap::from([("unknown".to_smolstr(), vec![Builder::new().val(u.name)])]),
+    //     })
+    // }
 
     /// `!`
     fn not(self, e: Expr) -> Expr {
@@ -1072,7 +1072,7 @@ impl<T: Clone> From<ast::Expr<T>> for Expr {
             ast::ExprKind::Lit(lit) => lit.into(),
             ast::ExprKind::Var(var) => var.into(),
             ast::ExprKind::Slot(slot) => slot.into(),
-            ast::ExprKind::Unknown(u) => Builder::new().unknown(u),
+            // ast::ExprKind::Unknown(u) => Builder::new().unknown(u),
             ast::ExprKind::If {
                 test_expr,
                 then_expr,
