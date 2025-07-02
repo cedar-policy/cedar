@@ -14,7 +14,7 @@ use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::validator::entity_manifest::loader::{
-    load_entities, AncestorsRequest, EntityAnswer, EntityLoader, EntityRequest,
+    load_entities, AccessTrie, AncestorsRequest, EntityAnswer, EntityLoader, EntityRequest,
 };
 use crate::validator::entity_manifest::{
     AccessDag, AccessPaths, EntityManifest, PartialRequestError,
@@ -152,7 +152,7 @@ impl EntityLoader for EntitySlicer<'_> {
         for request in to_load {
             if let Dereference::Data(entity) = self.entities.entity(&request.entity_id) {
                 // filter down the entity fields to those requested
-                res.push(Some(request.access_paths.slice_entity(entity)?));
+                res.push(Some(request.access_trie.slice_entity(entity)?));
             } else {
                 res.push(None);
             }
@@ -188,7 +188,7 @@ impl EntityLoader for EntitySlicer<'_> {
     }
 }
 
-impl AccessPaths {
+impl AccessTrie {
     fn slice_entity(&self, entity: &Entity) -> Result<Entity, EntitySliceError> {
         todo!()
     }
@@ -197,4 +197,3 @@ impl AccessPaths {
         todo!()
     }
 }
-
