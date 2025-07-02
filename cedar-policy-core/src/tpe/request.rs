@@ -87,7 +87,7 @@ impl PartialRequest {
         action: EntityUID,
         context: Option<Arc<BTreeMap<SmolStr, Value>>>,
         schema: &ValidatorSchema,
-    ) -> anyhow::Result<Self> {
+    ) -> std::result::Result<Self, RequestValidationError> {
         let req = Self {
             principal,
             resource,

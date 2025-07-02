@@ -17,6 +17,7 @@
 //! This module contains the type-aware partial evaluator.
 
 pub mod entities;
+pub mod err;
 pub mod evaluator;
 pub mod request;
 pub mod residual;
