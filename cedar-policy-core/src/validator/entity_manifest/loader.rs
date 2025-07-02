@@ -193,8 +193,6 @@ pub(crate) fn load_entities(
     request: &Request,
     loader: &mut dyn EntityLoader,
 ) -> Result<Entities, EntitySliceError> {
-    eprintln!("manifest: {}", manifest.to_human_json_string().unwrap());
-
     // Get the PathsForRequestType for this request type
     let Some(for_request) = manifest
         .per_action
@@ -227,7 +225,6 @@ pub(crate) fn load_entities(
 
     // Main loop of loading entities, one batch at a time
     while !to_load.is_empty() {
-        eprintln!("to load: {:?}", to_load);
         // Load the current batch of entities
         let loaded_entities = loader.load_entities(&to_load, for_request.dag.clone())?;
 
@@ -260,7 +257,6 @@ pub(crate) fn load_entities(
         let mut next_to_load = Vec::new();
 
         for entity_request in to_load.into_iter() {
-            eprintln!("entity request: {:?}", entity_request);
             let entity_path = entity_request.access_path;
 
             // Find dependent entities for this entity path
@@ -342,7 +338,6 @@ pub(crate) fn load_entities(
             ancestor_request.ancestors.insert(ancestor_val);
         }
     }
-    eprintln!("ancestors requests: {:?}", ancestors_requests);
 
     if !ancestors_requests.is_empty() {
         // Convert HashMap to Vec for the loader API
@@ -359,6 +354,16 @@ pub(crate) fn load_entities(
                 for ancestor in ancestors {
                     entity.add_parent(ancestor);
                 }
+            } else {
+                // otherwise, we need to create the entity
+                let mut entity = Entity::new_with_attr_partial_value(
+                    request.entity_id.clone(),
+                    HashMap::new(),
+                    HashSet::new(),
+                    ancestors,
+                    [], // TODO: entity slicing does not yet support tags
+                );
+                entities_map.insert(request.entity_id.clone(), entity);
             }
         }
     }
