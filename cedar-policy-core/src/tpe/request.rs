@@ -19,6 +19,10 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::ast::RequestSchema;
+use crate::tpe::err::{
+    ExistingPrincipalError, ExistingResourceError, IncorrectPrincipalEntityTypeError,
+    IncorrectResourceEntityTypeError, NoMatchingReqEnvError, RequestBuilderError,
+};
 use crate::validator::request_validation_errors::{
     UndeclaredActionError, UndeclaredPrincipalTypeError, UndeclaredResourceTypeError,
 };
@@ -116,7 +120,7 @@ impl PartialRequest {
     pub(crate) fn find_request_env<'s>(
         &self,
         schema: &'s ValidatorSchema,
-    ) -> Option<RequestEnv<'s>> {
+    ) -> std::result::Result<RequestEnv<'s>, NoMatchingReqEnvError> {
         // PANIC SAFETY: strict validation should produce concrete action entity uid
         #[allow(clippy::unwrap_used)]
         schema
@@ -126,6 +130,7 @@ impl PartialRequest {
                     && env.principal_entity_type() == Some(&self.principal.ty)
                     && env.resource_entity_type() == Some(&self.resource.ty)
             })
+            .ok_or(NoMatchingReqEnvError)
     }
 
     // Validate `self` with `schema`
@@ -191,21 +196,33 @@ impl PartialRequest {
     }
 }
 
-/// A request builder based on a `PartialRequest`
-// TODO:
-// 1. add validation
-// 2. add a partial constructor that ensures `partial_request` is consistent with `env`
+/// A request builder based on a [`PartialRequest`]
+/// Users should use it to iteratively construct a [`Request`] using methods
+/// `add_*`
 #[derive(Debug, Clone)]
-pub struct RequestBuilder<'e> {
+pub struct RequestBuilder<'s> {
     /// The `PartialRequest`
-    pub partial_request: PartialRequest,
+    partial_request: PartialRequest,
     /// Env used for validation
-    pub env: RequestEnv<'e>,
+    schema: &'s ValidatorSchema,
 }
 
-use anyhow::anyhow;
-impl RequestBuilder<'_> {
-    /// Try to get a concrete `Request`
+impl<'s> RequestBuilder<'s> {
+    /// Attempt to construct a [`RequestBuilder`] from a [`PartialRequest`] and
+    /// a [`ValidatorSchema`]
+    pub fn new(
+        partial_request: PartialRequest,
+        schema: &'s ValidatorSchema,
+    ) -> std::result::Result<Self, RequestBuilderError> {
+        partial_request.validate(schema)?;
+        Ok(Self {
+            partial_request,
+            schema,
+        })
+    }
+
+    /// Attempt to get a concrete [`Request`]
+    /// Return `None` if there are still missing components
     pub fn get_request(&self) -> Option<Request> {
         let PartialRequest {
             principal,
@@ -232,14 +249,45 @@ impl RequestBuilder<'_> {
         }
     }
 
-    /// Try to add a principal
-    pub fn add_principal(&mut self, candidate: &EntityUID) -> anyhow::Result<()> {
-        if let PartialEntityUID { eid: Some(_), .. } = &self.partial_request.principal {
-            return Err(anyhow!("principal exists"));
+    /// Attempt to add `principal`
+    pub fn add_principal(
+        &mut self,
+        candidate: &EntityUID,
+    ) -> std::result::Result<(), RequestBuilderError> {
+        if let PartialEntityUID { eid: Some(eid), .. } = &self.partial_request.principal {
+            return Err(ExistingPrincipalError {
+                principal: EntityUID::from_components(
+                    self.partial_request.principal.ty.clone(),
+                    eid.clone(),
+                    None,
+                ),
+            }
+            .into());
         } else {
+            // PANIC SAFETY: partial_request is validated and hence the entity type must exist in the schema
+            #[allow(clippy::unwrap_used)]
             if candidate.entity_type() != &self.partial_request.principal.ty {
-                return Err(anyhow!("mismatched principal entity type"));
+                return Err(IncorrectPrincipalEntityTypeError {
+                    ty: candidate.entity_type().clone(),
+                    expected: self.partial_request.principal.ty.clone(),
+                }
+                .into());
             } else {
+                let principal_ty = self
+                    .schema
+                    .get_entity_type(&self.partial_request.principal.ty)
+                    .unwrap();
+                if let ValidatorEntityType {
+                    kind: ValidatorEntityTypeKind::Enum(choices),
+                    ..
+                } = principal_ty
+                {
+                    is_valid_enumerated_entity(
+                        &Vec::from(choices.clone().map(Eid::new)),
+                        candidate,
+                    )
+                    .map_err(RequestBuilderError::InvalidPrincipalCandidate)?;
+                }
                 self.partial_request.principal = PartialEntityUID {
                     ty: candidate.entity_type().clone(),
                     eid: Some(candidate.eid().clone()),
@@ -249,14 +297,45 @@ impl RequestBuilder<'_> {
         }
     }
 
-    /// Try to add a resource
-    pub fn add_resource(&mut self, candidate: &EntityUID) -> anyhow::Result<()> {
-        if let PartialEntityUID { eid: Some(_), .. } = &self.partial_request.resource {
-            return Err(anyhow!("resource exists"));
+    /// Attempt to add `resource`
+    pub fn add_resource(
+        &mut self,
+        candidate: &EntityUID,
+    ) -> std::result::Result<(), RequestBuilderError> {
+        if let PartialEntityUID { eid: Some(eid), .. } = &self.partial_request.resource {
+            return Err(ExistingResourceError {
+                resource: EntityUID::from_components(
+                    self.partial_request.resource.ty.clone(),
+                    eid.clone(),
+                    None,
+                ),
+            }
+            .into());
         } else {
+            // PANIC SAFETY: partial_request is validated and hence the entity type must exist in the schema
+            #[allow(clippy::unwrap_used)]
             if candidate.entity_type() != &self.partial_request.resource.ty {
-                return Err(anyhow!("mismatched resource entity type"));
+                return Err(IncorrectResourceEntityTypeError {
+                    ty: candidate.entity_type().clone(),
+                    expected: self.partial_request.resource.ty.clone(),
+                }
+                .into());
             } else {
+                let resource_ty = self
+                    .schema
+                    .get_entity_type(&self.partial_request.resource.ty)
+                    .unwrap();
+                if let ValidatorEntityType {
+                    kind: ValidatorEntityTypeKind::Enum(choices),
+                    ..
+                } = resource_ty
+                {
+                    is_valid_enumerated_entity(
+                        &Vec::from(choices.clone().map(Eid::new)),
+                        candidate,
+                    )
+                    .map_err(RequestBuilderError::InvalidResourceCandidate)?;
+                }
                 self.partial_request.resource = PartialEntityUID {
                     ty: candidate.entity_type().clone(),
                     eid: Some(candidate.eid().clone()),
@@ -266,17 +345,27 @@ impl RequestBuilder<'_> {
         }
     }
 
-    /// Try add `Context`
-    pub fn add_context(&mut self, candidate: &Context) -> anyhow::Result<()> {
+    /// Attempt to add `context`
+    pub fn add_context(
+        &mut self,
+        candidate: &Context,
+    ) -> std::result::Result<(), RequestBuilderError> {
         if let Context::Value(v) = candidate {
             if let Some(_) = &self.partial_request.context {
-                return Err(anyhow!("context already exists"));
+                return Err(RequestBuilderError::ExistingContext);
             } else {
+                self.schema
+                    .validate_context(
+                        candidate,
+                        &self.partial_request.action,
+                        Extensions::all_available(),
+                    )
+                    .map_err(RequestBuilderError::IllTypedContextCandidate)?;
                 self.partial_request.context = Some(v.clone());
                 Ok(())
             }
         } else {
-            return Err(anyhow!("invalid context"));
+            return Err(RequestBuilderError::UnknownContextCandidate);
         }
     }
 }
