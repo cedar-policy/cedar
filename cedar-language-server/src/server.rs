@@ -17,25 +17,25 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::document::{CedarUrlKind, Document, Documents};
+use crate::document::{CedarUriKind, Document, Documents};
 use crate::policy::quickpick_list;
 use crate::schema::SchemaInfo;
 use dashmap::DashMap;
 use ropey::Rope;
 use serde::Deserialize;
 use serde_json::Value;
-use tower_lsp::jsonrpc::{Error, Result};
+use tower_lsp_server::jsonrpc::{Error, Result};
 #[allow(clippy::wildcard_imports)]
-use tower_lsp::lsp_types::*;
-use tower_lsp::LanguageServer;
+use tower_lsp_server::lsp_types::*;
+use tower_lsp_server::LanguageServer;
 use tracing::info;
 
 mod test;
 
 #[derive(Debug, Deserialize)]
 struct AssociateSchemaParams {
-    document_uri: Url,
-    schema_uri: Option<Url>,
+    document_uri: Uri,
+    schema_uri: Option<Uri>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -51,34 +51,43 @@ struct GetPoliciesPickParams {
 
 #[derive(Debug, Deserialize)]
 struct TransformSchemaFormatParams {
-    schema_uri: Url,
+    schema_uri: Uri,
 }
 
-#[tower_lsp::async_trait]
 pub trait Client: Clone + Send + Sync {
-    async fn log_message(&self, typ: MessageType, message: impl std::fmt::Display + Send);
+    fn log_message(
+        &self,
+        typ: MessageType,
+        message: impl std::fmt::Display + Send,
+    ) -> impl std::future::Future<Output = ()> + Send;
 
-    async fn publish_diagnostics(&self, uri: Url, diagnostics: Vec<Diagnostic>, _: Option<i32>);
+    fn publish_diagnostics(
+        &self,
+        uri: Uri,
+        diagnostics: Vec<Diagnostic>,
+        _: Option<i32>,
+    ) -> impl std::future::Future<Output = ()> + Send;
 
-    async fn code_lens_refresh(&self) -> tower_lsp::jsonrpc::Result<()>;
+    fn code_lens_refresh(
+        &self,
+    ) -> impl std::future::Future<Output = tower_lsp_server::jsonrpc::Result<()>> + Send;
 }
 
-#[tower_lsp::async_trait]
-impl Client for tower_lsp::Client {
+impl Client for tower_lsp_server::Client {
     async fn log_message(&self, typ: MessageType, message: impl std::fmt::Display + Send) {
         self.log_message(typ, message).await;
     }
 
     async fn publish_diagnostics(
         &self,
-        uri: Url,
+        uri: Uri,
         diagnostics: Vec<Diagnostic>,
         version: Option<i32>,
     ) {
         self.publish_diagnostics(uri, diagnostics, version).await;
     }
 
-    async fn code_lens_refresh(&self) -> tower_lsp::jsonrpc::Result<()> {
+    async fn code_lens_refresh(&self) -> tower_lsp_server::jsonrpc::Result<()> {
         self.code_lens_refresh().await
     }
 }
@@ -117,7 +126,7 @@ impl<ClientT: Client> Backend<ClientT> {
 
         if let Ok(ds) = diagnostics {
             self.client
-                .publish_diagnostics(document.url().clone(), ds, document.version().into())
+                .publish_diagnostics(document.uri().clone(), ds, document.version().into())
                 .await;
         } else {
             self.client
@@ -126,28 +135,32 @@ impl<ClientT: Client> Backend<ClientT> {
         }
     }
 
-    async fn associate_schema(&self, document_uri: Url, schema_uri: Option<Url>) {
+    async fn associate_schema(&self, document_uri: Uri, schema_uri: Option<Uri>) {
         // If schema_uri is None, we're removing the association
         if let Some(uri) = schema_uri {
             // Try to load the schema document if it's not already loaded
             if self.documents.get(&uri).is_none() {
-                let Ok(document) = Document::new_url(&uri, 1, &self.documents) else {
+                let Ok(document) = Document::new_uri(&uri, 1, &self.documents) else {
                     return;
                 };
                 self.documents.insert(uri.clone(), document);
             }
 
-            info!("Associating schema! {uri}");
+            info!("Associating schema! {}", uri.path());
             self.client
                 .log_message(
                     MessageType::INFO,
-                    format!("Associated schema {uri} with document {document_uri}"),
+                    format!(
+                        "Associated schema {} with document {}",
+                        uri.path(),
+                        document_uri.path()
+                    ),
                 )
                 .await;
 
-            // Set the schema URL using our new method
+            // Set the schema URI using our new method
             if let Some(mut guard) = self.documents.get_mut(&document_uri) {
-                guard.value_mut().set_schema_url(Some(uri));
+                guard.value_mut().set_schema_uri(Some(uri));
                 let document = guard.clone();
                 drop(guard);
                 self.send_diagnostics(&document).await;
@@ -156,7 +169,7 @@ impl<ClientT: Client> Backend<ClientT> {
             // Remove schema association
             info!("Removing schema association");
             if let Some(mut guard) = self.documents.get_mut(&document_uri) {
-                guard.value_mut().set_schema_url(None);
+                guard.value_mut().set_schema_uri(None);
                 let document = guard.clone();
                 drop(guard);
                 self.send_diagnostics(&document).await;
@@ -164,7 +177,7 @@ impl<ClientT: Client> Backend<ClientT> {
         }
     }
 
-    fn convert_schema_format(&self, schema_uri: &Url) -> anyhow::Result<SchemaInfo> {
+    fn convert_schema_format(&self, schema_uri: &Uri) -> anyhow::Result<SchemaInfo> {
         // Get the schema document
         let schema_document = self
             .documents
@@ -180,9 +193,9 @@ impl<ClientT: Client> Backend<ClientT> {
         drop(schema_document);
 
         // Determine the current schema type
-        let schema_info = match CedarUrlKind::url_kind(schema_uri) {
-            Some(CedarUrlKind::Schema) => SchemaInfo::cedar_schema(schema_content),
-            Some(CedarUrlKind::JsonSchema) => SchemaInfo::json_schema(schema_content),
+        let schema_info = match CedarUriKind::uri_kind(schema_uri) {
+            Some(CedarUriKind::Schema) => SchemaInfo::cedar_schema(schema_content),
+            Some(CedarUriKind::JsonSchema) => SchemaInfo::json_schema(schema_content),
             _ => {
                 return Err(anyhow::anyhow!("Unexpected schema document uri"));
             }
@@ -273,7 +286,6 @@ fn initialize() -> InitializeResult {
     }
 }
 
-#[tower_lsp::async_trait]
 impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
         Ok(initialize())
@@ -287,7 +299,7 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
         self.client
             .log_message(
                 MessageType::INFO,
-                format!("File opened: {}", params.text_document.uri),
+                format!("File opened: {}", params.text_document.uri.path()),
             )
             .await;
 
@@ -300,7 +312,10 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
             self.client
                 .log_message(
                     MessageType::ERROR,
-                    format!("Failed to parse document: {}", params.text_document.uri),
+                    format!(
+                        "Failed to parse document: {}",
+                        params.text_document.uri.path()
+                    ),
                 )
                 .await;
             return;
@@ -308,10 +323,10 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
 
         // Handle existing schema associations for both policy and entity files
         if let Some(guard) = self.documents.get(&params.text_document.uri) {
-            let schema_url = guard.schema_url().cloned();
+            let schema_uri = guard.schema_uri().cloned();
             drop(guard);
 
-            document.set_schema_url(schema_url);
+            document.set_schema_uri(schema_uri);
         }
 
         self.send_diagnostics(&document).await;
@@ -339,14 +354,14 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
         self.client
             .log_message(
                 MessageType::INFO,
-                format!("File closed: {}", params.text_document.uri),
+                format!("File closed: {}", params.text_document.uri.path()),
             )
             .await;
     }
 
     async fn will_rename_files(&self, params: RenameFilesParams) -> Result<Option<WorkspaceEdit>> {
         for file in params.files {
-            let Ok(old_uri) = file.old_uri.parse::<Url>() else {
+            let Ok(old_uri) = file.old_uri.parse::<Uri>() else {
                 continue;
             };
             let Some(doc) = self.documents.get(&old_uri) else {
@@ -356,7 +371,7 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
                 continue;
             };
             drop(doc);
-            let Ok(new_uri) = file.new_uri.parse::<Url>() else {
+            let Ok(new_uri) = file.new_uri.parse::<Uri>() else {
                 continue;
             };
             let _ = schema.update_linked_documents(Some(&new_uri));
@@ -368,10 +383,10 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
 
     async fn will_delete_files(&self, params: DeleteFilesParams) -> Result<Option<WorkspaceEdit>> {
         for file in params.files {
-            let Ok(url) = file.uri.parse::<Url>() else {
+            let Ok(uri) = file.uri.parse::<Uri>() else {
                 continue;
             };
-            let Some(guard) = self.documents.get(&url) else {
+            let Some(guard) = self.documents.get(&uri) else {
                 continue;
             };
             let doc = guard.clone();
@@ -382,11 +397,11 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
             };
 
             let updated_docs = schema.update_linked_documents(None);
-            self.documents.remove(&url);
+            self.documents.remove(&uri);
 
             // update diagnostics for linked documents
-            for doc_url in updated_docs {
-                let Some(guard) = self.documents.get(&doc_url) else {
+            for doc_uri in updated_docs {
+                let Some(guard) = self.documents.get(&doc_uri) else {
                     continue;
                 };
                 let doc = guard.clone();
@@ -405,7 +420,7 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
                 MessageType::INFO,
                 format!(
                     "Autocomplete requested: {}",
-                    params.text_document_position.text_document.uri
+                    params.text_document_position.text_document.uri.path()
                 ),
             )
             .await;
@@ -422,7 +437,7 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
         self.client
             .log_message(
                 MessageType::INFO,
-                format!("File saved: {}", params.text_document.uri),
+                format!("File saved: {}", params.text_document.uri.path()),
             )
             .await;
 
@@ -446,7 +461,7 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
         self.client
             .log_message(
                 MessageType::INFO,
-                format!("Formatting: {}", params.text_document.uri),
+                format!("Formatting: {}", params.text_document.uri.path()),
             )
             .await;
         let document = self
@@ -460,22 +475,25 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
         let uri = params.text_document.uri;
         // Handle both policy and entity files
         if matches!(
-            CedarUrlKind::url_kind(&uri),
-            Some(CedarUrlKind::Cedar | CedarUrlKind::Entities)
+            CedarUriKind::uri_kind(&uri),
+            Some(CedarUriKind::Cedar | CedarUriKind::Entities)
         ) {
             if let Some(doc) = self.documents.get(&uri) {
                 let mut lenses = Vec::new();
-                let schema_url = doc.schema_url().cloned();
+                let schema_uri = doc.schema_uri().cloned();
 
                 // Add code lenses at the top of the file to manage schema association
-                let schema_association_lens = match schema_url {
-                    Some(schema_url) => CodeLens {
+                let schema_association_lens = match schema_uri {
+                    Some(schema_uri) => CodeLens {
                         range: Range {
                             start: Position::new(0, 0),
                             end: Position::new(0, 0),
                         },
                         command: Some(Command {
-                            title: format!("Schema: {schema_url} (click to change or remove)"),
+                            title: format!(
+                                "Schema: {} (click to change or remove)",
+                                schema_uri.path()
+                            ),
                             command: "cedar.schemaOptions".to_string(),
                             arguments: Some(vec![serde_json::json!({
                                 "document_uri": uri.to_string()
@@ -524,14 +542,14 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
             }
             "cedar.removeSchemaAssociation" => {
                 if let Some(args) = params.arguments.first() {
-                    if let Ok(document_uri) = serde_json::from_value::<Url>(args.clone()) {
+                    if let Ok(document_uri) = serde_json::from_value::<Uri>(args.clone()) {
                         self.associate_schema(document_uri, None).await;
                     }
                 }
             }
             "cedar.findWorkspaceSchema" => {
                 if let Some(args) = params.arguments.first() {
-                    if serde_json::from_value::<Url>(args.clone()).is_ok() {
+                    if serde_json::from_value::<Uri>(args.clone()).is_ok() {
                         // The actual schema finding is done on the client side
                         // Here we just wait for the client to call associateSchema with the found schema
                         self.client

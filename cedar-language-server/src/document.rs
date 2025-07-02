@@ -22,11 +22,11 @@ use std::{
 use anyhow::Ok;
 use dashmap::DashMap;
 use itertools::Itertools;
-use lsp_types::{
-    CodeActionOrCommand, CodeActionParams, CodeActionResponse, CompletionResponse, Diagnostic,
-    DocumentSymbol, FoldingRange, GotoDefinitionResponse, Hover, Position, Range, TextEdit, Url,
-};
 use ropey::Rope;
+use tower_lsp_server::lsp_types::{
+    CodeActionOrCommand, CodeActionParams, CodeActionResponse, CompletionResponse, Diagnostic,
+    DocumentSymbol, FoldingRange, GotoDefinitionResponse, Hover, Position, Range, TextEdit, Uri,
+};
 
 use crate::{
     entities::entities_diagnostics,
@@ -41,23 +41,23 @@ use crate::{
     },
 };
 
-pub(crate) enum CedarUrlKind {
+pub(crate) enum CedarUriKind {
     Cedar,
     Schema,
     JsonSchema,
     Entities,
 }
 
-impl CedarUrlKind {
+impl CedarUriKind {
     #[allow(clippy::case_sensitive_file_extension_comparisons)]
-    pub(crate) fn url_kind(url: &Url) -> Option<Self> {
-        if url.path().ends_with(".cedar") {
+    pub(crate) fn uri_kind(uri: &Uri) -> Option<Self> {
+        if uri.path().as_str().ends_with(".cedar") {
             Some(Self::Cedar)
-        } else if url.path().ends_with(".cedarschema") {
+        } else if uri.path().as_str().ends_with(".cedarschema") {
             Some(Self::Schema)
-        } else if url.path().ends_with(".cedarschema.json") {
+        } else if uri.path().as_str().ends_with(".cedarschema.json") {
             Some(Self::JsonSchema)
-        } else if url.path().ends_with(".cedarentities.json") {
+        } else if uri.path().as_str().ends_with(".cedarentities.json") {
             Some(Self::Entities)
         } else {
             None
@@ -65,7 +65,7 @@ impl CedarUrlKind {
     }
 }
 
-pub(crate) type Documents = Arc<DashMap<Url, Document>>;
+pub(crate) type Documents = Arc<DashMap<Uri, Document>>;
 
 #[derive(Debug, Clone)]
 pub(crate) enum Document {
@@ -76,22 +76,22 @@ pub(crate) enum Document {
 
 impl Document {
     pub(crate) fn try_from_state(state: DocumentState) -> Result<Self, anyhow::Error> {
-        match CedarUrlKind::url_kind(&state.url) {
-            Some(CedarUrlKind::Cedar) => Ok(Self::Policy(PolicyDocument {
+        match CedarUriKind::uri_kind(&state.uri) {
+            Some(CedarUriKind::Cedar) => Ok(Self::Policy(PolicyDocument {
                 state,
-                schema_url: None,
+                schema_uri: None,
             })),
-            Some(CedarUrlKind::Schema) => Ok(Self::Schema(SchemaDocument {
+            Some(CedarUriKind::Schema) => Ok(Self::Schema(SchemaDocument {
                 state,
                 schema_type: SchemaType::CedarSchema,
             })),
-            Some(CedarUrlKind::JsonSchema) => Ok(Self::Schema(SchemaDocument {
+            Some(CedarUriKind::JsonSchema) => Ok(Self::Schema(SchemaDocument {
                 state,
                 schema_type: SchemaType::Json,
             })),
-            Some(CedarUrlKind::Entities) => Ok(Self::Entities(EntitiesDocument {
+            Some(CedarUriKind::Entities) => Ok(Self::Entities(EntitiesDocument {
                 state,
-                schema_url: None,
+                schema_uri: None,
             })),
             None => Err(anyhow::anyhow!("Unknown document type")),
         }
@@ -99,21 +99,21 @@ impl Document {
 
     pub(crate) fn new(
         text: &str,
-        url: &Url,
+        uri: &Uri,
         version: i32,
         documents: &Documents,
     ) -> Result<Self, anyhow::Error> {
-        let state = DocumentState::from_content(text, url, version, documents);
+        let state = DocumentState::from_content(text, uri, version, documents);
         Self::try_from_state(state)
     }
 
     #[allow(clippy::case_sensitive_file_extension_comparisons)]
-    pub(crate) fn new_url(
-        url: &Url,
+    pub(crate) fn new_uri(
+        uri: &Uri,
         version: i32,
         documents: &Documents,
     ) -> Result<Self, anyhow::Error> {
-        let state = DocumentState::from_url(url, version, documents)?;
+        let state = DocumentState::from_uri(uri, version, documents)?;
         Self::try_from_state(state)
     }
 
@@ -179,8 +179,8 @@ impl Document {
     }
 
     #[must_use]
-    pub(crate) fn url(&self) -> &Url {
-        &self.state().url
+    pub(crate) fn uri(&self) -> &Uri {
+        &self.state().uri
     }
 
     #[must_use]
@@ -219,13 +219,13 @@ impl Document {
                     position,
                     &self.text(),
                     schema,
-                    policy_document.schema_url.as_ref(),
+                    policy_document.schema_uri.as_ref(),
                 )
             }
             Self::Schema(schema_document) => schema_goto_definition(
                 position,
                 &schema_document.into(),
-                &schema_document.state.url,
+                &schema_document.state.uri,
             ),
             Self::Entities(_) => None,
         }
@@ -266,7 +266,7 @@ impl Document {
         match self {
             Self::Policy(policy_document) => {
                 let code_actions =
-                    policy_quickfix_code_actions(&policy_document.state.url, params.context)?;
+                    policy_quickfix_code_actions(&policy_document.state.uri, params.context)?;
                 code_actions
                     .into_iter()
                     .map(CodeActionOrCommand::CodeAction)
@@ -288,18 +288,18 @@ impl Document {
     }
 
     #[must_use]
-    pub(crate) fn schema_url(&self) -> Option<&Url> {
+    pub(crate) fn schema_uri(&self) -> Option<&Uri> {
         match self {
-            Self::Policy(policy) => policy.schema_url.as_ref(),
-            Self::Entities(entities) => entities.schema_url.as_ref(),
+            Self::Policy(policy) => policy.schema_uri.as_ref(),
+            Self::Entities(entities) => entities.schema_uri.as_ref(),
             Self::Schema(_) => None,
         }
     }
 
-    pub(crate) fn set_schema_url(&mut self, schema_url: Option<Url>) {
+    pub(crate) fn set_schema_uri(&mut self, schema_uri: Option<Uri>) {
         match self {
-            Self::Policy(policy) => policy.schema_url = schema_url,
-            Self::Entities(entities) => entities.schema_url = schema_url,
+            Self::Policy(policy) => policy.schema_uri = schema_uri,
+            Self::Entities(entities) => entities.schema_uri = schema_uri,
             Self::Schema(_) => {}
         }
     }
@@ -308,15 +308,15 @@ impl Document {
 #[derive(Debug, Clone)]
 pub(crate) struct PolicyDocument {
     state: DocumentState,
-    schema_url: Option<Url>,
+    schema_uri: Option<Uri>,
 }
 
 impl PolicyDocument {
     fn get_diagnostics(&self) -> anyhow::Result<Vec<Diagnostic>> {
         let schema = self
-            .schema_url
+            .schema_uri
             .as_ref()
-            .and_then(|schema_url| self.state.get_document_or_else_read(schema_url))
+            .and_then(|schema_uri| self.state.get_document_or_else_read(schema_uri))
             .and_then(Document::into_schema)
             .map(|s| SchemaInfo::new(s.schema_type, s.state.content.to_string()));
 
@@ -335,9 +335,9 @@ impl PolicyDocument {
 
     #[must_use]
     fn get_schema_info(&self) -> Option<SchemaInfo> {
-        self.schema_url
+        self.schema_uri
             .as_ref()
-            .and_then(|schema_url| self.state.get_document_or_else_read(schema_url))
+            .and_then(|schema_uri| self.state.get_document_or_else_read(schema_uri))
             .and_then(Document::into_schema)
             .map(|s| SchemaInfo::new(s.schema_type, s.state.content.to_string()))
     }
@@ -369,7 +369,7 @@ impl SchemaDocument {
     #[must_use]
     pub(crate) fn get_linked_document_diagnostics(
         &self,
-    ) -> Option<HashMap<Url, DiagnosticFragment>> {
+    ) -> Option<HashMap<Uri, DiagnosticFragment>> {
         let documents = self.state.documents.upgrade()?;
         let mut diagnostics = HashMap::new();
         let doc_list = documents
@@ -380,26 +380,26 @@ impl SchemaDocument {
         for doc in doc_list {
             match &doc {
                 Document::Policy(policy) => {
-                    if let Some(schema_url) = &policy.schema_url {
-                        if schema_url == &self.state.url {
+                    if let Some(schema_uri) = &policy.schema_uri {
+                        if schema_uri == &self.state.uri {
                             let d = policy.get_diagnostics_with_schema(self).ok()?;
                             let frag = DiagnosticFragment {
                                 version: policy.state.version,
                                 diagnostics: d,
                             };
-                            diagnostics.insert(policy.state.url.clone(), frag);
+                            diagnostics.insert(policy.state.uri.clone(), frag);
                         }
                     }
                 }
                 Document::Entities(entities) => {
-                    if let Some(schema_url) = &entities.schema_url {
-                        if schema_url == &self.state.url {
+                    if let Some(schema_uri) = &entities.schema_uri {
+                        if schema_uri == &self.state.uri {
                             let d = entities.get_diagnostics_with_schema(self).ok()?;
                             let frag = DiagnosticFragment {
                                 version: entities.state.version,
                                 diagnostics: d,
                             };
-                            diagnostics.insert(entities.state.url.clone(), frag);
+                            diagnostics.insert(entities.state.uri.clone(), frag);
                         }
                     }
                 }
@@ -415,33 +415,33 @@ impl SchemaDocument {
     }
 
     #[must_use]
-    pub(crate) fn update_linked_documents(&self, new_url: Option<&Url>) -> Vec<Url> {
+    pub(crate) fn update_linked_documents(&self, new_uri: Option<&Uri>) -> Vec<Uri> {
         let Some(documents) = self.state.documents.upgrade() else {
             return vec![];
         };
-        let mut updated_doc_urls = vec![];
+        let mut updated_doc_uris = vec![];
         documents
             .iter_mut()
             .for_each(|mut doc| match doc.value_mut() {
                 Document::Policy(policy) => {
-                    if let Some(schema_url) = &policy.schema_url {
-                        if schema_url == &self.state.url {
-                            policy.schema_url = new_url.cloned();
-                            updated_doc_urls.push(policy.state.url.clone());
+                    if let Some(schema_uri) = &policy.schema_uri {
+                        if schema_uri == &self.state.uri {
+                            policy.schema_uri = new_uri.cloned();
+                            updated_doc_uris.push(policy.state.uri.clone());
                         }
                     }
                 }
                 Document::Entities(entities) => {
-                    if let Some(schema_url) = &entities.schema_url {
-                        if schema_url == &self.state.url {
-                            entities.schema_url = new_url.cloned();
-                            updated_doc_urls.push(entities.state.url.clone());
+                    if let Some(schema_uri) = &entities.schema_uri {
+                        if schema_uri == &self.state.uri {
+                            entities.schema_uri = new_uri.cloned();
+                            updated_doc_uris.push(entities.state.uri.clone());
                         }
                     }
                 }
                 Document::Schema(_) => {}
             });
-        updated_doc_urls
+        updated_doc_uris
     }
 }
 
@@ -460,15 +460,15 @@ impl From<&SchemaDocument> for SchemaInfo {
 #[derive(Debug, Clone)]
 pub(crate) struct EntitiesDocument {
     state: DocumentState,
-    schema_url: Option<Url>,
+    schema_uri: Option<Uri>,
 }
 
 impl EntitiesDocument {
     fn get_diagnostics(&self) -> anyhow::Result<Vec<Diagnostic>> {
         let schema = self
-            .schema_url
+            .schema_uri
             .as_ref()
-            .and_then(|schema_url| self.state.get_document_or_else_read(schema_url))
+            .and_then(|schema_uri| self.state.get_document_or_else_read(schema_uri))
             .and_then(Document::into_schema)
             .map(|s| SchemaInfo::new(s.schema_type, s.state.content.to_string()));
 
@@ -496,44 +496,44 @@ impl From<EntitiesDocument> for Document {
 #[derive(Debug, Clone)]
 pub(crate) struct DocumentState {
     content: Rope,
-    url: Url,
+    uri: Uri,
     version: i32,
-    documents: Weak<DashMap<Url, Document>>,
+    documents: Weak<DashMap<Uri, Document>>,
 }
 
 impl DocumentState {
     #[must_use]
-    fn from_content(content: &str, url: &Url, version: i32, documents: &Documents) -> Self {
-        let url = url.clone();
+    fn from_content(content: &str, uri: &Uri, version: i32, documents: &Documents) -> Self {
+        let uri = uri.clone();
         let content = Rope::from_str(content);
         Self {
             content,
             version,
-            url,
+            uri,
             documents: Arc::downgrade(documents),
         }
     }
 
-    fn from_url(url: &Url, version: i32, documents: &Documents) -> Result<Self, anyhow::Error> {
-        let url = url.clone();
-        let content = Rope::from_reader(std::fs::File::open(url.path())?)?;
+    fn from_uri(uri: &Uri, version: i32, documents: &Documents) -> Result<Self, anyhow::Error> {
+        let uri = uri.clone();
+        let content = Rope::from_reader(std::fs::File::open(uri.path().as_str())?)?;
         Ok(Self {
             content,
             version,
-            url,
+            uri,
             documents: Arc::downgrade(documents),
         })
     }
 
     #[must_use]
-    fn get_document_or_else_read(&self, other: &Url) -> Option<Document> {
+    fn get_document_or_else_read(&self, other: &Uri) -> Option<Document> {
         let documents = self.documents.upgrade()?;
         if let Some(document) = documents.get(other) {
             return Some(document.value().clone());
         }
 
-        // Read url from disk
-        let document = std::fs::read_to_string(other.path()).ok()?;
+        // Read uri from disk
+        let document = std::fs::read_to_string(other.path().as_str()).ok()?;
         let document = Document::new(&document, other, 0, &documents).ok()?;
         documents.insert(other.clone(), document.clone());
         Some(document)

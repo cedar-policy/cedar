@@ -20,7 +20,7 @@ use cedar_policy_core::ast::{
     ActionConstraint, EntityUID, Expr, Literal, PrincipalOrResourceConstraint, SlotId, Template,
     Var,
 };
-use lsp_types::{CompletionItem, Position};
+use tower_lsp_server::lsp_types::{self, CompletionItem, Position};
 
 use crate::{
     policy::{
