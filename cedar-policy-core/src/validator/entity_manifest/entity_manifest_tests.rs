@@ -70,14 +70,14 @@ fn schema() -> ValidatorSchema {
         "
 entity User = {
   name: String,
-};
+} tags String;
 
 entity Document;
 
 action Read appliesTo {
   principal: [User],
   resource: [Document]
-};
+} tags String;
     ",
         Extensions::all_available(),
     )
@@ -650,6 +650,49 @@ when {
                 "resource.viewer",
                 "resource.owner.name"
             ]
+        ]]
+    });
+
+    // Convert the JSON value to a HumanEntityManifest
+    let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
+
+    // Convert the human manifest to an EntityManifest
+    let expected_manifest = human_manifest
+        .to_entity_manifest(validator.schema())
+        .unwrap();
+
+    assert_manifests_equal(&entity_manifest, &expected_manifest);
+}
+
+#[test]
+fn test_get_tag_simple() {
+    let mut pset = PolicySet::new();
+    let policy = parse_policy(
+        None,
+        r#"permit(principal, action, resource)
+when {
+    principal.getTag("mytag") == "myvalue"
+};"#,
+    )
+    .expect("should succeed");
+    pset.add(policy.into()).expect("should succeed");
+
+    let validator = Validator::new(schema());
+
+    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
+
+    // Define the human manifest using the json! macro
+    let human_json = serde_json::json!({
+        "perAction": [[
+            {
+                "principal": "User",
+                "action": {
+                    "ty": "Action",
+                    "eid": "Read"
+                },
+                "resource": "Document"
+            },
+            ["principal.getTag(\"mytag\")"]
         ]]
     });
 
