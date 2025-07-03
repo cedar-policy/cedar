@@ -104,6 +104,8 @@ pub enum EntitySliceError {
     /// The entity manifest is incompatible with the expected format
     #[error(transparent)]
     IncompatibleEntityManifest(#[from] IncompatibleEntityManifestError),
+
+    
     /// A required entity is missing from the entity store
     #[error(transparent)]
     EntityMissing(#[from] EntityMissingError),
@@ -116,9 +118,16 @@ pub enum EntitySliceError {
     /// The number of entities provided doesn't match the expected count
     #[error(transparent)]
     WrongNumberOfEntities(#[from] WrongNumberOfEntitiesError),
-    /// Expected an entity type but found a different value type
+    /// Expected an entity type but found a different value type during loading
     #[error(transparent)]
     ExpectedEntityType(#[from] ExpectedEntityTypeError),
+    /// Expected an entity or entity set but found something else
+    #[error(transparent)]
+    ExpectedEntityOrEntitySet(#[from] ExpectedEntityOrEntitySetError),
+    /// An error when we got conflicting data for the same entity
+    #[error(transparent)]
+    ConflictingEntityData(#[from] ConflictingEntityDataError),
+
     /// An error occurred with entity operations
     #[error(transparent)]
     Entities(#[from] EntitiesError),
@@ -183,6 +192,30 @@ pub struct WrongNumberOfEntitiesError {
 #[error("expected entity type, found: {found_value:?}")]
 pub struct ExpectedEntityTypeError {
     /// The value that was found instead of an entity type
+    pub found_value: crate::ast::Value,
+}
+
+/// Error when a user gives an entity twice with conflicting data
+#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
+#[error(
+    "conflicting data for entity {entity_id}: old value {old_value:?}, new value {new_value:?}"
+)]
+pub struct ConflictingEntityDataError {
+    /// The entity UID that has conflicting data
+    pub entity_id: EntityUID,
+    /// The conflicting data that was provided for the entity
+    pub old_value: crate::ast::Value,
+    /// The new value that conflicts with the old value
+    pub new_value: crate::ast::Value,
+}
+
+/// Error whene expecting an entity or entity set but got something else
+/// This is a specialized version of `ExpectedEntityTypeError` for cases where
+/// an entity or entity set is expected, but a different type is found.
+#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
+#[error("expected entity or entity set, found: {found_value:?}")]
+pub struct ExpectedEntityOrEntitySetError {
+    /// The value that was found instead of an entity or entity set
     pub found_value: crate::ast::Value,
 }
 

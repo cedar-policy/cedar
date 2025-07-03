@@ -27,7 +27,7 @@ use crate::{
     entities::{Entities, NoEntitiesSchema, TCComputation},
     extensions::Extensions,
     validator::entity_manifest::{
-        errors::ExpectedEntityTypeError, manifest_helpers::AccessTrie, AccessPath,
+        errors::{ExpectedEntityOrEntitySetError, ExpectedEntityTypeError}, manifest_helpers::AccessTrie, AccessPath,
         AccessPathVariant, EntityManifest, PathsForRequestType,
     },
 };
@@ -312,7 +312,9 @@ pub(crate) fn load_entities(
             // Extract the EntityUID from the Value
             let of_val = match of_val_result.value_kind() {
                 ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
-                _ => panic!("Expected EntityUID, got {:?}", of_val_result),
+                _ => return Err(ExpectedEntityTypeError {
+                    found_value: of_val_result.clone(),
+                }.into()),
             };
 
             // ancestor value can be a UID or a set of UIDs
@@ -322,17 +324,25 @@ pub(crate) fn load_entities(
                 }
                 ValueKind::Set(set) => {
                     // make a set of EntityUIDs from the set
-                    set.iter()
-                        .map(|v| {
-                            if let ValueKind::Lit(Literal::EntityUID(euid)) = v.value_kind() {
-                                (**euid).clone()
-                            } else {
-                                panic!("Expected EntityUID in set, got {:?}", v);
+                    let mut resulting_set = HashSet::new();
+                    for val in set.iter() {
+                        if let ValueKind::Lit(Literal::EntityUID(euid)) = val.value_kind() {
+                            resulting_set.insert((**euid).clone());
+                        } else {
+                            return Err(ExpectedEntityTypeError {
+                                found_value: val.clone(),
                             }
-                        })
-                        .collect::<HashSet<EntityUID>>()
+                            .into());
+                        }
+                    }
+                    resulting_set
                 }
-                _ => panic!("Expected EntityUID, got {:?}", ancestor_val_result),
+                _ => {
+                    return Err(ExpectedEntityOrEntitySetError {
+                        found_value: ancestor_val_result.clone(),
+                    }
+                    .into());
+                }
             };
 
             // if there is an existing ancestor request, add to it

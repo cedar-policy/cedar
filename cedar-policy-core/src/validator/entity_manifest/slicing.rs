@@ -261,10 +261,10 @@ impl AccessPath {
                 }
             }
 
+            // PANIC SAFETY: `compute_value` is only called on child access paths, but nothing has an ancestor node as a child.
+            #[allow(clippy::panic)]
             AccessPathVariant::Ancestor { of: _, ancestor: _ } => {
-                // PANIC SAFETY: Ancestor nodes are not computed by the loader.
-                #[allow(clippy::panic)]
-                panic!("Attempting to compute value for ancestor node");
+                panic!("Ill-typed entity manifest: Tried to compute value of ancestor access path");
             }
 
             AccessPathVariant::Var(var) => {
