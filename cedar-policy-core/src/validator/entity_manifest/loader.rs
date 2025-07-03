@@ -232,19 +232,17 @@ pub(crate) fn load_entities(
             .into());
         }
 
-        for entity_maybe in loaded_entities.into_iter() {
-            if let Some(entity) = entity_maybe {
-                // Add or merge the entity into our map
-                match entities_map.entry(entity.uid().clone()) {
-                    hash_map::Entry::Occupied(o) => {
-                        // If the entity is already present, merge it
-                        let (k, v) = o.remove_entry();
-                        let merged = merge_entities(v, entity.clone());
-                        entities_map.insert(k, merged);
-                    }
-                    hash_map::Entry::Vacant(v) => {
-                        v.insert(entity.clone());
-                    }
+        for entity in loaded_entities.into_iter().flatten() {
+            // Add or merge the entity into our map
+            match entities_map.entry(entity.uid().clone()) {
+                hash_map::Entry::Occupied(o) => {
+                    // If the entity is already present, merge it
+                    let (k, v) = o.remove_entry();
+                    let merged = merge_entities(v, entity.clone());
+                    entities_map.insert(k, merged);
+                }
+                hash_map::Entry::Vacant(v) => {
+                    v.insert(entity.clone());
                 }
             }
         }
@@ -317,8 +315,23 @@ pub(crate) fn load_entities(
                 _ => panic!("Expected EntityUID, got {:?}", of_val_result),
             };
 
-            let ancestor_val = match ancestor_val_result.value_kind() {
-                ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
+            // ancestor value can be a UID or a set of UIDs
+            let ancestors_to_request = match ancestor_val_result.value_kind() {
+                ValueKind::Lit(Literal::EntityUID(euid)) => {
+                    vec![(**euid).clone()].into_iter().collect()
+                }
+                ValueKind::Set(set) => {
+                    // make a set of EntityUIDs from the set
+                    set.iter()
+                        .map(|v| {
+                            if let ValueKind::Lit(Literal::EntityUID(euid)) = v.value_kind() {
+                                (**euid).clone()
+                            } else {
+                                panic!("Expected EntityUID in set, got {:?}", v);
+                            }
+                        })
+                        .collect::<HashSet<EntityUID>>()
+                }
                 _ => panic!("Expected EntityUID, got {:?}", ancestor_val_result),
             };
 
@@ -331,7 +344,7 @@ pub(crate) fn load_entities(
                         entity_id: of_val.clone(),
                         ancestors: HashSet::new(),
                     });
-            ancestor_request.ancestors.insert(ancestor_val);
+            ancestor_request.ancestors.extend(ancestors_to_request);
         }
     }
 
