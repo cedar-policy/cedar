@@ -26,9 +26,11 @@ use thiserror::Error;
 
 use super::{
     AccessDag, AccessPath, AccessPathVariant, AccessPaths, EntityManifest, EntityRoot,
-    MismatchedEntityManifestError, PathsForRequestType,
+    PathsForRequestType,
 };
 use crate::validator::ValidatorSchema;
+// Import errors directly
+use crate::validator::entity_manifest::errors::MismatchedEntityManifestError;
 
 /// Error when parsing a path expression
 #[derive(Debug, Error)]
@@ -279,7 +281,10 @@ impl EntityManifest {
     }
 }
 impl AccessPath {
-    pub(crate) fn to_expr(&self, dag: &AccessDag) -> Result<ast::Expr, super::AccessPathNotFoundError> {
+    pub(crate) fn to_expr(
+        &self,
+        dag: &AccessDag,
+    ) -> Result<ast::Expr, super::AccessPathNotFoundError> {
         // Find the variant for this path
         if let Some(variant) = dag.manifest_store.get(self.id) {
             Ok(match variant {
