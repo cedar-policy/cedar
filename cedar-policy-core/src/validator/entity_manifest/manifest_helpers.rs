@@ -116,27 +116,20 @@ impl PathsForRequestType {
     /// Helper function to determine if a path has an entity type
     fn is_entity_path(&self, path: &AccessPath) -> bool {
         // Check if we have type information
-        if let Some(types) = &self.dag.types {
-            if path.id < types.len() {
-                // Check if the type is an entity type
-                use crate::validator::types::EntityRecordKind;
-                // PANIC SAFETY: types are computed for all paths in the manifest
-                #[allow(clippy::unwrap_used)]
-                match types.get(path.id).unwrap() {
-                    crate::validator::types::Type::EntityOrRecord(kind) => {
-                        matches!(
-                            kind,
-                            EntityRecordKind::Entity(_) | EntityRecordKind::AnyEntity
-                        )
-                    }
-                    _ => false,
+        if path.id < self.dag.types.len() {
+            // Check if the type is an entity type
+            use crate::validator::types::EntityRecordKind;
+            match self.dag.types.get(path.id) {
+                Some(Some(crate::validator::types::Type::EntityOrRecord(kind))) => {
+                    matches!(
+                        kind,
+                        EntityRecordKind::Entity(_) | EntityRecordKind::AnyEntity
+                    )
                 }
-            } else {
-                false
+                _ => false,
             }
         } else {
-            // PANIC SAFETY: all manifests are typed after their creation.
-            panic!("Entity manifest lacked types after its creation");
+            false
         }
     }
 

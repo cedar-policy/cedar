@@ -62,7 +62,7 @@ impl PathsForRequestType {
         // Process each access path in topological order
         // Since the DAG structure ensures that all dependencies are processed before dependents,
         // we can simply iterate through the paths in order of their IDs
-        for (path_id, path) in self.dag.manifest_store.iter().enumerate() {
+        for path in self.dag.manifest_store.iter() {
             self.dag
                 .types
                 .push(self.type_path(path, &self.request_type, schema, &self.dag)?);
@@ -99,7 +99,7 @@ impl PathsForRequestType {
                             .ok_or_else(|| MismatchedMissingEntityError {
                                 entity: request_type.action.clone(),
                             })?
-                            .context
+                            .context.clone()
                     }
                 };
 
