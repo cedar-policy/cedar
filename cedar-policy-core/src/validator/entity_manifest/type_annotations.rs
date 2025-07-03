@@ -29,7 +29,9 @@ use crate::validator::{
 };
 // Import errors directly
 use crate::validator::entity_manifest::errors::{
-    MismatchedEntityManifestError, MismatchedMissingEntityError, MismatchedNotStrictSchemaError,
+    MismatchedEntityManifestError, MismatchedExpectedEntityError,
+    MismatchedExpectedEntityOrRecordError, MismatchedMissingEntityError,
+    MismatchedNotStrictSchemaError,
 };
 
 impl EntityManifest {
@@ -60,11 +62,10 @@ impl PathsForRequestType {
         // Process each access path in topological order
         // Since the DAG structure ensures that all dependencies are processed before dependents,
         // we can simply iterate through the paths in order of their IDs
-        for path_id in 0..self.dag.manifest_store.len() {
-            let path = AccessPath { id: path_id };
+        for (path_id, path) in self.dag.manifest_store.iter().enumerate() {
             self.dag
                 .types
-                .push(self.type_path(&path, &self.request_type, schema, &self.dag)?);
+                .push(self.type_path(path, &self.request_type, schema, &self.dag)?);
         }
 
         Ok(())
@@ -78,24 +79,38 @@ impl PathsForRequestType {
         request_type: &RequestType,
         schema: &ValidatorSchema,
         dag: &AccessDag,
-    ) -> Option<Type> {
+    ) -> Result<Option<Type>, MismatchedEntityManifestError> {
         let res = match variant {
             AccessPathVariant::Var(var) => {
                 // Type the variable based on its kind
                 let ty = match var {
-                    Var::Action => Type::euid_literal(&request_type.action, schema)?,
+                    Var::Action => {
+                        Type::euid_literal(&request_type.action, schema).ok_or_else(|| {
+                            MismatchedMissingEntityError {
+                                entity: request_type.action.clone(),
+                            }
+                        })?
+                    }
                     Var::Principal => Type::named_entity_reference(request_type.principal.clone()),
                     Var::Resource => Type::named_entity_reference(request_type.resource.clone()),
-                    Var::Context => schema
-                        .get_action_id(&request_type.action.clone())?
-                        .context
-                        .clone(),
+                    Var::Context => {
+                        schema
+                            .get_action_id(&request_type.action.clone())
+                            .ok_or_else(|| MismatchedMissingEntityError {
+                                entity: request_type.action.clone(),
+                            })?
+                            .context
+                    }
                 };
 
                 ty
             }
             AccessPathVariant::Literal(lit) => {
-                Type::euid_literal(lit, schema)?
+                Type::euid_literal(lit, schema).ok_or_else(|| {
+                    MismatchedMissingEntityError {
+                        entity: lit.clone(),
+                    }
+                })?
             }
             AccessPathVariant::String(_) => {
                 // String literals have String type
@@ -103,7 +118,9 @@ impl PathsForRequestType {
             }
             AccessPathVariant::Attribute { of, attr } => {
                 // Get the type of the base expression (should already be typed)
-                let of_type = self.dag.types.get(of.id)?;
+                let Some(Some(of_type)) = self.dag.types.get(of.id) else {
+                    return Ok(None);
+                };
 
                 // Get the attribute type from the base type
                 match of_type {
@@ -132,10 +149,17 @@ impl PathsForRequestType {
                         if let Some(attr_type) = attributes.get_attr(attr) {
                             attr_type.attr_type.clone()
                         } else {
+                            // The attribute was not found, but this can happen
+                            // for example with `has` statements on types without the attribute.
+                            // In this case, we return None to indicate that the attribute is not present.
+                            return Ok(None);
                         }
                     }
                     _ => {
-                        todo!()
+                        return Err(MismatchedExpectedEntityOrRecordError {
+                            found_type: of_type.clone(),
+                        }
+                        .into());
                     }
                 }
             }
@@ -143,7 +167,9 @@ impl PathsForRequestType {
                 of: access_path,
                 tag: tag_path,
             } => {
-                let access_path_type = self.get_type_expect(access_path.id);
+                let Some(Some(access_path_type)) = self.dag.types.get(access_path.id) else {
+                    return Ok(None);
+                };
                 // of should be an entity type with a tag type
                 if let Type::EntityOrRecord(EntityRecordKind::Entity(entitylub)) = access_path_type
                 {
@@ -156,7 +182,10 @@ impl PathsForRequestType {
                         .ok_or(MismatchedNotStrictSchemaError {})?;
                     entity_ty.tag_type().unwrap().clone() // todo fix unwrap
                 } else {
-                    todo!() // fix errors in this func
+                    return Err(MismatchedExpectedEntityError {
+                        found_type: access_path_type.clone(),
+                    }
+                    .into());
                 }
             }
             AccessPathVariant::Ancestor { of: _, ancestor: _ } => {
@@ -165,6 +194,6 @@ impl PathsForRequestType {
             }
         };
 
-        Ok(res)
+        Ok(Some(res))
     }
 }
