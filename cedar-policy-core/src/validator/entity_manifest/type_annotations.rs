@@ -42,7 +42,7 @@ impl EntityManifest {
     ) -> Result<EntityManifest, MismatchedEntityManifestError> {
         // Type each PathsForRequestType
         for paths_for_request_type in self.per_action.values_mut() {
-            *paths_for_request_type = paths_for_request_type.to_typed(schema)?;
+            paths_for_request_type.add_types(schema)?;
         }
 
         Ok(self)
@@ -51,34 +51,24 @@ impl EntityManifest {
 
 impl PathsForRequestType {
     /// Type-annotate this [`PathsForRequestType`], given the schema.
-    pub(crate) fn to_typed(
-        self,
+    pub(crate) fn add_types(
+        &mut self,
         schema: &ValidatorSchema,
-    ) -> Result<PathsForRequestType, MismatchedEntityManifestError> {
-        // Create a new PathsForRequestType with the same structure
-        let mut typed_paths = self.clone();
-
+    ) -> Result<(), MismatchedEntityManifestError> {
         // Initialize the types vector with None for each path in the DAG
-        let mut types = vec![None; typed_paths.dag.manifest_store.len()];
+        let mut types = vec![None; self.dag.manifest_store.len()];
 
         // Process each access path in topological order
         // Since the DAG structure ensures that all dependencies are processed before dependents,
         // we can simply iterate through the paths in order of their IDs
-        for path_id in 0..typed_paths.dag.manifest_store.len() {
+        for path_id in 0..self.dag.manifest_store.len() {
             let path = AccessPath { id: path_id };
-            self.type_path(
-                &path,
-                &self.request_type,
-                schema,
-                &mut types,
-                &typed_paths.dag,
-            )?;
+            self.type_path(&path, &self.request_type, schema, &mut types, &self.dag)?;
         }
 
         // Set the types field in the DAG
-        typed_paths.dag.types = Some(types.into_iter().flatten().collect());
-
-        Ok(typed_paths)
+        self.dag.types = Some(types.into_iter().flatten().collect());
+        Ok(())
     }
 
     /// Helper method to type a single path

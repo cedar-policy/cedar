@@ -130,9 +130,7 @@ impl PathsForRequestType {
     /// Variables are included in the request.
     /// We prune these from the set of access paths required.
     fn prune_leafs(&mut self) {
-        let paths = std::mem::take(&mut self
-        .access_paths
-        .paths);
+        let paths = std::mem::take(&mut self.access_paths.paths);
         self.access_paths.paths = paths
             .into_iter()
             .filter(|path| !path.is_leaf(&self.dag))
@@ -410,8 +408,8 @@ impl PathsForRequestType {
         #[allow(clippy::panic)]
         let variant = path
             .get_variant(&self.dag)
-            .clone()
-            .expect("Entity manifest with paths belonging to a different manifest");
+            .expect("Entity manifest with paths belonging to a different manifest")
+            .clone();
         let mapped_variant = self.map_variant(&variant, path_mapping);
         let new_path = self.dag.add_path(mapped_variant);
         path_mapping.path_map.insert(path.id, new_path.id);
@@ -609,7 +607,10 @@ pub fn compute_entity_manifest(
                 .to_request_type()
                 .ok_or(PartialRequestError {})?;
 
-            let mut per_request = match manifest.per_action.remove(request_type.clone()).unwrap_or( PathsForRequestType::new(request_type.clone()));
+            let mut per_request = manifest
+                .per_action
+                .remove(&request_type)
+                .unwrap_or(PathsForRequestType::new(request_type.clone()));
 
             match policy_check {
                 PolicyCheck::Success(typechecked_expr) => {
