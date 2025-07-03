@@ -45,9 +45,10 @@ mod type_annotations;
 
 // Import errors directly
 pub use crate::validator::entity_manifest::errors::{
-    AccessPathNotFoundError, EntityManifestError, EntityManifestFromJsonError,
+    AccessPathNotFoundError, ConversionError, EntityManifestError, EntityManifestFromJsonError,
     MismatchedEntityManifestError, MismatchedMissingEntityError, MismatchedNotStrictSchemaError,
-    PartialExpressionError, PartialRequestError, UnsupportedCedarFeatureError,
+    PartialExpressionError, PartialRequestError, PathExpressionParseError,
+    UnsupportedCedarFeatureError,
 };
 
 use crate::validator::entity_manifest::analysis::{
@@ -60,7 +61,6 @@ use crate::validator::{
     ValidationMode, ValidatorSchema,
 };
 use crate::validator::{ValidationResult, Validator};
-pub use human_format::{ConversionError, ExprStr, HumanEntityManifest, PathExpressionParseError};
 
 /// Stores paths for a specific request type, including the request type,
 /// access dag, and access paths.

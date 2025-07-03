@@ -130,3 +130,38 @@ pub struct WrongNumberOfEntitiesError {
     pub expected: usize,
     pub got: usize,
 }
+
+// Errors from human_format.rs
+/// Error when parsing a path expression
+#[derive(Debug, Error)]
+pub enum PathExpressionParseError {
+    /// Invalid root expression
+    #[error("Invalid root expression: {0}")]
+    InvalidRoot(String),
+    /// Invalid tag expression
+    #[error("Invalid tag expression: {0}")]
+    InvalidTagExpression(String),
+    /// Invalid attribute expression
+    #[error("Invalid attribute expression: {0}")]
+    InvalidAttributeExpression(String),
+    /// Invalid ancestor expression
+    #[error("Invalid ancestor expression: {0}")]
+    InvalidAncestorExpression(String),
+    /// General parsing error
+    #[error("Error parsing path expression: {0}")]
+    GeneralError(String),
+}
+
+/// Error when converting between human-readable and DAG-based entity manifests
+#[derive(Debug, Error)]
+pub enum ConversionError {
+    /// Error parsing a path expression
+    #[error(transparent)]
+    ParseError(#[from] PathExpressionParseError),
+    /// Error serializing or deserializing JSON
+    #[error(transparent)]
+    SerdeError(#[from] serde_json::Error),
+    /// A mismatched entity manifest error
+    #[error(transparent)]
+    MismatchedEntityManifest(#[from] MismatchedEntityManifestError),
+}
