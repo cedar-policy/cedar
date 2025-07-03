@@ -71,13 +71,14 @@ fn schema() -> ValidatorSchema {
 entity User = {
   name: String,
 } tags String;
+ 
 
-entity Document;
+entity Document tags String;
 
 action Read appliesTo {
   principal: [User],
   resource: [Document]
-} tags String;
+};
     ",
         Extensions::all_available(),
     )
@@ -665,13 +666,13 @@ when {
 }
 
 #[test]
-fn test_get_tag_simple() {
+fn test_has_tag_simple() {
     let mut pset = PolicySet::new();
     let policy = parse_policy(
         None,
         r#"permit(principal, action, resource)
 when {
-    principal.getTag("mytag") == "myvalue"
+    principal.hasTag("mytag")
 };"#,
     )
     .expect("should succeed");
