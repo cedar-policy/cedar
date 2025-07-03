@@ -18,9 +18,7 @@ use crate::validator::entity_manifest::errors::{
 use crate::validator::entity_manifest::loader::{
     load_entities, AncestorsRequest, EntityAnswer, EntityLoader, EntityRequest,
 };
-use crate::validator::entity_manifest::{
-    AccessDag, AccessPath, AccessPathVariant, EntityManifest,
-};
+use crate::validator::entity_manifest::{AccessDag, AccessPath, AccessPathVariant, EntityManifest};
 
 impl EntityManifest {
     /// Use this entity manifest to
@@ -144,7 +142,7 @@ impl AccessTrie {
 
 impl AccessPath {
     /// Compute the value for this access path using the provided entities map.
-    /// This function can dereference entities using the entity_map.
+    /// This function can dereference entities using the `entity_map`.
     pub fn compute_value(
         &self,
         entities_map: &HashMap<EntityUID, Entity>,
@@ -224,11 +222,11 @@ impl AccessPath {
                 match base_value.value_kind() {
                     // If it's an entity UID, look up the entity and get the tag
                     ValueKind::Lit(Literal::EntityUID(euid)) => {
-                        if let Some(entity) = entities_map.get(&(**euid)) {
+                        if let Some(_entity) = entities_map.get(&(**euid)) {
                             // Compute the tag name
                             let tag_value = tag.compute_value(entities_map, store, request)?;
 
-                            if let ValueKind::Lit(Literal::String(tag_name)) =
+                            if let ValueKind::Lit(Literal::String(_tag_name)) =
                                 tag_value.value_kind()
                             {
                                 // TODO: Implement tag access once entity slicing supports tags
@@ -262,7 +260,7 @@ impl AccessPath {
                 }
             }
 
-            AccessPathVariant::Ancestor { of, ancestor } => {
+            AccessPathVariant::Ancestor { of: _, ancestor: _ } => {
                 // PANIC SAFETY: Ancestor nodes are not computed by the loader.
                 #[allow(clippy::panic)]
                 panic!("Attempting to compute value for ancestor node");

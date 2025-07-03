@@ -313,6 +313,12 @@ pub struct PathMapping {
     pub(crate) path_map: HashMap<usize, usize>,
 }
 
+impl Default for PathMapping {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PathMapping {
     /// Create a new empty path mapping
     pub fn new() -> Self {
@@ -449,7 +455,7 @@ impl EntityManifest {
             }
         }
 
-        return true;
+        true
     }
 
     /// Union this entity manifest with another entity manifest
@@ -458,7 +464,7 @@ impl EntityManifest {
     /// and updates the `per_action` map to include the paths from the other manifest.
     ///
     /// Returns a mapping from paths in the other manifest to paths in this manifest.
-    /// 
+    ///
     /// Not public! Doesn't restore type information.
     pub(crate) fn union_with(&mut self, other: &EntityManifest) {
         // Update the `per_action` map to include the paths from the other manifest
@@ -624,7 +630,7 @@ pub fn compute_entity_manifest(
                 .ok_or(PartialRequestError {})?;
 
             let mut per_request = match manifest.per_action.entry(request_type.clone()) {
-                Entry::Occupied(mut occupied) => occupied.remove(),
+                Entry::Occupied(occupied) => occupied.remove(),
                 Entry::Vacant(_) => PathsForRequestType::new(request_type.clone()),
             };
 

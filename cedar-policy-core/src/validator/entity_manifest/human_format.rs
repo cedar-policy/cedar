@@ -82,15 +82,21 @@ impl From<ast::Expr> for ExprStr {
     }
 }
 
+impl Default for HumanEntityManifest {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HumanEntityManifest {
-    /// Create a new empty HumanEntityManifest
+    /// Create a new empty `HumanEntityManifest`
     pub fn new() -> Self {
         Self {
             per_action: HashMap::new(),
         }
     }
 
-    /// Convert an AST Cedar expression to an AccessPath
+    /// Convert an AST Cedar expression to an `AccessPath`
     pub(crate) fn expr_to_access_path(
         &self,
         expr: &ast::Expr,
@@ -152,7 +158,7 @@ impl HumanEntityManifest {
         }
     }
 
-    /// Convert this HumanEntityManifest to a DAG-based EntityManifest
+    /// Convert this `HumanEntityManifest` to a DAG-based `EntityManifest`
     pub fn to_entity_manifest(
         &self,
         schema: &ValidatorSchema,
@@ -177,19 +183,19 @@ impl HumanEntityManifest {
         manifest.add_types(schema).map_err(|e| e.into())
     }
 
-    /// Convert this HumanEntityManifest to a JSON string
+    /// Convert this `HumanEntityManifest` to a JSON string
     pub fn to_json_string(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
     }
 
-    /// Create a HumanEntityManifest from a JSON string
+    /// Create a `HumanEntityManifest` from a JSON string
     pub fn from_json_str(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
     }
 }
 
 impl EntityManifest {
-    /// Convert this EntityManifest to a human-readable format
+    /// Convert this `EntityManifest` to a human-readable format
     pub fn to_human_format(&self) -> HumanEntityManifest {
         let mut per_action = HashMap::new();
 
@@ -210,7 +216,7 @@ impl EntityManifest {
         HumanEntityManifest { per_action }
     }
 
-    /// Convert an AccessPath to a Cedar expression
+    /// Convert an `AccessPath` to a Cedar expression
     fn access_path_to_expr(
         &self,
         path: &AccessPath,
@@ -225,13 +231,13 @@ impl EntityManifest {
         }
     }
 
-    /// Convert this EntityManifest to a human-readable JSON string
+    /// Convert this `EntityManifest` to a human-readable JSON string
     pub fn to_human_json_string(&self) -> Result<String, serde_json::Error> {
         let human = self.to_human_format();
         serde_json::to_string_pretty(&human)
     }
 
-    /// Create an EntityManifest from a human-readable JSON string
+    /// Create an `EntityManifest` from a human-readable JSON string
     pub fn from_human_json_str(
         json: &str,
         schema: &ValidatorSchema,
@@ -240,6 +246,7 @@ impl EntityManifest {
         human.to_entity_manifest(schema)
     }
 }
+
 impl AccessPath {
     pub(crate) fn to_expr(
         &self,

@@ -62,10 +62,10 @@ impl WrappedAccessPaths {
     }
 
     /// Add an ancestors required path for each of the wrapped access paths given.
-    /// This function converts the ancestors_trie to AccessPaths and adds ancestor
+    /// This function converts the `ancestors_trie` to `AccessPaths` and adds ancestor
     /// requirements to the current paths.
     ///
-    /// Panics if access_paths contains a record or set literal. The typechecker
+    /// Panics if `access_paths` contains a record or set literal. The typechecker
     /// should prevent this, since ancestors are required of literals.
     pub(crate) fn with_ancestors_required(
         self: Rc<Self>,
@@ -111,7 +111,7 @@ impl WrappedAccessPaths {
         dropped: Rc<Self>,
     ) -> Rc<Self> {
         Rc::new(WrappedAccessPaths::WithDroppedPaths {
-            paths: self.clone(),
+            paths: self,
             dropped,
         })
     }
@@ -183,7 +183,7 @@ impl WrappedAccessPaths {
             }
             WrappedAccessPaths::RecordLiteral(_) => false,
             WrappedAccessPaths::SetLiteral(_) => false,
-            WrappedAccessPaths::WithDroppedPaths { paths, dropped } => {
+            WrappedAccessPaths::WithDroppedPaths { paths, dropped: _ } => {
                 paths.add_resulting_access_paths(add_to)
             }
         }
@@ -460,7 +460,7 @@ pub(crate) fn analyze_expr_access_paths(
                 UnaryOp::Not | UnaryOp::Neg => analyze_expr_access_paths(arg, store)?,
 
                 UnaryOp::IsEmpty => {
-                    let mut arg_result = analyze_expr_access_paths(arg, store)?;
+                    let arg_result = analyze_expr_access_paths(arg, store)?;
 
                     // PANIC SAFETY: Typechecking succeeded, so type annotations are present
                     #[allow(clippy::expect_used)]
@@ -487,7 +487,7 @@ pub(crate) fn analyze_expr_access_paths(
         } => {
             // First, find the data paths for each argument
             let mut arg1_result = analyze_expr_access_paths(arg1, store)?;
-            let mut arg2_result = analyze_expr_access_paths(arg2, store)?;
+            let arg2_result = analyze_expr_access_paths(arg2, store)?;
 
             // PANIC SAFETY: Typechecking succeeded, so type annotations are present
             #[allow(clippy::expect_used)]
@@ -566,20 +566,13 @@ pub(crate) fn analyze_expr_access_paths(
         }
 
         ExprKind::GetAttr { expr, attr } => {
-            // Get the base expression result
             let base_result = analyze_expr_access_paths(expr, store)?;
-
-            // Apply the attribute access
-            let result = base_result.get_or_has_attr(attr, store);
-            result
+            base_result.get_or_has_attr(attr, store)
         }
 
         ExprKind::HasAttr { expr, attr } => {
-            // Similar to GetAttr, but the result is a boolean
             let base_result = analyze_expr_access_paths(expr, store)?;
-            let result = base_result.get_or_has_attr(attr, store);
-
-            result
+            base_result.get_or_has_attr(attr, store)
         }
 
         #[cfg(feature = "tolerant-ast")]
