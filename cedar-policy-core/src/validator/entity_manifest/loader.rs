@@ -18,26 +18,23 @@
 //! Loads entities based on the entity manifest.
 
 use std::{
-    collections::{btree_map, hash_map, HashMap, HashSet},
-    sync::Arc,
-};
-
-use smol_str::SmolStr;
+    collections::{btree_map, hash_map, HashMap, HashSet}, sync::Arc,
+    };
 
 use crate::{
     ast::{Entity, EntityUID, Literal, PartialValue, Request, Value, ValueKind, Var},
     entities::{Entities, NoEntitiesSchema, TCComputation},
     extensions::Extensions,
     validator::entity_manifest::{
-        manifest_helpers::AccessTrie, slicing::ExpectedEntityTypeError, AccessPath,
-        AccessPathVariant, AccessPaths, PathsForRequestType,
+        manifest_helpers::AccessTrie, errors::ExpectedEntityTypeError, AccessPath,
+        AccessPathVariant, PathsForRequestType,
     },
 };
 
-use crate::validator::entity_manifest::{AccessDag, EntityManifest, EntityRoot};
+use crate::validator::entity_manifest::{AccessDag, EntityManifest};
 
 use crate::validator::entity_manifest::errors::{
-    EntitySliceError, PartialContextError, PartialEntityError, PartialRequestError,
+    EntitySliceError, PartialRequestError,
     WrongNumberOfEntitiesError,
 };
 
