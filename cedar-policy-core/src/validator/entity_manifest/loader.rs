@@ -27,12 +27,9 @@ use crate::{
     entities::{Entities, NoEntitiesSchema, TCComputation},
     extensions::Extensions,
     validator::entity_manifest::{
-        errors::ExpectedEntityTypeError, manifest_helpers::AccessTrie, AccessPath,
-        AccessPathVariant, PathsForRequestType,
+        errors::ExpectedEntityTypeError, manifest_helpers::AccessTrie, AccessPath, AccessPathVariant, EntityManifest, PathsForRequestType
     },
 };
-
-use crate::validator::entity_manifest::{AccessDag, EntityManifest};
 
 use crate::validator::entity_manifest::errors::{
     EntitySliceError, PartialRequestError, WrongNumberOfEntitiesError,
@@ -337,10 +334,8 @@ pub(crate) fn load_entities(
 
     if !ancestors_requests.is_empty() {
         // Convert HashMap to Vec for the loader API
-        let ancestors_requests_vec: Vec<AncestorsRequest> = ancestors_requests
-            .into_iter()
-            .map(|(_entity_id, request)| request)
-            .collect();
+        let ancestors_requests_vec: Vec<AncestorsRequest> =
+            ancestors_requests.into_values().collect();
 
         let loaded_ancestors = loader.load_ancestors(&ancestors_requests_vec)?;
 
@@ -352,7 +347,7 @@ pub(crate) fn load_entities(
                 }
             } else {
                 // otherwise, we need to create the entity
-                let mut entity = Entity::new_with_attr_partial_value(
+                let entity = Entity::new_with_attr_partial_value(
                     request.entity_id.clone(),
                     HashMap::new(),
                     HashSet::new(),

@@ -16,19 +16,18 @@
 
 //! Annotate entity manifest with type information.
 
-use crate::ast::{RequestType, Var};
+use crate::ast::Var;
 
 use crate::validator::{
     entity_manifest::{
         AccessDag, AccessPath, AccessPathVariant, EntityManifest, PathsForRequestType,
     },
-    types::{EntityRecordKind, Type},
+    types::Type,
     ValidatorSchema,
 };
 // Import errors directly
 use crate::validator::entity_manifest::errors::{
-    AccessPathNotFoundError, MismatchedEntityManifestError, MismatchedMissingEntityError,
-    MismatchedNotStrictSchemaError,
+    MismatchedEntityManifestError, MismatchedMissingEntityError, MismatchedNotStrictSchemaError,
 };
 
 impl EntityManifest {

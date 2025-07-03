@@ -39,7 +39,7 @@ impl PathsForRequestType {
     ) -> HashMap<AccessPath, Vec<AccessPath>> {
         let mut dependent_entities_map = HashMap::new();
 
-        for (path, _dependents) in dependents_map {
+        for path in dependents_map.keys() {
             let dependent_entities = self.get_manifest_dependent_entities(path, dependents_map);
             dependent_entities_map.insert(path.clone(), dependent_entities);
         }
@@ -149,7 +149,7 @@ impl PathsForRequestType {
             .collect()
     }
 
-    /// Recursively build the AccessTrie for an entity path
+    /// Recursively build the `AccessTrie` for an entity path
     fn build_access_trie_for_entity(
         &self,
         entity_path: &AccessPath,
@@ -164,7 +164,7 @@ impl PathsForRequestType {
         trie
     }
 
-    /// Recursive helper function to build the AccessTrie
+    /// Recursive helper function to build the `AccessTrie`
     /// Traverses the dependents map starting from the entity path
     fn build_trie_recursive(
         &self,
@@ -236,14 +236,14 @@ impl AccessTrie {
         self.fields.is_empty()
     }
 
-    /// Creates a new empty AccessTrie
+    /// Creates a new empty `AccessTrie`
     pub(crate) fn new() -> Self {
         Self {
             fields: HashMap::new(),
         }
     }
 
-    /// Gets or creates a field in this AccessTrie
+    /// Gets or creates a field in this `AccessTrie`
     pub(crate) fn get_or_create_field(&mut self, field: &SmolStr) -> &mut Box<AccessTrie> {
         self.fields
             .entry(field.clone())
