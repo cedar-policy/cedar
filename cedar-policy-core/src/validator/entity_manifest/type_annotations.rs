@@ -70,49 +70,24 @@ impl PathsForRequestType {
         Ok(())
     }
 
-    pub(crate) fn get_type_expect(&self, id: usize) -> &Type {
-        // PANIC SAFETY: This method is called after type checking,
-        // or during type checking on previously typed paths.
-        #[allow(clippy::panic)]
-        self.dag
-            .types
-            .unwrap()
-            .get(id)
-            .expect("Type should be present due to DAG structure")
-    }
-
-    /// Helper method to type a single path
+    /// Helper method to type a single path.
+    /// When the type does not exist in the schema, it returns `None`.
     fn type_path(
         &self,
-        path: &AccessPath,
+        variant: &AccessPathVariant,
         request_type: &RequestType,
         schema: &ValidatorSchema,
         dag: &AccessDag,
-    ) -> Result<Type, MismatchedEntityManifestError> {
-        // Get the variant for this path
-        let variant = match path.get_variant(dag) {
-            Ok(v) => v,
-            Err(_e) => return Err(AccessPathNotFoundError { path_id: path.id }.into()),
-        };
-
+    ) -> Option<Type> {
         let res = match variant {
             AccessPathVariant::Var(var) => {
                 // Type the variable based on its kind
                 let ty = match var {
-                    Var::Action => {
-                        Type::euid_literal(&request_type.action, schema).ok_or_else(|| {
-                            MismatchedMissingEntityError {
-                                entity: request_type.action.clone(),
-                            }
-                        })?
-                    }
+                    Var::Action => Type::euid_literal(&request_type.action, schema)?,
                     Var::Principal => Type::named_entity_reference(request_type.principal.clone()),
                     Var::Resource => Type::named_entity_reference(request_type.resource.clone()),
                     Var::Context => schema
-                        .get_action_id(&request_type.action.clone())
-                        .ok_or_else(|| MismatchedMissingEntityError {
-                            entity: request_type.action.clone(),
-                        })?
+                        .get_action_id(&request_type.action.clone())?
                         .context
                         .clone(),
                 };
@@ -120,12 +95,7 @@ impl PathsForRequestType {
                 ty
             }
             AccessPathVariant::Literal(lit) => {
-                let ty = Type::euid_literal(lit, schema).ok_or_else(|| {
-                    MismatchedMissingEntityError {
-                        entity: lit.clone(),
-                    }
-                })?;
-                ty
+                Type::euid_literal(lit, schema)?
             }
             AccessPathVariant::String(_) => {
                 // String literals have String type
@@ -133,7 +103,7 @@ impl PathsForRequestType {
             }
             AccessPathVariant::Attribute { of, attr } => {
                 // Get the type of the base expression (should already be typed)
-                let of_type = self.get_type_expect(of.id);
+                let of_type = self.dag.types.get(of.id)?;
 
                 // Get the attribute type from the base type
                 match of_type {
@@ -162,7 +132,6 @@ impl PathsForRequestType {
                         if let Some(attr_type) = attributes.get_attr(attr) {
                             attr_type.attr_type.clone()
                         } else {
-                               
                         }
                     }
                     _ => {
