@@ -16,7 +16,6 @@
 
 //! Entity Manifest definition and static analysis.
 
-use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 
@@ -409,7 +408,7 @@ impl RequestTypePaths {
         // If not, get the variant for this path from the source manifest
         // and recursively map it to create a new path in the target manifest
         // PANIC SAFETY: Only internal cedar functions add paths, and these correspond to the same manifest.
-        #[allow(clippy::panic)]
+        #[allow(clippy::expect_used)]
         let variant = path
             .get_variant(&self.dag)
             .expect("Entity manifest with paths belonging to a different manifest")
