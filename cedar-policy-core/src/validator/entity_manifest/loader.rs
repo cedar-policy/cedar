@@ -34,11 +34,11 @@ use crate::{
     },
 };
 
-use crate::validator::entity_manifest::{
-    slicing::{
-        EntitySliceError, PartialContextError, PartialEntityError, WrongNumberOfEntitiesError,
-    },
-    AccessDag, EntityManifest, EntityRoot, PartialRequestError,
+use crate::validator::entity_manifest::{AccessDag, EntityManifest, EntityRoot};
+
+use crate::validator::entity_manifest::errors::{
+    EntitySliceError, PartialContextError, PartialEntityError, PartialRequestError,
+    WrongNumberOfEntitiesError,
 };
 
 /// A request that an entity be loaded.

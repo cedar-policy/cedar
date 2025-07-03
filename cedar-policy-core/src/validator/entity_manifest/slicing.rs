@@ -3,7 +3,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 
-use crate::entities::err::EntitiesError;
 use crate::entities::Dereference;
 use crate::validator::entity_manifest::manifest_helpers::AccessTrie;
 use crate::{
@@ -12,181 +11,19 @@ use crate::{
 };
 use miette::Diagnostic;
 use smol_str::SmolStr;
-use thiserror::Error;
 
+// Import errors directly
+use crate::validator::entity_manifest::errors::{
+    EntityFieldMissingError, EntityMissingError, EntitySliceError, IncompatibleEntityManifestError,
+    PartialContextError, PartialEntityError, PartialRequestError, RecordFieldMissingError,
+    WrongNumberOfEntitiesError,
+};
 use crate::validator::entity_manifest::loader::{
     load_entities, AncestorsRequest, EntityAnswer, EntityLoader, EntityRequest,
 };
 use crate::validator::entity_manifest::{
-    AccessDag, AccessPath, AccessPathVariant, AccessPaths, EntityManifest, PartialRequestError,
+    AccessDag, AccessPath, AccessPathVariant, AccessPaths, EntityManifest,
 };
-
-/// Error when expressions are partial during entity
-/// slicing.
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[derive(Debug, Clone, Error, Eq, PartialEq)]
-#[error("entity slicing requires fully concrete policies. Got a policy with an unknown expression")]
-pub struct PartialExpressionError {}
-
-impl Diagnostic for PartialExpressionError {}
-
-/// Error when expressions are partial during entity
-/// slicing.
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[derive(Debug, Clone, Error, Eq, PartialEq)]
-#[error("entity slicing requires fully concrete policies. Got a policy with an unknown expression")]
-pub struct IncompatibleEntityManifestError {
-    non_record_entity_value: Value,
-}
-
-impl Diagnostic for IncompatibleEntityManifestError {
-    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        Some(Box::new(format!(
-            "expected entity or record during entity loading. Got value: {}",
-            self.non_record_entity_value
-        )))
-    }
-}
-
-/// Error when entities are partial during entity manifest computation.
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[derive(Debug, Clone, Error, Eq, PartialEq)]
-#[error("entity slicing requires fully concrete entities. Got a partial entity")]
-pub struct PartialEntityError {}
-
-impl Diagnostic for PartialEntityError {}
-
-/// Error when an entity loader returns the wrong number of entities.
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[derive(Debug, Clone, Error, Eq, PartialEq)]
-#[error("entity loader returned the wrong number of entities. Expected {expected} but got {got} entities")]
-pub struct WrongNumberOfEntitiesError {
-    pub(crate) expected: usize,
-    pub(crate) got: usize,
-}
-
-/// Error when an entity loader returns a value missing an attribute.
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[derive(Debug, Clone, Error, Eq, PartialEq)]
-#[error("entity loader produced entity with value {value}. Expected value to be a record with attribute {attribute}")]
-pub struct NonRecordValueError {
-    pub(crate) value: Value,
-    pub(crate) attribute: SmolStr,
-}
-
-/// Context was partial during entity loading
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[derive(Debug, Clone, Error, Eq, PartialEq)]
-#[error("entity loader produced a partial context. Expected a concrete value")]
-pub struct PartialContextError {}
-
-/// Error when an entity is missing a required field
-#[derive(Debug, Clone, Error, Eq, PartialEq)]
-#[error("entity {entity} is missing required field {field}")]
-pub struct EntityFieldMissingError {
-    pub(crate) entity: Entity,
-    pub(crate) field: SmolStr,
-}
-
-impl Diagnostic for EntityFieldMissingError {}
-
-/// Error when a required entity is missing
-#[derive(Debug, Clone, Error, Eq, PartialEq)]
-#[error("required entity {entity_id} was not found")]
-pub struct EntityMissingError {
-    pub(crate) entity_id: EntityUID,
-}
-
-impl Diagnostic for EntityMissingError {}
-
-/// Error when a record is missing a required field
-#[derive(Debug, Clone, Error, Eq, PartialEq)]
-#[error("record is missing required field {field}")]
-pub struct RecordFieldMissingError {
-    pub(crate) field: SmolStr,
-}
-
-impl Diagnostic for RecordFieldMissingError {}
-
-/// Error when an entity type was expected but a different value was found
-#[derive(Debug, Clone, Error, Eq, PartialEq)]
-#[error("expected entity type but found {found_value}")]
-pub struct ExpectedEntityTypeError {
-    pub(crate) found_value: Value,
-}
-
-impl Diagnostic for ExpectedEntityTypeError {
-    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        Some(Box::new(format!(
-            "expected an entity type but found value: {}",
-            self.found_value
-        )))
-    }
-}
-
-/// An error generated by entity slicing.
-/// TODO make public API wrapper
-#[derive(Debug, Error, Diagnostic)]
-pub enum EntitySliceError {
-    /// An entities error was encountered
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    Entities(#[from] EntitiesError),
-
-    /// The request was partial
-    #[error(transparent)]
-    PartialRequest(#[from] PartialRequestError),
-    /// A policy was partial
-    #[error(transparent)]
-    PartialExpression(#[from] PartialExpressionError),
-
-    /// During entity loading, attempted to load from
-    /// a type without fields.
-    #[error(transparent)]
-    IncompatibleEntityManifest(#[from] IncompatibleEntityManifestError),
-
-    /// Found a partial entity during entity loading.
-    #[error(transparent)]
-    PartialEntity(#[from] PartialEntityError),
-
-    /// The entity loader returned a partial context.
-    #[error(transparent)]
-    PartialContext(#[from] PartialContextError),
-
-    /// The entity loader produced the wrong number of entities.
-    #[error(transparent)]
-    WrongNumberOfEntities(#[from] WrongNumberOfEntitiesError),
-
-    /// During loading, a required field wasn't provided
-    #[error(transparent)]
-    EntityFieldMissing(#[from] EntityFieldMissingError),
-
-    /// During loading, a required entity was missing
-    #[error(transparent)]
-    EntityMissing(#[from] EntityMissingError),
-
-    /// During loading, a record was missing a required field
-    #[error(transparent)]
-    RecordFieldMissing(#[from] RecordFieldMissingError),
-
-    /// While loading entities, expected an entity type
-    /// but encountered a different value.
-    /// Could be an out-of-date manifest after a schema change.
-    #[error(transparent)]
-    ExpectedEntityType(#[from] ExpectedEntityTypeError),
-}
 
 impl EntityManifest {
     /// Use this entity manifest to

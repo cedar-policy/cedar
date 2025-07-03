@@ -20,16 +20,18 @@ use std::collections::HashMap;
 
 use crate::ast::{RequestType, Var};
 
-use crate::validator::entity_manifest::{
-    AccessPath, AccessPathNotFoundError, AccessPathVariant, AccessPaths, PathsForRequestType,
-};
 use crate::validator::{
     entity_manifest::{
-        AccessDag, EntityManifest, EntityRoot, MismatchedEntityManifestError,
-        MismatchedMissingEntityError, MismatchedNotStrictSchemaError,
+        AccessDag, AccessPath, AccessPathNotFoundError, AccessPathVariant, AccessPaths,
+        EntityManifest, EntityRoot, PathsForRequestType,
     },
     types::{Attributes, EntityRecordKind, Type},
     ValidatorSchema,
+};
+// Import errors directly
+use crate::validator::entity_manifest::errors::{
+    AccessPathNotFoundError, MismatchedEntityManifestError, MismatchedMissingEntityError,
+    MismatchedNotStrictSchemaError,
 };
 
 impl EntityManifest {
