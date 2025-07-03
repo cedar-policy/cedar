@@ -109,10 +109,7 @@ impl PathsForRequestType {
         let mut path_mapping = PathMapping::new();
         // First, add all paths from the other manifest to this manifest
         // and build a mapping from paths in the other manifest to paths in this manifest
-        for i in 0..other.dag.manifest_store.len() {
-            // PANIC SAFETY: Iterating over length of vector and not mutating it
-            #[allow(clippy::unwrap_used)]
-            let variant = &other.dag.manifest_store.get(i).unwrap();
+        for (i, variant) in other.dag.manifest_store.iter().enumerate() {
             let mapped_variant = self.map_variant(variant, &mut path_mapping);
             let new_path = self.dag.add_path(mapped_variant);
             path_mapping.path_map.insert(i, new_path.id);
@@ -120,9 +117,10 @@ impl PathsForRequestType {
 
         // Map each path from the other manifest to this manifest
         for path in &other.access_paths.paths {
-            if let Some(mapped_path) = path_mapping.map_path(path) {
-                self.access_paths.insert(mapped_path);
-            }
+            // PANIC SAFETY: all paths are mapped in the previous loop
+            #[allow(clippy::unwrap_used)]
+            self.access_paths
+                .insert(path_mapping.map_path(path).unwrap());
         }
 
         path_mapping
@@ -132,15 +130,13 @@ impl PathsForRequestType {
     /// Variables are included in the request.
     /// We prune these from the set of access paths required.
     fn prune_leafs(&mut self) {
-        let mut to_remove = Vec::new();
-        for path in &self.access_paths.paths {
-            if path.is_leaf(&self.dag) {
-                to_remove.push(path.clone());
-            }
-        }
-        for path in to_remove {
-            self.access_paths.remove(&path);
-        }
+        let paths = std::mem::take(&mut self
+        .access_paths
+        .paths);
+        self.access_paths.paths = paths
+            .into_iter()
+            .filter(|path| !path.is_leaf(&self.dag))
+            .collect();
     }
 }
 
@@ -197,13 +193,22 @@ pub struct AccessPaths {
     paths: HashSet<AccessPath>,
 }
 
+impl IntoIterator for AccessPaths {
+    type Item = AccessPath;
+    type IntoIter = std::collections::hash_set::IntoIter<AccessPath>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.paths.into_iter()
+    }
+}
+
 /// Represents a path of data involving a sequence of
 /// attribute or tag accesses, ending in a cedar variable or literal.
 /// Internally represented as a single integer into a backing store
 /// (a directed acyclic graph).
 /// Hashing an [`AccessPath`] is extremely cheap, so resulting data can be cached.
 #[doc = include_str!("../../experimental_warning.md")]
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Copy)]
 pub struct AccessPath {
     /// The unique identifier for this path in the [`AccessDag`].
     id: usize,
@@ -401,18 +406,16 @@ impl PathsForRequestType {
 
         // If not, get the variant for this path from the source manifest
         // and recursively map it to create a new path in the target manifest
-        if let Ok(variant) = path.get_variant(&self.dag).clone() {
-            let variant = variant.clone();
-            let mapped_variant = self.map_variant(&variant, path_mapping);
-            let new_path = self.dag.add_path(mapped_variant);
-            path_mapping.path_map.insert(path.id, new_path.id);
-            new_path
-        } else {
-            // If we can't find the variant, create a safe default
-            // This should rarely happen in practice
-            let default_variant = AccessPathVariant::Var(Var::Principal);
-            self.dag.add_path(default_variant)
-        }
+        // PANIC SAFETY: Only internal cedar functions add paths, and these correspond to the same manifest.
+        #[allow(clippy::panic)]
+        let variant = path
+            .get_variant(&self.dag)
+            .clone()
+            .expect("Entity manifest with paths belonging to a different manifest");
+        let mapped_variant = self.map_variant(&variant, path_mapping);
+        let new_path = self.dag.add_path(mapped_variant);
+        path_mapping.path_map.insert(path.id, new_path.id);
+        new_path
     }
 }
 
@@ -435,16 +438,20 @@ impl EntityManifest {
             };
             let mut other_clone = other_paths.clone();
 
+            // Call `union_with` to get a mapping from paths in self to paths in other.
+            // Paths not present in `other` will also have a mapping to `other_clone`, but will be missing in `other`.
             let mapping = other_clone.union_with(my_paths);
 
-            // now find all the reachable paths in other
-            let mut reachable = HashSet::new();
-            for path in other_paths.access_paths.paths() {
-                let subpaths = path.subpaths(&other_paths.dag);
-                reachable.extend(subpaths.paths().clone());
-            }
+            // Find all reachable paths in `other`
+            let mut reachable = other_paths
+                .access_paths
+                .paths()
+                .iter()
+                .flat_map(|path| path.subpaths(&other_paths.dag).into_iter())
+                .collect::<HashSet<_>>();
 
-            // now check that all paths in self are in reachable
+            // now check that all paths in self are in reachable in `other`
+            // using the mapping
             for path in my_paths.access_paths.paths() {
                 let Some(mapped) = mapping.map_path(path) else {
                     return false;
@@ -456,26 +463,6 @@ impl EntityManifest {
         }
 
         true
-    }
-
-    /// Union this entity manifest with another entity manifest
-    ///
-    /// This adds all paths from the other manifest to this manifest,
-    /// and updates the `per_action` map to include the paths from the other manifest.
-    ///
-    /// Returns a mapping from paths in the other manifest to paths in this manifest.
-    ///
-    /// Not public! Doesn't restore type information.
-    pub(crate) fn union_with(&mut self, other: &EntityManifest) {
-        // Update the `per_action` map to include the paths from the other manifest
-        for (request_type, other_paths_for_request_type) in &other.per_action {
-            let my_path_for_request_type = self
-                .per_action
-                .entry(request_type.clone())
-                .or_insert_with(|| PathsForRequestType::new(request_type.clone()));
-
-            my_path_for_request_type.union_with(other_paths_for_request_type);
-        }
     }
 
     /// Get the contents of the entity manifest
@@ -512,36 +499,29 @@ impl EntityManifest {
 
 impl AccessPath {
     /// If there are no children, this is a leaf node
-    pub fn is_leaf(&self, store: &AccessDag) -> bool {
+    pub(crate) fn is_leaf(&self, store: &AccessDag) -> bool {
         self.children(store).is_empty()
     }
 
     /// Get the immediate children of this path
-    pub fn children(&self, store: &AccessDag) -> Vec<AccessPath> {
-        // Get the variant for this path
-        if let Some(variant) = store.manifest_hash_cons.iter().find_map(|(variant, path)| {
-            if path.id == self.id {
-                Some(variant)
-            } else {
-                None
+    pub(crate) fn children(&self, store: &AccessDag) -> Vec<AccessPath> {
+        // PANIC SAFETY: This function is only called on paths that are in the store.
+        #[allow(clippy::unwrap_used)]
+        let variant = self.get_variant(store).unwrap();
+        // Return children based on the variant
+        match variant {
+            AccessPathVariant::Attribute { of, .. } => {
+                vec![of.clone()]
             }
-        }) {
-            // Return children based on the variant
-            match variant {
-                AccessPathVariant::Attribute { of, .. } => {
-                    vec![of.clone()]
-                }
-                AccessPathVariant::Tag { of, tag } => {
-                    vec![of.clone(), tag.clone()]
-                }
-                AccessPathVariant::Ancestor { of, ancestor } => {
-                    vec![of.clone(), ancestor.clone()]
-                }
-                // Literal, Var, and String variants don't have children
-                _ => vec![],
+            AccessPathVariant::Tag { of, tag } => {
+                vec![of.clone(), tag.clone()]
             }
-        } else {
-            vec![]
+            AccessPathVariant::Ancestor { of, ancestor } => {
+                vec![of.clone(), ancestor.clone()]
+            }
+            AccessPathVariant::Literal(_) => vec![],
+            AccessPathVariant::Var(_) => vec![],
+            AccessPathVariant::String(_) => vec![],
         }
     }
 
@@ -629,10 +609,7 @@ pub fn compute_entity_manifest(
                 .to_request_type()
                 .ok_or(PartialRequestError {})?;
 
-            let mut per_request = match manifest.per_action.entry(request_type.clone()) {
-                Entry::Occupied(occupied) => occupied.remove(),
-                Entry::Vacant(_) => PathsForRequestType::new(request_type.clone()),
-            };
+            let mut per_request = match manifest.per_action.remove(request_type.clone()).unwrap_or( PathsForRequestType::new(request_type.clone()));
 
             match policy_check {
                 PolicyCheck::Success(typechecked_expr) => {
