@@ -18,6 +18,7 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
+use crate::ast::{Annotations, Effect, Policy, PolicyID};
 use crate::validator::types::Type;
 use crate::{
     ast::{self, BinaryOp, EntityType, Expr, Name, Pattern, UnaryOp, Value, Var},
@@ -44,6 +45,19 @@ pub enum Residual {
     },
     /// TPE errors
     Error(Type),
+}
+
+impl Residual {
+    /// Construct a residual policy
+    pub fn to_policy(self, id: PolicyID, effect: Effect, annotations: Annotations) -> Policy {
+        Policy::from_when_clause_annos(
+            effect,
+            Arc::new(self.into()),
+            id,
+            None,
+            Arc::new(annotations),
+        )
+    }
 }
 
 impl TryFrom<Residual> for Value {

@@ -17,12 +17,14 @@
 //! This module contains possible errors thrown by various components of the
 //! type-aware partial evaluator.
 
+use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::{
     ast::{EntityType, EntityUID},
     entities::conformance::err::{EntitySchemaConformanceError, InvalidEnumEntityError},
     evaluator::EvaluationError,
+    transitive_closure::TcError,
     validator::{RequestValidationError, ValidationError},
 };
 
@@ -179,4 +181,109 @@ pub struct IncorrectPrincipalEntityTypeError {
 pub struct IncorrectResourceEntityTypeError {
     pub(super) ty: EntityType,
     pub(super) expected: EntityType,
+}
+
+/// Error thrown when constructing [`PartialEntities`]
+#[derive(Debug, Error)]
+pub enum EntitiesError {
+    /// Error thrown when validating concrete components
+    #[error(transparent)]
+    Deserialization(#[from] JsonDeserializationError),
+    /// Error thrown when validating a [`PartialEntity`]
+    #[error(transparent)]
+    Validation(#[from] EntityValidationError),
+    /// Error thrown when validating the ancestors of a [`PartialEntity`]
+    #[error(transparent)]
+    AncestorValidation(#[from] AncestorValidationError),
+    /// Error thrown when computing TC
+    #[error(transparent)]
+    TCComputation(#[from] TcError<EntityUID>),
+}
+
+/// Error thrown when checking the consistency between [`PartialEntities`] and
+/// [`Entities`]
+#[derive(Debug, Error)]
+pub enum EntitiesConsistencyError {
+    /// Error thrown when there is an entity missing in the concrete entities
+    #[error(transparent)]
+    MissingEntity(#[from] MissingEntityError),
+    /// Error thrown when concrete entities contain unknown entities
+    #[error(transparent)]
+    UnknownEntity(#[from] UnknownEntityError),
+    /// Error thrown when a concrete entity and a partial entity are
+    /// inconsistent
+    #[error(transparent)]
+    InconsistentEntity(#[from] EntityConsistencyError),
+}
+
+/// Error thrown when checking the consistency between [`PartialEntity`] and
+/// [`Entity`]
+#[derive(Debug, Error)]
+pub enum EntityConsistencyError {
+    /// Error thrown when the concrete entity contains unknown attribute
+    #[error(transparent)]
+    UnknownAttribute(#[from] UnknownAttributeError),
+    /// Error thrown when attributes mismatch
+    #[error(transparent)]
+    MismatchedAttribute(#[from] MismatchedAttributeError),
+    /// Error thrown when ancestors do not match
+    #[error(transparent)]
+    MismatchedAncestor(#[from] MismatchedAncestorError),
+    /// Error thrown when the concrete entity contains unknown tag
+    #[error(transparent)]
+    UnknownTag(#[from] UnknownTagError),
+    /// Error thrown when tags mismatch
+    #[error(transparent)]
+    MismatchedTag(#[from] MismatchedTagError),
+}
+
+/// Error thrown when the concrete entity contains unknown attribute
+#[derive(Debug, Error)]
+#[error("Concrete entity `{uid}` contains unknown attribute `{attr}`")]
+pub struct UnknownAttributeError {
+    pub(super) uid: EntityUID,
+    pub(super) attr: SmolStr,
+}
+
+/// Error thrown when attributes mismatch
+#[derive(Debug, Error)]
+#[error("Entity `{uid}`'s attributes do not match")]
+pub struct MismatchedAttributeError {
+    pub(super) uid: EntityUID,
+}
+
+/// Error thrown when the concrete entity contains unknown tag
+#[derive(Debug, Error)]
+#[error("Concrete entity `{uid}` contains unknown tag `{tag}`")]
+pub struct UnknownTagError {
+    pub(super) uid: EntityUID,
+    pub(super) tag: SmolStr,
+}
+
+/// Error thrown when tags mismatch
+#[derive(Debug, Error)]
+#[error("Entity `{uid}`'s tags do not match")]
+pub struct MismatchedTagError {
+    pub(super) uid: EntityUID,
+}
+
+/// Error thrown when ancestors do not match
+#[derive(Debug, Error)]
+#[error("Entity `{uid}`'s ancestors do not match")]
+pub struct MismatchedAncestorError {
+    pub(super) uid: EntityUID,
+}
+
+/// Error thrown when when there is an entity missing in the concrete entities
+#[derive(Debug, Error)]
+#[error("Concrete entities does not include `{uid}`")]
+pub struct MissingEntityError {
+    pub(super) uid: EntityUID,
+}
+
+/// Error thrown when concrete entities contain unknown entities
+#[derive(Debug, Error)]
+#[error("Concrete entities contains unknown entity `{uid}`")]
+pub struct UnknownEntityError {
+    pub(super) uid: EntityUID,
 }

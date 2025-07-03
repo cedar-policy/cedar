@@ -5002,6 +5002,152 @@ pub fn eval_expression(
     ))
 }
 
+#[cfg(feature = "tpe")]
+mod tpe {
+    pub use cedar_policy_core::tpe;
+    use cedar_policy_core::{
+        ast::{self, RequestSchema},
+        entities::conformance::EntitySchemaConformanceChecker,
+        extensions::Extensions,
+        validator::CoreSchema,
+    };
+    use ref_cast::RefCast;
+
+    use crate::{
+        tpe_err, Authorizer, Context, Entities, EntityId, EntityTypeName, EntityUid,
+        PartialRequestCreationError, Policy, PolicySet, Request, Response, Schema,
+        TPEReauthorizationError,
+    };
+
+    /// A partial [`EntityUid`]
+    /// That is, its [`EntityId`] could be unknown
+    #[repr(transparent)]
+    #[derive(Debug, Clone, RefCast)]
+    pub struct PartialEntityUid(pub(crate) tpe::request::PartialEntityUID);
+
+    impl PartialEntityUid {
+        /// Construct a [`PartialEntityUid`]
+        pub fn new(ty: EntityTypeName, id: Option<EntityId>) -> Self {
+            Self(tpe::request::PartialEntityUID {
+                ty: ty.0,
+                eid: id.map(|id| <EntityId as AsRef<ast::Eid>>::as_ref(&id).clone()),
+            })
+        }
+    }
+
+    /// A partial [`Request`]
+    /// Its principal and resource could have unknown [`EntityId`]; its action
+    /// must be know; and its context could be unknown
+    #[repr(transparent)]
+    #[derive(Debug, Clone, RefCast)]
+    pub struct PartialRequest(pub(crate) tpe::request::PartialRequest);
+
+    impl PartialRequest {
+        /// Construct a valid [`PartialRequest`] according to a [`Schema`]`
+        pub fn new(
+            principal: PartialEntityUid,
+            action: EntityUid,
+            resource: PartialEntityUid,
+            context: Option<Context>,
+            schema: &Schema,
+        ) -> Result<Self, PartialRequestCreationError> {
+            let context = context
+                .map(|c| match c.0 {
+                    ast::Context::RestrictedResidual(_) => {
+                        Err(PartialRequestCreationError::ContextContainsUnknowns)
+                    }
+                    ast::Context::Value(m) => Ok(m),
+                })
+                .transpose()?;
+            tpe::request::PartialRequest::new(principal.0, resource.0, action.0, context, &schema.0)
+                .map(Self)
+                .map_err(|e| PartialRequestCreationError::Validation(e.into()))
+        }
+    }
+
+    /// Partial [`Entities`]
+    #[repr(transparent)]
+    #[derive(Debug, Clone, RefCast)]
+    pub struct PartialEntities(pub(crate) tpe::entities::PartialEntities);
+
+    impl PartialEntities {
+        /// Construct [`PartialEntities`] from a JSON value
+        pub fn from_json_value(
+            value: serde_json::Value,
+            schema: &Schema,
+        ) -> Result<Self, tpe_err::EntitiesError> {
+            tpe::entities::PartialEntities::from_json_value(value, &schema.0).map(Self)
+        }
+    }
+
+    /// The outcome of type-aware partial evaluation
+    #[derive(Debug, Clone)]
+    pub struct Residuals<'a> {
+        pub(super) ps: PolicySet,
+        pub(super) request: &'a PartialRequest,
+        pub(super) entities: &'a PartialEntities,
+        pub(super) schema: &'a Schema,
+    }
+
+    impl Residuals<'_> {
+        /// Get residual policies
+        pub fn residuals(&self) -> impl Iterator<Item = &Policy> {
+            self.ps.policies()
+        }
+
+        /// Re-authorize residuals with consistent concrete request and entities
+        pub fn reauthorize(
+            &self,
+            request: Request,
+            entities: Entities,
+        ) -> Result<Response, TPEReauthorizationError> {
+            let _ = self
+                .schema
+                .0
+                .validate_request(&request.0, Extensions::all_available())
+                .map_err(|err| TPEReauthorizationError::RequestValidation(err.into()))?;
+            let core_schema = CoreSchema::new(&self.schema.0);
+            let entities_checker =
+                EntitySchemaConformanceChecker::new(&core_schema, Extensions::all_available());
+            for entity in entities.0.iter() {
+                entities_checker.validate_entity(&entity)?;
+            }
+            let _ = self.entities.0.check_consistency(&entities.0)?;
+            let authorizer = Authorizer::new();
+            Ok(authorizer.is_authorized(&request, &self.ps, &entities))
+        }
+    }
+    impl PolicySet {
+        /// Perform type-aware partial evaluation on this [`PolicySet`]
+        /// If successful, the result is a [`PolicySet`] containing residual
+        /// policies ready for re-authorization
+        pub fn tpe<'a>(
+            &self,
+            request: &'a PartialRequest,
+            entities: &'a PartialEntities,
+            schema: &'a Schema,
+        ) -> Result<Residuals<'a>, tpe_err::TPEError> {
+            use cedar_policy_core::tpe::tpe_policies;
+            let ps = &self.ast;
+            let res = tpe_policies(ps, &request.0, &entities.0, &schema.0)?;
+            Ok(Residuals {
+                ps: Self::from_policies(res.into_iter().map(|(id, r)| {
+                    let p = ps.get(&id).unwrap();
+                    Policy::from_ast(r.to_policy(
+                        id,
+                        p.effect(),
+                        p.annotations_arc().as_ref().clone(),
+                    ))
+                }))
+                .unwrap(),
+                request,
+                entities,
+                schema,
+            })
+        }
+    }
+}
+
 // These are the same tests in validator, just ensuring all the plumbing is done correctly
 #[cfg(test)]
 mod test_access {

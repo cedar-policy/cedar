@@ -16,10 +16,15 @@
 
 //! This module contains partial entities.
 
+use crate::ast::Entity;
 use crate::entities::conformance::err::EntitySchemaConformanceError;
+use crate::entities::{Dereference, Entities};
 use crate::tpe::err::{
-    AncestorValidationError, EntityValidationError, JsonDeserializationError,
-    MismatchedActionAncestorsError, UnexpectedActionError, UnknownActionComponentError,
+    AncestorValidationError, EntitiesConsistencyError, EntitiesError, EntityConsistencyError,
+    EntityValidationError, JsonDeserializationError, MismatchedActionAncestorsError,
+    MismatchedAncestorError, MismatchedAttributeError, MismatchedTagError, MissingEntityError,
+    UnexpectedActionError, UnknownActionComponentError, UnknownAttributeError, UnknownEntityError,
+    UnknownTagError,
 };
 use crate::transitive_closure::TcError;
 use crate::validator::{CoreSchema, ValidatorSchema};
@@ -48,7 +53,6 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde_as]
@@ -94,6 +98,64 @@ pub struct PartialEntity {
     pub ancestors: Option<HashSet<EntityUID>>,
     /// Optional tags
     pub tags: Option<BTreeMap<SmolStr, Value>>,
+}
+
+impl PartialEntity {
+    /// Check if an [`Entity`] is consistent with a [`PartialEntity`]
+    pub(crate) fn check_consistency(
+        &self,
+        entity: &Entity,
+    ) -> std::result::Result<(), EntityConsistencyError> {
+        if let Some(attrs) = &self.attrs {
+            let other_attrs = entity
+                .attrs()
+                .map(|(a, pv)| match pv {
+                    PartialValue::Value(v) => Ok((a.clone(), v.clone())),
+                    PartialValue::Residual(_) => Err(UnknownAttributeError {
+                        uid: self.uid.clone(),
+                        attr: a.clone(),
+                    }
+                    .into()),
+                })
+                .collect::<std::result::Result<BTreeMap<_, _>, EntityConsistencyError>>()?;
+
+            if attrs != &other_attrs {
+                return Err(MismatchedAttributeError {
+                    uid: self.uid.clone(),
+                }
+                .into());
+            }
+        }
+        if let Some(ancestors) = &self.ancestors {
+            let other_ancestors: HashSet<EntityUID> = entity.ancestors().cloned().collect();
+            if ancestors != &other_ancestors {
+                return Err(MismatchedAncestorError {
+                    uid: self.uid.clone(),
+                }
+                .into());
+            }
+        }
+        if let Some(tags) = &self.tags {
+            let other_tags = entity
+                .tags()
+                .map(|(a, pv)| match pv {
+                    PartialValue::Value(v) => Ok((a.clone(), v.clone())),
+                    PartialValue::Residual(_) => Err(UnknownTagError {
+                        uid: self.uid.clone(),
+                        tag: a.clone(),
+                    }
+                    .into()),
+                })
+                .collect::<std::result::Result<BTreeMap<_, _>, EntityConsistencyError>>()?;
+            if tags != &other_tags {
+                return Err(MismatchedTagError {
+                    uid: self.uid.clone(),
+                }
+                .into());
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Parse an [`EntityJson`] into a [`PartialEntity`] according to `schema`
@@ -375,23 +437,6 @@ pub(crate) fn validate_ancestors(
     Ok(())
 }
 
-/// Error thrown when constructing [`PartialEntities`]
-#[derive(Debug, Error)]
-pub enum EntitiesError {
-    /// Error thrown when validating concrete components
-    #[error(transparent)]
-    Deserialization(#[from] JsonDeserializationError),
-    /// Error thrown when validating a [`PartialEntity`]
-    #[error(transparent)]
-    Validation(#[from] EntityValidationError),
-    /// Error thrown when validating the ancestors of a [`PartialEntity`]
-    #[error(transparent)]
-    AncestorValidation(#[from] AncestorValidationError),
-    /// Error thrown when computing TC
-    #[error(transparent)]
-    TCComputation(#[from] TcError<EntityUID>),
-}
-
 /// The partial entity store
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PartialEntities {
@@ -467,6 +512,25 @@ impl PartialEntities {
             );
         }
         Ok(partial_entities)
+    }
+
+    /// Check if [`PartialEntities`] are consistent with [`Entities`]
+    pub fn check_consistency(
+        &self,
+        concrete: &Entities,
+    ) -> std::result::Result<(), EntitiesConsistencyError> {
+        for (uid, e) in &self.entities {
+            match concrete.entity(uid) {
+                Dereference::NoSuchEntity => {
+                    return Err(MissingEntityError { uid: uid.clone() }.into());
+                }
+                Dereference::Residual(_) => {
+                    return Err(UnknownEntityError { uid: uid.clone() }.into());
+                }
+                Dereference::Data(entity) => e.check_consistency(entity)?,
+            }
+        }
+        Ok(())
     }
 }
 
