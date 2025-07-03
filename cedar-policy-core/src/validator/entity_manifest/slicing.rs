@@ -144,7 +144,7 @@ impl AccessTrie {
 impl AccessPath {
     /// Compute the value for this access path using the provided entities map.
     /// This function can dereference entities using the `entity_map`.
-    pub fn compute_value(
+    pub(crate) fn compute_value(
         &self,
         entities_map: &HashMap<EntityUID, Entity>,
         store: &AccessDag,
