@@ -28,6 +28,7 @@ impl EntityManifest {
         entities: &Entities,
         request: &Request,
     ) -> Result<Entities, EntitySliceError> {
+        eprintln!("here");
         let mut slicer = EntitySlicer { entities };
         load_entities(self, request, &mut slicer)
     }

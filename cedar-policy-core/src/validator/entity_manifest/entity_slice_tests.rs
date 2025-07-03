@@ -163,10 +163,14 @@ action Read appliesTo {
         // PANIC SAFETY: panic in testing when test fails
         #[allow(clippy::panic)]
         if !entities_deep_equal(&sliced_entities, &expected_entities) {
+            // pretty print differing json values
+            let expected_json = serde_json::to_string_pretty(&expected_entities.to_json_value().unwrap())
+                .expect("should serialize expected entities to JSON");
+            let sliced_json = serde_json::to_string_pretty(&sliced_entities.to_json_value().unwrap())
+                .expect("should serialize sliced entities to JSON");
             panic!(
-                "Sliced entities differed from expected. Expected:\n{}\nGot:\n{}",
-                expected_entities.to_json_value().unwrap(),
-                sliced_entities.to_json_value().unwrap()
+                "Sliced entities differed from expected.\nExpected:\n{}\nGot:\n{}",
+                expected_json, sliced_json
             );
         }
     }
@@ -338,7 +342,6 @@ when {
         let validator = Validator::new(schema_with_hierarchy());
 
         let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-
         let entities_json = serde_json::json!(
             [
                 {
