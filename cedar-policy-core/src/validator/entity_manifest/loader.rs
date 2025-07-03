@@ -27,7 +27,8 @@ use crate::{
     entities::{Entities, NoEntitiesSchema, TCComputation},
     extensions::Extensions,
     validator::entity_manifest::{
-        errors::ExpectedEntityTypeError, manifest_helpers::AccessTrie, AccessPath, AccessPathVariant, EntityManifest, PathsForRequestType
+        errors::ExpectedEntityTypeError, manifest_helpers::AccessTrie, AccessPath,
+        AccessPathVariant, EntityManifest, PathsForRequestType,
     },
 };
 
@@ -218,8 +219,10 @@ pub(crate) fn load_entities(
 
     // Main loop of loading entities, one batch at a time
     while !to_load.is_empty() {
+        eprintln!("to load: {:?}", to_load);
         // Load the current batch of entities
         let loaded_entities = loader.load_entities(&to_load)?;
+        eprintln!("loaded entities: {:?}", loaded_entities);
 
         if loaded_entities.len() != to_load.len() {
             return Err(WrongNumberOfEntitiesError {
@@ -332,6 +335,8 @@ pub(crate) fn load_entities(
         }
     }
 
+    eprintln!("ancestors requests: {:?}", ancestors_requests);
+
     if !ancestors_requests.is_empty() {
         // Convert HashMap to Vec for the loader API
         let ancestors_requests_vec: Vec<AncestorsRequest> =
@@ -346,15 +351,17 @@ pub(crate) fn load_entities(
                     entity.add_parent(ancestor);
                 }
             } else {
-                // otherwise, we need to create the entity
-                let entity = Entity::new_with_attr_partial_value(
-                    request.entity_id.clone(),
-                    HashMap::new(),
-                    HashSet::new(),
-                    ancestors,
-                    [], // TODO: entity slicing does not yet support tags
-                );
-                entities_map.insert(request.entity_id.clone(), entity);
+                // otherwise, we need to create the entity if ancestors is not empty
+                if !ancestors.is_empty() {
+                    let entity = Entity::new_with_attr_partial_value(
+                        request.entity_id.clone(),
+                        HashMap::new(),
+                        HashSet::new(),
+                        ancestors,
+                        [], // TODO: entity slicing does not yet support tags
+                    );
+                    entities_map.insert(request.entity_id.clone(), entity);
+                }
             }
         }
     }

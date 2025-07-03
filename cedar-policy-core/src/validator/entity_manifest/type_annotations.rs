@@ -16,8 +16,10 @@
 
 //! Annotate entity manifest with type information.
 
-use crate::ast::Var;
+use crate::ast::{RequestType, Var};
 
+use crate::validator::entity_manifest::AccessPathNotFoundError;
+use crate::validator::types::EntityRecordKind;
 use crate::validator::{
     entity_manifest::{
         AccessDag, AccessPath, AccessPathVariant, EntityManifest, PathsForRequestType,
