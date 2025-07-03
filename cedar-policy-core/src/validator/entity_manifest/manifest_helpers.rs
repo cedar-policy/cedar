@@ -2,9 +2,9 @@ use std::collections::{HashMap, HashSet};
 
 use smol_str::SmolStr;
 
-use crate::validator::entity_manifest::{AccessPath, AccessPathVariant, PathsForRequestType};
+use crate::validator::entity_manifest::{AccessPath, AccessPathVariant, RequestTypePaths};
 
-impl PathsForRequestType {
+impl RequestTypePaths {
     /// Build a hashmap of dependent paths for all reachable paths
     pub(crate) fn build_dependents_map(
         &self,
