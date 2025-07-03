@@ -149,14 +149,13 @@ impl HumanEntityManifest {
                         ancestor: ancestor_path,
                     }))
                 }
-                _ => Err(PathExpressionParseError::GeneralError(format!(
-                    "Unsupported binary operator: {:?}",
-                    op
-                ))),
+                _ => Err(PathExpressionParseError::UnsupportedBinaryOperator {
+                    operator: format!("{:?}", op),
+                }),
             },
-            _ => Err(PathExpressionParseError::GeneralError(
-                "Unsupported expression type".to_string(),
-            )),
+            _ => Err(PathExpressionParseError::UnsupportedExpressionType {
+                expr_type: "unsupported expression type".to_string(),
+            }),
         }
     }
 
