@@ -22,16 +22,15 @@ use crate::ast::{RequestType, Var};
 
 use crate::validator::{
     entity_manifest::{
-        AccessDag, AccessPath, AccessPathNotFoundError, AccessPathVariant, AccessPaths,
-        EntityManifest, EntityRoot, PathsForRequestType,
+        AccessDag, AccessPath, AccessPathVariant, AccessPaths, EntityManifest, EntityRoot,
+        PathsForRequestType,
     },
     types::{Attributes, EntityRecordKind, Type},
     ValidatorSchema,
 };
 // Import errors directly
 use crate::validator::entity_manifest::errors::{
-    AccessPathNotFoundError, MismatchedEntityManifestError, MismatchedMissingEntityError,
-    MismatchedNotStrictSchemaError,
+    MismatchedEntityManifestError, MismatchedMissingEntityError, MismatchedNotStrictSchemaError,
 };
 
 impl EntityManifest {
