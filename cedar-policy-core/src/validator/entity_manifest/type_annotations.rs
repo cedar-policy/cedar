@@ -37,25 +37,22 @@ impl EntityManifest {
     /// return a newly typed entity manifest.
     /// Makes the types field of the manifest Some instead of None
     pub(crate) fn add_types(
-        &self,
+        mut self,
         schema: &ValidatorSchema,
     ) -> Result<EntityManifest, MismatchedEntityManifestError> {
-        // Create a new entity manifest with the same structure
-        let mut typed_manifest = self.clone();
-
         // Type each PathsForRequestType
-        for (_request_type, paths_for_request_type) in &mut typed_manifest.per_action {
+        for paths_for_request_type in self.per_action.values_mut() {
             *paths_for_request_type = paths_for_request_type.to_typed(schema)?;
         }
 
-        Ok(typed_manifest)
+        Ok(self)
     }
 }
 
 impl PathsForRequestType {
     /// Type-annotate this [`PathsForRequestType`], given the schema.
     pub(crate) fn to_typed(
-        &self,
+        self,
         schema: &ValidatorSchema,
     ) -> Result<PathsForRequestType, MismatchedEntityManifestError> {
         // Create a new PathsForRequestType with the same structure
@@ -130,12 +127,12 @@ impl PathsForRequestType {
                 types[path.id] = Some(ty);
             }
             AccessPathVariant::Literal(lit) => {
-                let ty = &Type::euid_literal(lit, schema).ok_or_else(|| {
+                let ty = Type::euid_literal(lit, schema).ok_or_else(|| {
                     MismatchedMissingEntityError {
                         entity: lit.clone(),
                     }
                 })?;
-                types[path.id] = Some(ty.clone());
+                types[path.id] = Some(ty);
             }
             AccessPathVariant::String(_) => {
                 // String literals have String type
@@ -186,8 +183,7 @@ impl PathsForRequestType {
                 }
             }
             AccessPathVariant::Tag { of: _, tag: _ } => {
-                // Tags are not fully supported yet, but we'll handle them as strings
-                types[path.id] = Some(Type::primitive_string());
+                todo!()
             }
             AccessPathVariant::Ancestor { of: _, ancestor: _ } => {
                 // Ancestor checks result in boolean values
