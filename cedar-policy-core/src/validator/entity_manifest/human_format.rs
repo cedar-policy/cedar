@@ -25,9 +25,7 @@ use serde_with::serde_as;
 use super::{AccessDag, AccessPath, AccessPathVariant, EntityManifest, PathsForRequestType};
 use crate::validator::ValidatorSchema;
 // Import errors directly
-use crate::validator::entity_manifest::errors::{
-    ConversionError, MismatchedEntityManifestError, PathExpressionParseError,
-};
+use crate::validator::entity_manifest::errors::{ConversionError, PathExpressionParseError};
 
 /// A human-readable format for entity manifests.
 /// Currently used only for testing.
@@ -41,7 +39,7 @@ pub struct HumanEntityManifest {
     pub per_action: HashMap<RequestType, Vec<ExprStr>>,
 }
 
-/// Wrapper for ast::Expr that serializes to a string with the expr inside
+/// Wrapper for [`ast::Expr`] that serializes to a string with the expr inside
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExprStr {
     /// The wrapped expression
@@ -176,7 +174,7 @@ impl HumanEntityManifest {
         }
 
         // Add type annotations
-        manifest.to_typed(schema).map_err(|e| e.into())
+        manifest.add_types(schema).map_err(|e| e.into())
     }
 
     /// Convert this HumanEntityManifest to a JSON string

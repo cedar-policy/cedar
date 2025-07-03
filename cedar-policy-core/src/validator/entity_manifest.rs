@@ -45,14 +45,14 @@ pub use crate::validator::entity_manifest::errors::{
     UnsupportedCedarFeatureError,
 };
 
-use crate::validator::entity_manifest::analysis::{analyze_expr_access_paths};
+use crate::validator::entity_manifest::analysis::analyze_expr_access_paths;
 // Re-export types from human_format module
+use crate::validator::Validator;
 use crate::validator::{
     typecheck::{PolicyCheck, Typechecker},
     types::Type,
     ValidationMode, ValidatorSchema,
 };
-use crate::validator::{Validator};
 
 /// Stores paths for a specific request type, including the request type,
 /// access dag, and access paths.
@@ -104,6 +104,7 @@ impl PathsForRequestType {
     }
 
     /// Add all paths from `other` to `self`
+    /// Don't make this public! Doesn't restore type information.
     fn union_with(&mut self, other: &Self) -> PathMapping {
         let mut path_mapping = PathMapping::new();
         // First, add all paths from the other manifest to this manifest
@@ -204,7 +205,7 @@ pub struct AccessPaths {
 #[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AccessPath {
-    /// The unique identifier for this path in the AccessDag
+    /// The unique identifier for this path in the [`AccessDag`].
     id: usize,
 }
 
@@ -410,7 +411,8 @@ impl PathsForRequestType {
 }
 
 impl EntityManifest {
-    pub fn new() -> Self {
+    /// Create a new empty [`EntityManifest`].
+    pub(crate) fn new() -> Self {
         Self {
             per_action: HashMap::new(),
         }
@@ -453,11 +455,13 @@ impl EntityManifest {
     /// Union this entity manifest with another entity manifest
     ///
     /// This adds all paths from the other manifest to this manifest,
-    /// and updates the per_action map to include the paths from the other manifest.
+    /// and updates the `per_action` map to include the paths from the other manifest.
     ///
     /// Returns a mapping from paths in the other manifest to paths in this manifest.
-    pub fn union_with(&mut self, other: &EntityManifest) {
-        // Update the per_action map to include the paths from the other manifest
+    /// 
+    /// Not public! Doesn't restore type information.
+    pub(crate) fn union_with(&mut self, other: &EntityManifest) {
+        // Update the `per_action` map to include the paths from the other manifest
         for (request_type, other_paths_for_request_type) in &other.per_action {
             let my_path_for_request_type = self
                 .per_action
@@ -481,7 +485,7 @@ impl EntityManifest {
         schema: &ValidatorSchema,
     ) -> Result<Self, EntityManifestFromJsonError> {
         match serde_json::from_str::<EntityManifest>(json) {
-            Ok(manifest) => manifest.to_typed(schema).map_err(|e| e.into()),
+            Ok(manifest) => manifest.add_types(schema).map_err(|e| e.into()),
             Err(e) => Err(e.into()),
         }
     }
@@ -494,7 +498,7 @@ impl EntityManifest {
         schema: &ValidatorSchema,
     ) -> Result<Self, EntityManifestFromJsonError> {
         match serde_json::from_value::<EntityManifest>(value) {
-            Ok(manifest) => manifest.to_typed(schema).map_err(|e| e.into()),
+            Ok(manifest) => manifest.add_types(schema).map_err(|e| e.into()),
             Err(e) => Err(e.into()),
         }
     }
@@ -651,5 +655,5 @@ pub fn compute_entity_manifest(
 
     // PANIC SAFETY: entity manifest cannot be out of date, since it was computed from the schema given
     #[allow(clippy::unwrap_used)]
-    Ok(manifest.to_typed(validator.schema()).unwrap())
+    Ok(manifest.add_types(validator.schema()).unwrap())
 }

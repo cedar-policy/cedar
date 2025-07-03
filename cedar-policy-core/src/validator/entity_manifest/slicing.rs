@@ -1,7 +1,6 @@
 //! Entity Slicing
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fmt::Display;
 
 use crate::entities::Dereference;
 use crate::validator::entity_manifest::manifest_helpers::AccessTrie;
@@ -9,20 +8,18 @@ use crate::{
     ast::{Entity, EntityUID, Literal, PartialValue, Request, Value, ValueKind},
     entities::Entities,
 };
-use miette::Diagnostic;
 use smol_str::SmolStr;
 
 // Import errors directly
 use crate::validator::entity_manifest::errors::{
     EntityFieldMissingError, EntityMissingError, EntitySliceError, IncompatibleEntityManifestError,
     PartialContextError, PartialEntityError, PartialRequestError, RecordFieldMissingError,
-    WrongNumberOfEntitiesError,
 };
 use crate::validator::entity_manifest::loader::{
     load_entities, AncestorsRequest, EntityAnswer, EntityLoader, EntityRequest,
 };
 use crate::validator::entity_manifest::{
-    AccessDag, AccessPath, AccessPathVariant, AccessPaths, EntityManifest,
+    AccessDag, AccessPath, AccessPathVariant, EntityManifest,
 };
 
 impl EntityManifest {
@@ -46,7 +43,6 @@ impl EntityLoader for EntitySlicer<'_> {
     fn load_entities(
         &mut self,
         to_load: &[EntityRequest],
-        store: AccessDag,
     ) -> Result<Vec<EntityAnswer>, EntitySliceError> {
         let mut res = vec![];
         for request in to_load {
