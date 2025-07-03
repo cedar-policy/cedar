@@ -1,16 +1,8 @@
-use std::{
-    collections::{btree_map, hash_map, HashMap, HashSet},
-    sync::Arc,
-};
+use std::collections::{HashMap, HashSet};
 
 use smol_str::SmolStr;
 
-use crate::{
-    ast::{Entity, EntityUID, Literal, PartialValue, Request, Value, ValueKind, Var},
-    entities::{Entities, NoEntitiesSchema, TCComputation},
-    extensions::Extensions,
-    validator::entity_manifest::{AccessPath, AccessPathVariant, AccessPaths, PathsForRequestType},
-};
+use crate::validator::entity_manifest::{AccessPath, AccessPathVariant, PathsForRequestType};
 
 impl PathsForRequestType {
     /// Build a hashmap of dependent paths for all reachable paths

@@ -16,34 +16,20 @@
 
 //! Tests generating entity manifests (without doing any slicing)
 
-use crate::validator::entity_manifest::{
-    compute_entity_manifest, EntityManifest, HumanEntityManifest,
-};
+use crate::validator::entity_manifest::human_format::HumanEntityManifest;
+use crate::validator::entity_manifest::{compute_entity_manifest, EntityManifest};
 use crate::{
     ast::PolicyID, extensions::Extensions, parser::parse_policy, validator::ValidatorSchema,
 };
 use std::fmt::Write;
 
-use super::*;
-
-use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter, Write as FmtWrite};
-use std::rc::Rc;
 
 use crate::ast::{
     self, BinaryOp, EntityUID, Expr, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
 };
-use crate::entities::err::EntitiesError;
-use miette::Diagnostic;
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-use smol_str::SmolStr;
-use thiserror::Error;
 
-use crate::validator::entity_manifest::analysis::{
-    EntityManifestAnalysisResult, WrappedAccessPaths,
-};
+use crate::validator::entity_manifest::analysis::WrappedAccessPaths;
 use crate::validator::{
     typecheck::{PolicyCheck, Typechecker},
     types::Type,

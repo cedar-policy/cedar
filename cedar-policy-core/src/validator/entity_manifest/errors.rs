@@ -97,6 +97,8 @@ pub enum EntitySliceError {
     WrongNumberOfEntities(#[from] WrongNumberOfEntitiesError),
     #[error(transparent)]
     ExpectedEntityType(#[from] ExpectedEntityTypeError),
+    #[error(transparent)]
+    Entities(#[from] EntitiesError),
 }
 
 /// Error when entity slicing encounters a partial context

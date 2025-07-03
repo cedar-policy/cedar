@@ -51,9 +51,7 @@ pub use crate::validator::entity_manifest::errors::{
     UnsupportedCedarFeatureError,
 };
 
-use crate::validator::entity_manifest::analysis::{
-    EntityManifestAnalysisResult, WrappedAccessPaths,
-};
+use crate::validator::entity_manifest::analysis::WrappedAccessPaths;
 // Re-export types from human_format module
 use crate::validator::{
     typecheck::{PolicyCheck, Typechecker},
@@ -638,7 +636,7 @@ pub fn compute_entity_manifest(
                     // using static analysis
                     let res = analyze_expr_access_paths(&typechecked_expr, &mut per_request.dag)?;
                     // add the result to the per_request
-                    per_request.access_paths.extend(res.accessed_paths);
+                    per_request.access_paths.extend(res.all_access_paths());
                 }
                 PolicyCheck::Irrelevant(_, _) => {}
 
@@ -666,42 +664,34 @@ pub fn compute_entity_manifest(
 /// Computes the access paths required to evaluate the expression.
 ///
 /// This function populates the provided `AccessDag` store with paths
-/// and returns an `EntityManifestAnalysisResult` containing both accessed paths
-/// and resulting paths.
+/// and returns an `WrappedAccessPaths` analysis result.
+/// The [`WrappedAccessPaths`] contains the result's access paths
+/// and any access paths encountered during the analysis.
 fn analyze_expr_access_paths(
     expr: &Expr<Option<Type>>,
     store: &mut AccessDag,
-) -> Result<EntityManifestAnalysisResult, EntityManifestError> {
-    match expr.expr_kind() {
+) -> Result<Rc<WrappedAccessPaths>, EntityManifestError> {
+    Ok(match expr.expr_kind() {
         ExprKind::Slot(slot_id) => {
             if slot_id.is_principal() {
-                Ok(EntityManifestAnalysisResult::from_root(
-                    EntityRoot::Var(Var::Principal),
-                    store,
-                ))
+                WrappedAccessPaths::from_root(EntityRoot::Var(Var::Principal), store)
             } else {
                 assert!(slot_id.is_resource());
-                Ok(EntityManifestAnalysisResult::from_root(
-                    EntityRoot::Var(Var::Resource),
-                    store,
-                ))
+                WrappedAccessPaths::from_root(EntityRoot::Var(Var::Resource), store)
             }
         }
 
-        ExprKind::Var(var) => Ok(EntityManifestAnalysisResult::from_root(
-            EntityRoot::Var(*var),
-            store,
-        )),
+        ExprKind::Var(var) => WrappedAccessPaths::from_root(EntityRoot::Var(*var), store),
 
-        ExprKind::Lit(Literal::EntityUID(literal)) => Ok(EntityManifestAnalysisResult::from_root(
+        ExprKind::Lit(Literal::EntityUID(literal)) =>  WrappedAccessPaths::from_root(
             EntityRoot::Literal((**literal).clone()),
             store,
-        )),
+        ),
 
         ExprKind::Unknown(_) => Err(PartialExpressionError {})?,
 
         // Non-entity literals need no fields to be loaded
-        ExprKind::Lit(_) => Ok(EntityManifestAnalysisResult::default()),
+        ExprKind::Lit(_) => Rc::new(WrappedAccessPaths::default()),
 
         ExprKind::If {
             test_expr,
@@ -709,21 +699,13 @@ fn analyze_expr_access_paths(
             else_expr,
         } => {
             // For if expressions, the test condition is accessed but not part of the result
-            let test_result = analyze_expr_access_paths(test_expr, store)?.empty_paths();
+            let test_result = analyze_expr_access_paths(test_expr, store)?;
             let then_result = analyze_expr_access_paths(then_expr, store)?;
             let else_result = analyze_expr_access_paths(else_expr, store)?;
 
-            // Create a result with test condition paths and union of then/else branches
-            let mut result = test_result.union(then_result.clone());
-            result = result.union(else_result.clone());
-
-            // Create a union of then/else for resulting paths
-            result.resulting_paths = Rc::new(WrappedAccessPaths::Union(
-                then_result.resulting_paths,
-                else_result.resulting_paths,
-            ));
-
-            Ok(result)
+            then_result
+                .union(else_result)
+                .with_dropped_paths(test_result)
         }
 
         ExprKind::And { left, right }
@@ -734,18 +716,13 @@ fn analyze_expr_access_paths(
             arg2: right,
         } => {
             // For these operations, both sides are accessed but the result is a primitive
-            Ok(analyze_expr_access_paths(left, store)?
-                .union(analyze_expr_access_paths(right, store)?)
-                .empty_paths())
+            analyze_expr_access_paths(left, store)?.union(analyze_expr_access_paths(right, store)?)
         }
 
         ExprKind::UnaryApp { op, arg } => {
             match op {
                 // These unary ops are on primitive types
-                UnaryOp::Not | UnaryOp::Neg => {
-                    // Get the result from the argument and empty the resulting paths
-                    Ok(analyze_expr_access_paths(arg, store)?.empty_paths())
-                }
+                UnaryOp::Not | UnaryOp::Neg => analyze_expr_access_paths(arg, store)?,
 
                 UnaryOp::IsEmpty => {
                     let mut arg_result = analyze_expr_access_paths(arg, store)?;
@@ -758,10 +735,7 @@ fn analyze_expr_access_paths(
                         .expect("Expected annotated types after typechecking");
 
                     // For isEmpty, we need all fields of the type
-                    arg_result.full_type_required(ty, store);
-
-                    // Result is a boolean, so empty the resulting paths
-                    Ok(arg_result.empty_paths())
+                    arg_result.require_full_type(ty, store)
                 }
             }
         }
@@ -804,7 +778,7 @@ fn analyze_expr_access_paths(
             arg2_result.full_type_required(ty2, store);
 
             // Union the results and empty the resulting paths since the result is a boolean
-            Ok(arg1_result.union(arg2_result).empty_paths())
+            arg1_result.union(arg2_result)
         }
 
         ExprKind::BinaryApp {
@@ -818,14 +792,14 @@ fn analyze_expr_access_paths(
 
         ExprKind::ExtensionFunctionApp { fn_name: _, args } => {
             // Collect paths from all arguments
-            let mut result = EntityManifestAnalysisResult::default();
+            let mut result = WrappedAccessPaths::default();
 
             for arg in args.iter() {
                 result = result.union(analyze_expr_access_paths(arg, store)?);
             }
 
             // Extension functions return primitives, so empty the resulting paths
-            Ok(result.empty_paths())
+            result
         }
 
         ExprKind::Like { expr, pattern: _ }
@@ -834,11 +808,11 @@ fn analyze_expr_access_paths(
             entity_type: _,
         } => {
             // These operations return booleans, so get the result and empty the resulting paths
-            Ok(analyze_expr_access_paths(expr, store)?.empty_paths())
+            analyze_expr_access_paths(expr, store)?
         }
 
         ExprKind::Set(contents) => {
-            let mut result = EntityManifestAnalysisResult::default();
+            let mut result = WrappedAccessPaths::default();
             let mut element_paths = Vec::new();
 
             // Collect paths from all set elements
@@ -857,11 +831,11 @@ fn analyze_expr_access_paths(
             // Wrap the combined paths in a SetLiteral
             result.resulting_paths = Rc::new(WrappedAccessPaths::SetLiteral(combined_paths));
 
-            Ok(result)
+            result
         }
 
         ExprKind::Record(content) => {
-            let mut result = EntityManifestAnalysisResult::default();
+            let mut result = WrappedAccessPaths::default();
             let mut record_contents = HashMap::new();
 
             // Collect paths from all record fields
@@ -874,7 +848,7 @@ fn analyze_expr_access_paths(
             // Create a RecordLiteral with all field paths
             result.resulting_paths = Rc::new(WrappedAccessPaths::RecordLiteral(record_contents));
 
-            Ok(result)
+            result
         }
 
         ExprKind::GetAttr { expr, attr } => {
@@ -883,8 +857,7 @@ fn analyze_expr_access_paths(
 
             // Apply the attribute access
             let result = base_result.get_or_has_attr(attr, store);
-
-            Ok(result)
+            result
         }
 
         ExprKind::HasAttr { expr, attr } => {
@@ -892,8 +865,7 @@ fn analyze_expr_access_paths(
             let base_result = analyze_expr_access_paths(expr, store)?;
             let result = base_result.get_or_has_attr(attr, store);
 
-            // HasAttr returns a boolean, so empty the resulting paths
-            Ok(result.empty_paths())
+            result
         }
 
         #[cfg(feature = "tolerant-ast")]
@@ -902,5 +874,5 @@ fn analyze_expr_access_paths(
                 feature: "No support for AST error nodes".into(),
             },
         )),
-    }
+    })
 }

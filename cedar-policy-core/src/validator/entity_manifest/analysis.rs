@@ -2,12 +2,8 @@ use std::{collections::HashMap, rc::Rc};
 
 use smol_str::SmolStr;
 
-use crate::ast::{BinaryOp, Expr, ExprKind, Literal, UnaryOp, Var};
 use crate::validator::{
-    entity_manifest::{
-        AccessDag, AccessPath, AccessPathVariant, AccessPaths, EntityManifestError, EntityRoot,
-        PartialExpressionError, UnsupportedCedarFeatureError,
-    },
+    entity_manifest::{AccessDag, AccessPath, AccessPathVariant, AccessPaths, EntityRoot},
     types::{EntityRecordKind, Type},
 };
 
@@ -43,7 +39,7 @@ pub(crate) enum WrappedAccessPaths {
 
 impl WrappedAccessPaths {
     /// Create an analysis result that starts with a cedar variable
-    pub fn from_root(root: EntityRoot, store: &mut AccessDag) -> Self {
+    pub fn from_root(root: EntityRoot, store: &mut AccessDag) -> Rc<Self> {
         // Create a new AccessPath from the root
         let variant = match &root {
             EntityRoot::Literal(euid) => AccessPathVariant::Literal(euid.clone()),
@@ -53,7 +49,7 @@ impl WrappedAccessPaths {
         // Add the path to the store
         let path = store.add_path(variant);
 
-        WrappedAccessPaths::AccessPath(path.clone())
+        Rc::new(WrappedAccessPaths::AccessPath(path.clone()))
     }
 
     /// Add an ancestors required path for each of the wrapped access paths given.
@@ -111,13 +107,6 @@ impl WrappedAccessPaths {
         })
     }
 
-    /// Union this analysis result with another, taking the union of the resulting paths.
-    /// Takes ownership of self and returns self after mutating it.
-    pub(crate) fn union(self: Rc<Self>, other: Rc<Self>) -> Rc<Self> {
-        // Create a union of the resulting paths
-        Rc::new(WrappedAccessPaths::Union(self, other))
-    }
-
     /// Convert the [`WrappedAccessPaths`] to a [`AccessPaths`].
     /// Returns [`None`] when the wrapped access paths represent a record or set literal.
     fn returned_access_paths(self: &Rc<Self>) -> Option<AccessPaths> {
@@ -129,9 +118,15 @@ impl WrappedAccessPaths {
         }
     }
 
+    /// Union this analysis result with another, taking the union of the resulting paths.
+    /// Takes ownership of self and returns self after mutating it.
+    pub(crate) fn union(self: Rc<Self>, other: Rc<Self>) -> Rc<Self> {
+        Rc::new(WrappedAccessPaths::Union(Rc::clone(self), Rc::clone(other)))
+    }
+
     /// Get all access paths from this wrapped access paths,
     /// including dropped paths.
-    fn all_access_paths(self: &Rc<Self>) -> AccessPaths {
+    pub(crate) fn all_access_paths(self: &Rc<Self>) -> AccessPaths {
         let mut access_paths = AccessPaths::default();
         self.add_to_access_paths(&mut access_paths, true);
         access_paths
@@ -167,7 +162,11 @@ impl WrappedAccessPaths {
     }
 
     /// Add accessing this attribute to all access paths
-    fn get_or_has_attr(self: Rc<Self>, attr: &SmolStr, store: &mut AccessDag) -> Rc<Self> {
+    pub(crate) fn get_or_has_attr(
+        self: Rc<Self>,
+        attr: &SmolStr,
+        store: &mut AccessDag,
+    ) -> Rc<Self> {
         Rc::new(match &*self {
             WrappedAccessPaths::AccessPath(access_path) => {
                 // Create a new attribute access path
@@ -212,7 +211,7 @@ impl WrappedAccessPaths {
     /// are required.
     /// This function extends the paths with the fields mentioned
     /// by the type, dropping them afterwards since type checks result in boolean values.
-    fn require_full_type(self: &Rc<Self>, ty: &Type, store: &mut AccessDag) -> Rc<Self> {
+    pub(crate) fn require_full_type(self: &Rc<Self>, ty: &Type, store: &mut AccessDag) -> Rc<Self> {
         match &**self {
             WrappedAccessPaths::AccessPath(path) => {
                 // Use type_to_access_paths to compute the full access paths for the type
@@ -265,10 +264,10 @@ impl WrappedAccessPaths {
             WrappedAccessPaths::Union(left, right) => self
                 .with_dropped_paths(left.require_full_type(ty, store))
                 .with_dropped_paths(right.require_full_type(ty, store)),
-            WrappedAccessPaths::WithDroppedPaths { paths, dropped: _dropped } => {
-                self.with_dropped_paths(paths.require_full_type(ty, store))
-            }
-           
+            WrappedAccessPaths::WithDroppedPaths {
+                paths,
+                dropped: _dropped,
+            } => self.with_dropped_paths(paths.require_full_type(ty, store)),
         }
     }
 }
@@ -310,9 +309,8 @@ fn entity_or_record_to_access_paths(
                 };
                 let attr_path = store.add_path(attr_variant);
 
-                paths = paths.with_dropped_paths(
-                    Rc::new(WrappedAccessPaths::AccessPath(attr_path.clone())),
-                );
+                paths = paths
+                    .with_dropped_paths(Rc::new(WrappedAccessPaths::AccessPath(attr_path.clone())));
 
                 // Recursively process the attribute's type
                 let attr_paths = type_to_access_paths(&attr_type.attr_type, store, &attr_path);
