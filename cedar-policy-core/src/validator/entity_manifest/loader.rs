@@ -18,15 +18,16 @@
 //! Loads entities based on the entity manifest.
 
 use std::{
-    collections::{btree_map, hash_map, HashMap, HashSet}, sync::Arc,
-    };
+    collections::{btree_map, hash_map, HashMap, HashSet},
+    sync::Arc,
+};
 
 use crate::{
     ast::{Entity, EntityUID, Literal, PartialValue, Request, Value, ValueKind, Var},
     entities::{Entities, NoEntitiesSchema, TCComputation},
     extensions::Extensions,
     validator::entity_manifest::{
-        manifest_helpers::AccessTrie, errors::ExpectedEntityTypeError, AccessPath,
+        errors::ExpectedEntityTypeError, manifest_helpers::AccessTrie, AccessPath,
         AccessPathVariant, PathsForRequestType,
     },
 };
@@ -34,8 +35,7 @@ use crate::{
 use crate::validator::entity_manifest::{AccessDag, EntityManifest};
 
 use crate::validator::entity_manifest::errors::{
-    EntitySliceError, PartialRequestError,
-    WrongNumberOfEntitiesError,
+    EntitySliceError, PartialRequestError, WrongNumberOfEntitiesError,
 };
 
 /// A request that an entity be loaded.
@@ -87,15 +87,14 @@ pub(crate) struct AncestorsRequest {
 pub(crate) trait EntityLoader {
     /// `load_entities` is called multiple times to load entities based on their ids.
     /// For each entity request in the `to_load` vector, expects one loaded entity in the resulting vector.
-    /// Each [`EntityRequest`] comes with [`AccessPaths`], which can optionally be used.
-    /// Only fields mentioned in the entity's [`AccessPaths`] are needed, but it is sound to provide other fields as well.
-    /// Note that the same entity may be requested multiple times, with different [`AccessPaths`]s.
+    /// Each [`EntityRequest`] comes with [`AccessTrie`], which can optionally be used.
+    /// Only fields mentioned in the entity's [`AccessTrie`] are needed, but it is sound to provide other fields as well.
+    /// Note that the same entity may be requested multiple times, with different [`AccessTrie`]s.
     ///
     /// `load_entities` must load all the ancestors of each entity unless `load_ancestors` is implemented.
     fn load_entities(
         &mut self,
         to_load: &[EntityRequest],
-        store: AccessDag,
     ) -> Result<Vec<EntityAnswer>, EntitySliceError>;
 
     /// Optionally, `load_entities` can forgo loading ancestors in the entity hierarchy.
@@ -223,7 +222,7 @@ pub(crate) fn load_entities(
     // Main loop of loading entities, one batch at a time
     while !to_load.is_empty() {
         // Load the current batch of entities
-        let loaded_entities = loader.load_entities(&to_load, for_request.dag.clone())?;
+        let loaded_entities = loader.load_entities(&to_load)?;
 
         if loaded_entities.len() != to_load.len() {
             return Err(WrongNumberOfEntitiesError {

@@ -35,7 +35,7 @@ impl EntityManifest {
     /// Given an untyped entity manifest and the schema that produced it,
     /// return a newly typed entity manifest.
     /// Makes the types field of the manifest Some instead of None
-    pub(crate) fn to_typed(
+    pub(crate) fn add_types(
         &self,
         schema: &ValidatorSchema,
     ) -> Result<EntityManifest, MismatchedEntityManifestError> {
@@ -52,7 +52,7 @@ impl EntityManifest {
 }
 
 impl PathsForRequestType {
-    /// Type-annotate this PathsForRequestType, given the schema.
+    /// Type-annotate this [`PathsForRequestType`], given the schema.
     pub(crate) fn to_typed(
         &self,
         schema: &ValidatorSchema,
