@@ -22,12 +22,16 @@ use std::{
     sync::Arc,
 };
 
+use smol_str::SmolStr;
+
 use crate::{
     ast::{Entity, EntityUID, Literal, PartialValue, Request, Value, ValueKind, Var},
     entities::{Entities, NoEntitiesSchema, TCComputation},
     extensions::Extensions,
     validator::entity_manifest::{
-        errors::{ExpectedEntityOrEntitySetError, ExpectedEntityTypeError},
+        errors::{
+            ExpectedEntityOrEntitySetError, ExpectedEntityTypeError, ExpectedStringTypeError,
+        },
         manifest_helpers::AccessTrie,
         AccessTerm, AccessTermVariant, EntityManifest, RequestTypePaths,
     },
@@ -51,7 +55,7 @@ pub(crate) struct EntityRequest {
     pub(crate) access_path: AccessTerm,
     /// The requested tags for the entity, if any
     /// Each tag's value can be loaded completely or (in the case of records) partially using the associated `AccessTrie`.
-    pub(crate) tags: HashSet<String, AccessTrie>,
+    pub(crate) tags: HashMap<SmolStr, AccessTrie>,
     /// A trie containing the access paths needed for this entity
     pub(crate) access_trie: AccessTrie,
 }
@@ -123,7 +127,7 @@ fn initial_entities_to_load(
             if let Some(entity_id) = entity_id {
                 to_load.push(EntityRequest {
                     entity_id,
-                    tags: HashSet::new(),
+                    tags: HashMap::new(),
                     access_trie: trie.clone(),
                     access_path: access_path.clone(),
                 });
@@ -165,19 +169,17 @@ pub(crate) fn load_entities(
     // Compute the access tries for all entities
     let access_tries = for_request.compute_access_tries(&dependents_map);
 
-    let dependent_entities_map = for_request.build_dependent_entities_map(&dependents_map);
+    let dependent_terms_map = for_request.build_dependent_entities_map(&dependents_map);
 
     // Get initial entities to load and track processed entities
     let mut to_load = initial_entities_to_load(&access_tries, for_request, request);
     let mut entities_map: HashMap<EntityUID, Entity> = HashMap::new();
-    let mut visited_paths = HashSet::new();
+    let mut visited_terms = HashSet::new();
 
     // Main loop of loading entities, one batch at a time
     while !to_load.is_empty() {
-        eprintln!("to load: {:?}", to_load);
         // Load the current batch of entities
         let loaded_entities = loader.load_entities(&to_load)?;
-        eprintln!("loaded entities: {:?}", loaded_entities);
 
         if loaded_entities.len() != to_load.len() {
             return Err(WrongNumberOfEntitiesError {
@@ -208,40 +210,90 @@ pub(crate) fn load_entities(
         for entity_request in to_load.into_iter() {
             let entity_path = entity_request.access_path;
 
-            // Find dependent entities for this entity path
-            let dependent_entities = dependent_entities_map
+            // Find dependent critical terms for this critical term
+            let dependent_entities = dependent_terms_map
                 .get(&entity_path)
                 .unwrap_or(&vec![])
                 .clone();
 
-            // Add dependent entities to the next batch if they haven't been processed yet
-            for dependent_path in dependent_entities {
-                if !visited_paths.insert(dependent_path.clone()) {
+            // Add dependent terms to the next batch if they haven't been processed yet
+            for dependent_term in dependent_entities {
+                if !visited_terms.insert(dependent_term.clone()) {
                     continue;
                 }
 
-                // get the id of the dependent path using the entity store
-                let dependent_val =
-                    dependent_path.compute_value(&entities_map, &for_request.dag, request)?;
+                // Get the access trie for this critical path if any
+                if let Some(dependent_trie) = access_tries.get(&dependent_term) {
+                    // case split on entities or tag access terms
+                    if for_request.is_entity_typed_path(&dependent_term) {
+                        // get the id of the entity path using the entity store
+                        let dependent_val = dependent_term.compute_value(
+                            &entities_map,
+                            &for_request.dag,
+                            request,
+                        )?;
 
-                let dependent_id = match dependent_val.value_kind() {
-                    ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
-                    _ => {
-                        return Err(ExpectedEntityTypeError {
-                            found_value: dependent_val.clone(),
-                        }
-                        .into())
+                        let dependent_id = match dependent_val.value_kind() {
+                            ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
+                            _ => {
+                                return Err(ExpectedEntityTypeError {
+                                    found_value: dependent_val.clone(),
+                                }
+                                .into())
+                            }
+                        };
+
+                        next_to_load.push(EntityRequest {
+                            entity_id: dependent_id.clone(),
+                            tags: HashMap::new(),
+                            access_trie: dependent_trie.clone(),
+                            access_path: dependent_term.clone(),
+                        });
+                    } else {
+                        let AccessTermVariant::Tag { of, tag } =
+                            dependent_term.get_variant_internal(&for_request.dag)
+                        else {
+                            // PANIC SAFETY: Critical terms are either entity typed or tag terms.
+                            panic!("Expected a tag path variant, but got {:?}", dependent_term);
+                        };
+                        // For tag terms, generate an entity request with the tag and access trie
+                        let of_val_result =
+                            of.compute_value(&entities_map, &for_request.dag, request)?;
+                        let tag_val_result =
+                            tag.compute_value(&entities_map, &for_request.dag, request)?;
+
+                        // todo factor out into helper
+                        let of_val = match of_val_result.value_kind() {
+                            ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
+                            _ => {
+                                return Err(ExpectedEntityTypeError {
+                                    found_value: of_val_result.clone(),
+                                }
+                                .into())
+                            }
+                        };
+                        // tag value is always a string
+                        let tag_val = match tag_val_result.value_kind() {
+                            ValueKind::Lit(Literal::String(s)) => s.clone(),
+                            _ => {
+                                return Err(ExpectedStringTypeError {
+                                    found_value: tag_val_result.clone(),
+                                }
+                                .into());
+                            }
+                        };
+
+                        // Add the tag to the request
+                        let mut tags = HashMap::new();
+                        tags.insert(tag_val, dependent_trie.clone());
+
+                        next_to_load.push(EntityRequest {
+                            entity_id: of_val.clone(),
+                            tags,
+                            access_trie: AccessTrie::new(),
+                            access_path: dependent_term.clone(),
+                        });
                     }
-                };
-
-                // Get the access trie for this dependent entity if any
-                if let Some(dependent_trie) = access_tries.get(&dependent_path) {
-                    next_to_load.push(EntityRequest {
-                        entity_id: dependent_id.clone(),
-                        tags: HashSet::new(),
-                        access_trie: dependent_trie.clone(),
-                        access_path: dependent_path.clone(),
-                    });
                 }
             }
         }

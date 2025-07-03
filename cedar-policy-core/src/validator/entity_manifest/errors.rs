@@ -145,6 +145,10 @@ pub enum EntitySliceError {
     /// Expected an entity type but found a different value type during loading
     #[error(transparent)]
     ExpectedEntityType(#[from] ExpectedEntityTypeError),
+    /// Expected a string type but found a different value type during loading
+    /// TODO refactor into more generic error message about type mismatch
+    #[error(transparent)]
+    ExpectedStringType(#[from] ExpectedStringTypeError),
     /// Expected an entity or entity set but found something else
     #[error(transparent)]
     ExpectedEntityOrEntitySet(#[from] ExpectedEntityOrEntitySetError),
@@ -216,6 +220,14 @@ pub struct WrongNumberOfEntitiesError {
 #[error("expected entity type, found: {found_value:?}")]
 pub struct ExpectedEntityTypeError {
     /// The value that was found instead of an entity type
+    pub found_value: crate::ast::Value,
+}
+
+/// ERror when expecting a string type but got something else
+#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
+#[error("expected string type, found: {found_value:?}")]
+pub struct ExpectedStringTypeError {
+    /// The value that was found instead of a string type
     pub found_value: crate::ast::Value,
 }
 
