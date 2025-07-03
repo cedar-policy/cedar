@@ -18,7 +18,7 @@ use crate::validator::entity_manifest::errors::{
 use crate::validator::entity_manifest::loader::{
     load_entities, AncestorsRequest, EntityAnswer, EntityLoader, EntityRequest,
 };
-use crate::validator::entity_manifest::{AccessDag, AccessPath, AccessPathVariant, EntityManifest};
+use crate::validator::entity_manifest::{AccessDag, AccessTerm, AccessTermVariant, EntityManifest};
 
 impl EntityManifest {
     /// Use this entity manifest to
@@ -141,7 +141,7 @@ impl AccessTrie {
     }
 }
 
-impl AccessPath {
+impl AccessTerm {
     /// Compute the value for this access path using the provided entities map.
     /// This function can dereference entities using the `entity_map`.
     pub(crate) fn compute_value(
@@ -157,16 +157,16 @@ impl AccessPath {
 
         match variant {
             // For literal entity UIDs, return the entity UID as a value
-            AccessPathVariant::Literal(euid) => Ok(Value::from(Literal::EntityUID(
+            AccessTermVariant::Literal(euid) => Ok(Value::from(Literal::EntityUID(
                 std::sync::Arc::new(euid.clone()),
             ))),
 
             // For string literals, return the string value
-            AccessPathVariant::String(s) => Ok(Value::from(Literal::String(s.clone()))),
+            AccessTermVariant::String(s) => Ok(Value::from(Literal::String(s.clone()))),
 
             // For attribute access, first compute the value of the base entity/record
             // then extract the attribute from it
-            AccessPathVariant::Attribute { of, attr } => {
+            AccessTermVariant::Attribute { of, attr } => {
                 // First, compute the value of the base entity/record
                 let base_value = of.compute_value(entities_map, store, request)?;
 
@@ -216,7 +216,7 @@ impl AccessPath {
 
             // For tag access, first compute the value of the base entity
             // then extract the tag from it
-            AccessPathVariant::Tag { of, tag } => {
+            AccessTermVariant::Tag { of, tag } => {
                 // First, compute the value of the base entity
                 let base_value = of.compute_value(entities_map, store, request)?;
 
@@ -263,11 +263,11 @@ impl AccessPath {
 
             // PANIC SAFETY: `compute_value` is only called on child access paths, but nothing has an ancestor node as a child.
             #[allow(clippy::panic)]
-            AccessPathVariant::Ancestor { of: _, ancestor: _ } => {
+            AccessTermVariant::Ancestor { of: _, ancestor: _ } => {
                 panic!("Ill-typed entity manifest: Tried to compute value of ancestor access path");
             }
 
-            AccessPathVariant::Var(var) => {
+            AccessTermVariant::Var(var) => {
                 // Get the value from the request based on the variable
                 match var {
                     crate::ast::Var::Principal => {

@@ -58,7 +58,7 @@ pub struct MismatchedExpectedEntityError {
 /// Error when access path is not found in entity manifest
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("access path not found in entity manifest. This may indicate that you are using the wrong entity manifest with this path")]
-pub struct AccessPathNotFoundError {
+pub struct AccessTermNotFoundError {
     /// The ID of the access path that was not found
     pub(crate) path_id: usize,
 }
@@ -100,7 +100,7 @@ pub enum MismatchedEntityManifestError {
     MismatchedExpectedEntity(#[from] MismatchedExpectedEntityError),
     /// An access path was not found in the entity manifest
     #[error(transparent)]
-    AccessPathNotFound(#[from] AccessPathNotFoundError),
+    AccessTermNotFound(#[from] AccessTermNotFoundError),
 }
 
 /// Error when parsing entity manifest from JSON

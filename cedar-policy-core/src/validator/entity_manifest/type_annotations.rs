@@ -18,10 +18,10 @@
 
 use crate::ast::{RequestType, Var};
 
-use crate::validator::entity_manifest::AccessPathNotFoundError;
+use crate::validator::entity_manifest::AccessTermNotFoundError;
 use crate::validator::types::EntityRecordKind;
 use crate::validator::{
-    entity_manifest::{AccessDag, AccessPath, AccessPathVariant, EntityManifest, RequestTypePaths},
+    entity_manifest::{AccessDag, AccessTerm, AccessTermVariant, EntityManifest, RequestTypePaths},
     types::Type,
     ValidatorSchema,
 };
@@ -73,13 +73,13 @@ impl RequestTypePaths {
     /// When the type does not exist in the schema, it returns `None`.
     fn type_path(
         &self,
-        variant: &AccessPathVariant,
+        variant: &AccessTermVariant,
         request_type: &RequestType,
         schema: &ValidatorSchema,
         dag: &AccessDag,
     ) -> Result<Option<Type>, MismatchedEntityManifestError> {
         let res = match variant {
-            AccessPathVariant::Var(var) => {
+            AccessTermVariant::Var(var) => {
                 // Type the variable based on its kind
                 let ty = match var {
                     Var::Action => {
@@ -102,16 +102,16 @@ impl RequestTypePaths {
 
                 ty
             }
-            AccessPathVariant::Literal(lit) => {
+            AccessTermVariant::Literal(lit) => {
                 Type::euid_literal(lit, schema).ok_or_else(|| MismatchedMissingEntityError {
                     entity: lit.clone(),
                 })?
             }
-            AccessPathVariant::String(_) => {
+            AccessTermVariant::String(_) => {
                 // String literals have String type
                 Type::primitive_string()
             }
-            AccessPathVariant::Attribute { of, attr } => {
+            AccessTermVariant::Attribute { of, attr } => {
                 // Get the type of the base expression (should already be typed)
                 let Some(Some(of_type)) = self.dag.types.get(of.id) else {
                     return Ok(None);
@@ -158,7 +158,7 @@ impl RequestTypePaths {
                     }
                 }
             }
-            AccessPathVariant::Tag {
+            AccessTermVariant::Tag {
                 of: access_path,
                 tag: tag_path,
             } => {
@@ -183,7 +183,7 @@ impl RequestTypePaths {
                     .into());
                 }
             }
-            AccessPathVariant::Ancestor { of: _, ancestor: _ } => {
+            AccessTermVariant::Ancestor { of: _, ancestor: _ } => {
                 // Ancestor checks result in boolean values
                 Type::True
             }

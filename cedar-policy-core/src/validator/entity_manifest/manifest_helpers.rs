@@ -2,14 +2,14 @@ use std::collections::{HashMap, HashSet};
 
 use smol_str::SmolStr;
 
-use crate::validator::entity_manifest::{AccessPath, AccessPathVariant, RequestTypePaths};
+use crate::validator::entity_manifest::{AccessTerm, AccessTermVariant, RequestTypePaths};
 
 impl RequestTypePaths {
     /// Build a hashmap of dependent paths for all reachable paths
     pub(crate) fn build_dependents_map(
         &self,
-        reachable_paths: &HashSet<AccessPath>,
-    ) -> HashMap<AccessPath, Vec<AccessPath>> {
+        reachable_paths: &HashSet<AccessTerm>,
+    ) -> HashMap<AccessTerm, Vec<AccessTerm>> {
         let mut dependents_map = HashMap::new();
 
         // Initialize the map with empty vectors for all paths
@@ -35,12 +35,13 @@ impl RequestTypePaths {
 
     pub(crate) fn build_dependent_entities_map(
         &self,
-        dependents_map: &HashMap<AccessPath, Vec<AccessPath>>,
-    ) -> HashMap<AccessPath, Vec<AccessPath>> {
+        dependents_map: &HashMap<AccessTerm, Vec<AccessTerm>>,
+    ) -> HashMap<AccessTerm, Vec<AccessTerm>> {
         let mut dependent_entities_map = HashMap::new();
 
         for path in dependents_map.keys() {
-            let dependent_entities = self.get_manifest_dependent_entities(path, dependents_map);
+            let dependent_entities =
+                self.get_manifest_dependent_critical_paths(path, dependents_map);
             dependent_entities_map.insert(path.clone(), dependent_entities);
         }
 
@@ -48,13 +49,13 @@ impl RequestTypePaths {
     }
 
     /// Helper function to get the manifest dependent entity paths of an access path
-    /// A manifest dependent entity for node A is a node B such that A ->* B points to B
-    /// with a path such that no intermediate nodes are entity typed
-    fn get_manifest_dependent_entities(
+    /// A manifest dependent critical term for term A is a term B such that A ->* B (B is a subterm of A)
+    /// and no intermediate terms in the path from A to B are critical terms.
+    fn get_manifest_dependent_critical_paths(
         &self,
-        path: &AccessPath,
-        dependents_map: &HashMap<AccessPath, Vec<AccessPath>>,
-    ) -> Vec<AccessPath> {
+        path: &AccessTerm,
+        dependents_map: &HashMap<AccessTerm, Vec<AccessTerm>>,
+    ) -> Vec<AccessTerm> {
         let mut result = HashSet::new();
         let mut visited = HashSet::new();
         let mut queue = Vec::new();
@@ -68,7 +69,7 @@ impl RequestTypePaths {
                 for dependent in dependents {
                     if visited.insert(dependent) {
                         // if it has an entity type, add it to the result
-                        if self.is_entity_path(dependent) {
+                        if self.is_critical_path(dependent) {
                             result.insert(dependent.clone());
                         } else {
                             // otherwise add to the queue
@@ -82,28 +83,23 @@ impl RequestTypePaths {
         result.into_iter().collect()
     }
 
-    /// For each reachable [`AccessPath`] in the path with
+    /// For each reachable [`AccessTerm`] in the path with
     /// an entity type, computes the [`AccessTrie`] needed
     /// for that entity.
     ///
     /// This is a helper which computes the access tries needed during
     /// entity loading with the [`EntityLoader`] API.
-    ///
-    /// TODO we already have reachable paths and dependent map when we call this
-    pub(crate) fn compute_access_tries(&self) -> HashMap<AccessPath, AccessTrie> {
-        // First, compute all reachable paths
-        let reachable_paths = self.reachable_paths();
-
-        // Build a dependents map for efficient dependent lookup
-        let dependents_map = self.build_dependents_map(&reachable_paths);
-
+    pub(crate) fn compute_access_tries(
+        &self,
+        dependents_map: &HashMap<AccessTerm, Vec<AccessTerm>>,
+    ) -> HashMap<AccessTerm, AccessTrie> {
         // Find all entity paths among the reachable paths
-        let entity_paths = self.get_entity_paths(&reachable_paths);
+        let entity_paths = self.get_critical_paths(&dependents_map);
 
         // Build the AccessTrie for each entity path
         let mut result = HashMap::new();
         for entity_path in entity_paths {
-            let trie = self.build_access_trie_for_entity(&entity_path, &dependents_map);
+            let trie = self.build_access_trie_for_entity(&entity_path, dependents_map);
 
             if !trie.fields.is_empty() {
                 result.insert(entity_path, trie);
@@ -113,8 +109,24 @@ impl RequestTypePaths {
         result
     }
 
-    /// Helper function to determine if a path has an entity type
-    fn is_entity_path(&self, path: &AccessPath) -> bool {
+    /// A "critical path" is a path whose dependents need to be explicitly loaded
+    /// by the [`EntityLoader`] API.
+    /// These include two kinds of paths:
+    ///     1) paths that have an entity type, since the [`EntityLoader`] API
+    ///     doesn't load entities recursively.
+    ///     2) paths that are [`AccessTermVariant::Tag`]s because they are computed based on multiple
+    ///     other values- not a single path starting from an entity.
+    fn is_critical_path(&self, path: &AccessTerm) -> bool {
+        self.is_entity_typed_path(path) || self.is_tag_path(path)
+    }
+
+    fn is_tag_path(&self, path: &AccessTerm) -> bool {
+        let variant = path.get_variant_internal(&self.dag);
+        // Check if the path is a tag path
+        matches!(variant, AccessTermVariant::Tag { .. })
+    }
+
+    fn is_entity_typed_path(&self, path: &AccessTerm) -> bool {
         // Check if we have type information
         if path.id < self.dag.types.len() {
             // Check if the type is an entity type
@@ -133,11 +145,14 @@ impl RequestTypePaths {
         }
     }
 
-    /// Helper function to get all entity paths among the reachable paths
-    fn get_entity_paths(&self, reachable_paths: &HashSet<AccessPath>) -> HashSet<AccessPath> {
-        reachable_paths
-            .iter()
-            .filter(|path| self.is_entity_path(path))
+    /// Gets critical paths (see [`RequestTypePaths::is_critical_path`])
+    fn get_critical_paths(
+        &self,
+        dependent_map: &HashMap<AccessTerm, Vec<AccessTerm>>,
+    ) -> HashSet<AccessTerm> {
+        dependent_map
+            .keys()
+            .filter(|path| self.is_critical_path(path))
             .cloned()
             .collect()
     }
@@ -145,8 +160,8 @@ impl RequestTypePaths {
     /// Recursively build the `AccessTrie` for an entity path
     fn build_access_trie_for_entity(
         &self,
-        entity_path: &AccessPath,
-        dependents_map: &HashMap<AccessPath, Vec<AccessPath>>,
+        entity_path: &AccessTerm,
+        dependents_map: &HashMap<AccessTerm, Vec<AccessTerm>>,
     ) -> AccessTrie {
         // Create a new trie for this entity
         let mut trie = AccessTrie::new();
@@ -161,10 +176,10 @@ impl RequestTypePaths {
     /// Traverses the dependents map starting from the entity path
     fn build_trie_recursive(
         &self,
-        path: &AccessPath,
+        path: &AccessTerm,
         trie: &mut AccessTrie,
-        dependents_map: &HashMap<AccessPath, Vec<AccessPath>>,
-        visited: &mut HashSet<AccessPath>,
+        dependents_map: &HashMap<AccessTerm, Vec<AccessTerm>>,
+        visited: &mut HashSet<AccessTerm>,
     ) {
         // Mark this path as visited to avoid cycles
         visited.insert(path.clone());
@@ -179,12 +194,12 @@ impl RequestTypePaths {
 
                 // Check if this is an attribute path
                 if let Ok(variant) = dependent.get_variant(&self.dag) {
-                    if let AccessPathVariant::Attribute { attr, .. } = variant {
+                    if let AccessTermVariant::Attribute { attr, .. } = variant {
                         // Get or create the field in the trie
                         let field_trie = trie.get_or_create_field(attr);
 
                         // If this is an entity, don't continue building the trie
-                        if !self.is_entity_path(dependent) {
+                        if !self.is_critical_path(dependent) {
                             self.build_trie_recursive(
                                 dependent,
                                 field_trie,
@@ -201,7 +216,7 @@ impl RequestTypePaths {
     /// Computes all reachable paths.
     /// Currently inefficient in the presense of sharing between paths
     /// because it uses the subpaths method.
-    pub(crate) fn reachable_paths(&self) -> HashSet<AccessPath> {
+    pub(crate) fn reachable_paths(&self) -> HashSet<AccessTerm> {
         let mut result = HashSet::new();
 
         // Iterate through all access paths in the PathsForRequestType

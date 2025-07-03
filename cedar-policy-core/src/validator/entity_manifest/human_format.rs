@@ -22,7 +22,7 @@ use crate::ast::{self, Expr, RequestType};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use super::{AccessDag, AccessPath, AccessPathVariant, EntityManifest, RequestTypePaths};
+use super::{AccessDag, AccessTerm, AccessTermVariant, EntityManifest, RequestTypePaths};
 use crate::validator::ValidatorSchema;
 // Import errors directly
 use crate::validator::entity_manifest::errors::{ConversionError, PathExpressionParseError};
@@ -96,21 +96,21 @@ impl HumanEntityManifest {
         }
     }
 
-    /// Convert an AST Cedar expression to an `AccessPath`
+    /// Convert an AST Cedar expression to an `AccessTerm`
     pub(crate) fn expr_to_access_path(
         &self,
         expr: &ast::Expr,
         dag: &mut AccessDag,
-    ) -> Result<AccessPath, PathExpressionParseError> {
+    ) -> Result<AccessTerm, PathExpressionParseError> {
         match expr.expr_kind() {
             ast::ExprKind::Lit(lit) => {
                 // Handle literal values
                 match lit {
                     ast::Literal::EntityUID(euid) => {
-                        Ok(dag.add_path(AccessPathVariant::Literal((**euid).clone())))
+                        Ok(dag.add_path(AccessTermVariant::Literal((**euid).clone())))
                     }
                     ast::Literal::String(s) => {
-                        Ok(dag.add_path(AccessPathVariant::String(s.clone())))
+                        Ok(dag.add_path(AccessTermVariant::String(s.clone())))
                     }
                     _ => Err(PathExpressionParseError::InvalidRoot(
                         "Unsupported literal type".to_string(),
@@ -119,12 +119,12 @@ impl HumanEntityManifest {
             }
             ast::ExprKind::Var(var) => {
                 // Handle variables (principal, resource, action, context)
-                Ok(dag.add_path(AccessPathVariant::Var(*var)))
+                Ok(dag.add_path(AccessTermVariant::Var(*var)))
             }
             ast::ExprKind::GetAttr { expr, attr } => {
                 // Handle attribute access (e.g., principal.attr)
                 let base_path = self.expr_to_access_path(expr, dag)?;
-                Ok(dag.add_path(AccessPathVariant::Attribute {
+                Ok(dag.add_path(AccessTermVariant::Attribute {
                     of: base_path,
                     attr: attr.clone(),
                 }))
@@ -134,7 +134,7 @@ impl HumanEntityManifest {
                     // Handle tag access (e.g., principal.getTag("tag"))
                     let base_path = self.expr_to_access_path(arg1, dag)?;
                     let tag_path = self.expr_to_access_path(arg2, dag)?;
-                    Ok(dag.add_path(AccessPathVariant::Tag {
+                    Ok(dag.add_path(AccessTermVariant::Tag {
                         of: base_path,
                         tag: tag_path,
                     }))
@@ -143,7 +143,7 @@ impl HumanEntityManifest {
                     // Handle ancestor relationship (e.g., principal in resource)
                     let entity_path = self.expr_to_access_path(arg1, dag)?;
                     let ancestor_path = self.expr_to_access_path(arg2, dag)?;
-                    Ok(dag.add_path(AccessPathVariant::Ancestor {
+                    Ok(dag.add_path(AccessTermVariant::Ancestor {
                         of: entity_path,
                         ancestor: ancestor_path,
                     }))
@@ -216,18 +216,18 @@ impl EntityManifest {
         HumanEntityManifest { per_action }
     }
 
-    /// Convert an `AccessPath` to a Cedar expression
+    /// Convert an `AccessTerm` to a Cedar expression
     fn access_path_to_expr(
         &self,
-        path: &AccessPath,
+        path: &AccessTerm,
         request_type: &RequestType,
-    ) -> Result<ast::Expr, super::AccessPathNotFoundError> {
+    ) -> Result<ast::Expr, super::AccessTermNotFoundError> {
         // Find the paths for this request type
         if let Some(paths_for_request_type) = self.per_action.get(request_type) {
             path.to_expr(&paths_for_request_type.dag)
         } else {
             // return an error, you used an access path with the wrong request type
-            Err(super::AccessPathNotFoundError { path_id: path.id })
+            Err(super::AccessTermNotFoundError { path_id: path.id })
         }
     }
 
@@ -247,29 +247,29 @@ impl EntityManifest {
     }
 }
 
-impl AccessPath {
+impl AccessTerm {
     pub(crate) fn to_expr(
         &self,
         dag: &AccessDag,
-    ) -> Result<ast::Expr, super::AccessPathNotFoundError> {
+    ) -> Result<ast::Expr, super::AccessTermNotFoundError> {
         // Find the variant for this path
         if let Some(variant) = dag.manifest_store.get(self.id) {
             Ok(match variant {
-                AccessPathVariant::Literal(euid) => {
+                AccessTermVariant::Literal(euid) => {
                     Expr::val(ast::Literal::EntityUID(std::sync::Arc::new(euid.clone())))
                 }
-                AccessPathVariant::Var(var) => Expr::var(*var),
-                AccessPathVariant::String(s) => Expr::val(ast::Literal::String(s.clone())),
-                AccessPathVariant::Attribute { of, attr } => {
+                AccessTermVariant::Var(var) => Expr::var(*var),
+                AccessTermVariant::String(s) => Expr::val(ast::Literal::String(s.clone())),
+                AccessTermVariant::Attribute { of, attr } => {
                     let base_expr = of.to_expr(dag)?;
                     Expr::get_attr(base_expr, attr.clone())
                 }
-                AccessPathVariant::Tag { of, tag } => {
+                AccessTermVariant::Tag { of, tag } => {
                     let base_expr = of.to_expr(dag)?;
                     let tag_expr = tag.to_expr(dag)?;
                     Expr::get_tag(base_expr, tag_expr)
                 }
-                AccessPathVariant::Ancestor { of, ancestor } => {
+                AccessTermVariant::Ancestor { of, ancestor } => {
                     // For ancestor relationships, use the in keyword
                     let ancestor_expr = ancestor.to_expr(dag)?;
                     let entity_expr = of.to_expr(dag)?;
@@ -278,7 +278,7 @@ impl AccessPath {
             })
         } else {
             // return an error, you used an access path with the wrong entity manifest
-            Err(super::AccessPathNotFoundError { path_id: self.id })
+            Err(super::AccessTermNotFoundError { path_id: self.id })
         }
     }
 }

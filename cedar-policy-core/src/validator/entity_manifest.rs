@@ -38,7 +38,7 @@ mod type_annotations;
 
 // Import errors directly
 pub use crate::validator::entity_manifest::errors::{
-    AccessPathNotFoundError, ConversionError, EntityManifestError, EntityManifestFromJsonError,
+    AccessTermNotFoundError, ConversionError, EntityManifestError, EntityManifestFromJsonError,
     MismatchedEntityManifestError, MismatchedMissingEntityError, MismatchedNotStrictSchemaError,
     PartialExpressionError, PartialRequestError, PathExpressionParseError,
     UnsupportedCedarFeatureError,
@@ -64,7 +64,7 @@ pub struct RequestTypePaths {
     /// The backing store for the paths, a directed acyclic graph
     pub(crate) dag: AccessDag,
     /// The set of access paths required for this request type
-    pub(crate) access_paths: AccessPaths,
+    pub(crate) access_paths: AccessTerms,
 }
 
 impl RequestTypePaths {
@@ -73,7 +73,7 @@ impl RequestTypePaths {
         Self {
             request_type,
             dag: AccessDag::default(),
-            access_paths: AccessPaths::default(),
+            access_paths: AccessTerms::default(),
         }
     }
 
@@ -93,12 +93,12 @@ impl RequestTypePaths {
     }
 
     /// Get the access paths
-    pub fn access_paths(&self) -> &AccessPaths {
+    pub fn access_paths(&self) -> &AccessTerms {
         &self.access_paths
     }
 
     /// Get mutable access to the access paths
-    pub fn access_paths_mut(&mut self) -> &mut AccessPaths {
+    pub fn access_paths_mut(&mut self) -> &mut AccessTerms {
         &mut self.access_paths
     }
 
@@ -168,15 +168,15 @@ pub struct EntityManifest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AccessDag {
-    /// A map from [`AccessPathInternal`] to the [`AccessPath`], which
+    /// A map from [`AccessTermInternal`] to the [`AccessTerm`], which
     /// indexes the `manifest_store`.
     /// This allows us to de-duplicate equivalent access paths using the "hash cons"
     /// programming trick.
     #[serde_as(as = "Vec<(_, _)>")]
-    pub(crate) manifest_hash_cons: HashMap<AccessPathVariant, AccessPath>,
+    pub(crate) manifest_hash_cons: HashMap<AccessTermVariant, AccessTerm>,
     /// The backing store of access paths in the entity manifest.
-    /// Each entry is the variant for the corresponding AccessPath with the same ID.
-    pub(crate) manifest_store: Vec<AccessPathVariant>,
+    /// Each entry is the variant for the corresponding AccessTerm with the same ID.
+    pub(crate) manifest_store: Vec<AccessTermVariant>,
     /// The types of each access path in the manifest store.
     /// This is populated when the manifest is created, and operations preserve the types (by recomputation).
     /// Each type is an option because some paths may not have a type if they don't appear in the schema.
@@ -189,14 +189,14 @@ pub(crate) struct AccessDag {
 /// Stores a set of access paths.
 #[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct AccessPaths {
+pub struct AccessTerms {
     /// The set of access paths
-    paths: HashSet<AccessPath>,
+    paths: HashSet<AccessTerm>,
 }
 
-impl IntoIterator for AccessPaths {
-    type Item = AccessPath;
-    type IntoIter = std::collections::hash_set::IntoIter<AccessPath>;
+impl IntoIterator for AccessTerms {
+    type Item = AccessTerm;
+    type IntoIter = std::collections::hash_set::IntoIter<AccessTerm>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.paths.into_iter()
@@ -207,19 +207,19 @@ impl IntoIterator for AccessPaths {
 /// attribute or tag accesses, ending in a cedar variable or literal.
 /// Internally represented as a single integer into a backing store
 /// (a directed acyclic graph).
-/// Hashing an [`AccessPath`] is extremely cheap, so resulting data can be cached.
+/// Hashing an [`AccessTerm`] is extremely cheap, so resulting data can be cached.
 #[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Copy)]
-pub struct AccessPath {
+pub struct AccessTerm {
     /// The unique identifier for this path in the [`AccessDag`].
     id: usize,
 }
 
-/// Turn an [`AccessPath`] into a [`AccessPathVariant`] in order to perform pattern matching.
+/// Turn an [`AccessTerm`] into a [`AccessTermVariant`] in order to perform pattern matching.
 /// Stores the access path's constructor and children.
 #[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum AccessPathVariant {
+pub enum AccessTermVariant {
     /// Literal entity ids
     Literal(EntityUID),
     /// A Cedar variable
@@ -229,23 +229,23 @@ pub enum AccessPathVariant {
     /// A record or entity attribute
     Attribute {
         /// The entity whose attribute is being requested
-        of: AccessPath,
+        of: AccessTerm,
         /// The requested attribute
         attr: SmolStr,
     },
     /// An entity tag access
     Tag {
         /// The entity whose tag is requested
-        of: AccessPath,
-        /// The accesspath computing the requested tag (may be a literal string)
-        tag: AccessPath,
+        of: AccessTerm,
+        /// The AccessTerm computing the requested tag (may be a literal string)
+        tag: AccessTerm,
     },
     /// Whether this entity has a particular ancestor is requested
     Ancestor {
         /// The entity whose ancestor is requested
-        of: AccessPath,
+        of: AccessTerm,
         /// The ancestor whose presence is requested
-        ancestor: AccessPath,
+        ancestor: AccessTerm,
     },
 }
 
@@ -272,7 +272,7 @@ impl Display for EntityRoot {
     }
 }
 
-impl AccessPath {
+impl AccessTerm {
     /// Get the variant for this path
     ///
     /// Returns an error if the path is not found in the entity manifest,
@@ -280,25 +280,37 @@ impl AccessPath {
     pub fn get_variant<'a>(
         &self,
         store: &'a AccessDag,
-    ) -> Result<&'a AccessPathVariant, AccessPathNotFoundError> {
+    ) -> Result<&'a AccessTermVariant, AccessTermNotFoundError> {
         store
             .manifest_store
             .get(self.id)
-            .ok_or_else(|| AccessPathNotFoundError { path_id: self.id })
+            .ok_or_else(|| AccessTermNotFoundError { path_id: self.id })
+    }
+
+    /// Like get_variant, but asserts that the path is in the store.
+    /// We use this internally because we know paths that come from the same
+    /// [`RequestTypePaths`] are guaranteed to be in the store.
+    pub(crate) fn get_variant_internal<'store>(
+        &self,
+        store: &'store AccessDag,
+    ) -> &'store AccessTermVariant {
+        // PANIC SAFETY: This function is only called on paths that are in the store.
+        #[allow(clippy::unwrap_used)]
+        self.get_variant(store).unwrap()
     }
 }
 
 impl AccessDag {
-    pub(crate) fn add_path(&mut self, variant: AccessPathVariant) -> AccessPath {
+    pub(crate) fn add_path(&mut self, variant: AccessTermVariant) -> AccessTerm {
         // Check if the variant already exists in the hash_cons map
         if let Some(path) = self.manifest_hash_cons.get(&variant) {
-            // If it does, return the existing AccessPath
+            // If it does, return the existing AccessTerm
             return path.clone();
         }
 
-        // If it doesn't exist, create a new AccessPath with the next available ID
+        // If it doesn't exist, create a new AccessTerm with the next available ID
         let id = self.manifest_store.len();
-        let path = AccessPath { id };
+        let path = AccessTerm { id };
 
         // Add the variant to the hash_cons map
         self.manifest_hash_cons
@@ -307,7 +319,7 @@ impl AccessDag {
         // Add the variant to the manifest_store
         self.manifest_store.push(variant);
 
-        // Return the new AccessPath
+        // Return the new AccessTerm
         path
     }
 }
@@ -334,8 +346,8 @@ impl PathMapping {
     }
 
     /// Map a path from the source manifest to the target manifest
-    pub fn map_path(&self, path: &AccessPath) -> Option<AccessPath> {
-        self.path_map.get(&path.id).map(|&id| AccessPath { id })
+    pub fn map_path(&self, path: &AccessTerm) -> Option<AccessTerm> {
+        self.path_map.get(&path.id).map(|&id| AccessTerm { id })
     }
 }
 
@@ -355,38 +367,38 @@ impl RequestTypePaths {
     /// to the target manifest, creating new paths in the target manifest as needed.
     fn map_variant(
         &mut self,
-        variant: &AccessPathVariant,
+        variant: &AccessTermVariant,
         path_mapping: &mut PathMapping,
-    ) -> AccessPathVariant {
+    ) -> AccessTermVariant {
         match variant {
-            AccessPathVariant::Literal(euid) => AccessPathVariant::Literal(euid.clone()),
-            AccessPathVariant::Var(var) => AccessPathVariant::Var(*var),
-            AccessPathVariant::String(s) => AccessPathVariant::String(s.clone()),
-            AccessPathVariant::Attribute { of, attr } => {
+            AccessTermVariant::Literal(euid) => AccessTermVariant::Literal(euid.clone()),
+            AccessTermVariant::Var(var) => AccessTermVariant::Var(*var),
+            AccessTermVariant::String(s) => AccessTermVariant::String(s.clone()),
+            AccessTermVariant::Attribute { of, attr } => {
                 // Recursively map the 'of' path
                 let mapped_of = self.map_path_or_create(of, path_mapping);
 
-                AccessPathVariant::Attribute {
+                AccessTermVariant::Attribute {
                     of: mapped_of,
                     attr: attr.clone(),
                 }
             }
-            AccessPathVariant::Tag { of, tag } => {
+            AccessTermVariant::Tag { of, tag } => {
                 // Recursively map both paths
                 let mapped_of = self.map_path_or_create(of, path_mapping);
                 let mapped_tag = self.map_path_or_create(tag, path_mapping);
 
-                AccessPathVariant::Tag {
+                AccessTermVariant::Tag {
                     of: mapped_of,
                     tag: mapped_tag,
                 }
             }
-            AccessPathVariant::Ancestor { of, ancestor } => {
+            AccessTermVariant::Ancestor { of, ancestor } => {
                 // Recursively map both paths
                 let mapped_of = self.map_path_or_create(of, path_mapping);
                 let mapped_ancestor = self.map_path_or_create(ancestor, path_mapping);
 
-                AccessPathVariant::Ancestor {
+                AccessTermVariant::Ancestor {
                     of: mapped_of,
                     ancestor: mapped_ancestor,
                 }
@@ -397,9 +409,9 @@ impl RequestTypePaths {
     /// Helper method to map a path or create a new one if it doesn't exist in the mapping
     fn map_path_or_create(
         &mut self,
-        path: &AccessPath,
+        path: &AccessTerm,
         path_mapping: &mut PathMapping,
-    ) -> AccessPath {
+    ) -> AccessTerm {
         // Check if the path is already mapped
         if let Some(mapped_path) = path_mapping.map_path(path) {
             return mapped_path;
@@ -498,37 +510,37 @@ impl EntityManifest {
     }
 }
 
-impl AccessPath {
+impl AccessTerm {
     /// If there are no children, this is a leaf node
     pub(crate) fn is_leaf(&self, store: &AccessDag) -> bool {
         self.children(store).is_empty()
     }
 
     /// Get the immediate children of this path
-    pub(crate) fn children(&self, store: &AccessDag) -> Vec<AccessPath> {
+    pub(crate) fn children(&self, store: &AccessDag) -> Vec<AccessTerm> {
         // PANIC SAFETY: This function is only called on paths that are in the store.
         #[allow(clippy::unwrap_used)]
         let variant = self.get_variant(store).unwrap();
         // Return children based on the variant
         match variant {
-            AccessPathVariant::Attribute { of, .. } => {
+            AccessTermVariant::Attribute { of, .. } => {
                 vec![of.clone()]
             }
-            AccessPathVariant::Tag { of, tag } => {
+            AccessTermVariant::Tag { of, tag } => {
                 vec![of.clone(), tag.clone()]
             }
-            AccessPathVariant::Ancestor { of, ancestor } => {
+            AccessTermVariant::Ancestor { of, ancestor } => {
                 vec![of.clone(), ancestor.clone()]
             }
-            AccessPathVariant::Literal(_) => vec![],
-            AccessPathVariant::Var(_) => vec![],
-            AccessPathVariant::String(_) => vec![],
+            AccessTermVariant::Literal(_) => vec![],
+            AccessTermVariant::Var(_) => vec![],
+            AccessTermVariant::String(_) => vec![],
         }
     }
 
     /// Helper method to collect all subpaths into the provided set
-    /// This is more efficient than creating new AccessPaths objects and extending them
-    pub fn collect_subpaths_into(&self, store: &AccessDag, paths: &mut HashSet<AccessPath>) {
+    /// This is more efficient than creating new AccessTerms objects and extending them
+    pub fn collect_subpaths_into(&self, store: &AccessDag, paths: &mut HashSet<AccessTerm>) {
         // Add self to the paths
         paths.insert(self.clone());
 
@@ -542,15 +554,15 @@ impl AccessPath {
     }
 
     /// Get all subpaths of this path, including itself.
-    pub fn subpaths(&self, store: &AccessDag) -> AccessPaths {
+    pub fn subpaths(&self, store: &AccessDag) -> AccessTerms {
         let mut paths = HashSet::new();
         self.collect_subpaths_into(store, &mut paths);
-        AccessPaths { paths }
+        AccessTerms { paths }
     }
 }
 
-impl AccessPaths {
-    /// Add all the access paths from another [`AccessPaths`]
+impl AccessTerms {
+    /// Add all the access paths from another [`AccessTerms`]
     /// to this one, mutably.
     pub fn extend(&mut self, other: Self) {
         self.paths.extend(other.paths)
@@ -563,24 +575,24 @@ impl AccessPaths {
     }
 
     /// Add a path to the set.
-    pub fn insert(&mut self, path: AccessPath) {
+    pub fn insert(&mut self, path: AccessTerm) {
         self.paths.insert(path);
     }
 
     /// A set with a single element.
-    pub fn from_path(path: AccessPath) -> Self {
+    pub fn from_path(path: AccessTerm) -> Self {
         let mut paths = HashSet::new();
         paths.insert(path);
         Self { paths }
     }
 
     /// Get a reference to the paths.
-    pub fn paths(&self) -> &HashSet<AccessPath> {
+    pub fn paths(&self) -> &HashSet<AccessTerm> {
         &self.paths
     }
 
     /// Remove a path
-    pub fn remove(&mut self, path: &AccessPath) {
+    pub fn remove(&mut self, path: &AccessTerm) {
         self.paths.remove(path);
     }
 }

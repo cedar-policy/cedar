@@ -6,7 +6,7 @@ use crate::{
     ast::Expr,
     validator::{
         entity_manifest::{
-            AccessDag, AccessPath, AccessPathVariant, AccessPaths, EntityManifestError, EntityRoot,
+            AccessDag, AccessTerm, AccessTermVariant, AccessTerms, EntityManifestError, EntityRoot,
             PartialExpressionError, UnsupportedCedarFeatureError,
         },
         types::{EntityRecordKind, Type},
@@ -15,54 +15,54 @@ use crate::{
 
 use crate::ast::{BinaryOp, ExprKind, Literal, UnaryOp, Var};
 
-/// Represents [`AccessPath`]s possibly
+/// Represents [`AccessTerm`]s possibly
 /// wrapped in record or set literals.
 ///
 /// This allows the Entity Manifest to soundly handle
 /// data that is wrapped in record or set literals, then used in equality
 /// operators or dereferenced.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) enum WrappedAccessPaths {
+pub(crate) enum WrappedAccessTerms {
     /// No access paths are needed.
     #[default]
     Empty,
     /// A single access path, starting with a cedar variable.
-    AccessPath(AccessPath),
-    /// The union of two [`WrappedAccessPaths`], denoting that
+    AccessTerm(AccessTerm),
+    /// The union of two [`WrappedAccessTerms`], denoting that
     /// all access paths from both are required.
     /// This is useful for join points in the analysis (`if`, set literals, etc.)
     /// TODO change Rc to box now that we don't need multiple references to same one
-    Union(Rc<WrappedAccessPaths>, Rc<WrappedAccessPaths>),
+    Union(Rc<WrappedAccessTerms>, Rc<WrappedAccessTerms>),
     /// A record literal, each field having access paths.
-    RecordLiteral(HashMap<SmolStr, Rc<WrappedAccessPaths>>),
+    RecordLiteral(HashMap<SmolStr, Rc<WrappedAccessTerms>>),
     /// A set literal containing access paths.
     /// Used to note that this type is wrapped in a literal set.
-    SetLiteral(Rc<WrappedAccessPaths>),
+    SetLiteral(Rc<WrappedAccessTerms>),
     /// Intermediate values like if conditions may not be returned,
     /// but we still need to load them into the entity store.
     WithDroppedPaths {
-        paths: Rc<WrappedAccessPaths>,
-        dropped: Rc<WrappedAccessPaths>,
+        paths: Rc<WrappedAccessTerms>,
+        dropped: Rc<WrappedAccessTerms>,
     },
 }
 
-impl WrappedAccessPaths {
+impl WrappedAccessTerms {
     /// Create an analysis result that starts with a cedar variable
     pub fn from_root(root: EntityRoot, store: &mut AccessDag) -> Rc<Self> {
-        // Create a new AccessPath from the root
+        // Create a new AccessTerm from the root
         let variant = match &root {
-            EntityRoot::Literal(euid) => AccessPathVariant::Literal(euid.clone()),
-            EntityRoot::Var(var) => AccessPathVariant::Var(*var),
+            EntityRoot::Literal(euid) => AccessTermVariant::Literal(euid.clone()),
+            EntityRoot::Var(var) => AccessTermVariant::Var(*var),
         };
 
         // Add the path to the store
         let path = store.add_path(variant);
 
-        Rc::new(WrappedAccessPaths::AccessPath(path.clone()))
+        Rc::new(WrappedAccessTerms::AccessTerm(path.clone()))
     }
 
     /// Add an ancestors required path for each of the wrapped access paths given.
-    /// This function converts the `ancestors_trie` to `AccessPaths` and adds ancestor
+    /// This function converts the `ancestors_trie` to `AccessTerms` and adds ancestor
     /// requirements to the current paths.
     ///
     /// Panics if `access_paths` contains a record or set literal. The typechecker
@@ -70,7 +70,7 @@ impl WrappedAccessPaths {
     pub(crate) fn with_ancestors_required(
         self: Rc<Self>,
         // The access paths for the ancestors
-        access_paths: &Rc<WrappedAccessPaths>,
+        access_paths: &Rc<WrappedAccessTerms>,
         store: &mut AccessDag,
     ) -> Rc<Self> {
         // compute cross product of the access paths and the ancestors
@@ -85,7 +85,7 @@ impl WrappedAccessPaths {
         for of_path in of_access_paths.paths() {
             for ancestor_path in ancestors_access_paths.paths() {
                 // Create a new ancestor required path
-                let ancestor_variant = AccessPathVariant::Ancestor {
+                let ancestor_variant = AccessTermVariant::Ancestor {
                     of: of_path.clone(),
                     ancestor: ancestor_path.clone(),
                 };
@@ -96,11 +96,11 @@ impl WrappedAccessPaths {
             }
         }
         // Return the new wrapped access paths with a drop
-        let mut access_paths_wrapped = Rc::new(WrappedAccessPaths::Empty);
+        let mut access_paths_wrapped = Rc::new(WrappedAccessTerms::Empty);
         // Add the new access paths to the result
         for path in access_paths {
             access_paths_wrapped = access_paths_wrapped
-                .with_dropped_paths(Rc::new(WrappedAccessPaths::AccessPath(path)));
+                .with_dropped_paths(Rc::new(WrappedAccessTerms::AccessTerm(path)));
         }
         self.with_dropped_paths(access_paths_wrapped)
     }
@@ -110,16 +110,16 @@ impl WrappedAccessPaths {
         // The paths that were dropped
         dropped: Rc<Self>,
     ) -> Rc<Self> {
-        Rc::new(WrappedAccessPaths::WithDroppedPaths {
+        Rc::new(WrappedAccessTerms::WithDroppedPaths {
             paths: self,
             dropped,
         })
     }
 
-    /// Convert the [`WrappedAccessPaths`] to a [`AccessPaths`].
+    /// Convert the [`WrappedAccessTerms`] to a [`AccessTerms`].
     /// Returns [`None`] when the wrapped access paths represent a record or set literal.
-    fn returned_access_paths(self: &Rc<Self>) -> Option<AccessPaths> {
-        let mut access_paths = AccessPaths::default();
+    fn returned_access_paths(self: &Rc<Self>) -> Option<AccessTerms> {
+        let mut access_paths = AccessTerms::default();
         if self.add_resulting_access_paths(&mut access_paths) {
             Some(access_paths)
         } else {
@@ -130,39 +130,39 @@ impl WrappedAccessPaths {
     /// Union this analysis result with another, taking the union of the resulting paths.
     /// Takes ownership of self and returns self after mutating it.
     pub(crate) fn union(self: Rc<Self>, other: Rc<Self>) -> Rc<Self> {
-        Rc::new(WrappedAccessPaths::Union(self, other))
+        Rc::new(WrappedAccessTerms::Union(self, other))
     }
 
     /// Get all access paths from this wrapped access paths,
     /// including dropped paths.
-    pub(crate) fn all_access_paths(self: &Rc<Self>) -> AccessPaths {
-        let mut access_paths = AccessPaths::default();
+    pub(crate) fn all_access_paths(self: &Rc<Self>) -> AccessTerms {
+        let mut access_paths = AccessTerms::default();
         self.add_all_access_paths(&mut access_paths);
         access_paths
     }
 
-    fn add_all_access_paths(self: &Rc<Self>, add_to: &mut AccessPaths) {
+    fn add_all_access_paths(self: &Rc<Self>, add_to: &mut AccessTerms) {
         match &**self {
-            WrappedAccessPaths::Empty => (),
-            WrappedAccessPaths::AccessPath(path) => {
+            WrappedAccessTerms::Empty => (),
+            WrappedAccessTerms::AccessTerm(path) => {
                 add_to.paths.insert(path.clone());
             }
-            WrappedAccessPaths::Union(left, right) => {
+            WrappedAccessTerms::Union(left, right) => {
                 // Both must succeed for the operation to be successful
                 left.add_all_access_paths(add_to);
                 right.add_all_access_paths(add_to);
             }
-            WrappedAccessPaths::RecordLiteral(fields) => {
+            WrappedAccessTerms::RecordLiteral(fields) => {
                 for field in fields.values() {
                     // Add the access paths of each field
                     field.add_all_access_paths(add_to);
                 }
             }
-            WrappedAccessPaths::SetLiteral(elements) => {
+            WrappedAccessTerms::SetLiteral(elements) => {
                 // Add the access paths of the set elements
                 elements.add_all_access_paths(add_to);
             }
-            WrappedAccessPaths::WithDroppedPaths { paths, dropped } => {
+            WrappedAccessTerms::WithDroppedPaths { paths, dropped } => {
                 dropped.add_all_access_paths(add_to);
                 // We always add the paths, even if we don't include the dropped paths
                 paths.add_all_access_paths(add_to);
@@ -170,20 +170,20 @@ impl WrappedAccessPaths {
         }
     }
 
-    fn add_resulting_access_paths(self: &Rc<Self>, add_to: &mut AccessPaths) -> bool {
+    fn add_resulting_access_paths(self: &Rc<Self>, add_to: &mut AccessTerms) -> bool {
         match &**self {
-            WrappedAccessPaths::Empty => true,
-            WrappedAccessPaths::AccessPath(path) => {
+            WrappedAccessTerms::Empty => true,
+            WrappedAccessTerms::AccessTerm(path) => {
                 add_to.paths.insert(path.clone());
                 true
             }
-            WrappedAccessPaths::Union(left, right) => {
+            WrappedAccessTerms::Union(left, right) => {
                 // Both must succeed for the operation to be successful
                 left.add_resulting_access_paths(add_to) && right.add_resulting_access_paths(add_to)
             }
-            WrappedAccessPaths::RecordLiteral(_) => false,
-            WrappedAccessPaths::SetLiteral(_) => false,
-            WrappedAccessPaths::WithDroppedPaths { paths, dropped: _ } => {
+            WrappedAccessTerms::RecordLiteral(_) => false,
+            WrappedAccessTerms::SetLiteral(_) => false,
+            WrappedAccessTerms::WithDroppedPaths { paths, dropped: _ } => {
                 paths.add_resulting_access_paths(add_to)
             }
         }
@@ -212,7 +212,7 @@ impl WrappedAccessPaths {
         for of_path in of_access_paths.paths() {
             for tag_path in tag_access_paths.paths() {
                 // Create a new tag access path
-                let tag_variant = AccessPathVariant::Tag {
+                let tag_variant = AccessTermVariant::Tag {
                     of: of_path.clone(),
                     tag: tag_path.clone(),
                 };
@@ -224,10 +224,10 @@ impl WrappedAccessPaths {
         }
 
         // now compute the union of all these paths
-        let mut res = Rc::new(WrappedAccessPaths::Empty);
+        let mut res = Rc::new(WrappedAccessTerms::Empty);
         // Add the new access paths to the result
         for path in access_paths {
-            res = res.union(Rc::new(WrappedAccessPaths::AccessPath(path)));
+            res = res.union(Rc::new(WrappedAccessTerms::AccessTerm(path)));
         }
         // don't forget to drop self and tag paths, since they represent more paths than just returned access paths
         res.with_dropped_paths(self).with_dropped_paths(tag_paths)
@@ -240,18 +240,18 @@ impl WrappedAccessPaths {
         store: &mut AccessDag,
     ) -> Rc<Self> {
         match &*self {
-            WrappedAccessPaths::AccessPath(access_path) => {
+            WrappedAccessTerms::AccessTerm(access_path) => {
                 // Create a new attribute access path
-                let attr_variant = AccessPathVariant::Attribute {
+                let attr_variant = AccessTermVariant::Attribute {
                     of: access_path.clone(),
                     attr: attr.clone(),
                 };
                 // Add the new path to the store
                 let new_path = store.add_path(attr_variant);
                 // Return the new wrapped access path
-                Rc::new(WrappedAccessPaths::AccessPath(new_path))
+                Rc::new(WrappedAccessTerms::AccessTerm(new_path))
             }
-            WrappedAccessPaths::RecordLiteral(record) => {
+            WrappedAccessTerms::RecordLiteral(record) => {
                 if let Some(field) = record.get(attr) {
                     // drop the rest of the record, since we don't want to forget those paths
                     field.clone().with_dropped_paths(self)
@@ -260,17 +260,17 @@ impl WrappedAccessPaths {
                 }
             }
             #[allow(clippy::panic)]
-            WrappedAccessPaths::SetLiteral(_) => {
+            WrappedAccessTerms::SetLiteral(_) => {
                 panic!("Attempted to dereference a set literal.")
             }
-            WrappedAccessPaths::WithDroppedPaths { paths, dropped } => {
-                Rc::new(WrappedAccessPaths::WithDroppedPaths {
+            WrappedAccessTerms::WithDroppedPaths { paths, dropped } => {
+                Rc::new(WrappedAccessTerms::WithDroppedPaths {
                     paths: Rc::clone(paths).get_or_has_attr(attr, store),
                     dropped: Rc::clone(dropped),
                 })
             }
-            WrappedAccessPaths::Empty => Rc::new(WrappedAccessPaths::Empty),
-            WrappedAccessPaths::Union(left, right) => Rc::new(WrappedAccessPaths::Union(
+            WrappedAccessTerms::Empty => Rc::new(WrappedAccessTerms::Empty),
+            WrappedAccessTerms::Union(left, right) => Rc::new(WrappedAccessTerms::Union(
                 Rc::clone(left).get_or_has_attr(attr, store),
                 Rc::clone(right).get_or_has_attr(attr, store),
             )),
@@ -283,13 +283,13 @@ impl WrappedAccessPaths {
     /// by the type, dropping them afterwards since type checks result in boolean values.
     pub(crate) fn require_full_type(self: Rc<Self>, ty: &Type, store: &mut AccessDag) -> Rc<Self> {
         match &*self {
-            WrappedAccessPaths::AccessPath(path) => {
+            WrappedAccessTerms::AccessTerm(path) => {
                 // Use type_to_access_paths to compute the full access paths for the type
                 // and add them to the store
                 self.clone()
                     .with_dropped_paths(type_to_access_paths(ty, store, path))
             }
-            WrappedAccessPaths::RecordLiteral(literal_fields) => match ty {
+            WrappedAccessTerms::RecordLiteral(literal_fields) => match ty {
                 Type::EntityOrRecord(EntityRecordKind::Record {
                     attrs: record_attrs,
                     ..
@@ -314,7 +314,7 @@ impl WrappedAccessPaths {
                     panic!("Found record literal when expected {} type", ty);
                 }
             },
-            WrappedAccessPaths::SetLiteral(elements) => match ty {
+            WrappedAccessTerms::SetLiteral(elements) => match ty {
                 Type::Set { element_type } => {
                     // PANIC SAFETY: Typechecking should give concrete types for set elements.
                     #[allow(clippy::expect_used)]
@@ -333,12 +333,12 @@ impl WrappedAccessPaths {
                     panic!("Found set literal when expected {} type", ty);
                 }
             },
-            WrappedAccessPaths::Empty => self.clone(),
-            WrappedAccessPaths::Union(left, right) => self
+            WrappedAccessTerms::Empty => self.clone(),
+            WrappedAccessTerms::Union(left, right) => self
                 .clone()
                 .with_dropped_paths(left.clone().require_full_type(ty, store))
                 .with_dropped_paths(right.clone().require_full_type(ty, store)),
-            WrappedAccessPaths::WithDroppedPaths {
+            WrappedAccessTerms::WithDroppedPaths {
                 paths,
                 dropped: _dropped,
             } => self
@@ -352,8 +352,8 @@ impl WrappedAccessPaths {
 fn type_to_access_paths(
     ty: &Type,
     store: &mut AccessDag,
-    path: &AccessPath,
-) -> Rc<WrappedAccessPaths> {
+    path: &AccessTerm,
+) -> Rc<WrappedAccessTerms> {
     match ty {
         // if it's not an entity or record, slice ends here
         Type::ExtensionType { .. }
@@ -361,7 +361,7 @@ fn type_to_access_paths(
         | Type::True
         | Type::False
         | Type::Primitive { .. }
-        | Type::Set { .. } => Rc::new(WrappedAccessPaths::Empty),
+        | Type::Set { .. } => Rc::new(WrappedAccessTerms::Empty),
         Type::EntityOrRecord(record_type) => {
             entity_or_record_to_access_paths(record_type, store, path)
         }
@@ -372,21 +372,21 @@ fn type_to_access_paths(
 fn entity_or_record_to_access_paths(
     ty: &EntityRecordKind,
     store: &mut AccessDag,
-    path: &AccessPath,
-) -> Rc<WrappedAccessPaths> {
+    path: &AccessTerm,
+) -> Rc<WrappedAccessTerms> {
     match ty {
         EntityRecordKind::ActionEntity { attrs, .. } | EntityRecordKind::Record { attrs, .. } => {
-            let mut paths = Rc::new(WrappedAccessPaths::default());
+            let mut paths = Rc::new(WrappedAccessTerms::default());
             for (attr_name, attr_type) in attrs.iter() {
                 // Create a new path for this attribute
-                let attr_variant = AccessPathVariant::Attribute {
+                let attr_variant = AccessTermVariant::Attribute {
                     of: path.clone(),
                     attr: attr_name.clone(),
                 };
                 let attr_path = store.add_path(attr_variant);
 
                 paths = paths
-                    .with_dropped_paths(Rc::new(WrappedAccessPaths::AccessPath(attr_path.clone())));
+                    .with_dropped_paths(Rc::new(WrappedAccessTerms::AccessTerm(attr_path.clone())));
 
                 // Recursively process the attribute's type
                 let attr_paths = type_to_access_paths(&attr_type.attr_type, store, &attr_path);
@@ -396,7 +396,7 @@ fn entity_or_record_to_access_paths(
         }
         EntityRecordKind::Entity(_) | EntityRecordKind::AnyEntity => {
             // no need to load data for entities, which are compared using ids
-            WrappedAccessPaths::Empty.into()
+            WrappedAccessTerms::Empty.into()
         }
     }
 }
@@ -405,27 +405,27 @@ fn entity_or_record_to_access_paths(
 /// Computes the access paths required to evaluate the expression.
 ///
 /// This function populates the provided `AccessDag` store with paths
-/// and returns an `WrappedAccessPaths` analysis result.
-/// The [`WrappedAccessPaths`] contains the result's access paths
+/// and returns an `WrappedAccessTerms` analysis result.
+/// The [`WrappedAccessTerms`] contains the result's access paths
 /// and any access paths encountered during the analysis.
 pub(crate) fn analyze_expr_access_paths(
     expr: &Expr<Option<Type>>,
     store: &mut AccessDag,
-) -> Result<Rc<WrappedAccessPaths>, EntityManifestError> {
+) -> Result<Rc<WrappedAccessTerms>, EntityManifestError> {
     Ok(match expr.expr_kind() {
         ExprKind::Slot(slot_id) => {
             if slot_id.is_principal() {
-                WrappedAccessPaths::from_root(EntityRoot::Var(Var::Principal), store)
+                WrappedAccessTerms::from_root(EntityRoot::Var(Var::Principal), store)
             } else {
                 assert!(slot_id.is_resource());
-                WrappedAccessPaths::from_root(EntityRoot::Var(Var::Resource), store)
+                WrappedAccessTerms::from_root(EntityRoot::Var(Var::Resource), store)
             }
         }
 
-        ExprKind::Var(var) => WrappedAccessPaths::from_root(EntityRoot::Var(*var), store),
+        ExprKind::Var(var) => WrappedAccessTerms::from_root(EntityRoot::Var(*var), store),
 
         ExprKind::Lit(Literal::EntityUID(literal)) => {
-            WrappedAccessPaths::from_root(EntityRoot::Literal((**literal).clone()), store)
+            WrappedAccessTerms::from_root(EntityRoot::Literal((**literal).clone()), store)
         }
 
         ExprKind::Unknown(_) => Err(PartialExpressionError {})?,
@@ -435,13 +435,13 @@ pub(crate) fn analyze_expr_access_paths(
         ExprKind::Lit(lit) => {
             match lit {
                 Literal::String(str) => {
-                    let variant = AccessPathVariant::String(SmolStr::from(str.clone()));
+                    let variant = AccessTermVariant::String(SmolStr::from(str.clone()));
                     let path = store.add_path(variant);
-                    Rc::new(WrappedAccessPaths::AccessPath(path))
+                    Rc::new(WrappedAccessTerms::AccessTerm(path))
                 }
                 _ => {
                     // empty paths for other literals
-                    return Ok(Rc::new(WrappedAccessPaths::Empty));
+                    return Ok(Rc::new(WrappedAccessTerms::Empty));
                 }
             }
         }
@@ -543,7 +543,7 @@ pub(crate) fn analyze_expr_access_paths(
 
         ExprKind::ExtensionFunctionApp { fn_name: _, args } => {
             // Collect paths from all arguments
-            let mut result = Rc::new(WrappedAccessPaths::default());
+            let mut result = Rc::new(WrappedAccessTerms::default());
 
             for arg in args.iter() {
                 result = result.union(analyze_expr_access_paths(arg, store)?);
@@ -559,7 +559,7 @@ pub(crate) fn analyze_expr_access_paths(
         } => analyze_expr_access_paths(expr, store)?,
 
         ExprKind::Set(contents) => {
-            let mut combined_paths = Rc::new(WrappedAccessPaths::default());
+            let mut combined_paths = Rc::new(WrappedAccessTerms::default());
 
             // Collect paths from all set elements
             for expr in &**contents {
@@ -568,7 +568,7 @@ pub(crate) fn analyze_expr_access_paths(
             }
 
             // Wrap the combined paths in a SetLiteral
-            Rc::new(WrappedAccessPaths::SetLiteral(combined_paths))
+            Rc::new(WrappedAccessTerms::SetLiteral(combined_paths))
         }
 
         ExprKind::Record(content) => {
@@ -580,7 +580,7 @@ pub(crate) fn analyze_expr_access_paths(
                 record_contents.insert(key.clone(), field_result);
             }
 
-            Rc::new(WrappedAccessPaths::RecordLiteral(record_contents))
+            Rc::new(WrappedAccessTerms::RecordLiteral(record_contents))
         }
 
         ExprKind::GetAttr { expr, attr } => {
