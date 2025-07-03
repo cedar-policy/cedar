@@ -178,9 +178,13 @@ pub(crate) struct AccessDag {
     /// The backing store of access paths in the entity manifest.
     /// Each entry is the variant for the corresponding AccessPath with the same ID.
     pub(crate) manifest_store: Vec<AccessPathVariant>,
+    /// The types of each access path in the manifest store.
+    /// This is populated when the manifest is created, and operations preserve the types (by recomputation).
+    /// Each type is an option because some paths may not have a type if they don't appear in the schema.
+    /// This happens for example with `has` operations on entities without the attribute.
     #[serde(skip_serializing)]
     #[serde(skip_deserializing)]
-    pub(crate) types: Option<Vec<Type>>,
+    pub(crate) types: Vec<Option<Type>>,
 }
 
 /// Stores a set of access paths.
