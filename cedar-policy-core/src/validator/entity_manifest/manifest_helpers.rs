@@ -83,12 +83,12 @@ impl RequestTypePaths {
         result.into_iter().collect()
     }
 
-    /// For each reachable [`AccessTerm`] in the path with
-    /// an entity type, computes the [`AccessTrie`] needed
-    /// for that entity.
-    ///
-    /// This is a helper which computes the access tries needed during
-    /// entity loading with the [`EntityLoader`] API.
+    /// For each reachable critical [`AccessTerm`]
+    /// computes the [`AccessTrie`] needed
+    /// for that term.
+    /// This trie either corresponds to an entity or a tag.
+    /// See the documentation for [`RequestTypePaths::is_critical_path`]
+    /// for more information on what a critical path is.
     pub(crate) fn compute_access_tries(
         &self,
         dependents_map: &HashMap<AccessTerm, Vec<AccessTerm>>,
@@ -99,7 +99,7 @@ impl RequestTypePaths {
         // Build the AccessTrie for each entity path
         let mut result = HashMap::new();
         for entity_path in entity_paths {
-            let trie = self.build_access_trie_for_entity(&entity_path, dependents_map);
+            let trie = self.build_access_trie_for_critical(&entity_path, dependents_map);
 
             if !trie.fields.is_empty() {
                 result.insert(entity_path, trie);
@@ -120,13 +120,13 @@ impl RequestTypePaths {
         self.is_entity_typed_path(path) || self.is_tag_path(path)
     }
 
-    fn is_tag_path(&self, path: &AccessTerm) -> bool {
+    pub(crate) fn is_tag_path(&self, path: &AccessTerm) -> bool {
         let variant = path.get_variant_internal(&self.dag);
         // Check if the path is a tag path
         matches!(variant, AccessTermVariant::Tag { .. })
     }
 
-    fn is_entity_typed_path(&self, path: &AccessTerm) -> bool {
+    pub(crate) fn is_entity_typed_path(&self, path: &AccessTerm) -> bool {
         // Check if we have type information
         if path.id < self.dag.types.len() {
             // Check if the type is an entity type
@@ -158,7 +158,7 @@ impl RequestTypePaths {
     }
 
     /// Recursively build the `AccessTrie` for an entity path
-    fn build_access_trie_for_entity(
+    fn build_access_trie_for_critical(
         &self,
         entity_path: &AccessTerm,
         dependents_map: &HashMap<AccessTerm, Vec<AccessTerm>>,

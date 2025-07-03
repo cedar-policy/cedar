@@ -47,7 +47,7 @@ impl EntityLoader for EntitySlicer<'_> {
         for request in to_load {
             if let Dereference::Data(entity) = self.entities.entity(&request.entity_id) {
                 // filter down the entity fields to those requested
-                res.push(Some(request.access_trie.slice_entity(entity)?));
+                res.push(Some(request.slice_entity(entity)?));
             } else {
                 res.push(None);
             }
@@ -83,12 +83,11 @@ impl EntityLoader for EntitySlicer<'_> {
     }
 }
 
-impl AccessTrie {
-    /// Given an entities store, an entity id, and a resulting store
-    /// Slice the entities and put them in the resulting store.
+impl EntityRequest {
+    /// Slice the entity using the request precisely
     fn slice_entity(&self, entity: &Entity) -> Result<Entity, EntitySliceError> {
         let mut new_entity = HashMap::<SmolStr, PartialValue>::new();
-        for (field, slice) in &self.fields {
+        for (field, slice) in &self.access_trie.fields {
             // only slice when field is available
             if let Some(pval) = entity.get(field).cloned() {
                 let PartialValue::Value(val) = pval else {
@@ -100,15 +99,30 @@ impl AccessTrie {
             }
         }
 
+        let mut tags = HashMap::<SmolStr, PartialValue>::new();
+
+        for (tag, slice) in &self.tags {
+            // only slice when tag is available
+            if let Some(pval) = entity.get_tag(tag).cloned() {
+                let PartialValue::Value(val) = pval else {
+                    return Err(PartialEntityError {}.into());
+                };
+                let sliced = slice.slice_val(&val)?;
+                tags.insert(tag.clone(), PartialValue::Value(sliced));
+            }
+        }
+
         Ok(Entity::new_with_attr_partial_value(
             entity.uid().clone(),
             new_entity,
             Default::default(),
             Default::default(),
-            [], // TODO: entity slicing does not yet support tags
+            tags,
         ))
     }
+}
 
+impl AccessTrie {
     fn slice_val(&self, val: &Value) -> Result<Value, EntitySliceError> {
         Ok(match val.value_kind() {
             ValueKind::Lit(Literal::EntityUID(_)) => {
