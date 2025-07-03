@@ -73,9 +73,9 @@ fn schema() -> ValidatorSchema {
         "
 entity User = {
   name: String,
-};
+} tags String;
 
-entity Document;
+entity Document tags String;
 
 action Read appliesTo {
   principal: [User],
@@ -827,5 +827,374 @@ action Read appliesTo {
             "parents": [ { "type" : "Group", "id" : "oliver"}, ],
             "attrs": {}
         }]),
+    );
+}
+
+#[test]
+fn test_slice_has_tag_simple() {
+    test_entity_slice_with_policy(
+        r#"permit(principal, action, resource)
+when {
+    principal.hasTag("mytag")
+};"#,
+        None,
+        schema(),
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {
+                    "name" : "Oliver"
+                },
+                "parents" : [],
+                "tags": {
+                    "mytag": "tagvalue",
+                    "othertag": "unused"
+                }
+            },
+        ]),
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {},
+                "parents" : [],
+                "tags": {
+                    "mytag": "tagvalue"
+                }
+            },
+        ]),
+    );
+}
+
+#[test]
+fn test_slice_has_tag_computed() {
+    let schema = ValidatorSchema::from_cedarschema_str(
+        "
+entity User = {
+  name: String,
+} tags String;
+
+entity Document = {
+  owner: User,
+  viewer: User,
+} tags String;
+
+action Read appliesTo {
+  principal: [User],
+  resource: [Document]
+};
+        ",
+        Extensions::all_available(),
+    )
+    .unwrap()
+    .0;
+
+    test_entity_slice_with_policy(
+        r#"permit(principal, action, resource)
+when {
+    principal.hasTag(resource.owner.name)
+};"#,
+        None,
+        schema,
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {
+                    "name" : "Oliver"
+                },
+                "parents" : [],
+                "tags": {
+                    "unrelatedtag": "value1",
+                    "John": "johnvalue",
+                }
+            },
+            {
+                "uid" : { "type" : "Document", "id" : "dummy"},
+                "attrs" : {
+                    "owner": { "type" : "User", "id" : "john"},
+                    "viewer": { "type" : "User", "id" : "oliver"}
+                },
+                "parents" : [],
+                "tags": {
+                    "doctag": "docvalue"
+                }
+            },
+            {
+                "uid" : { "type" : "User", "id" : "john"},
+                "attrs" : {
+                    "name" : "John"
+                },
+                "parents" : [],
+                "tags": {
+                    "johnunrelatedtag": "johnvalue"
+                }
+            },
+        ]),
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {},
+                "parents" : [],
+                "tags": {
+                    "John": "johnvalue"
+                }
+            },
+            {
+                "uid" : { "type" : "Document", "id" : "dummy"},
+                "attrs" : {
+                    "owner": { "__entity": { "type" : "User", "id" : "john"}}
+                },
+                "parents" : [],
+                "tags": {}
+            },
+            {
+                "uid" : { "type" : "User", "id" : "john"},
+                "attrs" : {
+                    "name" : "John"
+                },
+                "parents" : [],
+                "tags": {}
+            },
+        ]),
+    );
+}
+
+#[test]
+fn test_slice_multiple_possible_tags_and_entities() {
+    let schema = ValidatorSchema::from_cedarschema_str(
+        "
+entity User = {
+  name: String,
+} tags String;
+
+entity Document = {
+  owner: User,
+  viewer: User,
+} tags String;
+
+action Read appliesTo {
+  principal: [User],
+  resource: [Document]
+};
+        ",
+        Extensions::all_available(),
+    )
+    .unwrap()
+    .0;
+
+    test_entity_slice_with_policy(
+        r#"permit(principal, action, resource)
+when {
+        (if 
+            resource.owner.name == "oliver"
+            then resource.owner
+            else resource.viewer
+        ).hasTag(if principal.name == "yihong"
+            then "yihong"
+            else resource.owner.name)
+};"#,
+        None,
+        schema,
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {
+                    "name" : "Oliver"
+                },
+                "parents" : [],
+                "tags": {
+                    "yihong": "value1",
+                    "John": "value2",
+                    "unused": "value3"
+                }
+            },
+            {
+                "uid" : { "type" : "Document", "id" : "dummy"},
+                "attrs" : {
+                    "owner": { "type" : "User", "id" : "john"},
+                    "viewer": { "type" : "User", "id" : "alice"}
+                },
+                "parents" : [],
+                "tags": {
+                    "doctag": "docvalue"
+                }
+            },
+            {
+                "uid" : { "type" : "User", "id" : "john"},
+                "attrs" : {
+                    "name" : "John"
+                },
+                "parents" : [],
+                "tags": {
+                    "yihong": "johnvalue1",
+                    "John": "johnvalue2",
+                    "othertag": "johnvalue3"
+                }
+            },
+            {
+                "uid" : { "type" : "User", "id" : "alice"},
+                "attrs" : {
+                    "name" : "Alice"
+                },
+                "parents" : [],
+                "tags": {
+                    "yihong": "alicevalue1",
+                    "John": "alicevalue2",
+                    "alicetag": "alicevalue3"
+                }
+            },
+        ]),
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {
+                    "name" : "Oliver"
+                },
+                "parents" : [],
+                "tags": {}
+            },
+            {
+                "uid" : { "type" : "Document", "id" : "dummy"},
+                "attrs" : {
+                    "owner": { "__entity": { "type" : "User", "id" : "john"}},
+                    "viewer": { "__entity": { "type" : "User", "id" : "alice"}}
+                },
+                "parents" : [],
+                "tags": {}
+            },
+            {
+                "uid" : { "type" : "User", "id" : "john"},
+                "attrs" : {
+                    "name" : "John"
+                },
+                "parents" : [],
+                "tags": {
+                    "yihong": "johnvalue1",
+                    "John": "johnvalue2"
+                }
+            },
+            {
+                "uid" : { "type" : "User", "id" : "alice"},
+                "attrs" : {
+                    "name" : "Alice"
+                },
+                "parents" : [],
+                "tags": {
+                    "yihong": "alicevalue1",
+                    "John": "alicevalue2"
+                }
+            },
+        ]),
+    );
+}
+
+#[test]
+fn test_slice_tag_equality() {
+    test_entity_slice_with_policy(
+        r#"permit(principal, action, resource)
+when {
+    principal.getTag("classification") == "secret"
+};"#,
+        None,
+        schema(),
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {
+                    "name" : "Oliver"
+                },
+                "parents" : [],
+                "tags": {
+                    "classification": "secret",
+                    "department": "engineering",
+                    "unused": "value"
+                }
+            },
+        ]),
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {},
+                "parents" : [],
+                "tags": {
+                    "classification": "secret"
+                }
+            },
+        ]),
+    );
+}
+
+#[test]
+fn test_slice_no_tags_used() {
+    test_entity_slice_with_policy(
+        r#"permit(principal, action, resource)
+when {
+    principal.name == "Oliver"
+};"#,
+        None,
+        schema(),
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {
+                    "name" : "Oliver"
+                },
+                "parents" : [],
+                "tags": {
+                    "classification": "secret",
+                    "department": "engineering"
+                }
+            },
+        ]),
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {
+                    "name" : "Oliver"
+                },
+                "parents" : [],
+                "tags": {}
+            },
+        ]),
+    );
+}
+
+#[test]
+fn test_slice_conditional_tag_access() {
+    test_entity_slice_with_policy(
+        r#"permit(principal, action, resource)
+when {
+    if principal.name == "Oliver"
+    then principal.getTag("secret") == "value"
+    else principal.getTag("public") == "info"
+};"#,
+        None,
+        schema(),
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {
+                    "name" : "Oliver"
+                },
+                "parents" : [],
+                "tags": {
+                    "secret": "value",
+                    "public": "info",
+                    "unused": "ignored"
+                }
+            },
+        ]),
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {
+                    "name" : "Oliver"
+                },
+                "parents" : [],
+                "tags": {
+                    "secret": "value",
+                    "public": "info"
+                }
+            },
+        ]),
     );
 }

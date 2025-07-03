@@ -29,7 +29,7 @@ use crate::{
     validator::entity_manifest::{
         errors::{ExpectedEntityOrEntitySetError, ExpectedEntityTypeError},
         manifest_helpers::AccessTrie,
-        AccessPath, AccessPathVariant, EntityManifest, RequestTypePaths,
+        AccessTerm, AccessTermVariant, EntityManifest, RequestTypePaths,
     },
 };
 
@@ -38,16 +38,20 @@ use crate::validator::entity_manifest::errors::{
 };
 
 /// A request that an entity be loaded.
+/// Entities this entity references need not be loaded, as they will be requested separately.
+///
 /// Optionally, instead of loading the full entity the `access_trie`
-/// may be used to load only some fields of the entity.
+/// may be used to load only some fields of the entity and the `tags` field
+/// can be used to load only specific tags.
 #[derive(Debug)]
 pub(crate) struct EntityRequest {
     /// The id of the entity requested
     pub(crate) entity_id: EntityUID,
     /// The access path that resulted in this entity
-    pub(crate) access_path: AccessPath,
-    /// The requested tags for the entity TODO set these during loading
-    pub(crate) tags: HashSet<String>,
+    pub(crate) access_path: AccessTerm,
+    /// The requested tags for the entity, if any
+    /// Each tag's value can be loaded completely or (in the case of records) partially using the associated `AccessTrie`.
+    pub(crate) tags: HashSet<String, AccessTrie>,
     /// A trie containing the access paths needed for this entity
     pub(crate) access_trie: AccessTrie,
 }
@@ -69,7 +73,7 @@ pub(crate) struct AncestorsRequest {
 /// Implement [`EntityLoader`] to easily load entities using their ids
 /// into a Cedar [`Entities`] store.
 /// The most basic implementation loads full entities (including all ancestors) in the `load_entities` method and loads the context in the `load_context` method.
-/// More advanced implementations make use of the [`AccessPaths`]s provided to load partial entities and context, as well as the `load_ancestors` method to load particular ancestors.
+/// More advanced implementations make use of the [`AccessTerms`]s provided to load partial entities and context, as well as the `load_ancestors` method to load particular ancestors.
 ///
 /// Warning: `load_entities` is called multiple times. If database
 /// consistency is required, this API should not be used. Instead, use the entity manifest directly.
@@ -100,7 +104,7 @@ pub(crate) trait EntityLoader {
 
 /// Helper function to determine the initial entities to load based on the access tries
 fn initial_entities_to_load(
-    access_tries: &HashMap<AccessPath, AccessTrie>,
+    access_tries: &HashMap<AccessTerm, AccessTrie>,
     for_request: &RequestTypePaths,
     request: &Request,
 ) -> Vec<EntityRequest> {
@@ -109,17 +113,17 @@ fn initial_entities_to_load(
     for (access_path, trie) in access_tries.iter() {
         if let Ok(variant) = access_path.get_variant(&for_request.dag) {
             let entity_id = match variant {
-                AccessPathVariant::Var(Var::Principal) => request.principal().uid().cloned(),
-                AccessPathVariant::Var(Var::Action) => request.action().uid().cloned(),
-                AccessPathVariant::Var(Var::Resource) => request.resource().uid().cloned(),
-                AccessPathVariant::Literal(euid) => Some(euid.clone()),
+                AccessTermVariant::Var(Var::Principal) => request.principal().uid().cloned(),
+                AccessTermVariant::Var(Var::Action) => request.action().uid().cloned(),
+                AccessTermVariant::Var(Var::Resource) => request.resource().uid().cloned(),
+                AccessTermVariant::Literal(euid) => Some(euid.clone()),
                 _ => None,
             };
 
             if let Some(entity_id) = entity_id {
                 to_load.push(EntityRequest {
                     entity_id,
-                    tags: HashSet::new(), // No tags for now
+                    tags: HashSet::new(),
                     access_trie: trie.clone(),
                     access_path: access_path.clone(),
                 });
@@ -154,12 +158,13 @@ pub(crate) fn load_entities(
         };
     };
 
-    // Compute the access tries for all entities
-    let access_tries = for_request.compute_access_tries();
-
     // Build a map of entity paths to their dependent entities
     let reachable_paths = for_request.reachable_paths();
     let dependents_map = for_request.build_dependents_map(&reachable_paths);
+
+    // Compute the access tries for all entities
+    let access_tries = for_request.compute_access_tries(&dependents_map);
+
     let dependent_entities_map = for_request.build_dependent_entities_map(&dependents_map);
 
     // Get initial entities to load and track processed entities
@@ -248,11 +253,11 @@ pub(crate) fn load_entities(
     // Load ancestors for all entities
     let mut ancestors_requests = HashMap::new();
 
-    // compute ancestors requests by finding all AccessPathVariant::Ancestor variants
+    // compute ancestors requests by finding all AccessTermVariant::Ancestor variants
     // look up the entity ids in the Entities store using the paths
     // then create an ancestor request
     for path in reachable_paths.iter() {
-        if let Ok(AccessPathVariant::Ancestor { of, ancestor }) = path.get_variant(&for_request.dag)
+        if let Ok(AccessTermVariant::Ancestor { of, ancestor }) = path.get_variant(&for_request.dag)
         {
             // Extract EntityUID from the Value
             let of_val_result = of.compute_value(&entities_map, &for_request.dag, request)?;
@@ -310,8 +315,6 @@ pub(crate) fn load_entities(
             ancestor_request.ancestors.extend(ancestors_to_request);
         }
     }
-
-    eprintln!("ancestors requests: {:?}", ancestors_requests);
 
     if !ancestors_requests.is_empty() {
         // Convert HashMap to Vec for the loader API

@@ -29,7 +29,7 @@ use crate::ast::{
     self, BinaryOp, EntityUID, Expr, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
 };
 
-use crate::validator::entity_manifest::analysis::WrappedAccessPaths;
+use crate::validator::entity_manifest::analysis::WrappedAccessTerms;
 use crate::validator::{
     typecheck::{PolicyCheck, Typechecker},
     types::Type,
@@ -594,6 +594,43 @@ when {
                     "resource": "Document"
                 },
                 ["principal.getTag(resource.owner.name)"]
+            ]]
+        }),
+    );
+}
+
+#[test]
+fn test_multiple_possible_tags_and_possible_entities() {
+    test_entity_manifest_with_policy(
+        r#"permit(principal, action, resource)
+when {
+        (if 
+            resource.owner.name == "oliver"
+            then resource.owner
+            else resource.viewer
+        ).hasTag(if principal.name == "yihong"
+            then "yihong"
+            else resource.owner.name)
+};"#,
+        None,
+        Validator::new(document_fields_schema()),
+        serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "Read"
+                    },
+                    "resource": "Document"
+                },
+                [
+                    "resource.owner.getTag(\"yihong\")",
+                    "resource.owner.getTag(resource.owner.name)",
+                    "resource.viewer.getTag(\"yihong\")",
+                    "resource.viewer.getTag(resource.owner.name)",
+                    "principal.name"
+                ]
             ]]
         }),
     );
