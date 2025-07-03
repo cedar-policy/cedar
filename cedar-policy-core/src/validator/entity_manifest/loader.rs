@@ -27,8 +27,9 @@ use crate::{
     entities::{Entities, NoEntitiesSchema, TCComputation},
     extensions::Extensions,
     validator::entity_manifest::{
-        errors::{ExpectedEntityOrEntitySetError, ExpectedEntityTypeError}, manifest_helpers::AccessTrie, AccessPath,
-        AccessPathVariant, EntityManifest, PathsForRequestType,
+        errors::{ExpectedEntityOrEntitySetError, ExpectedEntityTypeError},
+        manifest_helpers::AccessTrie,
+        AccessPath, AccessPathVariant, EntityManifest, PathsForRequestType,
     },
 };
 
@@ -49,16 +50,6 @@ pub(crate) struct EntityRequest {
     pub(crate) tags: HashSet<String>,
     /// A trie containing the access paths needed for this entity
     pub(crate) access_trie: AccessTrie,
-}
-
-impl EntityRequest {
-    pub(crate) fn is_empty(&self) -> bool {
-        if self.tags.is_empty() {
-            self.access_trie.is_empty()
-        } else {
-            false
-        }
-    }
 }
 
 /// An entity request may be an entity or `None` when
@@ -115,62 +106,21 @@ fn initial_entities_to_load(
 ) -> Vec<EntityRequest> {
     let mut to_load = Vec::new();
 
-    // Add requests for principal, action, and resource if they have access tries
-    if let Some(principal_uid) = request.principal().uid() {
-        for (access_path, trie) in access_tries.iter() {
-            if let Ok(variant) = access_path.get_variant(&for_request.dag) {
-                if let AccessPathVariant::Var(Var::Principal) = variant {
-                    to_load.push(EntityRequest {
-                        entity_id: principal_uid.clone(),
-                        tags: HashSet::new(), // No tags for now
-                        access_trie: (*trie).clone(),
-                        access_path: access_path.clone(),
-                    });
-                    break;
-                }
-            }
-        }
-    }
-
-    if let Some(action_uid) = request.action().uid() {
-        for (entity_path, trie) in access_tries.iter() {
-            if let Ok(variant) = entity_path.get_variant(&for_request.dag) {
-                if let AccessPathVariant::Var(Var::Action) = variant {
-                    to_load.push(EntityRequest {
-                        entity_id: action_uid.clone(),
-                        tags: HashSet::new(), // No tags for now
-                        access_trie: (*trie).clone(),
-                        access_path: entity_path.clone(),
-                    });
-                }
-            }
-        }
-    }
-
-    if let Some(resource_uid) = request.resource().uid() {
-        for (access_path, trie) in access_tries.iter() {
-            if let Ok(variant) = access_path.get_variant(&for_request.dag) {
-                if let AccessPathVariant::Var(Var::Resource) = variant {
-                    to_load.push(EntityRequest {
-                        entity_id: resource_uid.clone(),
-                        tags: HashSet::new(), // No tags for now
-                        access_trie: (*trie).clone(),
-                        access_path: access_path.clone(),
-                    });
-                    break;
-                }
-            }
-        }
-    }
-
-    // Add requests for literal entities
     for (access_path, trie) in access_tries.iter() {
         if let Ok(variant) = access_path.get_variant(&for_request.dag) {
-            if let AccessPathVariant::Literal(euid) = variant {
+            let entity_id = match variant {
+                AccessPathVariant::Var(Var::Principal) => request.principal().uid().cloned(),
+                AccessPathVariant::Var(Var::Action) => request.action().uid().cloned(),
+                AccessPathVariant::Var(Var::Resource) => request.resource().uid().cloned(),
+                AccessPathVariant::Literal(euid) => Some(euid.clone()),
+                _ => None,
+            };
+
+            if let Some(entity_id) = entity_id {
                 to_load.push(EntityRequest {
-                    entity_id: euid.clone(),
+                    entity_id,
                     tags: HashSet::new(), // No tags for now
-                    access_trie: (*trie).clone(),
+                    access_trie: trie.clone(),
                     access_path: access_path.clone(),
                 });
             }
@@ -312,9 +262,12 @@ pub(crate) fn load_entities(
             // Extract the EntityUID from the Value
             let of_val = match of_val_result.value_kind() {
                 ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
-                _ => return Err(ExpectedEntityTypeError {
-                    found_value: of_val_result.clone(),
-                }.into()),
+                _ => {
+                    return Err(ExpectedEntityTypeError {
+                        found_value: of_val_result.clone(),
+                    }
+                    .into())
+                }
             };
 
             // ancestor value can be a UID or a set of UIDs
