@@ -33,33 +33,15 @@ pub(crate) enum WrappedAccessPaths {
     /// A set literal containing access paths.
     /// Used to note that this type is wrapped in a literal set.
     SetLiteral(Rc<WrappedAccessPaths>),
+    /// Intermediate values like if conditions may not be returned,
+    /// but we still need to load them into the entity store.
+    WithDroppedPaths {
+        paths: Rc<WrappedAccessPaths>,
+        dropped: Rc<WrappedAccessPaths>,
+    },
 }
 
-/// During Entity Manifest analysis, each sub-expression
-/// produces an [`EntityManifestAnalysisResult`].
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct EntityManifestAnalysisResult {
-    /// Stores all of the paths that were accessed.
-    ///
-    /// Intermediate paths may be used in
-    /// auxiliary computation of the expression (an if statement's condition for example),
-    /// so it's important to consider all the paths in the store.
-    pub(crate) accessed_paths: AccessPaths,
-    /// `resulting_paths` stores the set of values this expression could evaluate to
-    /// represented symbolically as data paths.
-    /// See [`WrappedAccessPaths`] for more details.
-    pub(crate) resulting_paths: Rc<WrappedAccessPaths>,
-}
-
-impl EntityManifestAnalysisResult {
-    /// Drop the resulting paths part of the analysis.
-    /// This is necessary when the expression is a primitive value, so it
-    /// can't be dereferenced.
-    pub fn empty_paths(mut self) -> Self {
-        self.resulting_paths = Default::default();
-        self
-    }
-
+impl WrappedAccessPaths {
     /// Create an analysis result that starts with a cedar variable
     pub fn from_root(root: EntityRoot, store: &mut AccessDag) -> Self {
         // Create a new AccessPath from the root
@@ -71,27 +53,7 @@ impl EntityManifestAnalysisResult {
         // Add the path to the store
         let path = store.add_path(variant);
 
-        // Create the resulting_paths
-        let resulting_paths = Rc::new(WrappedAccessPaths::AccessPath(path.clone()));
-        let accessed_paths = AccessPaths::from_path(path);
-
-        Self {
-            accessed_paths,
-            resulting_paths,
-        }
-    }
-
-    /// Extend all the access paths with this attribute,
-    /// adding all the new paths to the global store.
-    pub fn get_or_has_attr(mut self, attr: &SmolStr, store: &mut AccessDag) -> Self {
-        self.resulting_paths = self.resulting_paths.get_or_has_attr(attr, store);
-
-        // ensure that all the resulting access paths are in the accessed set
-        if let Some(paths) = self.resulting_paths.to_access_paths() {
-            self.accessed_paths.extend(paths)
-        }
-
-        self
+        WrappedAccessPaths::AccessPath(path.clone())
     }
 
     /// Add an ancestors required path for each of the wrapped access paths given.
@@ -101,97 +63,106 @@ impl EntityManifestAnalysisResult {
     /// Panics if access_paths contains a record or set literal. The typechecker
     /// should prevent this, since ancestors are required of literals.
     pub(crate) fn with_ancestors_required(
-        mut self,
+        self: Rc<Self>,
         // The access paths for the ancestors
         access_paths: &Rc<WrappedAccessPaths>,
         store: &mut AccessDag,
-    ) -> Self {
-        // Convert the ancestors_trie to AccessPaths
-        // PANIC SAFETY: The typechecker should ensure that the rhs of `in` is entity typed,
-        // and so can be converted to AccessPaths (i.e., it doesn't contain record or set literals).
-        #[allow(clippy::unwrap_used)]
-        let access_paths = access_paths.to_access_paths().unwrap();
-
-        // PANIC SAFETY: The typechecker shoudl ensure the lhs of `in` is entity typed.
-        #[allow(clippy::unwrap_used)]
-        let my_paths = self.resulting_paths.to_access_paths().unwrap();
-
-        // For each path in the resulting_paths, add an ancestor relationship with each path from ancestors_trie
-        for of in &my_paths.paths {
-            for ancestor_path in &access_paths.paths {
-                // Create an Ancestor variant that links the self_path to the ancestor_path
+    ) -> Rc<Self> {
+        // compute cross product of the access paths and the ancestors
+        let of_access_paths = self.returned_access_paths().expect(
+            "Ancestors required paths should not be record or set literals, typechecker should prevent this",
+        );
+        let ancestors_access_paths = access_paths
+            .returned_access_paths()
+            .expect("Ancestors required paths should not be record or set literals, typechecker should prevent this");
+        let mut access_paths = vec![];
+        // cross product of the access paths
+        for of_path in of_access_paths.paths() {
+            for ancestor_path in ancestors_access_paths.paths() {
+                // Create a new ancestor required path
                 let ancestor_variant = AccessPathVariant::Ancestor {
-                    of: of.clone(),
+                    of: of_path.clone(),
                     ancestor: ancestor_path.clone(),
                 };
-
-                // Add this new path to the store
-                let res = store.add_path(ancestor_variant);
-                // Add the path to accessed_paths
-                self.accessed_paths.insert(res);
+                // Add the new path to the store
+                let new_path = store.add_path(ancestor_variant);
+                // Add the new path to the access paths
+                access_paths.push(new_path);
             }
         }
-
-        self
+        // Return the new wrapped access paths with a drop
+        let mut access_paths_wrapped = Rc::new(WrappedAccessPaths::Empty);
+        // Add the new access paths to the result
+        for path in access_paths {
+            access_paths_wrapped = access_paths_wrapped
+                .with_dropped_paths(Rc::new(WrappedAccessPaths::AccessPath(path)));
+        }
+        self.with_dropped_paths(access_paths_wrapped)
     }
 
-    /// For equality or containment checks, all paths in the type
-    /// are required.
-    /// This function extends the paths with the fields mentioned
-    /// by the type, adding these to the internal store.
-    ///
-    /// It also drops the resulting paths, since these checks result
-    /// in booleans.
-    pub(crate) fn full_type_required(&mut self, ty: &Type, store: &mut AccessDag) {
-        let type_paths = self.resulting_paths.full_type_required(ty, store);
-        self.accessed_paths.extend(type_paths);
-        self.resulting_paths = Default::default();
+    pub(crate) fn with_dropped_paths(
+        self: &Rc<Self>,
+        // The paths that were dropped
+        dropped: Rc<Self>,
+    ) -> Rc<Self> {
+        Rc::new(WrappedAccessPaths::WithDroppedPaths {
+            paths: self.clone(),
+            dropped,
+        })
     }
 
     /// Union this analysis result with another, taking the union of the resulting paths.
     /// Takes ownership of self and returns self after mutating it.
-    pub(crate) fn union(mut self, other: Self) -> Self {
-        // Extend the accessed paths
-        self.accessed_paths.extend(other.accessed_paths);
-
+    pub(crate) fn union(self: Rc<Self>, other: Rc<Self>) -> Rc<Self> {
         // Create a union of the resulting paths
-        self.resulting_paths = Rc::new(WrappedAccessPaths::Union(
-            Rc::clone(&self.resulting_paths),
-            other.resulting_paths,
-        ));
-
-        self
+        Rc::new(WrappedAccessPaths::Union(self, other))
     }
-}
 
-impl WrappedAccessPaths {
     /// Convert the [`WrappedAccessPaths`] to a [`AccessPaths`].
     /// Returns [`None`] when the wrapped access paths represent a record or set literal.
-    fn to_access_paths(self: &Rc<Self>) -> Option<AccessPaths> {
+    fn returned_access_paths(self: &Rc<Self>) -> Option<AccessPaths> {
         let mut access_paths = AccessPaths::default();
-        if self.add_to_access_paths(&mut access_paths) {
+        if self.add_to_access_paths(&mut access_paths, false) {
             Some(access_paths)
         } else {
             None
         }
     }
 
-    /// Adds the access paths from this WrappedAccessPaths to the provided AccessPaths collection.
-    /// Returns true if successful (no record or set literals encountered), false otherwise.
-    fn add_to_access_paths(self: &Rc<Self>, paths: &mut AccessPaths) -> bool {
+    /// Get all access paths from this wrapped access paths,
+    /// including dropped paths.
+    fn all_access_paths(self: &Rc<Self>) -> AccessPaths {
+        let mut access_paths = AccessPaths::default();
+        self.add_to_access_paths(&mut access_paths, true);
+        access_paths
+    }
+
+    fn add_to_access_paths(
+        self: &Rc<Self>,
+        add_to: &mut AccessPaths,
+        include_dropped: bool,
+    ) -> bool {
         match &**self {
             WrappedAccessPaths::Empty => true,
             WrappedAccessPaths::AccessPath(path) => {
-                paths.paths.insert(path.clone());
+                add_to.paths.insert(path.clone());
                 true
             }
             WrappedAccessPaths::Union(left, right) => {
                 // Both must succeed for the operation to be successful
-                left.add_to_access_paths(paths) && right.add_to_access_paths(paths)
+                left.add_to_access_paths(add_to, include_dropped)
+                    && right.add_to_access_paths(add_to, include_dropped)
             }
-            // Record and set literals cannot be directly added to access paths
             WrappedAccessPaths::RecordLiteral(_) => false,
             WrappedAccessPaths::SetLiteral(_) => false,
+            WrappedAccessPaths::WithDroppedPaths { paths, dropped } => {
+                // If include_dropped is true, we include the dropped paths
+                if include_dropped {
+                    dropped.add_to_access_paths(add_to, include_dropped);
+                }
+                // We always add the paths, even if we don't include the dropped paths
+                paths.add_to_access_paths(add_to, include_dropped)
+            }
         }
     }
 
@@ -219,10 +190,15 @@ impl WrappedAccessPaths {
                     WrappedAccessPaths::RecordLiteral(record.clone())
                 }
             }
-            // PANIC SAFETY: Type checker should prevent using `.` operator on a set type.
             #[allow(clippy::panic)]
             WrappedAccessPaths::SetLiteral(_) => {
                 panic!("Attempted to dereference a set literal.")
+            }
+            WrappedAccessPaths::WithDroppedPaths { paths, dropped } => {
+                WrappedAccessPaths::WithDroppedPaths {
+                    paths: Rc::clone(paths).get_or_has_attr(attr, store),
+                    dropped: Rc::clone(dropped),
+                }
             }
             WrappedAccessPaths::Empty => WrappedAccessPaths::Empty,
             WrappedAccessPaths::Union(left, right) => WrappedAccessPaths::Union(
@@ -234,26 +210,28 @@ impl WrappedAccessPaths {
 
     /// For equality or containment checks, all paths in the type
     /// are required.
-    /// This function returns all the paths the type specifies, starting from
-    /// these wrapped access paths.
-    fn full_type_required(self: &Rc<Self>, ty: &Type, store: &mut AccessDag) -> AccessPaths {
+    /// This function extends the paths with the fields mentioned
+    /// by the type, dropping them afterwards since type checks result in boolean values.
+    fn require_full_type(self: &Rc<Self>, ty: &Type, store: &mut AccessDag) -> Rc<Self> {
         match &**self {
             WrappedAccessPaths::AccessPath(path) => {
                 // Use type_to_access_paths to compute the full access paths for the type
                 // and add them to the store
-                type_to_access_paths(ty, store, path)
+                self.with_dropped_paths(type_to_access_paths(ty, store, path))
             }
             WrappedAccessPaths::RecordLiteral(literal_fields) => match ty {
                 Type::EntityOrRecord(EntityRecordKind::Record {
                     attrs: record_attrs,
                     ..
                 }) => {
-                    let mut res = AccessPaths::default();
+                    let mut res = self.clone();
                     for (attr, attr_ty) in record_attrs.iter() {
                         // PANIC SAFETY: Record literals should have attributes that match the type.
                         #[allow(clippy::panic)]
                         if let Some(field) = literal_fields.get(attr) {
-                            res.extend(field.full_type_required(&attr_ty.attr_type, store));
+                            res = res.with_dropped_paths(
+                                field.require_full_type(&attr_ty.attr_type, store),
+                            )
                         } else {
                             panic!("Missing field {attr} in record literal");
                         }
@@ -273,7 +251,9 @@ impl WrappedAccessPaths {
                     let ele_type = element_type
                         .as_ref()
                         .expect("Expected concrete set type after typechecking");
-                    elements.full_type_required(ele_type, store)
+                    self.with_dropped_paths(
+                        self.with_dropped_paths(elements.require_full_type(ele_type, store)),
+                    )
                 }
                 // PANIC SAFETY: Typechecking should identify set literals as set types.
                 #[allow(clippy::panic)]
@@ -281,16 +261,24 @@ impl WrappedAccessPaths {
                     panic!("Found set literal when expected {} type", ty);
                 }
             },
-            WrappedAccessPaths::Empty => AccessPaths::default(),
-            WrappedAccessPaths::Union(left, right) => left
-                .full_type_required(ty, store)
-                .extend_owned(right.full_type_required(ty, store)),
+            WrappedAccessPaths::Empty => self.clone(),
+            WrappedAccessPaths::Union(left, right) => self
+                .with_dropped_paths(left.require_full_type(ty, store))
+                .with_dropped_paths(right.require_full_type(ty, store)),
+            WrappedAccessPaths::WithDroppedPaths { paths, dropped: _dropped } => {
+                self.with_dropped_paths(paths.require_full_type(ty, store))
+            }
+           
         }
     }
 }
 
-/// Compute the full access paths required for the type and add them to the store.
-fn type_to_access_paths(ty: &Type, store: &mut AccessDag, path: &AccessPath) -> AccessPaths {
+/// Compute the full access paths required for the type and add them to the the wrapped access paths as dropped paths.
+fn type_to_access_paths(
+    ty: &Type,
+    store: &mut AccessDag,
+    path: &AccessPath,
+) -> Rc<WrappedAccessPaths> {
     match ty {
         // if it's not an entity or record, slice ends here
         Type::ExtensionType { .. }
@@ -298,7 +286,7 @@ fn type_to_access_paths(ty: &Type, store: &mut AccessDag, path: &AccessPath) -> 
         | Type::True
         | Type::False
         | Type::Primitive { .. }
-        | Type::Set { .. } => AccessPaths::default(),
+        | Type::Set { .. } => Rc::new(WrappedAccessPaths::Empty),
         Type::EntityOrRecord(record_type) => {
             entity_or_record_to_access_paths(record_type, store, path)
         }
@@ -310,10 +298,10 @@ fn entity_or_record_to_access_paths(
     ty: &EntityRecordKind,
     store: &mut AccessDag,
     path: &AccessPath,
-) -> AccessPaths {
+) -> Rc<WrappedAccessPaths> {
     match ty {
         EntityRecordKind::ActionEntity { attrs, .. } | EntityRecordKind::Record { attrs, .. } => {
-            let mut paths = AccessPaths::default();
+            let mut paths = Rc::new(WrappedAccessPaths::default());
             for (attr_name, attr_type) in attrs.iter() {
                 // Create a new path for this attribute
                 let attr_variant = AccessPathVariant::Attribute {
@@ -322,18 +310,19 @@ fn entity_or_record_to_access_paths(
                 };
                 let attr_path = store.add_path(attr_variant);
 
-                // Add this path to the result
-                paths.insert(attr_path.clone());
+                paths = paths.with_dropped_paths(
+                    Rc::new(WrappedAccessPaths::AccessPath(attr_path.clone())),
+                );
 
                 // Recursively process the attribute's type
                 let attr_paths = type_to_access_paths(&attr_type.attr_type, store, &attr_path);
-                paths.extend(attr_paths);
+                paths = paths.with_dropped_paths(attr_paths);
             }
             paths
         }
         EntityRecordKind::Entity(_) | EntityRecordKind::AnyEntity => {
             // no need to load data for entities, which are compared using ids
-            AccessPaths::default()
+            WrappedAccessPaths::Empty.into()
         }
     }
 }

@@ -16,21 +16,19 @@
 
 //! Annotate entity manifest with type information.
 
-use std::collections::HashMap;
-
 use crate::ast::{RequestType, Var};
 
 use crate::validator::{
     entity_manifest::{
-        AccessDag, AccessPath, AccessPathVariant, AccessPaths, EntityManifest, EntityRoot,
-        PathsForRequestType,
+        AccessDag, AccessPath, AccessPathVariant, EntityManifest, PathsForRequestType,
     },
-    types::{Attributes, EntityRecordKind, Type},
+    types::{EntityRecordKind, Type},
     ValidatorSchema,
 };
 // Import errors directly
 use crate::validator::entity_manifest::errors::{
-    MismatchedEntityManifestError, MismatchedMissingEntityError, MismatchedNotStrictSchemaError,
+    AccessPathNotFoundError, MismatchedEntityManifestError, MismatchedMissingEntityError,
+    MismatchedNotStrictSchemaError,
 };
 
 impl EntityManifest {
@@ -102,7 +100,7 @@ impl PathsForRequestType {
         // Get the variant for this path
         let variant = match path.get_variant(dag) {
             Ok(v) => v,
-            Err(e) => return Err(AccessPathNotFoundError { path_id: path.id }.into()),
+            Err(_e) => return Err(AccessPathNotFoundError { path_id: path.id }.into()),
         };
 
         match variant {

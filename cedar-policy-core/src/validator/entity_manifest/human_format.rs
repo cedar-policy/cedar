@@ -18,16 +18,11 @@
 
 use std::collections::HashMap;
 
-use crate::ast::RequestType;
-use crate::ast::{self, EntityUID, Expr, Var};
+use crate::ast::{self, Expr, RequestType};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use thiserror::Error;
 
-use super::{
-    AccessDag, AccessPath, AccessPathVariant, AccessPaths, EntityManifest, EntityRoot,
-    PathsForRequestType,
-};
+use super::{AccessDag, AccessPath, AccessPathVariant, EntityManifest, PathsForRequestType};
 use crate::validator::ValidatorSchema;
 // Import errors directly
 use crate::validator::entity_manifest::errors::{

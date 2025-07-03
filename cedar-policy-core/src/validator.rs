@@ -15,17 +15,16 @@
  */
 
 //! Validator for Cedar policies
-// TODO turn back on
-//#![deny(
-//    missing_docs,
-//    rustdoc::broken_intra_doc_links,
-//    rustdoc::private_intra_doc_links,
-//    rustdoc::invalid_codeblock_attributes,
-//    rustdoc::invalid_html_tags,
-//    rustdoc::invalid_rust_codeblocks,
-//    rustdoc::bare_urls,
-//    clippy::doc_markdown
-//)]
+#![deny(
+    missing_docs,
+    rustdoc::broken_intra_doc_links,
+    rustdoc::private_intra_doc_links,
+    rustdoc::invalid_codeblock_attributes,
+    rustdoc::invalid_html_tags,
+    rustdoc::invalid_rust_codeblocks,
+    rustdoc::bare_urls,
+    clippy::doc_markdown
+)]
 #![cfg_attr(feature = "wasm", allow(non_snake_case))]
 
 use crate::ast::{Policy, PolicySet, Template};
