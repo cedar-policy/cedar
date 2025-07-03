@@ -19,17 +19,11 @@
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
-use std::rc::Rc;
 
-use crate::ast::{
-    self, BinaryOp, EntityUID, Expr, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
-};
-use crate::entities::err::EntitiesError;
-use miette::Diagnostic;
+use crate::ast::{EntityUID, PolicySet, RequestType, Var};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
-use thiserror::Error;
 
 pub(crate) mod analysis;
 #[cfg(test)]
@@ -51,14 +45,14 @@ pub use crate::validator::entity_manifest::errors::{
     UnsupportedCedarFeatureError,
 };
 
-use crate::validator::entity_manifest::analysis::{analyze_expr_access_paths, WrappedAccessPaths};
+use crate::validator::entity_manifest::analysis::{analyze_expr_access_paths};
 // Re-export types from human_format module
 use crate::validator::{
     typecheck::{PolicyCheck, Typechecker},
     types::Type,
     ValidationMode, ValidatorSchema,
 };
-use crate::validator::{ValidationResult, Validator};
+use crate::validator::{Validator};
 
 /// Stores paths for a specific request type, including the request type,
 /// access dag, and access paths.
@@ -75,7 +69,7 @@ pub struct PathsForRequestType {
 }
 
 impl PathsForRequestType {
-    /// Create a new PathsForRequestType
+    /// Create a new [`PathsForRequestType`]
     pub fn new(request_type: RequestType) -> Self {
         Self {
             request_type,
@@ -90,12 +84,12 @@ impl PathsForRequestType {
     }
 
     /// Get the access dag
-    pub fn dag(&self) -> &AccessDag {
+    pub(crate) fn dag(&self) -> &AccessDag {
         &self.dag
     }
 
     /// Get mutable access to the access dag
-    pub fn dag_mut(&mut self) -> &mut AccessDag {
+    pub(crate) fn dag_mut(&mut self) -> &mut AccessDag {
         &mut self.dag
     }
 
@@ -116,7 +110,7 @@ impl PathsForRequestType {
         // and build a mapping from paths in the other manifest to paths in this manifest
         for i in 0..other.dag.manifest_store.len() {
             // PANIC SAFETY: Iterating over length of vector and not mutating it
-            #[allow(clippy::panic)]
+            #[allow(clippy::unwrap_used)]
             let variant = &other.dag.manifest_store.get(i).unwrap();
             let mapped_variant = self.map_variant(variant, &mut path_mapping);
             let new_path = self.dag.add_path(mapped_variant);

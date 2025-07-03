@@ -19,6 +19,7 @@ pub struct PartialRequestError {}
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("entity manifest analysis currently doesn't support Cedar feature: {feature}")]
 pub struct UnsupportedCedarFeatureError {
+    /// The name of the unsupported Cedar feature
     pub(crate) feature: SmolStr,
 }
 
@@ -26,6 +27,7 @@ pub struct UnsupportedCedarFeatureError {
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("entity manifest doesn't match schema. Schema is missing entity {entity}. Either you wrote an entity manifest by hand (not recommended) or you are using an out-of-date entity manifest with respect to the schema")]
 pub struct MismatchedMissingEntityError {
+    /// The entity UID that is missing from the schema
     pub(crate) entity: EntityUID,
 }
 
@@ -38,20 +40,26 @@ pub struct MismatchedNotStrictSchemaError {}
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("access path not found in entity manifest. This may indicate that you are using the wrong entity manifest with this path")]
 pub struct AccessPathNotFoundError {
+    /// The ID of the access path that was not found
     pub(crate) path_id: usize,
 }
 
 /// General entity manifest error
 #[derive(Debug, Error)]
 pub enum EntityManifestError {
+    /// A validation error occurred during entity manifest processing
     #[error("a validation error occurred")]
     Validation(ValidationResult),
+    /// An error occurred with entity operations
     #[error(transparent)]
     Entities(#[from] EntitiesError),
+    /// A partial request was encountered when a concrete request was required
     #[error(transparent)]
     PartialRequest(#[from] PartialRequestError),
+    /// A partial expression was encountered when a concrete expression was required
     #[error(transparent)]
     PartialExpression(#[from] PartialExpressionError),
+    /// An unsupported Cedar feature was encountered
     #[error(transparent)]
     UnsupportedCedarFeature(#[from] UnsupportedCedarFeatureError),
 }
@@ -59,10 +67,13 @@ pub enum EntityManifestError {
 /// Error when entity manifest is mismatched
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 pub enum MismatchedEntityManifestError {
+    /// An entity is missing from the schema that exists in the manifest
     #[error(transparent)]
     MismatchedMissingEntity(#[from] MismatchedMissingEntityError),
+    /// The schema is not in strict mode, which is required for entity manifests
     #[error(transparent)]
     MismatchedNotStrictSchema(#[from] MismatchedNotStrictSchemaError),
+    /// An access path was not found in the entity manifest
     #[error(transparent)]
     AccessPathNotFound(#[from] AccessPathNotFoundError),
 }
@@ -70,8 +81,10 @@ pub enum MismatchedEntityManifestError {
 /// Error when parsing entity manifest from JSON
 #[derive(Debug, Error)]
 pub enum EntityManifestFromJsonError {
+    /// JSON parsing error occurred
     #[error(transparent)]
     SerdeJsonParseError(#[from] serde_json::Error),
+    /// Entity manifest doesn't match the expected schema
     #[error(transparent)]
     MismatchedEntityManifest(#[from] MismatchedEntityManifestError),
 }
@@ -79,24 +92,34 @@ pub enum EntityManifestFromJsonError {
 /// Errors for entity slicing operations
 #[derive(Debug, Error)]
 pub enum EntitySliceError {
+    /// A partial request was encountered when a concrete request was required
     #[error(transparent)]
     PartialRequest(#[from] PartialRequestError),
+    /// A partial context was encountered when a concrete context was required
     #[error(transparent)]
     PartialContext(#[from] PartialContextError),
+    /// A partial entity was encountered when a concrete entity was required
     #[error(transparent)]
     PartialEntity(#[from] PartialEntityError),
+    /// The entity manifest is incompatible with the expected format
     #[error(transparent)]
     IncompatibleEntityManifest(#[from] IncompatibleEntityManifestError),
+    /// A required entity is missing from the entity store
     #[error(transparent)]
     EntityMissing(#[from] EntityMissingError),
+    /// A required field is missing from an entity
     #[error(transparent)]
     EntityFieldMissing(#[from] EntityFieldMissingError),
+    /// A required field is missing from a record
     #[error(transparent)]
     RecordFieldMissing(#[from] RecordFieldMissingError),
+    /// The number of entities provided doesn't match the expected count
     #[error(transparent)]
     WrongNumberOfEntities(#[from] WrongNumberOfEntitiesError),
+    /// Expected an entity type but found a different value type
     #[error(transparent)]
     ExpectedEntityType(#[from] ExpectedEntityTypeError),
+    /// An error occurred with entity operations
     #[error(transparent)]
     Entities(#[from] EntitiesError),
 }
@@ -115,6 +138,7 @@ pub struct PartialEntityError {}
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("entity slicing encountered a non-record value where a record was expected: {non_record_entity_value:?}")]
 pub struct IncompatibleEntityManifestError {
+    /// The non-record entity value that was encountered
     pub non_record_entity_value: crate::ast::Value,
 }
 
@@ -122,6 +146,7 @@ pub struct IncompatibleEntityManifestError {
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("entity {entity_id} was missing from the entity store")]
 pub struct EntityMissingError {
+    /// The entity UID that is missing from the store
     pub entity_id: EntityUID,
 }
 
@@ -129,7 +154,9 @@ pub struct EntityMissingError {
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("entity {entity:?} was missing field {field}")]
 pub struct EntityFieldMissingError {
+    /// The entity that is missing a field
     pub entity: crate::ast::Entity,
+    /// The name of the missing field
     pub field: smol_str::SmolStr,
 }
 
@@ -137,6 +164,7 @@ pub struct EntityFieldMissingError {
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("record was missing field {field}")]
 pub struct RecordFieldMissingError {
+    /// The name of the missing field
     pub field: smol_str::SmolStr,
 }
 
@@ -144,7 +172,9 @@ pub struct RecordFieldMissingError {
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("expected {expected} entities, got {got}")]
 pub struct WrongNumberOfEntitiesError {
+    /// The expected number of entities
     pub expected: usize,
+    /// The actual number of entities received
     pub got: usize,
 }
 
@@ -152,6 +182,7 @@ pub struct WrongNumberOfEntitiesError {
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("expected entity type, found: {found_value:?}")]
 pub struct ExpectedEntityTypeError {
+    /// The value that was found instead of an entity type
     pub found_value: crate::ast::Value,
 }
 
@@ -163,10 +194,16 @@ pub enum PathExpressionParseError {
     InvalidRoot(String),
     /// Unsupported binary operator
     #[error("Unsupported binary operator: {operator:?}")]
-    UnsupportedBinaryOperator { operator: String },
+    UnsupportedBinaryOperator {
+        /// The unsupported binary operator that was encountered
+        operator: String,
+    },
     /// Unsupported expression type
     #[error("Unsupported expression type: {expr_type}")]
-    UnsupportedExpressionType { expr_type: String },
+    UnsupportedExpressionType {
+        /// The unsupported expression type that was encountered
+        expr_type: String,
+    },
 }
 
 impl Diagnostic for PathExpressionParseError {}
