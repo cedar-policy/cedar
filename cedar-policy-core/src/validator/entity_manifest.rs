@@ -51,7 +51,7 @@ pub use crate::validator::entity_manifest::errors::{
     UnsupportedCedarFeatureError,
 };
 
-use crate::validator::entity_manifest::analysis::WrappedAccessPaths;
+use crate::validator::entity_manifest::analysis::{analyze_expr_access_paths, WrappedAccessPaths};
 // Re-export types from human_format module
 use crate::validator::{
     typecheck::{PolicyCheck, Typechecker},
