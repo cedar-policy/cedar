@@ -13,15 +13,7 @@ use crate::{
     },
 };
 
-use crate::ast::{
-    self, BinaryOp, EntityUID, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
-};
-use crate::entities::err::EntitiesError;
-use miette::Diagnostic;
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-
-use thiserror::Error;
+use crate::ast::{BinaryOp, ExprKind, Literal, UnaryOp, Var};
 
 /// Represents [`AccessPath`]s possibly
 /// wrapped in record or set literals.
