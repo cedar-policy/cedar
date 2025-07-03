@@ -196,6 +196,10 @@ impl WrappedAccessPaths {
         tag_paths: Rc<Self>,
         store: &mut AccessDag,
     ) -> Rc<Self> {
+        eprintln!(
+            "get_or_has_tag: self = {:?}, tag_paths = {:?}",
+            self, tag_paths
+        );
         // compute cross product of the access paths and the tag paths
         let of_access_paths = self.returned_access_paths().expect(
             "Tag access paths should not be record or set literals, typechecker should prevent this",
@@ -218,6 +222,7 @@ impl WrappedAccessPaths {
                 access_paths.push(new_path);
             }
         }
+
         // now compute the union of all these paths
         let mut res = Rc::new(WrappedAccessPaths::Empty);
         // Add the new access paths to the result
@@ -425,8 +430,21 @@ pub(crate) fn analyze_expr_access_paths(
 
         ExprKind::Unknown(_) => Err(PartialExpressionError {})?,
 
-        // Non-entity literals need no fields to be loaded
-        ExprKind::Lit(_) => Rc::new(WrappedAccessPaths::default()),
+        // We only care about strings so that we can handle
+        // getting tags.
+        ExprKind::Lit(lit) => {
+            match lit {
+                Literal::String(str) => {
+                    let variant = AccessPathVariant::String(SmolStr::from(str.clone()));
+                    let path = store.add_path(variant);
+                    Rc::new(WrappedAccessPaths::AccessPath(path))
+                }
+                _ => {
+                    // empty paths for other literals
+                    return Ok(Rc::new(WrappedAccessPaths::Empty));
+                }
+            }
+        }
 
         ExprKind::If {
             test_expr,
