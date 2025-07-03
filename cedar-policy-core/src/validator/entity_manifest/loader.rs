@@ -29,7 +29,7 @@ use crate::{
     validator::entity_manifest::{
         errors::{ExpectedEntityOrEntitySetError, ExpectedEntityTypeError},
         manifest_helpers::AccessTrie,
-        AccessPath, AccessPathVariant, EntityManifest, PathsForRequestType,
+        AccessPath, AccessPathVariant, EntityManifest, RequestTypePaths,
     },
 };
 
@@ -101,7 +101,7 @@ pub(crate) trait EntityLoader {
 /// Helper function to determine the initial entities to load based on the access tries
 fn initial_entities_to_load(
     access_tries: &HashMap<AccessPath, AccessTrie>,
-    for_request: &PathsForRequestType,
+    for_request: &RequestTypePaths,
     request: &Request,
 ) -> Vec<EntityRequest> {
     let mut to_load = Vec::new();

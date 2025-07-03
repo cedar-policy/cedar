@@ -21,9 +21,7 @@ use crate::ast::{RequestType, Var};
 use crate::validator::entity_manifest::AccessPathNotFoundError;
 use crate::validator::types::EntityRecordKind;
 use crate::validator::{
-    entity_manifest::{
-        AccessDag, AccessPath, AccessPathVariant, EntityManifest, PathsForRequestType,
-    },
+    entity_manifest::{AccessDag, AccessPath, AccessPathVariant, EntityManifest, RequestTypePaths},
     types::Type,
     ValidatorSchema,
 };
@@ -51,7 +49,7 @@ impl EntityManifest {
     }
 }
 
-impl PathsForRequestType {
+impl RequestTypePaths {
     /// Type-annotate this [`PathsForRequestType`], given the schema.
     pub(crate) fn add_types(
         &mut self,
@@ -93,23 +91,20 @@ impl PathsForRequestType {
                     }
                     Var::Principal => Type::named_entity_reference(request_type.principal.clone()),
                     Var::Resource => Type::named_entity_reference(request_type.resource.clone()),
-                    Var::Context => {
-                        schema
-                            .get_action_id(&request_type.action.clone())
-                            .ok_or_else(|| MismatchedMissingEntityError {
-                                entity: request_type.action.clone(),
-                            })?
-                            .context.clone()
-                    }
+                    Var::Context => schema
+                        .get_action_id(&request_type.action.clone())
+                        .ok_or_else(|| MismatchedMissingEntityError {
+                            entity: request_type.action.clone(),
+                        })?
+                        .context
+                        .clone(),
                 };
 
                 ty
             }
             AccessPathVariant::Literal(lit) => {
-                Type::euid_literal(lit, schema).ok_or_else(|| {
-                    MismatchedMissingEntityError {
-                        entity: lit.clone(),
-                    }
+                Type::euid_literal(lit, schema).ok_or_else(|| MismatchedMissingEntityError {
+                    entity: lit.clone(),
                 })?
             }
             AccessPathVariant::String(_) => {
