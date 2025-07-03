@@ -56,19 +56,29 @@ impl PathsForRequestType {
         schema: &ValidatorSchema,
     ) -> Result<(), MismatchedEntityManifestError> {
         // Initialize the types vector with None for each path in the DAG
-        let mut types = vec![None; self.dag.manifest_store.len()];
 
         // Process each access path in topological order
         // Since the DAG structure ensures that all dependencies are processed before dependents,
         // we can simply iterate through the paths in order of their IDs
         for path_id in 0..self.dag.manifest_store.len() {
             let path = AccessPath { id: path_id };
-            self.type_path(&path, &self.request_type, schema, &mut types, &self.dag)?;
+            self.dag
+                .types
+                .push(self.type_path(&path, &self.request_type, schema, &self.dag)?);
         }
 
-        // Set the types field in the DAG
-        self.dag.types = Some(types.into_iter().flatten().collect());
         Ok(())
+    }
+
+    pub(crate) fn get_type_expect(&self, id: usize) -> &Type {
+        // PANIC SAFETY: This method is called after type checking,
+        // or during type checking on previously typed paths.
+        #[allow(clippy::panic)]
+        self.dag
+            .types
+            .unwrap()
+            .get(id)
+            .expect("Type should be present due to DAG structure")
     }
 
     /// Helper method to type a single path
@@ -77,21 +87,15 @@ impl PathsForRequestType {
         path: &AccessPath,
         request_type: &RequestType,
         schema: &ValidatorSchema,
-        types: &mut Vec<Option<Type>>,
         dag: &AccessDag,
-    ) -> Result<(), MismatchedEntityManifestError> {
-        // Skip if already typed
-        if types[path.id].is_some() {
-            return Ok(());
-        }
-
+    ) -> Result<Type, MismatchedEntityManifestError> {
         // Get the variant for this path
         let variant = match path.get_variant(dag) {
             Ok(v) => v,
             Err(_e) => return Err(AccessPathNotFoundError { path_id: path.id }.into()),
         };
 
-        match variant {
+        let res = match variant {
             AccessPathVariant::Var(var) => {
                 // Type the variable based on its kind
                 let ty = match var {
@@ -113,8 +117,7 @@ impl PathsForRequestType {
                         .clone(),
                 };
 
-                // Store the type in the types vector
-                types[path.id] = Some(ty);
+                ty
             }
             AccessPathVariant::Literal(lit) => {
                 let ty = Type::euid_literal(lit, schema).ok_or_else(|| {
@@ -122,17 +125,15 @@ impl PathsForRequestType {
                         entity: lit.clone(),
                     }
                 })?;
-                types[path.id] = Some(ty);
+                ty
             }
             AccessPathVariant::String(_) => {
                 // String literals have String type
-                types[path.id] = Some(Type::primitive_string());
+                Type::primitive_string()
             }
             AccessPathVariant::Attribute { of, attr } => {
                 // Get the type of the base expression (should already be typed)
-                let of_type = types[of.id]
-                    .as_ref()
-                    .ok_or_else(|| MismatchedNotStrictSchemaError {})?;
+                let of_type = self.get_type_expect(of.id);
 
                 // Get the attribute type from the base type
                 match of_type {
@@ -158,29 +159,43 @@ impl PathsForRequestType {
                             EntityRecordKind::ActionEntity { name: _, attrs } => attrs.clone(),
                         };
 
-                        // Get the attribute type
                         if let Some(attr_type) = attributes.get_attr(attr) {
-                            types[path.id] = Some(attr_type.attr_type.clone());
+                            attr_type.attr_type.clone()
                         } else {
-                            // If the schema doesn't mention this attribute, it's safe to drop it
-                            // This can happen with the `has` operator on a type that doesn't have the attribute
+                               
                         }
                     }
                     _ => {
-                        // Non-entity and non-record types don't have attributes
-                        // This should be caught by the typechecker, but we'll handle it gracefully
+                        todo!()
                     }
                 }
             }
-            AccessPathVariant::Tag { of: _, tag: _ } => {
-                todo!()
+            AccessPathVariant::Tag {
+                of: access_path,
+                tag: tag_path,
+            } => {
+                let access_path_type = self.get_type_expect(access_path.id);
+                // of should be an entity type with a tag type
+                if let Type::EntityOrRecord(EntityRecordKind::Entity(entitylub)) = access_path_type
+                {
+                    let entity_ty = schema
+                        .get_entity_type(
+                            entitylub
+                                .get_single_entity()
+                                .ok_or(MismatchedNotStrictSchemaError {})?,
+                        )
+                        .ok_or(MismatchedNotStrictSchemaError {})?;
+                    entity_ty.tag_type().unwrap().clone() // todo fix unwrap
+                } else {
+                    todo!() // fix errors in this func
+                }
             }
             AccessPathVariant::Ancestor { of: _, ancestor: _ } => {
                 // Ancestor checks result in boolean values
-                types[path.id] = Some(Type::True);
+                Type::True
             }
         };
 
-        Ok(())
+        Ok(res)
     }
 }
