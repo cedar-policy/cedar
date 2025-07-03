@@ -91,12 +91,12 @@ fn document_fields_schema() -> ValidatorSchema {
         "
 entity User = {
 name: String,
-};
+} tags String;
 
 entity Document = {
 owner: User,
 viewer: User,
-};
+} tags String;
 
 action Read appliesTo {
 principal: [User],
@@ -109,101 +109,101 @@ resource: [Document]
     .0
 }
 
+/// Helper function to create an expected manifest from a JSON value
+fn create_expected_manifest(
+    human_json: serde_json::Value,
+    validator: &Validator,
+) -> EntityManifest {
+    let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
+    human_manifest
+        .to_entity_manifest(validator.schema())
+        .unwrap()
+}
+
+/// Helper function to test entity manifest generation with a single policy
+fn test_entity_manifest_with_policy(
+    policy_str: &str,
+    policy_id: Option<PolicyID>,
+    validator: Validator,
+    expected_json: serde_json::Value,
+) {
+    let mut pset = PolicySet::new();
+    let policy = parse_policy(policy_id, policy_str).expect("should succeed");
+    pset.add(policy.into()).expect("should succeed");
+
+    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
+    let expected_manifest = create_expected_manifest(expected_json, &validator);
+
+    assert_manifests_equal(&entity_manifest, &expected_manifest);
+}
+
+/// Helper function to test entity manifest generation with multiple policies
+fn test_entity_manifest_with_policies(
+    policies: Vec<(&str, Option<PolicyID>)>,
+    validator: Validator,
+    expected_json: serde_json::Value,
+) {
+    let mut pset = PolicySet::new();
+    for (policy_str, policy_id) in policies {
+        let policy = parse_policy(policy_id, policy_str).expect("should succeed");
+        pset.add(policy.into()).expect("should succeed");
+    }
+
+    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
+    let expected_manifest = create_expected_manifest(expected_json, &validator);
+
+    assert_manifests_equal(&entity_manifest, &expected_manifest);
+}
+
 #[test]
 fn test_simple_entity_manifest() {
-    let mut pset = PolicySet::new();
-    let policy = parse_policy(
-        None,
+    test_entity_manifest_with_policy(
         r#"permit(principal, action, resource)
 when {
     principal.name == "John"
 };"#,
-    )
-    .expect("should succeed");
-    pset.add(policy.into()).expect("should succeed");
-
-    let validator = Validator::new(schema());
-
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-
-    // Define the human manifest using the json! macro
-    let human_json = serde_json::json!({
-        "perAction":
-              [[
-              {
-            "principal": "User",
-            "action": {
-              "ty": "Action",
-              "eid": "Read"
-            },
-            "resource": "Document"
-          },
-              ["principal.name"]
-              ]],
-    });
-
-    // Convert the JSON value to a HumanEntityManifest
-    let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
-
-    // Convert the human manifest to an EntityManifest
-    let expected_manifest = human_manifest
-        .to_entity_manifest(validator.schema())
-        .unwrap();
-
-    assert_manifests_equal(&entity_manifest, &expected_manifest);
+        None,
+        Validator::new(schema()),
+        serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "Read"
+                    },
+                    "resource": "Document"
+                },
+                ["principal.name"]
+            ]]
+        }),
+    );
 }
 
 #[test]
 fn test_empty_entity_manifest() {
-    let mut pset = PolicySet::new();
-    let policy =
-        parse_policy(None, "permit(principal, action, resource);").expect("should succeed");
-    pset.add(policy.into()).expect("should succeed");
-
-    let validator = Validator::new(schema());
-
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-
-    // Define the human manifest using the json! macro
-    let human_json = serde_json::json!({
-        "perAction": [[
-            {
-                "principal": "User",
-                "action": {
-                    "ty": "Action",
-                    "eid": "Read"
+    test_entity_manifest_with_policy(
+        "permit(principal, action, resource);",
+        None,
+        Validator::new(schema()),
+        serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "Read"
+                    },
+                    "resource": "Document"
                 },
-                "resource": "Document"
-            },
-            []
-        ]]
-    });
-
-    // Convert the JSON value to a HumanEntityManifest
-    let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
-
-    // Convert the human manifest to an EntityManifest
-    let expected_manifest = human_manifest
-        .to_entity_manifest(validator.schema())
-        .unwrap();
-
-    // Compare the computed manifest with the expected manifest
-    assert_manifests_equal(&entity_manifest, &expected_manifest);
+                []
+            ]]
+        }),
+    );
 }
 
 #[test]
 fn test_entity_manifest_ancestors_required() {
-    let mut pset = PolicySet::new();
-    let policy = parse_policy(
-        None,
-        "permit(principal, action, resource)
-when {
-    principal in resource || principal.manager in resource
-};",
-    )
-    .expect("should succeed");
-    pset.add(policy.into()).expect("should succeed");
-
     let schema = ValidatorSchema::from_cedarschema_str(
         "
 entity User in [Document] = {
@@ -220,51 +220,32 @@ action Read appliesTo {
     )
     .unwrap()
     .0;
-    let validator = Validator::new(schema);
 
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-    let human_computed = entity_manifest.to_human_format();
-    eprintln!("{}", human_computed.to_json_string().unwrap());
-
-    // Define the human manifest using the json! macro
-    let human_json = serde_json::json!({
-        "perAction": [[
-            {
-                "principal": "User",
-                "action": {
-                    "ty": "Action",
-                    "eid": "Read"
+    test_entity_manifest_with_policy(
+        "permit(principal, action, resource)
+when {
+    principal in resource || principal.manager in resource
+};",
+        None,
+        Validator::new(schema),
+        serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "Read"
+                    },
+                    "resource": "Document"
                 },
-                "resource": "Document"
-            },
-            ["principal in resource", "principal.manager in resource"]
-        ]]
-    });
-
-    // Convert the JSON value to a HumanEntityManifest
-    let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
-
-    // Convert the human manifest to an EntityManifest
-    let expected_manifest = human_manifest
-        .to_entity_manifest(validator.schema())
-        .unwrap();
-
-    assert_manifests_equal(&entity_manifest, &expected_manifest);
+                ["principal in resource", "principal.manager in resource"]
+            ]]
+        }),
+    );
 }
 
 #[test]
 fn test_entity_manifest_multiple_types() {
-    let mut pset = PolicySet::new();
-    let policy = parse_policy(
-        None,
-        r#"permit(principal, action, resource)
-when {
-    principal.name == "John"
-};"#,
-    )
-    .expect("should succeed");
-    pset.add(policy.into()).expect("should succeed");
-
     let schema = ValidatorSchema::from_cedarschema_str(
         "
 entity User = {
@@ -287,82 +268,45 @@ action Read appliesTo {
     )
     .unwrap()
     .0;
-    let validator = Validator::new(schema);
 
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-
-    // Define the human manifest using the json! macro
-    let human_json = serde_json::json!({
-        "perAction": [
-            [
-                {
-                    "principal": "User",
-                    "action": {
-                        "ty": "Action",
-                        "eid": "Read"
+    test_entity_manifest_with_policy(
+        r#"permit(principal, action, resource)
+when {
+    principal.name == "John"
+};"#,
+        None,
+        Validator::new(schema),
+        serde_json::json!({
+            "perAction": [
+                [
+                    {
+                        "principal": "User",
+                        "action": {
+                            "ty": "Action",
+                            "eid": "Read"
+                        },
+                        "resource": "Document"
                     },
-                    "resource": "Document"
-                },
-                ["principal.name"]
-            ],
-            [
-                {
-                    "principal": "OtherUserType",
-                    "action": {
-                        "ty": "Action",
-                        "eid": "Read"
+                    ["principal.name"]
+                ],
+                [
+                    {
+                        "principal": "OtherUserType",
+                        "action": {
+                            "ty": "Action",
+                            "eid": "Read"
+                        },
+                        "resource": "Document"
                     },
-                    "resource": "Document"
-                },
-                ["principal.name"]
+                    ["principal.name"]
+                ]
             ]
-        ]
-    });
-
-    // Convert the JSON value to a HumanEntityManifest
-    let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
-
-    // Convert the human manifest to an EntityManifest
-    let expected_manifest = human_manifest
-        .to_entity_manifest(validator.schema())
-        .unwrap();
-
-    assert_manifests_equal(&entity_manifest, &expected_manifest);
+        }),
+    );
 }
 
 #[test]
 fn test_entity_manifest_multiple_branches() {
-    let mut pset = PolicySet::new();
-    let policy1 = parse_policy(
-        None,
-        r#"
-permit(
-  principal,
-  action == Action::"Read",
-  resource
-)
-when
-{
-  resource.readers.contains(principal)
-};"#,
-    )
-    .unwrap();
-    let policy2 = parse_policy(
-        Some(PolicyID::from_string("Policy2")),
-        r#"permit(
-  principal,
-  action == Action::"Read",
-  resource
-)
-when
-{
-  resource.metadata.owner == principal
-};"#,
-    )
-    .unwrap();
-    pset.add(policy1.into()).expect("should succeed");
-    pset.add(policy2.into()).expect("should succeed");
-
     let schema = ValidatorSchema::from_cedarschema_str(
         "
 entity User;
@@ -386,54 +330,54 @@ action Read appliesTo {
     )
     .unwrap()
     .0;
-    let validator = Validator::new(schema);
 
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-
-    // Define the human manifest using the json! macro
-    let human_json = serde_json::json!({
-        "perAction": [[
-            {
-                "principal": "User",
-                "action": {
-                    "ty": "Action",
-                    "eid": "Read"
+    test_entity_manifest_with_policies(
+        vec![
+            (
+                r#"
+permit(
+  principal,
+  action == Action::"Read",
+  resource
+)
+when
+{
+  resource.readers.contains(principal)
+};"#,
+                None,
+            ),
+            (
+                r#"permit(
+  principal,
+  action == Action::"Read",
+  resource
+)
+when
+{
+  resource.metadata.owner == principal
+};"#,
+                Some(PolicyID::from_string("Policy2")),
+            ),
+        ],
+        Validator::new(schema),
+        serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "Read"
+                    },
+                    "resource": "Document"
                 },
-                "resource": "Document"
-            },
-            ["resource.readers", "resource.metadata.owner"]
-        ]]
-    });
-
-    // Convert the JSON value to a HumanEntityManifest
-    let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
-
-    // Convert the human manifest to an EntityManifest
-    let expected_manifest = human_manifest
-        .to_entity_manifest(validator.schema())
-        .unwrap();
-
-    assert_manifests_equal(&entity_manifest, &expected_manifest);
+                ["resource.readers", "resource.metadata.owner"]
+            ]]
+        }),
+    );
 }
 
 #[test]
 fn test_entity_manifest_struct_equality() {
-    let mut pset = PolicySet::new();
-    // we need to load all of the metadata, not just nickname
-    // no need to load actual name
-    let policy = parse_policy(
-        None,
-        r#"permit(principal, action, resource)
-when {
-    principal.metadata.nickname == "timmy" && principal.metadata == {
-        "friends": [ "oliver" ],
-        "nickname": "timmy"
-    }
-};"#,
-    )
-    .expect("should succeed");
-    pset.add(policy.into()).expect("should succeed");
-
     let schema = ValidatorSchema::from_cedarschema_str(
         "
 entity User = {
@@ -455,51 +399,35 @@ action BeSad appliesTo {
     )
     .unwrap()
     .0;
-    let validator = Validator::new(schema);
 
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-
-    // Define the human manifest using the json! macro
-    let human_json = serde_json::json!({
-        "perAction": [[
-            {
-                "principal": "User",
-                "action": {
-                    "ty": "Action",
-                    "eid": "BeSad"
+    test_entity_manifest_with_policy(
+        r#"permit(principal, action, resource)
+when {
+    principal.metadata.nickname == "timmy" && principal.metadata == {
+        "friends": [ "oliver" ],
+        "nickname": "timmy"
+    }
+};"#,
+        None,
+        Validator::new(schema),
+        serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "BeSad"
+                    },
+                    "resource": "Document"
                 },
-                "resource": "Document"
-            },
-            ["principal.metadata.nickname", "principal.metadata.friends"]
-        ]]
-    });
-
-    // Convert the JSON value to a HumanEntityManifest
-    let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
-
-    // Convert the human manifest to an EntityManifest
-    let expected_manifest = human_manifest
-        .to_entity_manifest(validator.schema())
-        .unwrap();
-
-    assert_manifests_equal(&entity_manifest, &expected_manifest);
+                ["principal.metadata.nickname", "principal.metadata.friends"]
+            ]]
+        }),
+    );
 }
 
 #[test]
 fn test_entity_manifest_struct_equality_left_right_different() {
-    let mut pset = PolicySet::new();
-    // we need to load all of the metadata, not just nickname
-    // no need to load actual name
-    let policy = parse_policy(
-        None,
-        r#"permit(principal, action, resource)
-when {
-    principal.metadata == resource.metadata
-};"#,
-    )
-    .expect("should succeed");
-    pset.add(policy.into()).expect("should succeed");
-
     let schema = ValidatorSchema::from_cedarschema_str(
         "
 entity User = {
@@ -521,100 +449,70 @@ action Hello appliesTo {
     )
     .unwrap()
     .0;
-    let validator = Validator::new(schema);
 
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-
-    // Define the human manifest using the json! macro
-    let human_json = serde_json::json!({
-        "perAction": [[
-            {
-                "principal": "User",
-                "action": {
-                    "ty": "Action",
-                    "eid": "Hello"
+    test_entity_manifest_with_policy(
+        r#"permit(principal, action, resource)
+when {
+    principal.metadata == resource.metadata
+};"#,
+        None,
+        Validator::new(schema),
+        serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "Hello"
+                    },
+                    "resource": "User"
                 },
-                "resource": "User"
-            },
-            [
-                "principal.metadata.nickname",
-                "principal.metadata.friends",
-                "resource.metadata.nickname",
-                "resource.metadata.friends"
-            ]
-        ]]
-    });
-
-    // Convert the JSON value to a HumanEntityManifest
-    let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
-
-    // Convert the human manifest to an EntityManifest
-    let expected_manifest = human_manifest
-        .to_entity_manifest(validator.schema())
-        .unwrap();
-
-    assert_manifests_equal(&entity_manifest, &expected_manifest);
+                [
+                    "principal.metadata.nickname",
+                    "principal.metadata.friends",
+                    "resource.metadata.nickname",
+                    "resource.metadata.friends"
+                ]
+            ]]
+        }),
+    );
 }
 
 #[test]
 fn test_entity_manifest_with_if() {
-    let mut pset = PolicySet::new();
-
-    let validator = Validator::new(document_fields_schema());
-
-    let policy = parse_policy(
-        None,
+    test_entity_manifest_with_policy(
         r#"permit(principal, action, resource)
 when {
     if principal.name == "John"
     then resource.owner.name == User::"oliver".name
     else resource.viewer == User::"oliver"
 };"#,
-    )
-    .expect("should succeed");
-    pset.add(policy.into()).expect("should succeed");
-
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-
-    // Define the human manifest using the json! macro
-    let human_json = serde_json::json!({
-        "perAction": [[
-            {
-                "principal": "User",
-                "action": {
-                    "ty": "Action",
-                    "eid": "Read"
+        None,
+        Validator::new(document_fields_schema()),
+        serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "Read"
+                    },
+                    "resource": "Document"
                 },
-                "resource": "Document"
-            },
-            [
-                "principal.name",
-                "User::\"oliver\".name",
-                "resource.owner.name",
-                "resource.viewer"
-            ]
-        ]]
-    });
-
-    // Convert the JSON value to a HumanEntityManifest
-    let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
-
-    // Convert the human manifest to an EntityManifest
-    let expected_manifest = human_manifest
-        .to_entity_manifest(validator.schema())
-        .unwrap();
-
-    assert_manifests_equal(&entity_manifest, &expected_manifest);
+                [
+                    "principal.name",
+                    "User::\"oliver\".name",
+                    "resource.owner.name",
+                    "resource.viewer"
+                ]
+            ]]
+        }),
+    );
 }
 
 #[test]
 fn test_entity_manifest_if_literal_record() {
-    let mut pset = PolicySet::new();
-
-    let validator = Validator::new(document_fields_schema());
-
-    let policy = parse_policy(
-        None,
+    test_entity_manifest_with_policy(
         r#"permit(principal, action, resource)
 when {
     {
@@ -629,124 +527,74 @@ when {
           }
     }["myfield"]["secondfield"].name == "pavel"
 };"#,
-    )
-    .expect("should succeed");
-    pset.add(policy.into()).expect("should succeed");
-
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-
-    // Define the human manifest using the json! macro
-    let human_json = serde_json::json!({
-        "perAction": [[
-            {
-                "principal": "User",
-                "action": {
-                    "ty": "Action",
-                    "eid": "Read"
+        None,
+        Validator::new(document_fields_schema()),
+        serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "Read"
+                    },
+                    "resource": "Document"
                 },
-                "resource": "Document"
-            },
-            [
-                "principal.name",
-                "resource.viewer",
-                "resource.owner.name"
-            ]
-        ]]
-    });
-
-    // Convert the JSON value to a HumanEntityManifest
-    let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
-
-    // Convert the human manifest to an EntityManifest
-    let expected_manifest = human_manifest
-        .to_entity_manifest(validator.schema())
-        .unwrap();
-
-    assert_manifests_equal(&entity_manifest, &expected_manifest);
+                [
+                    "principal.name",
+                    "resource.viewer",
+                    "resource.owner.name"
+                ]
+            ]]
+        }),
+    );
 }
 
 #[test]
 fn test_has_tag_simple() {
-    let mut pset = PolicySet::new();
-    let policy = parse_policy(
-        None,
+    test_entity_manifest_with_policy(
         r#"permit(principal, action, resource)
 when {
     principal.hasTag("mytag")
 };"#,
-    )
-    .expect("should succeed");
-    pset.add(policy.into()).expect("should succeed");
-
-    let validator = Validator::new(schema());
-
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-
-    // Define the human manifest using the json! macro
-    let human_json = serde_json::json!({
-        "perAction": [[
-            {
-                "principal": "User",
-                "action": {
-                    "ty": "Action",
-                    "eid": "Read"
+        None,
+        Validator::new(schema()),
+        serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "Read"
+                    },
+                    "resource": "Document"
                 },
-                "resource": "Document"
-            },
-            ["principal.getTag(\"mytag\")"]
-        ]]
-    });
-
-    // Convert the JSON value to a HumanEntityManifest
-    let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
-
-    // Convert the human manifest to an EntityManifest
-    let expected_manifest = human_manifest
-        .to_entity_manifest(validator.schema())
-        .unwrap();
-
-    assert_manifests_equal(&entity_manifest, &expected_manifest);
+                ["principal.getTag(\"mytag\")"]
+            ]]
+        }),
+    );
 }
 
 #[test]
 fn test_has_tag_computed() {
-    let mut pset = PolicySet::new();
-    let policy = parse_policy(
-        None,
+    test_entity_manifest_with_policy(
         r#"permit(principal, action, resource)
 when {
     principal.hasTag(resource.owner.name)
 };"#,
-    )
-    .expect("should succeed");
-    pset.add(policy.into()).expect("should succeed");
-
-    let validator = Validator::new(document_fields_schema());
-
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-
-    // Define the human manifest using the json! macro
-    let human_json = serde_json::json!({
-        "perAction": [[
-            {
-                "principal": "User",
-                "action": {
-                    "ty": "Action",
-                    "eid": "Read"
+        None,
+        Validator::new(document_fields_schema()),
+        serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "Read"
+                    },
+                    "resource": "Document"
                 },
-                "resource": "Document"
-            },
-            ["principal.getTag(resource.owner.name)"]
-        ]]
-    });
-
-    // Convert the JSON value to a HumanEntityManifest
-    let human_manifest: HumanEntityManifest = serde_json::from_value(human_json).unwrap();
-
-    // Convert the human manifest to an EntityManifest
-    let expected_manifest = human_manifest
-        .to_entity_manifest(validator.schema())
-        .unwrap();
-
-    assert_manifests_equal(&entity_manifest, &expected_manifest);
+                ["principal.getTag(resource.owner.name)"]
+            ]]
+        }),
+    );
 }
