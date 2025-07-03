@@ -1,5 +1,6 @@
 use crate::ast::EntityUID;
 use crate::entities::err::EntitiesError;
+use crate::validator::types::Type;
 use crate::validator::ValidationResult;
 use miette::Diagnostic;
 use smol_str::SmolStr;
@@ -35,6 +36,24 @@ pub struct MismatchedMissingEntityError {
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("entity manifests are only compatible with schemas that validate in strict mode. Tried to use an invalid schema with an entity manifest")]
 pub struct MismatchedNotStrictSchemaError {}
+
+/// Error when the schema does not agree with the entity manifest
+/// and we expected an entity or record type
+#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
+#[error("entity manifest doesn't match schema. We expected an entity or record type, but found a different type: {found_type}")]
+pub struct MismatchedExpectedEntityOrRecordError {
+    /// The type that was found instead of an entity or record type
+    pub(crate) found_type: Type,
+}
+
+/// Error when the schema does not agree with the entity manifest
+/// and we expected an entity type
+#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
+#[error("entity manifest doesn't match schema. We expected an entity type, but found a different type: {found_type}")]
+pub struct MismatchedExpectedEntityError {
+    /// The type that was found instead of an entity type
+    pub(crate) found_type: Type,
+}
 
 /// Error when access path is not found in entity manifest
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
@@ -73,6 +92,12 @@ pub enum MismatchedEntityManifestError {
     /// The schema is not in strict mode, which is required for entity manifests
     #[error(transparent)]
     MismatchedNotStrictSchema(#[from] MismatchedNotStrictSchemaError),
+    /// The schema does not agree with the entity manifest, expected an entity or record type
+    #[error(transparent)]
+    MismatchedExpectedEntityOrRecord(#[from] MismatchedExpectedEntityOrRecordError),
+    /// An schema does not match the entity manifest, expected an entity type
+    #[error(transparent)]
+    MismatchedExpectedEntity(#[from] MismatchedExpectedEntityError),
     /// An access path was not found in the entity manifest
     #[error(transparent)]
     AccessPathNotFound(#[from] AccessPathNotFoundError),
@@ -105,7 +130,6 @@ pub enum EntitySliceError {
     #[error(transparent)]
     IncompatibleEntityManifest(#[from] IncompatibleEntityManifestError),
 
-    
     /// A required entity is missing from the entity store
     #[error(transparent)]
     EntityMissing(#[from] EntityMissingError),
