@@ -173,24 +173,63 @@ fn expect_entity_slice_to(
     }
 }
 
+/// Helper function to test entity slicing with a single policy
+fn test_entity_slice_with_policy(
+    policy_str: &str,
+    policy_id: Option<PolicyID>,
+    schema: ValidatorSchema,
+    original_json: serde_json::Value,
+    expected_json: serde_json::Value,
+) {
+    let mut pset = PolicySet::new();
+    let policy = parse_policy(policy_id, policy_str).expect("should succeed");
+    pset.add(policy.into()).expect("should succeed");
+
+    let validator = Validator::new(schema);
+    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
+
+    expect_entity_slice_to(
+        original_json,
+        expected_json,
+        validator.schema(),
+        &entity_manifest,
+    );
+}
+
+/// Helper function to test entity slicing with multiple policies
+fn test_entity_slice_with_policies(
+    policies: Vec<(&str, Option<PolicyID>)>,
+    schema: ValidatorSchema,
+    original_json: serde_json::Value,
+    expected_json: serde_json::Value,
+) {
+    let mut pset = PolicySet::new();
+    for (policy_str, policy_id) in policies {
+        let policy = parse_policy(policy_id, policy_str).expect("should succeed");
+        pset.add(policy.into()).expect("should succeed");
+    }
+
+    let validator = Validator::new(schema);
+    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
+
+    expect_entity_slice_to(
+        original_json,
+        expected_json,
+        validator.schema(),
+        &entity_manifest,
+    );
+}
+
 #[test]
 fn test_simple_entity_manifest() {
-    let mut pset = PolicySet::new();
-    let policy = parse_policy(
-        None,
+    test_entity_slice_with_policy(
         r#"permit(principal, action, resource)
 when {
     principal.name == "John"
 };"#,
-    )
-    .expect("should succeed");
-    pset.add(policy.into()).expect("should succeed");
-
-    let validator = Validator::new(schema());
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-
-    let entities_json = serde_json::json!(
-        [
+        None,
+        schema(),
+        serde_json::json!([
             {
                 "uid" : { "type" : "User", "id" : "oliver"},
                 "attrs" : {
@@ -205,11 +244,8 @@ when {
                 },
                 "parents" : []
             },
-        ]
-    );
-
-    let expected_entities_json = serde_json::json!(
-        [
+        ]),
+        serde_json::json!([
             {
                 "uid" : { "type" : "User", "id" : "oliver"},
                 "attrs" : {
@@ -217,31 +253,18 @@ when {
                 },
                 "parents" : []
             },
-        ]
-    );
-
-    expect_entity_slice_to(
-        entities_json,
-        expected_entities_json,
-        validator.schema(),
-        &entity_manifest,
+        ]),
     );
 }
 
 #[test]
 #[should_panic(expected = "Sliced entities differed")]
 fn sanity_test_empty_entity_manifest() {
-    let mut pset = PolicySet::new();
-    let policy =
-        parse_policy(None, "permit(principal, action, resource);").expect("should succeed");
-    pset.add(policy.into()).expect("should succeed");
-
-    let validator = Validator::new(schema());
-
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-
-    let entities_json = serde_json::json!(
-        [
+    test_entity_slice_with_policy(
+        "permit(principal, action, resource);",
+        None,
+        schema(),
+        serde_json::json!([
             {
                 "uid" : { "type" : "User", "id" : "oliver"},
                 "attrs" : {
@@ -256,47 +279,33 @@ fn sanity_test_empty_entity_manifest() {
                 },
                 "parents" : []
             },
-        ]
-    );
-
-    let expected_entities_json = serde_json::json!([
-        {
-            "uid" : { "type" : "User", "id" : "oliver"},
-            "attrs" : {
-                "name" : "Oliver"
+        ]),
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {
+                    "name" : "Oliver"
+                },
+                "parents" : []
             },
-            "parents" : []
-        },
-        {
-            "uid" : { "type" : "User", "id" : "oliver2"},
-            "attrs" : {
-                "name" : "Oliver2"
+            {
+                "uid" : { "type" : "User", "id" : "oliver2"},
+                "attrs" : {
+                    "name" : "Oliver2"
+                },
+                "parents" : []
             },
-            "parents" : []
-        },
-    ]);
-
-    expect_entity_slice_to(
-        entities_json,
-        expected_entities_json,
-        validator.schema(),
-        &entity_manifest,
+        ]),
     );
 }
 
 #[test]
 fn test_empty_entity_manifest() {
-    let mut pset = PolicySet::new();
-    let policy =
-        parse_policy(None, "permit(principal, action, resource);").expect("should succeed");
-    pset.add(policy.into()).expect("should succeed");
-
-    let validator = Validator::new(schema());
-
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-
-    let entities_json = serde_json::json!(
-        [
+    test_entity_slice_with_policy(
+        "permit(principal, action, resource);",
+        None,
+        schema(),
+        serde_json::json!([
             {
                 "uid" : { "type" : "User", "id" : "oliver"},
                 "attrs" : {
@@ -311,37 +320,21 @@ fn test_empty_entity_manifest() {
                 },
                 "parents" : []
             },
-        ]
-    );
-
-    let expected_entities_json = serde_json::json!([]);
-
-    expect_entity_slice_to(
-        entities_json,
-        expected_entities_json,
-        validator.schema(),
-        &entity_manifest,
+        ]),
+        serde_json::json!([]),
     );
 }
 
 #[test]
 fn test_entity_manifest_ancestors_skipped() {
-    let mut pset = PolicySet::new();
-    let policy = parse_policy(
-        None,
+    test_entity_slice_with_policy(
         "permit(principal, action, resource)
 when {
     principal in resource || principal.manager in resource
 };",
-    )
-    .expect("should succeed");
-    pset.add(policy.into()).expect("should succeed");
-
-    let validator = Validator::new(schema_with_hierarchy());
-
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-    let entities_json = serde_json::json!(
-        [
+        None,
+        schema_with_hierarchy(),
+        serde_json::json!([
             {
                 "uid" : { "type" : "User", "id" : "oliver"},
                 "attrs" : {
@@ -364,11 +357,8 @@ when {
                 "parents" : [
                 ]
             },
-        ]
-    );
-
-    let expected_entities_json = serde_json::json!(
-        [
+        ]),
+        serde_json::json!([
             {
                 "uid" : { "type" : "User", "id" : "oliver"},
                 "attrs" : {
@@ -378,38 +368,22 @@ when {
                     { "type" : "Document", "id" : "dummy"}
                 ]
             },
-        ]
-    );
-
-    expect_entity_slice_to(
-        entities_json,
-        expected_entities_json,
-        validator.schema(),
-        &entity_manifest,
+        ]),
     );
 }
 
 #[test]
 fn test_entity_manifest_possible_ancestors() {
-    let mut pset = PolicySet::new();
-    let policy = parse_policy(
-        None,
+    test_entity_slice_with_policy(
         r#"permit(principal, action, resource)
 when {
     principal in (if 2 > 3
                   then Document::"dummy"
                   else principal.personaldoc)
 };"#,
-    )
-    .expect("should succeed");
-    pset.add(policy.into()).expect("should succeed");
-
-    let validator = Validator::new(schema_with_hierarchy());
-
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-
-    let entities_json = serde_json::json!(
-        [
+        None,
+        schema_with_hierarchy(),
+        serde_json::json!([
             {
                 "uid" : { "type" : "User", "id" : "oliver"},
                 "attrs" : {
@@ -423,11 +397,8 @@ when {
                     { "type" : "Document", "id" : "dummy"}
                 ]
             },
-        ]
-    );
-
-    let expected_entities_json = serde_json::json!(
-        [
+        ]),
+        serde_json::json!([
             {
                 "uid" : { "type" : "User", "id" : "oliver"},
                 "attrs" : {
@@ -438,30 +409,12 @@ when {
                     { "type" : "Document", "id" : "oliverdocument"}
                 ]
             }
-        ]
-    );
-
-    expect_entity_slice_to(
-        entities_json,
-        expected_entities_json,
-        validator.schema(),
-        &entity_manifest,
+        ]),
     );
 }
 
 #[test]
 fn test_entity_manifest_set_of_ancestors() {
-    let mut pset = PolicySet::new();
-    let policy = parse_policy(
-        None,
-        "permit(principal, action, resource)
-when {
-    principal in principal.managers
-};",
-    )
-    .expect("should succeed");
-    pset.add(policy.into()).expect("should succeed");
-
     let schema = ValidatorSchema::from_cedarschema_str(
         "
 entity User in [User] = {
@@ -480,12 +433,15 @@ action Read appliesTo {
     )
     .unwrap()
     .0;
-    let validator = Validator::new(schema);
 
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-
-    let entities_json = serde_json::json!(
-        [
+    test_entity_slice_with_policy(
+        "permit(principal, action, resource)
+when {
+    principal in principal.managers
+};",
+        None,
+        schema,
+        serde_json::json!([
             {
                 "uid" : { "type" : "User", "id" : "oliver"},
                 "attrs" : {
@@ -502,11 +458,8 @@ action Read appliesTo {
                     { "type" : "User", "id" : "yihong"},
                 ]
             },
-        ]
-    );
-
-    let expected_entities_json = serde_json::json!(
-        [
+        ]),
+        serde_json::json!([
             {
                 "uid" : { "type" : "User", "id" : "oliver"},
                 "attrs" : {
@@ -521,50 +474,12 @@ action Read appliesTo {
                     { "type" : "User", "id" : "yihong"},
                 ]
             },
-        ]
-    );
-
-    expect_entity_slice_to(
-        entities_json,
-        expected_entities_json,
-        validator.schema(),
-        &entity_manifest,
+        ]),
     );
 }
 
 #[test]
 fn test_entity_manifest_multiple_branches() {
-    let mut pset = PolicySet::new();
-    let policy1 = parse_policy(
-        None,
-        r#"
-permit(
-  principal,
-  action == Action::"Read",
-  resource
-)
-when
-{
-  resource.readers.contains(principal)
-};"#,
-    )
-    .unwrap();
-    let policy2 = parse_policy(
-        Some(PolicyID::from_string("Policy2")),
-        r#"permit(
-  principal,
-  action == Action::"Read",
-  resource
-)
-when
-{
-  resource.metadata.owner == principal
-};"#,
-    )
-    .unwrap();
-    pset.add(policy1.into()).expect("should succeed");
-    pset.add(policy2.into()).expect("should succeed");
-
     let schema = ValidatorSchema::from_cedarschema_str(
         "
 entity User;
@@ -588,12 +503,37 @@ action Read appliesTo {
     )
     .unwrap()
     .0;
-    let validator = Validator::new(schema);
 
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-
-    let entities_json = serde_json::json!(
-        [
+    test_entity_slice_with_policies(
+        vec![
+            (
+                r#"
+permit(
+  principal,
+  action == Action::"Read",
+  resource
+)
+when
+{
+  resource.readers.contains(principal)
+};"#,
+                None,
+            ),
+            (
+                r#"permit(
+  principal,
+  action == Action::"Read",
+  resource
+)
+when
+{
+  resource.metadata.owner == principal
+};"#,
+                Some(PolicyID::from_string("Policy2")),
+            ),
+        ],
+        schema,
+        serde_json::json!([
             {
                 "uid" : { "type" : "User", "id" : "oliver"},
                 "attrs" : {
@@ -617,11 +557,8 @@ action Read appliesTo {
                 },
                 "parents": [],
             },
-        ]
-    );
-
-    let expected_entities_json = serde_json::json!(
-        [
+        ]),
+        serde_json::json!([
             {
                 "uid": { "type": "Document", "id": "dummy"},
                 "attrs": {
@@ -637,35 +574,12 @@ action Read appliesTo {
                 },
                 "parents": [],
             },
-        ]
-    );
-
-    expect_entity_slice_to(
-        entities_json,
-        expected_entities_json,
-        validator.schema(),
-        &entity_manifest,
+        ]),
     );
 }
 
 #[test]
 fn test_entity_manifest_struct_equality() {
-    let mut pset = PolicySet::new();
-    // we need to load all of the metadata, not just nickname
-    // no need to load actual name
-    let policy = parse_policy(
-        None,
-        r#"permit(principal, action, resource)
-when {
-    principal.metadata.nickname == "timmy" && principal.metadata == {
-        "friends": [ "oliver" ],
-        "nickname": "timmy"
-    }
-};"#,
-    )
-    .expect("should succeed");
-    pset.add(policy.into()).expect("should succeed");
-
     let schema = ValidatorSchema::from_cedarschema_str(
         "
 entity User = {
@@ -687,15 +601,15 @@ action BeSad appliesTo {
     )
     .unwrap()
     .0;
-    let validator = Validator::new(schema);
 
-    let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
+    let validator = Validator::new(schema);
+    let entity_manifest =
+        compute_entity_manifest(&validator, &PolicySet::new()).expect("Should succeed");
     assert_eq!(entity_manifest, entity_manifest);
 }
 
 #[test]
 fn test_slice_with_entity_alias() {
-    let validator = Validator::new(schema());
     let entities_json = serde_json::json!([{
         "uid" : { "type" : "User", "id" : "oliver"},
         "parents": [],
@@ -703,39 +617,30 @@ fn test_slice_with_entity_alias() {
     }]);
 
     // Only lit is accessed
-    let pset = parser::parse_policyset(
-            r#"permit(principal in User::"oliver", action, resource) when { User::"oliver".name == "oliver" };"#,
-        ).unwrap();
-    let manifest = compute_entity_manifest(&validator, &pset).unwrap();
-    expect_entity_slice_to(
+    test_entity_slice_with_policy(
+        r#"permit(principal in User::"oliver", action, resource) when { User::"oliver".name == "oliver" };"#,
+        None,
+        schema(),
         entities_json.clone(),
         entities_json.clone(),
-        validator.schema(),
-        &manifest,
     );
 
     // Only var is accessed
-    let pset = parser::parse_policyset(
-            r#"permit(principal in User::"oliver", action, resource) when { principal.name == "oliver" };"#,
-        ).unwrap();
-    let manifest = compute_entity_manifest(&validator, &pset).unwrap();
-    expect_entity_slice_to(
+    test_entity_slice_with_policy(
+        r#"permit(principal in User::"oliver", action, resource) when { principal.name == "oliver" };"#,
+        None,
+        schema(),
         entities_json.clone(),
         entities_json.clone(),
-        validator.schema(),
-        &manifest,
     );
 
     // Both are accessed
-    let pset = parser::parse_policyset(
-            r#"permit(principal in User::"oliver", action, resource) when { principal.name == User::"oliver".name };"#,
-        ).unwrap();
-    let manifest = compute_entity_manifest(&validator, &pset).unwrap();
-    expect_entity_slice_to(
+    test_entity_slice_with_policy(
+        r#"permit(principal in User::"oliver", action, resource) when { principal.name == User::"oliver".name };"#,
+        None,
+        schema(),
         entities_json.clone(),
         entities_json,
-        validator.schema(),
-        &manifest,
     );
 }
 
@@ -760,38 +665,33 @@ action Read appliesTo {
     .unwrap()
     .0;
 
-    let pset = parser::parse_policyset(
+    test_entity_slice_with_policy(
         r#"permit(principal, action, resource) when {
                 if (principal.foo == "foo") || true then
                     principal.bar == "bar"
                 else
                     principal.baz == "baz"
             };"#,
-    )
-    .unwrap();
-    let validator = Validator::new(schema);
-    let manifest = compute_entity_manifest(&validator, &pset).unwrap();
-    let entities_json = serde_json::json!([{
-        "uid" : { "type" : "User", "id" : "oliver"},
-        "parents": [],
-        "attrs": {
-            "foo": "foo",
-            "bar": "bar",
-            "baz": "baz",
-        }
-    }]);
-    // We need `foo` to evaluate the guard even though we know it's always
-    // `true`. We need `bar` to evaluate the `then` branch. We don't need
-    // `baz` because we'll never evaluate the `else` branch.
-    let expected_json = serde_json::json!([{
-        "uid" : { "type" : "User", "id" : "oliver"},
-        "parents": [],
-        "attrs": {
-            "foo": "foo",
-            "bar": "bar",
-        }
-    }]);
-    expect_entity_slice_to(entities_json, expected_json, validator.schema(), &manifest);
+        None,
+        schema,
+        serde_json::json!([{
+            "uid" : { "type" : "User", "id" : "oliver"},
+            "parents": [],
+            "attrs": {
+                "foo": "foo",
+                "bar": "bar",
+                "baz": "baz",
+            }
+        }]),
+        serde_json::json!([{
+            "uid" : { "type" : "User", "id" : "oliver"},
+            "parents": [],
+            "attrs": {
+                "foo": "foo",
+                "bar": "bar",
+            }
+        }]),
+    );
 }
 
 #[test]
@@ -823,17 +723,12 @@ action Read appliesTo {
         }
     }]);
 
-    // principal and literal alias, but access different attrs. Slice needs to take both
-    let pset = parser::parse_policyset(
-            r#"permit(principal in User::"oliver", action, resource) when { principal.foo == User::"oliver".bar };"#,
-        ).unwrap();
-    let validator = Validator::new(schema);
-    let manifest = compute_entity_manifest(&validator, &pset).unwrap();
-    expect_entity_slice_to(
+    test_entity_slice_with_policy(
+        r#"permit(principal in User::"oliver", action, resource) when { principal.foo == User::"oliver".bar };"#,
+        None,
+        schema,
         entities_json.clone(),
         entities_json,
-        validator.schema(),
-        &manifest,
     );
 }
 
@@ -868,17 +763,12 @@ action Read appliesTo {
         }}
     }]);
 
-    // principal and literal alias, but access different attrs of a nested record. Slice needs to take both
-    let pset = parser::parse_policyset(
-            r#"permit(principal in User::"oliver", action, resource) when { principal.foo.bar == User::"oliver".foo.baz };"#,
-        ).unwrap();
-    let validator = Validator::new(schema);
-    let manifest = compute_entity_manifest(&validator, &pset).unwrap();
-    expect_entity_slice_to(
+    test_entity_slice_with_policy(
+        r#"permit(principal in User::"oliver", action, resource) when { principal.foo.bar == User::"oliver".foo.baz };"#,
+        None,
+        schema,
         entities_json.clone(),
         entities_json,
-        validator.schema(),
-        &manifest,
     );
 }
 
@@ -907,45 +797,35 @@ action Read appliesTo {
         "parents": [ { "type" : "Group", "id" : "oliver"}, ],
         "attrs": { "name": "oliver" }
     }]);
-    let validator = Validator::new(schema);
 
     // The `principal` alias needs to load ancestors, but the lit alias does not. Slicing still needs to load ancestors
-    let pset = parser::parse_policyset(
-            r#"permit(principal in Group::"oliver", action, resource) when {User::"oliver".name == "oliver"};"#,
-        ).unwrap();
-    let manifest = compute_entity_manifest(&validator, &pset).unwrap();
-    expect_entity_slice_to(
+    test_entity_slice_with_policy(
+        r#"permit(principal in Group::"oliver", action, resource) when {User::"oliver".name == "oliver"};"#,
+        None,
+        schema.clone(),
         entities_json.clone(),
         entities_json.clone(),
-        validator.schema(),
-        &manifest,
     );
 
     // Lit wants ancestors, `principal` does not
-    let pset = parser::parse_policyset(
-            r#"permit(principal, action, resource) when { User::"oliver" in Group::"oliver" && principal.name == "oliver"};"#,
-        ).unwrap();
-    let manifest = compute_entity_manifest(&validator, &pset).unwrap();
-    expect_entity_slice_to(
+    test_entity_slice_with_policy(
+        r#"permit(principal, action, resource) when { User::"oliver" in Group::"oliver" && principal.name == "oliver"};"#,
+        None,
+        schema.clone(),
         entities_json.clone(),
         entities_json.clone(),
-        validator.schema(),
-        &manifest,
     );
 
     // Both need ancestors
-    let pset = parser::parse_policyset(
-            r#"permit(principal, action, resource) when { User::"oliver" in Group::"oliver" && principal in Group::"oliver" };"#,
-        ).unwrap();
-    let manifest = compute_entity_manifest(&validator, &pset).unwrap();
-    expect_entity_slice_to(
+    test_entity_slice_with_policy(
+        r#"permit(principal, action, resource) when { User::"oliver" in Group::"oliver" && principal in Group::"oliver" };"#,
+        None,
+        schema,
         entities_json,
         serde_json::json!([{
             "uid" : { "type" : "User", "id" : "oliver"},
             "parents": [ { "type" : "Group", "id" : "oliver"}, ],
             "attrs": {}
         }]),
-        validator.schema(),
-        &manifest,
     );
 }
