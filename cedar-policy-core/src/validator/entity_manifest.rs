@@ -16,65 +16,302 @@
 
 //! Entity Manifest definition and static analysis.
 
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 
-use crate::ast::{
-    BinaryOp, EntityUID, Expr, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
-};
-use crate::entities::err::EntitiesError;
-use miette::Diagnostic;
+use crate::ast::{EntityUID, PolicySet, RequestType, Var};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
-use thiserror::Error;
 
-mod analysis;
+pub(crate) mod analysis;
+#[cfg(test)]
+mod entity_manifest_tests;
+#[cfg(test)]
+mod entity_slice_tests;
+mod errors;
+mod human_format;
 mod loader;
+pub(crate) mod manifest_helpers;
 pub mod slicing;
 mod type_annotations;
 
-use crate::validator::entity_manifest::analysis::{
-    EntityManifestAnalysisResult, WrappedAccessPaths,
+// Import errors directly
+pub use crate::validator::entity_manifest::errors::{
+    AccessTermNotFoundError, ConversionError, EntityManifestError, EntityManifestFromJsonError,
+    MismatchedEntityManifestError, MismatchedMissingEntityError, MismatchedNotStrictSchemaError,
+    PartialExpressionError, PartialRequestError, PathExpressionParseError,
+    UnsupportedCedarFeatureError,
 };
+
+use crate::validator::entity_manifest::analysis::analyze_expr_access_paths as analyze_expr_access_terms;
+// Re-export types from human_format module
+use crate::validator::Validator;
 use crate::validator::{
     typecheck::{PolicyCheck, Typechecker},
     types::Type,
     ValidationMode, ValidatorSchema,
 };
-use crate::validator::{ValidationResult, Validator};
+
+/// For a given request type, stores information about what
+/// data is required.
+/// It stores the request type,
+/// access dag, and access terms.
+#[doc = include_str!("../../experimental_warning.md")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestTypeTerms {
+    /// The request type
+    pub(crate) request_type: RequestType,
+    /// The backing store for the terms, a directed acyclic graph
+    pub(crate) dag: AccessDag,
+    /// The set of access terms required for this request type
+    pub(crate) access_terms: AccessTerms,
+}
+
+impl RequestTypeTerms {
+    /// Create a new [`RequestTypeTerms`]
+    pub fn new(request_type: RequestType) -> Self {
+        Self {
+            request_type,
+            dag: AccessDag::default(),
+            access_terms: AccessTerms::default(),
+        }
+    }
+
+    /// Get the request type
+    pub fn request_type(&self) -> &RequestType {
+        &self.request_type
+    }
+
+    /// Get the access dag
+    pub(crate) fn dag(&self) -> &AccessDag {
+        &self.dag
+    }
+
+    /// Get the access terms
+    pub fn access_terms(&self) -> &AccessTerms {
+        &self.access_terms
+    }
+
+    /// Add all terms from `other` to `self`
+    /// Don't make this public! Doesn't restore type information.
+    fn union_with(&mut self, other: &Self) -> TermMapping {
+        let mut term_mapping = TermMapping::new();
+        // First, add all terms from the other manifest to this manifest
+        // and build a mapping from terms in the other manifest to terms in this manifest
+        for (i, variant) in other.dag.manifest_store.iter().enumerate() {
+            let mapped_variant = self.map_variant(variant, &mut term_mapping);
+            let new_term = self.dag.add_term(mapped_variant);
+            term_mapping.term_map.insert(i, new_term.id);
+        }
+
+        // Map each term from the other manifest to this manifest
+        for term in &other.access_terms.terms {
+            // PANIC SAFETY: all terms are mapped in the previous loop
+            #[allow(clippy::unwrap_used)]
+            self.access_terms
+                .insert(term_mapping.map_term(term).unwrap());
+        }
+
+        term_mapping
+    }
+
+    /// Leaf nodes like variables and literal ids don't need to be loaded.
+    /// Variables are included in the request.
+    /// We prune these from the set of access terms required.
+    fn prune_leafs(&mut self) {
+        let terms = std::mem::take(&mut self.access_terms.terms);
+        self.access_terms.terms = terms
+            .into_iter()
+            .filter(|term| !term.is_leaf(&self.dag))
+            .collect();
+    }
+
+    /// Map a variant from the source manifest to the target manifest
+    ///
+    /// This method recursively maps a variant and its children from the source manifest
+    /// to the target manifest, creating new terms in the target manifest as needed.
+    fn map_variant(
+        &mut self,
+        variant: &AccessTermVariant,
+        term_mapping: &mut TermMapping,
+    ) -> AccessTermVariant {
+        match variant {
+            AccessTermVariant::Literal(euid) => AccessTermVariant::Literal(euid.clone()),
+            AccessTermVariant::Var(var) => AccessTermVariant::Var(*var),
+            AccessTermVariant::String(s) => AccessTermVariant::String(s.clone()),
+            AccessTermVariant::Attribute { of, attr } => {
+                // Recursively map the 'of' term
+                let mapped_of = self.map_term_or_create(of, term_mapping);
+
+                AccessTermVariant::Attribute {
+                    of: mapped_of,
+                    attr: attr.clone(),
+                }
+            }
+            AccessTermVariant::Tag { of, tag } => {
+                // Recursively map both terms
+                let mapped_of = self.map_term_or_create(of, term_mapping);
+                let mapped_tag = self.map_term_or_create(tag, term_mapping);
+
+                AccessTermVariant::Tag {
+                    of: mapped_of,
+                    tag: mapped_tag,
+                }
+            }
+            AccessTermVariant::Ancestor { of, ancestor } => {
+                // Recursively map both terms
+                let mapped_of = self.map_term_or_create(of, term_mapping);
+                let mapped_ancestor = self.map_term_or_create(ancestor, term_mapping);
+
+                AccessTermVariant::Ancestor {
+                    of: mapped_of,
+                    ancestor: mapped_ancestor,
+                }
+            }
+        }
+    }
+
+    /// Helper method to map a term or create a new one if it doesn't exist in the mapping
+    fn map_term_or_create(
+        &mut self,
+        term: &AccessTerm,
+        term_mapping: &mut TermMapping,
+    ) -> AccessTerm {
+        // Check if the term is already mapped
+        if let Some(mapped_term) = term_mapping.map_term(term) {
+            return mapped_term;
+        }
+
+        // If not, get the variant for this term from the source manifest
+        // and recursively map it to create a new term in the target manifest
+        // PANIC SAFETY: Only internal cedar functions add terms, and these correspond to the same manifest.
+        #[allow(clippy::expect_used)]
+        let variant = term
+            .get_variant(&self.dag)
+            .expect("Entity manifest with terms belonging to a different manifest")
+            .clone();
+        let mapped_variant = self.map_variant(&variant, term_mapping);
+        let new_term = self.dag.add_term(mapped_variant);
+        term_mapping.term_map.insert(term.id, new_term.id);
+        new_term
+    }
+}
 
 /// Data structure storing what data is needed based on the the [`RequestType`].
 ///
 /// For each request type, the [`EntityManifest`] stores
-/// a [`RootAccessTrie`] of data to retrieve.
+/// a [`RequestTypeTerms`] containing the data terms needed for that request type.
 ///
-/// `T` represents an optional type annotation on each
-/// node in the [`AccessTrie`].
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
 #[doc = include_str!("../../experimental_warning.md")]
 #[serde_as]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EntityManifest {
-    /// A map from request types to [`RootAccessTrie`]s.
+    /// A map from request types to RequestTypeTerms.
+    /// For each request, stores what access terms are required.
     #[serde_as(as = "Vec<(_, _)>")]
-    pub(crate) per_action: HashMap<RequestType, RootAccessTrie>,
+    pub(crate) per_action: HashMap<RequestType, RequestTypeTerms>,
 }
 
-/// A map of data fields to [`AccessTrie`]s.
-/// The keys to this map form the edges in the access trie,
-/// pointing to sub-tries.
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[doc = include_str!("../../experimental_warning.md")]
-pub type Fields = HashMap<SmolStr, Box<AccessTrie>>;
+/// A backing store for a set of access terms
+/// stored as a directed acyclic graph.
+///
+/// Edges in the graph denote a data dependency.
+/// For example, an attribute may depend on the principal entity
+/// or a record in another entity.
+///
+/// After construction, the dag is annotated with the types of all of the access terms.
+#[serde_as]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AccessDag {
+    /// A map from [`AccessTermInternal`] to the [`AccessTerm`], which
+    /// indexes the `manifest_store`.
+    /// This allows us to de-duplicate equivalent access terms using the "hash cons"
+    /// programming trick.
+    #[serde_as(as = "Vec<(_, _)>")]
+    pub(crate) manifest_hash_cons: HashMap<AccessTermVariant, AccessTerm>,
+    /// The backing store of access terms in the entity manifest.
+    /// Each entry is the variant for the corresponding AccessTerm with the same ID.
+    pub(crate) manifest_store: Vec<AccessTermVariant>,
+    /// The types of each access term in the manifest store.
+    /// This is populated when the manifest is created, and operations preserve the types (by recomputation).
+    /// Each type is an option because some terms may not have a type if they don't appear in the schema.
+    /// This happens for example with `has` operations on entities without the attribute.
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    pub(crate) types: Vec<Option<Type>>,
+}
 
-/// The root of a data path or [`RootAccessTrie`].
+/// Stores a set of access terms.
+#[doc = include_str!("../../experimental_warning.md")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct AccessTerms {
+    /// The set of access terms
+    terms: HashSet<AccessTerm>,
+}
+
+impl IntoIterator for AccessTerms {
+    type Item = AccessTerm;
+    type IntoIter = std::collections::hash_set::IntoIter<AccessTerm>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.terms.into_iter()
+    }
+}
+
+/// Represents a term of data involving a sequence of
+/// attribute or tag accesses, ending in a cedar variable or literal.
+/// Internally represented as a single integer into a backing store
+/// (a directed acyclic graph).
+/// Hashing an [`AccessTerm`] is extremely cheap, so resulting data can be cached.
+#[doc = include_str!("../../experimental_warning.md")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Copy)]
+pub struct AccessTerm {
+    /// The unique identifier for this term in the [`AccessDag`].
+    id: usize,
+}
+
+/// Turn an [`AccessTerm`] into a [`AccessTermVariant`] in order to perform pattern matching.
+/// Stores the access term's constructor and children.
+#[doc = include_str!("../../experimental_warning.md")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AccessTermVariant {
+    /// Literal entity ids
+    Literal(EntityUID),
+    /// A Cedar variable
+    Var(Var),
+    /// A literal Cedar string
+    String(SmolStr),
+    /// A record or entity attribute
+    Attribute {
+        /// The entity whose attribute is being requested
+        of: AccessTerm,
+        /// The requested attribute
+        attr: SmolStr,
+    },
+    /// An entity tag access
+    Tag {
+        /// The entity whose tag is requested
+        of: AccessTerm,
+        /// The AccessTerm computing the requested tag (may be a literal string)
+        tag: AccessTerm,
+    },
+    /// Whether this entity has a particular ancestor is requested
+    Ancestor {
+        /// The entity whose ancestor is requested
+        of: AccessTerm,
+        /// The ancestor whose presence is requested
+        ancestor: AccessTerm,
+    },
+}
+
+/// The root of a data term or [`RootAccessTrie`].
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
@@ -97,181 +334,143 @@ impl Display for EntityRoot {
     }
 }
 
-/// A trie describing a set of data paths to retrieve.
-///
-/// Each edge in the trie is either a record or entity dereference.
-///
-/// If an entity or record field does not exist in the backing store,
-/// it is safe to stop loading data at that point.
-///
-/// `T` represents an optional type annotation on each
-/// node in the [`AccessTrie`].
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[doc = include_str!("../../experimental_warning.md")]
-#[serde_as]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RootAccessTrie {
-    /// The data that needs to be loaded, organized by root.
-    #[serde_as(as = "Vec<(_, _)>")]
-    pub(crate) trie: HashMap<EntityRoot, AccessTrie>,
+impl AccessTerm {
+    /// Get the variant for this term
+    ///
+    /// Returns an error if the term is not found in the entity manifest,
+    /// which may indicate that you are using the wrong entity manifest with this term.
+    pub fn get_variant<'a>(
+        &self,
+        store: &'a AccessDag,
+    ) -> Result<&'a AccessTermVariant, AccessTermNotFoundError> {
+        store
+            .manifest_store
+            .get(self.id)
+            .ok_or_else(|| AccessTermNotFoundError { path_id: self.id })
+    }
+
+    /// Like get_variant, but asserts that the term is in the store.
+    /// We use this internally because we know terms that come from the same
+    /// [`RequestTypeTerms`] are guaranteed to be in the store.
+    pub(crate) fn get_variant_internal<'store>(
+        &self,
+        store: &'store AccessDag,
+    ) -> &'store AccessTermVariant {
+        // PANIC SAFETY: This function is only called on terms that are in the store.
+        #[allow(clippy::unwrap_used)]
+        self.get_variant(store).unwrap()
+    }
 }
 
-/// A Trie representing a set of data paths to load,
-/// starting implicitly from a Cedar value.
-///
-/// `T` represents an optional type annotation on each
-/// node in the [`AccessTrie`].
-///
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[doc = include_str!("../../experimental_warning.md")]
-#[serde_as]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AccessTrie {
-    /// Child data of this entity slice.
-    /// The keys are edges in the trie pointing to sub-trie values.
-    #[serde_as(as = "Vec<(_, _)>")]
-    pub(crate) children: Fields,
-    /// `ancestors_trie` is another [`RootAccessTrie`] representing
-    /// all of the ancestors of this entity that are required.
-    /// The ancestors trie is a subset of the original [`RootAccessTrie`].
-    /// See the [`RootAccessTrie::is_ancestor`] annotation.
-    pub(crate) ancestors_trie: RootAccessTrie,
-    /// When ancestors are required, each node marked `is_ancestor`
-    /// represents an ancestor or set of ancestors that are required.
-    /// An ancestor trie can be thought of as a set of pointers to
-    /// nodes in the original trie, one `is_ancestor`-marked node per pointer.
-    pub(crate) is_ancestor: bool,
-    /// The type of this node in the [`AccessTrie`].
-    /// From the public API, this field should always be `Some`.
-    /// It is `None` after deserialization or after first being constructed, but it is type annotated right away.
-    #[serde(skip_serializing)]
-    #[serde(skip_deserializing)]
-    pub(crate) node_type: Option<Type>,
+impl AccessDag {
+    pub(crate) fn add_term(&mut self, variant: AccessTermVariant) -> AccessTerm {
+        // Check if the variant already exists in the hash_cons map
+        if let Some(term) = self.manifest_hash_cons.get(&variant) {
+            // If it does, return the existing AccessTerm
+            return term.clone();
+        }
+
+        // If it doesn't exist, create a new AccessTerm with the next available ID
+        let id = self.manifest_store.len();
+        let term = AccessTerm { id };
+
+        // Add the variant to the hash_cons map
+        self.manifest_hash_cons
+            .insert(variant.clone(), term.clone());
+
+        // Add the variant to the manifest_store
+        self.manifest_store.push(variant);
+
+        // Return the new AccessTerm
+        term
+    }
 }
 
-/// An access path represents path of fields, starting with an [`EntityRoot`].
-/// Fields may be record fields or entity fields.
-/// If an access path ends with an entity type, it may also require the ancestors of the entity.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct AccessPath {
-    /// The root variable that begins the data path
-    pub root: EntityRoot,
-    /// The path of fields of entities or structs
-    pub path: Vec<SmolStr>,
+/// A mapping from terms in one manifest to terms in another manifest
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TermMapping {
+    /// Maps from source term IDs to target term IDs
+    pub(crate) term_map: HashMap<usize, usize>,
 }
 
-/// Error when expressions are partial during entity
-/// manifest computation
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error("entity slicing requires fully concrete policies. Got a policy with an unknown expression")]
-pub struct PartialExpressionError {}
-
-impl Diagnostic for PartialExpressionError {}
-
-/// Error when the request is partial during entity
-/// manifest computation
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error("entity slicing requires a fully concrete request. Got a partial request")]
-pub struct PartialRequestError {}
-impl Diagnostic for PartialRequestError {}
-
-/// An error generated by entity slicing.
-#[derive(Debug, Error)]
-pub enum EntityManifestError {
-    /// A validation error was encountered
-    // TODO (#1158) impl Error for ValidationResult (it already is implemented for api::ValidationResult)
-    #[error("a validation error occurred")]
-    Validation(ValidationResult),
-    /// A entities error was encountered
-    #[error(transparent)]
-    Entities(#[from] EntitiesError),
-
-    /// The request was partial
-    #[error(transparent)]
-    PartialRequest(#[from] PartialRequestError),
-    /// A policy was partial
-    #[error(transparent)]
-    PartialExpression(#[from] PartialExpressionError),
-    /// Unsupported feature
-    #[error(transparent)]
-    UnsupportedCedarFeature(#[from] UnsupportedCedarFeatureError),
+impl Default for TermMapping {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
-/// Error when entity manifest analysis cannot handle a Cedar feature
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[derive(Debug, Clone, Error, Diagnostic)]
-#[error("entity manifest analysis currently doesn't support Cedar feature: {feature}")]
-pub struct UnsupportedCedarFeatureError {
-    pub(crate) feature: SmolStr,
+impl TermMapping {
+    /// Create a new empty term mapping
+    pub fn new() -> Self {
+        Self {
+            term_map: HashMap::new(),
+        }
+    }
+
+    /// Map a term from the source manifest to the target manifest
+    pub fn map_term(&self, term: &AccessTerm) -> Option<AccessTerm> {
+        self.term_map.get(&term.id).map(|&id| AccessTerm { id })
+    }
 }
 
-/// Error when the manifest has an entity the schema lacks.
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error("entity manifest doesn't match schema. Schema is missing entity {entity}. Either you wrote an entity manifest by hand (not recommended) or you are using an out-of-date entity manifest with respect to the schema")]
-pub struct MismatchedMissingEntityError {
-    pub(crate) entity: EntityUID,
+impl PartialEq for EntityManifest {
+    fn eq(&self, other: &Self) -> bool {
+        // Check if self is a subset of other and other is a subset of self
+        self.is_subset_of(other) && other.is_subset_of(self)
+    }
 }
 
-/// Error when the schema isn't valid in strict mode.
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-#[error("entity manifests are only compatible with schemas that validate in strict mode. Tried to use an invalid schema with an entity manifest")]
-pub struct MismatchedNotStrictSchemaError {}
-
-/// An error generated by entity manifest parsing. These happen
-/// when the entity manifest doesn't conform to the schema.
-/// Either the user wrote an entity manifest by hand (not reccomended)
-/// or they used an out-of-date entity manifest (after updating the schema).
-/// Warning: This error is not guaranteed to happen, even when an entity
-/// manifest is out-of-date with respect to a schema! Users must ensure
-/// that entity manifests are in-sync with the schema and policies.
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
-pub enum MismatchedEntityManifestError {
-    /// Mismatch between entity in manifest and schema
-    #[error(transparent)]
-    MismatchedMissingEntity(#[from] MismatchedMissingEntityError),
-    /// Found a schema that isn't valid in strict mode
-    #[error(transparent)]
-    MismatchedNotStrictSchema(#[from] MismatchedNotStrictSchemaError),
-}
-
-/// An error generated when parsing entity manifests from json
-#[derive(Debug, Error)]
-pub enum EntityManifestFromJsonError {
-    /// A Serde error happened
-    #[error(transparent)]
-    SerdeJsonParseError(#[from] serde_json::Error),
-    /// A mismatched entity manifest error
-    #[error(transparent)]
-    MismatchedEntityManifest(#[from] MismatchedEntityManifestError),
-}
+impl Eq for EntityManifest {}
 
 impl EntityManifest {
+    /// Create a new empty [`EntityManifest`].
+    pub(crate) fn new() -> Self {
+        Self {
+            per_action: HashMap::new(),
+        }
+    }
+
+    /// Check if this manifest is a subset of another manifest
+    ///
+    /// A manifest is a subset of another if all access terms from one are reachable from the other.
+    fn is_subset_of(&self, other: &Self) -> bool {
+        // For each request type, check that the other is a subset
+        for (request_type, my_terms) in &self.per_action {
+            let Some(other_terms) = other.per_action.get(request_type) else {
+                return false;
+            };
+            let mut other_clone = other_terms.clone();
+
+            // Call `union_with` to get a mapping from terms in self to terms in other.
+            // Terms not present in `other` will also have a mapping to `other_clone`, but will be missing in `other`.
+            let mapping = other_clone.union_with(my_terms);
+
+            // Find all reachable terms in `other`
+            let mut reachable = other_terms
+                .access_terms
+                .terms()
+                .iter()
+                .flat_map(|term| term.subterms(&other_terms.dag).into_iter())
+                .collect::<HashSet<_>>();
+
+            // now check that all terms in self are in reachable in `other`
+            // using the mapping
+            for term in my_terms.access_terms.terms() {
+                let Some(mapped) = mapping.map_term(term) else {
+                    return false;
+                };
+                if !reachable.contains(&mapped) {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
     /// Get the contents of the entity manifest
     /// indexed by the type of the request.
-    pub fn per_action(&self) -> &HashMap<RequestType, RootAccessTrie> {
+    pub fn per_action(&self) -> &HashMap<RequestType, RequestTypeTerms> {
         &self.per_action
     }
 
@@ -282,7 +481,7 @@ impl EntityManifest {
         schema: &ValidatorSchema,
     ) -> Result<Self, EntityManifestFromJsonError> {
         match serde_json::from_str::<EntityManifest>(json) {
-            Ok(manifest) => manifest.to_typed(schema).map_err(|e| e.into()),
+            Ok(manifest) => manifest.add_types(schema).map_err(|e| e.into()),
             Err(e) => Err(e.into()),
         }
     }
@@ -295,149 +494,96 @@ impl EntityManifest {
         schema: &ValidatorSchema,
     ) -> Result<Self, EntityManifestFromJsonError> {
         match serde_json::from_value::<EntityManifest>(value) {
-            Ok(manifest) => manifest.to_typed(schema).map_err(|e| e.into()),
+            Ok(manifest) => manifest.add_types(schema).map_err(|e| e.into()),
             Err(e) => Err(e.into()),
         }
     }
 }
 
-/// Union two tries by combining the fields.
-fn union_fields_mut(first: &mut Fields, second: Fields) {
-    for (key, value) in second {
-        match first.entry(key) {
-            Entry::Occupied(mut occupied) => {
-                occupied.get_mut().union_mut(*value);
+impl AccessTerm {
+    /// If there are no children, this is a leaf node
+    pub(crate) fn is_leaf(&self, store: &AccessDag) -> bool {
+        self.children(store).is_empty()
+    }
+
+    /// Get the immediate children of this term
+    pub(crate) fn children(&self, store: &AccessDag) -> Vec<AccessTerm> {
+        // PANIC SAFETY: This function is only called on terms that are in the store.
+        #[allow(clippy::unwrap_used)]
+        let variant = self.get_variant(store).unwrap();
+        // Return children based on the variant
+        match variant {
+            AccessTermVariant::Attribute { of, .. } => {
+                vec![of.clone()]
             }
-            Entry::Vacant(vacant) => {
-                vacant.insert(value);
+            AccessTermVariant::Tag { of, tag } => {
+                vec![of.clone(), tag.clone()]
             }
+            AccessTermVariant::Ancestor { of, ancestor } => {
+                vec![of.clone(), ancestor.clone()]
+            }
+            AccessTermVariant::Literal(_) => vec![],
+            AccessTermVariant::Var(_) => vec![],
+            AccessTermVariant::String(_) => vec![],
         }
+    }
+
+    /// Helper method to collect all subterms into the provided set
+    /// This is more efficient than creating new AccessTerms objects and extending them
+    pub fn collect_subterms_into(&self, store: &AccessDag, terms: &mut HashSet<AccessTerm>) {
+        // Add self to the terms
+        terms.insert(self.clone());
+
+        // Get immediate children
+        let children = self.children(store);
+
+        // Recursively collect subterms for each child
+        for child in children {
+            child.collect_subterms_into(store, terms);
+        }
+    }
+
+    /// Get all subterms of this term, including itself.
+    pub fn subterms(&self, store: &AccessDag) -> AccessTerms {
+        let mut terms = HashSet::new();
+        self.collect_subterms_into(store, &mut terms);
+        AccessTerms { terms }
     }
 }
 
-impl AccessPath {
-    /// Convert a [`AccessPath`] into corresponding [`RootAccessTrie`].
-    pub fn to_root_access_trie(&self) -> RootAccessTrie {
-        self.to_root_access_trie_with_leaf(AccessTrie::default())
+impl AccessTerms {
+    /// Add all the access terms from another [`AccessTerms`]
+    /// to this one, mutably.
+    pub fn extend(&mut self, other: Self) {
+        self.terms.extend(other.terms)
     }
 
-    /// Convert an [`AccessPath`] to a [`RootAccessTrie`], and also
-    /// add a full trie as the leaf at the end.
-    pub(crate) fn to_root_access_trie_with_leaf(&self, leaf_trie: AccessTrie) -> RootAccessTrie {
-        let mut current = leaf_trie;
-
-        // reverse the path, visiting the last access first
-        for field in self.path.iter().rev() {
-            let mut fields = HashMap::new();
-            fields.insert(field.clone(), Box::new(current));
-
-            current = AccessTrie {
-                ancestors_trie: Default::default(),
-                is_ancestor: false,
-                children: fields,
-                node_type: None,
-            };
-        }
-
-        let mut primary_map = HashMap::new();
-
-        // special case: if the path is completely empty,
-        // no need to insert anything
-        if current != AccessTrie::new() {
-            primary_map.insert(self.root.clone(), current);
-        }
-        RootAccessTrie { trie: primary_map }
-    }
-}
-
-impl RootAccessTrie {
-    /// Get the trie as a hash map from [`EntityRoot`]
-    /// to sub-[`AccessTrie`]s.
-    pub fn trie(&self) -> &HashMap<EntityRoot, AccessTrie> {
-        &self.trie
-    }
-}
-
-impl RootAccessTrie {
-    /// Create an empty [`RootAccessTrie`] that requests nothing.
-    pub fn new() -> Self {
-        Self {
-            trie: Default::default(),
-        }
-    }
-}
-
-impl RootAccessTrie {
-    /// Union two [`RootAccessTrie`]s together.
-    /// The new trie requests the data from both of the original.
-    pub fn union(mut self, other: Self) -> Self {
-        self.union_mut(other);
+    /// Owned version of extend.
+    pub fn extend_owned(mut self, other: Self) -> Self {
+        self.extend(other);
         self
     }
 
-    /// Like [`RootAccessTrie::union`], but modifies the current trie.
-    pub fn union_mut(&mut self, other: Self) {
-        for (key, value) in other.trie {
-            match self.trie.entry(key) {
-                Entry::Occupied(mut occupied) => {
-                    occupied.get_mut().union_mut(value);
-                }
-                Entry::Vacant(vacant) => {
-                    vacant.insert(value);
-                }
-            }
-        }
-    }
-}
-
-impl Default for RootAccessTrie {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl AccessTrie {
-    /// Union two [`AccessTrie`]s together.
-    /// The new trie requests the data from both of the original.
-    pub fn union(mut self, other: Self) -> Self {
-        self.union_mut(other);
-        self
+    /// Add a term to the set.
+    pub fn insert(&mut self, term: AccessTerm) {
+        self.terms.insert(term);
     }
 
-    /// Like [`AccessTrie::union`], but modifies the current trie.
-    pub fn union_mut(&mut self, other: Self) {
-        union_fields_mut(&mut self.children, other.children);
-        self.ancestors_trie.union_mut(other.ancestors_trie);
-        self.is_ancestor = self.is_ancestor || other.is_ancestor;
+    /// A set with a single element.
+    pub fn from_term(term: AccessTerm) -> Self {
+        let mut terms = HashSet::new();
+        terms.insert(term);
+        Self { terms }
     }
 
-    /// Get the children of this [`AccessTrie`].
-    pub fn children(&self) -> &Fields {
-        &self.children
+    /// Get a reference to the terms.
+    pub fn terms(&self) -> &HashSet<AccessTerm> {
+        &self.terms
     }
 
-    /// Get a boolean which is true if this trie
-    /// requires all ancestors of the entity to be loaded.
-    pub fn ancestors_required(&self) -> &RootAccessTrie {
-        &self.ancestors_trie
-    }
-}
-
-impl AccessTrie {
-    /// A new trie that requests no data.
-    pub(crate) fn new() -> Self {
-        Self {
-            children: Default::default(),
-            ancestors_trie: Default::default(),
-            is_ancestor: false,
-            node_type: None,
-        }
-    }
-}
-
-impl Default for AccessTrie {
-    fn default() -> Self {
-        Self::new()
+    /// Remove a term
+    pub fn remove(&mut self, term: &AccessTerm) {
+        self.terms.remove(term);
     }
 }
 
@@ -454,7 +600,7 @@ pub fn compute_entity_manifest(
         return Err(EntityManifestError::Validation(validation_res));
     }
 
-    let mut manifest: HashMap<RequestType, RootAccessTrie> = HashMap::new();
+    let mut manifest = EntityManifest::new();
 
     let typechecker = Typechecker::new(validator.schema(), ValidationMode::Strict);
     // now, for each policy we add the data it requires to the manifest
@@ -462,1190 +608,41 @@ pub fn compute_entity_manifest(
         // typecheck the policy and get all the request environments
         let request_envs = typechecker.typecheck_by_request_env(policy.template());
         for (request_env, policy_check) in request_envs {
-            let new_primary_slice = match policy_check {
+            let request_type = request_env
+                .to_request_type()
+                .ok_or(PartialRequestError {})?;
+
+            let mut per_request = manifest
+                .per_action
+                .remove(&request_type)
+                .unwrap_or(RequestTypeTerms::new(request_type.clone()));
+
+            match policy_check {
                 PolicyCheck::Success(typechecked_expr) => {
-                    // compute the trie from the typechecked expr
+                    // compute the access terms from the typechecked expr
                     // using static analysis
-                    entity_manifest_from_expr(&typechecked_expr).map(|val| val.global_trie)
+                    let res = analyze_expr_access_terms(&typechecked_expr, &mut per_request.dag)?;
+                    // add the result to the per_request
+                    per_request.access_terms.extend(res.all_access_paths());
                 }
-                PolicyCheck::Irrelevant(_, _) => {
-                    // this policy is irrelevant, so we need no data
-                    Ok(RootAccessTrie::new())
-                }
+                PolicyCheck::Irrelevant(_, _) => {}
 
                 // PANIC SAFETY: policy check should not fail after full strict validation above.
                 #[allow(clippy::panic)]
                 PolicyCheck::Fail(_errors) => {
                     panic!("Policy check failed after validation succeeded")
                 }
-            }?;
+            };
 
-            let request_type = request_env
-                .to_request_type()
-                .ok_or(PartialRequestError {})?;
-            match manifest.entry(request_type) {
-                Entry::Occupied(mut occupied) => {
-                    occupied.get_mut().union_mut(new_primary_slice);
-                }
-                Entry::Vacant(vacant) => {
-                    vacant.insert(new_primary_slice);
-                }
-            }
+            // prune leafs, which are included in the request and don't need to be loaded
+            per_request.prune_leafs();
+
+            // add the per action entry back
+            manifest.per_action.insert(request_type, per_request);
         }
     }
 
     // PANIC SAFETY: entity manifest cannot be out of date, since it was computed from the schema given
     #[allow(clippy::unwrap_used)]
-    Ok(EntityManifest {
-        per_action: manifest,
-    }
-    .to_typed(validator.schema())
-    .unwrap())
-}
-
-/// A static analysis on type-annotated cedar expressions.
-/// Computes the [`RootAccessTrie`] representing all the data required
-/// to evaluate the expression.
-fn entity_manifest_from_expr(
-    expr: &Expr<Option<Type>>,
-) -> Result<EntityManifestAnalysisResult, EntityManifestError> {
-    match expr.expr_kind() {
-        ExprKind::Slot(slot_id) => {
-            if slot_id.is_principal() {
-                Ok(EntityManifestAnalysisResult::from_root(EntityRoot::Var(
-                    Var::Principal,
-                )))
-            } else {
-                assert!(slot_id.is_resource());
-                Ok(EntityManifestAnalysisResult::from_root(EntityRoot::Var(
-                    Var::Resource,
-                )))
-            }
-        }
-        ExprKind::Var(var) => Ok(EntityManifestAnalysisResult::from_root(EntityRoot::Var(
-            *var,
-        ))),
-        ExprKind::Lit(Literal::EntityUID(literal)) => Ok(EntityManifestAnalysisResult::from_root(
-            EntityRoot::Literal((**literal).clone()),
-        )),
-        ExprKind::Unknown(_) => Err(PartialExpressionError {})?,
-
-        // Non-entity literals need no fields to be loaded.
-        ExprKind::Lit(_) => Ok(EntityManifestAnalysisResult::default()),
-        ExprKind::If {
-            test_expr,
-            then_expr,
-            else_expr,
-        } => Ok(entity_manifest_from_expr(test_expr)?
-            .empty_paths()
-            .union(entity_manifest_from_expr(then_expr)?)
-            .union(entity_manifest_from_expr(else_expr)?)),
-        ExprKind::And { left, right }
-        | ExprKind::Or { left, right }
-        | ExprKind::BinaryApp {
-            op: BinaryOp::Less | BinaryOp::LessEq | BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul,
-            arg1: left,
-            arg2: right,
-        } => Ok(entity_manifest_from_expr(left)?
-            .empty_paths()
-            .union(entity_manifest_from_expr(right)?.empty_paths())),
-        ExprKind::UnaryApp { op, arg } => {
-            match op {
-                // these unary ops are on primitive types, so they are simple
-                UnaryOp::Not | UnaryOp::Neg => Ok(entity_manifest_from_expr(arg)?.empty_paths()),
-                UnaryOp::IsEmpty => {
-                    // PANIC SAFETY: Typechecking succeeded, so type annotations are present.
-                    #[allow(clippy::expect_used)]
-                    let ty = arg
-                        .data()
-                        .as_ref()
-                        .expect("Expected annotated types after typechecking");
-                    Ok(entity_manifest_from_expr(arg)?
-                        .full_type_required(ty)
-                        .empty_paths())
-                }
-            }
-        }
-        ExprKind::BinaryApp {
-            op:
-                op @ (BinaryOp::Eq
-                | BinaryOp::In
-                | BinaryOp::Contains
-                | BinaryOp::ContainsAll
-                | BinaryOp::ContainsAny),
-            arg1,
-            arg2,
-        } => {
-            // First, find the data paths for each argument
-            let mut arg1_res = entity_manifest_from_expr(arg1)?;
-            let arg2_res = entity_manifest_from_expr(arg2)?;
-
-            // PANIC SAFETY: Typechecking succeeded, so type annotations are present.
-            #[allow(clippy::expect_used)]
-            let ty1 = arg1
-                .data()
-                .as_ref()
-                .expect("Expected annotated types after typechecking");
-            // PANIC SAFETY: Typechecking succeeded, so type annotations are present.
-            #[allow(clippy::expect_used)]
-            let ty2 = arg2
-                .data()
-                .as_ref()
-                .expect("Expected annotated types after typechecking");
-
-            // For the `in` operator, we need the ancestors of entities.
-            if matches!(op, BinaryOp::In) {
-                arg1_res = arg1_res
-                    .with_ancestors_required(&arg2_res.resulting_paths.to_ancestor_access_trie());
-            }
-
-            // Load all fields using `full_type_required`, since
-            // these operations do equality checks.
-            Ok(arg1_res
-                .full_type_required(ty1)
-                .union(arg2_res.full_type_required(ty2))
-                .empty_paths())
-        }
-        ExprKind::BinaryApp {
-            op: BinaryOp::GetTag | BinaryOp::HasTag,
-            arg1: _,
-            arg2: _,
-        } => Err(UnsupportedCedarFeatureError {
-            feature: "entity tags".into(),
-        }
-        .into()),
-        ExprKind::ExtensionFunctionApp { fn_name: _, args } => {
-            // WARNING: this code assumes that extension functions
-            // all take primitives as inputs and produce
-            // primitives as outputs.
-            // If not, we would need to use logic similar to the Eq binary operator.
-
-            let mut res = EntityManifestAnalysisResult::default();
-
-            for arg in args.iter() {
-                res = res.union(entity_manifest_from_expr(arg)?);
-            }
-            Ok(res)
-        }
-        ExprKind::Like { expr, pattern: _ }
-        | ExprKind::Is {
-            expr,
-            entity_type: _,
-        } => {
-            // drop paths since boolean returned
-            Ok(entity_manifest_from_expr(expr)?.empty_paths())
-        }
-        ExprKind::Set(contents) => {
-            let mut res = EntityManifestAnalysisResult::default();
-
-            // take union of all of the contents
-            for expr in &**contents {
-                let content = entity_manifest_from_expr(expr)?;
-
-                res = res.union(content);
-            }
-
-            // now, wrap result in a set
-            res.resulting_paths = WrappedAccessPaths::SetLiteral(Box::new(res.resulting_paths));
-
-            Ok(res)
-        }
-        ExprKind::Record(content) => {
-            let mut record_contents = HashMap::new();
-            let mut global_trie = RootAccessTrie::default();
-
-            for (key, child_expr) in content.iter() {
-                let res = entity_manifest_from_expr(child_expr)?;
-                record_contents.insert(key.clone(), Box::new(res.resulting_paths));
-
-                global_trie = global_trie.union(res.global_trie);
-            }
-
-            Ok(EntityManifestAnalysisResult {
-                resulting_paths: WrappedAccessPaths::RecordLiteral(record_contents),
-                global_trie,
-            })
-        }
-        ExprKind::GetAttr { expr, attr } => {
-            Ok(entity_manifest_from_expr(expr)?.get_or_has_attr(attr))
-        }
-        ExprKind::HasAttr { expr, attr } => Ok(entity_manifest_from_expr(expr)?
-            .get_or_has_attr(attr)
-            .empty_paths()),
-        #[cfg(feature = "tolerant-ast")]
-        ExprKind::Error { .. } => Err(EntityManifestError::UnsupportedCedarFeature(
-            UnsupportedCedarFeatureError {
-                feature: "No support for AST error nodes".into(),
-            },
-        )),
-    }
-}
-
-#[cfg(test)]
-mod entity_slice_tests {
-    use crate::{ast::PolicyID, extensions::Extensions, parser::parse_policy};
-
-    use super::*;
-
-    // Schema for testing in this module
-    fn schema() -> ValidatorSchema {
-        ValidatorSchema::from_cedarschema_str(
-            "
-entity User = {
-  name: String,
-};
-
-entity Document;
-
-action Read appliesTo {
-  principal: [User],
-  resource: [Document]
-};
-    ",
-            Extensions::all_available(),
-        )
-        .unwrap()
-        .0
-    }
-
-    fn document_fields_schema() -> ValidatorSchema {
-        ValidatorSchema::from_cedarschema_str(
-            "
-entity User = {
-name: String,
-};
-
-entity Document = {
-owner: User,
-viewer: User,
-};
-
-action Read appliesTo {
-principal: [User],
-resource: [Document]
-};
-",
-            Extensions::all_available(),
-        )
-        .unwrap()
-        .0
-    }
-
-    #[test]
-    fn test_simple_entity_manifest() {
-        let mut pset = PolicySet::new();
-        let policy = parse_policy(
-            None,
-            r#"permit(principal, action, resource)
-when {
-    principal.name == "John"
-};"#,
-        )
-        .expect("should succeed");
-        pset.add(policy.into()).expect("should succeed");
-
-        let validator = Validator::new(schema());
-
-        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected_rust = EntityManifest {
-            per_action: HashMap::from([(
-                RequestType {
-                    principal: "User".parse().unwrap(),
-                    resource: "Document".parse().unwrap(),
-                    action: r#"Action::"Read""#.parse().unwrap(),
-                },
-                RootAccessTrie {
-                    trie: HashMap::from([(
-                        EntityRoot::Var(Var::Principal),
-                        AccessTrie {
-                            children: HashMap::from([(
-                                SmolStr::new_static("name"),
-                                Box::new(AccessTrie {
-                                    children: HashMap::new(),
-                                    ancestors_trie: RootAccessTrie::new(),
-                                    is_ancestor: false,
-                                    node_type: Some(Type::primitive_string()),
-                                }),
-                            )]),
-                            ancestors_trie: RootAccessTrie::new(),
-                            is_ancestor: false,
-                            node_type: Some(Type::named_entity_reference("User".parse().unwrap())),
-                        },
-                    )]),
-                },
-            )]),
-        };
-        let expected = serde_json::json! ({
-          "perAction": [
-            [
-              {
-                "principal": "User",
-                "action": {
-                  "ty": "Action",
-                  "eid": "Read"
-                },
-                "resource": "Document"
-              },
-              {
-                "trie": [
-                  [
-                    {
-                      "var": "principal"
-                    },
-                    {
-                      "children": [
-                        [
-                          "name",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                      "isAncestor": false
-                    }
-                  ]
-                ]
-              }
-            ]
-          ]
-        });
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
-        assert_eq!(entity_manifest, expected_manifest);
-        assert_eq!(entity_manifest, expected_rust);
-    }
-
-    #[test]
-    fn test_empty_entity_manifest() {
-        let mut pset = PolicySet::new();
-        let policy =
-            parse_policy(None, "permit(principal, action, resource);").expect("should succeed");
-        pset.add(policy.into()).expect("should succeed");
-
-        let validator = Validator::new(schema());
-
-        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected = serde_json::json!(
-        {
-          "perAction": [
-            [
-              {
-                "principal": "User",
-                "action": {
-                  "ty": "Action",
-                  "eid": "Read"
-                },
-                "resource": "Document"
-              },
-              {
-                "trie": [
-                ]
-              }
-            ]
-          ]
-        });
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
-        assert_eq!(entity_manifest, expected_manifest);
-    }
-
-    #[test]
-    fn test_entity_manifest_ancestors_required() {
-        let mut pset = PolicySet::new();
-        let policy = parse_policy(
-            None,
-            "permit(principal, action, resource)
-when {
-    principal in resource || principal.manager in resource
-};",
-        )
-        .expect("should succeed");
-        pset.add(policy.into()).expect("should succeed");
-
-        let schema = ValidatorSchema::from_cedarschema_str(
-            "
-entity User in [Document] = {
-  name: String,
-  manager: User
-};
-entity Document;
-action Read appliesTo {
-  principal: [User],
-  resource: [Document]
-};
-  ",
-            Extensions::all_available(),
-        )
-        .unwrap()
-        .0;
-        let validator = Validator::new(schema);
-
-        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected = serde_json::json!(
-        {
-          "perAction": [
-            [
-              {
-                "principal": "User",
-                "action": {
-                  "ty": "Action",
-                  "eid": "Read"
-                },
-                "resource": "Document"
-              },
-              {
-                "trie": [
-                  [
-                    {
-                      "var": "principal"
-                    },
-                    {
-                      "children": [
-                        [
-                          "manager",
-                          {
-                            "children": [],
-                            "ancestorsTrie": {
-                              "trie": [
-                                [
-                                  {
-                                    "var": "resource",
-                                  },
-                                  {
-                                    "children": [],
-                                    "isAncestor": true,
-                                    "ancestorsTrie": { "trie": [] }
-                                  }
-                                ]
-                              ]
-                            },
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": {
-                              "trie": [
-                                [
-                                  {
-                                    "var": "resource",
-                                  },
-                                  {
-                                    "children": [],
-                                    "isAncestor": true,
-                                    "ancestorsTrie": { "trie": [] }
-                                  }
-                                ]
-                              ]
-                            },
-                      "isAncestor": false
-                    }
-                  ]
-                ]
-              }
-            ]
-          ]
-        });
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
-        assert_eq!(entity_manifest, expected_manifest);
-    }
-
-    #[test]
-    fn test_entity_manifest_multiple_types() {
-        let mut pset = PolicySet::new();
-        let policy = parse_policy(
-            None,
-            r#"permit(principal, action, resource)
-when {
-    principal.name == "John"
-};"#,
-        )
-        .expect("should succeed");
-        pset.add(policy.into()).expect("should succeed");
-
-        let schema = ValidatorSchema::from_cedarschema_str(
-            "
-entity User = {
-  name: String,
-};
-
-entity OtherUserType = {
-  name: String,
-  irrelevant: String,
-};
-
-entity Document;
-
-action Read appliesTo {
-  principal: [User, OtherUserType],
-  resource: [Document]
-};
-        ",
-            Extensions::all_available(),
-        )
-        .unwrap()
-        .0;
-        let validator = Validator::new(schema);
-
-        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected = serde_json::json!(
-        {
-          "perAction": [
-            [
-              {
-                "principal": "User",
-                "action": {
-                  "ty": "Action",
-                  "eid": "Read"
-                },
-                "resource": "Document"
-              },
-              {
-                "trie": [
-                  [
-                    {
-                      "var": "principal"
-                    },
-                    {
-                      "children": [
-                        [
-                          "name",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                      "isAncestor": false
-                    }
-                  ]
-                ]
-              }
-            ],
-            [
-              {
-                "principal": "OtherUserType",
-                "action": {
-                  "ty": "Action",
-                  "eid": "Read"
-                },
-                "resource": "Document"
-              },
-              {
-                "trie": [
-                  [
-                    {
-                      "var": "principal"
-                    },
-                    {
-                      "children": [
-                        [
-                          "name",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                      "isAncestor": false
-                    }
-                  ]
-                ]
-              }
-            ]
-          ]
-            });
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
-        assert_eq!(entity_manifest, expected_manifest);
-    }
-
-    #[test]
-    fn test_entity_manifest_multiple_branches() {
-        let mut pset = PolicySet::new();
-        let policy1 = parse_policy(
-            None,
-            r#"
-permit(
-  principal,
-  action == Action::"Read",
-  resource
-)
-when
-{
-  resource.readers.contains(principal)
-};"#,
-        )
-        .unwrap();
-        let policy2 = parse_policy(
-            Some(PolicyID::from_string("Policy2")),
-            r#"permit(
-  principal,
-  action == Action::"Read",
-  resource
-)
-when
-{
-  resource.metadata.owner == principal
-};"#,
-        )
-        .unwrap();
-        pset.add(policy1.into()).expect("should succeed");
-        pset.add(policy2.into()).expect("should succeed");
-
-        let schema = ValidatorSchema::from_cedarschema_str(
-            "
-entity User;
-
-entity Metadata = {
-   owner: User,
-   time: String,
-};
-
-entity Document = {
-  metadata: Metadata,
-  readers: Set<User>,
-};
-
-action Read appliesTo {
-  principal: [User],
-  resource: [Document]
-};
-        ",
-            Extensions::all_available(),
-        )
-        .unwrap()
-        .0;
-        let validator = Validator::new(schema);
-
-        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected = serde_json::json!(
-        {
-          "perAction": [
-            [
-              {
-                "principal": "User",
-                "action": {
-                  "ty": "Action",
-                  "eid": "Read"
-                },
-                "resource": "Document"
-              },
-              {
-                "trie": [
-                  [
-                    {
-                      "var": "resource"
-                    },
-                    {
-                      "children": [
-                        [
-                          "metadata",
-                          {
-                            "children": [
-                              [
-                                "owner",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                                  "isAncestor": false
-                                }
-                              ]
-                            ],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ],
-                        [
-                          "readers",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                      "isAncestor": false
-                    }
-                  ],
-                ]
-              }
-            ]
-          ]
-        });
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
-        assert_eq!(entity_manifest, expected_manifest);
-    }
-
-    #[test]
-    fn test_entity_manifest_struct_equality() {
-        let mut pset = PolicySet::new();
-        // we need to load all of the metadata, not just nickname
-        // no need to load actual name
-        let policy = parse_policy(
-            None,
-            r#"permit(principal, action, resource)
-when {
-    principal.metadata.nickname == "timmy" && principal.metadata == {
-        "friends": [ "oliver" ],
-        "nickname": "timmy"
-    }
-};"#,
-        )
-        .expect("should succeed");
-        pset.add(policy.into()).expect("should succeed");
-
-        let schema = ValidatorSchema::from_cedarschema_str(
-            "
-entity User = {
-  name: String,
-  metadata: {
-    friends: Set<String>,
-    nickname: String,
-  },
-};
-
-entity Document;
-
-action BeSad appliesTo {
-  principal: [User],
-  resource: [Document]
-};
-        ",
-            Extensions::all_available(),
-        )
-        .unwrap()
-        .0;
-        let validator = Validator::new(schema);
-
-        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected = serde_json::json!(
-        {
-          "perAction": [
-            [
-              {
-                "principal": "User",
-                "action": {
-                  "ty": "Action",
-                  "eid": "BeSad"
-                },
-                "resource": "Document"
-              },
-              {
-                "trie": [
-                  [
-                    {
-                      "var": "principal"
-                    },
-                    {
-                      "children": [
-                        [
-                          "metadata",
-                          {
-                            "children": [
-                              [
-                                "nickname",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                                  "isAncestor": false
-                                }
-                              ],
-                              [
-                                "friends",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                                  "isAncestor": false
-                                }
-                              ]
-                            ],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                      "isAncestor": false
-                    }
-                  ]
-                ]
-              }
-            ]
-          ]
-        });
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
-        assert_eq!(entity_manifest, expected_manifest);
-    }
-
-    #[test]
-    fn test_entity_manifest_struct_equality_left_right_different() {
-        let mut pset = PolicySet::new();
-        // we need to load all of the metadata, not just nickname
-        // no need to load actual name
-        let policy = parse_policy(
-            None,
-            r#"permit(principal, action, resource)
-when {
-    principal.metadata == resource.metadata
-};"#,
-        )
-        .expect("should succeed");
-        pset.add(policy.into()).expect("should succeed");
-
-        let schema = ValidatorSchema::from_cedarschema_str(
-            "
-entity User = {
-  name: String,
-  metadata: {
-    friends: Set<String>,
-    nickname: String,
-  },
-};
-
-entity Document;
-
-action Hello appliesTo {
-  principal: [User],
-  resource: [User]
-};
-        ",
-            Extensions::all_available(),
-        )
-        .unwrap()
-        .0;
-        let validator = Validator::new(schema);
-
-        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected = serde_json::json!(
-        {
-          "perAction": [
-            [
-              {
-                "principal": "User",
-                "action": {
-                  "ty": "Action",
-                  "eid": "Hello"
-                },
-                "resource": "User"
-              },
-              {
-                "trie": [
-                  [
-                    {
-                      "var": "resource"
-                    },
-                    {
-                      "children": [
-                        [
-                          "metadata",
-                          {
-                            "children": [
-                              [
-                                "friends",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                                  "isAncestor": false
-                                }
-                              ],
-                              [
-                                "nickname",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                                  "isAncestor": false
-                                }
-                              ]
-                            ],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                    }
-                  ],
-                  [
-                    {
-                      "var": "principal"
-                    },
-                    {
-                      "children": [
-                        [
-                          "metadata",
-                          {
-                            "children": [
-                              [
-                                "nickname",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                                  "isAncestor": false
-                                }
-                              ],
-                              [
-                                "friends",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                                  "isAncestor": false
-                                }
-                              ]
-                            ],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                      "isAncestor": false
-                    }
-                  ]
-                ]
-              }
-            ]
-          ]
-        });
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
-        assert_eq!(entity_manifest, expected_manifest);
-    }
-
-    #[test]
-    fn test_entity_manifest_with_if() {
-        let mut pset = PolicySet::new();
-
-        let validator = Validator::new(document_fields_schema());
-
-        let policy = parse_policy(
-            None,
-            r#"permit(principal, action, resource)
-when {
-    if principal.name == "John"
-    then resource.owner.name == User::"oliver".name
-    else resource.viewer == User::"oliver"
-};"#,
-        )
-        .expect("should succeed");
-        pset.add(policy.into()).expect("should succeed");
-
-        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected = serde_json::json! ( {
-          "perAction": [
-            [
-              {
-                "principal": "User",
-                "action": {
-                  "ty": "Action",
-                  "eid": "Read"
-                },
-                "resource": "Document"
-              },
-              {
-                "trie": [
-                  [
-                    {
-                      "var": "principal"
-                    },
-                    {
-                      "children": [
-                        [
-                          "name",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                    }
-                  ],
-                  [
-                    {
-                      "literal": {
-                        "ty": "User",
-                        "eid": "oliver"
-                      }
-                    },
-                    {
-                      "children": [
-                        [
-                          "name",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                    }
-                  ],
-                  [
-                    {
-                      "var": "resource"
-                    },
-                    {
-                      "children": [
-                        [
-                          "viewer",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ],
-                        [
-                          "owner",
-                          {
-                            "children": [
-                              [
-                                "name",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                                }
-                              ]
-                            ],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                    }
-                  ]
-                ]
-              }
-            ]
-          ]
-        }
-        );
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
-        assert_eq!(entity_manifest, expected_manifest);
-    }
-
-    #[test]
-    fn test_entity_manifest_if_literal_record() {
-        let mut pset = PolicySet::new();
-
-        let validator = Validator::new(document_fields_schema());
-
-        let policy = parse_policy(
-            None,
-            r#"permit(principal, action, resource)
-when {
-    {
-      "myfield":
-          {
-            "secondfield":
-            if principal.name == "yihong"
-            then principal
-            else resource.owner,
-            "ignored but still important due to errors":
-            resource.viewer
-          }
-    }["myfield"]["secondfield"].name == "pavel"
-};"#,
-        )
-        .expect("should succeed");
-        pset.add(policy.into()).expect("should succeed");
-
-        let entity_manifest = compute_entity_manifest(&validator, &pset).expect("Should succeed");
-        let expected = serde_json::json! ( {
-          "perAction": [
-            [
-              {
-                "principal": "User",
-                "action": {
-                  "ty": "Action",
-                  "eid": "Read"
-                },
-                "resource": "Document"
-              },
-              {
-                "trie": [
-                  [
-                    {
-                      "var": "principal"
-                    },
-                    {
-                      "children": [
-                        [
-                          "name",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                    }
-                  ],
-                  [
-                    {
-                      "var": "resource"
-                    },
-                    {
-                      "children": [
-                        [
-                          "viewer",
-                          {
-                            "children": [],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ],
-                        [
-                          "owner",
-                          {
-                            "children": [
-                              [
-                                "name",
-                                {
-                                  "children": [],
-                                  "ancestorsTrie": { "trie": []},
-                                  "isAncestor": false
-                                }
-                              ]
-                            ],
-                            "ancestorsTrie": { "trie": []},
-                            "isAncestor": false
-                          }
-                        ]
-                      ],
-                      "ancestorsTrie": { "trie": []},
-                      "isAncestor": false
-                    }
-                  ]
-                ]
-              }
-            ]
-          ]
-        }
-        );
-        let expected_manifest =
-            EntityManifest::from_json_value(expected, validator.schema()).unwrap();
-        assert_eq!(entity_manifest, expected_manifest);
-    }
+    Ok(manifest.add_types(validator.schema()).unwrap())
 }
