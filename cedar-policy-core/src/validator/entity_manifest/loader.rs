@@ -33,13 +33,11 @@ use crate::{
             ExpectedEntityOrEntitySetError, ExpectedEntityTypeError, ExpectedStringTypeError,
         },
         manifest_helpers::AccessTrie,
-        AccessTerm, AccessTermVariant, EntityManifest, RequestTypePaths,
+        AccessTermVariant, EntityManifest,
     },
 };
 
-use crate::validator::entity_manifest::errors::{
-    EntitySliceError, PartialRequestError, WrongNumberOfEntitiesError,
-};
+use crate::validator::entity_manifest::errors::{EntitySliceError, PartialRequestError};
 
 /// A request that an entity be loaded.
 /// Entities this entity references need not be loaded, as they will be requested separately.
@@ -51,18 +49,12 @@ use crate::validator::entity_manifest::errors::{
 pub(crate) struct EntityRequest {
     /// The id of the entity requested
     pub(crate) entity_id: EntityUID,
-    /// The access path that resulted in this entity
-    pub(crate) access_path: AccessTerm,
     /// The requested tags for the entity, if any
     /// Each tag's value can be loaded completely or (in the case of records) partially using the associated `AccessTrie`.
     pub(crate) tags: HashMap<SmolStr, AccessTrie>,
     /// A trie containing the access paths needed for this entity
     pub(crate) access_trie: AccessTrie,
 }
-
-/// An entity request may be an entity or `None` when
-/// the entity is not present.
-pub(crate) type EntityAnswer = Option<Entity>;
 
 /// A request that the ancestors of an entity be loaded.
 /// Optionally, the `ancestors` set may be used to just load ancestors in the set.
@@ -83,16 +75,14 @@ pub(crate) struct AncestorsRequest {
 /// consistency is required, this API should not be used. Instead, use the entity manifest directly.
 pub(crate) trait EntityLoader {
     /// `load_entities` is called multiple times to load entities based on their ids.
-    /// For each entity request in the `to_load` vector, expects one loaded entity in the resulting vector.
+    /// If an entity does not exist, it should be skipped.
     /// Each [`EntityRequest`] comes with [`AccessTrie`], which can optionally be used.
     /// Only fields mentioned in the entity's [`AccessTrie`] are needed, but it is sound to provide other fields as well.
     /// Note that the same entity may be requested multiple times, with different [`AccessTrie`]s.
     ///
     /// `load_entities` must load all the ancestors of each entity unless `load_ancestors` is implemented.
-    fn load_entities(
-        &mut self,
-        to_load: &[EntityRequest],
-    ) -> Result<Vec<EntityAnswer>, EntitySliceError>;
+    fn load_entities(&mut self, to_load: &[EntityRequest])
+        -> Result<Vec<Entity>, EntitySliceError>;
 
     /// Optionally, `load_entities` can forgo loading ancestors in the entity hierarchy.
     /// Instead, `load_ancestors` implements loading them.
@@ -104,38 +94,6 @@ pub(crate) trait EntityLoader {
         &mut self,
         entities: &[AncestorsRequest],
     ) -> Result<Vec<HashSet<EntityUID>>, EntitySliceError>;
-}
-
-/// Helper function to determine the initial entities to load based on the access tries
-fn initial_entities_to_load(
-    access_tries: &HashMap<AccessTerm, AccessTrie>,
-    for_request: &RequestTypePaths,
-    request: &Request,
-) -> Vec<EntityRequest> {
-    let mut to_load = Vec::new();
-
-    for (access_path, trie) in access_tries.iter() {
-        if let Ok(variant) = access_path.get_variant(&for_request.dag) {
-            let entity_id = match variant {
-                AccessTermVariant::Var(Var::Principal) => request.principal().uid().cloned(),
-                AccessTermVariant::Var(Var::Action) => request.action().uid().cloned(),
-                AccessTermVariant::Var(Var::Resource) => request.resource().uid().cloned(),
-                AccessTermVariant::Literal(euid) => Some(euid.clone()),
-                _ => None,
-            };
-
-            if let Some(entity_id) = entity_id {
-                to_load.push(EntityRequest {
-                    entity_id,
-                    tags: HashMap::new(),
-                    access_trie: trie.clone(),
-                    access_path: access_path.clone(),
-                });
-            }
-        }
-    }
-
-    to_load
 }
 
 /// Loads entities based on the entity manifest, request, and
@@ -166,28 +124,119 @@ pub(crate) fn load_entities(
     let reachable_paths = for_request.reachable_paths();
     let dependents_map = for_request.build_dependents_map(&reachable_paths);
 
+    let dependent_critical = for_request.build_dependent_critical_terms(&dependents_map);
     // Compute the access tries for all entities
-    let access_tries = for_request.compute_access_tries(&dependents_map);
-
-    let dependent_terms_map = for_request.build_dependent_entities_map(&dependents_map);
+    let access_tries = for_request.compute_access_tries(&dependent_critical, &dependents_map);
 
     // Get initial entities to load and track processed entities
-    let mut to_load = initial_entities_to_load(&access_tries, for_request, request);
+    let mut next_critical_terms = for_request.initial_critical_terms(&access_tries);
+    // TODO refactor into hashmap which maps by entity uid
+    let mut entity_requests = Vec::new();
     let mut entities_map: HashMap<EntityUID, Entity> = HashMap::new();
     let mut visited_terms = HashSet::new();
 
-    // Main loop of loading entities, one batch at a time
-    while !to_load.is_empty() {
-        // Load the current batch of entities
-        let loaded_entities = loader.load_entities(&to_load)?;
+    eprintln!("next_critical_terms: {next_critical_terms:?}");
 
-        if loaded_entities.len() != to_load.len() {
-            return Err(WrongNumberOfEntitiesError {
-                expected: to_load.len(),
-                got: loaded_entities.len(),
+    // Main loop of loading entities, one batch at a time
+    while !next_critical_terms.is_empty() {
+        // INVARIANT: at this point next_critical_terms contains critical terms whose data dependencies
+        // have been loaded already. We can take them here and process them.
+        for critical_term in std::mem::take(&mut next_critical_terms).into_iter() {
+            // if we have already visited this term, skip it
+            if !visited_terms.insert(critical_term.clone()) {
+                continue;
             }
-            .into());
+
+            // add to next_critical_terms
+            // PANIC SAFETY: Every critical term has an entry in dependent_critical
+            #[allow(clippy::panic)]
+            let Some(dependent_critical_terms) = dependent_critical.get(&critical_term) else {
+                panic!(
+                    "Expected dependent term {:?} to have an entry in dependent_critical",
+                    critical_term
+                );
+            };
+            next_critical_terms.extend(dependent_critical_terms.iter().cloned());
+
+            // TODO factor out spaghetti code
+            // Get the access trie for this critical path if any
+            if let Some(dependent_trie) = access_tries.get(&critical_term) {
+                // case split on entities or tag access terms
+                if for_request.is_entity_typed_path(&critical_term) {
+                    // get the id of the entity path using the entity store
+                    let dependent_val =
+                        critical_term.compute_value(&entities_map, &for_request.dag, request)?;
+
+                    let dependent_id = match dependent_val.value_kind() {
+                        ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
+                        _ => {
+                            return Err(ExpectedEntityTypeError {
+                                found_value: dependent_val.clone(),
+                            }
+                            .into())
+                        }
+                    };
+
+                    entity_requests.push(EntityRequest {
+                        entity_id: dependent_id.clone(),
+                        tags: HashMap::new(),
+                        access_trie: dependent_trie.clone(),
+                    });
+                } else {
+                    eprintln!(
+                        "Loading tag path: {:?} with access trie: {:?}",
+                        critical_term, dependent_trie
+                    );
+                    let AccessTermVariant::Tag { of, tag } =
+                        critical_term.get_variant_internal(&for_request.dag)
+                    else {
+                        // PANIC SAFETY: Critical terms are either entity typed or tag terms.
+                        panic!("Expected a tag path variant, but got {:?}", critical_term);
+                    };
+                    // For tag terms, generate an entity request with the tag and access trie
+                    let of_val_result =
+                        of.compute_value(&entities_map, &for_request.dag, request)?;
+                    let tag_val_result =
+                        tag.compute_value(&entities_map, &for_request.dag, request)?;
+
+                    // todo factor out into helper
+                    let of_val = match of_val_result.value_kind() {
+                        ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
+                        _ => {
+                            return Err(ExpectedEntityTypeError {
+                                found_value: of_val_result.clone(),
+                            }
+                            .into())
+                        }
+                    };
+                    // tag value is always a string
+                    let tag_val = match tag_val_result.value_kind() {
+                        ValueKind::Lit(Literal::String(s)) => s.clone(),
+                        _ => {
+                            return Err(ExpectedStringTypeError {
+                                found_value: tag_val_result.clone(),
+                            }
+                            .into());
+                        }
+                    };
+
+                    // Add the tag to the request
+                    let mut tags = HashMap::new();
+                    tags.insert(tag_val, dependent_trie.clone());
+
+                    entity_requests.push(EntityRequest {
+                        entity_id: of_val.clone(),
+                        tags,
+                        access_trie: AccessTrie::new(),
+                    });
+                }
+            }
         }
+
+        eprintln!("Loading entities for requests: {:?}", entity_requests);
+
+        // Load the current batch of entities
+        let loaded_entities = loader.load_entities(&entity_requests)?;
 
         for entity in loaded_entities.into_iter().flatten() {
             // Add or merge the entity into our map
@@ -203,103 +252,6 @@ pub(crate) fn load_entities(
                 }
             }
         }
-
-        // Process loaded entities and prepare next batch to load
-        let mut next_to_load = Vec::new();
-
-        for entity_request in to_load.into_iter() {
-            let entity_path = entity_request.access_path;
-
-            // Find dependent critical terms for this critical term
-            let dependent_entities = dependent_terms_map
-                .get(&entity_path)
-                .unwrap_or(&vec![])
-                .clone();
-
-            // Add dependent terms to the next batch if they haven't been processed yet
-            for dependent_term in dependent_entities {
-                if !visited_terms.insert(dependent_term.clone()) {
-                    continue;
-                }
-
-                // Get the access trie for this critical path if any
-                if let Some(dependent_trie) = access_tries.get(&dependent_term) {
-                    // case split on entities or tag access terms
-                    if for_request.is_entity_typed_path(&dependent_term) {
-                        // get the id of the entity path using the entity store
-                        let dependent_val = dependent_term.compute_value(
-                            &entities_map,
-                            &for_request.dag,
-                            request,
-                        )?;
-
-                        let dependent_id = match dependent_val.value_kind() {
-                            ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
-                            _ => {
-                                return Err(ExpectedEntityTypeError {
-                                    found_value: dependent_val.clone(),
-                                }
-                                .into())
-                            }
-                        };
-
-                        next_to_load.push(EntityRequest {
-                            entity_id: dependent_id.clone(),
-                            tags: HashMap::new(),
-                            access_trie: dependent_trie.clone(),
-                            access_path: dependent_term.clone(),
-                        });
-                    } else {
-                        let AccessTermVariant::Tag { of, tag } =
-                            dependent_term.get_variant_internal(&for_request.dag)
-                        else {
-                            // PANIC SAFETY: Critical terms are either entity typed or tag terms.
-                            panic!("Expected a tag path variant, but got {:?}", dependent_term);
-                        };
-                        // For tag terms, generate an entity request with the tag and access trie
-                        let of_val_result =
-                            of.compute_value(&entities_map, &for_request.dag, request)?;
-                        let tag_val_result =
-                            tag.compute_value(&entities_map, &for_request.dag, request)?;
-
-                        // todo factor out into helper
-                        let of_val = match of_val_result.value_kind() {
-                            ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
-                            _ => {
-                                return Err(ExpectedEntityTypeError {
-                                    found_value: of_val_result.clone(),
-                                }
-                                .into())
-                            }
-                        };
-                        // tag value is always a string
-                        let tag_val = match tag_val_result.value_kind() {
-                            ValueKind::Lit(Literal::String(s)) => s.clone(),
-                            _ => {
-                                return Err(ExpectedStringTypeError {
-                                    found_value: tag_val_result.clone(),
-                                }
-                                .into());
-                            }
-                        };
-
-                        // Add the tag to the request
-                        let mut tags = HashMap::new();
-                        tags.insert(tag_val, dependent_trie.clone());
-
-                        next_to_load.push(EntityRequest {
-                            entity_id: of_val.clone(),
-                            tags,
-                            access_trie: AccessTrie::new(),
-                            access_path: dependent_term.clone(),
-                        });
-                    }
-                }
-            }
-        }
-
-        // Update to_load for the next iteration
-        to_load = next_to_load;
     }
 
     // Load ancestors for all entities

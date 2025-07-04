@@ -22,7 +22,7 @@ use crate::ast::{self, Expr, RequestType};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
-use super::{AccessDag, AccessTerm, AccessTermVariant, EntityManifest, RequestTypePaths};
+use super::{AccessDag, AccessTerm, AccessTermVariant, EntityManifest, RequestTypeTerms};
 use crate::validator::ValidatorSchema;
 // Import errors directly
 use crate::validator::entity_manifest::errors::{ConversionError, PathExpressionParseError};
@@ -166,7 +166,7 @@ impl HumanEntityManifest {
         let mut manifest = EntityManifest::new();
 
         for (request_type, path_expressions) in &self.per_action {
-            let mut paths_for_request_type = RequestTypePaths::new(request_type.clone());
+            let mut paths_for_request_type = RequestTypeTerms::new(request_type.clone());
 
             for expr_str in path_expressions {
                 let path =

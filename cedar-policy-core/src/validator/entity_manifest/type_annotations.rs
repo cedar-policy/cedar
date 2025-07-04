@@ -21,7 +21,7 @@ use crate::ast::{RequestType, Var};
 use crate::validator::entity_manifest::AccessTermNotFoundError;
 use crate::validator::types::EntityRecordKind;
 use crate::validator::{
-    entity_manifest::{AccessDag, AccessTerm, AccessTermVariant, EntityManifest, RequestTypePaths},
+    entity_manifest::{AccessDag, AccessTerm, AccessTermVariant, EntityManifest, RequestTypeTerms},
     types::Type,
     ValidatorSchema,
 };
@@ -49,7 +49,7 @@ impl EntityManifest {
     }
 }
 
-impl RequestTypePaths {
+impl RequestTypeTerms {
     /// Type-annotate this [`PathsForRequestType`], given the schema.
     pub(crate) fn add_types(
         &mut self,

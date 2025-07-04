@@ -42,14 +42,12 @@ impl EntityLoader for EntitySlicer<'_> {
     fn load_entities(
         &mut self,
         to_load: &[EntityRequest],
-    ) -> Result<Vec<EntityAnswer>, EntitySliceError> {
+    ) -> Result<Vec<Entity>, EntitySliceError> {
         let mut res = vec![];
         for request in to_load {
             if let Dereference::Data(entity) = self.entities.entity(&request.entity_id) {
                 // filter down the entity fields to those requested
-                res.push(Some(request.slice_entity(entity)?));
-            } else {
-                res.push(None);
+                res.push(request.slice_entity(entity)?);
             }
         }
 

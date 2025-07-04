@@ -2,9 +2,21 @@ use std::collections::{HashMap, HashSet};
 
 use smol_str::SmolStr;
 
-use crate::validator::entity_manifest::{AccessTerm, AccessTermVariant, RequestTypePaths};
+use crate::validator::entity_manifest::{AccessTerm, AccessTermVariant, RequestTypeTerms};
 
-impl RequestTypePaths {
+impl RequestTypeTerms {
+    /// Given a set of access tries, determines which are leaf nodes
+    pub(crate) fn initial_critical_terms(
+        &self,
+        access_tries: &HashMap<AccessTerm, AccessTrie>,
+    ) -> Vec<AccessTerm> {
+        access_tries
+            .keys()
+            .filter(|term| term.is_leaf(&self.dag))
+            .cloned()
+            .collect()
+    }
+
     /// Build a hashmap of dependent paths for all reachable paths
     pub(crate) fn build_dependents_map(
         &self,
@@ -33,7 +45,7 @@ impl RequestTypePaths {
         dependents_map
     }
 
-    pub(crate) fn build_dependent_entities_map(
+    pub(crate) fn build_dependent_critical_terms(
         &self,
         dependents_map: &HashMap<AccessTerm, Vec<AccessTerm>>,
     ) -> HashMap<AccessTerm, Vec<AccessTerm>> {
@@ -91,22 +103,19 @@ impl RequestTypePaths {
     /// for more information on what a critical path is.
     pub(crate) fn compute_access_tries(
         &self,
+        dependent_critical: &HashMap<AccessTerm, Vec<AccessTerm>>,
         dependents_map: &HashMap<AccessTerm, Vec<AccessTerm>>,
     ) -> HashMap<AccessTerm, AccessTrie> {
-        // Find all entity paths among the reachable paths
-        let entity_paths = self.get_critical_paths(&dependents_map);
-
-        // Build the AccessTrie for each entity path
-        let mut result = HashMap::new();
-        for entity_path in entity_paths {
-            let trie = self.build_access_trie_for_critical(&entity_path, dependents_map);
-
-            if !trie.fields.is_empty() {
-                result.insert(entity_path, trie);
-            }
-        }
-
-        result
+        dependent_critical
+            .keys()
+            .map(|term| {
+                // For each critical path, we need to build an AccessTrie
+                (
+                    *term,
+                    self.build_access_trie_for_critical(term, dependents_map),
+                )
+            })
+            .collect()
     }
 
     /// A "critical path" is a path whose dependents need to be explicitly loaded

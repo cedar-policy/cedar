@@ -44,7 +44,7 @@ pub use crate::validator::entity_manifest::errors::{
     UnsupportedCedarFeatureError,
 };
 
-use crate::validator::entity_manifest::analysis::analyze_expr_access_paths;
+use crate::validator::entity_manifest::analysis::analyze_expr_access_paths as analyze_expr_access_terms;
 // Re-export types from human_format module
 use crate::validator::Validator;
 use crate::validator::{
@@ -53,12 +53,14 @@ use crate::validator::{
     ValidationMode, ValidatorSchema,
 };
 
-/// Stores paths for a specific request type, including the request type,
-/// access dag, and access paths.
+/// For a given request type, stores information about what
+/// data is required.
+/// It stores the request type,
+/// access dag, and access terms.
 #[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RequestTypePaths {
+pub struct RequestTypeTerms {
     /// The request type
     pub(crate) request_type: RequestType,
     /// The backing store for the paths, a directed acyclic graph
@@ -67,7 +69,7 @@ pub struct RequestTypePaths {
     pub(crate) access_paths: AccessTerms,
 }
 
-impl RequestTypePaths {
+impl RequestTypeTerms {
     /// Create a new [`PathsForRequestType`]
     pub fn new(request_type: RequestType) -> Self {
         Self {
@@ -153,7 +155,7 @@ pub struct EntityManifest {
     /// A map from request types to PathsForRequestType.
     /// For each request, stores what access paths are required.
     #[serde_as(as = "Vec<(_, _)>")]
-    pub(crate) per_action: HashMap<RequestType, RequestTypePaths>,
+    pub(crate) per_action: HashMap<RequestType, RequestTypeTerms>,
 }
 
 /// A backing store for a set of access paths
@@ -360,7 +362,7 @@ impl PartialEq for EntityManifest {
 
 impl Eq for EntityManifest {}
 
-impl RequestTypePaths {
+impl RequestTypeTerms {
     /// Map a variant from the source manifest to the target manifest
     ///
     /// This method recursively maps a variant and its children from the source manifest
@@ -480,7 +482,7 @@ impl EntityManifest {
 
     /// Get the contents of the entity manifest
     /// indexed by the type of the request.
-    pub fn per_action(&self) -> &HashMap<RequestType, RequestTypePaths> {
+    pub fn per_action(&self) -> &HashMap<RequestType, RequestTypeTerms> {
         &self.per_action
     }
 
@@ -625,13 +627,13 @@ pub fn compute_entity_manifest(
             let mut per_request = manifest
                 .per_action
                 .remove(&request_type)
-                .unwrap_or(RequestTypePaths::new(request_type.clone()));
+                .unwrap_or(RequestTypeTerms::new(request_type.clone()));
 
             match policy_check {
                 PolicyCheck::Success(typechecked_expr) => {
                     // compute the access paths from the typechecked expr
                     // using static analysis
-                    let res = analyze_expr_access_paths(&typechecked_expr, &mut per_request.dag)?;
+                    let res = analyze_expr_access_terms(&typechecked_expr, &mut per_request.dag)?;
                     // add the result to the per_request
                     per_request.access_paths.extend(res.all_access_paths());
                 }
