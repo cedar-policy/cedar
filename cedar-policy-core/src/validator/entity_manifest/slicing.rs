@@ -154,7 +154,7 @@ impl AccessTrie {
 }
 
 impl AccessTerm {
-    /// Compute the value for this access path using the provided entities map.
+    /// Compute the value for this access term using the provided entities map.
     /// This function can dereference entities using the `entity_map`.
     pub(crate) fn compute_value(
         &self,
@@ -162,7 +162,7 @@ impl AccessTerm {
         store: &AccessDag,
         request: &Request,
     ) -> Result<Value, EntitySliceError> {
-        // Get the variant for this path
+        // Get the variant for this term
         let variant = self
             .get_variant(store)
             .map_err(|_| EntitySliceError::PartialRequest(PartialRequestError {}))?;
@@ -273,10 +273,10 @@ impl AccessTerm {
                 }
             }
 
-            // PANIC SAFETY: `compute_value` is only called on child access paths, but nothing has an ancestor node as a child.
+            // PANIC SAFETY: `compute_value` is only called on child access terms, but nothing has an ancestor node as a child.
             #[allow(clippy::panic)]
             AccessTermVariant::Ancestor { of: _, ancestor: _ } => {
-                panic!("Ill-typed entity manifest: Tried to compute value of ancestor access path");
+                panic!("Ill-typed entity manifest: Tried to compute value of ancestor access term");
             }
 
             AccessTermVariant::Var(var) => {

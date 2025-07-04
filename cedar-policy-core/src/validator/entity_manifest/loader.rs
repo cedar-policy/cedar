@@ -120,9 +120,9 @@ pub(crate) fn load_entities(
         };
     };
 
-    // Build a map of entity paths to their dependent entities
-    let reachable_paths = for_request.reachable_paths();
-    let dependents_map = for_request.build_dependents_map(&reachable_paths);
+    // Build a map of entity terms to their dependent entities
+    let reachable_terms = for_request.reachable_terms();
+    let dependents_map = for_request.build_dependents_map(&reachable_terms);
 
     let dependent_critical = for_request.build_dependent_critical_terms(&dependents_map);
     // Compute the access tries for all entities
@@ -159,11 +159,11 @@ pub(crate) fn load_entities(
             next_critical_terms.extend(dependent_critical_terms.iter().cloned());
 
             // TODO factor out spaghetti code
-            // Get the access trie for this critical path if any
+            // Get the access trie for this critical term if any
             if let Some(dependent_trie) = access_tries.get(&critical_term) {
                 // case split on entities or tag access terms
-                if for_request.is_entity_typed_path(&critical_term) {
-                    // get the id of the entity path using the entity store
+                if for_request.is_entity_typed_term(&critical_term) {
+                    // get the id of the entity term using the entity store
                     let dependent_val =
                         critical_term.compute_value(&entities_map, &for_request.dag, request)?;
 
@@ -184,14 +184,14 @@ pub(crate) fn load_entities(
                     });
                 } else {
                     eprintln!(
-                        "Loading tag path: {:?} with access trie: {:?}",
+                        "Loading tag term: {:?} with access trie: {:?}",
                         critical_term, dependent_trie
                     );
                     let AccessTermVariant::Tag { of, tag } =
                         critical_term.get_variant_internal(&for_request.dag)
                     else {
                         // PANIC SAFETY: Critical terms are either entity typed or tag terms.
-                        panic!("Expected a tag path variant, but got {:?}", critical_term);
+                        panic!("Expected a tag term variant, but got {:?}", critical_term);
                     };
                     // For tag terms, generate an entity request with the tag and access trie
                     let of_val_result =
@@ -258,10 +258,10 @@ pub(crate) fn load_entities(
     let mut ancestors_requests = HashMap::new();
 
     // compute ancestors requests by finding all AccessTermVariant::Ancestor variants
-    // look up the entity ids in the Entities store using the paths
+    // look up the entity ids in the Entities store using the terms
     // then create an ancestor request
-    for path in reachable_paths.iter() {
-        if let Ok(AccessTermVariant::Ancestor { of, ancestor }) = path.get_variant(&for_request.dag)
+    for term in reachable_terms.iter() {
+        if let Ok(AccessTermVariant::Ancestor { of, ancestor }) = term.get_variant(&for_request.dag)
         {
             // Extract EntityUID from the Value
             let of_val_result = of.compute_value(&entities_map, &for_request.dag, request)?;

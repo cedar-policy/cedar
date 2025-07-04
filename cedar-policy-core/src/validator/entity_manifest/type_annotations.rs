@@ -41,8 +41,8 @@ impl EntityManifest {
         schema: &ValidatorSchema,
     ) -> Result<EntityManifest, MismatchedEntityManifestError> {
         // Type each RequestTypeTerms
-        for paths_for_request_type in self.per_action.values_mut() {
-            paths_for_request_type.add_types(schema)?;
+        for terms_for_request_type in self.per_action.values_mut() {
+            terms_for_request_type.add_types(schema)?;
         }
 
         Ok(self)
@@ -55,23 +55,23 @@ impl RequestTypeTerms {
         &mut self,
         schema: &ValidatorSchema,
     ) -> Result<(), MismatchedEntityManifestError> {
-        // Initialize the types vector with None for each path in the DAG
+        // Initialize the types vector with None for each term in the DAG
 
-        // Process each access path in topological order
+        // Process each access term in topological order
         // Since the DAG structure ensures that all dependencies are processed before dependents,
-        // we can simply iterate through the paths in order of their IDs
-        for path in self.dag.manifest_store.iter() {
+        // we can simply iterate through the terms in order of their IDs
+        for term in self.dag.manifest_store.iter() {
             self.dag
                 .types
-                .push(self.type_path(path, &self.request_type, schema, &self.dag)?);
+                .push(self.type_term(term, &self.request_type, schema, &self.dag)?);
         }
 
         Ok(())
     }
 
-    /// Helper method to type a single path.
+    /// Helper method to type a single term.
     /// When the type does not exist in the schema, it returns `None`.
-    fn type_path(
+    fn type_term(
         &self,
         variant: &AccessTermVariant,
         request_type: &RequestType,
@@ -159,14 +159,14 @@ impl RequestTypeTerms {
                 }
             }
             AccessTermVariant::Tag {
-                of: access_path,
-                tag: tag_path,
+                of: access_term,
+                tag: tag_term,
             } => {
-                let Some(Some(access_path_type)) = self.dag.types.get(access_path.id) else {
+                let Some(Some(access_term_type)) = self.dag.types.get(access_term.id) else {
                     return Ok(None);
                 };
                 // of should be an entity type with a tag type
-                if let Type::EntityOrRecord(EntityRecordKind::Entity(entitylub)) = access_path_type
+                if let Type::EntityOrRecord(EntityRecordKind::Entity(entitylub)) = access_term_type
                 {
                     let entity_ty = schema
                         .get_entity_type(
@@ -178,7 +178,7 @@ impl RequestTypeTerms {
                     entity_ty.tag_type().unwrap().clone() // todo fix unwrap
                 } else {
                     return Err(MismatchedExpectedEntityError {
-                        found_type: access_path_type.clone(),
+                        found_type: access_term_type.clone(),
                     }
                     .into());
                 }
