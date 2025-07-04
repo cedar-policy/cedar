@@ -18,6 +18,7 @@ use crate::ast::*;
 use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 use annotation::{Annotation, Annotations};
 use educe::Educe;
+use generalized_slots_annotation::{GeneralizedSlotsAnnotation, SlotTypePosition};
 use itertools::Itertools;
 use miette::Diagnostic;
 use nonempty::{nonempty, NonEmpty};
@@ -52,6 +53,9 @@ cfg_tolerant_ast! {
 
     static DEFAULT_ANNOTATIONS: std::sync::LazyLock<Arc<Annotations>> =
         std::sync::LazyLock::new(|| Arc::new(Annotations::default()));
+
+    static DEFAULT_GENERALIZED_SLOTS_ANNOTATION: std::sync::LazyLock<Arc<GeneralizedSlotsAnnotation>> =
+        std::sync::LazyLock::new(|| Arc::new(GeneralizedSlotsAnnotation::default()));
 
     static DEFAULT_PRINCIPAL_CONSTRAINT: std::sync::LazyLock<PrincipalConstraint> =
         std::sync::LazyLock::new(PrincipalConstraint::any);
@@ -120,6 +124,7 @@ impl Template {
         id: PolicyID,
         loc: MaybeLoc,
         annotations: Annotations,
+        generalized_slots_annotation: GeneralizedSlotsAnnotation,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
@@ -130,6 +135,7 @@ impl Template {
             id,
             loc,
             annotations,
+            generalized_slots_annotation,
             effect,
             principal_constraint,
             action_constraint,
@@ -154,6 +160,7 @@ impl Template {
         id: PolicyID,
         loc: MaybeLoc,
         annotations: Arc<Annotations>,
+        generalized_slots_annotation: Arc<GeneralizedSlotsAnnotation>,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
@@ -164,6 +171,7 @@ impl Template {
             id,
             loc,
             annotations,
+            generalized_slots_annotation,
             effect,
             principal_constraint,
             action_constraint,
@@ -238,6 +246,13 @@ impl Template {
         self.body.annotations_arc()
     }
 
+    /// Get all generalized_slots_annotation data.
+    pub fn generalized_slots_annotation(
+        &self,
+    ) -> impl Iterator<Item = (&SlotId, &SlotTypePosition)> {
+        self.body.generalized_slots_annotation()
+    }
+
     /// Get the condition expression of this template.
     ///
     /// This will be a conjunction of the template's scope constraints (on
@@ -266,15 +281,18 @@ impl Template {
     pub fn check_binding(
         template: &Template,
         values: &HashMap<SlotId, EntityUID>,
+        generalized_values: &HashMap<SlotId, RestrictedExpr>,
     ) -> Result<(), LinkingError> {
         // Verify all slots bound
         let unbound = template
             .slots
             .iter()
-            .filter(|slot| !values.contains_key(&slot.id))
+            .filter(|slot| {
+                !values.contains_key(&slot.id) && !generalized_values.contains_key(&slot.id)
+            })
             .collect::<Vec<_>>();
 
-        let extra = values
+        let extra_values = values
             .iter()
             .filter_map(|(slot, _)| {
                 if !template
@@ -289,12 +307,65 @@ impl Template {
             })
             .collect::<Vec<_>>();
 
-        if unbound.is_empty() && extra.is_empty() {
+        let extra_generalized_values = generalized_values
+            .iter()
+            .filter_map(|(slot, _)| {
+                if !template
+                    .slots
+                    .iter()
+                    .any(|template_slot| template_slot.id == *slot)
+                {
+                    Some(slot)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let invalid_keys_in_values = values
+            .iter()
+            .filter_map(|(slot, _)| {
+                if !(*slot == (SlotId::principal()) || *slot == (SlotId::resource())) {
+                    Some(slot)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let invalid_keys_in_generalized_values = generalized_values
+            .iter()
+            .filter_map(|(slot, _)| {
+                if *slot == (SlotId::principal()) || *slot == (SlotId::resource()) {
+                    Some(slot)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        if unbound.is_empty()
+            && extra_values.is_empty()
+            && extra_generalized_values.is_empty()
+            && invalid_keys_in_values.is_empty()
+            && invalid_keys_in_generalized_values.is_empty()
+        {
             Ok(())
+        } else if !(invalid_keys_in_values.is_empty()) {
+            Err(LinkingError::from_invalid_env(
+                invalid_keys_in_values.into_iter().cloned(),
+            ))
+        } else if !(invalid_keys_in_generalized_values.is_empty()) {
+            Err(LinkingError::from_invalid_generalized_env(
+                invalid_keys_in_generalized_values.into_iter().cloned(),
+            ))
         } else {
             Err(LinkingError::from_unbound_and_extras(
-                unbound.into_iter().map(|slot| slot.id),
-                extra.into_iter().copied(),
+                unbound.into_iter().map(|slot| slot.id.clone()),
+                extra_values
+                    .into_iter()
+                    .cloned()
+                    .chain(extra_generalized_values.into_iter().cloned()),
             ))
         }
     }
@@ -306,10 +377,12 @@ impl Template {
         template: Arc<Template>,
         new_id: PolicyID,
         values: HashMap<SlotId, EntityUID>,
+        generalized_values: HashMap<SlotId, RestrictedExpr>,
+        // schema: Option<ValidatorSchema>
     ) -> Result<Policy, LinkingError> {
         // INVARIANT (policy total map) Relies on check_binding to uphold the invariant
-        Template::check_binding(&template, &values)
-            .map(|_| Policy::new(template, Some(new_id), values))
+        Template::check_binding(&template, &values, &generalized_values)
+            .map(|_| Policy::new(template, Some(new_id), values, generalized_values))
     }
 
     /// Take a static policy and create a template and a template-linked policy for it.
@@ -324,7 +397,7 @@ impl Template {
             slots: vec![],
         });
         t.check_invariant();
-        let p = Policy::new(Arc::clone(&t), None, HashMap::new());
+        let p = Policy::new(Arc::clone(&t), None, HashMap::new(), HashMap::new());
         (t, p)
     }
 }
@@ -357,6 +430,20 @@ pub enum LinkingError {
         extra_values: Vec<SlotId>,
     },
 
+    /// Invalid slots in env (Generalized slots)
+    #[error(fmt = describe_invalid_slot_in_generalized_env_error)]
+    InvalidSlotIdInEnv {
+        /// invalid slots
+        invalid: Vec<SlotId>,
+    },
+
+    /// Invalid slots in generalized_env (Principal and Resource slots)
+    #[error(fmt = describe_invalid_slot_in_env_error)]
+    InvalidSlotIdInGeneralizedEnv {
+        /// invalid slots
+        invalid: Vec<SlotId>,
+    },
+
     /// The attempted linking failed as the template did not exist.
     #[error("failed to find a template with id `{id}`")]
     NoSuchTemplate {
@@ -382,6 +469,18 @@ impl LinkingError {
             extra_values: extra.collect(),
         }
     }
+
+    fn from_invalid_env(invalid: impl Iterator<Item = SlotId>) -> Self {
+        Self::InvalidSlotIdInEnv {
+            invalid: invalid.collect(),
+        }
+    }
+
+    fn from_invalid_generalized_env(invalid: impl Iterator<Item = SlotId>) -> Self {
+        Self::InvalidSlotIdInGeneralizedEnv {
+            invalid: invalid.collect(),
+        }
+    }
 }
 
 fn describe_arity_error(
@@ -397,6 +496,28 @@ fn describe_arity_error(
         (0, _extra) => write!(fmt, "the following slots were provided as arguments, but did not exist in the template: {}", extra_values.iter().join(",")),
         (_unbound, _extra) => write!(fmt, "the following slots were not provided as arguments: {}. The following slots were provided as arguments, but did not exist in the template: {}", unbound_values.iter().join(","), extra_values.iter().join(",")),
     }
+}
+
+fn describe_invalid_slot_in_env_error(
+    invalid: &[SlotId],
+    fmt: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
+    write!(
+        fmt,
+        "The following slots should not be in the values hashmap: {}",
+        invalid.iter().join(",")
+    )
+}
+
+fn describe_invalid_slot_in_generalized_env_error(
+    invalid: &[SlotId],
+    fmt: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
+    write!(
+        fmt,
+        "The following slots should not be in the generalized_values hashmap: {}",
+        invalid.iter().join(",")
+    )
 }
 
 /// A Policy that contains:
@@ -421,23 +542,35 @@ pub struct Policy {
     /// The constructor `new` is only visible in this module,
     /// so it is the responsibility of callers to maintain
     values: HashMap<SlotId, EntityUID>,
+    /// All of the generalized slots in `template` MUST
+    /// be bound by `generalized values`.
+    /// The SlotId for generalized_values should be disjoint from
+    /// values as well
+    generalized_values: HashMap<SlotId, RestrictedExpr>,
 }
 
 impl Policy {
     /// Link a policy to its template
     /// INVARIANT (values total map):
     /// `values` must bind every open slot in `template`
-    fn new(template: Arc<Template>, link_id: Option<PolicyID>, values: SlotEnv) -> Self {
+    fn new(
+        template: Arc<Template>,
+        link_id: Option<PolicyID>,
+        values: SlotEnv,
+        generalized_values: GeneralizedSlotEnv,
+    ) -> Self {
         #[cfg(debug_assertions)]
         {
             // PANIC SAFETY: asserts (value total map invariant) which is justified at call sites
             #[allow(clippy::expect_used)]
-            Template::check_binding(&template, &values).expect("(values total map) does not hold!");
+            Template::check_binding(&template, &values, &generalized_values)
+                .expect("(values total map) does not hold!");
         }
         Self {
             template,
             link: link_id,
             values,
+            generalized_values,
         }
     }
 
@@ -464,13 +597,14 @@ impl Policy {
             id,
             loc,
             annotations,
+            Arc::new(GeneralizedSlotsAnnotation::default()),
             effect,
             PrincipalConstraint::any(),
             ActionConstraint::any(),
             ResourceConstraint::any(),
             when,
         );
-        Self::new(Arc::new(t), None, SlotEnv::new())
+        Self::new(Arc::new(t), None, SlotEnv::new(), GeneralizedSlotEnv::new())
     }
 
     /// Get pointer to the template for this policy
@@ -501,6 +635,13 @@ impl Policy {
     /// Get [`Arc`] owning annotation data.
     pub fn annotations_arc(&self) -> &Arc<Annotations> {
         self.template.annotations_arc()
+    }
+
+    /// Get all generalized_slots_annotation data.
+    pub fn generalized_slots_annotation(
+        &self,
+    ) -> impl Iterator<Item = (&SlotId, &SlotTypePosition)> {
+        self.template.generalized_slots_annotation()
     }
 
     /// Get the principal constraint for this policy.
@@ -555,6 +696,12 @@ impl Policy {
         &self.values
     }
 
+    /// Get the mapping from generalized SlotIds to RestrictedExprs for this policy. (This will
+    /// be empty for inline policies.)
+    pub fn generalized_env(&self) -> &GeneralizedSlotEnv {
+        &self.generalized_values
+    }
+
     /// Get the ID of this policy.
     pub fn id(&self) -> &PolicyID {
         self.link.as_ref().unwrap_or_else(|| self.template.id())
@@ -567,11 +714,13 @@ impl Policy {
                 template: Arc::new(self.template.new_id(id)),
                 link: None,
                 values: self.values.clone(),
+                generalized_values: self.generalized_values.clone(),
             },
             Some(_) => Policy {
                 template: self.template.clone(),
                 link: Some(id),
                 values: self.values.clone(),
+                generalized_values: self.generalized_values.clone(),
             },
         }
     }
@@ -624,6 +773,9 @@ impl std::fmt::Display for Policy {
 /// Map from Slot Ids to Entity UIDs which fill the slots
 pub type SlotEnv = HashMap<SlotId, EntityUID>;
 
+/// Map from Slot Ids to RestrictedExpr which fill the generalized slots
+pub type GeneralizedSlotEnv = HashMap<SlotId, RestrictedExpr>;
+
 /// Represents either a static policy or a template linked policy.
 ///
 /// Contains less rich information than `Policy`. In particular, this form is
@@ -640,6 +792,8 @@ pub struct LiteralPolicy {
     link_id: Option<PolicyID>,
     /// Values of the slots
     values: SlotEnv,
+    /// Generalized values of the slots
+    generalized_values: GeneralizedSlotEnv,
 }
 
 impl LiteralPolicy {
@@ -651,6 +805,7 @@ impl LiteralPolicy {
             template_id,
             link_id: None,
             values: SlotEnv::new(),
+            generalized_values: GeneralizedSlotEnv::new(),
         }
     }
 
@@ -661,17 +816,24 @@ impl LiteralPolicy {
         template_id: PolicyID,
         link_id: PolicyID,
         values: SlotEnv,
+        generalized_values: GeneralizedSlotEnv,
     ) -> Self {
         Self {
             template_id,
             link_id: Some(link_id),
             values,
+            generalized_values,
         }
     }
 
     /// Get the `EntityUID` associated with the given `SlotId`, if it exists
     pub fn value(&self, slot: &SlotId) -> Option<&EntityUID> {
         self.values.get(slot)
+    }
+
+    /// Returns the hashmap of generalized values
+    pub fn generalized_values(&self) -> GeneralizedSlotEnv {
+        self.generalized_values.clone()
     }
 }
 
@@ -713,6 +875,7 @@ mod hashing_tests {
             template_id: PolicyID::from_string("template"),
             link_id: Some(PolicyID::from_string("id")),
             values: map,
+            generalized_values: HashMap::new(),
         }
     }
 
@@ -750,8 +913,14 @@ impl LiteralPolicy {
             .get(&self.template_id)
             .ok_or_else(|| ReificationError::NoSuchTemplate(self.template_id().clone()))?;
         // INVARIANT (values total map)
-        Template::check_binding(template, &self.values).map_err(ReificationError::Linking)?;
-        Ok(Policy::new(template.clone(), self.link_id, self.values))
+        Template::check_binding(template, &self.values, &self.generalized_values)
+            .map_err(ReificationError::Linking)?;
+        Ok(Policy::new(
+            template.clone(),
+            self.link_id,
+            self.values,
+            self.generalized_values,
+        ))
     }
 
     /// Lookup the euid bound by a SlotId
@@ -804,6 +973,7 @@ impl From<Policy> for LiteralPolicy {
             template_id: p.template.id().clone(),
             link_id: p.link,
             values: p.values,
+            generalized_values: p.generalized_values,
         }
     }
 }
@@ -904,6 +1074,7 @@ impl StaticPolicy {
         id: PolicyID,
         loc: MaybeLoc,
         annotations: Annotations,
+        generalized_slots_annotation: GeneralizedSlotsAnnotation,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
@@ -914,6 +1085,7 @@ impl StaticPolicy {
             id,
             loc,
             annotations,
+            generalized_slots_annotation,
             effect,
             principal_constraint,
             action_constraint,
@@ -971,6 +1143,8 @@ pub struct TemplateBodyImpl {
     /// Note that the keys are `AnyId`, so Cedar reserved words like `if` and `has`
     /// are explicitly allowed as annotations.
     annotations: Arc<Annotations>,
+    /// Stores the type and position information for generalized slots
+    generalized_slots_annotation: Arc<GeneralizedSlotsAnnotation>,
     /// `Effect` of this policy
     effect: Effect,
     /// Scope constraint for principal. This will be a boolean-valued expression:
@@ -1078,6 +1252,20 @@ impl TemplateBody {
             TemplateBody::TemplateBody(TemplateBodyImpl { annotations, .. }) => annotations.iter(),
             #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(_, _) => DEFAULT_ANNOTATIONS.iter(),
+        }
+    }
+
+    /// Get all generalized_slots_annotation data.
+    pub fn generalized_slots_annotation(
+        &self,
+    ) -> impl Iterator<Item = (&SlotId, &SlotTypePosition)> {
+        match self {
+            TemplateBody::TemplateBody(TemplateBodyImpl {
+                generalized_slots_annotation,
+                ..
+            }) => generalized_slots_annotation.iter(),
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_, _) => DEFAULT_GENERALIZED_SLOTS_ANNOTATION.iter(),
         }
     }
 
@@ -1217,6 +1405,7 @@ impl TemplateBody {
         id: PolicyID,
         loc: MaybeLoc,
         annotations: Arc<Annotations>,
+        generalized_slots_annotation: Arc<GeneralizedSlotsAnnotation>,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
@@ -1227,6 +1416,7 @@ impl TemplateBody {
             id,
             loc,
             annotations,
+            generalized_slots_annotation,
             effect,
             principal_constraint,
             action_constraint,
@@ -1241,6 +1431,7 @@ impl TemplateBody {
         id: PolicyID,
         loc: MaybeLoc,
         annotations: Annotations,
+        generalized_slots_annotation: GeneralizedSlotsAnnotation,
         effect: Effect,
         principal_constraint: PrincipalConstraint,
         action_constraint: ActionConstraint,
@@ -1251,6 +1442,7 @@ impl TemplateBody {
             id,
             loc,
             annotations: Arc::new(annotations),
+            generalized_slots_annotation: Arc::new(generalized_slots_annotation),
             effect,
             principal_constraint,
             action_constraint,
@@ -1331,9 +1523,9 @@ impl PrincipalConstraint {
     }
 
     /// Constrained to be equal to a slot
-    pub fn is_eq_slot() -> Self {
+    pub fn is_eq_slot(id: Option<Id>) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_eq_slot(),
+            constraint: PrincipalOrResourceConstraint::is_eq_slot(id),
         }
     }
 
@@ -1345,16 +1537,16 @@ impl PrincipalConstraint {
     }
 
     /// Hierarchical constraint to Slot
-    pub fn is_in_slot() -> Self {
+    pub fn is_in_slot(id: Option<Id>) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_in_slot(),
+            constraint: PrincipalOrResourceConstraint::is_in_slot(id),
         }
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>) -> Self {
+    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>, id: Option<Id>) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type),
+            constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type, id),
         }
     }
 
@@ -1375,10 +1567,10 @@ impl PrincipalConstraint {
     /// Fill in the Slot, if any, with the given EUID
     pub fn with_filled_slot(self, euid: Arc<EntityUID>) -> Self {
         match self.constraint {
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_)) => Self {
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_, _)) => Self {
                 constraint: PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)),
             },
-            PrincipalOrResourceConstraint::In(EntityReference::Slot(_)) => Self {
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(_, _)) => Self {
                 constraint: PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)),
             },
             _ => self,
@@ -1438,16 +1630,16 @@ impl ResourceConstraint {
     }
 
     /// Constrained to equal a slot.
-    pub fn is_eq_slot() -> Self {
+    pub fn is_eq_slot(id: Option<Id>) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_eq_slot(),
+            constraint: PrincipalOrResourceConstraint::is_eq_slot(id),
         }
     }
 
     /// Constrained to be in a slot
-    pub fn is_in_slot() -> Self {
+    pub fn is_in_slot(id: Option<Id>) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_in_slot(),
+            constraint: PrincipalOrResourceConstraint::is_in_slot(id),
         }
     }
 
@@ -1459,9 +1651,9 @@ impl ResourceConstraint {
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>) -> Self {
+    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>, id: Option<Id>) -> Self {
         Self {
-            constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type),
+            constraint: PrincipalOrResourceConstraint::is_entity_type_in_slot(entity_type, id),
         }
     }
 
@@ -1482,10 +1674,10 @@ impl ResourceConstraint {
     /// Fill in the Slot, if any, with the given EUID
     pub fn with_filled_slot(self, euid: Arc<EntityUID>) -> Self {
         match self.constraint {
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_)) => Self {
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_, _)) => Self {
                 constraint: PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)),
             },
-            PrincipalOrResourceConstraint::In(EntityReference::Slot(_)) => Self {
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(_, _)) => Self {
                 constraint: PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)),
             },
             _ => self,
@@ -1511,6 +1703,7 @@ pub enum EntityReference {
     EUID(Arc<EntityUID>),
     /// Template Slot
     Slot(
+        Option<Id>, // If a slot stores None then it is a principal/resource, otherwise it is a generalized slot
         #[educe(PartialEq(ignore))]
         #[educe(PartialOrd(ignore))]
         #[educe(Hash(ignore))]
@@ -1532,7 +1725,13 @@ impl EntityReference {
     pub fn into_expr(&self, slot: SlotId) -> Expr {
         match self {
             EntityReference::EUID(euid) => Expr::val(euid.clone()),
-            EntityReference::Slot(loc) => Expr::slot(slot).with_maybe_source_loc(loc.clone()),
+            EntityReference::Slot(id, loc) => {
+                let slot = match id {
+                    Some(id) => SlotId::generalized_slot(id.clone()),
+                    None => slot,
+                };
+                Expr::slot(slot).with_maybe_source_loc(loc.clone())
+            }
         }
     }
 }
@@ -1628,13 +1827,13 @@ impl PrincipalOrResourceConstraint {
     }
 
     /// Constrained to equal a slot
-    pub fn is_eq_slot() -> Self {
-        PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None))
+    pub fn is_eq_slot(id: Option<Id>) -> Self {
+        PrincipalOrResourceConstraint::Eq(EntityReference::Slot(id, None))
     }
 
     /// Constrained to be in a slot
-    pub fn is_in_slot() -> Self {
-        PrincipalOrResourceConstraint::In(EntityReference::Slot(None))
+    pub fn is_in_slot(id: Option<Id>) -> Self {
+        PrincipalOrResourceConstraint::In(EntityReference::Slot(id, None))
     }
 
     /// Hierarchical constraint.
@@ -1643,8 +1842,8 @@ impl PrincipalOrResourceConstraint {
     }
 
     /// Type constraint additionally constrained to be in a slot.
-    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>) -> Self {
-        PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot(None))
+    pub fn is_entity_type_in_slot(entity_type: Arc<EntityType>, id: Option<Id>) -> Self {
+        PrincipalOrResourceConstraint::IsIn(entity_type, EntityReference::Slot(id, None))
     }
 
     /// Type constraint with a hierarchical constraint.
@@ -1705,11 +1904,11 @@ impl PrincipalOrResourceConstraint {
         match self {
             PrincipalOrResourceConstraint::Any => None,
             PrincipalOrResourceConstraint::In(EntityReference::EUID(euid)) => Some(euid),
-            PrincipalOrResourceConstraint::In(EntityReference::Slot(_)) => None,
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(_, _)) => None,
             PrincipalOrResourceConstraint::Eq(EntityReference::EUID(euid)) => Some(euid),
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_)) => None,
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(_, _)) => None,
             PrincipalOrResourceConstraint::IsIn(_, EntityReference::EUID(euid)) => Some(euid),
-            PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot(_)) => None,
+            PrincipalOrResourceConstraint::IsIn(_, EntityReference::Slot(_, _)) => None,
             PrincipalOrResourceConstraint::Is(_) => None,
         }
     }
@@ -1966,9 +2165,9 @@ pub(crate) mod test_generators {
         let v = vec![
             PrincipalOrResourceConstraint::any(),
             PrincipalOrResourceConstraint::is_eq(euid.clone()),
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None)),
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None, None)),
             PrincipalOrResourceConstraint::is_in(euid),
-            PrincipalOrResourceConstraint::In(EntityReference::Slot(None)),
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(None, None)),
         ];
 
         v.into_iter()
@@ -2007,6 +2206,7 @@ pub(crate) mod test_generators {
                         permit.clone(),
                         None,
                         Annotations::new(),
+                        GeneralizedSlotsAnnotation::new(),
                         Effect::Permit,
                         principal.clone(),
                         action.clone(),
@@ -2017,6 +2217,7 @@ pub(crate) mod test_generators {
                         forbid.clone(),
                         None,
                         Annotations::new(),
+                        GeneralizedSlotsAnnotation::new(),
                         Effect::Forbid,
                         principal.clone(),
                         action.clone(),
@@ -2057,9 +2258,10 @@ mod test {
             let t = Arc::new(template);
             let env = t
                 .slots()
-                .map(|slot| (slot.id, EntityUID::with_eid("eid")))
+                .map(|slot| (slot.id.clone(), EntityUID::with_eid("eid")))
                 .collect();
-            let _ = Template::link(t, PolicyID::from_string("id"), env).expect("Linking failed");
+            let _ = Template::link(t, PolicyID::from_string("id"), env, HashMap::new())
+                .expect("Linking failed");
         }
     }
 
@@ -2072,7 +2274,17 @@ mod test {
             let a = template.action_constraint().clone();
             let r = template.resource_constraint().clone();
             let non_scope = template.non_scope_constraints().clone();
-            let t2 = Template::new(id, None, Annotations::new(), effect, p, a, r, non_scope);
+            let t2 = Template::new(
+                id,
+                None,
+                Annotations::new(),
+                GeneralizedSlotsAnnotation::new(),
+                effect,
+                p,
+                a,
+                r,
+                non_scope,
+            );
             assert_eq!(template, t2);
         }
     }
@@ -2087,12 +2299,23 @@ mod test {
                     .annotations()
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect();
+                let generalized_slots_anno = GeneralizedSlotsAnnotation::default();
                 let p = ip.principal_constraint().clone();
                 let a = ip.action_constraint().clone();
                 let r = ip.resource_constraint().clone();
                 let non_scope = ip.non_scope_constraints().clone();
-                let ip2 = StaticPolicy::new(id, None, anno, e, p, a, r, non_scope)
-                    .expect("Policy Creation Failed");
+                let ip2 = StaticPolicy::new(
+                    id,
+                    None,
+                    anno,
+                    generalized_slots_anno,
+                    e,
+                    p,
+                    a,
+                    r,
+                    non_scope,
+                )
+                .expect("Policy Creation Failed");
                 assert_eq!(ip, ip2);
                 let (t2, inst) = Template::link_static_policy(ip2);
                 assert!(inst.is_static());
@@ -2109,15 +2332,16 @@ mod test {
             tid,
             None,
             Annotations::new(),
+            GeneralizedSlotsAnnotation::new(),
             Effect::Forbid,
-            PrincipalConstraint::is_eq_slot(),
+            PrincipalConstraint::is_eq_slot(None),
             ActionConstraint::Any,
             ResourceConstraint::any(),
             Expr::val(true),
         ));
         let mut m = HashMap::new();
         m.insert(SlotId::resource(), EntityUID::with_eid("eid"));
-        assert_matches!(Template::link(t, iid, m), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
+        assert_matches!(Template::link(t, iid, m, HashMap::new()), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
             assert_eq!(unbound_values, vec![SlotId::principal()]);
             assert_eq!(extra_values, vec![SlotId::resource()]);
         });
@@ -2131,19 +2355,20 @@ mod test {
             tid,
             None,
             Annotations::new(),
+            GeneralizedSlotsAnnotation::new(),
             Effect::Forbid,
-            PrincipalConstraint::is_eq_slot(),
+            PrincipalConstraint::is_eq_slot(None),
             ActionConstraint::Any,
-            ResourceConstraint::is_in_slot(),
+            ResourceConstraint::is_in_slot(None),
             Expr::val(true),
         ));
-        assert_matches!(Template::link(t.clone(), iid.clone(), HashMap::new()), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
+        assert_matches!(Template::link(t.clone(), iid.clone(), HashMap::new(), HashMap::new()), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
             assert_eq!(unbound_values, vec![SlotId::resource(), SlotId::principal()]);
             assert_eq!(extra_values, vec![]);
         });
         let mut m = HashMap::new();
         m.insert(SlotId::principal(), EntityUID::with_eid("eid"));
-        assert_matches!(Template::link(t, iid, m), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
+        assert_matches!(Template::link(t, iid, m, HashMap::new()), Err(LinkingError::ArityError { unbound_values, extra_values }) => {
             assert_eq!(unbound_values, vec![SlotId::resource()]);
             assert_eq!(extra_values, vec![]);
         });
@@ -2157,10 +2382,11 @@ mod test {
             tid,
             None,
             Annotations::new(),
+            GeneralizedSlotsAnnotation::new(),
             Effect::Permit,
-            PrincipalConstraint::is_in_slot(),
+            PrincipalConstraint::is_in_slot(None),
             ActionConstraint::any(),
-            ResourceConstraint::is_eq_slot(),
+            ResourceConstraint::is_eq_slot(None),
             Expr::val(true),
         ));
 
@@ -2168,7 +2394,7 @@ mod test {
         m.insert(SlotId::principal(), EntityUID::with_eid("theprincipal"));
         m.insert(SlotId::resource(), EntityUID::with_eid("theresource"));
 
-        let r = Template::link(t, iid.clone(), m).expect("Should Succeed");
+        let r = Template::link(t, iid.clone(), m, HashMap::new()).expect("Should Succeed");
         assert_eq!(r.id(), &iid);
         assert_eq!(
             r.env().get(&SlotId::principal()),
@@ -2231,7 +2457,7 @@ mod test {
             Some(&e)
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::In(EntityReference::Slot(None)).get_euid(),
+            PrincipalOrResourceConstraint::In(EntityReference::Slot(None, None)).get_euid(),
             None
         );
         assert_eq!(
@@ -2239,7 +2465,7 @@ mod test {
             Some(&e)
         );
         assert_eq!(
-            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None)).get_euid(),
+            PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None, None)).get_euid(),
             None
         );
         assert_eq!(
@@ -2257,7 +2483,7 @@ mod test {
         assert_eq!(
             PrincipalOrResourceConstraint::IsIn(
                 Arc::new("T".parse().unwrap()),
-                EntityReference::Slot(None)
+                EntityReference::Slot(None, None)
             )
             .get_euid(),
             None
@@ -2318,7 +2544,7 @@ mod test {
 
     #[test]
     fn euid_into_expr() {
-        let e = EntityReference::Slot(None);
+        let e = EntityReference::Slot(None, None);
         assert_eq!(
             e.into_expr(SlotId::principal()),
             Expr::slot(SlotId::principal())
@@ -2332,7 +2558,7 @@ mod test {
 
     #[test]
     fn por_constraint_display() {
-        let t = PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None));
+        let t = PrincipalOrResourceConstraint::Eq(EntityReference::Slot(None, None));
         let s = t.display(PrincipalOrResource::Principal);
         assert_eq!(s, "principal == ?principal");
         let t = PrincipalOrResourceConstraint::Eq(EntityReference::euid(Arc::new(
@@ -2340,6 +2566,12 @@ mod test {
         )));
         let s = t.display(PrincipalOrResource::Principal);
         assert_eq!(s, "principal == test_entity_type::\"test\"");
+        let t = PrincipalOrResourceConstraint::Eq(EntityReference::Slot(
+            "generalized".parse().ok(),
+            None,
+        ));
+        let s = t.display(PrincipalOrResource::Principal);
+        assert_eq!(s, "principal == ?generalized");
     }
 
     #[test]
