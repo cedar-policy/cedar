@@ -55,11 +55,11 @@ pub struct MismatchedExpectedEntityError {
     pub(crate) found_type: Type,
 }
 
-/// Error when access path is not found in entity manifest
+/// Error when access term is not found in entity manifest
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
-#[error("access path not found in entity manifest. This may indicate that you are using the wrong entity manifest with this path")]
+#[error("access term not found in entity manifest. This may indicate that you are using the wrong entity manifest with this term")]
 pub struct AccessTermNotFoundError {
-    /// The ID of the access path that was not found
+    /// The ID of the access term that was not found
     pub(crate) path_id: usize,
 }
 
@@ -98,7 +98,7 @@ pub enum MismatchedEntityManifestError {
     /// An schema does not match the entity manifest, expected an entity type
     #[error(transparent)]
     MismatchedExpectedEntity(#[from] MismatchedExpectedEntityError),
-    /// An access path was not found in the entity manifest
+    /// An access term was not found in the entity manifest
     #[error(transparent)]
     AccessTermNotFound(#[from] AccessTermNotFoundError),
 }
@@ -242,7 +242,7 @@ pub struct ExpectedEntityOrEntitySetError {
     pub found_value: crate::ast::Value,
 }
 
-/// Error when parsing a path expression
+/// Error when parsing a term expression
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 pub enum PathExpressionParseError {
     /// Invalid root expression

@@ -34,7 +34,7 @@ use crate::validator::entity_manifest::errors::{ConversionError, PathExpressionP
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HumanEntityManifest {
-    /// A map from request types to lists of path expressions
+    /// A map from request types to lists of term expressions
     #[serde_as(as = "Vec<(_, _)>")]
     pub per_action: HashMap<RequestType, Vec<ExprStr>>,
 }
@@ -97,7 +97,7 @@ impl HumanEntityManifest {
     }
 
     /// Convert an AST Cedar expression to an `AccessTerm`
-    pub(crate) fn expr_to_access_path(
+    pub(crate) fn expr_to_access_term(
         &self,
         expr: &ast::Expr,
         dag: &mut AccessDag,
@@ -123,29 +123,29 @@ impl HumanEntityManifest {
             }
             ast::ExprKind::GetAttr { expr, attr } => {
                 // Handle attribute access (e.g., principal.attr)
-                let base_path = self.expr_to_access_path(expr, dag)?;
+                let base_term = self.expr_to_access_term(expr, dag)?;
                 Ok(dag.add_term(AccessTermVariant::Attribute {
-                    of: base_path,
+                    of: base_term,
                     attr: attr.clone(),
                 }))
             }
             ast::ExprKind::BinaryApp { op, arg1, arg2 } => match op {
                 ast::BinaryOp::GetTag => {
                     // Handle tag access (e.g., principal.getTag("tag"))
-                    let base_path = self.expr_to_access_path(arg1, dag)?;
-                    let tag_path = self.expr_to_access_path(arg2, dag)?;
+                    let base_term = self.expr_to_access_term(arg1, dag)?;
+                    let tag_term = self.expr_to_access_term(arg2, dag)?;
                     Ok(dag.add_term(AccessTermVariant::Tag {
-                        of: base_path,
-                        tag: tag_path,
+                        of: base_term,
+                        tag: tag_term,
                     }))
                 }
                 ast::BinaryOp::In => {
                     // Handle ancestor relationship (e.g., principal in resource)
-                    let entity_path = self.expr_to_access_path(arg1, dag)?;
-                    let ancestor_path = self.expr_to_access_path(arg2, dag)?;
+                    let entity_term = self.expr_to_access_term(arg1, dag)?;
+                    let ancestor_term = self.expr_to_access_term(arg2, dag)?;
                     Ok(dag.add_term(AccessTermVariant::Ancestor {
-                        of: entity_path,
-                        ancestor: ancestor_path,
+                        of: entity_term,
+                        ancestor: ancestor_term,
                     }))
                 }
                 _ => Err(PathExpressionParseError::UnsupportedBinaryOperator {
@@ -165,18 +165,18 @@ impl HumanEntityManifest {
     ) -> Result<EntityManifest, ConversionError> {
         let mut manifest = EntityManifest::new();
 
-        for (request_type, path_expressions) in &self.per_action {
-            let mut paths_for_request_type = RequestTypeTerms::new(request_type.clone());
+        for (request_type, term_expressions) in &self.per_action {
+            let mut terms_for_request_type = RequestTypeTerms::new(request_type.clone());
 
-            for expr_str in path_expressions {
-                let path =
-                    self.expr_to_access_path(&expr_str.expr, &mut paths_for_request_type.dag)?;
-                paths_for_request_type.access_terms.insert(path);
+            for expr_str in term_expressions {
+                let term =
+                    self.expr_to_access_term(&expr_str.expr, &mut terms_for_request_type.dag)?;
+                terms_for_request_type.access_terms.insert(term);
             }
 
             manifest
                 .per_action
-                .insert(request_type.clone(), paths_for_request_type);
+                .insert(request_type.clone(), terms_for_request_type);
         }
 
         // Add type annotations
@@ -199,35 +199,35 @@ impl EntityManifest {
     pub fn to_human_format(&self) -> HumanEntityManifest {
         let mut per_action = HashMap::new();
 
-        for (request_type, paths_for_request_type) in &self.per_action {
-            let mut path_expressions = Vec::new();
+        for (request_type, terms_for_request_type) in &self.per_action {
+            let mut term_expressions = Vec::new();
 
-            for path in &paths_for_request_type.access_terms.terms {
-                // PANIC SAFETY: these access paths come directly from the same manifest, so conversion succeeds
+            for term in &terms_for_request_type.access_terms.terms {
+                // PANIC SAFETY: these access terms come directly from the same manifest, so conversion succeeds
                 #[allow(clippy::unwrap_used)]
-                path_expressions.push(ExprStr::new(
-                    self.access_path_to_expr(path, request_type).unwrap(),
+                term_expressions.push(ExprStr::new(
+                    self.access_term_to_expr(term, request_type).unwrap(),
                 ));
             }
 
-            per_action.insert(request_type.clone(), path_expressions);
+            per_action.insert(request_type.clone(), term_expressions);
         }
 
         HumanEntityManifest { per_action }
     }
 
     /// Convert an `AccessTerm` to a Cedar expression
-    fn access_path_to_expr(
+    fn access_term_to_expr(
         &self,
-        path: &AccessTerm,
+        term: &AccessTerm,
         request_type: &RequestType,
     ) -> Result<ast::Expr, super::AccessTermNotFoundError> {
-        // Find the paths for this request type
-        if let Some(paths_for_request_type) = self.per_action.get(request_type) {
-            path.to_expr(&paths_for_request_type.dag)
+        // Find the terms for this request type
+        if let Some(terms_for_request_type) = self.per_action.get(request_type) {
+            term.to_expr(&terms_for_request_type.dag)
         } else {
-            // return an error, you used an access path with the wrong request type
-            Err(super::AccessTermNotFoundError { path_id: path.id })
+            // return an error, you used an access term with the wrong request type
+            Err(super::AccessTermNotFoundError { path_id: term.id })
         }
     }
 
@@ -252,7 +252,7 @@ impl AccessTerm {
         &self,
         dag: &AccessDag,
     ) -> Result<ast::Expr, super::AccessTermNotFoundError> {
-        // Find the variant for this path
+        // Find the variant for this term
         if let Some(variant) = dag.manifest_store.get(self.id) {
             Ok(match variant {
                 AccessTermVariant::Literal(euid) => {
@@ -277,7 +277,7 @@ impl AccessTerm {
                 }
             })
         } else {
-            // return an error, you used an access path with the wrong entity manifest
+            // return an error, you used an access term with the wrong entity manifest
             Err(super::AccessTermNotFoundError { path_id: self.id })
         }
     }

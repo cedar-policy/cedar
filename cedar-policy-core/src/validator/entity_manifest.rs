@@ -94,24 +94,24 @@ impl RequestTypeTerms {
         &self.access_terms
     }
 
-    /// Add all paths from `other` to `self`
+    /// Add all terms from `other` to `self`
     /// Don't make this public! Doesn't restore type information.
     fn union_with(&mut self, other: &Self) -> TermMapping {
         let mut term_mapping = TermMapping::new();
-        // First, add all paths from the other manifest to this manifest
-        // and build a mapping from paths in the other manifest to paths in this manifest
+        // First, add all terms from the other manifest to this manifest
+        // and build a mapping from terms in the other manifest to terms in this manifest
         for (i, variant) in other.dag.manifest_store.iter().enumerate() {
             let mapped_variant = self.map_variant(variant, &mut term_mapping);
             let new_term = self.dag.add_term(mapped_variant);
             term_mapping.term_map.insert(i, new_term.id);
         }
 
-        // Map each path from the other manifest to this manifest
+        // Map each term from the other manifest to this manifest
         for term in &other.access_terms.terms {
-            // PANIC SAFETY: all paths are mapped in the previous loop
+            // PANIC SAFETY: all terms are mapped in the previous loop
             #[allow(clippy::unwrap_used)]
             self.access_terms
-                .insert(term_mapping.map_path(term).unwrap());
+                .insert(term_mapping.map_term(term).unwrap());
         }
 
         term_mapping
@@ -126,6 +126,76 @@ impl RequestTypeTerms {
             .into_iter()
             .filter(|term| !term.is_leaf(&self.dag))
             .collect();
+    }
+
+    /// Map a variant from the source manifest to the target manifest
+    ///
+    /// This method recursively maps a variant and its children from the source manifest
+    /// to the target manifest, creating new terms in the target manifest as needed.
+    fn map_variant(
+        &mut self,
+        variant: &AccessTermVariant,
+        term_mapping: &mut TermMapping,
+    ) -> AccessTermVariant {
+        match variant {
+            AccessTermVariant::Literal(euid) => AccessTermVariant::Literal(euid.clone()),
+            AccessTermVariant::Var(var) => AccessTermVariant::Var(*var),
+            AccessTermVariant::String(s) => AccessTermVariant::String(s.clone()),
+            AccessTermVariant::Attribute { of, attr } => {
+                // Recursively map the 'of' term
+                let mapped_of = self.map_term_or_create(of, term_mapping);
+
+                AccessTermVariant::Attribute {
+                    of: mapped_of,
+                    attr: attr.clone(),
+                }
+            }
+            AccessTermVariant::Tag { of, tag } => {
+                // Recursively map both terms
+                let mapped_of = self.map_term_or_create(of, term_mapping);
+                let mapped_tag = self.map_term_or_create(tag, term_mapping);
+
+                AccessTermVariant::Tag {
+                    of: mapped_of,
+                    tag: mapped_tag,
+                }
+            }
+            AccessTermVariant::Ancestor { of, ancestor } => {
+                // Recursively map both terms
+                let mapped_of = self.map_term_or_create(of, term_mapping);
+                let mapped_ancestor = self.map_term_or_create(ancestor, term_mapping);
+
+                AccessTermVariant::Ancestor {
+                    of: mapped_of,
+                    ancestor: mapped_ancestor,
+                }
+            }
+        }
+    }
+
+    /// Helper method to map a term or create a new one if it doesn't exist in the mapping
+    fn map_term_or_create(
+        &mut self,
+        term: &AccessTerm,
+        term_mapping: &mut TermMapping,
+    ) -> AccessTerm {
+        // Check if the term is already mapped
+        if let Some(mapped_term) = term_mapping.map_term(term) {
+            return mapped_term;
+        }
+
+        // If not, get the variant for this term from the source manifest
+        // and recursively map it to create a new term in the target manifest
+        // PANIC SAFETY: Only internal cedar functions add terms, and these correspond to the same manifest.
+        #[allow(clippy::expect_used)]
+        let variant = term
+            .get_variant(&self.dag)
+            .expect("Entity manifest with terms belonging to a different manifest")
+            .clone();
+        let mapped_variant = self.map_variant(&variant, term_mapping);
+        let new_term = self.dag.add_term(mapped_variant);
+        term_mapping.term_map.insert(term.id, new_term.id);
+        new_term
     }
 }
 
@@ -162,27 +232,27 @@ pub struct EntityManifest {
 pub(crate) struct AccessDag {
     /// A map from [`AccessTermInternal`] to the [`AccessTerm`], which
     /// indexes the `manifest_store`.
-    /// This allows us to de-duplicate equivalent access paths using the "hash cons"
+    /// This allows us to de-duplicate equivalent access terms using the "hash cons"
     /// programming trick.
     #[serde_as(as = "Vec<(_, _)>")]
     pub(crate) manifest_hash_cons: HashMap<AccessTermVariant, AccessTerm>,
-    /// The backing store of access paths in the entity manifest.
+    /// The backing store of access terms in the entity manifest.
     /// Each entry is the variant for the corresponding AccessTerm with the same ID.
     pub(crate) manifest_store: Vec<AccessTermVariant>,
-    /// The types of each access path in the manifest store.
+    /// The types of each access term in the manifest store.
     /// This is populated when the manifest is created, and operations preserve the types (by recomputation).
-    /// Each type is an option because some paths may not have a type if they don't appear in the schema.
+    /// Each type is an option because some terms may not have a type if they don't appear in the schema.
     /// This happens for example with `has` operations on entities without the attribute.
     #[serde(skip_serializing)]
     #[serde(skip_deserializing)]
     pub(crate) types: Vec<Option<Type>>,
 }
 
-/// Stores a set of access paths.
+/// Stores a set of access terms.
 #[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AccessTerms {
-    /// The set of access paths
+    /// The set of access terms
     terms: HashSet<AccessTerm>,
 }
 
@@ -195,7 +265,7 @@ impl IntoIterator for AccessTerms {
     }
 }
 
-/// Represents a path of data involving a sequence of
+/// Represents a term of data involving a sequence of
 /// attribute or tag accesses, ending in a cedar variable or literal.
 /// Internally represented as a single integer into a backing store
 /// (a directed acyclic graph).
@@ -203,12 +273,12 @@ impl IntoIterator for AccessTerms {
 #[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Copy)]
 pub struct AccessTerm {
-    /// The unique identifier for this path in the [`AccessDag`].
+    /// The unique identifier for this term in the [`AccessDag`].
     id: usize,
 }
 
 /// Turn an [`AccessTerm`] into a [`AccessTermVariant`] in order to perform pattern matching.
-/// Stores the access path's constructor and children.
+/// Stores the access term's constructor and children.
 #[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AccessTermVariant {
@@ -241,7 +311,7 @@ pub enum AccessTermVariant {
     },
 }
 
-/// The root of a data path or [`RootAccessTrie`].
+/// The root of a data term or [`RootAccessTrie`].
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
@@ -265,10 +335,10 @@ impl Display for EntityRoot {
 }
 
 impl AccessTerm {
-    /// Get the variant for this path
+    /// Get the variant for this term
     ///
-    /// Returns an error if the path is not found in the entity manifest,
-    /// which may indicate that you are using the wrong entity manifest with this path.
+    /// Returns an error if the term is not found in the entity manifest,
+    /// which may indicate that you are using the wrong entity manifest with this term.
     pub fn get_variant<'a>(
         &self,
         store: &'a AccessDag,
@@ -279,14 +349,14 @@ impl AccessTerm {
             .ok_or_else(|| AccessTermNotFoundError { path_id: self.id })
     }
 
-    /// Like get_variant, but asserts that the path is in the store.
-    /// We use this internally because we know paths that come from the same
-    /// [`RequestTypePaths`] are guaranteed to be in the store.
+    /// Like get_variant, but asserts that the term is in the store.
+    /// We use this internally because we know terms that come from the same
+    /// [`RequestTypeTerms`] are guaranteed to be in the store.
     pub(crate) fn get_variant_internal<'store>(
         &self,
         store: &'store AccessDag,
     ) -> &'store AccessTermVariant {
-        // PANIC SAFETY: This function is only called on paths that are in the store.
+        // PANIC SAFETY: This function is only called on terms that are in the store.
         #[allow(clippy::unwrap_used)]
         self.get_variant(store).unwrap()
     }
@@ -295,31 +365,31 @@ impl AccessTerm {
 impl AccessDag {
     pub(crate) fn add_term(&mut self, variant: AccessTermVariant) -> AccessTerm {
         // Check if the variant already exists in the hash_cons map
-        if let Some(path) = self.manifest_hash_cons.get(&variant) {
+        if let Some(term) = self.manifest_hash_cons.get(&variant) {
             // If it does, return the existing AccessTerm
-            return path.clone();
+            return term.clone();
         }
 
         // If it doesn't exist, create a new AccessTerm with the next available ID
         let id = self.manifest_store.len();
-        let path = AccessTerm { id };
+        let term = AccessTerm { id };
 
         // Add the variant to the hash_cons map
         self.manifest_hash_cons
-            .insert(variant.clone(), path.clone());
+            .insert(variant.clone(), term.clone());
 
         // Add the variant to the manifest_store
         self.manifest_store.push(variant);
 
         // Return the new AccessTerm
-        path
+        term
     }
 }
 
-/// A mapping from paths in one manifest to paths in another manifest
+/// A mapping from terms in one manifest to terms in another manifest
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TermMapping {
-    /// Maps from source path IDs to target path IDs
+    /// Maps from source term IDs to target term IDs
     pub(crate) term_map: HashMap<usize, usize>,
 }
 
@@ -330,16 +400,16 @@ impl Default for TermMapping {
 }
 
 impl TermMapping {
-    /// Create a new empty path mapping
+    /// Create a new empty term mapping
     pub fn new() -> Self {
         Self {
             term_map: HashMap::new(),
         }
     }
 
-    /// Map a path from the source manifest to the target manifest
-    pub fn map_path(&self, path: &AccessTerm) -> Option<AccessTerm> {
-        self.term_map.get(&path.id).map(|&id| AccessTerm { id })
+    /// Map a term from the source manifest to the target manifest
+    pub fn map_term(&self, term: &AccessTerm) -> Option<AccessTerm> {
+        self.term_map.get(&term.id).map(|&id| AccessTerm { id })
     }
 }
 
@@ -352,78 +422,6 @@ impl PartialEq for EntityManifest {
 
 impl Eq for EntityManifest {}
 
-impl RequestTypeTerms {
-    /// Map a variant from the source manifest to the target manifest
-    ///
-    /// This method recursively maps a variant and its children from the source manifest
-    /// to the target manifest, creating new paths in the target manifest as needed.
-    fn map_variant(
-        &mut self,
-        variant: &AccessTermVariant,
-        path_mapping: &mut TermMapping,
-    ) -> AccessTermVariant {
-        match variant {
-            AccessTermVariant::Literal(euid) => AccessTermVariant::Literal(euid.clone()),
-            AccessTermVariant::Var(var) => AccessTermVariant::Var(*var),
-            AccessTermVariant::String(s) => AccessTermVariant::String(s.clone()),
-            AccessTermVariant::Attribute { of, attr } => {
-                // Recursively map the 'of' path
-                let mapped_of = self.map_path_or_create(of, path_mapping);
-
-                AccessTermVariant::Attribute {
-                    of: mapped_of,
-                    attr: attr.clone(),
-                }
-            }
-            AccessTermVariant::Tag { of, tag } => {
-                // Recursively map both paths
-                let mapped_of = self.map_path_or_create(of, path_mapping);
-                let mapped_tag = self.map_path_or_create(tag, path_mapping);
-
-                AccessTermVariant::Tag {
-                    of: mapped_of,
-                    tag: mapped_tag,
-                }
-            }
-            AccessTermVariant::Ancestor { of, ancestor } => {
-                // Recursively map both paths
-                let mapped_of = self.map_path_or_create(of, path_mapping);
-                let mapped_ancestor = self.map_path_or_create(ancestor, path_mapping);
-
-                AccessTermVariant::Ancestor {
-                    of: mapped_of,
-                    ancestor: mapped_ancestor,
-                }
-            }
-        }
-    }
-
-    /// Helper method to map a path or create a new one if it doesn't exist in the mapping
-    fn map_path_or_create(
-        &mut self,
-        path: &AccessTerm,
-        path_mapping: &mut TermMapping,
-    ) -> AccessTerm {
-        // Check if the path is already mapped
-        if let Some(mapped_path) = path_mapping.map_path(path) {
-            return mapped_path;
-        }
-
-        // If not, get the variant for this path from the source manifest
-        // and recursively map it to create a new path in the target manifest
-        // PANIC SAFETY: Only internal cedar functions add paths, and these correspond to the same manifest.
-        #[allow(clippy::expect_used)]
-        let variant = path
-            .get_variant(&self.dag)
-            .expect("Entity manifest with paths belonging to a different manifest")
-            .clone();
-        let mapped_variant = self.map_variant(&variant, path_mapping);
-        let new_path = self.dag.add_term(mapped_variant);
-        path_mapping.term_map.insert(path.id, new_path.id);
-        new_path
-    }
-}
-
 impl EntityManifest {
     /// Create a new empty [`EntityManifest`].
     pub(crate) fn new() -> Self {
@@ -434,31 +432,31 @@ impl EntityManifest {
 
     /// Check if this manifest is a subset of another manifest
     ///
-    /// A manifest is a subset of another if all access paths from one are reachable from the other.
+    /// A manifest is a subset of another if all access terms from one are reachable from the other.
     fn is_subset_of(&self, other: &Self) -> bool {
         // For each request type, check that the other is a subset
-        for (request_type, my_paths) in &self.per_action {
-            let Some(other_paths) = other.per_action.get(request_type) else {
+        for (request_type, my_terms) in &self.per_action {
+            let Some(other_terms) = other.per_action.get(request_type) else {
                 return false;
             };
-            let mut other_clone = other_paths.clone();
+            let mut other_clone = other_terms.clone();
 
-            // Call `union_with` to get a mapping from paths in self to paths in other.
-            // Paths not present in `other` will also have a mapping to `other_clone`, but will be missing in `other`.
-            let mapping = other_clone.union_with(my_paths);
+            // Call `union_with` to get a mapping from terms in self to terms in other.
+            // Terms not present in `other` will also have a mapping to `other_clone`, but will be missing in `other`.
+            let mapping = other_clone.union_with(my_terms);
 
-            // Find all reachable paths in `other`
-            let mut reachable = other_paths
+            // Find all reachable terms in `other`
+            let mut reachable = other_terms
                 .access_terms
-                .paths()
+                .terms()
                 .iter()
-                .flat_map(|path| path.subpaths(&other_paths.dag).into_iter())
+                .flat_map(|term| term.subterms(&other_terms.dag).into_iter())
                 .collect::<HashSet<_>>();
 
-            // now check that all paths in self are in reachable in `other`
+            // now check that all terms in self are in reachable in `other`
             // using the mapping
-            for path in my_paths.access_terms.paths() {
-                let Some(mapped) = mapping.map_path(path) else {
+            for term in my_terms.access_terms.terms() {
+                let Some(mapped) = mapping.map_term(term) else {
                     return false;
                 };
                 if !reachable.contains(&mapped) {
@@ -508,9 +506,9 @@ impl AccessTerm {
         self.children(store).is_empty()
     }
 
-    /// Get the immediate children of this path
+    /// Get the immediate children of this term
     pub(crate) fn children(&self, store: &AccessDag) -> Vec<AccessTerm> {
-        // PANIC SAFETY: This function is only called on paths that are in the store.
+        // PANIC SAFETY: This function is only called on terms that are in the store.
         #[allow(clippy::unwrap_used)]
         let variant = self.get_variant(store).unwrap();
         // Return children based on the variant
@@ -530,31 +528,31 @@ impl AccessTerm {
         }
     }
 
-    /// Helper method to collect all subpaths into the provided set
+    /// Helper method to collect all subterms into the provided set
     /// This is more efficient than creating new AccessTerms objects and extending them
-    pub fn collect_subpaths_into(&self, store: &AccessDag, paths: &mut HashSet<AccessTerm>) {
-        // Add self to the paths
-        paths.insert(self.clone());
+    pub fn collect_subterms_into(&self, store: &AccessDag, terms: &mut HashSet<AccessTerm>) {
+        // Add self to the terms
+        terms.insert(self.clone());
 
         // Get immediate children
         let children = self.children(store);
 
-        // Recursively collect subpaths for each child
+        // Recursively collect subterms for each child
         for child in children {
-            child.collect_subpaths_into(store, paths);
+            child.collect_subterms_into(store, terms);
         }
     }
 
-    /// Get all subpaths of this path, including itself.
-    pub fn subpaths(&self, store: &AccessDag) -> AccessTerms {
-        let mut paths = HashSet::new();
-        self.collect_subpaths_into(store, &mut paths);
-        AccessTerms { terms: paths }
+    /// Get all subterms of this term, including itself.
+    pub fn subterms(&self, store: &AccessDag) -> AccessTerms {
+        let mut terms = HashSet::new();
+        self.collect_subterms_into(store, &mut terms);
+        AccessTerms { terms }
     }
 }
 
 impl AccessTerms {
-    /// Add all the access paths from another [`AccessTerms`]
+    /// Add all the access terms from another [`AccessTerms`]
     /// to this one, mutably.
     pub fn extend(&mut self, other: Self) {
         self.terms.extend(other.terms)
@@ -566,26 +564,26 @@ impl AccessTerms {
         self
     }
 
-    /// Add a path to the set.
-    pub fn insert(&mut self, path: AccessTerm) {
-        self.terms.insert(path);
+    /// Add a term to the set.
+    pub fn insert(&mut self, term: AccessTerm) {
+        self.terms.insert(term);
     }
 
     /// A set with a single element.
-    pub fn from_path(path: AccessTerm) -> Self {
-        let mut paths = HashSet::new();
-        paths.insert(path);
-        Self { terms: paths }
+    pub fn from_term(term: AccessTerm) -> Self {
+        let mut terms = HashSet::new();
+        terms.insert(term);
+        Self { terms }
     }
 
-    /// Get a reference to the paths.
-    pub fn paths(&self) -> &HashSet<AccessTerm> {
+    /// Get a reference to the terms.
+    pub fn terms(&self) -> &HashSet<AccessTerm> {
         &self.terms
     }
 
-    /// Remove a path
-    pub fn remove(&mut self, path: &AccessTerm) {
-        self.terms.remove(path);
+    /// Remove a term
+    pub fn remove(&mut self, term: &AccessTerm) {
+        self.terms.remove(term);
     }
 }
 
@@ -621,7 +619,7 @@ pub fn compute_entity_manifest(
 
             match policy_check {
                 PolicyCheck::Success(typechecked_expr) => {
-                    // compute the access paths from the typechecked expr
+                    // compute the access terms from the typechecked expr
                     // using static analysis
                     let res = analyze_expr_access_terms(&typechecked_expr, &mut per_request.dag)?;
                     // add the result to the per_request
