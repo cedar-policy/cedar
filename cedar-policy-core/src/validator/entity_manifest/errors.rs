@@ -139,9 +139,6 @@ pub enum EntitySliceError {
     /// A required field is missing from a record
     #[error(transparent)]
     RecordFieldMissing(#[from] RecordFieldMissingError),
-    /// The number of entities provided doesn't match the expected count
-    #[error(transparent)]
-    WrongNumberOfEntities(#[from] WrongNumberOfEntitiesError),
     /// Expected an entity type but found a different value type during loading
     #[error(transparent)]
     ExpectedEntityType(#[from] ExpectedEntityTypeError),
@@ -203,16 +200,6 @@ pub struct EntityFieldMissingError {
 pub struct RecordFieldMissingError {
     /// The name of the missing field
     pub field: smol_str::SmolStr,
-}
-
-/// Error when wrong number of entities are provided
-#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
-#[error("expected {expected} entities, got {got}")]
-pub struct WrongNumberOfEntitiesError {
-    /// The expected number of entities
-    pub expected: usize,
-    /// The actual number of entities received
-    pub got: usize,
 }
 
 /// Error when expecting an entity type but got something else
