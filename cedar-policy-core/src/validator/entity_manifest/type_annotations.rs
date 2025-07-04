@@ -40,7 +40,7 @@ impl EntityManifest {
         mut self,
         schema: &ValidatorSchema,
     ) -> Result<EntityManifest, MismatchedEntityManifestError> {
-        // Type each PathsForRequestType
+        // Type each RequestTypeTerms
         for paths_for_request_type in self.per_action.values_mut() {
             paths_for_request_type.add_types(schema)?;
         }
@@ -50,7 +50,7 @@ impl EntityManifest {
 }
 
 impl RequestTypeTerms {
-    /// Type-annotate this [`PathsForRequestType`], given the schema.
+    /// Type-annotate this [`RequestTypeTerms`], given the schema.
     pub(crate) fn add_types(
         &mut self,
         schema: &ValidatorSchema,

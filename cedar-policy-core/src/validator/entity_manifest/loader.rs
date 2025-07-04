@@ -103,7 +103,7 @@ pub(crate) fn load_entities(
     request: &Request,
     loader: &mut dyn EntityLoader,
 ) -> Result<Entities, EntitySliceError> {
-    // Get the PathsForRequestType for this request type
+    // Get the RequestTypeTerms for this request type
     let Some(for_request) = manifest
         .per_action
         .get(&request.to_request_type().ok_or(PartialRequestError {})?)
@@ -238,7 +238,7 @@ pub(crate) fn load_entities(
         // Load the current batch of entities
         let loaded_entities = loader.load_entities(&entity_requests)?;
 
-        for entity in loaded_entities.into_iter().flatten() {
+        for entity in loaded_entities.into_iter() {
             // Add or merge the entity into our map
             match entities_map.entry(entity.uid().clone()) {
                 hash_map::Entry::Occupied(o) => {

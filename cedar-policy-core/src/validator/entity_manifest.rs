@@ -63,19 +63,19 @@ use crate::validator::{
 pub struct RequestTypeTerms {
     /// The request type
     pub(crate) request_type: RequestType,
-    /// The backing store for the paths, a directed acyclic graph
+    /// The backing store for the terms, a directed acyclic graph
     pub(crate) dag: AccessDag,
-    /// The set of access paths required for this request type
-    pub(crate) access_paths: AccessTerms,
+    /// The set of access terms required for this request type
+    pub(crate) access_terms: AccessTerms,
 }
 
 impl RequestTypeTerms {
-    /// Create a new [`PathsForRequestType`]
+    /// Create a new [`RequestTypeTerms`]
     pub fn new(request_type: RequestType) -> Self {
         Self {
             request_type,
             dag: AccessDag::default(),
-            access_paths: AccessTerms::default(),
+            access_terms: AccessTerms::default(),
         }
     }
 
@@ -89,52 +89,42 @@ impl RequestTypeTerms {
         &self.dag
     }
 
-    /// Get mutable access to the access dag
-    pub(crate) fn dag_mut(&mut self) -> &mut AccessDag {
-        &mut self.dag
-    }
-
-    /// Get the access paths
-    pub fn access_paths(&self) -> &AccessTerms {
-        &self.access_paths
-    }
-
-    /// Get mutable access to the access paths
-    pub fn access_paths_mut(&mut self) -> &mut AccessTerms {
-        &mut self.access_paths
+    /// Get the access terms
+    pub fn access_terms(&self) -> &AccessTerms {
+        &self.access_terms
     }
 
     /// Add all paths from `other` to `self`
     /// Don't make this public! Doesn't restore type information.
-    fn union_with(&mut self, other: &Self) -> PathMapping {
-        let mut path_mapping = PathMapping::new();
+    fn union_with(&mut self, other: &Self) -> TermMapping {
+        let mut term_mapping = TermMapping::new();
         // First, add all paths from the other manifest to this manifest
         // and build a mapping from paths in the other manifest to paths in this manifest
         for (i, variant) in other.dag.manifest_store.iter().enumerate() {
-            let mapped_variant = self.map_variant(variant, &mut path_mapping);
-            let new_path = self.dag.add_path(mapped_variant);
-            path_mapping.path_map.insert(i, new_path.id);
+            let mapped_variant = self.map_variant(variant, &mut term_mapping);
+            let new_term = self.dag.add_term(mapped_variant);
+            term_mapping.term_map.insert(i, new_term.id);
         }
 
         // Map each path from the other manifest to this manifest
-        for path in &other.access_paths.paths {
+        for term in &other.access_terms.terms {
             // PANIC SAFETY: all paths are mapped in the previous loop
             #[allow(clippy::unwrap_used)]
-            self.access_paths
-                .insert(path_mapping.map_path(path).unwrap());
+            self.access_terms
+                .insert(term_mapping.map_path(term).unwrap());
         }
 
-        path_mapping
+        term_mapping
     }
 
     /// Leaf nodes like variables and literal ids don't need to be loaded.
     /// Variables are included in the request.
-    /// We prune these from the set of access paths required.
+    /// We prune these from the set of access terms required.
     fn prune_leafs(&mut self) {
-        let paths = std::mem::take(&mut self.access_paths.paths);
-        self.access_paths.paths = paths
+        let terms = std::mem::take(&mut self.access_terms.terms);
+        self.access_terms.terms = terms
             .into_iter()
-            .filter(|path| !path.is_leaf(&self.dag))
+            .filter(|term| !term.is_leaf(&self.dag))
             .collect();
     }
 }
@@ -142,7 +132,7 @@ impl RequestTypeTerms {
 /// Data structure storing what data is needed based on the the [`RequestType`].
 ///
 /// For each request type, the [`EntityManifest`] stores
-/// a [`PathsForRequestType`] containing the data paths needed for that request type.
+/// a [`RequestTypeTerms`] containing the data terms needed for that request type.
 ///
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
@@ -152,20 +142,20 @@ impl RequestTypeTerms {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EntityManifest {
-    /// A map from request types to PathsForRequestType.
-    /// For each request, stores what access paths are required.
+    /// A map from request types to RequestTypeTerms.
+    /// For each request, stores what access terms are required.
     #[serde_as(as = "Vec<(_, _)>")]
     pub(crate) per_action: HashMap<RequestType, RequestTypeTerms>,
 }
 
-/// A backing store for a set of access paths
+/// A backing store for a set of access terms
 /// stored as a directed acyclic graph.
 ///
 /// Edges in the graph denote a data dependency.
 /// For example, an attribute may depend on the principal entity
 /// or a record in another entity.
 ///
-/// After construction, the dag is annotated with the types of all of the access paths.
+/// After construction, the dag is annotated with the types of all of the access terms.
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -193,7 +183,7 @@ pub(crate) struct AccessDag {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AccessTerms {
     /// The set of access paths
-    paths: HashSet<AccessTerm>,
+    terms: HashSet<AccessTerm>,
 }
 
 impl IntoIterator for AccessTerms {
@@ -201,7 +191,7 @@ impl IntoIterator for AccessTerms {
     type IntoIter = std::collections::hash_set::IntoIter<AccessTerm>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.paths.into_iter()
+        self.terms.into_iter()
     }
 }
 
@@ -303,7 +293,7 @@ impl AccessTerm {
 }
 
 impl AccessDag {
-    pub(crate) fn add_path(&mut self, variant: AccessTermVariant) -> AccessTerm {
+    pub(crate) fn add_term(&mut self, variant: AccessTermVariant) -> AccessTerm {
         // Check if the variant already exists in the hash_cons map
         if let Some(path) = self.manifest_hash_cons.get(&variant) {
             // If it does, return the existing AccessTerm
@@ -328,28 +318,28 @@ impl AccessDag {
 
 /// A mapping from paths in one manifest to paths in another manifest
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PathMapping {
+pub struct TermMapping {
     /// Maps from source path IDs to target path IDs
-    pub(crate) path_map: HashMap<usize, usize>,
+    pub(crate) term_map: HashMap<usize, usize>,
 }
 
-impl Default for PathMapping {
+impl Default for TermMapping {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl PathMapping {
+impl TermMapping {
     /// Create a new empty path mapping
     pub fn new() -> Self {
         Self {
-            path_map: HashMap::new(),
+            term_map: HashMap::new(),
         }
     }
 
     /// Map a path from the source manifest to the target manifest
     pub fn map_path(&self, path: &AccessTerm) -> Option<AccessTerm> {
-        self.path_map.get(&path.id).map(|&id| AccessTerm { id })
+        self.term_map.get(&path.id).map(|&id| AccessTerm { id })
     }
 }
 
@@ -370,7 +360,7 @@ impl RequestTypeTerms {
     fn map_variant(
         &mut self,
         variant: &AccessTermVariant,
-        path_mapping: &mut PathMapping,
+        path_mapping: &mut TermMapping,
     ) -> AccessTermVariant {
         match variant {
             AccessTermVariant::Literal(euid) => AccessTermVariant::Literal(euid.clone()),
@@ -412,7 +402,7 @@ impl RequestTypeTerms {
     fn map_path_or_create(
         &mut self,
         path: &AccessTerm,
-        path_mapping: &mut PathMapping,
+        path_mapping: &mut TermMapping,
     ) -> AccessTerm {
         // Check if the path is already mapped
         if let Some(mapped_path) = path_mapping.map_path(path) {
@@ -428,8 +418,8 @@ impl RequestTypeTerms {
             .expect("Entity manifest with paths belonging to a different manifest")
             .clone();
         let mapped_variant = self.map_variant(&variant, path_mapping);
-        let new_path = self.dag.add_path(mapped_variant);
-        path_mapping.path_map.insert(path.id, new_path.id);
+        let new_path = self.dag.add_term(mapped_variant);
+        path_mapping.term_map.insert(path.id, new_path.id);
         new_path
     }
 }
@@ -459,7 +449,7 @@ impl EntityManifest {
 
             // Find all reachable paths in `other`
             let mut reachable = other_paths
-                .access_paths
+                .access_terms
                 .paths()
                 .iter()
                 .flat_map(|path| path.subpaths(&other_paths.dag).into_iter())
@@ -467,7 +457,7 @@ impl EntityManifest {
 
             // now check that all paths in self are in reachable in `other`
             // using the mapping
-            for path in my_paths.access_paths.paths() {
+            for path in my_paths.access_terms.paths() {
                 let Some(mapped) = mapping.map_path(path) else {
                     return false;
                 };
@@ -559,7 +549,7 @@ impl AccessTerm {
     pub fn subpaths(&self, store: &AccessDag) -> AccessTerms {
         let mut paths = HashSet::new();
         self.collect_subpaths_into(store, &mut paths);
-        AccessTerms { paths }
+        AccessTerms { terms: paths }
     }
 }
 
@@ -567,7 +557,7 @@ impl AccessTerms {
     /// Add all the access paths from another [`AccessTerms`]
     /// to this one, mutably.
     pub fn extend(&mut self, other: Self) {
-        self.paths.extend(other.paths)
+        self.terms.extend(other.terms)
     }
 
     /// Owned version of extend.
@@ -578,24 +568,24 @@ impl AccessTerms {
 
     /// Add a path to the set.
     pub fn insert(&mut self, path: AccessTerm) {
-        self.paths.insert(path);
+        self.terms.insert(path);
     }
 
     /// A set with a single element.
     pub fn from_path(path: AccessTerm) -> Self {
         let mut paths = HashSet::new();
         paths.insert(path);
-        Self { paths }
+        Self { terms: paths }
     }
 
     /// Get a reference to the paths.
     pub fn paths(&self) -> &HashSet<AccessTerm> {
-        &self.paths
+        &self.terms
     }
 
     /// Remove a path
     pub fn remove(&mut self, path: &AccessTerm) {
-        self.paths.remove(path);
+        self.terms.remove(path);
     }
 }
 
@@ -635,7 +625,7 @@ pub fn compute_entity_manifest(
                     // using static analysis
                     let res = analyze_expr_access_terms(&typechecked_expr, &mut per_request.dag)?;
                     // add the result to the per_request
-                    per_request.access_paths.extend(res.all_access_paths());
+                    per_request.access_terms.extend(res.all_access_paths());
                 }
                 PolicyCheck::Irrelevant(_, _) => {}
 

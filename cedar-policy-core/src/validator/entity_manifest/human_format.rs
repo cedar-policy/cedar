@@ -107,10 +107,10 @@ impl HumanEntityManifest {
                 // Handle literal values
                 match lit {
                     ast::Literal::EntityUID(euid) => {
-                        Ok(dag.add_path(AccessTermVariant::Literal((**euid).clone())))
+                        Ok(dag.add_term(AccessTermVariant::Literal((**euid).clone())))
                     }
                     ast::Literal::String(s) => {
-                        Ok(dag.add_path(AccessTermVariant::String(s.clone())))
+                        Ok(dag.add_term(AccessTermVariant::String(s.clone())))
                     }
                     _ => Err(PathExpressionParseError::InvalidRoot(
                         "Unsupported literal type".to_string(),
@@ -119,12 +119,12 @@ impl HumanEntityManifest {
             }
             ast::ExprKind::Var(var) => {
                 // Handle variables (principal, resource, action, context)
-                Ok(dag.add_path(AccessTermVariant::Var(*var)))
+                Ok(dag.add_term(AccessTermVariant::Var(*var)))
             }
             ast::ExprKind::GetAttr { expr, attr } => {
                 // Handle attribute access (e.g., principal.attr)
                 let base_path = self.expr_to_access_path(expr, dag)?;
-                Ok(dag.add_path(AccessTermVariant::Attribute {
+                Ok(dag.add_term(AccessTermVariant::Attribute {
                     of: base_path,
                     attr: attr.clone(),
                 }))
@@ -134,7 +134,7 @@ impl HumanEntityManifest {
                     // Handle tag access (e.g., principal.getTag("tag"))
                     let base_path = self.expr_to_access_path(arg1, dag)?;
                     let tag_path = self.expr_to_access_path(arg2, dag)?;
-                    Ok(dag.add_path(AccessTermVariant::Tag {
+                    Ok(dag.add_term(AccessTermVariant::Tag {
                         of: base_path,
                         tag: tag_path,
                     }))
@@ -143,7 +143,7 @@ impl HumanEntityManifest {
                     // Handle ancestor relationship (e.g., principal in resource)
                     let entity_path = self.expr_to_access_path(arg1, dag)?;
                     let ancestor_path = self.expr_to_access_path(arg2, dag)?;
-                    Ok(dag.add_path(AccessTermVariant::Ancestor {
+                    Ok(dag.add_term(AccessTermVariant::Ancestor {
                         of: entity_path,
                         ancestor: ancestor_path,
                     }))
@@ -171,7 +171,7 @@ impl HumanEntityManifest {
             for expr_str in path_expressions {
                 let path =
                     self.expr_to_access_path(&expr_str.expr, &mut paths_for_request_type.dag)?;
-                paths_for_request_type.access_paths.insert(path);
+                paths_for_request_type.access_terms.insert(path);
             }
 
             manifest
@@ -202,7 +202,7 @@ impl EntityManifest {
         for (request_type, paths_for_request_type) in &self.per_action {
             let mut path_expressions = Vec::new();
 
-            for path in &paths_for_request_type.access_paths.paths {
+            for path in &paths_for_request_type.access_terms.terms {
                 // PANIC SAFETY: these access paths come directly from the same manifest, so conversion succeeds
                 #[allow(clippy::unwrap_used)]
                 path_expressions.push(ExprStr::new(
