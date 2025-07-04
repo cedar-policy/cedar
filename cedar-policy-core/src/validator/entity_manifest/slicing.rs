@@ -16,7 +16,7 @@ use crate::validator::entity_manifest::errors::{
     PartialContextError, PartialEntityError, PartialRequestError, RecordFieldMissingError,
 };
 use crate::validator::entity_manifest::loader::{
-    load_entities, AncestorsRequest, EntityAnswer, EntityLoader, EntityRequest,
+    load_entities, AncestorsRequest, EntityLoader, EntityRequest,
 };
 use crate::validator::entity_manifest::{AccessDag, AccessTerm, AccessTermVariant, EntityManifest};
 

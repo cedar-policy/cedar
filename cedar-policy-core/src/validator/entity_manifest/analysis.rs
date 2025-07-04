@@ -56,7 +56,7 @@ impl WrappedAccessTerms {
         };
 
         // Add the path to the store
-        let path = store.add_path(variant);
+        let path = store.add_term(variant);
 
         Rc::new(WrappedAccessTerms::AccessTerm(path.clone()))
     }
@@ -90,7 +90,7 @@ impl WrappedAccessTerms {
                     ancestor: ancestor_path.clone(),
                 };
                 // Add the new path to the store
-                let new_path = store.add_path(ancestor_variant);
+                let new_path = store.add_term(ancestor_variant);
                 // Add the new path to the access paths
                 access_paths.push(new_path);
             }
@@ -145,7 +145,7 @@ impl WrappedAccessTerms {
         match &**self {
             WrappedAccessTerms::Empty => (),
             WrappedAccessTerms::AccessTerm(path) => {
-                add_to.paths.insert(path.clone());
+                add_to.terms.insert(path.clone());
             }
             WrappedAccessTerms::Union(left, right) => {
                 // Both must succeed for the operation to be successful
@@ -174,7 +174,7 @@ impl WrappedAccessTerms {
         match &**self {
             WrappedAccessTerms::Empty => true,
             WrappedAccessTerms::AccessTerm(path) => {
-                add_to.paths.insert(path.clone());
+                add_to.terms.insert(path.clone());
                 true
             }
             WrappedAccessTerms::Union(left, right) => {
@@ -217,7 +217,7 @@ impl WrappedAccessTerms {
                     tag: tag_path.clone(),
                 };
                 // Add the new path to the store
-                let new_path = store.add_path(tag_variant);
+                let new_path = store.add_term(tag_variant);
                 // Add the new path to the access paths
                 access_paths.push(new_path);
             }
@@ -247,7 +247,7 @@ impl WrappedAccessTerms {
                     attr: attr.clone(),
                 };
                 // Add the new path to the store
-                let new_path = store.add_path(attr_variant);
+                let new_path = store.add_term(attr_variant);
                 // Return the new wrapped access path
                 Rc::new(WrappedAccessTerms::AccessTerm(new_path))
             }
@@ -383,7 +383,7 @@ fn entity_or_record_to_access_paths(
                     of: path.clone(),
                     attr: attr_name.clone(),
                 };
-                let attr_path = store.add_path(attr_variant);
+                let attr_path = store.add_term(attr_variant);
 
                 paths = paths
                     .with_dropped_paths(Rc::new(WrappedAccessTerms::AccessTerm(attr_path.clone())));
@@ -436,7 +436,7 @@ pub(crate) fn analyze_expr_access_paths(
             match lit {
                 Literal::String(str) => {
                     let variant = AccessTermVariant::String(SmolStr::from(str.clone()));
-                    let path = store.add_path(variant);
+                    let path = store.add_term(variant);
                     Rc::new(WrappedAccessTerms::AccessTerm(path))
                 }
                 _ => {

@@ -228,8 +228,8 @@ impl RequestTypeTerms {
     pub(crate) fn reachable_paths(&self) -> HashSet<AccessTerm> {
         let mut result = HashSet::new();
 
-        // Iterate through all access paths in the PathsForRequestType
-        for path in &self.access_paths.paths {
+        // Iterate through all access paths in the RequestTypeTerms
+        for path in &self.access_terms.terms {
             // For each path, get all its subpaths (including itself)
             // and add them to the result set
             let subpaths = path.subpaths(&self.dag);
