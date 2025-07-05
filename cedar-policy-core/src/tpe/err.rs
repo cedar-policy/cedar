@@ -21,7 +21,7 @@ use smol_str::SmolStr;
 use thiserror::Error;
 
 use crate::{
-    ast::{EntityType, EntityUID},
+    ast::{Eid, EntityType, EntityUID},
     entities::conformance::err::{EntitySchemaConformanceError, InvalidEnumEntityError},
     evaluator::EvaluationError,
     transitive_closure::TcError,
@@ -286,4 +286,82 @@ pub struct MissingEntityError {
 #[error("Concrete entities contains unknown entity `{uid}`")]
 pub struct UnknownEntityError {
     pub(super) uid: EntityUID,
+}
+
+/// Error thrown when a [`PartialRequest`] is consistent with a [`Request`]
+#[derive(Debug, Error)]
+pub enum RequestConsistencyError {
+    /// Error thrown when the concrete principal is unknown
+    #[error("Concrete principal is unknown")]
+    UnknownPrincipal,
+    /// Error thrown when the concrete resource is unknown
+    #[error("Concrete resource is unknown")]
+    UnknownResource,
+    /// Error thrown when the concrete action is unknown
+    #[error("Concrete action is unknown")]
+    UnknownAction,
+    /// Error thrown when the concrete context is unknown
+    #[error("Concrete context is unknown")]
+    UnknownContext,
+    /// Error thrown when principal types are inconsistent
+    #[error(transparent)]
+    InconsistentPrincipalType(#[from] InconsistentPrincipalTypeError),
+    /// Error thrown when principal eids are inconsistent
+    #[error(transparent)]
+    InconsistentPrincipalEid(#[from] InconsistentPrincipalEidError),
+    /// Error thrown when resource types are inconsistent
+    #[error(transparent)]
+    InconsistentResourceType(#[from] InconsistentResourceTypeError),
+    /// Error thrown when resource eids are inconsistent
+    #[error(transparent)]
+    InconsistentResourceEid(#[from] InconsistentResourceEidError),
+    /// Error thrown when actions are inconsistent
+    #[error(transparent)]
+    InconsistentAction(#[from] InconsistentActionError),
+    /// Error thrown when contexts are inconsistent
+    #[error("Contexts are inconsistent")]
+    InconsistentContext,
+    /// Error thrown when the concrete context contains unknowns
+    #[error("Concrete context contains unknowns")]
+    ConcreteContextContainsUnknowns,
+}
+
+/// Error thrown when principal types are inconsistent
+#[derive(Debug, Error)]
+#[error("Principal types `{partial}` and `{concrete}` do not match")]
+pub struct InconsistentPrincipalTypeError {
+    pub(super) partial: EntityType,
+    pub(super) concrete: EntityType,
+}
+
+/// Error thrown when principal eids are inconsistent
+#[derive(Debug, Error)]
+#[error("Principal eid `{}` and `{}` do not match", .partial.escaped(), .concrete.escaped())]
+pub struct InconsistentPrincipalEidError {
+    pub(super) partial: Eid,
+    pub(super) concrete: Eid,
+}
+
+/// Error thrown when resource types are inconsistent
+#[derive(Debug, Error)]
+#[error("Resource types `{partial}` and `{concrete}` do not match")]
+pub struct InconsistentResourceTypeError {
+    pub(super) partial: EntityType,
+    pub(super) concrete: EntityType,
+}
+
+/// Error thrown when resource eids are inconsistent
+#[derive(Debug, Error)]
+#[error("Resource eid `{}` and `{}` do not match", .partial.escaped(), .concrete.escaped())]
+pub struct InconsistentResourceEidError {
+    pub(super) partial: Eid,
+    pub(super) concrete: Eid,
+}
+
+/// Error thrown when actions are inconsistent
+#[derive(Debug, Error)]
+#[error("Actions `{}` and `{}` do not match", .partial, .concrete)]
+pub struct InconsistentActionError {
+    pub(super) partial: EntityUID,
+    pub(super) concrete: EntityUID,
 }

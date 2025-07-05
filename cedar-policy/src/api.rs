@@ -5003,8 +5003,11 @@ pub fn eval_expression(
 }
 
 #[cfg(feature = "tpe")]
+pub use tpe::*;
+
+#[cfg(feature = "tpe")]
 mod tpe {
-    pub use cedar_policy_core::tpe;
+    use cedar_policy_core::tpe;
     use cedar_policy_core::{
         ast::{self, RequestSchema},
         entities::conformance::EntitySchemaConformanceChecker,
@@ -5113,6 +5116,7 @@ mod tpe {
                 entities_checker.validate_entity(&entity)?;
             }
             let _ = self.entities.0.check_consistency(&entities.0)?;
+            let _ = self.request.0.check_consistency(&request.0)?;
             let authorizer = Authorizer::new();
             Ok(authorizer.is_authorized(&request, &self.ps, &entities))
         }

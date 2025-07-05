@@ -1340,4 +1340,7 @@ pub enum TPEReauthorizationError {
     /// Inconsistent entities
     #[error(transparent)]
     InconsistentEntities(#[from] tpe_err::EntitiesConsistencyError),
+    /// Inconsistent requests
+    #[error(transparent)]
+    InconsistentRequests(#[from] tpe_err::RequestConsistencyError),
 }

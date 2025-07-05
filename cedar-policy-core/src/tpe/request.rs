@@ -18,10 +18,13 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use crate::ast::RequestSchema;
+use crate::ast::{EntityUIDEntry, RequestSchema};
 use crate::tpe::err::{
-    ExistingPrincipalError, ExistingResourceError, IncorrectPrincipalEntityTypeError,
+    ExistingPrincipalError, ExistingResourceError, InconsistentActionError,
+    InconsistentPrincipalEidError, InconsistentPrincipalTypeError, InconsistentResourceEidError,
+    InconsistentResourceTypeError, IncorrectPrincipalEntityTypeError,
     IncorrectResourceEntityTypeError, NoMatchingReqEnvError, RequestBuilderError,
+    RequestConsistencyError,
 };
 use crate::validator::request_validation_errors::{
     UndeclaredActionError, UndeclaredPrincipalTypeError, UndeclaredResourceTypeError,
@@ -194,6 +197,98 @@ impl PartialRequest {
             }
             .into())
         }
+    }
+
+    /// Check consistency between a [`PartialRequest`] and a [`Request`]
+    pub fn check_consistency(
+        &self,
+        request: &Request,
+    ) -> std::result::Result<(), RequestConsistencyError> {
+        match &request.principal {
+            EntityUIDEntry::Unknown { .. } => {
+                return Err(RequestConsistencyError::UnknownPrincipal);
+            }
+            EntityUIDEntry::Known { euid, .. } => {
+                if euid.entity_type() != &self.principal.ty {
+                    return Err(InconsistentPrincipalTypeError {
+                        partial: self.principal.ty.clone(),
+                        concrete: euid.entity_type().clone(),
+                    }
+                    .into());
+                }
+                match &self.principal.eid {
+                    Some(eid) => {
+                        if eid != euid.eid() {
+                            return Err(InconsistentPrincipalEidError {
+                                partial: eid.clone(),
+                                concrete: euid.eid().clone(),
+                            }
+                            .into());
+                        }
+                    }
+                    None => {}
+                }
+            }
+        }
+
+        match &request.resource {
+            EntityUIDEntry::Unknown { .. } => {
+                return Err(RequestConsistencyError::UnknownResource);
+            }
+            EntityUIDEntry::Known { euid, .. } => {
+                if euid.entity_type() != &self.resource.ty {
+                    return Err(InconsistentResourceTypeError {
+                        partial: self.resource.ty.clone(),
+                        concrete: euid.entity_type().clone(),
+                    }
+                    .into());
+                }
+                match &self.resource.eid {
+                    Some(eid) => {
+                        if eid != euid.eid() {
+                            return Err(InconsistentResourceEidError {
+                                partial: eid.clone(),
+                                concrete: euid.eid().clone(),
+                            }
+                            .into());
+                        }
+                    }
+                    None => {}
+                }
+            }
+        }
+
+        match &request.action {
+            EntityUIDEntry::Unknown { .. } => {
+                return Err(RequestConsistencyError::UnknownAction);
+            }
+            EntityUIDEntry::Known { euid, .. } => {
+                if euid.as_ref() != &self.action {
+                    return Err(InconsistentActionError {
+                        partial: self.action.clone(),
+                        concrete: euid.as_ref().clone(),
+                    }
+                    .into());
+                }
+            }
+        }
+
+        match &request.context {
+            Some(Context::Value(c)) => {
+                if let Some(m) = &self.context {
+                    if c != m {
+                        return Err(RequestConsistencyError::InconsistentContext);
+                    }
+                }
+            }
+            Some(Context::RestrictedResidual { .. }) => {
+                return Err(RequestConsistencyError::ConcreteContextContainsUnknowns);
+            }
+            None => {
+                return Err(RequestConsistencyError::UnknownContext);
+            }
+        }
+        Ok(())
     }
 }
 
