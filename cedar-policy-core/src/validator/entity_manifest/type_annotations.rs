@@ -18,10 +18,9 @@
 
 use crate::ast::{RequestType, Var};
 
-use crate::validator::entity_manifest::AccessTermNotFoundError;
 use crate::validator::types::EntityRecordKind;
 use crate::validator::{
-    entity_manifest::{AccessDag, AccessTerm, AccessTermVariant, EntityManifest, RequestTypeTerms},
+    entity_manifest::{AccessTermVariant, EntityManifest, RequestTypeTerms},
     types::Type,
     ValidatorSchema,
 };
@@ -63,7 +62,7 @@ impl RequestTypeTerms {
         for term in self.dag.manifest_store.iter() {
             self.dag
                 .types
-                .push(self.type_term(term, &self.request_type, schema, &self.dag)?);
+                .push(self.type_term(term, &self.request_type, schema)?);
         }
 
         Ok(())
@@ -76,7 +75,6 @@ impl RequestTypeTerms {
         variant: &AccessTermVariant,
         request_type: &RequestType,
         schema: &ValidatorSchema,
-        dag: &AccessDag,
     ) -> Result<Option<Type>, MismatchedEntityManifestError> {
         let res = match variant {
             AccessTermVariant::Var(var) => {
@@ -160,7 +158,7 @@ impl RequestTypeTerms {
             }
             AccessTermVariant::Tag {
                 of: access_term,
-                tag: tag_term,
+                tag: _tag_term,
             } => {
                 let Some(Some(access_term_type)) = self.dag.types.get(access_term.id) else {
                     return Ok(None);

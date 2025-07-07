@@ -70,7 +70,7 @@ impl<'de> Deserialize<'de> for ExprStr {
         // Deserialize from a string by parsing it as a Cedar expression
         let expr_str = String::deserialize(deserializer)?;
         let expr = crate::parser::parse_expr(&expr_str)
-            .map_err(|e| serde::de::Error::custom(format!("Failed to parse expression: {}", e)))?;
+            .map_err(|e| serde::de::Error::custom(format!("Failed to parse expression: {e}")))?;
 
         Ok(ExprStr { expr })
     }

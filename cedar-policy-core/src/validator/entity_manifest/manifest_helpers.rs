@@ -1,3 +1,7 @@
+//! Helper types and functions for using the entity manifest with the [`SimpleEntityLoader`]
+//!
+//! These helpers are packaged as a [`EntityLoadingContext`], which stores information about the entity DAG to enable efficient loading.
+
 use std::{
     collections::{btree_map, hash_map, HashMap, HashSet},
     sync::Arc,
@@ -21,7 +25,10 @@ use crate::{
 };
 
 impl RequestTypeTerms {
-    /// Given a set of access tries, determines which are leaf nodes
+    /// Given a set of access tries, determines which are leaf nodes.
+    ///
+    /// Used by [`EntityLoadingContext::initial_critical_terms`] to find the starting points
+    /// for entity loading.
     pub(crate) fn initial_critical_terms(
         &self,
         access_tries: &HashMap<AccessTerm, AccessTrie>,
@@ -29,7 +36,7 @@ impl RequestTypeTerms {
         access_tries
             .keys()
             .filter(|term| term.is_leaf(&self.dag))
-            .cloned()
+            .copied()
             .collect()
     }
 
@@ -45,7 +52,7 @@ impl RequestTypeTerms {
 
         // Initialize the map with empty vectors for all terms
         for term in reachable_terms {
-            dependents_map.insert(term.clone(), Vec::new());
+            dependents_map.insert(*term, Vec::new());
         }
 
         // Populate the map with parent-child relationships
@@ -150,6 +157,9 @@ impl RequestTypeTerms {
     /// This trie either corresponds to an entity or a tag.
     /// See the documentation for [`RequestTypeTerms::is_critical_term`]
     /// for more information on what a critical term is.
+    ///
+    /// Used by [`EntityLoadingContext`] during initialization to prepare access tries
+    /// for entity loading.
     pub(crate) fn compute_access_tries(
         &self,
         dependent_critical: &HashMap<AccessTerm, Vec<AccessTerm>>,
@@ -181,31 +191,15 @@ impl RequestTypeTerms {
         // Check if we have type information
         if term.id < self.dag.types.len() {
             // Check if the type is an entity type
-            use crate::validator::types::EntityRecordKind;
-            match self.dag.types.get(term.id) {
-                Some(Some(crate::validator::types::Type::EntityOrRecord(kind))) => {
-                    matches!(
-                        kind,
-                        EntityRecordKind::Entity(_) | EntityRecordKind::AnyEntity
-                    )
-                }
+            // PANIC SAFETY: types should exist for every term in the dag
+            #[allow(clippy::unwrap_used)]
+            match self.dag.types.get(term.id).unwrap() {
+                Some(ty) => ty.is_entity_type(),
                 _ => false,
             }
         } else {
             false
         }
-    }
-
-    /// Gets critical terms (see [`RequestTypeTerms::is_critical_term`])
-    fn get_critical_terms(
-        &self,
-        dependent_map: &HashMap<AccessTerm, Vec<AccessTerm>>,
-    ) -> HashSet<AccessTerm> {
-        dependent_map
-            .keys()
-            .filter(|term| self.is_critical_term(term))
-            .cloned()
-            .collect()
     }
 
     /// Recursively build the `AccessTrie` for an entity term
@@ -244,20 +238,15 @@ impl RequestTypeTerms {
                 }
 
                 // Check if this is an attribute term
-                if let Ok(variant) = dependent.get_variant(&self.dag) {
-                    if let AccessTermVariant::Attribute { attr, .. } = variant {
-                        // Get or create the field in the trie
-                        let field_trie = trie.get_or_create_field(attr);
+                if let Ok(AccessTermVariant::Attribute { attr, .. }) =
+                    dependent.get_variant(&self.dag)
+                {
+                    // Get or create the field in the trie
+                    let field_trie = trie.get_or_create_field(attr);
 
-                        // If this is an entity, don't continue building the trie
-                        if !self.is_critical_term(dependent) {
-                            self.build_trie_recursive(
-                                dependent,
-                                field_trie,
-                                dependents_map,
-                                visited,
-                            );
-                        }
+                    // If this is an entity, don't continue building the trie
+                    if !self.is_critical_term(dependent) {
+                        self.build_trie_recursive(dependent, field_trie, dependents_map, visited);
                     }
                 }
             }
@@ -285,6 +274,9 @@ impl RequestTypeTerms {
 /// are requested.
 /// Children [`AccessTrie`] describe what fields of child records are requested.
 /// These don't recur into other entities.
+///
+/// Used extensively by [`EntityLoadingContext`] to track which attributes need to be loaded
+/// for each entity.
 #[derive(Debug, Clone)]
 pub(crate) struct AccessTrie {
     pub(crate) fields: HashMap<SmolStr, Box<AccessTrie>>,
@@ -348,7 +340,7 @@ pub(crate) struct EntityLoadingContext<'a> {
         crate::validator::entity_manifest::AccessTerm,
         Vec<crate::validator::entity_manifest::AccessTerm>,
     >,
-    /// This map is the inverse of dependent_critical.
+    /// This map is the inverse of `dependent_critical`.
     /// It stores, for each term, terms which it directly depends on.
     dependee_critical: HashMap<
         crate::validator::entity_manifest::AccessTerm,
@@ -445,12 +437,6 @@ impl<'a> EntityLoadingContext<'a> {
                 continue;
             }
 
-            // print this full term
-            println!(
-                "Processing critical term: {}",
-                critical_term.to_expr(self.for_request.dag()).unwrap()
-            );
-
             // Add dependent critical terms to the next batch
             // PANIC SAFETY: Every critical term has an entry in dependent_critical
             #[allow(clippy::panic)]
@@ -469,7 +455,7 @@ impl<'a> EntityLoadingContext<'a> {
             if self.for_request.is_tag_term(critical_term) {
                 self.add_tag_request_from_term(critical_term, access_trie, entity_requests)?;
             } else {
-                self.add_entity_request_from_term(critical_term, access_trie, entity_requests)?;
+                self.add_entity_request_from_term(*critical_term, access_trie, entity_requests)?;
             }
             eprintln!("done");
         }
@@ -480,7 +466,7 @@ impl<'a> EntityLoadingContext<'a> {
     /// Add an entity request for an entity-typed term.
     fn add_entity_request_from_term(
         &self,
-        critical_term: &crate::validator::entity_manifest::AccessTerm,
+        critical_term: AccessTerm,
         dependent_trie: &AccessTrie,
         entity_requests: &mut EntityRequests,
     ) -> Result<(), EntitySliceError> {
@@ -608,6 +594,9 @@ impl<'a> EntityLoadingContext<'a> {
 /// both. If one entity is referenced by multiple entity roots in the slice,
 /// then we need to be sure that we don't clobber the attribute for the first
 /// when inserting the second into the slice.
+///
+/// Called by [`EntityLoadingContext::load_and_merge_entities`] when the same entity
+/// is loaded multiple times with different attributes.
 // INVARIANT: `e1` and `e2` must be the result of slicing the same original
 // entity using the same entity manifest and request. I.e., they may differ only in
 // what attributes they contain. When an attribute exists in both, the
@@ -693,7 +682,9 @@ fn merge_entities(e1: Entity, e2: Entity) -> Result<Entity, EntitySliceError> {
     ))
 }
 
-/// Merge two value for corresponding attributes in the slice.
+/// Merge two values for corresponding attributes in the slice.
+///
+/// Used by [`merge_entities`] when merging entity attributes in the [`EntityLoadingContext`].
 // INVARIANT: `v1` and `v2` must be the result of slicing the same original
 // value using the same entity manifest and request. I.e., they must be
 // identical, except for the attributes they contain when the values are a

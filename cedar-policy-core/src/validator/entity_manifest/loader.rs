@@ -18,21 +18,19 @@
 //! Loads entities based on the entity manifest.
 
 use std::{
-    collections::{btree_map, hash_map, HashMap, HashSet},
+    collections::{hash_map, HashMap, HashSet},
     iter::IntoIterator,
-    sync::Arc,
 };
 
 use smol_str::SmolStr;
 
 use crate::{
-    ast::{Entity, EntityUID, Literal, PartialValue, Request, Value, ValueKind},
+    ast::{Entity, EntityUID, Literal, Request, ValueKind},
     entities::{Entities, NoEntitiesSchema, TCComputation},
     extensions::Extensions,
     validator::entity_manifest::{
         errors::{
-            ConflictingEntityDataError, ExpectedEntityOrEntitySetError, ExpectedEntityTypeError,
-            ExpectedStringTypeError,
+            ExpectedEntityOrEntitySetError, ExpectedEntityTypeError,
         },
         manifest_helpers::{AccessTrie, EntityLoadingContext},
         AccessTermVariant, EntityManifest,
@@ -40,7 +38,7 @@ use crate::{
 };
 
 use crate::validator::entity_manifest::errors::{
-    EntitySliceError, PartialRequestError, ResidualEncounteredError,
+    EntitySliceError, PartialRequestError,
 };
 
 /// A request that an entity be loaded.
