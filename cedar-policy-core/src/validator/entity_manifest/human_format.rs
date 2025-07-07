@@ -214,7 +214,7 @@ impl EntityManifest {
                 // PANIC SAFETY: these access terms come directly from the same manifest, so conversion succeeds
                 #[allow(clippy::unwrap_used)]
                 term_expressions.push(ExprStr::new(
-                    self.access_term_to_expr(term, request_type).unwrap(),
+                    self.access_term_to_expr(*term, request_type).unwrap(),
                 ));
             }
 

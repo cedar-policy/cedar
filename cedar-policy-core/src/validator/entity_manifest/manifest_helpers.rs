@@ -138,10 +138,10 @@ impl RequestTypeTerms {
                     if visited.insert(dependent) {
                         // if it has an entity type, add it to the result
                         if self.is_critical_term(*dependent) {
-                            result.insert(dependent.clone());
+                            result.insert(*dependent);
                         } else {
                             // otherwise add to the queue
-                            queue.push(dependent.clone());
+                            queue.push(*dependent);
                         }
                     }
                 }
@@ -227,7 +227,7 @@ impl RequestTypeTerms {
         visited: &mut HashSet<AccessTerm>,
     ) {
         // Mark this term as visited to avoid cycles
-        visited.insert(term.clone());
+        visited.insert(term);
 
         // Get all dependents of this term
         if let Some(dependents) = dependents_map.get(&term) {
@@ -447,7 +447,7 @@ impl<'a> EntityLoadingContext<'a> {
             // Case split on entities or tag access terms
             if self.for_request.is_tag_term(*critical_term) {
                 eprintln!("adding tag");
-                self.add_tag_request_from_term(critical_term, access_trie, entity_requests)?;
+                self.add_tag_request_from_term(*critical_term, access_trie, entity_requests)?;
             } else {
                 self.add_entity_request_from_term(*critical_term, access_trie, entity_requests)?;
             }
@@ -559,7 +559,6 @@ impl<'a> EntityLoadingContext<'a> {
         loader: &mut dyn EntityLoader,
         entity_requests: &mut EntityRequests,
     ) -> Result<(), EntitySliceError> {
-        eprintln!("Loading entities for batch: {:?}...", entity_requests);
         // Load the current batch of entities
         let loaded_entities = loader.load_entities(entity_requests)?;
 

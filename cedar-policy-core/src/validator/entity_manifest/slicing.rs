@@ -155,7 +155,7 @@ impl AccessTerm {
     /// Compute the value for this access term using the provided entities map.
     /// This function can dereference entities using the `entity_map`.
     pub(crate) fn compute_value(
-        &self,
+        self,
         entities_map: &HashMap<EntityUID, Entity>,
         store: &AccessDag,
         request: &Request,

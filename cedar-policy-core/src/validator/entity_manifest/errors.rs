@@ -54,6 +54,9 @@ pub enum EntityManifestTypecheckError {
     /// An schema does not match the entity manifest, expected an entity type
     #[error(transparent)]
     ExpectedEntityType(#[from] ExpectedEntityTypeError),
+    /// Expected a entity to have a tag type
+    #[error(transparent)]
+    ExpectedEntityHaveTagType(#[from] ExpectedEntityHaveTagTypeError),
 }
 
 /// Error when parsing entity manifest from JSON
@@ -164,6 +167,11 @@ pub struct ExpectedEntityTypeError {
     /// The type that was found instead of an entity type
     pub(crate) found_type: Type,
 }
+
+/// Error when the schema should have a particular type tag for an entity
+#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
+#[error("entity manifest doesn't match schema. We expected an entity to have a tag type")]
+pub struct ExpectedEntityHaveTagTypeError {}
 
 /// Error when access term is not found in entity manifest
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]

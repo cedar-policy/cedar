@@ -26,8 +26,8 @@ use crate::validator::{
 };
 // Import errors directly
 use crate::validator::entity_manifest::errors::{
-    EntityManifestTypecheckError, ExpectedEntityOrRecordTypeError, ExpectedEntityTypeError,
-    MismatchedMissingEntityError, MismatchedNotStrictSchemaError,
+    EntityManifestTypecheckError, ExpectedEntityHaveTagTypeError, ExpectedEntityOrRecordTypeError,
+    ExpectedEntityTypeError, MismatchedMissingEntityError, MismatchedNotStrictSchemaError,
 };
 
 impl EntityManifest {
@@ -71,7 +71,7 @@ impl RequestTypeTerms {
     /// When the type does not exist in the schema, it returns `None`.
     fn type_term(
         &self,
-        variant: AccessTermVariant,
+        variant: &AccessTermVariant,
         request_type: &RequestType,
         schema: &ValidatorSchema,
     ) -> Result<Option<Type>, EntityManifestTypecheckError> {
@@ -138,7 +138,7 @@ impl RequestTypeTerms {
                             EntityRecordKind::ActionEntity { name: _, attrs } => attrs.clone(),
                         };
 
-                        if let Some(attr_type) = attributes.get_attr(attr) {
+                        if let Some(attr_type) = attributes.get_attr(&*attr) {
                             attr_type.attr_type.clone()
                         } else {
                             // The attribute was not found, but this can happen
@@ -172,7 +172,10 @@ impl RequestTypeTerms {
                                 .ok_or(MismatchedNotStrictSchemaError {})?,
                         )
                         .ok_or(MismatchedNotStrictSchemaError {})?;
-                    entity_ty.tag_type().unwrap().clone() // todo fix unwrap
+                    let Some(ty) = entity_ty.tag_type() else {
+                        return Err(ExpectedEntityHaveTagTypeError {}.into());
+                    };
+                    ty.clone()
                 } else {
                     return Err(ExpectedEntityTypeError {
                         found_type: access_term_type.clone(),

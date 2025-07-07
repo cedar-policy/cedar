@@ -23,8 +23,6 @@ use crate::{
 };
 use std::fmt::Write;
 
-use std::fmt::Write as FmtWrite;
-
 use crate::ast::PolicySet;
 
 use crate::validator::Validator;
