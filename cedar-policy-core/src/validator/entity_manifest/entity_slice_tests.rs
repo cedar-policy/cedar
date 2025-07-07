@@ -1164,8 +1164,8 @@ fn test_slice_conditional_tag_access() {
         r#"permit(principal, action, resource)
 when {
     if principal.name == "Oliver"
-    then principal.getTag("secret") == "value"
-    else principal.getTag("public") == "info"
+    then principal.hasTag("secret")
+    else principal.hasTag("public")
 };"#,
         None,
         schema(),

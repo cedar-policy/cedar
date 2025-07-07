@@ -75,7 +75,13 @@ impl EntityRequests {
 
     /// Adds an entity request to the collection.
     /// If a request for the same entity already exists, the requests are unioned.
+    /// Empty requests (with no fields or tags) are not added.
     pub(crate) fn add(&mut self, request: EntityRequest) {
+        // Skip empty requests
+        if request.is_empty() {
+            return;
+        }
+
         match self.requests.entry(request.entity_id.clone()) {
             hash_map::Entry::Occupied(mut entry) => {
                 // If a request for this entity already exists, union the requests
@@ -123,7 +129,12 @@ impl<'a> IntoIterator for &'a EntityRequests {
 }
 
 impl EntityRequest {
-    /// Unions this EntityRequest with another, modifying this request in place.
+    /// Returns true if this request is empty (has no fields or tags to load).
+    pub(crate) fn is_empty(&self) -> bool {
+        self.access_trie.is_empty() && self.tags.is_empty()
+    }
+
+    /// Unions this [`EntityRequest`] with another, modifying this request in place.
     /// After this operation, this request will contain all fields and tags from both requests.
     /// If both requests have the same tag, the tag tries are recursively unioned.
     pub(crate) fn union_with(&mut self, other: &EntityRequest) {
@@ -209,12 +220,12 @@ pub(crate) fn load_entities(
         };
     };
 
-    // Build a map of entity terms to their dependent entities
     let reachable_terms = for_request.reachable_terms();
+    // Map from term to dependents
     let dependents_map = for_request.build_dependents_map(&reachable_terms);
-
+    // Map from a critical term to critical dependents
     let dependent_critical = for_request.build_dependent_critical_terms(&dependents_map);
-    // Compute the access tries for all entities
+    // Access tries for each critical term
     let access_tries = for_request.compute_access_tries(&dependent_critical, &dependents_map);
 
     // Get initial entities to load and track processed entities
@@ -281,7 +292,10 @@ pub(crate) fn load_entities(
                         critical_term.get_variant_internal(&for_request.dag)
                     else {
                         // PANIC SAFETY: Critical terms are either entity typed or tag terms.
-                        panic!("Expected a tag term variant, but got {:?}", critical_term);
+                        panic!(
+                            "Expected a tag term variant, but got {:?}",
+                            critical_term.get_variant_internal(&for_request.dag)
+                        );
                     };
                     // For tag terms, generate an entity request with the tag and access trie
                     let of_val_result =
@@ -473,18 +487,43 @@ fn merge_entities(e1: Entity, e2: Entity) -> Entity {
         uid1, uid2,
         "attempting to merge entities with different uids!"
     );
-    assert_eq!(
-        ancestors1, ancestors2,
-        "attempting to merge entities with different ancestors!"
-    );
-    assert_eq!(
-        parents1, parents2,
-        "attempting to merge entities with different parents!"
-    );
-    assert!(
-        tags1.is_empty() && tags2.is_empty(),
-        "attempting to merge entities with tags!"
-    );
+    
+    // Merge ancestors
+    let mut merged_ancestors = ancestors1;
+    merged_ancestors.extend(ancestors2);
+    
+    // Merge parents
+    let mut merged_parents = parents1;
+    merged_parents.extend(parents2);
+    
+    // Merge tags
+    let mut merged_tags = tags1;
+    for (k, v2) in tags2 {
+        match merged_tags.entry(k) {
+            hash_map::Entry::Occupied(occupied) => {
+                let (k, v1) = occupied.remove_entry();
+                match (v1, v2) {
+                    (PartialValue::Value(v1), PartialValue::Value(v2)) => {
+                        let merged_v = merge_values(v1, v2);
+                        merged_tags.insert(k, PartialValue::Value(merged_v));
+                    }
+                    (PartialValue::Residual(e1), PartialValue::Residual(e2)) => {
+                        assert_eq!(e1, e2, "attempting to merge different residuals in tags!");
+                        merged_tags.insert(k, PartialValue::Residual(e1));
+                    }
+                    // PANIC SAFETY: We're merging sliced copies of the same entity, so the tag must be the same
+                    #[allow(clippy::panic)]
+                    (PartialValue::Value(_), PartialValue::Residual(_))
+                    | (PartialValue::Residual(_), PartialValue::Value(_)) => {
+                        panic!("attempting to merge a value with a residual in tags")
+                    }
+                };
+            }
+            hash_map::Entry::Vacant(vacant) => {
+                vacant.insert(v2);
+            }
+        }
+    }
 
     for (k, v2) in attrs2 {
         match attrs1.entry(k) {
@@ -513,7 +552,7 @@ fn merge_entities(e1: Entity, e2: Entity) -> Entity {
         }
     }
 
-    Entity::new_with_attr_partial_value(uid1, attrs1, ancestors1, parents1, [])
+    Entity::new_with_attr_partial_value(uid1, attrs1, merged_ancestors, merged_parents, merged_tags)
 }
 
 /// Merge two value for corresponding attributes in the slice.

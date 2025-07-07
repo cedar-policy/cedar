@@ -17,7 +17,10 @@ impl RequestTypeTerms {
             .collect()
     }
 
-    /// Build a hashmap of dependent terms for all reachable terms
+    /// Returns a map from terms to all their dependent terms.
+    /// A dependent term for term B is a term A such that B is a child of A.
+    /// So A has a direct data dependency on B.
+    /// Only includes terms in `reachable_terms`.
     pub(crate) fn build_dependents_map(
         &self,
         reachable_terms: &HashSet<AccessTerm>,
@@ -45,6 +48,10 @@ impl RequestTypeTerms {
         dependents_map
     }
 
+    /// Builds a map from a critical term to other critical terms that depend on it.
+    /// Only considers terms which are keys in `dependents_map`.
+    /// A dependent critical term for term A is a term B such that A ->* B (B is a subterm of A)
+    /// and no intermediate terms in the term from A to B are critical terms.
     pub(crate) fn build_dependent_critical_terms(
         &self,
         dependents_map: &HashMap<AccessTerm, Vec<AccessTerm>>,
@@ -52,20 +59,20 @@ impl RequestTypeTerms {
         let mut dependent_entities_map = HashMap::new();
 
         for term in dependents_map.keys() {
-            let dependent_entities =
-                self.get_manifest_dependent_critical_terms(term, dependents_map);
-            dependent_entities_map.insert(term.clone(), dependent_entities);
+            if self.is_critical_term(term) {
+                let dependent_entities =
+                    self.get_manifest_dependent_critical_terms(*term, dependents_map);
+                dependent_entities_map.insert(term.clone(), dependent_entities);
+            }
         }
 
         dependent_entities_map
     }
 
-    /// Helper function to get the manifest dependent entity terms of an access term
-    /// A manifest dependent critical term for term A is a term B such that A ->* B (B is a subterm of A)
-    /// and no intermediate terms in the term from A to B are critical terms.
+    /// Helper function to get the manifest dependent critical terms
     fn get_manifest_dependent_critical_terms(
         &self,
-        term: &AccessTerm,
+        term: AccessTerm,
         dependents_map: &HashMap<AccessTerm, Vec<AccessTerm>>,
     ) -> Vec<AccessTerm> {
         let mut result = HashSet::new();
