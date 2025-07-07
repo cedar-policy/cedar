@@ -120,12 +120,22 @@ impl Evaluator<'_> {
                         ..
                     } => self.interpret(right),
                     Residual::Concrete { ty, .. } => Residual::Error(ty.clone()),
-                    Residual::Partial { .. } => Residual::Partial {
-                        kind: ResidualKind::And {
-                            left: Arc::new(left),
-                            right: Arc::new(self.interpret(right)),
+                    Residual::Partial { .. } => match &self.interpret(&right) {
+                        Residual::Concrete {
+                            value:
+                                Value {
+                                    value: ValueKind::Lit(ast::Literal::Bool(true)),
+                                    ..
+                                },
+                            ..
+                        } => left,
+                        right => Residual::Partial {
+                            kind: ResidualKind::And {
+                                left: Arc::new(left),
+                                right: Arc::new(right.clone()),
+                            },
+                            ty,
                         },
-                        ty,
                     },
                     Residual::Error(_) => Residual::Error(ty),
                 }
@@ -153,12 +163,22 @@ impl Evaluator<'_> {
                         ..
                     } => self.interpret(right),
                     Residual::Concrete { ty, .. } => Residual::Error(ty.clone()),
-                    Residual::Partial { .. } => Residual::Partial {
-                        kind: ResidualKind::Or {
-                            left: Arc::new(left),
-                            right: Arc::new(self.interpret(right)),
+                    Residual::Partial { .. } => match &self.interpret(&right) {
+                        Residual::Concrete {
+                            value:
+                                Value {
+                                    value: ValueKind::Lit(ast::Literal::Bool(false)),
+                                    ..
+                                },
+                            ..
+                        } => left,
+                        right => Residual::Partial {
+                            kind: ResidualKind::Or {
+                                left: Arc::new(left),
+                                right: Arc::new(right.clone()),
+                            },
+                            ty,
                         },
-                        ty,
                     },
                     Residual::Error(_) => Residual::Error(ty),
                 }
