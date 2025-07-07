@@ -266,4 +266,22 @@ impl AccessTrie {
             .entry(field.clone())
             .or_insert_with(|| Box::new(AccessTrie::new()))
     }
+
+    /// Unions this AccessTrie with another, modifying this trie in place.
+    /// After this operation, this trie will contain all fields from both tries.
+    /// If both tries have the same field, the field tries are recursively unioned.
+    pub(crate) fn union_with(&mut self, other: &AccessTrie) {
+        for (field, other_trie) in &other.fields {
+            match self.fields.entry(field.clone()) {
+                std::collections::hash_map::Entry::Occupied(mut entry) => {
+                    // If both tries have the same field, recursively union the field tries
+                    entry.get_mut().union_with(other_trie);
+                }
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    // If only the other trie has this field, clone it into this trie
+                    entry.insert(other_trie.clone());
+                }
+            }
+        }
+    }
 }

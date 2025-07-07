@@ -16,7 +16,7 @@ use crate::validator::entity_manifest::errors::{
     PartialContextError, PartialEntityError, PartialRequestError, RecordFieldMissingError,
 };
 use crate::validator::entity_manifest::loader::{
-    load_entities, AncestorsRequest, EntityLoader, EntityRequest,
+    load_entities, AncestorsRequest, EntityLoader, EntityRequest, EntityRequests,
 };
 use crate::validator::entity_manifest::{AccessDag, AccessTerm, AccessTermVariant, EntityManifest};
 
@@ -41,7 +41,7 @@ struct EntitySlicer<'a> {
 impl EntityLoader for EntitySlicer<'_> {
     fn load_entities(
         &mut self,
-        to_load: &[EntityRequest],
+        to_load: &EntityRequests,
     ) -> Result<Vec<Entity>, EntitySliceError> {
         let mut res = vec![];
         for request in to_load {

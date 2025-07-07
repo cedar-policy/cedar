@@ -19,6 +19,7 @@
 
 use std::{
     collections::{btree_map, hash_map, HashMap, HashSet},
+    iter::IntoIterator,
     sync::Arc,
 };
 
@@ -56,6 +57,95 @@ pub(crate) struct EntityRequest {
     pub(crate) access_trie: AccessTrie,
 }
 
+/// A collection of entity requests, indexed by entity ID.
+/// When multiple requests are added for the same entity, they are unioned together.
+#[derive(Debug, Default)]
+pub(crate) struct EntityRequests {
+    /// Map from entity ID to entity request
+    requests: HashMap<EntityUID, EntityRequest>,
+}
+
+impl EntityRequests {
+    /// Creates a new empty collection of entity requests.
+    pub(crate) fn new() -> Self {
+        Self {
+            requests: HashMap::new(),
+        }
+    }
+
+    /// Adds an entity request to the collection.
+    /// If a request for the same entity already exists, the requests are unioned.
+    pub(crate) fn add(&mut self, request: EntityRequest) {
+        match self.requests.entry(request.entity_id.clone()) {
+            hash_map::Entry::Occupied(mut entry) => {
+                // If a request for this entity already exists, union the requests
+                entry.get_mut().union_with(&request);
+            }
+            hash_map::Entry::Vacant(entry) => {
+                // If no request for this entity exists, add it
+                entry.insert(request);
+            }
+        }
+    }
+
+    /// Returns the number of entity requests in the collection.
+    pub(crate) fn len(&self) -> usize {
+        self.requests.len()
+    }
+
+    /// Returns true if the collection is empty.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.requests.is_empty()
+    }
+
+    /// Clears all entity requests from the collection.
+    pub(crate) fn clear(&mut self) {
+        self.requests.clear();
+    }
+}
+
+impl IntoIterator for EntityRequests {
+    type Item = EntityRequest;
+    type IntoIter = std::collections::hash_map::IntoValues<EntityUID, EntityRequest>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.requests.into_values()
+    }
+}
+
+impl<'a> IntoIterator for &'a EntityRequests {
+    type Item = &'a EntityRequest;
+    type IntoIter = std::collections::hash_map::Values<'a, EntityUID, EntityRequest>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.requests.values()
+    }
+}
+
+impl EntityRequest {
+    /// Unions this EntityRequest with another, modifying this request in place.
+    /// After this operation, this request will contain all fields and tags from both requests.
+    /// If both requests have the same tag, the tag tries are recursively unioned.
+    pub(crate) fn union_with(&mut self, other: &EntityRequest) {
+        // Union the access tries
+        self.access_trie.union_with(&other.access_trie);
+
+        // Union the tags
+        for (tag_name, tag_trie) in &other.tags {
+            match self.tags.entry(tag_name.clone()) {
+                std::collections::hash_map::Entry::Occupied(mut entry) => {
+                    // If both requests have the same tag, recursively union the tag tries
+                    entry.get_mut().union_with(tag_trie);
+                }
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    // If only the other request has this tag, clone it into this request
+                    entry.insert(tag_trie.clone());
+                }
+            }
+        }
+    }
+}
+
 /// A request that the ancestors of an entity be loaded.
 /// Optionally, the `ancestors` set may be used to just load ancestors in the set.
 #[derive(Debug)]
@@ -81,8 +171,7 @@ pub(crate) trait EntityLoader {
     /// Note that the same entity may be requested multiple times, with different [`AccessTrie`]s.
     ///
     /// `load_entities` must load all the ancestors of each entity unless `load_ancestors` is implemented.
-    fn load_entities(&mut self, to_load: &[EntityRequest])
-        -> Result<Vec<Entity>, EntitySliceError>;
+    fn load_entities(&mut self, to_load: &EntityRequests) -> Result<Vec<Entity>, EntitySliceError>;
 
     /// Optionally, `load_entities` can forgo loading ancestors in the entity hierarchy.
     /// Instead, `load_ancestors` implements loading them.
@@ -130,8 +219,8 @@ pub(crate) fn load_entities(
 
     // Get initial entities to load and track processed entities
     let mut next_critical_terms = for_request.initial_critical_terms(&access_tries);
-    // TODO refactor into hashmap which maps by entity uid
-    let mut entity_requests = Vec::new();
+    // Collection of entity requests
+    let mut entity_requests = EntityRequests::new();
     let mut entities_map: HashMap<EntityUID, Entity> = HashMap::new();
     let mut visited_terms = HashSet::new();
 
@@ -177,7 +266,8 @@ pub(crate) fn load_entities(
                         }
                     };
 
-                    entity_requests.push(EntityRequest {
+                    // Add entity request to the collection
+                    entity_requests.add(EntityRequest {
                         entity_id: dependent_id.clone(),
                         tags: HashMap::new(),
                         access_trie: dependent_trie.clone(),
@@ -224,7 +314,8 @@ pub(crate) fn load_entities(
                     let mut tags = HashMap::new();
                     tags.insert(tag_val, dependent_trie.clone());
 
-                    entity_requests.push(EntityRequest {
+                    // Add entity request with tags to the collection
+                    entity_requests.add(EntityRequest {
                         entity_id: of_val.clone(),
                         tags,
                         access_trie: AccessTrie::new(),
@@ -237,6 +328,9 @@ pub(crate) fn load_entities(
 
         // Load the current batch of entities
         let loaded_entities = loader.load_entities(&entity_requests)?;
+
+        // Reset entity_requests for the next batch
+        entity_requests.clear();
 
         for entity in loaded_entities.into_iter() {
             // Add or merge the entity into our map
