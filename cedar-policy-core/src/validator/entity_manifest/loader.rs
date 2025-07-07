@@ -31,7 +31,7 @@ use crate::{
     validator::entity_manifest::{
         errors::{ExpectedEntityError, ExpectedEntityOrEntitySetError},
         manifest_helpers::{AccessTrie, EntityLoadingContext},
-        AccessTermVariant, EntityManifest,
+        AccessTermVariant, EntityManifest, RequestTypeTerms,
     },
 };
 
@@ -171,7 +171,7 @@ impl AncestorRequests {
 
     /// Computes ancestor requests from the given request type terms, entities map, and request.
     pub(crate) fn compute_from_request<'a>(
-        for_request: &'a crate::validator::entity_manifest::RequestTypeTerms,
+        for_request: &'a RequestTypeTerms,
         entities_map: &HashMap<EntityUID, Entity>,
         request: &'a Request,
     ) -> Result<Self, EntitySliceError> {
@@ -346,18 +346,16 @@ pub(crate) fn load_entities(
     let mut critical_terms_todo = context.initial_critical_terms();
     // Collection of entity requests
     let mut entity_requests = EntityRequests::new();
-    let mut computed_terms = HashSet::new();
+    let mut visited_terms = HashSet::new();
 
     // Main loop of loading entities, one batch at a time
     while !critical_terms_todo.is_empty() {
         // Prepare entity requests from the current batch of critical terms
         let next_critical_terms = context.prepare_entity_requests_from_terms(
             &critical_terms_todo,
-            &computed_terms,
+            &mut visited_terms,
             &mut entity_requests,
         )?;
-        // add to computed_terms
-        computed_terms.extend(critical_terms_todo.into_iter());
         critical_terms_todo = next_critical_terms;
 
         // Load and merge entities for the current batch

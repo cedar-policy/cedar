@@ -336,20 +336,14 @@ pub(crate) struct EntityLoadingContext<'a> {
     ///
     /// A dependent critical term for term A is a term B such that A ->* B (B is a subterm of A)
     /// and no intermediate terms in the term from A to B are critical terms.
-    dependent_critical: HashMap<
-        crate::validator::entity_manifest::AccessTerm,
-        Vec<crate::validator::entity_manifest::AccessTerm>,
-    >,
+    dependent_critical: HashMap<AccessTerm, Vec<AccessTerm>>,
     /// This map is the inverse of `dependent_critical`.
     /// It stores, for each term, terms which it directly depends on.
-    dependee_critical: HashMap<
-        crate::validator::entity_manifest::AccessTerm,
-        Vec<crate::validator::entity_manifest::AccessTerm>,
-    >,
+    dependee_critical: HashMap<AccessTerm, Vec<AccessTerm>>,
     /// Access tries for each critical term.
-    access_tries: HashMap<crate::validator::entity_manifest::AccessTerm, AccessTrie>,
+    access_tries: HashMap<AccessTerm, AccessTrie>,
     /// The request type terms.
-    for_request: &'a crate::validator::entity_manifest::RequestTypeTerms,
+    for_request: &'a RequestTypeTerms,
     /// Map of already loaded entities.
     entities_map: HashMap<EntityUID, Entity>,
     /// The request.
@@ -358,10 +352,7 @@ pub(crate) struct EntityLoadingContext<'a> {
 
 impl<'a> EntityLoadingContext<'a> {
     /// Creates a new entity request context.
-    pub(crate) fn new(
-        for_request: &'a crate::validator::entity_manifest::RequestTypeTerms,
-        request: &'a Request,
-    ) -> Self {
+    pub(crate) fn new(for_request: &'a RequestTypeTerms, request: &'a Request) -> Self {
         let reachable_terms = for_request.reachable_terms();
         // Map from term to dependents
         let dependents_map = for_request.build_dependents_map(&reachable_terms);
@@ -383,9 +374,7 @@ impl<'a> EntityLoadingContext<'a> {
     }
 
     /// Gets the initial critical terms to process.
-    pub(crate) fn initial_critical_terms(
-        &self,
-    ) -> Vec<crate::validator::entity_manifest::AccessTerm> {
+    pub(crate) fn initial_critical_terms(&self) -> Vec<AccessTerm> {
         self.for_request.initial_critical_terms(&self.access_tries)
     }
 
@@ -407,19 +396,20 @@ impl<'a> EntityLoadingContext<'a> {
     /// 3. Processes entity-typed terms and tag terms, adding appropriate entity requests
     pub(crate) fn prepare_entity_requests_from_terms(
         &self,
-        critical_terms: &Vec<crate::validator::entity_manifest::AccessTerm>,
-        computed_critical_terms: &HashSet<crate::validator::entity_manifest::AccessTerm>,
+        critical_terms: &Vec<AccessTerm>,
+        visited_prev_round: &mut HashSet<AccessTerm>,
         entity_requests: &mut EntityRequests,
     ) -> Result<Vec<AccessTerm>, EntitySliceError> {
         let mut next_critical_terms = vec![];
-        let mut visited_critical_terms: HashSet<AccessTerm> = HashSet::new();
+        let mut visited_this_round: HashSet<AccessTerm> = Default::default();
         // Process each critical term in the current batch
         for critical_term in critical_terms {
-            if computed_critical_terms.contains(critical_term) {
+            if visited_prev_round.contains(critical_term) {
                 continue;
             }
 
             // ensure that this term's critical dependees have been visited
+            // in a previous round
             // PANIC SAFETY: dependee_critical should have one entry per critical term
             #[allow(clippy::unwrap_used)]
             if !self
@@ -427,13 +417,16 @@ impl<'a> EntityLoadingContext<'a> {
                 .get(critical_term)
                 .unwrap()
                 .iter()
-                .all(|dependee| computed_critical_terms.contains(dependee))
+                .all(|dependee| visited_prev_round.contains(dependee))
             {
+                eprintln!(
+                    "skipping {}, dependees not ready",
+                    critical_term.to_expr(&self.for_request.dag).unwrap()
+                );
                 continue;
             }
 
-            // If we have already visited this term, skip it
-            if !visited_critical_terms.insert(*critical_term) {
+            if !visited_this_round.insert(*critical_term) {
                 continue;
             }
 
@@ -453,12 +446,15 @@ impl<'a> EntityLoadingContext<'a> {
             let access_trie = self.access_tries.get(critical_term).unwrap();
             // Case split on entities or tag access terms
             if self.for_request.is_tag_term(critical_term) {
+                eprintln!("adding tag");
                 self.add_tag_request_from_term(critical_term, access_trie, entity_requests)?;
             } else {
                 self.add_entity_request_from_term(*critical_term, access_trie, entity_requests)?;
             }
             eprintln!("done");
         }
+
+        visited_prev_round.extend(visited_this_round);
 
         Ok(next_critical_terms)
     }
@@ -497,7 +493,7 @@ impl<'a> EntityLoadingContext<'a> {
     /// Add an entity request with a tag for a tag term.
     fn add_tag_request_from_term(
         &self,
-        critical_term: &crate::validator::entity_manifest::AccessTerm,
+        critical_term: &AccessTerm,
         dependent_trie: &AccessTrie,
         entity_requests: &mut EntityRequests,
     ) -> Result<(), EntitySliceError> {

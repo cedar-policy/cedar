@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use crate::ast::Var;
 use crate::entities::Dereference;
 use crate::validator::entity_manifest::manifest_helpers::AccessTrie;
 use crate::{
@@ -285,7 +286,7 @@ impl AccessTerm {
             AccessTermVariant::Var(var) => {
                 // Get the value from the request based on the variable
                 match var {
-                    crate::ast::Var::Principal => {
+                    Var::Principal => {
                         if let Some(principal) = request.principal().uid() {
                             Ok(Value::from(Literal::EntityUID(std::sync::Arc::new(
                                 principal.clone(),
@@ -294,7 +295,7 @@ impl AccessTerm {
                             Err(EntitySliceError::PartialRequest(PartialRequestError {}))
                         }
                     }
-                    crate::ast::Var::Action => {
+                    Var::Action => {
                         if let Some(action) = request.action().uid() {
                             Ok(Value::from(Literal::EntityUID(std::sync::Arc::new(
                                 action.clone(),
@@ -303,7 +304,7 @@ impl AccessTerm {
                             Err(EntitySliceError::PartialRequest(PartialRequestError {}))
                         }
                     }
-                    crate::ast::Var::Resource => {
+                    Var::Resource => {
                         if let Some(resource) = request.resource().uid() {
                             Ok(Value::from(Literal::EntityUID(std::sync::Arc::new(
                                 resource.clone(),
@@ -312,7 +313,7 @@ impl AccessTerm {
                             Err(EntitySliceError::PartialRequest(PartialRequestError {}))
                         }
                     }
-                    crate::ast::Var::Context => {
+                    Var::Context => {
                         // Context variables are not supported in entity slicing
                         Err(EntitySliceError::PartialContext(PartialContextError {}))
                     }

@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, EntityUID, Expr};
+use crate::ast::{BinaryOp, EntityUID, Expr, Value};
 use crate::entities::err::EntitiesError;
 use crate::validator::types::Type;
 use crate::validator::{self, ValidationResult};
@@ -196,7 +196,7 @@ pub struct ResidualEncounteredError {
 #[error("entity slicing encountered a non-record or entity value where a record or entity was expected: {non_record_entity_value:?}")]
 pub struct ExpectedEntityOrRecordError {
     /// The non-record entity value that was encountered
-    pub non_record_entity_value: crate::ast::Value,
+    pub non_record_entity_value: Value,
 }
 
 /// Error when an entity is missing from the store
