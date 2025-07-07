@@ -104,6 +104,11 @@ impl Value {
     pub open spec fn int(i: i64) -> Value {
         Value::Prim { p: Prim::Int { i }}
     }
+
+    #[verifier::inline]
+    pub open spec fn entity_uid(uid: EntityUID) -> Value {
+        Value::Prim { p: Prim::EntityUID { uid } }
+    }
 }
 
 // Analogous to cedar-spec `vs.mapOrErr Value.asEntityUID .typeError`
@@ -134,6 +139,20 @@ pub open spec fn entities_ancestors_or_empty(es: Entities, uid: EntityUID) -> Se
     match es.get(uid) {
         Some(d) => d.ancestors,
         None => Set::empty()
+    }
+}
+
+pub open spec fn entities_attrs(es: Entities, uid: EntityUID) -> SpecResult<Map<Attr, Value>> {
+    match es.get(uid) {
+        Some(d) => Ok(d.attrs),
+        None => Err(Error::EntityDoesNotExist)
+    }
+}
+
+pub open spec fn entities_attrs_or_empty(es: Entities, uid: EntityUID) -> Map<Attr, Value> {
+    match es.get(uid) {
+        Some(d) => d.attrs,
+        None => Map::empty()
     }
 }
 

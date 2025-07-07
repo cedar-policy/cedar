@@ -147,8 +147,148 @@ pub open spec fn apply_2(op2: BinaryOp, v1: Value, v2: Value, es: Entities) -> S
     }
 }
 
+pub open spec fn attrs_of(v: Value, lookup: spec_fn(EntityUID) -> SpecResult<Map<Attr,Value>>) -> SpecResult<Map<Attr,Value>> {
+    match v {
+        Value::Record { m: r } => Ok(r),
+        Value::Prim { p: Prim::EntityUID { uid } } => lookup(uid),
+        _ => Err(Error::TypeError)
+    }
+}
 
+pub open spec fn has_attr(v: Value, a: Attr, es: Entities) -> SpecResult<Value> {
+    match attrs_of(v, |uid: EntityUID| Ok(entities_attrs_or_empty(es, uid))) {
+        Ok(m) => Ok(Value::bool(m.contains_key(a))),
+        Err(err) => Err(err)
+    }
+}
 
-pub uninterp spec fn evaluate(x: Expr, req: Request, es: Entities) -> SpecResult<Value>;
+pub open spec fn get_attr(v: Value, a: Attr, es: Entities) -> SpecResult<Value> {
+    match attrs_of(v, |uid: EntityUID| entities_attrs(es, uid)) {
+        Ok(m) => match m.get(a) {
+                Some(v) => Ok(v),
+                None => Err(Error::AttrDoesNotExist)
+        },
+        Err(err) => Err(err)
+    }
+}
+
+pub open spec fn evaluate(x: Expr, req: Request, es: Entities) -> SpecResult<Value>
+    decreases x
+{
+    match x {
+        Expr::Lit { p } => Ok(Value::Prim { p }),
+        Expr::Var { v } => match v {
+            Var::Principal => Ok(Value::entity_uid(req.principal)),
+            Var::Action => Ok(Value::entity_uid(req.action)),
+            Var::Resource => Ok(Value::entity_uid(req.resource)),
+            Var::Context => Ok(Value::Record { m: req.context }),
+        },
+        Expr::Ite { cond, then_expr, else_expr } => {
+            match evaluate(*cond, req, es) {
+                Ok(cond_result) => match cond_result {
+                    Value::Prim { p: Prim::Bool { b } } => {
+                        if b {
+                            evaluate(*then_expr, req, es)
+                        } else {
+                            evaluate(*else_expr, req, es)
+                        }
+                    },
+                    _ => Err(Error::TypeError),
+                },
+                Err(err) => Err(err),
+            }
+        },
+        Expr::And { a, b } => {
+            match evaluate(*a, req, es) {
+                Ok(a_result) => match a_result {
+                    Value::Prim { p: Prim::Bool { b: bool_a } } => {
+                        if !bool_a {
+                            Ok(Value::bool(bool_a))
+                        } else {
+                            match evaluate(*b, req, es) {
+                                Ok(b_result) => match b_result {
+                                    Value::Prim { p: Prim::Bool { b: bool_b } } => Ok(Value::bool(bool_b)),
+                                    _ => Err(Error::TypeError),
+                                },
+                                Err(err) => Err(err),
+                            }
+                        }
+                    },
+                    _ => Err(Error::TypeError),
+                },
+                Err(err) => Err(err),
+            }
+        },
+        Expr::Or { a, b } => {
+            match evaluate(*a, req, es) {
+                Ok(a_result) => match a_result {
+                    Value::Prim { p: Prim::Bool { b: bool_a } } => {
+                        if bool_a {
+                            Ok(Value::bool(bool_a))
+                        } else {
+                            match evaluate(*b, req, es) {
+                                Ok(b_result) => match b_result {
+                                    Value::Prim { p: Prim::Bool { b: bool_b } } => Ok(Value::bool(bool_b)),
+                                    _ => Err(Error::TypeError),
+                                },
+                                Err(e) => Err(e),
+                            }
+                        }
+                    },
+                    _ => Err(Error::TypeError),
+                },
+                Err(err) => Err(err),
+            }
+        },
+        Expr::UnaryApp { uop, expr } => {
+            match evaluate(*expr, req, es) {
+                Ok(v) => apply_1(uop, v),
+                Err(err) => Err(err),
+            }
+        },
+        Expr::BinaryApp { bop, a, b } => {
+            match evaluate(*a, req, es) {
+                Ok(v1) => match evaluate(*b, req, es) {
+                    Ok(v2) => apply_2(bop, v1, v2, es),
+                    Err(err) => Err(err),
+                },
+                Err(err) => Err(err),
+            }
+        },
+        Expr::HasAttr { expr, attr } => {
+            match evaluate(*expr, req, es) {
+                Ok(v1) => has_attr(v1, attr, es),
+                Err(err) => Err(err),
+            }
+        },
+        Expr::GetAttr { expr, attr } => {
+            match evaluate(*expr, req, es) {
+                Ok(v1) => get_attr(v1, attr, es),
+                Err(err) => Err(err),
+            }
+        },
+        Expr::Set { ls } => {
+            match seq_map_result_all(ls, |x| evaluate(x, req, es)) {
+                Ok(vs) => Ok(Value::Set { s: FiniteSet::from_seq(vs) }),
+                Err(err) => Err(err)
+            }
+        },
+        Expr::Record { map } => {
+            // TODO: this doesn't guarantee which map entry's error will be returned, but does guarantee
+            // that if any element in the map results in error, then some error will be returned.
+            // This is analogous to the property checked by DRT, but may not be strong enough to verify the impl
+            let entries_evaluated_rs = map.map_values(|x: Expr| evaluate(x, req, es));
+            if entries_evaluated_rs.values().any(|vr: SpecResult<Value>| vr is Err) {
+                // return one of the errors in the set
+                entries_evaluated_rs.values().filter(|vr: SpecResult<Value>| vr is Err).choose()
+            } else {
+                let entries_evaluated =
+                    entries_evaluated_rs.map_values(|x: SpecResult<Value>| x->Ok_0);
+                Ok(Value::Record { m: entries_evaluated })
+            }
+        },
+        // TODO: case for ExtFun call
+    }
+}
 
 }

@@ -144,6 +144,8 @@ impl<T> FiniteSet<T> {
     pub uninterp spec fn subset_of(self, s2: FiniteSet<T>) -> bool;
 
     pub uninterp spec fn intersect(self, s2: FiniteSet<T>) -> FiniteSet<T>;
+
+    pub uninterp spec fn from_seq(s: Seq<T>) -> FiniteSet<T>;
 }
 
 
@@ -187,6 +189,20 @@ pub open spec fn set_filter_map_aux<A, B>(s: Set<A>, f: spec_fn(A) -> Option<B>)
      .filter(|x: Option<B>| x is Some)
      .map(|x: Option<B>| x.unwrap())
 }
+
+// Map f over elements of s, returning the first Err found, otherwise unwrapping the Ok values
+pub open spec fn seq_map_result_all<A, B, E>(s: Seq<A>, f: spec_fn(A) -> Result<B,E>) -> Result<Seq<B>, E> {
+    let f = |rsb: Result<Seq<B>,E>, a: A| match rsb {
+        Ok(sb) => match f(a) {
+            Ok(b) => Ok(sb.push(b)),
+            Err(err) => Err(err),
+        },
+        Err(err) => Err(err),
+    };
+    s.fold_left(Ok(seq![]), f)
+}
+
+
 
 
 } // verus!
