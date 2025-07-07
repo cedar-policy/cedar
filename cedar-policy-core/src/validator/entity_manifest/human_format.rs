@@ -29,6 +29,13 @@ use crate::validator::entity_manifest::errors::{ConversionError, PathExpressionP
 
 /// A human-readable format for entity manifests.
 /// Currently used only for testing.
+///
+/// Stores access paths using a subset of cedar expressions.
+/// The cedar expressions have this grammar:
+/// AccessPathExpr = Expr::Lit(literal)
+///                  | Expr::Var(variable)
+///                  | <path>.field
+///                  | <path>.getTag(<path>)
 #[doc = include_str!("../../../experimental_warning.md")]
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,29 +95,24 @@ impl Default for HumanEntityManifest {
     }
 }
 
-impl HumanEntityManifest {
-    /// Create a new empty `HumanEntityManifest`
-    pub fn new() -> Self {
-        Self {
-            per_action: HashMap::new(),
-        }
-    }
-
-    /// Convert an AST Cedar expression to an `AccessTerm`
+impl AccessDag {
+    /// Convert an AST Cedar expression to an `AccessTerm`.
+    /// Supports cedar expressions in the subset defined by
+    /// [`HumanEntityManifest`].
+    /// See the [`HumanEntityManifest`] for a grammar of supported expressions.
     pub(crate) fn expr_to_access_term(
-        &self,
+        &mut self,
         expr: &ast::Expr,
-        dag: &mut AccessDag,
     ) -> Result<AccessTerm, PathExpressionParseError> {
         match expr.expr_kind() {
             ast::ExprKind::Lit(lit) => {
                 // Handle literal values
                 match lit {
                     ast::Literal::EntityUID(euid) => {
-                        Ok(dag.add_term(AccessTermVariant::Literal((**euid).clone())))
+                        Ok(self.add_term(AccessTermVariant::Literal((**euid).clone())))
                     }
                     ast::Literal::String(s) => {
-                        Ok(dag.add_term(AccessTermVariant::String(s.clone())))
+                        Ok(self.add_term(AccessTermVariant::String(s.clone())))
                     }
                     _ => Err(PathExpressionParseError::InvalidRoot(
                         "Unsupported literal type".to_string(),
@@ -119,12 +121,12 @@ impl HumanEntityManifest {
             }
             ast::ExprKind::Var(var) => {
                 // Handle variables (principal, resource, action, context)
-                Ok(dag.add_term(AccessTermVariant::Var(*var)))
+                Ok(self.add_term(AccessTermVariant::Var(*var)))
             }
             ast::ExprKind::GetAttr { expr, attr } => {
                 // Handle attribute access (e.g., principal.attr)
-                let base_term = self.expr_to_access_term(expr, dag)?;
-                Ok(dag.add_term(AccessTermVariant::Attribute {
+                let base_term = self.expr_to_access_term(expr)?;
+                Ok(self.add_term(AccessTermVariant::Attribute {
                     of: base_term,
                     attr: attr.clone(),
                 }))
@@ -132,18 +134,18 @@ impl HumanEntityManifest {
             ast::ExprKind::BinaryApp { op, arg1, arg2 } => match op {
                 ast::BinaryOp::GetTag => {
                     // Handle tag access (e.g., principal.getTag("tag"))
-                    let base_term = self.expr_to_access_term(arg1, dag)?;
-                    let tag_term = self.expr_to_access_term(arg2, dag)?;
-                    Ok(dag.add_term(AccessTermVariant::Tag {
+                    let base_term = self.expr_to_access_term(arg1)?;
+                    let tag_term = self.expr_to_access_term(arg2)?;
+                    Ok(self.add_term(AccessTermVariant::Tag {
                         of: base_term,
                         tag: tag_term,
                     }))
                 }
                 ast::BinaryOp::In => {
                     // Handle ancestor relationship (e.g., principal in resource)
-                    let entity_term = self.expr_to_access_term(arg1, dag)?;
-                    let ancestor_term = self.expr_to_access_term(arg2, dag)?;
-                    Ok(dag.add_term(AccessTermVariant::Ancestor {
+                    let entity_term = self.expr_to_access_term(arg1)?;
+                    let ancestor_term = self.expr_to_access_term(arg2)?;
+                    Ok(self.add_term(AccessTermVariant::Ancestor {
                         of: entity_term,
                         ancestor: ancestor_term,
                     }))
@@ -155,6 +157,15 @@ impl HumanEntityManifest {
             _ => Err(PathExpressionParseError::UnsupportedExpressionType {
                 expr_type: "unsupported expression type".to_string(),
             }),
+        }
+    }
+}
+
+impl HumanEntityManifest {
+    /// Create a new empty `HumanEntityManifest`
+    pub fn new() -> Self {
+        Self {
+            per_action: HashMap::new(),
         }
     }
 
@@ -169,8 +180,9 @@ impl HumanEntityManifest {
             let mut terms_for_request_type = RequestTypeTerms::new(request_type.clone());
 
             for expr_str in term_expressions {
-                let term =
-                    self.expr_to_access_term(&expr_str.expr, &mut terms_for_request_type.dag)?;
+                let term = terms_for_request_type
+                    .dag
+                    .expr_to_access_term(&expr_str.expr)?;
                 terms_for_request_type.access_terms.insert(term);
             }
 
