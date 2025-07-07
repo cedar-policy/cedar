@@ -62,13 +62,13 @@ pub enum Prim {
 
 impl Prim {
     #[verifier::inline]
-    pub open spec fn ptrue() -> Prim {
-        Prim::Bool { b : true }
+    pub open spec fn pbool(b: bool) -> Prim {
+        Prim::Bool { b }
     }
 
     #[verifier::inline]
-    pub open spec fn pfalse() -> Prim {
-        Prim::Bool { b : false }
+    pub open spec fn int(i: i64) -> Prim {
+        Prim::Int { i }
     }
 
     #[verifier::inline]
@@ -89,6 +89,31 @@ pub enum Value {
     // Ext { x: Ext } // TODO(Pratap): extensions
 }
 
+impl Value {
+    #[verifier::inline]
+    pub open spec fn prim(p: Prim) -> Value {
+        Value::Prim { p }
+    }
+
+    #[verifier::inline]
+    pub open spec fn bool(b: bool) -> Value {
+        Value::Prim { p: Prim::Bool { b }}
+    }
+
+    #[verifier::inline]
+    pub open spec fn int(i: i64) -> Value {
+        Value::Prim { p: Prim::Int { i }}
+    }
+}
+
+// Analogous to cedar-spec `vs.mapOrErr Value.asEntityUID .typeError`
+pub open spec fn valueset_as_entity_uid(vs: FiniteSet<Value>) -> SpecResult<FiniteSet<EntityUID>> {
+    if vs.all(|v:Value| v is Prim && v->p is EntityUID) {
+        Ok(vs.map(|v:Value| v->p->uid))
+    } else {
+        Err(Error::TypeError)
+    }
+}
 
 
 ///////////////////////////////////////////////////////
@@ -105,6 +130,26 @@ pub struct EntityData {
 
 pub type Entities = Map<EntityUID, EntityData>;
 
+pub open spec fn entities_ancestors_or_empty(es: Entities, uid: EntityUID) -> Set<EntityUID> {
+    match es.get(uid) {
+        Some(d) => d.ancestors,
+        None => Set::empty()
+    }
+}
+
+pub open spec fn entities_tags(es: Entities, uid: EntityUID) -> SpecResult<Map<Tag, Value>> {
+    match es.get(uid) {
+        Some(d) => Ok(d.tags),
+        None => Err(Error::EntityDoesNotExist)
+    }
+}
+
+pub open spec fn entities_tags_or_empty(es: Entities, uid: EntityUID) -> Map<Tag, Value> {
+    match es.get(uid) {
+        Some(d) => d.tags,
+        None => Map::empty()
+    }
+}
 
 //////////////////////////////////////////////////////
 // EXPRESSIONS: see cedar-lean/Cedar/Spec/Expr.lean //
@@ -246,7 +291,7 @@ impl Scope {
     #[verifier::opaque]
     pub open spec fn to_expr(self, v: Var) -> Expr {
         match self {
-            Scope::Any => Expr::lit(Prim::ptrue()),
+            Scope::Any => Expr::lit(Prim::pbool(true)),
             Scope::Eq { entity: uid } => v.eqEntityUID(uid),
             Scope::Mem { entity: uid } => v.inEntityUID(uid),
             Scope::Is { ety: ety } => v.isEntityType(ety),
@@ -331,7 +376,7 @@ pub type Conditions = Seq<Condition>;
 pub open spec fn conditions_to_expr(conditions: Conditions) -> Expr {
     conditions.fold_right(
         |c:Condition, expr:Expr| Expr::and(c.to_expr(), expr),
-        Expr::lit(Prim::ptrue()))
+        Expr::lit(Prim::pbool(true)))
 }
 
 pub struct Policy {

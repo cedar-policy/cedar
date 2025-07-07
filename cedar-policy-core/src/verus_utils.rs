@@ -129,6 +129,21 @@ impl<T> FiniteSet<T> {
         self.s.no_duplicates()
     }
 
+    pub closed spec fn is_empty(self) -> bool {
+        self.s.len() == 0
+    }
+
+    pub uninterp spec fn all(&self, pred: spec_fn(T) -> bool) -> bool;
+
+    pub uninterp spec fn any(&self, pred: spec_fn(T) -> bool) -> bool;
+
+    pub uninterp spec fn map<B>(self, f: spec_fn(T) -> B) -> FiniteSet<B>;
+
+    pub uninterp spec fn contains(self, t: T) -> bool;
+
+    pub uninterp spec fn subset_of(self, s2: FiniteSet<T>) -> bool;
+
+    pub uninterp spec fn intersect(self, s2: FiniteSet<T>) -> FiniteSet<T>;
 }
 
 

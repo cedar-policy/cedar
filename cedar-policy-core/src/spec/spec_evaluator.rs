@@ -28,7 +28,127 @@ pub use vstd::{map::*, prelude::*, seq::*, set::*};
 
 verus! {
 
-// For now, we are leaving the evaluator as an uninterpreted stub
+#[verifier::inline]
+pub open spec fn int_or_err(x: Option<i64>) -> SpecResult<Value> {
+    match x {
+        Some(i) => Ok(Value::int(i)),
+        None => Err(Error::ArithBoundsError)
+    }
+}
+
+#[verifier::inline]
+pub open spec fn i64_of_int_checked(x: int) -> Option<i64> {
+    if i64::MIN <= x && x <= i64::MAX {
+        Some(x as i64)
+    } else {
+        None
+    }
+}
+
+#[verifier::inline]
+pub open spec fn checked_add(i1: i64, i2: i64) -> Option<i64> {
+    i64_of_int_checked(i1 as int + i2 as int)
+}
+
+#[verifier::inline]
+pub open spec fn checked_sub(i1: i64, i2: i64) -> Option<i64> {
+    i64_of_int_checked(i1 as int - i2 as int)
+}
+
+#[verifier::inline]
+pub open spec fn checked_mul(i1: i64, i2: i64) -> Option<i64> {
+    i64_of_int_checked(i1 as int * i2 as int)
+}
+
+#[verifier::inline]
+pub open spec fn checked_neg(i: i64) -> Option<i64> {
+    i64_of_int_checked(-(i as int))
+}
+
+pub open spec fn apply_1(u: UnaryOp, v: Value) -> SpecResult<Value> {
+    match (u, v) {
+        (UnaryOp::Not, Value::Prim { p: Prim::Bool { b }}) => Ok(Value::bool(!b)),
+        (UnaryOp::Neg, Value::Prim { p: Prim::Int { i }}) => int_or_err(checked_neg(i)),
+        (UnaryOp::IsEmpty, Value::Set { s }) => Ok(Value::bool(s.is_empty())),
+        // TODO: patterns
+        // (UnaryOp::Like { p }, Value::Prim { p: Prim::String { s }}) => Ok(Value::prim(Prim::pbool(wildcard_match(s, p))))
+        (UnaryOp::Is { ety }, Value::Prim { p: Prim::EntityUID { uid }}) => Ok(Value::bool(ety == uid.ty)),
+        (_, _) => Err(Error::TypeError)
+    }
+}
+
+pub open spec fn in_e(uid1: EntityUID, uid2: EntityUID, es: Entities) -> bool {
+    uid1 == uid2 || entities_ancestors_or_empty(es, uid1).contains(uid2)
+}
+
+pub open spec fn in_s(uid: EntityUID, vs: FiniteSet<Value>, es: Entities) -> SpecResult<Value> {
+    let uids_r = valueset_as_entity_uid(vs);
+    match uids_r {
+        Ok(uids) => {
+            let b = uids.any(|u: EntityUID| in_e(uid, u, es));
+            Ok(Value::bool(b))
+        },
+        Err(err) => Err(err)
+    }
+}
+
+pub open spec fn has_tag(uid: EntityUID, tag: Tag, es: Entities) -> SpecResult<Value> {
+    Ok(Value::bool(entities_tags_or_empty(es, uid).contains_key(tag)))
+}
+
+pub open spec fn get_tag(uid: EntityUID, tag: Tag, es: Entities) -> SpecResult<Value> {
+    let tags_r = entities_tags(es, uid);
+    match tags_r {
+        Ok(tags) => {
+            tags.get(tag).ok_or(Error::TagDoesNotExist)
+        },
+        Err(err) => Err(err)
+    }
+}
+
+pub open spec fn apply_2(op2: BinaryOp, v1: Value, v2: Value, es: Entities) -> SpecResult<Value> {
+    match (op2, v1, v2) {
+        (BinaryOp::Eq, _, _) => Ok(Value::bool(v1 == v2)),
+        (BinaryOp::Less, Value::Prim { p: Prim::Int { i } }, Value::Prim { p: Prim::Int { i: j } }) =>
+            Ok(Value::bool(i < j)),
+        // TODO: datetime and duration cases for BinaryOp::Less
+        // (BinaryOp::Less, Value::Ext { e: Ext::Datetime { d: d1 } }, Value::Ext { e: Ext::Datetime { d: d2 } }) =>
+        //     Ok(Value::bool(d1 < d2)),
+        // (BinaryOp::Less, Value::Ext { e: Ext::Duration { d: d1 } }, Value::Ext { e: Ext::Duration { d: d2 } }) =>
+        //     Ok(Value::bool(d1 < d2)),
+        (BinaryOp::LessEq, Value::Prim { p: Prim::Int { i } }, Value::Prim { p: Prim::Int { i: j } }) =>
+            Ok(Value::bool(i <= j)),
+        // TODO: datetime and duration cases for BinaryOp::LessEq
+        // (BinaryOp::LessEq, Value::Ext { e: Ext::Datetime { d: d1 } }, Value::Ext { e: Ext::Datetime { d: d2 } }) =>
+        //     Ok(Value::bool(d1 <= d2)),
+        // (BinaryOp::LessEq, Value::Ext { e: Ext::Duration { d: d1 } }, Value::Ext { e: Ext::Duration { d: d2 } }) =>
+        //     Ok(Value::bool(d1 <= d2)),
+        (BinaryOp::Add, Value::Prim { p: Prim::Int { i } }, Value::Prim { p: Prim::Int { i: j } }) =>
+            int_or_err(checked_add(i, j)),
+        (BinaryOp::Sub, Value::Prim { p: Prim::Int { i } }, Value::Prim { p: Prim::Int { i: j } }) =>
+            int_or_err(checked_sub(i, j)),
+        (BinaryOp::Mul, Value::Prim { p: Prim::Int { i } }, Value::Prim { p: Prim::Int { i: j } }) =>
+            int_or_err(checked_mul(i, j)),
+        (BinaryOp::Contains, Value::Set { s: vs1 }, v2) =>
+            Ok(Value::bool(vs1.contains(v2))),
+        (BinaryOp::ContainsAll, Value::Set { s: vs1 }, Value::Set { s: vs2 }) =>
+            Ok(Value::bool(vs2.subset_of(vs1))),
+        (BinaryOp::ContainsAny, Value::Set { s: vs1 }, Value::Set { s: vs2 }) =>
+            Ok(Value::bool(!vs1.intersect(vs2).is_empty())),
+        (BinaryOp::Mem, Value::Prim { p: Prim::EntityUID { uid: uid1 } }, Value::Prim { p: Prim::EntityUID { uid: uid2 } }) =>
+            Ok(Value::bool(in_e(uid1, uid2, es))),
+        (BinaryOp::Mem, Value::Prim { p: Prim::EntityUID { uid: uid1 } }, Value::Set { s: vs }) =>
+            in_s(uid1, vs, es),
+        (BinaryOp::HasTag, Value::Prim { p: Prim::EntityUID { uid: uid1 } }, Value::Prim { p: Prim::String { s: tag } }) =>
+            has_tag(uid1, tag, es),
+        (BinaryOp::GetTag, Value::Prim { p: Prim::EntityUID { uid: uid1 } }, Value::Prim { p: Prim::String { s: tag } }) =>
+            get_tag(uid1, tag, es),
+        (_, _, _) => Err(Error::TypeError)
+    }
+}
+
+
+
 pub uninterp spec fn evaluate(x: Expr, req: Request, es: Entities) -> SpecResult<Value>;
 
 }
