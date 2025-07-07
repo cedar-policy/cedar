@@ -25,7 +25,9 @@ use serde_with::serde_as;
 use super::{AccessDag, AccessTerm, AccessTermVariant, EntityManifest, RequestTypeTerms};
 use crate::validator::ValidatorSchema;
 // Import errors directly
-use crate::validator::entity_manifest::errors::{ConversionError, PathExpressionParseError};
+use crate::validator::entity_manifest::errors::{
+    HumanToManifestConversionError, PathExpressionParseError,
+};
 
 /// A human-readable format for entity manifests.
 /// Currently used only for testing.
@@ -40,21 +42,21 @@ use crate::validator::entity_manifest::errors::{ConversionError, PathExpressionP
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct HumanEntityManifest {
+pub(crate) struct HumanEntityManifest {
     /// A map from request types to lists of term expressions
     #[serde_as(as = "Vec<(_, _)>")]
-    pub per_action: HashMap<RequestType, Vec<ExprStr>>,
+    pub(crate) per_action: HashMap<RequestType, Vec<ExprStr>>,
 }
 
 /// Wrapper for [`ast::Expr`] that serializes to a string with the expr inside
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExprStr {
+pub(crate) struct ExprStr {
     /// The wrapped expression
     pub expr: ast::Expr,
 }
 
 impl ExprStr {
-    pub fn new(expr: ast::Expr) -> Self {
+    pub(crate) fn new(expr: ast::Expr) -> Self {
         ExprStr { expr }
     }
 }
@@ -169,7 +171,7 @@ impl HumanEntityManifest {
     pub fn to_entity_manifest(
         &self,
         schema: &ValidatorSchema,
-    ) -> Result<EntityManifest, ConversionError> {
+    ) -> Result<EntityManifest, HumanToManifestConversionError> {
         let mut manifest = EntityManifest::new();
 
         for (request_type, term_expressions) in &self.per_action {
@@ -249,7 +251,7 @@ impl EntityManifest {
     pub fn from_human_json_str(
         json: &str,
         schema: &ValidatorSchema,
-    ) -> Result<Self, ConversionError> {
+    ) -> Result<Self, HumanToManifestConversionError> {
         let human: HumanEntityManifest = serde_json::from_str(json)?;
         human.to_entity_manifest(schema)
     }

@@ -17,9 +17,9 @@
 //! Entity Manifest definition and static analysis.
 
 use std::collections::{HashMap, HashSet};
-use std::fmt::{Display, Formatter};
 
 use crate::ast::{EntityUID, PolicySet, RequestType, Var};
+use crate::validator::entity_manifest::errors::{AccessTermNotFoundError, EntityManifestError, EntityManifestFromJsonError, PartialRequestError};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
@@ -29,19 +29,12 @@ pub(crate) mod analysis;
 mod entity_manifest_tests;
 #[cfg(test)]
 mod entity_slice_tests;
-mod errors;
+pub mod errors;
 mod human_format;
 mod loader;
 pub(crate) mod manifest_helpers;
 pub mod slicing;
 mod type_annotations;
-
-// Import errors directly
-pub use crate::validator::entity_manifest::errors::{
-    AccessTermNotFoundError, ConversionError, EntityManifestError, EntityManifestFromJsonError,
-    EntityManifestTypecheckError, MismatchedMissingEntityError, MismatchedNotStrictSchemaError,
-    PartialExpressionError, PartialRequestError, PathExpressionParseError,
-};
 
 use crate::validator::entity_manifest::analysis::analyze_expr_access_paths as analyze_expr_access_terms;
 // Re-export types from human_format module
@@ -56,6 +49,9 @@ use crate::validator::{
 /// data is required.
 /// It stores the request type,
 /// access dag, and access terms.
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -248,6 +244,9 @@ pub(crate) struct AccessDag {
 }
 
 /// Stores a set of access terms.
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AccessTerms {
@@ -269,6 +268,9 @@ impl IntoIterator for AccessTerms {
 /// Internally represented as a single integer into a backing store
 /// (a directed acyclic graph).
 /// Hashing an [`AccessTerm`] is extremely cheap, so resulting data can be cached.
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Copy)]
 pub struct AccessTerm {
@@ -278,6 +280,9 @@ pub struct AccessTerm {
 
 /// Turn an [`AccessTerm`] into a [`AccessTermVariant`] in order to perform pattern matching.
 /// Stores the access term's constructor and children.
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AccessTermVariant {
@@ -308,29 +313,6 @@ pub enum AccessTermVariant {
         /// The ancestor whose presence is requested
         ancestor: AccessTerm,
     },
-}
-
-/// The root of a data term or [`RootAccessTrie`].
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
-#[doc = include_str!("../../experimental_warning.md")]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
-#[serde(rename_all = "camelCase")]
-pub enum EntityRoot {
-    /// Literal entity ids
-    Literal(EntityUID),
-    /// A Cedar variable
-    Var(Var),
-}
-
-impl Display for EntityRoot {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EntityRoot::Literal(l) => write!(f, "{l}"),
-            EntityRoot::Var(v) => write!(f, "{v}"),
-        }
-    }
 }
 
 impl AccessTerm {
@@ -386,6 +368,9 @@ impl AccessDag {
 }
 
 /// A mapping from terms in one manifest to terms in another manifest
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TermMapping {
     /// Maps from source term IDs to target term IDs

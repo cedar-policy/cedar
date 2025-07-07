@@ -1,3 +1,24 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+//! Error types for entity manifests and loading.
+//! CAUTION: these types are publicly exported in `cedar-policy`.
+//! Don't make fields `pub`, don't make breaking changes, and use caution
+//! when adding public methods.
+
 use crate::ast::{BinaryOp, EntityUID, Expr, Value};
 use crate::entities::err::EntitiesError;
 use crate::validator::types::Type;
@@ -6,6 +27,9 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 /// General entity manifest error
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error)]
 pub enum EntityManifestError {
     /// A validation error occurred during entity manifest processing
@@ -27,7 +51,7 @@ pub enum EntityManifestError {
 
 /// Error when converting between human-readable and DAG-based entity manifests
 #[derive(Debug, Error)]
-pub enum ConversionError {
+pub(crate) enum HumanToManifestConversionError {
     /// Error parsing a path expression
     #[error(transparent)]
     ParseError(#[from] PathExpressionParseError),
@@ -39,7 +63,30 @@ pub enum ConversionError {
     EntityManifestTypecheck(#[from] EntityManifestTypecheckError),
 }
 
+/// Error when parsing a term expression
+#[derive(Debug, Clone, Error, Eq, PartialEq)]
+pub(crate) enum PathExpressionParseError {
+    /// Invalid root expression
+    #[error("Invalid root expression: {0}")]
+    InvalidRoot(String),
+    /// Unsupported binary operator
+    #[error("Unsupported binary operator: {operator:?}")]
+    UnsupportedBinaryOperator {
+        /// The unsupported binary operator that was encountered
+        operator: BinaryOp,
+    },
+    /// Unsupported expression type
+    #[error("Unsupported path expression: {expr}. See the HumanEntityManifest documentation for supported cedar expressions.")]
+    UnsupportedExpression {
+        /// The unsupported expression type that was encountered
+        expr: Expr,
+    },
+}
+
 /// Error when entity manifest is mismatched
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 pub enum EntityManifestTypecheckError {
     /// An entity is missing from the schema that exists in the manifest
@@ -60,6 +107,9 @@ pub enum EntityManifestTypecheckError {
 }
 
 /// Error when parsing entity manifest from JSON
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error)]
 pub enum EntityManifestFromJsonError {
     /// JSON parsing error occurred
@@ -71,6 +121,9 @@ pub enum EntityManifestFromJsonError {
 }
 
 /// Errors for entity slicing operations
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error)]
 pub enum EntitySliceError {
     /// A partial request was encountered when a concrete request was required
@@ -281,26 +334,6 @@ pub struct ConflictingEntityDataError {
 pub struct ExpectedEntityOrEntitySetError {
     /// The value that was found instead of an entity or entity set
     pub found_value: crate::ast::Value,
-}
-
-/// Error when parsing a term expression
-#[derive(Debug, Clone, Error, Eq, PartialEq)]
-pub enum PathExpressionParseError {
-    /// Invalid root expression
-    #[error("Invalid root expression: {0}")]
-    InvalidRoot(String),
-    /// Unsupported binary operator
-    #[error("Unsupported binary operator: {operator:?}")]
-    UnsupportedBinaryOperator {
-        /// The unsupported binary operator that was encountered
-        operator: BinaryOp,
-    },
-    /// Unsupported expression type
-    #[error("Unsupported path expression: {expr}. See the HumanEntityManifest documentation for supported cedar expressions.")]
-    UnsupportedExpression {
-        /// The unsupported expression type that was encountered
-        expr: Expr,
-    },
 }
 
 impl Diagnostic for PathExpressionParseError {}

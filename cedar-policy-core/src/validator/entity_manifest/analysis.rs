@@ -5,11 +5,11 @@ use smol_str::SmolStr;
 #[cfg(feature = "tolerant-ast")]
 use crate::validator::entity_manifest::errors::ErrorExpressionError;
 use crate::{
-    ast::Expr,
+    ast::{EntityUID, Expr},
     validator::{
         entity_manifest::{
-            AccessDag, AccessTerm, AccessTermVariant, AccessTerms, EntityManifestError, EntityRoot,
-            PartialExpressionError,
+            errors::PartialExpressionError, AccessDag, AccessTerm, AccessTermVariant, AccessTerms,
+            EntityManifestError,
         },
         types::{EntityRecordKind, Type},
     },
@@ -50,16 +50,16 @@ pub(crate) enum WrappedAccessTerms {
 
 impl WrappedAccessTerms {
     /// Create an analysis result that starts with a cedar variable
-    pub fn from_root(root: EntityRoot, store: &mut AccessDag) -> Rc<Self> {
-        // Create a new AccessTerm from the root
-        let variant = match &root {
-            EntityRoot::Literal(euid) => AccessTermVariant::Literal(euid.clone()),
-            EntityRoot::Var(var) => AccessTermVariant::Var(*var),
-        };
-
-        // Add the term to the store
+    pub fn from_var(var: Var, store: &mut AccessDag) -> Rc<Self> {
+        let variant = AccessTermVariant::Var(var);
         let term = store.add_term(variant);
+        Rc::new(WrappedAccessTerms::AccessTerm(term.clone()))
+    }
 
+    /// Create an analysis result starting with a cedar entity euid
+    pub fn from_euid(euid: EntityUID, store: &mut AccessDag) -> Rc<Self> {
+        let variant = AccessTermVariant::Literal(euid);
+        let term = store.add_term(variant);
         Rc::new(WrappedAccessTerms::AccessTerm(term.clone()))
     }
 
@@ -413,17 +413,17 @@ pub(crate) fn analyze_expr_access_paths(
     Ok(match expr.expr_kind() {
         ExprKind::Slot(slot_id) => {
             if slot_id.is_principal() {
-                WrappedAccessTerms::from_root(EntityRoot::Var(Var::Principal), store)
+                WrappedAccessTerms::from_var(Var::Principal, store)
             } else {
                 assert!(slot_id.is_resource());
-                WrappedAccessTerms::from_root(EntityRoot::Var(Var::Resource), store)
+                WrappedAccessTerms::from_var(Var::Resource, store)
             }
         }
 
-        ExprKind::Var(var) => WrappedAccessTerms::from_root(EntityRoot::Var(*var), store),
+        ExprKind::Var(var) => WrappedAccessTerms::from_var(*var, store),
 
         ExprKind::Lit(Literal::EntityUID(literal)) => {
-            WrappedAccessTerms::from_root(EntityRoot::Literal((**literal).clone()), store)
+            WrappedAccessTerms::from_euid((**literal).clone(), store)
         }
 
         ExprKind::Unknown(_) => Err(PartialExpressionError {})?,
