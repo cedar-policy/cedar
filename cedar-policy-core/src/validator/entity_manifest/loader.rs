@@ -268,7 +268,7 @@ impl<'a> EntityRequestContext<'a> {
                 hash_map::Entry::Occupied(o) => {
                     // If the entity is already present, merge it
                     let (k, v) = o.remove_entry();
-                    let merged = merge_entities(v, entity.clone())?;
+                    let merged = merge_entities(v, entity)?;
                     self.entities_map.insert(k, merged);
                 }
                 hash_map::Entry::Vacant(v) => {
@@ -513,14 +513,15 @@ impl AncestorRequests {
             } else {
                 // Otherwise, we need to create the entity if ancestors is not empty
                 if !ancestors.is_empty() {
+                    let entity_id = request.entity_id.clone();
                     let entity = Entity::new_with_attr_partial_value(
-                        request.entity_id.clone(),
+                        entity_id.clone(),
                         HashMap::new(),
                         HashSet::new(),
                         ancestors,
-                        [], // TODO: entity slicing does not yet support tags
+                        [], 
                     );
-                    entities_map.insert(request.entity_id, entity);
+                    entities_map.insert(entity_id, entity);
                 }
             }
         }
