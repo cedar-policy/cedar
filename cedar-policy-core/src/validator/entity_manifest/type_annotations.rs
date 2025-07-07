@@ -138,7 +138,7 @@ impl RequestTypeTerms {
                             EntityRecordKind::ActionEntity { name: _, attrs } => attrs.clone(),
                         };
 
-                        if let Some(attr_type) = attributes.get_attr(&*attr) {
+                        if let Some(attr_type) = attributes.get_attr(attr) {
                             attr_type.attr_type.clone()
                         } else {
                             // The attribute was not found, but this can happen

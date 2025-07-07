@@ -75,10 +75,14 @@ impl WrappedAccessTerms {
         access_terms: &Rc<WrappedAccessTerms>,
         store: &mut AccessDag,
     ) -> Rc<Self> {
+        // PANIC SAFETY: after typechecking, wrapped access paths are well-typed wrt the expressions
+        #[allow(clippy::expect_used)]
         // compute cross product of the access terms and the ancestors
         let of_access_terms = self.returned_access_terms().expect(
             "Ancestors required terms should not be record or set literals, typechecker should prevent this",
         );
+        // PANIC SAFETY: after typechecking, wrapped access paths are well-typed wrt the expressions
+        #[allow(clippy::expect_used)]
         let ancestors_access_terms = access_terms
             .returned_access_terms()
             .expect("Ancestors required terms should not be record or set literals, typechecker should prevent this");

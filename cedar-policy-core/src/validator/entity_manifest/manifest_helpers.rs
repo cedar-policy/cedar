@@ -419,10 +419,6 @@ impl<'a> EntityLoadingContext<'a> {
                 .iter()
                 .all(|dependee| visited_prev_round.contains(dependee))
             {
-                eprintln!(
-                    "skipping {}, dependees not ready",
-                    critical_term.to_expr(&self.for_request.dag).unwrap()
-                );
                 continue;
             }
 
@@ -438,7 +434,7 @@ impl<'a> EntityLoadingContext<'a> {
                     "Expected dependent term {critical_term:?} to have an entry in dependent_critical",
                 );
             };
-            next_critical_terms.extend(dependent_critical_terms.iter().cloned());
+            next_critical_terms.extend(dependent_critical_terms.iter().copied());
 
             // Get the access trie for this critical term
             // PANIC SAFETY: access_tries has one entry per critical term

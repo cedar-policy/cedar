@@ -18,13 +18,15 @@
 //! CAUTION: these types are publicly exported in `cedar-policy`.
 //! Don't make fields `pub`, don't make breaking changes, and use caution
 //! when adding public methods.
-
-use crate::ast::{BinaryOp, EntityUID, Expr, Value};
+use crate::ast::{EntityUID, Expr, Value};
 use crate::entities::err::EntitiesError;
 use crate::validator::types::Type;
 use crate::validator::{self, ValidationResult};
 use miette::Diagnostic;
 use thiserror::Error;
+
+#[cfg(test)]
+use crate::ast::BinaryOp;
 
 /// General entity manifest error
 // CAUTION: this type is publicly exported in `cedar-policy`.
@@ -51,6 +53,7 @@ pub enum EntityManifestError {
 
 /// Error when converting between human-readable and DAG-based entity manifests
 #[derive(Debug, Error)]
+#[cfg(test)]
 pub(crate) enum HumanToManifestConversionError {
     /// Error parsing a path expression
     #[error(transparent)]
@@ -65,6 +68,7 @@ pub(crate) enum HumanToManifestConversionError {
 
 /// Error when parsing a term expression
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
+#[cfg(test)]
 pub(crate) enum PathExpressionParseError {
     /// Invalid root expression
     #[error("Invalid root expression: {0}")]
@@ -82,6 +86,9 @@ pub(crate) enum PathExpressionParseError {
         expr: Expr,
     },
 }
+
+#[cfg(test)]
+impl Diagnostic for PathExpressionParseError {}
 
 /// Error when entity manifest is mismatched
 // CAUTION: this type is publicly exported in `cedar-policy`.
@@ -335,5 +342,3 @@ pub struct ExpectedEntityOrEntitySetError {
     /// The value that was found instead of an entity or entity set
     pub found_value: crate::ast::Value,
 }
-
-impl Diagnostic for PathExpressionParseError {}

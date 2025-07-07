@@ -15,6 +15,7 @@
  */
 
 //! Human-readable format for entity manifests.
+//! Currently only used for testing, but could be exposed in the future.
 
 use std::collections::HashMap;
 
@@ -25,9 +26,9 @@ use serde_with::serde_as;
 use super::{AccessDag, AccessTerm, AccessTermVariant, EntityManifest, RequestTypeTerms};
 use crate::validator::ValidatorSchema;
 // Import errors directly
-use crate::validator::entity_manifest::errors::{
-    HumanToManifestConversionError, PathExpressionParseError,
-};
+use crate::validator::entity_manifest::errors::HumanToManifestConversionError;
+
+use crate::validator::entity_manifest::errors::PathExpressionParseError;
 
 /// A human-readable format for entity manifests.
 /// Currently used only for testing.
@@ -168,7 +169,7 @@ impl HumanEntityManifest {
     }
 
     /// Convert this `HumanEntityManifest` to a DAG-based `EntityManifest`
-    pub fn to_entity_manifest(
+    pub(crate) fn to_entity_manifest(
         &self,
         schema: &ValidatorSchema,
     ) -> Result<EntityManifest, HumanToManifestConversionError> {
@@ -194,19 +195,19 @@ impl HumanEntityManifest {
     }
 
     /// Convert this `HumanEntityManifest` to a JSON string
-    pub fn to_json_string(&self) -> Result<String, serde_json::Error> {
+    pub(crate) fn to_json_string(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
     }
 
     /// Create a `HumanEntityManifest` from a JSON string
-    pub fn from_json_str(json: &str) -> Result<Self, serde_json::Error> {
+    pub(crate) fn from_json_str(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
     }
 }
 
 impl EntityManifest {
     /// Convert this `EntityManifest` to a human-readable format
-    pub fn to_human_format(&self) -> HumanEntityManifest {
+    pub(crate) fn to_human_format(&self) -> HumanEntityManifest {
         let mut per_action = HashMap::new();
 
         for (request_type, terms_for_request_type) in &self.per_action {
@@ -248,7 +249,8 @@ impl EntityManifest {
     }
 
     /// Create an `EntityManifest` from a human-readable JSON string
-    pub fn from_human_json_str(
+    #[cfg(test)]
+    pub(crate) fn from_human_json_str(
         json: &str,
         schema: &ValidatorSchema,
     ) -> Result<Self, HumanToManifestConversionError> {

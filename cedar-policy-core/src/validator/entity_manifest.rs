@@ -19,7 +19,9 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::ast::{EntityUID, PolicySet, RequestType, Var};
-use crate::validator::entity_manifest::errors::{AccessTermNotFoundError, EntityManifestError, EntityManifestFromJsonError, PartialRequestError};
+use crate::validator::entity_manifest::errors::{
+    AccessTermNotFoundError, EntityManifestError, EntityManifestFromJsonError, PartialRequestError,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::SmolStr;
@@ -30,6 +32,7 @@ mod entity_manifest_tests;
 #[cfg(test)]
 mod entity_slice_tests;
 pub mod errors;
+#[cfg(test)]
 mod human_format;
 mod loader;
 pub(crate) mod manifest_helpers;
@@ -80,7 +83,7 @@ impl RequestTypeTerms {
     }
 
     /// Get the access dag
-    pub(crate) fn dag(&self) -> &AccessDag {
+    pub fn dag(&self) -> &AccessDag {
         &self.dag
     }
 
@@ -224,7 +227,7 @@ pub struct EntityManifest {
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct AccessDag {
+pub struct AccessDag {
     /// A map from [`AccessTermInternal`] to the [`AccessTerm`], which
     /// indexes the `manifest_store`.
     /// This allows us to de-duplicate equivalent access terms using the "hash cons"
@@ -303,7 +306,7 @@ pub enum AccessTermVariant {
     Tag {
         /// The entity whose tag is requested
         of: AccessTerm,
-        /// The AccessTerm computing the requested tag (may be a literal string)
+        /// The [`AccessTerm`] computing the requested tag (may be a literal string)
         tag: AccessTerm,
     },
     /// Whether this entity has a particular ancestor is requested
@@ -327,14 +330,14 @@ impl AccessTerm {
         store
             .manifest_store
             .get(self.id)
-            .ok_or_else(|| AccessTermNotFoundError { path_id: self.id })
+            .ok_or(AccessTermNotFoundError { path_id: self.id })
     }
 
-    /// Like get_variant, but asserts that the term is in the store.
+    /// Like `get_variant`, but asserts that the term is in the store.
     /// We use this internally because we know terms that come from the same
     /// [`RequestTypeTerms`] are guaranteed to be in the store.
     pub(crate) fn get_variant_internal<'store>(
-        &self,
+        self,
         store: &'store AccessDag,
     ) -> &'store AccessTermVariant {
         // PANIC SAFETY: This function is only called on terms that are in the store.
@@ -348,7 +351,7 @@ impl AccessDag {
         // Check if the variant already exists in the hash_cons map
         if let Some(term) = self.manifest_hash_cons.get(&variant) {
             // If it does, return the existing AccessTerm
-            return term.clone();
+            return *term;
         }
 
         // If it doesn't exist, create a new AccessTerm with the next available ID
@@ -357,7 +360,7 @@ impl AccessDag {
 
         // Add the variant to the hash_cons map
         self.manifest_hash_cons
-            .insert(variant.clone(), term.clone());
+            .insert(variant.clone(), term);
 
         // Add the variant to the manifest_store
         self.manifest_store.push(variant);
@@ -513,10 +516,10 @@ impl AccessTerm {
     }
 
     /// Helper method to collect all subterms into the provided set
-    /// This is more efficient than creating new AccessTerms objects and extending them
+    /// This is more efficient than creating new [`AccessTerms`] objects and extending them
     pub fn collect_subterms_into(&self, store: &AccessDag, terms: &mut HashSet<AccessTerm>) {
         // Add self to the terms
-        terms.insert(self.clone());
+        terms.insert(*self);
 
         // Get immediate children
         let children = self.children(store);
