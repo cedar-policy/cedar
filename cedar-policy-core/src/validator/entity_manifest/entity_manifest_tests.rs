@@ -23,18 +23,10 @@ use crate::{
 };
 use std::fmt::Write;
 
-use std::fmt::{Display, Formatter, Write as FmtWrite};
+use std::fmt::Write as FmtWrite;
 
-use crate::ast::{
-    self, BinaryOp, EntityUID, Expr, ExprKind, Literal, PolicySet, RequestType, UnaryOp, Var,
-};
+use crate::ast::PolicySet;
 
-use crate::validator::entity_manifest::analysis::WrappedAccessTerms;
-use crate::validator::{
-    typecheck::{PolicyCheck, Typechecker},
-    types::Type,
-    ValidationMode,
-};
 use crate::validator::{ValidationResult, Validator};
 
 /// Assert that two entity manifests are equal, and if not, print them in human format

@@ -34,7 +34,7 @@ use crate::{
             ConflictingEntityDataError, ExpectedEntityOrEntitySetError, ExpectedEntityTypeError,
             ExpectedStringTypeError,
         },
-        manifest_helpers::AccessTrie,
+        manifest_helpers::{AccessTrie, EntityRequestContext},
         AccessTermVariant, EntityManifest,
     },
 };
@@ -43,243 +43,6 @@ use crate::validator::entity_manifest::errors::{
     EntitySliceError, PartialRequestError, ResidualEncounteredError,
 };
 
-/// A context for preparing entity requests.
-/// This struct encapsulates all the data needed for the entity loading process.
-#[derive(Debug)]
-pub(crate) struct EntityRequestContext<'a> {
-    /// Map from a critical term to critical dependents
-    dependent_critical: HashMap<
-        crate::validator::entity_manifest::AccessTerm,
-        Vec<crate::validator::entity_manifest::AccessTerm>,
-    >,
-    /// Access tries for each critical term
-    access_tries: HashMap<crate::validator::entity_manifest::AccessTerm, AccessTrie>,
-    /// The request type terms
-    for_request: &'a crate::validator::entity_manifest::RequestTypeTerms,
-    /// Map of already loaded entities
-    entities_map: HashMap<EntityUID, Entity>,
-    /// The request
-    request: &'a Request,
-}
-
-impl<'a> EntityRequestContext<'a> {
-    /// Creates a new entity request context.
-    pub(crate) fn new(
-        for_request: &'a crate::validator::entity_manifest::RequestTypeTerms,
-        request: &'a Request,
-    ) -> Self {
-        let reachable_terms = for_request.reachable_terms();
-        // Map from term to dependents
-        let dependents_map = for_request.build_dependents_map(&reachable_terms);
-        // Map from a critical term to critical dependents
-        let dependent_critical = for_request.build_dependent_critical_terms(&dependents_map);
-        // Access tries for each critical term
-        let access_tries = for_request.compute_access_tries(&dependent_critical, &dependents_map);
-
-        Self {
-            dependent_critical,
-            access_tries,
-            for_request,
-            entities_map: HashMap::new(),
-            request,
-        }
-    }
-
-    /// Gets the initial critical terms to process.
-    pub(crate) fn initial_critical_terms(
-        &self,
-    ) -> Vec<crate::validator::entity_manifest::AccessTerm> {
-        self.for_request.initial_critical_terms(&self.access_tries)
-    }
-
-    /// Gets the entities map.
-    pub(crate) fn entities_map(&self) -> &HashMap<EntityUID, Entity> {
-        &self.entities_map
-    }
-
-    /// Gets a mutable reference to the entities map.
-    pub(crate) fn entities_map_mut(&mut self) -> &mut HashMap<EntityUID, Entity> {
-        &mut self.entities_map
-    }
-
-    /// Prepare entity requests from a batch of critical terms.
-    ///
-    /// This function:
-    /// 1. Takes critical terms from `next_critical_terms`
-    /// 2. Adds their dependent terms to `next_critical_terms` for the next batch
-    /// 3. Processes entity-typed terms and tag terms, adding appropriate entity requests
-    pub(crate) fn prepare_entity_requests_from_terms(
-        &self,
-        next_critical_terms: &mut Vec<crate::validator::entity_manifest::AccessTerm>,
-        visited_terms: &mut HashSet<crate::validator::entity_manifest::AccessTerm>,
-        entity_requests: &mut EntityRequests,
-    ) -> Result<(), EntitySliceError> {
-        // Process each critical term in the current batch
-        for critical_term in std::mem::take(next_critical_terms).into_iter() {
-            // If we have already visited this term, skip it
-            if !visited_terms.insert(critical_term.clone()) {
-                continue;
-            }
-
-            // Add dependent critical terms to the next batch
-            // PANIC SAFETY: Every critical term has an entry in dependent_critical
-            #[allow(clippy::panic)]
-            let Some(dependent_critical_terms) = self.dependent_critical.get(&critical_term) else {
-                panic!(
-                    "Expected dependent term {:?} to have an entry in dependent_critical",
-                    critical_term
-                );
-            };
-            next_critical_terms.extend(dependent_critical_terms.iter().cloned());
-
-            // Get the access trie for this critical term if any
-            if let Some(dependent_trie) = self.access_tries.get(&critical_term) {
-                // Case split on entities or tag access terms
-                if self.for_request.is_entity_typed_term(&critical_term) {
-                    self.add_entity_request_from_term(
-                        &critical_term,
-                        dependent_trie,
-                        entity_requests,
-                    )?;
-                } else {
-                    self.add_tag_request_from_term(
-                        &critical_term,
-                        dependent_trie,
-                        entity_requests,
-                    )?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Add an entity request for an entity-typed term.
-    fn add_entity_request_from_term(
-        &self,
-        critical_term: &crate::validator::entity_manifest::AccessTerm,
-        dependent_trie: &AccessTrie,
-        entity_requests: &mut EntityRequests,
-    ) -> Result<(), EntitySliceError> {
-        // Get the id of the entity term using the entity store
-        let dependent_val =
-            critical_term.compute_value(&self.entities_map, &self.for_request.dag, self.request)?;
-
-        let dependent_id = match dependent_val.value_kind() {
-            ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
-            _ => {
-                return Err(ExpectedEntityTypeError {
-                    found_value: dependent_val.clone(),
-                }
-                .into())
-            }
-        };
-
-        // Add entity request to the collection
-        entity_requests.add(EntityRequest {
-            entity_id: dependent_id,
-            tags: HashMap::new(),
-            access_trie: dependent_trie.clone(),
-        });
-
-        Ok(())
-    }
-
-    /// Add an entity request with a tag for a tag term.
-    fn add_tag_request_from_term(
-        &self,
-        critical_term: &crate::validator::entity_manifest::AccessTerm,
-        dependent_trie: &AccessTrie,
-        entity_requests: &mut EntityRequests,
-    ) -> Result<(), EntitySliceError> {
-        eprintln!(
-            "Loading tag term: {:?} with access trie: {:?}",
-            critical_term, dependent_trie
-        );
-
-        // PANIC SAFETY: Critical terms are either entity typed or tag terms.
-        #[allow(clippy::panic)]
-        let AccessTermVariant::Tag { of, tag } =
-            critical_term.get_variant_internal(&self.for_request.dag)
-        else {
-            panic!(
-                "Expected a tag term variant, but got {:?}",
-                critical_term.get_variant_internal(&self.for_request.dag)
-            );
-        };
-
-        // For tag terms, generate an entity request with the tag and access trie
-        let of_val_result =
-            of.compute_value(&self.entities_map, &self.for_request.dag, self.request)?;
-        let tag_val_result =
-            tag.compute_value(&self.entities_map, &self.for_request.dag, self.request)?;
-
-        // Extract the entity ID
-        let of_val = match of_val_result.value_kind() {
-            ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
-            _ => {
-                return Err(ExpectedEntityTypeError {
-                    found_value: of_val_result.clone(),
-                }
-                .into())
-            }
-        };
-
-        // Tag value is always a string
-        let tag_val = match tag_val_result.value_kind() {
-            ValueKind::Lit(Literal::String(s)) => s.clone(),
-            _ => {
-                return Err(ExpectedStringTypeError {
-                    found_value: tag_val_result.clone(),
-                }
-                .into());
-            }
-        };
-
-        // Add the tag to the request
-        let mut tags = HashMap::new();
-        tags.insert(tag_val, dependent_trie.clone());
-
-        // Add entity request with tags to the collection
-        entity_requests.add(EntityRequest {
-            entity_id: of_val,
-            tags,
-            access_trie: AccessTrie::new(),
-        });
-
-        Ok(())
-    }
-
-    /// Load entities for the current batch of requests and merge them into the entities map.
-    pub(crate) fn load_and_merge_entities(
-        &mut self,
-        loader: &mut dyn EntityLoader,
-        entity_requests: &mut EntityRequests,
-    ) -> Result<(), EntitySliceError> {
-        // Load the current batch of entities
-        let loaded_entities = loader.load_entities(entity_requests)?;
-
-        // Reset entity_requests for the next batch
-        entity_requests.clear();
-
-        for entity in loaded_entities.into_iter() {
-            // Add or merge the entity into our map
-            match self.entities_map.entry(entity.uid().clone()) {
-                hash_map::Entry::Occupied(o) => {
-                    // If the entity is already present, merge it
-                    let (k, v) = o.remove_entry();
-                    let merged = merge_entities(v, entity)?;
-                    self.entities_map.insert(k, merged);
-                }
-                hash_map::Entry::Vacant(v) => {
-                    v.insert(entity);
-                }
-            }
-        }
-
-        Ok(())
-    }
-}
 
 /// A request that an entity be loaded.
 /// Entities this entity references need not be loaded, as they will be requested separately.
@@ -420,13 +183,14 @@ impl AncestorRequests {
         request: &'a Request,
     ) -> Result<Self, EntitySliceError> {
         let mut ancestor_requests = Self::new();
-        
+
         // Compute ancestors requests by finding all AccessTermVariant::Ancestor variants
         // Look up the entity ids in the Entities store using the terms
         // Then create an ancestor request
         let reachable_terms = for_request.reachable_terms();
         for term in reachable_terms.iter() {
-            if let Ok(AccessTermVariant::Ancestor { of, ancestor }) = term.get_variant(&for_request.dag)
+            if let Ok(AccessTermVariant::Ancestor { of, ancestor }) =
+                term.get_variant(&for_request.dag)
             {
                 // Extract EntityUID from the Value
                 let of_val_result = of.compute_value(entities_map, &for_request.dag, request)?;
@@ -474,20 +238,20 @@ impl AncestorRequests {
 
                 // If there is an existing ancestor request, add to it
                 // Otherwise make a new one
-                let ancestor_request =
-                    ancestor_requests.requests
-                        .entry(of_val.clone())
-                        .or_insert_with(|| AncestorsRequest {
-                            entity_id: of_val,
-                            ancestors: HashSet::new(),
-                        });
+                let ancestor_request = ancestor_requests
+                    .requests
+                    .entry(of_val.clone())
+                    .or_insert_with(|| AncestorsRequest {
+                        entity_id: of_val,
+                        ancestors: HashSet::new(),
+                    });
                 ancestor_request.ancestors.extend(ancestors_to_request);
             }
         }
-        
+
         Ok(ancestor_requests)
     }
-    
+
     /// Loads ancestors for all entities in the collection and adds them to the entities map.
     pub(crate) fn load_ancestors(
         self,
@@ -497,10 +261,9 @@ impl AncestorRequests {
         if self.requests.is_empty() {
             return Ok(());
         }
-        
+
         // Convert HashMap to Vec for the loader API
-        let ancestors_requests_vec: Vec<AncestorsRequest> =
-            self.requests.into_values().collect();
+        let ancestors_requests_vec: Vec<AncestorsRequest> = self.requests.into_values().collect();
 
         let loaded_ancestors = loader.load_ancestors(&ancestors_requests_vec)?;
 
@@ -519,13 +282,13 @@ impl AncestorRequests {
                         HashMap::new(),
                         HashSet::new(),
                         ancestors,
-                        [], 
+                        [],
                     );
                     entities_map.insert(entity_id, entity);
                 }
             }
         }
-        
+
         Ok(())
     }
 }
@@ -608,7 +371,8 @@ pub(crate) fn load_entities(
     }
 
     // Compute and load ancestor requests
-    let ancestor_requests = AncestorRequests::compute_from_request(for_request, context.entities_map(), request)?;
+    let ancestor_requests =
+        AncestorRequests::compute_from_request(for_request, context.entities_map(), request)?;
     ancestor_requests.load_ancestors(loader, context.entities_map_mut())?;
 
     // Convert the loaded entities into a Cedar Entities store
@@ -623,156 +387,3 @@ pub(crate) fn load_entities(
     }
 }
 
-/// Merge the contents of two entities in the slice. Combines the attributes
-/// records for both entities, recursively merging any attribute that exist in
-/// both. If one entity is referenced by multiple entity roots in the slice,
-/// then we need to be sure that we don't clobber the attribute for the first
-/// when inserting the second into the slice.
-// INVARIANT: `e1` and `e2` must be the result of slicing the same original
-// entity using the same entity manifest and request. I.e., they may differ only in
-// what attributes they contain. When an attribute exists in both, the
-// attributes may differ only if they are records, and then only in what nested
-// attributes they contain.
-fn merge_entities(e1: Entity, e2: Entity) -> Result<Entity, EntitySliceError> {
-    let (uid1, mut attrs1, ancestors1, parents1, tags1) = e1.into_inner();
-    let (uid2, attrs2, ancestors2, parents2, tags2) = e2.into_inner();
-
-    if uid1 != uid2 {
-        return Err(ConflictingEntityDataError {
-            entity_id: uid1.clone(),
-            old_value: Value::new(ValueKind::Lit(Literal::EntityUID(Arc::new(uid1))), None),
-            new_value: Value::new(ValueKind::Lit(Literal::EntityUID(Arc::new(uid2))), None),
-        }
-        .into());
-    }
-
-    // Merge ancestors
-    let mut merged_ancestors = ancestors1;
-    merged_ancestors.extend(ancestors2);
-
-    // Merge parents
-    let mut merged_parents = parents1;
-    merged_parents.extend(parents2);
-
-    // Merge tags
-    let mut merged_tags = tags1;
-    for (k, v2) in tags2 {
-        match merged_tags.entry(k) {
-            hash_map::Entry::Occupied(occupied) => {
-                let (k, v1) = occupied.remove_entry();
-                match (v1, v2) {
-                    (PartialValue::Value(v1), PartialValue::Value(v2)) => {
-                        let merged_v = merge_values(v1, v2, &uid1)?;
-                        merged_tags.insert(k, PartialValue::Value(merged_v));
-                    }
-                    (PartialValue::Residual(_), PartialValue::Residual(_)) => {
-                        return Err(ResidualEncounteredError { entity_id: uid1 }.into());
-                    }
-                    (PartialValue::Value(_), PartialValue::Residual(_))
-                    | (PartialValue::Residual(_), PartialValue::Value(_)) => {
-                        return Err(ResidualEncounteredError { entity_id: uid1 }.into());
-                    }
-                };
-            }
-            hash_map::Entry::Vacant(vacant) => {
-                vacant.insert(v2);
-            }
-        }
-    }
-
-    for (k, v2) in attrs2 {
-        match attrs1.entry(k) {
-            hash_map::Entry::Occupied(occupied) => {
-                let (k, v1) = occupied.remove_entry();
-                match (v1, v2) {
-                    (PartialValue::Value(v1), PartialValue::Value(v2)) => {
-                        let merged_v = merge_values(v1, v2, &uid1)?;
-                        attrs1.insert(k, PartialValue::Value(merged_v));
-                    }
-                    (PartialValue::Residual(_), PartialValue::Residual(_)) => {
-                        return Err(ResidualEncounteredError { entity_id: uid1 }.into());
-                    }
-                    (PartialValue::Value(_), PartialValue::Residual(_))
-                    | (PartialValue::Residual(_), PartialValue::Value(_)) => {
-                        return Err(ResidualEncounteredError { entity_id: uid1 }.into());
-                    }
-                };
-            }
-            hash_map::Entry::Vacant(vacant) => {
-                vacant.insert(v2);
-            }
-        }
-    }
-
-    Ok(Entity::new_with_attr_partial_value(
-        uid1,
-        attrs1,
-        merged_ancestors,
-        merged_parents,
-        merged_tags,
-    ))
-}
-
-/// Merge two value for corresponding attributes in the slice.
-// INVARIANT: `v1` and `v2` must be the result of slicing the same original
-// value using the same entity manifest and request. I.e., they must be
-// identical, except for the attributes they contain when the values are a
-// records. When an attribute exists in both records, the attributes must be
-// recursively identical, with the same exception.
-fn merge_values(v1: Value, v2: Value, entity_id: &EntityUID) -> Result<Value, EntitySliceError> {
-    // Clone the values before the match to avoid borrow issues
-    let v1_clone = v1.clone();
-    let v2_clone = v2.clone();
-    let v1_loc = v1.loc;
-
-    match (v1.value, v2.value) {
-        (ValueKind::Record(r1), ValueKind::Record(r2)) => {
-            let mut r1 = Arc::unwrap_or_clone(r1);
-            for (k, v2) in Arc::unwrap_or_clone(r2) {
-                match r1.entry(k) {
-                    btree_map::Entry::Occupied(occupied) => {
-                        let (k, v1) = occupied.remove_entry();
-                        let merged_v = merge_values(v1, v2, entity_id)?;
-                        r1.insert(k, merged_v);
-                    }
-                    btree_map::Entry::Vacant(vacant) => {
-                        vacant.insert(v2);
-                    }
-                }
-            }
-            Ok(Value::new(ValueKind::Record(Arc::new(r1)), v1_loc))
-        }
-        (ValueKind::Lit(l1), ValueKind::Lit(l2)) => {
-            if l1 != l2 {
-                return Err(ConflictingEntityDataError {
-                    entity_id: entity_id.clone(),
-                    old_value: v1_clone,
-                    new_value: v2_clone,
-                }
-                .into());
-            }
-            Ok(Value::new(l1, v1_loc))
-        }
-        (vk1 @ ValueKind::ExtensionValue(_), vk2 @ ValueKind::ExtensionValue(_))
-        | (vk1 @ ValueKind::Set(_), vk2 @ ValueKind::Set(_)) => {
-            // It might seem that we should recur into the sets and extensions
-            // values, but `AccessTrie::slice_val` doesn't, so the merge
-            // function can stop here too.
-            if vk1 != vk2 {
-                return Err(ConflictingEntityDataError {
-                    entity_id: entity_id.clone(),
-                    old_value: v1_clone,
-                    new_value: v2_clone,
-                }
-                .into());
-            }
-            Ok(Value::new(vk1, v1_loc))
-        }
-        _ => Err(ConflictingEntityDataError {
-            entity_id: entity_id.clone(),
-            old_value: v1_clone,
-            new_value: v2_clone,
-        }
-        .into()),
-    }
-}
