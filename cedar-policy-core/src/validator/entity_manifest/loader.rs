@@ -272,7 +272,7 @@ impl<'a> EntityRequestContext<'a> {
                     self.entities_map.insert(k, merged);
                 }
                 hash_map::Entry::Vacant(v) => {
-                    v.insert(entity.clone());
+                    v.insert(entity);
                 }
             }
         }
@@ -398,6 +398,137 @@ pub(crate) struct AncestorsRequest {
     pub(crate) ancestors: HashSet<EntityUID>,
 }
 
+/// A collection of ancestor requests, indexed by entity ID.
+#[derive(Debug, Default)]
+pub(crate) struct AncestorRequests {
+    /// Map from entity ID to ancestor request
+    requests: HashMap<EntityUID, AncestorsRequest>,
+}
+
+impl AncestorRequests {
+    /// Creates a new empty collection of ancestor requests.
+    pub(crate) fn new() -> Self {
+        Self {
+            requests: HashMap::new(),
+        }
+    }
+
+    /// Computes ancestor requests from the given request type terms, entities map, and request.
+    pub(crate) fn compute_from_request<'a>(
+        for_request: &'a crate::validator::entity_manifest::RequestTypeTerms,
+        entities_map: &HashMap<EntityUID, Entity>,
+        request: &'a Request,
+    ) -> Result<Self, EntitySliceError> {
+        let mut ancestor_requests = Self::new();
+        
+        // Compute ancestors requests by finding all AccessTermVariant::Ancestor variants
+        // Look up the entity ids in the Entities store using the terms
+        // Then create an ancestor request
+        let reachable_terms = for_request.reachable_terms();
+        for term in reachable_terms.iter() {
+            if let Ok(AccessTermVariant::Ancestor { of, ancestor }) = term.get_variant(&for_request.dag)
+            {
+                // Extract EntityUID from the Value
+                let of_val_result = of.compute_value(entities_map, &for_request.dag, request)?;
+                let ancestor_val_result =
+                    ancestor.compute_value(entities_map, &for_request.dag, request)?;
+
+                // Extract the EntityUID from the Value
+                let of_val = match of_val_result.value_kind() {
+                    ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
+                    _ => {
+                        return Err(ExpectedEntityTypeError {
+                            found_value: of_val_result.clone(),
+                        }
+                        .into())
+                    }
+                };
+
+                // Ancestor value can be a UID or a set of UIDs
+                let ancestors_to_request = match ancestor_val_result.value_kind() {
+                    ValueKind::Lit(Literal::EntityUID(euid)) => {
+                        vec![(**euid).clone()].into_iter().collect()
+                    }
+                    ValueKind::Set(set) => {
+                        // Make a set of EntityUIDs from the set
+                        let mut resulting_set = HashSet::new();
+                        for val in set.iter() {
+                            if let ValueKind::Lit(Literal::EntityUID(euid)) = val.value_kind() {
+                                resulting_set.insert((**euid).clone());
+                            } else {
+                                return Err(ExpectedEntityTypeError {
+                                    found_value: val.clone(),
+                                }
+                                .into());
+                            }
+                        }
+                        resulting_set
+                    }
+                    _ => {
+                        return Err(ExpectedEntityOrEntitySetError {
+                            found_value: ancestor_val_result.clone(),
+                        }
+                        .into());
+                    }
+                };
+
+                // If there is an existing ancestor request, add to it
+                // Otherwise make a new one
+                let ancestor_request =
+                    ancestor_requests.requests
+                        .entry(of_val.clone())
+                        .or_insert_with(|| AncestorsRequest {
+                            entity_id: of_val,
+                            ancestors: HashSet::new(),
+                        });
+                ancestor_request.ancestors.extend(ancestors_to_request);
+            }
+        }
+        
+        Ok(ancestor_requests)
+    }
+    
+    /// Loads ancestors for all entities in the collection and adds them to the entities map.
+    pub(crate) fn load_ancestors(
+        self,
+        loader: &mut dyn EntityLoader,
+        entities_map: &mut HashMap<EntityUID, Entity>,
+    ) -> Result<(), EntitySliceError> {
+        if self.requests.is_empty() {
+            return Ok(());
+        }
+        
+        // Convert HashMap to Vec for the loader API
+        let ancestors_requests_vec: Vec<AncestorsRequest> =
+            self.requests.into_values().collect();
+
+        let loaded_ancestors = loader.load_ancestors(&ancestors_requests_vec)?;
+
+        // Add ancestors to entities
+        for (request, ancestors) in ancestors_requests_vec.into_iter().zip(loaded_ancestors) {
+            if let Some(entity) = entities_map.get_mut(&request.entity_id) {
+                for ancestor in ancestors {
+                    entity.add_parent(ancestor);
+                }
+            } else {
+                // Otherwise, we need to create the entity if ancestors is not empty
+                if !ancestors.is_empty() {
+                    let entity = Entity::new_with_attr_partial_value(
+                        request.entity_id.clone(),
+                        HashMap::new(),
+                        HashSet::new(),
+                        ancestors,
+                        [], // TODO: entity slicing does not yet support tags
+                    );
+                    entities_map.insert(request.entity_id, entity);
+                }
+            }
+        }
+        
+        Ok(())
+    }
+}
+
 /// Implement [`EntityLoader`] to easily load entities using their ids
 /// into a Cedar [`Entities`] store.
 /// The most basic implementation loads full entities (including all ancestors) in the `load_entities` method and loads the context in the `load_context` method.
@@ -475,104 +606,9 @@ pub(crate) fn load_entities(
         context.load_and_merge_entities(loader, &mut entity_requests)?;
     }
 
-    // Load ancestors for all entities
-    let mut ancestors_requests = HashMap::new();
-
-    // compute ancestors requests by finding all AccessTermVariant::Ancestor variants
-    // look up the entity ids in the Entities store using the terms
-    // then create an ancestor request
-    let reachable_terms = for_request.reachable_terms();
-    for term in reachable_terms.iter() {
-        if let Ok(AccessTermVariant::Ancestor { of, ancestor }) = term.get_variant(&for_request.dag)
-        {
-            // Extract EntityUID from the Value
-            let of_val_result =
-                of.compute_value(context.entities_map(), &for_request.dag, request)?;
-            let ancestor_val_result =
-                ancestor.compute_value(context.entities_map(), &for_request.dag, request)?;
-
-            // Extract the EntityUID from the Value
-            let of_val = match of_val_result.value_kind() {
-                ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
-                _ => {
-                    return Err(ExpectedEntityTypeError {
-                        found_value: of_val_result.clone(),
-                    }
-                    .into())
-                }
-            };
-
-            // ancestor value can be a UID or a set of UIDs
-            let ancestors_to_request = match ancestor_val_result.value_kind() {
-                ValueKind::Lit(Literal::EntityUID(euid)) => {
-                    vec![(**euid).clone()].into_iter().collect()
-                }
-                ValueKind::Set(set) => {
-                    // make a set of EntityUIDs from the set
-                    let mut resulting_set = HashSet::new();
-                    for val in set.iter() {
-                        if let ValueKind::Lit(Literal::EntityUID(euid)) = val.value_kind() {
-                            resulting_set.insert((**euid).clone());
-                        } else {
-                            return Err(ExpectedEntityTypeError {
-                                found_value: val.clone(),
-                            }
-                            .into());
-                        }
-                    }
-                    resulting_set
-                }
-                _ => {
-                    return Err(ExpectedEntityOrEntitySetError {
-                        found_value: ancestor_val_result.clone(),
-                    }
-                    .into());
-                }
-            };
-
-            // if there is an existing ancestor request, add to it
-            // otherwise make a new one
-            let ancestor_request =
-                ancestors_requests
-                    .entry(of_val.clone())
-                    .or_insert_with(|| AncestorsRequest {
-                        entity_id: of_val.clone(),
-                        ancestors: HashSet::new(),
-                    });
-            ancestor_request.ancestors.extend(ancestors_to_request);
-        }
-    }
-
-    if !ancestors_requests.is_empty() {
-        // Convert HashMap to Vec for the loader API
-        let ancestors_requests_vec: Vec<AncestorsRequest> =
-            ancestors_requests.into_values().collect();
-
-        let loaded_ancestors = loader.load_ancestors(&ancestors_requests_vec)?;
-
-        // Add ancestors to entities
-        for (request, ancestors) in ancestors_requests_vec.into_iter().zip(loaded_ancestors) {
-            if let Some(entity) = context.entities_map_mut().get_mut(&request.entity_id) {
-                for ancestor in ancestors {
-                    entity.add_parent(ancestor);
-                }
-            } else {
-                // otherwise, we need to create the entity if ancestors is not empty
-                if !ancestors.is_empty() {
-                    let entity = Entity::new_with_attr_partial_value(
-                        request.entity_id.clone(),
-                        HashMap::new(),
-                        HashSet::new(),
-                        ancestors,
-                        [], // TODO: entity slicing does not yet support tags
-                    );
-                    context
-                        .entities_map_mut()
-                        .insert(request.entity_id.clone(), entity);
-                }
-            }
-        }
-    }
+    // Compute and load ancestor requests
+    let ancestor_requests = AncestorRequests::compute_from_request(for_request, context.entities_map(), request)?;
+    ancestor_requests.load_ancestors(loader, context.entities_map_mut())?;
 
     // Convert the loaded entities into a Cedar Entities store
     match Entities::from_entities(
