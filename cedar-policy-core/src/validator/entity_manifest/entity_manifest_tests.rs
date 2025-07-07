@@ -627,3 +627,113 @@ when {
         }),
     );
 }
+
+#[test]
+fn test_complex_tag_chain() {
+    // oliver is friends with yihong is friends with ryan
+    // toaccess on the doc is "ryan"
+
+    // Create a custom schema that allows entity references in tags
+    let schema = ValidatorSchema::from_cedarschema_str(
+        "
+entity User = {
+  name: String,
+} tags User;
+
+entity Document tags String;
+
+action Read appliesTo {
+  principal: [User],
+  resource: [Document]
+};
+        ",
+        Extensions::all_available(),
+    )
+    .unwrap()
+    .0;
+
+    test_entity_manifest_with_policy(
+        r#"permit(principal, action, resource)
+when {
+    resource.hasTag("toaccess") && principal.hasTag("friend") && principal.getTag("friend").hasTag(resource.getTag("toaccess")) && principal.getTag("friend").getTag(resource.getTag("toaccess")).hasTag("ryanstag")
+};"#,
+        None,
+        Validator::new(schema),
+        serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "Read"
+                    },
+                    "resource": "Document"
+                },
+                [
+                    "principal.getTag(\"friend\").getTag(resource.getTag(\"toaccess\")).getTag(\"ryanstag\")"
+                ]
+            ]]
+        }),
+    );
+}
+
+#[test]
+fn test_multiple_dynamic_tag_accesses() {
+    // Test multiple dynamic tag accesses on the same entity
+    let schema = ValidatorSchema::from_cedarschema_str(
+        "
+entity User = {
+  name: String,
+  department: String,
+  role: String,
+} tags String;
+
+entity Document = {
+  owner: User,
+  viewer: User,
+  department: String,
+  classification: String,
+} tags String;
+
+action Read appliesTo {
+  principal: [User],
+  resource: [Document]
+};
+        ",
+        Extensions::all_available(),
+    )
+    .unwrap()
+    .0;
+
+    test_entity_manifest_with_policy(
+        r#"permit(principal, action, resource)
+when {
+    // Check if principal has tags with names computed from resource attributes
+    principal.hasTag(resource.department) && 
+    principal.hasTag(resource.classification) &&
+    // And check if resource has tags with names computed from principal attributes
+    resource.hasTag(principal.department) &&
+    resource.hasTag(principal.role)
+};"#,
+        None,
+        Validator::new(schema),
+        serde_json::json!({
+            "perAction": [[
+                {
+                    "principal": "User",
+                    "action": {
+                        "ty": "Action",
+                        "eid": "Read"
+                    },
+                    "resource": "Document"
+                },
+                [
+                    "principal.getTag(resource.department)",
+                    "principal.getTag(resource.classification)",
+                    "resource.getTag(principal.department)",
+                    "resource.getTag(principal.role)",
+                ]
+            ]]
+        }),
+    );
+}

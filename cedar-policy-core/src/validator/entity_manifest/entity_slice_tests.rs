@@ -116,6 +116,7 @@ fn expect_entity_slice_to(
     expected: serde_json::Value,
     schema: &ValidatorSchema,
     manifest: &EntityManifest,
+    pset: &PolicySet,
 ) {
     let request = Request::new(
         (
@@ -171,6 +172,16 @@ fn expect_entity_slice_to(
             expected_json, sliced_json
         );
     }
+
+    // Also test that we get the same result using both entity stores
+    use crate::authorizer::Authorizer;
+    let authorizer = Authorizer::new();
+    let result_with_original = authorizer.is_authorized(request.clone(), pset, &original_entities);
+    let result_with_sliced = authorizer.is_authorized(request, pset, &sliced_entities);
+    assert_eq!(
+        result_with_original, result_with_sliced,
+        "Authorization results differ between original and sliced entity stores"
+    );
 }
 
 /// Helper function to test entity slicing with a single policy
@@ -193,6 +204,7 @@ fn test_entity_slice_with_policy(
         expected_json,
         validator.schema(),
         &entity_manifest,
+        &pset,
     );
 }
 
@@ -217,6 +229,7 @@ fn test_entity_slice_with_policies(
         expected_json,
         validator.schema(),
         &entity_manifest,
+        &pset,
     );
 }
 
@@ -1251,6 +1264,276 @@ when {
                         "classification": "secret",
                         "level": 3
                     }
+                }
+            }
+        ]),
+    );
+}
+
+#[test]
+fn test_slice_tag_computed_from_another_tag() {
+    test_entity_slice_with_policy(
+        r#"permit(principal, action, resource)
+when {
+    // Test a tag computed based on another getTag
+    resource.hasTag("access_level") && principal.hasTag(resource.getTag("access_level"))
+};"#,
+        None,
+        schema(),
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {
+                    "name" : "Oliver"
+                },
+                "parents" : [],
+                "tags": {
+                    "reader": "true",
+                    "editor": "true",
+                    "admin": "true",
+                    "unused_tag": "value"
+                }
+            },
+            {
+                "uid" : { "type" : "Document", "id" : "dummy"},
+                "attrs" : {},
+                "parents" : [],
+                "tags": {
+                    "access_level": "editor",
+                    "classification": "confidential",
+                    "department": "engineering"
+                }
+            }
+        ]),
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {},
+                "parents" : [],
+                "tags": {
+                    "editor": "true"
+                }
+            },
+            {
+                "uid" : { "type" : "Document", "id" : "dummy"},
+                "attrs" : {},
+                "parents" : [],
+                "tags": {
+                    "access_level": "editor"
+                }
+            }
+        ]),
+    );
+}
+
+#[test]
+fn test_slice_multiple_dynamic_tag_accesses() {
+    // Test multiple dynamic tag accesses on the same entity
+    let schema = ValidatorSchema::from_cedarschema_str(
+        "
+entity User = {
+  name: String,
+  department: String,
+  role: String,
+} tags String;
+
+entity Document = {
+  owner: User,
+  viewer: User,
+  department: String,
+  classification: String,
+} tags String;
+
+action Read appliesTo {
+  principal: [User],
+  resource: [Document]
+};
+        ",
+        Extensions::all_available(),
+    )
+    .unwrap()
+    .0;
+
+    test_entity_slice_with_policy(
+        r#"permit(principal, action, resource)
+when {
+    // Check if principal has tags with names computed from resource attributes
+    principal.hasTag(resource.department) && 
+    principal.hasTag(resource.classification) &&
+    // And check if resource has tags with names computed from principal attributes
+    resource.hasTag(principal.department) &&
+    resource.hasTag(principal.role)
+};"#,
+        None,
+        schema,
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {
+                    "name" : "Oliver",
+                    "department": "engineering",
+                    "role": "admin"
+                },
+                "parents" : [],
+                "tags": {
+                    "finance": "allowed",
+                    "secret": "allowed",
+                    "hr": "denied",
+                    "unused_tag": "value"
+                }
+            },
+            {
+                "uid" : { "type" : "Document", "id" : "dummy"},
+                "attrs" : {
+                    "owner": { "type" : "User", "id" : "john"},
+                    "viewer": { "type" : "User", "id" : "oliver"},
+                    "department": "finance",
+                    "classification": "secret"
+                },
+                "parents" : [],
+                "tags": {
+                    "engineering": "read-write",
+                    "admin": "full-access",
+                    "marketing": "read-only",
+                    "unused_tag": "value"
+                }
+            }
+        ]),
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {
+                    "department": "engineering",
+                    "role": "admin"
+                },
+                "parents" : [],
+                "tags": {
+                    "finance": "allowed",
+                    "secret": "allowed"
+                }
+            },
+            {
+                "uid" : { "type" : "Document", "id" : "dummy"},
+                "attrs" : {
+                    "department": "finance",
+                    "classification": "secret"
+                },
+                "parents" : [],
+                "tags": {
+                    "engineering": "read-write",
+                    "admin": "full-access"
+                }
+            }
+        ]),
+    );
+}
+
+#[test]
+fn test_slice_complex_tag_chain() {
+    // oliver is friends with yihong is friends with ryan
+    // toaccess on the doc is "ryan"
+    
+    // Create a custom schema that allows entity references in tags
+    let schema = ValidatorSchema::from_cedarschema_str(
+        "
+entity User = {
+  name: String,
+} tags User;
+
+entity Document tags String;
+
+action Read appliesTo {
+  principal: [User],
+  resource: [Document]
+};
+        ",
+        Extensions::all_available(),
+    )
+    .unwrap()
+    .0;
+
+    test_entity_slice_with_policy(
+        r#"permit(principal, action, resource)
+when {
+    resource.hasTag("toaccess") && principal.hasTag("friend") && principal.getTag("friend").hasTag(resource.getTag("toaccess")) && principal.getTag("friend").getTag(resource.getTag("toaccess")).hasTag("ryanstag")
+};"#,
+        None,
+        schema,
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {
+                    "name" : "Oliver"
+                },
+                "parents" : [],
+                "tags": {
+                    "friend": { "type": "User", "id": "yihong" },
+                    "unused_tag": { "type": "User", "id": "oliver" }
+                }
+            },
+            {
+                "uid" : { "type" : "User", "id" : "yihong"},
+                "attrs" : {
+                    "name" : "Yihong"
+                },
+                "parents" : [],
+                "tags": {
+                    "ryan": { "type": "User", "id": "ryan" },
+                    "other_tag": { "type": "User", "id": "oliver" }
+                }
+            },
+            {
+                "uid" : { "type" : "User", "id" : "ryan"},
+                "attrs" : {
+                    "name" : "Ryan"
+                },
+                "parents" : [],
+                "tags": {
+                    "ryanstag": { "type": "User", "id": "oliver" },
+                    "another_tag": { "type": "User", "id": "yihong" }
+                }
+            },
+            {
+                "uid" : { "type" : "Document", "id" : "dummy"},
+                "attrs" : {},
+                "parents" : [],
+                "tags": {
+                    "toaccess": "ryan",
+                    "other_doc_tag": "unused"
+                }
+            }
+        ]),
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {},
+                "parents" : [],
+                "tags": {
+                    "friend": { "__entity": { "type": "User", "id": "yihong" } }
+                }
+            },
+            {
+                "uid" : { "type" : "User", "id" : "yihong"},
+                "attrs" : {},
+                "parents" : [],
+                "tags": {
+                    "ryan": { "__entity": { "type": "User", "id": "ryan" } }
+                }
+            },
+            {
+                "uid" : { "type" : "User", "id" : "ryan"},
+                "attrs" : {},
+                "parents" : [],
+                "tags": {
+                    "ryanstag": { "__entity": { "type": "User", "id": "oliver" } }
+                }
+            },
+            {
+                "uid" : { "type" : "Document", "id" : "dummy"},
+                "attrs" : {},
+                "parents" : [],
+                "tags": {
+                    "toaccess": "ryan"
                 }
             }
         ]),

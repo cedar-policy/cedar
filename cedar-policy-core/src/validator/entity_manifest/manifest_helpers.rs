@@ -423,6 +423,10 @@ impl<'a> EntityLoadingContext<'a> {
         let mut visited_critical_terms: HashSet<AccessTerm> = HashSet::new();
         // Process each critical term in the current batch
         for critical_term in critical_terms {
+            if computed_critical_terms.contains(critical_term) {
+                continue;
+            }
+
             // ensure that this term's critical dependees have been visited
             // PANIC SAFETY: dependee_critical should have one entry per critical term
             #[allow(clippy::unwrap_used)]
@@ -441,6 +445,12 @@ impl<'a> EntityLoadingContext<'a> {
                 continue;
             }
 
+            // print this full term
+            println!(
+                "Processing critical term: {}",
+                critical_term.to_expr(self.for_request.dag()).unwrap()
+            );
+
             // Add dependent critical terms to the next batch
             // PANIC SAFETY: Every critical term has an entry in dependent_critical
             #[allow(clippy::panic)]
@@ -456,11 +466,12 @@ impl<'a> EntityLoadingContext<'a> {
             #[allow(clippy::unwrap_used)]
             let access_trie = self.access_tries.get(critical_term).unwrap();
             // Case split on entities or tag access terms
-            if self.for_request.is_entity_typed_term(critical_term) {
-                self.add_entity_request_from_term(critical_term, access_trie, entity_requests)?;
-            } else {
+            if self.for_request.is_tag_term(critical_term) {
                 self.add_tag_request_from_term(critical_term, access_trie, entity_requests)?;
+            } else {
+                self.add_entity_request_from_term(critical_term, access_trie, entity_requests)?;
             }
+            eprintln!("done");
         }
 
         Ok(next_critical_terms)
@@ -504,6 +515,7 @@ impl<'a> EntityLoadingContext<'a> {
         dependent_trie: &AccessTrie,
         entity_requests: &mut EntityRequests,
     ) -> Result<(), EntitySliceError> {
+        eprintln!("Adding tag request for term: {critical_term:?}");
         // PANIC SAFETY: Critical terms are either entity typed or tag terms.
         #[allow(clippy::panic)]
         let AccessTermVariant::Tag { of, tag } =
@@ -516,8 +528,10 @@ impl<'a> EntityLoadingContext<'a> {
         };
 
         // For tag terms, generate an entity request with the tag and access trie
+        eprintln!("computing of");
         let of_val_result =
             of.compute_value(&self.entities_map, &self.for_request.dag, self.request)?;
+        eprintln!("computing tag");
         let tag_val_result =
             tag.compute_value(&self.entities_map, &self.for_request.dag, self.request)?;
 
@@ -563,6 +577,7 @@ impl<'a> EntityLoadingContext<'a> {
         loader: &mut dyn EntityLoader,
         entity_requests: &mut EntityRequests,
     ) -> Result<(), EntitySliceError> {
+        eprintln!("Loading entities for batch: {:?}...", entity_requests);
         // Load the current batch of entities
         let loaded_entities = loader.load_entities(entity_requests)?;
 

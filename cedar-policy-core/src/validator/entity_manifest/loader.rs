@@ -354,8 +354,6 @@ pub(crate) fn load_entities(
     let mut entity_requests = EntityRequests::new();
     let mut computed_terms = HashSet::new();
 
-    eprintln!("next_critical_terms: {critical_terms_todo:?}");
-
     // Main loop of loading entities, one batch at a time
     while !critical_terms_todo.is_empty() {
         // Prepare entity requests from the current batch of critical terms

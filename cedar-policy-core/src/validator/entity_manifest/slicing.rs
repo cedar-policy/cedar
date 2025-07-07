@@ -12,8 +12,9 @@ use smol_str::SmolStr;
 
 // Import errors directly
 use crate::validator::entity_manifest::errors::{
-    EntityFieldMissingError, EntityMissingError, EntitySliceError, IncompatibleEntityManifestError,
-    PartialContextError, PartialEntityError, PartialRequestError, RecordFieldMissingError,
+    EntityFieldMissingError, EntityMissingError, EntitySliceError, EntityTagMissingError,
+    ExpectedStringTypeError, IncompatibleEntityManifestError, PartialContextError,
+    PartialEntityError, PartialRequestError, RecordFieldMissingError,
 };
 use crate::validator::entity_manifest::loader::{
     load_entities, AncestorsRequest, EntityLoader, EntityRequest, EntityRequests,
@@ -193,7 +194,6 @@ impl AccessTerm {
                                 .into())
                             }
                         } else {
-                            panic!("todo");
                             // Entity not found, return an appropriate error
                             Err(EntityMissingError {
                                 entity_id: (**euid).clone(),
@@ -239,17 +239,23 @@ impl AccessTerm {
                             if let ValueKind::Lit(Literal::String(_tag_name)) =
                                 tag_value.value_kind()
                             {
-                                // TODO: Implement tag access once entity slicing supports tags
-                                // For now, return an error as tags are not yet supported
-                                Err(EntitySliceError::IncompatibleEntityManifest(
-                                    IncompatibleEntityManifestError {
-                                        non_record_entity_value: base_value,
-                                    },
-                                ))
+                                // get the tag from the entity
+                                if let Some(PartialValue::Value(tag_value)) =
+                                    _entity.get_tag(_tag_name)
+                                {
+                                    Ok(tag_value.clone())
+                                } else {
+                                    // Tag not found, return an appropriate error
+                                    Err(EntityTagMissingError {
+                                        entity: _entity.clone(),
+                                        tag: _tag_name.clone(),
+                                    }
+                                    .into())
+                                }
                             } else {
                                 // Tag name is not a string
-                                Err(IncompatibleEntityManifestError {
-                                    non_record_entity_value: tag_value,
+                                Err(ExpectedStringTypeError {
+                                    found_value: tag_value,
                                 }
                                 .into())
                             }

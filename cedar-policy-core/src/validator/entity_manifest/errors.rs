@@ -139,6 +139,9 @@ pub enum EntitySliceError {
     /// A required field is missing from a record
     #[error(transparent)]
     RecordFieldMissing(#[from] RecordFieldMissingError),
+    /// A required tag is missing from an entity
+    #[error(transparent)]
+    EntityTagMissing(#[from] EntityTagMissingError),
     /// Expected an entity type but found a different value type during loading
     #[error(transparent)]
     ExpectedEntityType(#[from] ExpectedEntityTypeError),
@@ -211,6 +214,16 @@ pub struct EntityFieldMissingError {
 pub struct RecordFieldMissingError {
     /// The name of the missing field
     pub field: smol_str::SmolStr,
+}
+
+/// Error when an entity tag is missing
+#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
+#[error("entity {entity:?} was missing tag {tag}")]
+pub struct EntityTagMissingError {
+    /// The entity that is missing a tag
+    pub entity: crate::ast::Entity,
+    /// The name of the missing tag
+    pub tag: smol_str::SmolStr,
 }
 
 /// Error when expecting an entity type but got something else

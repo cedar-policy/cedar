@@ -196,10 +196,6 @@ impl WrappedAccessTerms {
         tag_terms: Rc<Self>,
         store: &mut AccessDag,
     ) -> Rc<Self> {
-        eprintln!(
-            "get_or_has_tag: self = {:?}, tag_terms = {:?}",
-            self, tag_terms
-        );
         // compute cross product of the access terms and the tag terms
         let of_access_terms = self.returned_access_terms().expect(
             "Tag access terms should not be record or set literals, typechecker should prevent this",
