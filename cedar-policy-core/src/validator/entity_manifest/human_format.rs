@@ -150,13 +150,9 @@ impl AccessDag {
                         ancestor: ancestor_term,
                     }))
                 }
-                _ => Err(PathExpressionParseError::UnsupportedBinaryOperator {
-                    operator: format!("{:?}", op),
-                }),
+                _ => Err(PathExpressionParseError::UnsupportedBinaryOperator { operator: *op }),
             },
-            _ => Err(PathExpressionParseError::UnsupportedExpressionType {
-                expr_type: "unsupported expression type".to_string(),
-            }),
+            _ => Err(PathExpressionParseError::UnsupportedExpression { expr: expr.clone() }),
         }
     }
 }

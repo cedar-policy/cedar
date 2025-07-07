@@ -1,67 +1,9 @@
-use crate::ast::EntityUID;
+use crate::ast::{BinaryOp, EntityUID, Expr};
 use crate::entities::err::EntitiesError;
 use crate::validator::types::Type;
 use crate::validator::ValidationResult;
 use miette::Diagnostic;
-use smol_str::SmolStr;
 use thiserror::Error;
-
-/// Error when entity slicing encounters a partial expression
-#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
-#[error("entity slicing requires fully concrete policies. Got a policy with an unknown expression")]
-pub struct PartialExpressionError {}
-
-/// Error when entity slicing encounters a partial request
-#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
-#[error("entity slicing requires a fully concrete request. Got a partial request")]
-pub struct PartialRequestError {}
-
-/// Error when encountering an unsupported Cedar feature
-#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
-#[error("entity manifest analysis currently doesn't support Cedar feature: {feature}")]
-pub struct UnsupportedCedarFeatureError {
-    /// The name of the unsupported Cedar feature
-    pub(crate) feature: SmolStr,
-}
-
-/// Error when entity manifest doesn't match the schema
-#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
-#[error("entity manifest doesn't match schema. Schema is missing entity {entity}. Either you wrote an entity manifest by hand (not recommended) or you are using an out-of-date entity manifest with respect to the schema")]
-pub struct MismatchedMissingEntityError {
-    /// The entity UID that is missing from the schema
-    pub(crate) entity: EntityUID,
-}
-
-/// Error when schema is not strict
-#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
-#[error("entity manifests are only compatible with schemas that validate in strict mode. Tried to use an invalid schema with an entity manifest")]
-pub struct MismatchedNotStrictSchemaError {}
-
-/// Error when the schema does not agree with the entity manifest
-/// and we expected an entity or record type
-#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
-#[error("entity manifest doesn't match schema. We expected an entity or record type, but found a different type: {found_type}")]
-pub struct MismatchedExpectedEntityOrRecordError {
-    /// The type that was found instead of an entity or record type
-    pub(crate) found_type: Type,
-}
-
-/// Error when the schema does not agree with the entity manifest
-/// and we expected an entity type
-#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
-#[error("entity manifest doesn't match schema. We expected an entity type, but found a different type: {found_type}")]
-pub struct MismatchedExpectedEntityError {
-    /// The type that was found instead of an entity type
-    pub(crate) found_type: Type,
-}
-
-/// Error when access term is not found in entity manifest
-#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
-#[error("access term not found in entity manifest. This may indicate that you are using the wrong entity manifest with this term")]
-pub struct AccessTermNotFoundError {
-    /// The ID of the access term that was not found
-    pub(crate) path_id: usize,
-}
 
 /// General entity manifest error
 #[derive(Debug, Error)]
@@ -78,9 +20,6 @@ pub enum EntityManifestError {
     /// A partial expression was encountered when a concrete expression was required
     #[error(transparent)]
     PartialExpression(#[from] PartialExpressionError),
-    /// An unsupported Cedar feature was encountered
-    #[error(transparent)]
-    UnsupportedCedarFeature(#[from] UnsupportedCedarFeatureError),
 }
 
 /// Error when entity manifest is mismatched
@@ -162,6 +101,55 @@ pub enum EntitySliceError {
     /// An error occurred with entity operations
     #[error(transparent)]
     Entities(#[from] EntitiesError),
+}
+
+/// Error when entity slicing encounters a partial expression
+#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
+#[error("entity slicing requires fully concrete policies. Got a policy with an unknown expression")]
+pub struct PartialExpressionError {}
+
+/// Error when entity slicing encounters a partial request
+#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
+#[error("entity slicing requires a fully concrete request. Got a partial request")]
+pub struct PartialRequestError {}
+
+/// Error when entity manifest doesn't match the schema
+#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
+#[error("entity manifest doesn't match schema. Schema is missing entity {entity}. Either you wrote an entity manifest by hand (not recommended) or you are using an out-of-date entity manifest with respect to the schema")]
+pub struct MismatchedMissingEntityError {
+    /// The entity UID that is missing from the schema
+    pub(crate) entity: EntityUID,
+}
+
+/// Error when schema is not strict
+#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
+#[error("entity manifests are only compatible with schemas that validate in strict mode. Tried to use an invalid schema with an entity manifest")]
+pub struct MismatchedNotStrictSchemaError {}
+
+/// Error when the schema does not agree with the entity manifest
+/// and we expected an entity or record type
+#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
+#[error("entity manifest doesn't match schema. We expected an entity or record type, but found a different type: {found_type}")]
+pub struct MismatchedExpectedEntityOrRecordError {
+    /// The type that was found instead of an entity or record type
+    pub(crate) found_type: Type,
+}
+
+/// Error when the schema does not agree with the entity manifest
+/// and we expected an entity type
+#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
+#[error("entity manifest doesn't match schema. We expected an entity type, but found a different type: {found_type}")]
+pub struct MismatchedExpectedEntityError {
+    /// The type that was found instead of an entity type
+    pub(crate) found_type: Type,
+}
+
+/// Error when access term is not found in entity manifest
+#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
+#[error("access term not found in entity manifest. This may indicate that you are using the wrong entity manifest with this term")]
+pub struct AccessTermNotFoundError {
+    /// The ID of the access term that was not found
+    pub(crate) path_id: usize,
 }
 
 /// Error when entity slicing encounters a partial context
@@ -276,13 +264,13 @@ pub enum PathExpressionParseError {
     #[error("Unsupported binary operator: {operator:?}")]
     UnsupportedBinaryOperator {
         /// The unsupported binary operator that was encountered
-        operator: String,
+        operator: BinaryOp,
     },
     /// Unsupported expression type
-    #[error("Unsupported expression type: {expr_type}")]
-    UnsupportedExpressionType {
+    #[error("Unsupported path expression: {expr}. See the HumanEntityManifest documentation for supported cedar expressions.")]
+    UnsupportedExpression {
         /// The unsupported expression type that was encountered
-        expr_type: String,
+        expr: Expr,
     },
 }
 
@@ -297,7 +285,4 @@ pub enum ConversionError {
     /// Error serializing or deserializing JSON
     #[error(transparent)]
     SerdeError(#[from] serde_json::Error),
-    /// A mismatched entity manifest error
-    #[error(transparent)]
-    MismatchedEntityManifest(#[from] MismatchedEntityManifestError),
 }

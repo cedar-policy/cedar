@@ -27,7 +27,7 @@ use std::fmt::Write as FmtWrite;
 
 use crate::ast::PolicySet;
 
-use crate::validator::{ValidationResult, Validator};
+use crate::validator::Validator;
 
 /// Assert that two entity manifests are equal, and if not, print them in human format
 fn assert_manifests_equal(actual: &EntityManifest, expected: &EntityManifest) {
