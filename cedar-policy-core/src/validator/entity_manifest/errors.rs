@@ -1,7 +1,7 @@
 use crate::ast::{BinaryOp, EntityUID, Expr};
 use crate::entities::err::EntitiesError;
 use crate::validator::types::Type;
-use crate::validator::ValidationResult;
+use crate::validator::{self, ValidationResult};
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -20,11 +20,14 @@ pub enum EntityManifestError {
     /// A partial expression was encountered when a concrete expression was required
     #[error(transparent)]
     PartialExpression(#[from] PartialExpressionError),
+    /// An error expression was encountered
+    #[error(transparent)]
+    ErrorExpression(#[from] ErrorExpressionError),
 }
 
 /// Error when entity manifest is mismatched
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
-pub enum MismatchedEntityManifestError {
+pub enum EntityManifestTypecheckError {
     /// An entity is missing from the schema that exists in the manifest
     #[error(transparent)]
     MismatchedMissingEntity(#[from] MismatchedMissingEntityError),
@@ -33,13 +36,10 @@ pub enum MismatchedEntityManifestError {
     MismatchedNotStrictSchema(#[from] MismatchedNotStrictSchemaError),
     /// The schema does not agree with the entity manifest, expected an entity or record type
     #[error(transparent)]
-    MismatchedExpectedEntityOrRecord(#[from] MismatchedExpectedEntityOrRecordError),
+    ExpectedEntityOrRecordType(#[from] ExpectedEntityOrRecordTypeError),
     /// An schema does not match the entity manifest, expected an entity type
     #[error(transparent)]
-    MismatchedExpectedEntity(#[from] MismatchedExpectedEntityError),
-    /// An access term was not found in the entity manifest
-    #[error(transparent)]
-    AccessTermNotFound(#[from] AccessTermNotFoundError),
+    ExpectedEntityType(#[from] ExpectedEntityTypeError),
 }
 
 /// Error when parsing entity manifest from JSON
@@ -47,10 +47,10 @@ pub enum MismatchedEntityManifestError {
 pub enum EntityManifestFromJsonError {
     /// JSON parsing error occurred
     #[error(transparent)]
-    SerdeJsonParseError(#[from] serde_json::Error),
+    SerdeJsonParse(#[from] serde_json::Error),
     /// Entity manifest doesn't match the expected schema
     #[error(transparent)]
-    MismatchedEntityManifest(#[from] MismatchedEntityManifestError),
+    EntityManifestTypecheck(#[from] EntityManifestTypecheckError),
 }
 
 /// Errors for entity slicing operations
@@ -67,7 +67,7 @@ pub enum EntitySliceError {
     PartialEntity(#[from] PartialEntityError),
     /// The entity manifest is incompatible with the expected format
     #[error(transparent)]
-    IncompatibleEntityManifest(#[from] IncompatibleEntityManifestError),
+    ExpectedEntityOrRecord(#[from] ExpectedEntityOrRecordError),
 
     /// A required entity is missing from the entity store
     #[error(transparent)]
@@ -83,7 +83,7 @@ pub enum EntitySliceError {
     EntityTagMissing(#[from] EntityTagMissingError),
     /// Expected an entity type but found a different value type during loading
     #[error(transparent)]
-    ExpectedEntityType(#[from] ExpectedEntityTypeError),
+    ExpectedEntity(#[from] ExpectedEntityError),
     /// Expected a string type but found a different value type during loading
     /// TODO refactor into more generic error message about type mismatch
     #[error(transparent)]
@@ -108,6 +108,14 @@ pub enum EntitySliceError {
 #[error("entity slicing requires fully concrete policies. Got a policy with an unknown expression")]
 pub struct PartialExpressionError {}
 
+/// An error expression was encountered while performing manifest analysis
+#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
+#[error("error expression encountered while computing entity manifest: {expr}. Error expressions are not supported by entity manifests")]
+pub struct ErrorExpressionError {
+    /// The error expression
+    pub(crate) expr: Expr<Option<validator::types::Type>>,
+}
+
 /// Error when entity slicing encounters a partial request
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("entity slicing requires a fully concrete request. Got a partial request")]
@@ -130,7 +138,7 @@ pub struct MismatchedNotStrictSchemaError {}
 /// and we expected an entity or record type
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("entity manifest doesn't match schema. We expected an entity or record type, but found a different type: {found_type}")]
-pub struct MismatchedExpectedEntityOrRecordError {
+pub struct ExpectedEntityOrRecordTypeError {
     /// The type that was found instead of an entity or record type
     pub(crate) found_type: Type,
 }
@@ -139,7 +147,7 @@ pub struct MismatchedExpectedEntityOrRecordError {
 /// and we expected an entity type
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("entity manifest doesn't match schema. We expected an entity type, but found a different type: {found_type}")]
-pub struct MismatchedExpectedEntityError {
+pub struct ExpectedEntityTypeError {
     /// The type that was found instead of an entity type
     pub(crate) found_type: Type,
 }
@@ -172,8 +180,8 @@ pub struct ResidualEncounteredError {
 
 /// Error when entity manifest encounters incompatible values
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
-#[error("entity slicing encountered a non-record value where a record was expected: {non_record_entity_value:?}")]
-pub struct IncompatibleEntityManifestError {
+#[error("entity slicing encountered a non-record or entity value where a record or entity was expected: {non_record_entity_value:?}")]
+pub struct ExpectedEntityOrRecordError {
     /// The non-record entity value that was encountered
     pub non_record_entity_value: crate::ast::Value,
 }
@@ -217,7 +225,7 @@ pub struct EntityTagMissingError {
 /// Error when expecting an entity type but got something else
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("expected entity type, found: {found_value:?}")]
-pub struct ExpectedEntityTypeError {
+pub struct ExpectedEntityError {
     /// The value that was found instead of an entity type
     pub found_value: crate::ast::Value,
 }
@@ -285,4 +293,7 @@ pub enum ConversionError {
     /// Error serializing or deserializing JSON
     #[error(transparent)]
     SerdeError(#[from] serde_json::Error),
+    /// Error typechecking the resulting entity manifest
+    #[error(transparent)]
+    EntityManifestTypecheck(#[from] EntityManifestTypecheckError),
 }

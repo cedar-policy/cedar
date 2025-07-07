@@ -20,7 +20,7 @@ use crate::{
 use crate::{
     ast::{Entity, Literal, PartialValue, Request, Value, ValueKind},
     validator::entity_manifest::errors::{
-        ConflictingEntityDataError, ExpectedEntityTypeError, ExpectedStringTypeError,
+        ConflictingEntityDataError, ExpectedEntityError, ExpectedStringTypeError,
     },
 };
 
@@ -477,7 +477,7 @@ impl<'a> EntityLoadingContext<'a> {
         let dependent_id = match dependent_val.value_kind() {
             ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
             _ => {
-                return Err(ExpectedEntityTypeError {
+                return Err(ExpectedEntityError {
                     found_value: dependent_val.clone(),
                 }
                 .into())
@@ -525,7 +525,7 @@ impl<'a> EntityLoadingContext<'a> {
         let of_val = match of_val_result.value_kind() {
             ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
             _ => {
-                return Err(ExpectedEntityTypeError {
+                return Err(ExpectedEntityError {
                     found_value: of_val_result.clone(),
                 }
                 .into())

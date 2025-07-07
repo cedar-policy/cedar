@@ -2,12 +2,14 @@ use std::{collections::HashMap, rc::Rc};
 
 use smol_str::SmolStr;
 
+#[cfg(feature = "tolerant-ast")]
+use crate::validator::entity_manifest::errors::ErrorExpressionError;
 use crate::{
     ast::Expr,
     validator::{
         entity_manifest::{
             AccessDag, AccessTerm, AccessTermVariant, AccessTerms, EntityManifestError, EntityRoot,
-            PartialExpressionError, UnsupportedCedarFeatureError,
+            PartialExpressionError,
         },
         types::{EntityRecordKind, Type},
     },
@@ -590,12 +592,6 @@ pub(crate) fn analyze_expr_access_paths(
         }
 
         #[cfg(feature = "tolerant-ast")]
-        ExprKind::Error { .. } => {
-            return Err(EntityManifestError::UnsupportedCedarFeature(
-                UnsupportedCedarFeatureError {
-                    feature: "No support for AST error nodes".into(),
-                },
-            ))
-        }
+        ExprKind::Error { .. } => return Err(ErrorExpressionError { expr: expr.clone() }.into()),
     })
 }

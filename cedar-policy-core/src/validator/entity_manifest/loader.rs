@@ -29,17 +29,13 @@ use crate::{
     entities::{Entities, NoEntitiesSchema, TCComputation},
     extensions::Extensions,
     validator::entity_manifest::{
-        errors::{
-            ExpectedEntityOrEntitySetError, ExpectedEntityTypeError,
-        },
+        errors::{ExpectedEntityError, ExpectedEntityOrEntitySetError},
         manifest_helpers::{AccessTrie, EntityLoadingContext},
         AccessTermVariant, EntityManifest,
     },
 };
 
-use crate::validator::entity_manifest::errors::{
-    EntitySliceError, PartialRequestError,
-};
+use crate::validator::entity_manifest::errors::{EntitySliceError, PartialRequestError};
 
 /// A request that an entity be loaded.
 /// Entities this entity references need not be loaded, as they will be requested separately.
@@ -198,7 +194,7 @@ impl AncestorRequests {
                 let of_val = match of_val_result.value_kind() {
                     ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
                     _ => {
-                        return Err(ExpectedEntityTypeError {
+                        return Err(ExpectedEntityError {
                             found_value: of_val_result.clone(),
                         }
                         .into())
@@ -217,7 +213,7 @@ impl AncestorRequests {
                             if let ValueKind::Lit(Literal::EntityUID(euid)) = val.value_kind() {
                                 resulting_set.insert((**euid).clone());
                             } else {
-                                return Err(ExpectedEntityTypeError {
+                                return Err(ExpectedEntityError {
                                     found_value: val.clone(),
                                 }
                                 .into());

@@ -26,9 +26,8 @@ use crate::validator::{
 };
 // Import errors directly
 use crate::validator::entity_manifest::errors::{
-    MismatchedEntityManifestError, MismatchedExpectedEntityError,
-    MismatchedExpectedEntityOrRecordError, MismatchedMissingEntityError,
-    MismatchedNotStrictSchemaError,
+    EntityManifestTypecheckError, ExpectedEntityOrRecordTypeError, ExpectedEntityTypeError,
+    MismatchedMissingEntityError, MismatchedNotStrictSchemaError,
 };
 
 impl EntityManifest {
@@ -38,7 +37,7 @@ impl EntityManifest {
     pub(crate) fn add_types(
         mut self,
         schema: &ValidatorSchema,
-    ) -> Result<EntityManifest, MismatchedEntityManifestError> {
+    ) -> Result<EntityManifest, EntityManifestTypecheckError> {
         // Type each RequestTypeTerms
         for terms_for_request_type in self.per_action.values_mut() {
             terms_for_request_type.add_types(schema)?;
@@ -53,7 +52,7 @@ impl RequestTypeTerms {
     pub(crate) fn add_types(
         &mut self,
         schema: &ValidatorSchema,
-    ) -> Result<(), MismatchedEntityManifestError> {
+    ) -> Result<(), EntityManifestTypecheckError> {
         // Initialize the types vector with None for each term in the DAG
 
         // Process each access term in topological order
@@ -75,7 +74,7 @@ impl RequestTypeTerms {
         variant: &AccessTermVariant,
         request_type: &RequestType,
         schema: &ValidatorSchema,
-    ) -> Result<Option<Type>, MismatchedEntityManifestError> {
+    ) -> Result<Option<Type>, EntityManifestTypecheckError> {
         let res = match variant {
             AccessTermVariant::Var(var) => {
                 // Type the variable based on its kind
@@ -149,7 +148,7 @@ impl RequestTypeTerms {
                         }
                     }
                     _ => {
-                        return Err(MismatchedExpectedEntityOrRecordError {
+                        return Err(ExpectedEntityOrRecordTypeError {
                             found_type: of_type.clone(),
                         }
                         .into());
@@ -175,7 +174,7 @@ impl RequestTypeTerms {
                         .ok_or(MismatchedNotStrictSchemaError {})?;
                     entity_ty.tag_type().unwrap().clone() // todo fix unwrap
                 } else {
-                    return Err(MismatchedExpectedEntityError {
+                    return Err(ExpectedEntityTypeError {
                         found_type: access_term_type.clone(),
                     }
                     .into());

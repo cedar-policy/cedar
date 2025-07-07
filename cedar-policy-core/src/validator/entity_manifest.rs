@@ -39,7 +39,7 @@ mod type_annotations;
 // Import errors directly
 pub use crate::validator::entity_manifest::errors::{
     AccessTermNotFoundError, ConversionError, EntityManifestError, EntityManifestFromJsonError,
-    MismatchedEntityManifestError, MismatchedMissingEntityError, MismatchedNotStrictSchemaError,
+    EntityManifestTypecheckError, MismatchedMissingEntityError, MismatchedNotStrictSchemaError,
     PartialExpressionError, PartialRequestError, PathExpressionParseError,
     UnsupportedCedarFeatureError,
 };

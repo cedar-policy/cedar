@@ -13,7 +13,7 @@ use smol_str::SmolStr;
 // Import errors directly
 use crate::validator::entity_manifest::errors::{
     EntityFieldMissingError, EntityMissingError, EntitySliceError, EntityTagMissingError,
-    ExpectedStringTypeError, IncompatibleEntityManifestError, PartialContextError,
+    ExpectedEntityError, ExpectedEntityOrRecordError, ExpectedStringTypeError, PartialContextError,
     PartialEntityError, PartialRequestError, RecordFieldMissingError,
 };
 use crate::validator::entity_manifest::loader::{
@@ -127,7 +127,7 @@ impl AccessTrie {
             }
             ValueKind::Set(_) | ValueKind::ExtensionValue(_) | ValueKind::Lit(_) => {
                 if !self.fields.is_empty() {
-                    return Err(IncompatibleEntityManifestError {
+                    return Err(ExpectedEntityOrRecordError {
                         non_record_entity_value: val.clone(),
                     }
                     .into());
@@ -216,7 +216,7 @@ impl AccessTerm {
                     }
 
                     // Other value types don't have attributes
-                    _ => Err(IncompatibleEntityManifestError {
+                    _ => Err(ExpectedEntityOrRecordError {
                         non_record_entity_value: base_value,
                     }
                     .into()),
@@ -269,8 +269,8 @@ impl AccessTerm {
                     }
 
                     // Other value types don't have tags
-                    _ => Err(IncompatibleEntityManifestError {
-                        non_record_entity_value: base_value,
+                    _ => Err(ExpectedEntityError {
+                        found_value: base_value,
                     }
                     .into()),
                 }
