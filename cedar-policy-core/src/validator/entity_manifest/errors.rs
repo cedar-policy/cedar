@@ -25,6 +25,20 @@ pub enum EntityManifestError {
     ErrorExpression(#[from] ErrorExpressionError),
 }
 
+/// Error when converting between human-readable and DAG-based entity manifests
+#[derive(Debug, Error)]
+pub enum ConversionError {
+    /// Error parsing a path expression
+    #[error(transparent)]
+    ParseError(#[from] PathExpressionParseError),
+    /// Error serializing or deserializing JSON
+    #[error(transparent)]
+    SerdeError(#[from] serde_json::Error),
+    /// Error typechecking the resulting entity manifest
+    #[error(transparent)]
+    EntityManifestTypecheck(#[from] EntityManifestTypecheckError),
+}
+
 /// Error when entity manifest is mismatched
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 pub enum EntityManifestTypecheckError {
@@ -85,9 +99,8 @@ pub enum EntitySliceError {
     #[error(transparent)]
     ExpectedEntity(#[from] ExpectedEntityError),
     /// Expected a string type but found a different value type during loading
-    /// TODO refactor into more generic error message about type mismatch
     #[error(transparent)]
-    ExpectedStringType(#[from] ExpectedStringTypeError),
+    ExpectedString(#[from] ExpectedStringError),
     /// Expected an entity or entity set but found something else
     #[error(transparent)]
     ExpectedEntityOrEntitySet(#[from] ExpectedEntityOrEntitySetError),
@@ -233,7 +246,7 @@ pub struct ExpectedEntityError {
 /// Error when expecting a string type but got something else
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("expected string type, found: {found_value:?}")]
-pub struct ExpectedStringTypeError {
+pub struct ExpectedStringError {
     /// The value that was found instead of a string type
     pub found_value: crate::ast::Value,
 }
@@ -283,17 +296,3 @@ pub enum PathExpressionParseError {
 }
 
 impl Diagnostic for PathExpressionParseError {}
-
-/// Error when converting between human-readable and DAG-based entity manifests
-#[derive(Debug, Error)]
-pub enum ConversionError {
-    /// Error parsing a path expression
-    #[error(transparent)]
-    ParseError(#[from] PathExpressionParseError),
-    /// Error serializing or deserializing JSON
-    #[error(transparent)]
-    SerdeError(#[from] serde_json::Error),
-    /// Error typechecking the resulting entity manifest
-    #[error(transparent)]
-    EntityManifestTypecheck(#[from] EntityManifestTypecheckError),
-}

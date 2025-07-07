@@ -13,7 +13,7 @@ use smol_str::SmolStr;
 // Import errors directly
 use crate::validator::entity_manifest::errors::{
     EntityFieldMissingError, EntityMissingError, EntitySliceError, EntityTagMissingError,
-    ExpectedEntityError, ExpectedEntityOrRecordError, ExpectedStringTypeError, PartialContextError,
+    ExpectedEntityError, ExpectedEntityOrRecordError, ExpectedStringError, PartialContextError,
     PartialEntityError, PartialRequestError, RecordFieldMissingError,
 };
 use crate::validator::entity_manifest::loader::{
@@ -254,7 +254,7 @@ impl AccessTerm {
                                 }
                             } else {
                                 // Tag name is not a string
-                                Err(ExpectedStringTypeError {
+                                Err(ExpectedStringError {
                                     found_value: tag_value,
                                 }
                                 .into())

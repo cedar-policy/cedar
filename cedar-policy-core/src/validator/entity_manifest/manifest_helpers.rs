@@ -20,7 +20,7 @@ use crate::{
 use crate::{
     ast::{Entity, Literal, PartialValue, Request, Value, ValueKind},
     validator::entity_manifest::errors::{
-        ConflictingEntityDataError, ExpectedEntityError, ExpectedStringTypeError,
+        ConflictingEntityDataError, ExpectedEntityError, ExpectedStringError,
     },
 };
 
@@ -536,7 +536,7 @@ impl<'a> EntityLoadingContext<'a> {
         let tag_val = match tag_val_result.value_kind() {
             ValueKind::Lit(Literal::String(s)) => s.clone(),
             _ => {
-                return Err(ExpectedStringTypeError {
+                return Err(ExpectedStringError {
                     found_value: tag_val_result.clone(),
                 }
                 .into());
