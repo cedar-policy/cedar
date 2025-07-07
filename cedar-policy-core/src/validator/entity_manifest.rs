@@ -41,7 +41,6 @@ pub use crate::validator::entity_manifest::errors::{
     AccessTermNotFoundError, ConversionError, EntityManifestError, EntityManifestFromJsonError,
     EntityManifestTypecheckError, MismatchedMissingEntityError, MismatchedNotStrictSchemaError,
     PartialExpressionError, PartialRequestError, PathExpressionParseError,
-    UnsupportedCedarFeatureError,
 };
 
 use crate::validator::entity_manifest::analysis::analyze_expr_access_paths as analyze_expr_access_terms;

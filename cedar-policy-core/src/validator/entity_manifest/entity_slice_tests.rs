@@ -23,7 +23,7 @@ use crate::{
     ast::{Context, Entity, EntityUID, PolicyID, PolicySet, Request},
     entities::{Dereference, Entities, EntityJsonParser, TCComputation},
     extensions::Extensions,
-    parser::{self, parse_policy},
+    parser::parse_policy,
     validator::entity_manifest::EntityManifest,
 };
 
@@ -1432,7 +1432,7 @@ when {
 fn test_slice_complex_tag_chain() {
     // oliver is friends with yihong is friends with ryan
     // toaccess on the doc is "ryan"
-    
+
     // Create a custom schema that allows entity references in tags
     let schema = ValidatorSchema::from_cedarschema_str(
         "
