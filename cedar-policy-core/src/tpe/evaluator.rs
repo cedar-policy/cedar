@@ -884,6 +884,15 @@ mod tests {
                 ..
             }
         );
+        // Note that this expression is not an invalid input
+        // The evaluator does not perform any validation
+        assert_matches!(
+            eval.interpret(&builder().and(
+                builder().var(Var::Principal),
+                builder().val(true)
+            )),
+            Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. }
+        );
         assert_matches!(
             eval.interpret(&builder().and(
                 builder().noteq(
@@ -948,6 +957,15 @@ mod tests {
                 },
                 ..
             }
+        );
+        // Note that this expression is not an invalid input
+        // The evaluator does not perform any validation
+        assert_matches!(
+            eval.interpret(&builder().or(
+                builder().var(Var::Principal),
+                builder().val(false)
+            )),
+            Residual::Partial { kind: ResidualKind::Var(Var::Principal), .. }
         );
         assert_matches!(
             eval.interpret(&builder().or(
