@@ -152,6 +152,9 @@ pub enum EntitySliceError {
     /// An error when we got conflicting data for the same entity
     #[error(transparent)]
     ConflictingEntityData(#[from] ConflictingEntityDataError),
+    /// A residual value was encountered during entity slicing
+    #[error(transparent)]
+    ResidualEncountered(#[from] ResidualEncounteredError),
 
     /// An error occurred with entity operations
     #[error(transparent)]
@@ -167,6 +170,14 @@ pub struct PartialContextError {}
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("entity slicing requires a fully concrete entity. Got a partial entity")]
 pub struct PartialEntityError {}
+
+/// Error when entity slicing encounters a residual value
+#[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
+#[error("entity slicing encountered a residual value for entity {entity_id}")]
+pub struct ResidualEncounteredError {
+    /// The entity ID where the residual was encountered
+    pub entity_id: EntityUID,
+}
 
 /// Error when entity manifest encounters incompatible values
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
@@ -210,7 +221,7 @@ pub struct ExpectedEntityTypeError {
     pub found_value: crate::ast::Value,
 }
 
-/// ERror when expecting a string type but got something else
+/// Error when expecting a string type but got something else
 #[derive(Debug, Clone, Error, Eq, PartialEq, Diagnostic)]
 #[error("expected string type, found: {found_value:?}")]
 pub struct ExpectedStringTypeError {

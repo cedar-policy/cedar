@@ -1088,42 +1088,6 @@ when {
 }
 
 #[test]
-fn test_slice_tag_equality() {
-    test_entity_slice_with_policy(
-        r#"permit(principal, action, resource)
-when {
-    principal.getTag("classification") == "secret"
-};"#,
-        None,
-        schema(),
-        serde_json::json!([
-            {
-                "uid" : { "type" : "User", "id" : "oliver"},
-                "attrs" : {
-                    "name" : "Oliver"
-                },
-                "parents" : [],
-                "tags": {
-                    "classification": "secret",
-                    "department": "engineering",
-                    "unused": "value"
-                }
-            },
-        ]),
-        serde_json::json!([
-            {
-                "uid" : { "type" : "User", "id" : "oliver"},
-                "attrs" : {},
-                "parents" : [],
-                "tags": {
-                    "classification": "secret"
-                }
-            },
-        ]),
-    );
-}
-
-#[test]
 fn test_slice_no_tags_used() {
     test_entity_slice_with_policy(
         r#"permit(principal, action, resource)
@@ -1195,6 +1159,102 @@ when {
                     "public": "info"
                 }
             },
+        ]),
+    );
+}
+
+
+// test slicing with a non-string tag schema, an equality between record types
+#[test]
+fn test_slice_record_tag_equality() {
+    let schema = ValidatorSchema::from_cedarschema_str(
+        "
+entity User = {
+  name: String,
+} tags { 
+  classification: String,
+  level: Long
+};
+
+entity Document tags { 
+  classification: String,
+  level: Long
+};
+
+action Read appliesTo {
+  principal: [User],
+  resource: [Document]
+};
+        ",
+        Extensions::all_available(),
+    )
+    .unwrap()
+    .0;
+
+    test_entity_slice_with_policy(
+        r#"permit(principal, action, resource)
+when {
+    principal.hasTag("classification") && resource.hasTag("classification") && principal.getTag("classification") == resource.getTag("classification")
+};"#,
+        None,
+        schema,
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {
+                    "name" : "Oliver"
+                },
+                "parents" : [],
+                "tags": {
+                    "classification": {
+                        "classification": "secret",
+                        "level": 3
+                    },
+                    "unused_tag": {
+                        "classification": "public",
+                        "level": 1
+                    }
+                }
+            },
+            {
+                "uid" : { "type" : "Document", "id" : "dummy"},
+                "attrs" : {},
+                "parents" : [],
+                "tags": {
+                    "classification": {
+                        "classification": "secret",
+                        "level": 3
+                    },
+                    "unused_tag": {
+                        "classification": "confidential",
+                        "level": 2
+                    }
+                }
+            }
+        ]),
+        serde_json::json!([
+            {
+                "uid" : { "type" : "User", "id" : "oliver"},
+                "attrs" : {},
+                "parents" : [],
+                "tags": {
+                    "classification": {
+                        "classification": "secret",
+                        "level": 3
+                    }
+                }
+            },
+            {
+                "uid" : { "type" : "Document", "id" : "dummy"},
+                "attrs" : {},
+                "parents" : [],
+                "tags": {
+                    "classification": {
+                        "classification": "secret",
+                        "level": 3
+                    }
+                }
+            }
         ]),
     );
 }
