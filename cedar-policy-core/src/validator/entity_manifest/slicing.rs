@@ -38,10 +38,7 @@ struct EntitySlicer<'a> {
 }
 
 impl EntityLoader for EntitySlicer<'_> {
-    fn load_entities(
-        &mut self,
-        to_load: &EntityRequests,
-    ) -> Result<Vec<Entity>, EntitySliceError> {
+    fn load_entities(&mut self, to_load: &EntityRequests) -> Result<Vec<Entity>, EntitySliceError> {
         let mut res = vec![];
         for request in to_load {
             if let Dereference::Data(entity) = self.entities.entity(&request.entity_id) {
@@ -196,6 +193,7 @@ impl AccessTerm {
                                 .into())
                             }
                         } else {
+                            panic!("todo");
                             // Entity not found, return an appropriate error
                             Err(EntityMissingError {
                                 entity_id: (**euid).clone(),

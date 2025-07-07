@@ -1075,7 +1075,6 @@ when {
             {
                 "uid" : { "type" : "User", "id" : "alice"},
                 "attrs" : {
-                    "name" : "Alice"
                 },
                 "parents" : [],
                 "tags": {
@@ -1162,7 +1161,6 @@ when {
         ]),
     );
 }
-
 
 // test slicing with a non-string tag schema, an equality between record types
 #[test]

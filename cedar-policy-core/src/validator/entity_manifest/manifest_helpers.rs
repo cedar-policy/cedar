@@ -66,8 +66,6 @@ impl RequestTypeTerms {
 
     /// Builds a map from a critical term to other critical terms that depend on it.
     /// Only considers terms which are keys in `dependents_map`.
-    /// A dependent critical term for term A is a term B such that A ->* B (B is a subterm of A)
-    /// and no intermediate terms in the term from A to B are critical terms.
     pub(crate) fn build_dependent_critical_terms(
         &self,
         dependents_map: &HashMap<AccessTerm, Vec<AccessTerm>>,
@@ -97,7 +95,7 @@ impl RequestTypeTerms {
 
         // Initialize the map with empty vectors for all critical terms
         for term in dependent_critical.keys() {
-            dependee_critical.insert(term.clone(), Vec::new());
+            dependee_critical.insert(*term, Vec::new());
         }
 
         // For each critical term and its dependents
@@ -105,7 +103,7 @@ impl RequestTypeTerms {
             // For each dependent, add the current term as a dependee
             for dependent in dependents {
                 if let Some(dependees) = dependee_critical.get_mut(dependent) {
-                    dependees.push(term.clone());
+                    dependees.push(*term);
                 }
             }
         }
@@ -169,13 +167,6 @@ impl RequestTypeTerms {
             .collect()
     }
 
-    /// A "critical term" is a term whose dependents need to be explicitly loaded
-    /// by the [`EntityLoader`] API.
-    /// These include two kinds of terms:
-    ///     1) terms that have an entity type, since the [`EntityLoader`] API
-    ///     doesn't load entities recursively.
-    ///     2) terms that are [`AccessTermVariant::Tag`]s because they are computed based on multiple
-    ///     other values- not a single term starting from an entity.
     fn is_critical_term(&self, term: &AccessTerm) -> bool {
         self.is_entity_typed_term(term) || self.is_tag_term(term)
     }
@@ -318,7 +309,7 @@ impl AccessTrie {
             .or_insert_with(|| Box::new(AccessTrie::new()))
     }
 
-    /// Unions this AccessTrie with another, modifying this trie in place.
+    /// Unions this [`AccessTrie`] with another, modifying this trie in place.
     /// After this operation, this trie will contain all fields from both tries.
     /// If both tries have the same field, the field tries are recursively unioned.
     pub(crate) fn union_with(&mut self, other: &AccessTrie) {
@@ -337,30 +328,43 @@ impl AccessTrie {
     }
 }
 
-/// A context for preparing entity requests.
+/// A context for loading entities using the [`SimpleEntityLoader`] API.
 /// This struct encapsulates all the data needed for the entity loading process.
 #[derive(Debug)]
-pub(crate) struct EntityRequestContext<'a> {
-    /// Map from a critical term to critical dependents
+pub(crate) struct EntityLoadingContext<'a> {
+    /// A "critical term" is a term whose dependents need to be explicitly loaded
+    /// by the [`EntityLoader`] API.
+    /// These include two kinds of terms:
+    ///     1) terms that have an entity type, since the [`EntityLoader`] API
+    ///     doesn't load entities recursively.
+    ///     2) terms that are [`AccessTermVariant::Tag`]s because they are computed based on multiple
+    ///     other values- not a single term starting from an entity.
+    ///
+    /// This field maps critical terms to critical terms that depend on them.
+    ///
+    /// A dependent critical term for term A is a term B such that A ->* B (B is a subterm of A)
+    /// and no intermediate terms in the term from A to B are critical terms.
     dependent_critical: HashMap<
         crate::validator::entity_manifest::AccessTerm,
         Vec<crate::validator::entity_manifest::AccessTerm>,
     >,
+    /// This map is the inverse of dependent_critical.
+    /// It stores, for each term, terms which it directly depends on.
     dependee_critical: HashMap<
         crate::validator::entity_manifest::AccessTerm,
         Vec<crate::validator::entity_manifest::AccessTerm>,
     >,
-    /// Access tries for each critical term
+    /// Access tries for each critical term.
     access_tries: HashMap<crate::validator::entity_manifest::AccessTerm, AccessTrie>,
-    /// The request type terms
+    /// The request type terms.
     for_request: &'a crate::validator::entity_manifest::RequestTypeTerms,
-    /// Map of already loaded entities
+    /// Map of already loaded entities.
     entities_map: HashMap<EntityUID, Entity>,
-    /// The request
+    /// The request.
     request: &'a Request,
 }
 
-impl<'a> EntityRequestContext<'a> {
+impl<'a> EntityLoadingContext<'a> {
     /// Creates a new entity request context.
     pub(crate) fn new(
         for_request: &'a crate::validator::entity_manifest::RequestTypeTerms,
@@ -412,57 +416,50 @@ impl<'a> EntityRequestContext<'a> {
     pub(crate) fn prepare_entity_requests_from_terms(
         &self,
         critical_terms: &Vec<crate::validator::entity_manifest::AccessTerm>,
-        visited_terms: &mut HashSet<crate::validator::entity_manifest::AccessTerm>,
+        computed_critical_terms: &HashSet<crate::validator::entity_manifest::AccessTerm>,
         entity_requests: &mut EntityRequests,
     ) -> Result<Vec<AccessTerm>, EntitySliceError> {
         let mut next_critical_terms = vec![];
+        let mut visited_critical_terms: HashSet<AccessTerm> = HashSet::new();
         // Process each critical term in the current batch
         for critical_term in critical_terms {
             // ensure that this term's critical dependees have been visited
+            // PANIC SAFETY: dependee_critical should have one entry per critical term
+            #[allow(clippy::unwrap_used)]
             if !self
                 .dependee_critical
                 .get(critical_term)
-                .map_or(true, |dependees| {
-                    dependees
-                        .iter()
-                        .all(|dependee| visited_terms.contains(dependee))
-                })
+                .unwrap()
+                .iter()
+                .all(|dependee| computed_critical_terms.contains(dependee))
             {
                 continue;
             }
 
             // If we have already visited this term, skip it
-            if !visited_terms.insert(critical_term.clone()) {
+            if !visited_critical_terms.insert(*critical_term) {
                 continue;
             }
 
             // Add dependent critical terms to the next batch
             // PANIC SAFETY: Every critical term has an entry in dependent_critical
             #[allow(clippy::panic)]
-            let Some(dependent_critical_terms) = self.dependent_critical.get(&critical_term) else {
+            let Some(dependent_critical_terms) = self.dependent_critical.get(critical_term) else {
                 panic!(
-                    "Expected dependent term {:?} to have an entry in dependent_critical",
-                    critical_term
+                    "Expected dependent term {critical_term:?} to have an entry in dependent_critical",
                 );
             };
-            critical_terms.extend(dependent_critical_terms.iter().cloned());
+            next_critical_terms.extend(dependent_critical_terms.iter().cloned());
 
-            // Get the access trie for this critical term if any
-            if let Some(dependent_trie) = self.access_tries.get(&critical_term) {
-                // Case split on entities or tag access terms
-                if self.for_request.is_entity_typed_term(&critical_term) {
-                    self.add_entity_request_from_term(
-                        &critical_term,
-                        dependent_trie,
-                        entity_requests,
-                    )?;
-                } else {
-                    self.add_tag_request_from_term(
-                        &critical_term,
-                        dependent_trie,
-                        entity_requests,
-                    )?;
-                }
+            // Get the access trie for this critical term
+            // PANIC SAFETY: access_tries has one entry per critical term
+            #[allow(clippy::unwrap_used)]
+            let access_trie = self.access_tries.get(critical_term).unwrap();
+            // Case split on entities or tag access terms
+            if self.for_request.is_entity_typed_term(critical_term) {
+                self.add_entity_request_from_term(critical_term, access_trie, entity_requests)?;
+            } else {
+                self.add_tag_request_from_term(critical_term, access_trie, entity_requests)?;
             }
         }
 
@@ -507,11 +504,6 @@ impl<'a> EntityRequestContext<'a> {
         dependent_trie: &AccessTrie,
         entity_requests: &mut EntityRequests,
     ) -> Result<(), EntitySliceError> {
-        eprintln!(
-            "Loading tag term: {:?} with access trie: {:?}",
-            critical_term, dependent_trie
-        );
-
         // PANIC SAFETY: Critical terms are either entity typed or tag terms.
         #[allow(clippy::panic)]
         let AccessTermVariant::Tag { of, tag } =

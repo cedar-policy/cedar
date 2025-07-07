@@ -34,7 +34,7 @@ use crate::{
             ConflictingEntityDataError, ExpectedEntityOrEntitySetError, ExpectedEntityTypeError,
             ExpectedStringTypeError,
         },
-        manifest_helpers::{AccessTrie, EntityRequestContext},
+        manifest_helpers::{AccessTrie, EntityLoadingContext},
         AccessTermVariant, EntityManifest,
     },
 };
@@ -42,7 +42,6 @@ use crate::{
 use crate::validator::entity_manifest::errors::{
     EntitySliceError, PartialRequestError, ResidualEncounteredError,
 };
-
 
 /// A request that an entity be loaded.
 /// Entities this entity references need not be loaded, as they will be requested separately.
@@ -347,24 +346,27 @@ pub(crate) fn load_entities(
     };
 
     // Create the entity request context
-    let mut context = EntityRequestContext::new(for_request, request);
+    let mut context = EntityLoadingContext::new(for_request, request);
 
     // Get initial entities to load and track processed entities
-    let mut next_critical_terms = context.initial_critical_terms();
+    let mut critical_terms_todo = context.initial_critical_terms();
     // Collection of entity requests
     let mut entity_requests = EntityRequests::new();
-    let mut visited_terms = HashSet::new();
+    let mut computed_terms = HashSet::new();
 
-    eprintln!("next_critical_terms: {next_critical_terms:?}");
+    eprintln!("next_critical_terms: {critical_terms_todo:?}");
 
     // Main loop of loading entities, one batch at a time
-    while !next_critical_terms.is_empty() {
+    while !critical_terms_todo.is_empty() {
         // Prepare entity requests from the current batch of critical terms
-        context.prepare_entity_requests_from_terms(
-            &mut next_critical_terms,
-            &mut visited_terms,
+        let next_critical_terms = context.prepare_entity_requests_from_terms(
+            &critical_terms_todo,
+            &computed_terms,
             &mut entity_requests,
         )?;
+        // add to computed_terms
+        computed_terms.extend(critical_terms_todo.into_iter());
+        critical_terms_todo = next_critical_terms;
 
         // Load and merge entities for the current batch
         context.load_and_merge_entities(loader, &mut entity_requests)?;
@@ -386,4 +388,3 @@ pub(crate) fn load_entities(
         Err(e) => Err(e.into()),
     }
 }
-
