@@ -1312,7 +1312,7 @@ impl From<entity_manifest::EntityManifestError> for EntityManifestError {
 }
 
 #[cfg(feature = "tpe")]
-/// Error thrown when creating a [`PartialRequest`]
+/// Error thrown when creating a `PartialRequest`
 #[derive(Debug, Error, Diagnostic)]
 pub enum PartialRequestCreationError {
     /// When the context contains unknowns
@@ -1331,10 +1331,10 @@ pub enum TPEReauthorizationError {
     /// An evaluation error was encountered
     #[error(transparent)]
     Evaluation(#[from] EvaluationError),
-    /// [`Request`] cannot be validated
+    /// `Request` cannot be validated
     #[error(transparent)]
     RequestValidation(#[from] RequestValidationError),
-    /// [`Entities`] cannot be validated
+    /// `Entities` cannot be validated
     #[error(transparent)]
     EntityValidation(#[from] EntitySchemaConformanceError),
     /// Inconsistent entities
