@@ -110,7 +110,7 @@ impl RequestTypeTerms {
             // PANIC SAFETY: all terms are mapped in the previous loop
             #[allow(clippy::unwrap_used)]
             self.access_terms
-                .insert(term_mapping.map_term(term).unwrap());
+                .insert(term_mapping.map_term(*term).unwrap());
         }
 
         term_mapping
@@ -142,7 +142,7 @@ impl RequestTypeTerms {
             AccessTermVariant::String(s) => AccessTermVariant::String(s.clone()),
             AccessTermVariant::Attribute { of, attr } => {
                 // Recursively map the 'of' term
-                let mapped_of = self.map_term_or_create(of, term_mapping);
+                let mapped_of = self.map_term_or_create(*of, term_mapping);
 
                 AccessTermVariant::Attribute {
                     of: mapped_of,
@@ -151,8 +151,8 @@ impl RequestTypeTerms {
             }
             AccessTermVariant::Tag { of, tag } => {
                 // Recursively map both terms
-                let mapped_of = self.map_term_or_create(of, term_mapping);
-                let mapped_tag = self.map_term_or_create(tag, term_mapping);
+                let mapped_of = self.map_term_or_create(*of, term_mapping);
+                let mapped_tag = self.map_term_or_create(*tag, term_mapping);
 
                 AccessTermVariant::Tag {
                     of: mapped_of,
@@ -161,8 +161,8 @@ impl RequestTypeTerms {
             }
             AccessTermVariant::Ancestor { of, ancestor } => {
                 // Recursively map both terms
-                let mapped_of = self.map_term_or_create(of, term_mapping);
-                let mapped_ancestor = self.map_term_or_create(ancestor, term_mapping);
+                let mapped_of = self.map_term_or_create(*of, term_mapping);
+                let mapped_ancestor = self.map_term_or_create(*ancestor, term_mapping);
 
                 AccessTermVariant::Ancestor {
                     of: mapped_of,
@@ -175,7 +175,7 @@ impl RequestTypeTerms {
     /// Helper method to map a term or create a new one if it doesn't exist in the mapping
     fn map_term_or_create(
         &mut self,
-        term: &AccessTerm,
+        term: AccessTerm,
         term_mapping: &mut TermMapping,
     ) -> AccessTerm {
         // Check if the term is already mapped
@@ -407,7 +407,7 @@ impl TermMapping {
     }
 
     /// Map a term from the source manifest to the target manifest
-    pub fn map_term(&self, term: &AccessTerm) -> Option<AccessTerm> {
+    pub fn map_term(&self, term: AccessTerm) -> Option<AccessTerm> {
         self.term_map.get(&term.id).map(|&id| AccessTerm { id })
     }
 }
@@ -445,7 +445,7 @@ impl EntityManifest {
             let mapping = other_clone.union_with(my_terms);
 
             // Find all reachable terms in `other`
-            let mut reachable = other_terms
+            let reachable = other_terms
                 .access_terms
                 .terms()
                 .iter()
@@ -455,7 +455,7 @@ impl EntityManifest {
             // now check that all terms in self are in reachable in `other`
             // using the mapping
             for term in my_terms.access_terms.terms() {
-                let Some(mapped) = mapping.map_term(term) else {
+                let Some(mapped) = mapping.map_term(*term) else {
                     return false;
                 };
                 if !reachable.contains(&mapped) {
@@ -581,8 +581,8 @@ impl AccessTerms {
     }
 
     /// Remove a term
-    pub fn remove(&mut self, term: &AccessTerm) {
-        self.terms.remove(term);
+    pub fn remove(&mut self, term: AccessTerm) {
+        self.terms.remove(&term);
     }
 }
 

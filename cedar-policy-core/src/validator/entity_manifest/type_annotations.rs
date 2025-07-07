@@ -71,7 +71,7 @@ impl RequestTypeTerms {
     /// When the type does not exist in the schema, it returns `None`.
     fn type_term(
         &self,
-        variant: &AccessTermVariant,
+        variant: AccessTermVariant,
         request_type: &RequestType,
         schema: &ValidatorSchema,
     ) -> Result<Option<Type>, EntityManifestTypecheckError> {

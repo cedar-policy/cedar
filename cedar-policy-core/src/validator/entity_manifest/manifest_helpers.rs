@@ -63,7 +63,7 @@ impl RequestTypeTerms {
             for child in children {
                 // Add this term as a parent of the child
                 if let Some(child_dependents) = dependents_map.get_mut(&child) {
-                    child_dependents.push(term.clone());
+                    child_dependents.push(*term);
                 }
             }
         }
@@ -80,10 +80,10 @@ impl RequestTypeTerms {
         let mut dependent_entities_map = HashMap::new();
 
         for term in dependents_map.keys() {
-            if self.is_critical_term(term) {
+            if self.is_critical_term(*term) {
                 let dependent_entities =
                     self.get_manifest_dependent_critical_terms(*term, dependents_map);
-                dependent_entities_map.insert(term.clone(), dependent_entities);
+                dependent_entities_map.insert(*term, dependent_entities);
             }
         }
 
@@ -129,7 +129,7 @@ impl RequestTypeTerms {
         let mut queue = Vec::new();
 
         // Start with the current term
-        queue.push(term.clone());
+        queue.push(term);
 
         while let Some(current) = queue.pop() {
             // Get the dependents of the current term
@@ -137,7 +137,7 @@ impl RequestTypeTerms {
                 for dependent in dependents {
                     if visited.insert(dependent) {
                         // if it has an entity type, add it to the result
-                        if self.is_critical_term(dependent) {
+                        if self.is_critical_term(*dependent) {
                             result.insert(dependent.clone());
                         } else {
                             // otherwise add to the queue
@@ -171,23 +171,23 @@ impl RequestTypeTerms {
                 // For each critical term, we need to build an AccessTrie
                 (
                     *term,
-                    self.build_access_trie_for_critical(term, dependents_map),
+                    self.build_access_trie_for_critical(*term, dependents_map),
                 )
             })
             .collect()
     }
 
-    fn is_critical_term(&self, term: &AccessTerm) -> bool {
+    fn is_critical_term(&self, term: AccessTerm) -> bool {
         self.is_entity_typed_term(term) || self.is_tag_term(term)
     }
 
-    pub(crate) fn is_tag_term(&self, term: &AccessTerm) -> bool {
+    pub(crate) fn is_tag_term(&self, term: AccessTerm) -> bool {
         let variant = term.get_variant_internal(&self.dag);
         // Check if the term is a tag term
         matches!(variant, AccessTermVariant::Tag { .. })
     }
 
-    pub(crate) fn is_entity_typed_term(&self, term: &AccessTerm) -> bool {
+    pub(crate) fn is_entity_typed_term(&self, term: AccessTerm) -> bool {
         // Check if we have type information
         if term.id < self.dag.types.len() {
             // Check if the type is an entity type
@@ -205,7 +205,7 @@ impl RequestTypeTerms {
     /// Recursively build the `AccessTrie` for an entity term
     fn build_access_trie_for_critical(
         &self,
-        entity_term: &AccessTerm,
+        entity_term: AccessTerm,
         dependents_map: &HashMap<AccessTerm, Vec<AccessTerm>>,
     ) -> AccessTrie {
         // Create a new trie for this entity
@@ -221,7 +221,7 @@ impl RequestTypeTerms {
     /// Traverses the dependents map starting from the entity term
     fn build_trie_recursive(
         &self,
-        term: &AccessTerm,
+        term: AccessTerm,
         trie: &mut AccessTrie,
         dependents_map: &HashMap<AccessTerm, Vec<AccessTerm>>,
         visited: &mut HashSet<AccessTerm>,
@@ -230,7 +230,7 @@ impl RequestTypeTerms {
         visited.insert(term.clone());
 
         // Get all dependents of this term
-        if let Some(dependents) = dependents_map.get(term) {
+        if let Some(dependents) = dependents_map.get(&term) {
             for dependent in dependents {
                 // Skip if we've already visited this term
                 if visited.contains(dependent) {
@@ -245,8 +245,8 @@ impl RequestTypeTerms {
                     let field_trie = trie.get_or_create_field(attr);
 
                     // If this is an entity, don't continue building the trie
-                    if !self.is_critical_term(dependent) {
-                        self.build_trie_recursive(dependent, field_trie, dependents_map, visited);
+                    if !self.is_critical_term(*dependent) {
+                        self.build_trie_recursive(*dependent, field_trie, dependents_map, visited);
                     }
                 }
             }
@@ -445,7 +445,7 @@ impl<'a> EntityLoadingContext<'a> {
             #[allow(clippy::unwrap_used)]
             let access_trie = self.access_tries.get(critical_term).unwrap();
             // Case split on entities or tag access terms
-            if self.for_request.is_tag_term(critical_term) {
+            if self.for_request.is_tag_term(*critical_term) {
                 eprintln!("adding tag");
                 self.add_tag_request_from_term(critical_term, access_trie, entity_requests)?;
             } else {
@@ -493,7 +493,7 @@ impl<'a> EntityLoadingContext<'a> {
     /// Add an entity request with a tag for a tag term.
     fn add_tag_request_from_term(
         &self,
-        critical_term: &AccessTerm,
+        critical_term: AccessTerm,
         dependent_trie: &AccessTrie,
         entity_requests: &mut EntityRequests,
     ) -> Result<(), EntitySliceError> {

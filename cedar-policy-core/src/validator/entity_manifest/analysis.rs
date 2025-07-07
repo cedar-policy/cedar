@@ -285,7 +285,7 @@ impl WrappedAccessTerms {
                 // Use type_to_access_terms to compute the full access terms for the type
                 // and add them to the store
                 self.clone()
-                    .with_dropped_terms(type_to_access_terms(ty, store, term))
+                    .with_dropped_terms(type_to_access_terms(ty, store, *term))
             }
             WrappedAccessTerms::RecordLiteral(literal_fields) => match ty {
                 Type::EntityOrRecord(EntityRecordKind::Record {
@@ -350,7 +350,7 @@ impl WrappedAccessTerms {
 fn type_to_access_terms(
     ty: &Type,
     store: &mut AccessDag,
-    term: &AccessTerm,
+    term: AccessTerm,
 ) -> Rc<WrappedAccessTerms> {
     match ty {
         // if it's not an entity or record, slice ends here
@@ -370,7 +370,7 @@ fn type_to_access_terms(
 fn entity_or_record_to_access_terms(
     ty: &EntityRecordKind,
     store: &mut AccessDag,
-    term: &AccessTerm,
+    term: AccessTerm,
 ) -> Rc<WrappedAccessTerms> {
     match ty {
         EntityRecordKind::ActionEntity { attrs, .. } | EntityRecordKind::Record { attrs, .. } => {
@@ -387,7 +387,7 @@ fn entity_or_record_to_access_terms(
                     .with_dropped_terms(Rc::new(WrappedAccessTerms::AccessTerm(attr_term.clone())));
 
                 // Recursively process the attribute's type
-                let attr_terms = type_to_access_terms(&attr_type.attr_type, store, &attr_term);
+                let attr_terms = type_to_access_terms(&attr_type.attr_type, store, attr_term);
                 terms = terms.with_dropped_terms(attr_terms);
             }
             terms

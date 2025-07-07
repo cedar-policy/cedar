@@ -227,7 +227,7 @@ impl EntityManifest {
     /// Convert an `AccessTerm` to a Cedar expression
     fn access_term_to_expr(
         &self,
-        term: &AccessTerm,
+        term: AccessTerm,
         request_type: &RequestType,
     ) -> Result<ast::Expr, super::AccessTermNotFoundError> {
         // Find the terms for this request type
