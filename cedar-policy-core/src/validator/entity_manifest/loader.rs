@@ -43,6 +43,244 @@ use crate::validator::entity_manifest::errors::{
     EntitySliceError, PartialRequestError, ResidualEncounteredError,
 };
 
+/// A context for preparing entity requests.
+/// This struct encapsulates all the data needed for the entity loading process.
+#[derive(Debug)]
+pub(crate) struct EntityRequestContext<'a> {
+    /// Map from a critical term to critical dependents
+    dependent_critical: HashMap<
+        crate::validator::entity_manifest::AccessTerm,
+        Vec<crate::validator::entity_manifest::AccessTerm>,
+    >,
+    /// Access tries for each critical term
+    access_tries: HashMap<crate::validator::entity_manifest::AccessTerm, AccessTrie>,
+    /// The request type terms
+    for_request: &'a crate::validator::entity_manifest::RequestTypeTerms,
+    /// Map of already loaded entities
+    entities_map: HashMap<EntityUID, Entity>,
+    /// The request
+    request: &'a Request,
+}
+
+impl<'a> EntityRequestContext<'a> {
+    /// Creates a new entity request context.
+    pub(crate) fn new(
+        for_request: &'a crate::validator::entity_manifest::RequestTypeTerms,
+        request: &'a Request,
+    ) -> Self {
+        let reachable_terms = for_request.reachable_terms();
+        // Map from term to dependents
+        let dependents_map = for_request.build_dependents_map(&reachable_terms);
+        // Map from a critical term to critical dependents
+        let dependent_critical = for_request.build_dependent_critical_terms(&dependents_map);
+        // Access tries for each critical term
+        let access_tries = for_request.compute_access_tries(&dependent_critical, &dependents_map);
+
+        Self {
+            dependent_critical,
+            access_tries,
+            for_request,
+            entities_map: HashMap::new(),
+            request,
+        }
+    }
+
+    /// Gets the initial critical terms to process.
+    pub(crate) fn initial_critical_terms(
+        &self,
+    ) -> Vec<crate::validator::entity_manifest::AccessTerm> {
+        self.for_request.initial_critical_terms(&self.access_tries)
+    }
+
+    /// Gets the entities map.
+    pub(crate) fn entities_map(&self) -> &HashMap<EntityUID, Entity> {
+        &self.entities_map
+    }
+
+    /// Gets a mutable reference to the entities map.
+    pub(crate) fn entities_map_mut(&mut self) -> &mut HashMap<EntityUID, Entity> {
+        &mut self.entities_map
+    }
+
+    /// Prepare entity requests from a batch of critical terms.
+    ///
+    /// This function:
+    /// 1. Takes critical terms from `next_critical_terms`
+    /// 2. Adds their dependent terms to `next_critical_terms` for the next batch
+    /// 3. Processes entity-typed terms and tag terms, adding appropriate entity requests
+    pub(crate) fn prepare_entity_requests_from_terms(
+        &self,
+        next_critical_terms: &mut Vec<crate::validator::entity_manifest::AccessTerm>,
+        visited_terms: &mut HashSet<crate::validator::entity_manifest::AccessTerm>,
+        entity_requests: &mut EntityRequests,
+    ) -> Result<(), EntitySliceError> {
+        // Process each critical term in the current batch
+        for critical_term in std::mem::take(next_critical_terms).into_iter() {
+            // If we have already visited this term, skip it
+            if !visited_terms.insert(critical_term.clone()) {
+                continue;
+            }
+
+            // Add dependent critical terms to the next batch
+            // PANIC SAFETY: Every critical term has an entry in dependent_critical
+            #[allow(clippy::panic)]
+            let Some(dependent_critical_terms) = self.dependent_critical.get(&critical_term) else {
+                panic!(
+                    "Expected dependent term {:?} to have an entry in dependent_critical",
+                    critical_term
+                );
+            };
+            next_critical_terms.extend(dependent_critical_terms.iter().cloned());
+
+            // Get the access trie for this critical term if any
+            if let Some(dependent_trie) = self.access_tries.get(&critical_term) {
+                // Case split on entities or tag access terms
+                if self.for_request.is_entity_typed_term(&critical_term) {
+                    self.add_entity_request_from_term(
+                        &critical_term,
+                        dependent_trie,
+                        entity_requests,
+                    )?;
+                } else {
+                    self.add_tag_request_from_term(
+                        &critical_term,
+                        dependent_trie,
+                        entity_requests,
+                    )?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Add an entity request for an entity-typed term.
+    fn add_entity_request_from_term(
+        &self,
+        critical_term: &crate::validator::entity_manifest::AccessTerm,
+        dependent_trie: &AccessTrie,
+        entity_requests: &mut EntityRequests,
+    ) -> Result<(), EntitySliceError> {
+        // Get the id of the entity term using the entity store
+        let dependent_val =
+            critical_term.compute_value(&self.entities_map, &self.for_request.dag, self.request)?;
+
+        let dependent_id = match dependent_val.value_kind() {
+            ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
+            _ => {
+                return Err(ExpectedEntityTypeError {
+                    found_value: dependent_val.clone(),
+                }
+                .into())
+            }
+        };
+
+        // Add entity request to the collection
+        entity_requests.add(EntityRequest {
+            entity_id: dependent_id,
+            tags: HashMap::new(),
+            access_trie: dependent_trie.clone(),
+        });
+
+        Ok(())
+    }
+
+    /// Add an entity request with a tag for a tag term.
+    fn add_tag_request_from_term(
+        &self,
+        critical_term: &crate::validator::entity_manifest::AccessTerm,
+        dependent_trie: &AccessTrie,
+        entity_requests: &mut EntityRequests,
+    ) -> Result<(), EntitySliceError> {
+        eprintln!(
+            "Loading tag term: {:?} with access trie: {:?}",
+            critical_term, dependent_trie
+        );
+
+        // PANIC SAFETY: Critical terms are either entity typed or tag terms.
+        #[allow(clippy::panic)]
+        let AccessTermVariant::Tag { of, tag } =
+            critical_term.get_variant_internal(&self.for_request.dag)
+        else {
+            panic!(
+                "Expected a tag term variant, but got {:?}",
+                critical_term.get_variant_internal(&self.for_request.dag)
+            );
+        };
+
+        // For tag terms, generate an entity request with the tag and access trie
+        let of_val_result =
+            of.compute_value(&self.entities_map, &self.for_request.dag, self.request)?;
+        let tag_val_result =
+            tag.compute_value(&self.entities_map, &self.for_request.dag, self.request)?;
+
+        // Extract the entity ID
+        let of_val = match of_val_result.value_kind() {
+            ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
+            _ => {
+                return Err(ExpectedEntityTypeError {
+                    found_value: of_val_result.clone(),
+                }
+                .into())
+            }
+        };
+
+        // Tag value is always a string
+        let tag_val = match tag_val_result.value_kind() {
+            ValueKind::Lit(Literal::String(s)) => s.clone(),
+            _ => {
+                return Err(ExpectedStringTypeError {
+                    found_value: tag_val_result.clone(),
+                }
+                .into());
+            }
+        };
+
+        // Add the tag to the request
+        let mut tags = HashMap::new();
+        tags.insert(tag_val, dependent_trie.clone());
+
+        // Add entity request with tags to the collection
+        entity_requests.add(EntityRequest {
+            entity_id: of_val,
+            tags,
+            access_trie: AccessTrie::new(),
+        });
+
+        Ok(())
+    }
+
+    /// Load entities for the current batch of requests and merge them into the entities map.
+    pub(crate) fn load_and_merge_entities(
+        &mut self,
+        loader: &mut dyn EntityLoader,
+        entity_requests: &mut EntityRequests,
+    ) -> Result<(), EntitySliceError> {
+        // Load the current batch of entities
+        let loaded_entities = loader.load_entities(entity_requests)?;
+
+        // Reset entity_requests for the next batch
+        entity_requests.clear();
+
+        for entity in loaded_entities.into_iter() {
+            // Add or merge the entity into our map
+            match self.entities_map.entry(entity.uid().clone()) {
+                hash_map::Entry::Occupied(o) => {
+                    // If the entity is already present, merge it
+                    let (k, v) = o.remove_entry();
+                    let merged = merge_entities(v, entity.clone())?;
+                    self.entities_map.insert(k, merged);
+                }
+                hash_map::Entry::Vacant(v) => {
+                    v.insert(entity.clone());
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// A request that an entity be loaded.
 /// Entities this entity references need not be loaded, as they will be requested separately.
 ///
@@ -213,19 +451,13 @@ pub(crate) fn load_entities(
         };
     };
 
-    let reachable_terms = for_request.reachable_terms();
-    // Map from term to dependents
-    let dependents_map = for_request.build_dependents_map(&reachable_terms);
-    // Map from a critical term to critical dependents
-    let dependent_critical = for_request.build_dependent_critical_terms(&dependents_map);
-    // Access tries for each critical term
-    let access_tries = for_request.compute_access_tries(&dependent_critical, &dependents_map);
+    // Create the entity request context
+    let mut context = EntityRequestContext::new(for_request, request);
 
     // Get initial entities to load and track processed entities
-    let mut next_critical_terms = for_request.initial_critical_terms(&access_tries);
+    let mut next_critical_terms = context.initial_critical_terms();
     // Collection of entity requests
     let mut entity_requests = EntityRequests::new();
-    let mut entities_map: HashMap<EntityUID, Entity> = HashMap::new();
     let mut visited_terms = HashSet::new();
 
     eprintln!("next_critical_terms: {next_critical_terms:?}");
@@ -233,19 +465,14 @@ pub(crate) fn load_entities(
     // Main loop of loading entities, one batch at a time
     while !next_critical_terms.is_empty() {
         // Prepare entity requests from the current batch of critical terms
-        prepare_entity_requests_from_terms(
+        context.prepare_entity_requests_from_terms(
             &mut next_critical_terms,
             &mut visited_terms,
-            &dependent_critical,
-            &access_tries,
-            for_request,
-            &entities_map,
-            request,
             &mut entity_requests,
         )?;
 
         // Load and merge entities for the current batch
-        load_and_merge_entities(loader, &mut entity_requests, &mut entities_map)?;
+        context.load_and_merge_entities(loader, &mut entity_requests)?;
     }
 
     // Load ancestors for all entities
@@ -254,13 +481,15 @@ pub(crate) fn load_entities(
     // compute ancestors requests by finding all AccessTermVariant::Ancestor variants
     // look up the entity ids in the Entities store using the terms
     // then create an ancestor request
+    let reachable_terms = for_request.reachable_terms();
     for term in reachable_terms.iter() {
         if let Ok(AccessTermVariant::Ancestor { of, ancestor }) = term.get_variant(&for_request.dag)
         {
             // Extract EntityUID from the Value
-            let of_val_result = of.compute_value(&entities_map, &for_request.dag, request)?;
+            let of_val_result =
+                of.compute_value(context.entities_map(), &for_request.dag, request)?;
             let ancestor_val_result =
-                ancestor.compute_value(&entities_map, &for_request.dag, request)?;
+                ancestor.compute_value(context.entities_map(), &for_request.dag, request)?;
 
             // Extract the EntityUID from the Value
             let of_val = match of_val_result.value_kind() {
@@ -323,7 +552,7 @@ pub(crate) fn load_entities(
 
         // Add ancestors to entities
         for (request, ancestors) in ancestors_requests_vec.into_iter().zip(loaded_ancestors) {
-            if let Some(entity) = entities_map.get_mut(&request.entity_id) {
+            if let Some(entity) = context.entities_map_mut().get_mut(&request.entity_id) {
                 for ancestor in ancestors {
                     entity.add_parent(ancestor);
                 }
@@ -337,7 +566,9 @@ pub(crate) fn load_entities(
                         ancestors,
                         [], // TODO: entity slicing does not yet support tags
                     );
-                    entities_map.insert(request.entity_id.clone(), entity);
+                    context
+                        .entities_map_mut()
+                        .insert(request.entity_id.clone(), entity);
                 }
             }
         }
@@ -345,7 +576,7 @@ pub(crate) fn load_entities(
 
     // Convert the loaded entities into a Cedar Entities store
     match Entities::from_entities(
-        entities_map.into_values(),
+        context.entities_map().clone().into_values(),
         None::<&NoEntitiesSchema>,
         TCComputation::AssumeAlreadyComputed,
         Extensions::all_available(),
@@ -443,198 +674,6 @@ fn merge_entities(e1: Entity, e2: Entity) -> Result<Entity, EntitySliceError> {
         merged_parents,
         merged_tags,
     ))
-}
-
-/// Prepare entity requests from a batch of critical terms.
-///
-/// This function:
-/// 1. Takes critical terms from `next_critical_terms`
-/// 2. Adds their dependent terms to `next_critical_terms` for the next batch
-/// 3. Processes entity-typed terms and tag terms, adding appropriate entity requests
-fn prepare_entity_requests_from_terms(
-    next_critical_terms: &mut Vec<crate::validator::entity_manifest::AccessTerm>,
-    visited_terms: &mut HashSet<crate::validator::entity_manifest::AccessTerm>,
-    dependent_critical: &HashMap<
-        crate::validator::entity_manifest::AccessTerm,
-        Vec<crate::validator::entity_manifest::AccessTerm>,
-    >,
-    access_tries: &HashMap<crate::validator::entity_manifest::AccessTerm, AccessTrie>,
-    for_request: &crate::validator::entity_manifest::RequestTypeTerms,
-    entities_map: &HashMap<EntityUID, Entity>,
-    request: &Request,
-    entity_requests: &mut EntityRequests,
-) -> Result<(), EntitySliceError> {
-    // Process each critical term in the current batch
-    for critical_term in std::mem::take(next_critical_terms).into_iter() {
-        // If we have already visited this term, skip it
-        if !visited_terms.insert(critical_term.clone()) {
-            continue;
-        }
-
-        // Add dependent critical terms to the next batch
-        // PANIC SAFETY: Every critical term has an entry in dependent_critical
-        #[allow(clippy::panic)]
-        let Some(dependent_critical_terms) = dependent_critical.get(&critical_term) else {
-            panic!(
-                "Expected dependent term {:?} to have an entry in dependent_critical",
-                critical_term
-            );
-        };
-        next_critical_terms.extend(dependent_critical_terms.iter().cloned());
-
-        // Get the access trie for this critical term if any
-        if let Some(dependent_trie) = access_tries.get(&critical_term) {
-            // Case split on entities or tag access terms
-            if for_request.is_entity_typed_term(&critical_term) {
-                add_entity_request_from_term(
-                    &critical_term,
-                    dependent_trie,
-                    for_request,
-                    entities_map,
-                    request,
-                    entity_requests,
-                )?;
-            } else {
-                add_tag_request_from_term(
-                    &critical_term,
-                    dependent_trie,
-                    for_request,
-                    entities_map,
-                    request,
-                    entity_requests,
-                )?;
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// Add an entity request for an entity-typed term.
-fn add_entity_request_from_term(
-    critical_term: &crate::validator::entity_manifest::AccessTerm,
-    dependent_trie: &AccessTrie,
-    for_request: &crate::validator::entity_manifest::RequestTypeTerms,
-    entities_map: &HashMap<EntityUID, Entity>,
-    request: &Request,
-    entity_requests: &mut EntityRequests,
-) -> Result<(), EntitySliceError> {
-    // Get the id of the entity term using the entity store
-    let dependent_val = critical_term.compute_value(entities_map, &for_request.dag, request)?;
-
-    let dependent_id = match dependent_val.value_kind() {
-        ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
-        _ => {
-            return Err(ExpectedEntityTypeError {
-                found_value: dependent_val.clone(),
-            }
-            .into())
-        }
-    };
-
-    // Add entity request to the collection
-    entity_requests.add(EntityRequest {
-        entity_id: dependent_id.clone(),
-        tags: HashMap::new(),
-        access_trie: dependent_trie.clone(),
-    });
-
-    Ok(())
-}
-
-/// Add an entity request with a tag for a tag term.
-fn add_tag_request_from_term(
-    critical_term: &crate::validator::entity_manifest::AccessTerm,
-    dependent_trie: &AccessTrie,
-    for_request: &crate::validator::entity_manifest::RequestTypeTerms,
-    entities_map: &HashMap<EntityUID, Entity>,
-    request: &Request,
-    entity_requests: &mut EntityRequests,
-) -> Result<(), EntitySliceError> {
-    eprintln!(
-        "Loading tag term: {:?} with access trie: {:?}",
-        critical_term, dependent_trie
-    );
-
-    // PANIC SAFETY: Critical terms are either entity typed or tag terms.
-    #[allow(clippy::panic)]
-    let AccessTermVariant::Tag { of, tag } = critical_term.get_variant_internal(&for_request.dag) else {
-        panic!(
-            "Expected a tag term variant, but got {:?}",
-            critical_term.get_variant_internal(&for_request.dag)
-        );
-    };
-
-    // For tag terms, generate an entity request with the tag and access trie
-    let of_val_result = of.compute_value(entities_map, &for_request.dag, request)?;
-    let tag_val_result = tag.compute_value(entities_map, &for_request.dag, request)?;
-
-    // Extract the entity ID
-    let of_val = match of_val_result.value_kind() {
-        ValueKind::Lit(Literal::EntityUID(euid)) => (**euid).clone(),
-        _ => {
-            return Err(ExpectedEntityTypeError {
-                found_value: of_val_result.clone(),
-            }
-            .into())
-        }
-    };
-
-    // Tag value is always a string
-    let tag_val = match tag_val_result.value_kind() {
-        ValueKind::Lit(Literal::String(s)) => s.clone(),
-        _ => {
-            return Err(ExpectedStringTypeError {
-                found_value: tag_val_result.clone(),
-            }
-            .into());
-        }
-    };
-
-    // Add the tag to the request
-    let mut tags = HashMap::new();
-    tags.insert(tag_val, dependent_trie.clone());
-
-    // Add entity request with tags to the collection
-    entity_requests.add(EntityRequest {
-        entity_id: of_val.clone(),
-        tags,
-        access_trie: AccessTrie::new(),
-    });
-
-    Ok(())
-}
-
-/// Load entities for the current batch of requests and merge them into the entities map.
-fn load_and_merge_entities(
-    loader: &mut dyn EntityLoader,
-    entity_requests: &mut EntityRequests,
-    entities_map: &mut HashMap<EntityUID, Entity>,
-) -> Result<(), EntitySliceError> {
-    eprintln!("Loading entities for requests: {:?}", entity_requests);
-
-    // Load the current batch of entities
-    let loaded_entities = loader.load_entities(entity_requests)?;
-
-    // Reset entity_requests for the next batch
-    entity_requests.clear();
-
-    for entity in loaded_entities.into_iter() {
-        // Add or merge the entity into our map
-        match entities_map.entry(entity.uid().clone()) {
-            hash_map::Entry::Occupied(o) => {
-                // If the entity is already present, merge it
-                let (k, v) = o.remove_entry();
-                let merged = merge_entities(v, entity.clone())?;
-                entities_map.insert(k, merged);
-            }
-            hash_map::Entry::Vacant(v) => {
-                v.insert(entity.clone());
-            }
-        }
-    }
-
-    Ok(())
 }
 
 /// Merge two value for corresponding attributes in the slice.
