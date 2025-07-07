@@ -317,7 +317,7 @@ impl<'a> Typechecker<'a> {
     pub fn typecheck_by_request_env<'b>(
         &'b self,
         t: &'b Template,
-    ) -> Vec<(RequestEnv, PolicyCheck)> {
+    ) -> Vec<(RequestEnv<'b>, PolicyCheck)> {
         self.apply_typecheck_fn_by_request_env(t, |request, expr| {
             let mut type_errors = Vec::new();
             let empty_prior_eff = EffectSet::new();
@@ -344,7 +344,7 @@ impl<'a> Typechecker<'a> {
     pub fn typecheck_by_request_env_strict<'b>(
         &'b self,
         t: &'b Template,
-    ) -> Vec<(RequestEnv, PolicyCheck)> {
+    ) -> Vec<(RequestEnv<'b>, PolicyCheck)> {
         self.apply_typecheck_fn_by_request_env(t, move |request, expr| {
             let mut type_errors = Vec::new();
             let ty =
@@ -375,7 +375,7 @@ impl<'a> Typechecker<'a> {
         &'b self,
         t: &'b Template,
         typecheck_fn: F,
-    ) -> Vec<(RequestEnv, C)>
+    ) -> Vec<(RequestEnv<'b>, C)>
     where
         F: Fn(&RequestEnv, &Expr) -> C,
     {
@@ -448,7 +448,7 @@ impl<'a> Typechecker<'a> {
         env_checks
     }
 
-    fn unlinked_request_envs<'b>(&'b self) -> impl Iterator<Item = RequestEnv> + 'b {
+    fn unlinked_request_envs<'b>(&'b self) -> impl Iterator<Item = RequestEnv<'b>> + 'b {
         // Gather all of the actions declared in the schema.
         let all_actions = self
             .schema
@@ -483,7 +483,7 @@ impl<'a> Typechecker<'a> {
         &'b self,
         env: RequestEnv<'b>,
         t: &'b Template,
-    ) -> impl Iterator<Item = RequestEnv> + 'b {
+    ) -> impl Iterator<Item = RequestEnv<'b>> + 'b {
         self.possible_slot_instantiations(
             t,
             SlotId::principal(),
@@ -2555,7 +2555,7 @@ impl<'a> Typechecker<'a> {
     fn lookup_extension_function<'b>(
         &'b self,
         f: &'b Name,
-    ) -> Result<&ExtensionFunctionType, impl FnOnce(Expr) -> TypeError + 'b> {
+    ) -> Result<&'b ExtensionFunctionType, impl FnOnce(Expr) -> TypeError + 'b> {
         let extension_funcs: Vec<&ExtensionFunctionType> = self
             .extensions
             .iter()

@@ -100,7 +100,7 @@ impl Validator {
         &'a self,
         p: &'a Template,
         mode: ValidationMode,
-    ) -> impl Iterator<Item = ValidationError> + 'a {
+    ) -> impl Iterator<Item = ValidationError<'a>> + 'a {
         self.validate_entity_types(p)
             .chain(self.validate_action_ids(p))
             .chain(self.validate_action_application(
@@ -117,7 +117,7 @@ impl Validator {
     fn validate_slots<'a>(
         &'a self,
         p: &'a Policy,
-    ) -> Option<impl Iterator<Item = ValidationError> + 'a> {
+    ) -> Option<impl Iterator<Item = ValidationError<'a>> + 'a> {
         // Ignore static policies since they are already handled by `validate_policy`
         if p.is_static() {
             return None;
@@ -145,7 +145,7 @@ impl Validator {
         &'a self,
         t: &'a Template,
         mode: ValidationMode,
-    ) -> impl Iterator<Item = ValidationError> + 'a {
+    ) -> impl Iterator<Item = ValidationError<'a>> + 'a {
         let typecheck = Typechecker::new(&self.schema, mode);
         let mut type_errors = HashSet::new();
         typecheck.typecheck_policy(t, &mut type_errors);
