@@ -27,7 +27,7 @@ pub(crate) use typecheck_answer::TypecheckAnswer;
 use std::{borrow::Cow, collections::HashSet, iter::zip};
 
 use crate::{
-    ast::{ValidatorGeneralizedSlotsAnnotation, ValidatorSlotTypePosition},
+    ast::ValidatorGeneralizedSlotsAnnotation,
     validator::{
         extension_schema::ExtensionFunctionType,
         extensions::ExtensionSchemas,
@@ -44,8 +44,7 @@ use crate::{
 use crate::{
     ast::{
         BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, GeneralizedSlotsAnnotation,
-        Literal, Name, PolicyID, PrincipalOrResourceConstraint, ScopePosition, SlotId, Template,
-        UnaryOp, Var,
+        Literal, Name, PolicyID, PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
     },
     expr_builder::ExprBuilder as _,
 };
@@ -396,45 +395,39 @@ impl<'a> SingleEnvTypechecker<'a> {
             ExprKind::Unknown(u) => {
                 TypecheckAnswer::fail(ExprBuilder::with_data(None).unknown(u.clone()))
             }
-            // Template Slots, always has to be an entity.
+            // Template Slots
             ExprKind::Slot(slotid) => TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(if slotid.is_principal() {
-                    self.request_env
-                        .principal_slot()
-                        .clone()
-                        .map(Type::named_entity_reference)
-                        .unwrap_or_else(Type::any_entity_reference)
-                } else if slotid.is_resource() {
-                    self.request_env
-                        .resource_slot()
-                        .clone()
-                        .map(Type::named_entity_reference)
-                        .unwrap_or_else(Type::any_entity_reference)
-                } else {
-                    match self
-                        .generalized_slots_to_validator_type_position
-                        .get_validator_slot_type_position(slotid)
+                ExprBuilder::with_data(Some(
+                    if slotid.is_principal()
+                        || self
+                            .generalized_slots_to_validator_type_position
+                            .in_principal_position(slotid)
                     {
-                        Some(validator_slot_type_position) => match validator_slot_type_position {
-                            ValidatorSlotTypePosition::Ty(ty) => ty.clone(),
-                            ValidatorSlotTypePosition::Position(pos) => match pos {
-                                ScopePosition::Principal => self
-                                    .request_env
-                                    .principal_slot()
-                                    .clone()
-                                    .map(Type::named_entity_reference)
-                                    .unwrap_or_else(Type::any_entity_reference),
-                                ScopePosition::Resource => self
-                                    .request_env
-                                    .resource_slot()
-                                    .clone()
-                                    .map(Type::named_entity_reference)
-                                    .unwrap_or_else(Type::any_entity_reference),
-                            },
-                        },
-                        None => Type::any_entity_reference(),
-                    }
-                }))
+                        self.request_env
+                            .principal_slot()
+                            .clone()
+                            .map(Type::named_entity_reference)
+                            .unwrap_or_else(Type::any_entity_reference)
+                    } else if slotid.is_resource()
+                        || self
+                            .generalized_slots_to_validator_type_position
+                            .in_resource_position(slotid)
+                    {
+                        self.request_env
+                            .resource_slot()
+                            .clone()
+                            .map(Type::named_entity_reference)
+                            .unwrap_or_else(Type::any_entity_reference)
+                    } else {
+                        match self
+                            .generalized_slots_to_validator_type_position
+                            .get_type(slotid)
+                        {
+                            Some(validator_ty) => validator_ty,
+                            None => Type::any_entity_reference(),
+                        }
+                    },
+                ))
                 .with_same_source_loc(e)
                 .slot(slotid.clone()),
             ),

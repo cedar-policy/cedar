@@ -246,7 +246,7 @@ pub struct ValidatorSchema {
     pub(crate) actions: HashMap<EntityUID, Arc<Entity>>,
 
     #[cfg(feature = "extended-schema")]
-    extended_common_types: HashSet<ValidatorCommonType>,
+    common_types_extended: HashSet<ValidatorCommonType>,
     #[cfg(feature = "extended-schema")]
     namespaces: HashSet<ValidatorNamespace>,
 }
@@ -314,7 +314,7 @@ impl ValidatorSchema {
         entity_types: HashMap<EntityType, ValidatorEntityType>,
         action_ids: HashMap<EntityUID, ValidatorActionId>,
         common_types: HashMap<InternalName, ValidatorType>,
-        #[cfg(feature = "extended-schema")] extended_common_types: HashSet<ValidatorCommonType>,
+        #[cfg(feature = "extended-schema")] common_types_extended: HashSet<ValidatorCommonType>,
         #[cfg(feature = "extended-schema")] namespaces: HashSet<ValidatorNamespace>,
     ) -> Self {
         let actions = Self::action_entities_iter(&action_ids)
@@ -326,7 +326,7 @@ impl ValidatorSchema {
             common_types,
             actions,
             #[cfg(feature = "extended-schema")]
-            extended_common_types,
+            common_types_extended,
             #[cfg(feature = "extended-schema")]
             namespaces,
         }
@@ -334,8 +334,8 @@ impl ValidatorSchema {
 
     /// Returns an iter of common types in the schema
     #[cfg(feature = "extended-schema")]
-    pub fn extended_common_types(&self) -> impl Iterator<Item = &ValidatorCommonType> {
-        self.extended_common_types.iter()
+    pub fn common_types_extended(&self) -> impl Iterator<Item = &ValidatorCommonType> {
+        self.common_types_extended.iter()
     }
 
     /// Returns an iter of validator namespaces in the schema
@@ -466,7 +466,7 @@ impl ValidatorSchema {
             actions: HashMap::new(),
             common_types: HashMap::new(),
             #[cfg(feature = "extended-schema")]
-            extended_common_types: HashSet::new(),
+            common_types_extended: HashSet::new(),
             #[cfg(feature = "extended-schema")]
             namespaces: HashSet::new(),
         }

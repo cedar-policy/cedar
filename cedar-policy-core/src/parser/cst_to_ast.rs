@@ -5995,8 +5995,13 @@ mod tests {
         assert_parse_template_fails(txt);
 
         let txt = r#"
-        template(?age: Long) =>
-        forbid(principal == ?age, action, resource == ?age);
+        template(?name: University::Department) =>
+        forbid(principal == ?name, action, resource == ?name);
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        permit(principal == ?principal, action, resource == ?principal);
         "#;
         assert_parse_template_fails(txt);
     }

@@ -17,8 +17,7 @@
 use std::sync::Arc;
 
 use cedar_policy_core::ast::{
-    ActionConstraint, EntityUID, Expr, Literal, PrincipalOrResourceConstraint, SlotId, Template,
-    Var,
+    ActionConstraint, EntityUID, Expr, Literal, PrincipalOrResourceConstraint, Template, Var,
 };
 use lsp_types::{CompletionItem, Position};
 

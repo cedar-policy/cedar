@@ -167,4 +167,31 @@ impl ValidatorGeneralizedSlotsAnnotation {
     ) -> Option<&ValidatorSlotTypePosition> {
         self.0.get(slot)
     }
+
+    pub(crate) fn in_principal_position(&self, slot: &SlotId) -> bool {
+        matches!(
+            self.0.get(slot),
+            Some(&ValidatorSlotTypePosition::Position(
+                ScopePosition::Principal
+            ))
+        )
+    }
+
+    pub(crate) fn in_resource_position(&self, slot: &SlotId) -> bool {
+        matches!(
+            self.0.get(slot),
+            Some(&ValidatorSlotTypePosition::Position(
+                ScopePosition::Resource
+            ))
+        )
+    }
+
+    pub(crate) fn get_type(&self, slot: &SlotId) -> Option<ValidatorType> {
+        self.0.get(slot).and_then(
+            |validator_slot_type_position| match validator_slot_type_position {
+                ValidatorSlotTypePosition::Ty(ty) => Some(ty.clone()),
+                ValidatorSlotTypePosition::Position(_) => None,
+            },
+        )
+    }
 }

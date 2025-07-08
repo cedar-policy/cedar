@@ -79,15 +79,15 @@ pub(crate) fn fold_schema(schema_info: &SchemaInfo) -> Option<Vec<FoldingRange>>
         .entity_types()
         .filter_map(|et| et.loc.as_loc_ref());
     let action_locs = validator.action_ids().filter_map(|a| a.loc());
-    let extended_common_types = validator
-        .extended_common_types()
+    let common_types_extended = validator
+        .common_types_extended()
         .filter_map(|ct| ct.type_loc.as_loc_ref());
 
     // Combine all locations and create folding ranges
     let ranges = namespace_locs
         .chain(entity_type_locs)
         .chain(action_locs)
-        .chain(extended_common_types)
+        .chain(common_types_extended)
         .unique()
         .map(|loc| {
             let src_range = loc.to_range();
