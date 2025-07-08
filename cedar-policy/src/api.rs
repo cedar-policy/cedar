@@ -5046,7 +5046,7 @@ mod tpe {
     pub struct PartialRequest(pub(crate) tpe::request::PartialRequest);
 
     impl PartialRequest {
-        /// Construct a valid [`PartialRequest`] according to a [`Schema`]`
+        /// Construct a valid [`PartialRequest`] according to a [`Schema`]
         pub fn new(
             principal: PartialEntityUid,
             action: EntityUid,
@@ -5134,6 +5134,8 @@ mod tpe {
             use cedar_policy_core::tpe::tpe_policies;
             let ps = &self.ast;
             let res = tpe_policies(ps, &request.0, &entities.0, &schema.0)?;
+            // PANIC SAFETY: `res` should have the same policy ids with `ps`
+            #[allow(clippy::unwrap_used)]
             Ok(Residuals {
                 ps: Self::from_policies(res.into_iter().map(|(id, r)| {
                     let p = ps.get(&id).unwrap();
