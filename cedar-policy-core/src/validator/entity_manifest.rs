@@ -53,16 +53,15 @@ use crate::validator::{
 ///
 /// Each access term stores a data path, starting from a cedar variable or literal.
 /// Access paths include requests for entity attributes, tags, and ancestors.
-/// Data not mentioned by [`AccessPaths`] can be omitted, including fields of records or entity attributes.
-/// See [`AccessPath`] for more details.
+/// Data not mentioned by [`AccessTerms`] can be omitted, including fields of records or entity attributes.
+/// See [`AccessTerm`] for more details.
 ///
 /// This can be used to load data only necessary data
-/// from a backing store into an [`Entities`] object.
+/// from a backing store into an [`Entities`](crate::entities::Entities) object.
 /// Suggested usage options
 ///   - load each [`AccessTerm`] from [`AccessTerms`] separately,
 ///   - take advantage or shared sub-terms and load all the access terms at once
 ///   - load data in batches, traversing the access terms bottom-up
-///   - avoid using this directly and instead use the [`EntityLoader`] API.
 ///
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
@@ -215,7 +214,7 @@ impl RequestTypeTerms {
 /// a [`RequestTypeTerms`] containing the data terms needed for that request type.
 ///
 /// The [`EntityManifest`] can be used redirectly to load data,
-/// or be used with the (unreleased) [`EntityLoader`] API.
+/// or in the future will be used with the unreleased entity loader API.
 ///
 /// See [`RequestTypeTerms`] for more details.
 ///
