@@ -18,12 +18,11 @@
 
 use cool_asserts::assert_matches;
 use serde_json::json;
-use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::{
-    ast::{EntityUID, Expr, PolicyID},
+    ast::{EntityUID, Expr, PolicyID, ValidatorGeneralizedSlotsAnnotation},
     extensions::Extensions,
     parser::{parse_policy_or_template, IntoMaybeLoc, Loc},
 };
@@ -55,7 +54,7 @@ fn assert_typechecks_strict(
         mode: ValidationMode::Strict,
         policy_id: &expr_id_placeholder(),
         request_env,
-        generalized_slots_to_validator_type_position: &BTreeMap::new(),
+        generalized_slots_to_validator_type_position: &ValidatorGeneralizedSlotsAnnotation::new(),
     };
     let mut errs = Vec::new();
     let answer =
@@ -83,7 +82,7 @@ fn assert_strict_type_error(
         mode: ValidationMode::Strict,
         policy_id: &expr_id_placeholder(),
         request_env,
-        generalized_slots_to_validator_type_position: &BTreeMap::new(),
+        generalized_slots_to_validator_type_position: &ValidatorGeneralizedSlotsAnnotation::new(),
     };
     let mut errs = Vec::new();
     let answer =
@@ -177,7 +176,8 @@ fn strict_typecheck_catches_regular_type_error() {
             mode: ValidationMode::Strict,
             policy_id: &expr_id_placeholder(),
             request_env: &q,
-            generalized_slots_to_validator_type_position: &BTreeMap::new(),
+            generalized_slots_to_validator_type_position: &ValidatorGeneralizedSlotsAnnotation::new(
+            ),
         };
         let mut errs = Vec::new();
         typechecker.expect_type(

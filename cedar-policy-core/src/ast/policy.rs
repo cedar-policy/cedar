@@ -389,39 +389,43 @@ impl Template {
                 .generalized_slots_annotation()
                 .map(|(k, v)| (k.clone(), v.clone())),
         )
-        .convert_to_validator_type_position_map(schema)?;
+        .into_validator_generalized_slots_annotation(schema)?;
 
         for (slot, restricted_expr) in generalized_values {
-            let (expected_ty, pos) = generalized_slots_to_validator_type_position
-                .get(slot)
+            let validator_slot_type_position = generalized_slots_to_validator_type_position
+                .get_validator_slot_type_position(slot)
                 .ok_or(LinkingError::ArityError {
                     unbound_values: vec![slot.clone()],
                     extra_values: vec![],
                 })?;
-
-            match (expected_ty, pos) {
-                (Some(expected_ty), _) => typecheck_restricted_expr_against_schematype(
-                    restricted_expr.as_borrowed(),
-       #[allow(clippy::expect_used)]
-                    &SchemaType::try_from(expected_ty.clone()).expect("This should never happen as expected_ty is a statically annotated type"),
-                    Extensions::all_available(),
-                )
-                .map_err(|_| {
-                    LinkingError::ValueProvidedForSlotIsNotOfTypeSpecified {
+            match validator_slot_type_position {
+                ValidatorSlotTypePosition::Ty(expected_ty) => {
+                    let borrowed_restricted_expr = restricted_expr.as_borrowed();
+                    #[allow(clippy::expect_used)]
+                    let schema_ty = &SchemaType::try_from(expected_ty.clone()).expect(
+                        "This should never happen as expected_ty is a statically annotated type",
+                    );
+                    let extensions = Extensions::all_available();
+                    typecheck_restricted_expr_against_schematype(
+                        borrowed_restricted_expr,
+                        schema_ty,
+                        extensions,
+                    )
+                    .map_err(|_| {
+                        LinkingError::ValueProvidedForSlotIsNotOfTypeSpecified {
+                            slot: slot.clone(),
+                            value: restricted_expr.clone(),
+                            ty: expected_ty.clone(),
+                        }
+                    })?
+                }
+                ValidatorSlotTypePosition::Position(_) => restricted_expr
+                    .as_euid()
+                    .map(|_| ())
+                    .ok_or(LinkingError::ValueProvidedForSlotInScopeNotEntityUID {
                         slot: slot.clone(),
                         value: restricted_expr.clone(),
-                        ty: expected_ty.clone(),
-                    }
-                })?,
-                (_, Some(_)) => restricted_expr.as_euid().map(|_| ()).ok_or(
-                    LinkingError::ValueProvidedForSlotInScopeNotEntityUID {
-                        slot: slot.clone(),
-                        value: restricted_expr.clone(),
-                    },
-                )?,
-                // PANIC SAFETY, this can not happen
-                #[allow(clippy::unreachable)]
-                (None, None) => unreachable!("GeneralizedSlotsAnnotation does not have this possiblity and we derive what we match on from GeneralizedSlotsAnnotation")
+                    })?,
             }
         }
 

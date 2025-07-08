@@ -3520,7 +3520,7 @@ impl Policy {
         }
     }
 
-     /// Get the values this `Template` is linked to, expressed as a map from `SlotId` to `RestrictedExpression`.
+    /// Get the values this `Template` is linked to, expressed as a map from `SlotId` to `RestrictedExpression`.
     /// If this is a static policy, this will return `None`.
     pub fn generalized_template_links(&self) -> Option<HashMap<SlotId, RestrictedExpression>> {
         if self.is_static() {

@@ -914,10 +914,10 @@ mod test {
                 "conditions": [],
                 "generalized_slots_annotation": {
                     "?user": {
-                    "TyPosition": [{
+                    "Ty": {
                         "type": "EntityOrCommon",
                         "name": "Department::User"
-                    }, "Principal"]
+                    }
                 }
                 }
             }

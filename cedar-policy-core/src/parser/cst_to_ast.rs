@@ -785,12 +785,18 @@ impl cst::PolicyImpl {
         for node in generalized_slots_type_annotation {
             let loc = node.loc.clone();
             let slot_type_pair = match node.try_into_inner() {
-                Ok(slot_type_pair) => slot_type_pair, 
-                Err(e) => { all_errs.push(e.into()); continue; }
+                Ok(slot_type_pair) => slot_type_pair,
+                Err(e) => {
+                    all_errs.push(e.into());
+                    continue;
+                }
             };
             let ast_slot = match ast::SlotId::try_from(&slot_type_pair.slot) {
-                Ok(ast_slot) => ast_slot, 
-                Err(e) => { all_errs.push(e.into()); continue; }, 
+                Ok(ast_slot) => ast_slot,
+                Err(e) => {
+                    all_errs.push(e.into());
+                    continue;
+                }
             };
 
             if ast_slot.is_principal() || ast_slot.is_resource() {
@@ -833,19 +839,7 @@ impl cst::PolicyImpl {
                         loc: None,
                     });
 
-                    if Some(&ast_slot) == maybe_slot_in_principal {
-                        ventry.insert(ast::SlotTypePosition::TyPosition(
-                            t,
-                            ast::ScopePosition::Principal,
-                        ));
-                    } else if Some(&ast_slot) == maybe_slot_in_resource {
-                        ventry.insert(ast::SlotTypePosition::TyPosition(
-                            t,
-                            ast::ScopePosition::Resource,
-                        ));
-                    } else {
-                        ventry.insert(ast::SlotTypePosition::Ty(t));
-                    }
+                    ventry.insert(ast::SlotTypePosition::Ty(t));
                 }
             }
         }

@@ -51,49 +51,18 @@ impl GeneralizedSlotsAnnotation {
         self.0.is_empty()
     }
 
-    /// Given a generalized slots annotation and schema convert it into a BTreeMap from SlotIds to an equivalent form
-    /// with a validator type instead of the JSON Schema type
-    pub fn convert_to_validator_type_position_map(
-        &self,
+    pub(crate) fn into_validator_generalized_slots_annotation(
+        self,
         schema: &ValidatorSchema,
-    ) -> Result<BTreeMap<SlotId, (Option<ValidatorType>, Option<ScopePosition>)>, SchemaError> {
-        let mut generalized_slots_to_validator_type = BTreeMap::new();
-        for (slot_id, slot_type_position) in self.0.iter() {
-            match slot_type_position {
-                SlotTypePosition::TyPosition(ty, pos) => {
-                    let validator_ty = schema.json_schema_type_to_validator_type(
-                        ty.clone(),
-                        Extensions::all_available(),
-                    )?;
-
-                    BTreeMap::insert(
-                        &mut generalized_slots_to_validator_type,
-                        slot_id.clone(),
-                        (Some(validator_ty), Some(*pos)),
-                    );
-                }
-                SlotTypePosition::Ty(ty) => {
-                    let validator_ty = schema.json_schema_type_to_validator_type(
-                        ty.clone(),
-                        Extensions::all_available(),
-                    )?;
-
-                    BTreeMap::insert(
-                        &mut generalized_slots_to_validator_type,
-                        slot_id.clone(),
-                        (Some(validator_ty), None),
-                    );
-                }
-                SlotTypePosition::Position(pos) => {
-                    BTreeMap::insert(
-                        &mut generalized_slots_to_validator_type,
-                        slot_id.clone(),
-                        (None, Some(*pos)),
-                    );
-                }
-            }
-        }
-        Ok(generalized_slots_to_validator_type)
+    ) -> Result<ValidatorGeneralizedSlotsAnnotation, SchemaError> {
+        let validator_generalized_slots_annotation: Result<BTreeMap<_, _>, SchemaError> = self
+            .0
+            .into_iter()
+            .map(|(k, v)| -> Result<_, SchemaError> {
+                Ok((k, v.to_validator_slot_type_position(schema)?))
+            })
+            .collect();
+        Ok(validator_generalized_slots_annotation?.into())
     }
 }
 
@@ -127,20 +96,75 @@ pub enum ScopePosition {
 /// Stores the position and type for generalized slots
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
 pub enum SlotTypePosition {
-    /// Type & Position of a slot
-    TyPosition(Type<RawName>, ScopePosition),
     /// Type of a slot
     Ty(Type<RawName>),
     /// Position of a slot
     Position(ScopePosition),
 }
 
+impl SlotTypePosition {
+    pub(crate) fn to_validator_slot_type_position(
+        &self,
+        schema: &ValidatorSchema,
+    ) -> Result<ValidatorSlotTypePosition, SchemaError> {
+        match self {
+            Self::Ty(ty) => {
+                let validator_ty = schema
+                    .json_schema_type_to_validator_type(ty.clone(), Extensions::all_available())?;
+                Ok(ValidatorSlotTypePosition::Ty(validator_ty))
+            }
+            Self::Position(pos) => Ok(ValidatorSlotTypePosition::Position(pos.clone())),
+        }
+    }
+}
+
 impl std::fmt::Display for SlotTypePosition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SlotTypePosition::TyPosition(ty, _) => write!(f, "{}", ty),
             SlotTypePosition::Ty(ty) => write!(f, "{}", ty),
             _ => Ok(()),
         }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
+pub(crate) enum ValidatorSlotTypePosition {
+    /// Type of a slot
+    Ty(ValidatorType),
+    /// Position of a slot
+    Position(ScopePosition),
+}
+
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Debug, Hash)]
+pub(crate) struct ValidatorGeneralizedSlotsAnnotation(BTreeMap<SlotId, ValidatorSlotTypePosition>);
+
+impl FromIterator<(SlotId, ValidatorSlotTypePosition)> for ValidatorGeneralizedSlotsAnnotation {
+    fn from_iter<T: IntoIterator<Item = (SlotId, ValidatorSlotTypePosition)>>(iter: T) -> Self {
+        Self(BTreeMap::from_iter(iter))
+    }
+}
+
+impl From<BTreeMap<SlotId, ValidatorSlotTypePosition>> for ValidatorGeneralizedSlotsAnnotation {
+    fn from(value: BTreeMap<SlotId, ValidatorSlotTypePosition>) -> Self {
+        Self(value)
+    }
+}
+
+impl Default for ValidatorGeneralizedSlotsAnnotation {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ValidatorGeneralizedSlotsAnnotation {
+    pub(crate) fn new() -> Self {
+        Self(BTreeMap::new())
+    }
+
+    pub(crate) fn get_validator_slot_type_position(
+        &self,
+        slot: &SlotId,
+    ) -> Option<&ValidatorSlotTypePosition> {
+        self.0.get(slot)
     }
 }

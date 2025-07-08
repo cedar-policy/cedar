@@ -24,22 +24,21 @@ mod typecheck_answer;
 use itertools::Itertools;
 pub(crate) use typecheck_answer::TypecheckAnswer;
 
-use std::{
-    borrow::Cow,
-    collections::{BTreeMap, HashSet},
-    iter::zip,
-};
+use std::{borrow::Cow, collections::HashSet, iter::zip};
 
-use crate::validator::{
-    extension_schema::ExtensionFunctionType,
-    extensions::ExtensionSchemas,
-    schema::ValidatorSchema,
-    types::{
-        AttributeType, Capability, CapabilitySet, EntityRecordKind, OpenTag, Primitive, RequestEnv,
-        Type,
+use crate::{
+    ast::{ValidatorGeneralizedSlotsAnnotation, ValidatorSlotTypePosition},
+    validator::{
+        extension_schema::ExtensionFunctionType,
+        extensions::ExtensionSchemas,
+        schema::ValidatorSchema,
+        types::{
+            AttributeType, Capability, CapabilitySet, EntityRecordKind, OpenTag, Primitive,
+            RequestEnv, Type,
+        },
+        validation_errors::{AttributeAccess, LubContext, UnexpectedTypeHelp},
+        ValidationError, ValidationMode, ValidationWarning,
     },
-    validation_errors::{AttributeAccess, LubContext, UnexpectedTypeHelp},
-    ValidationError, ValidationMode, ValidationWarning,
 };
 
 use crate::{
@@ -165,10 +164,7 @@ impl<'a> Typechecker<'a> {
         request_env: &RequestEnv<'_>,
         policy_id: &PolicyID,
         expr: &Expr,
-        generalized_slots_to_validator_type_position: &BTreeMap<
-            SlotId,
-            (Option<Type>, Option<ScopePosition>),
-        >,
+        generalized_slots_to_validator_type_position: &ValidatorGeneralizedSlotsAnnotation,
     ) -> PolicyCheck {
         let mut type_errors = Vec::new();
         let single_env_typechecker = SingleEnvTypechecker {
@@ -210,12 +206,7 @@ impl<'a> Typechecker<'a> {
         typecheck_fn: F,
     ) -> Vec<(RequestEnv<'b>, C)>
     where
-        F: Fn(
-            &RequestEnv<'b>,
-            &PolicyID,
-            &Expr,
-            &BTreeMap<SlotId, (Option<Type>, Option<ScopePosition>)>,
-        ) -> C,
+        F: Fn(&RequestEnv<'b>, &PolicyID, &Expr, &ValidatorGeneralizedSlotsAnnotation) -> C,
     {
         // compute `.condition()` just once, and cache it here
         let cond = t.condition();
@@ -224,8 +215,8 @@ impl<'a> Typechecker<'a> {
             t.generalized_slots_annotation()
                 .map(|(k, v)| (k.clone(), v.clone())),
         )
-        .convert_to_validator_type_position_map(self.schema)
-        .expect("Invalid Schema provided");
+        .into_validator_generalized_slots_annotation(self.schema)
+        .expect("Schema is invalid");
 
         // Validate each (principal, resource) pair with the substituted policy
         // for the corresponding action.
@@ -343,8 +334,7 @@ struct SingleEnvTypechecker<'a> {
     policy_id: &'a PolicyID,
     /// The single env which we're performing typechecking for
     request_env: &'a RequestEnv<'a>,
-    generalized_slots_to_validator_type_position:
-        &'a BTreeMap<SlotId, (Option<Type>, Option<ScopePosition>)>,
+    generalized_slots_to_validator_type_position: &'a ValidatorGeneralizedSlotsAnnotation,
 }
 
 impl<'a> SingleEnvTypechecker<'a> {
@@ -423,25 +413,24 @@ impl<'a> SingleEnvTypechecker<'a> {
                 } else {
                     match self
                         .generalized_slots_to_validator_type_position
-                        .get(slotid)
+                        .get_validator_slot_type_position(slotid)
                     {
-                        Some(v) => match v {
-                            (Some(ty), _) => ty.clone(),
-                            (_, Some(ScopePosition::Principal)) => self
-                                .request_env
-                                .principal_slot()
-                                .clone()
-                                .map(Type::named_entity_reference)
-                                .unwrap_or_else(Type::any_entity_reference),
-                            (_, Some(ScopePosition::Resource)) => self
-                                .request_env
-                                .resource_slot()
-                                .clone()
-                                .map(Type::named_entity_reference)
-                                .unwrap_or_else(Type::any_entity_reference),
-                            // PANIC SAFETY, this can not happen
-                            #[allow(clippy::unreachable)]
-                            (None, None) => unreachable!("GeneralizedSlotsAnnotation does not have this possiblity, we derive what we match on from GeneralizedSlotsAnnotation")
+                        Some(validator_slot_type_position) => match validator_slot_type_position {
+                            ValidatorSlotTypePosition::Ty(ty) => ty.clone(),
+                            ValidatorSlotTypePosition::Position(pos) => match pos {
+                                ScopePosition::Principal => self
+                                    .request_env
+                                    .principal_slot()
+                                    .clone()
+                                    .map(Type::named_entity_reference)
+                                    .unwrap_or_else(Type::any_entity_reference),
+                                ScopePosition::Resource => self
+                                    .request_env
+                                    .resource_slot()
+                                    .clone()
+                                    .map(Type::named_entity_reference)
+                                    .unwrap_or_else(Type::any_entity_reference),
+                            },
                         },
                         None => Type::any_entity_reference(),
                     }
