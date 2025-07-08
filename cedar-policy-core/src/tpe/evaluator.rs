@@ -423,73 +423,26 @@ impl Evaluator<'_> {
                             }
                         }
                         BinaryOp::Contains => match &v1.value {
-                            ValueKind::Set(Set { fast: Some(h), .. }) => Residual::Concrete {
-                                value: match v2.try_as_lit() {
-                                    Some(lit) => (h.contains(lit)).into(),
-                                    None => false.into(),
-                                },
-                                ty,
-                            },
-                            ValueKind::Set(Set {
-                                fast: None,
-                                authoritative,
-                            }) => Residual::Concrete {
-                                value: (authoritative.contains(v2)).into(),
+                            ValueKind::Set(s) => Residual::Concrete {
+                                value: s.contains(v2).into(),
                                 ty,
                             },
                             _ => Residual::Error(ty),
                         },
-                        BinaryOp::ContainsAll | BinaryOp::ContainsAny => {
-                            match (v1.get_as_set(), v2.get_as_set()) {
-                                (Ok(arg1_set), Ok(arg2_set)) => {
-                                    match (&arg1_set.fast, &arg2_set.fast) {
-                                        (Some(arg1_set), Some(arg2_set)) => {
-                                            // both sets are in fast form, ie, they only contain literals.
-                                            // Fast hashset-based implementation.
-                                            match op {
-                                                BinaryOp::ContainsAll => {
-                                                    Residual::Concrete { value: (arg2_set.is_subset(arg1_set)).into(), ty}
-                                                }
-                                                BinaryOp::ContainsAny => {
-                                                    Residual::Concrete { value: (!arg1_set.is_disjoint(arg2_set)).into(), ty}
-                                                }
-                                                // PANIC SAFETY `op` is checked to be one of these two above
-                                                #[allow(clippy::unreachable)]
-                                                _ => unreachable!(
-                                                    "Should have already checked that op was one of these"
-                                                ),
-                                            }
-                                        }
-                                        (_, _) => {
-                                            // one or both sets are in slow form, ie, contain a non-literal.
-                                            // Fallback to slow implementation.
-                                            match op {
-                                                BinaryOp::ContainsAll => {
-                                                    let is_subset = arg2_set
-                                                        .authoritative
-                                                        .iter()
-                                                        .all(|item| arg1_set.authoritative.contains(item));
-                                                    Residual::Concrete {value: is_subset.into(), ty}
-                                                }
-                                                BinaryOp::ContainsAny => {
-                                                    let not_disjoint = arg1_set
-                                                        .authoritative
-                                                        .iter()
-                                                        .any(|item| arg2_set.authoritative.contains(item));
-                                                    Residual::Concrete {value: not_disjoint.into(), ty}
-                                                }
-                                                // PANIC SAFETY `op` is checked to be one of these two above
-                                                #[allow(clippy::unreachable)]
-                                                _ => unreachable!(
-                                                    "Should have already checked that op was one of these"
-                                                ),
-                                            }
-                                        }
-                                    }
-                                }
-                                _ => Residual::Error(ty),
-                            }
-                        }
+                        BinaryOp::ContainsAll => match (v1.get_as_set(), v2.get_as_set()) {
+                            (Ok(arg1_set), Ok(arg2_set)) => Residual::Concrete {
+                                value: arg1_set.is_subset(arg2_set).into(),
+                                ty,
+                            },
+                            _ => Residual::Error(ty),
+                        },
+                        BinaryOp::ContainsAny => match (v1.get_as_set(), v2.get_as_set()) {
+                            (Ok(arg1_set), Ok(arg2_set)) => Residual::Concrete {
+                                value: (!arg1_set.is_disjoint(arg2_set)).into(),
+                                ty,
+                            },
+                            _ => Residual::Error(ty),
+                        },
                     },
                     (Residual::Error(_), _) => Residual::Error(ty),
                     (_, Residual::Error(_)) => Residual::Error(ty),
@@ -498,11 +451,16 @@ impl Evaluator<'_> {
             }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
                 let args = args.iter().map(|a| self.interpret(a)).collect::<Vec<_>>();
+                // If the arguments are all concrete values, we proceed to
+                // evaluate the function call
                 if let Ok(vals) = args
                     .iter()
                     .map(|a| Value::try_from(a.clone()))
                     .collect::<std::result::Result<Vec<_>, _>>()
                 {
+                    // Attempt to look up the extension function and apply it
+                    // Failed lookup or application errors both lead to
+                    // `Residual::Error` of appropriate types
                     if let Ok(ext_fn) = self.extensions.func(fn_name) {
                         if let Ok(PartialValue::Value(value)) = ext_fn.call(&vals) {
                             return Residual::Concrete { value, ty };

@@ -43,7 +43,9 @@ pub enum Residual {
         /// Type of the value
         ty: Type,
     },
-    /// TPE errors
+    /// TPE produces a (typed) error
+    /// Evaluating the residual of this variant always produces an evaluation
+    /// error. The error kind does not matter for the sake of re-authorization.
     Error(Type),
 }
 
