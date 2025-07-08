@@ -22,7 +22,10 @@ use thiserror::Error;
 
 use crate::{
     ast::{Eid, EntityType, EntityUID},
-    entities::conformance::err::{EntitySchemaConformanceError, InvalidEnumEntityError},
+    entities::{
+        conformance::err::{EntitySchemaConformanceError, InvalidEnumEntityError},
+        err::Duplicate,
+    },
     evaluator::EvaluationError,
     transitive_closure::TcError,
     validator::{RequestValidationError, ValidationError},
@@ -198,6 +201,10 @@ pub enum EntitiesError {
     /// Error thrown when computing TC
     #[error(transparent)]
     TCComputation(#[from] TcError<EntityUID>),
+    /// Error constructing the Entities collection due to encountering two
+    /// different entities with the same Entity UID
+    #[error(transparent)]
+    Duplicate(#[from] Duplicate),
 }
 
 /// Error thrown when checking the consistency between [`PartialEntities`] and

@@ -90,8 +90,9 @@ impl PartialRequest {
     /// Create a well-formed `PartialRequest` (i.e., it conforms to the schema)
     pub fn new(
         principal: PartialEntityUID,
-        resource: PartialEntityUID,
         action: EntityUID,
+        resource: PartialEntityUID,
+
         context: Option<Arc<BTreeMap<SmolStr, Value>>>,
         schema: &ValidatorSchema,
     ) -> std::result::Result<Self, RequestValidationError> {
@@ -510,11 +511,11 @@ mod request_builder_tests {
                 ty: "A".parse().unwrap(),
                 eid: None,
             },
+            r#"Action::"a""#.parse().unwrap(),
             PartialEntityUID {
                 ty: "B".parse().unwrap(),
                 eid: None,
             },
-            r#"Action::"a""#.parse().unwrap(),
             None,
             &schema(),
         )

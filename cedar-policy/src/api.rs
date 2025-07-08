@@ -5062,7 +5062,7 @@ mod tpe {
                     ast::Context::Value(m) => Ok(m),
                 })
                 .transpose()?;
-            tpe::request::PartialRequest::new(principal.0, resource.0, action.0, context, &schema.0)
+            tpe::request::PartialRequest::new(principal.0, action.0, resource.0, context, &schema.0)
                 .map(Self)
                 .map_err(|e| PartialRequestCreationError::Validation(e.into()))
         }

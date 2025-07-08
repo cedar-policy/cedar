@@ -18,6 +18,7 @@
 
 use crate::ast::Entity;
 use crate::entities::conformance::err::EntitySchemaConformanceError;
+use crate::entities::err::Duplicate;
 use crate::entities::{Dereference, Entities};
 use crate::tpe::err::{
     AncestorValidationError, EntitiesConsistencyError, EntitiesError, EntityConsistencyError,
@@ -458,16 +459,22 @@ impl PartialEntities {
 
     /// Construct `PartialEntities` from an iterator
     pub fn from_entities(
-        entities: impl Iterator<Item = (EntityUID, PartialEntity)>,
+        entity_mappings: impl Iterator<Item = (EntityUID, PartialEntity)>,
         schema: &ValidatorSchema,
     ) -> std::result::Result<Self, EntitiesError> {
-        let mut entities = Self {
-            entities: entities.collect(),
-        };
-        for e in entities.entities.values() {
+        let mut entities: HashMap<EntityUID, PartialEntity> = HashMap::new();
+        for (uid, entity) in entity_mappings {
+            if entities.contains_key(&uid) {
+                return Err(Duplicate { euid: uid }.into());
+            } else {
+                entities.insert(uid, entity);
+            }
+        }
+        for e in entities.values() {
             e.validate(schema)?;
         }
-        validate_ancestors(&entities.entities)?;
+        validate_ancestors(&entities)?;
+        let mut entities = Self { entities };
         entities.compute_tc()?;
         Ok(entities)
     }
