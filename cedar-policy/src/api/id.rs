@@ -413,6 +413,12 @@ impl SlotId {
     pub fn resource() -> Self {
         Self(ast::SlotId::resource())
     }
+
+    /// Create a `generalized slot`
+    pub fn generalized_slot(s: impl AsRef<str>) -> Result<Self, ParseErrors> {
+        let id = s.as_ref().parse()?;
+        Ok(Self(ast::SlotId::generalized_slot(id)))
+    }
 }
 
 impl std::fmt::Display for SlotId {

@@ -26,22 +26,25 @@ pub(crate) use typecheck_answer::TypecheckAnswer;
 
 use std::{borrow::Cow, collections::HashSet, iter::zip};
 
-use crate::validator::{
-    extension_schema::ExtensionFunctionType,
-    extensions::ExtensionSchemas,
-    schema::ValidatorSchema,
-    types::{
-        AttributeType, Capability, CapabilitySet, EntityRecordKind, OpenTag, Primitive, RequestEnv,
-        Type,
+use crate::{
+    ast::ValidatorGeneralizedSlotsAnnotation,
+    validator::{
+        extension_schema::ExtensionFunctionType,
+        extensions::ExtensionSchemas,
+        schema::ValidatorSchema,
+        types::{
+            AttributeType, Capability, CapabilitySet, EntityRecordKind, OpenTag, Primitive,
+            RequestEnv, Type,
+        },
+        validation_errors::{AttributeAccess, LubContext, UnexpectedTypeHelp},
+        ValidationError, ValidationMode, ValidationWarning,
     },
-    validation_errors::{AttributeAccess, LubContext, UnexpectedTypeHelp},
-    ValidationError, ValidationMode, ValidationWarning,
 };
 
 use crate::{
     ast::{
-        BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
-        PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
+        BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, GeneralizedSlotsAnnotation,
+        Literal, Name, PolicyID, PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
     },
     expr_builder::ExprBuilder as _,
 };
@@ -142,9 +145,17 @@ impl<'a> Typechecker<'a> {
         &'b self,
         t: &'b Template,
     ) -> Vec<(RequestEnv<'b>, PolicyCheck)> {
-        self.apply_typecheck_fn_by_request_env(t, |request_env, policy_id, expr| {
-            self.single_env_typechecking(request_env, policy_id, expr)
-        })
+        self.apply_typecheck_fn_by_request_env(
+            t,
+            |request_env, policy_id, expr, generalized_slots_to_validator_type_position| {
+                self.single_env_typechecking(
+                    request_env,
+                    policy_id,
+                    expr,
+                    generalized_slots_to_validator_type_position,
+                )
+            },
+        )
     }
 
     fn single_env_typechecking(
@@ -152,6 +163,7 @@ impl<'a> Typechecker<'a> {
         request_env: &RequestEnv<'_>,
         policy_id: &PolicyID,
         expr: &Expr,
+        generalized_slots_to_validator_type_position: &ValidatorGeneralizedSlotsAnnotation,
     ) -> PolicyCheck {
         let mut type_errors = Vec::new();
         let single_env_typechecker = SingleEnvTypechecker {
@@ -160,6 +172,7 @@ impl<'a> Typechecker<'a> {
             mode: self.mode,
             policy_id,
             request_env,
+            generalized_slots_to_validator_type_position,
         };
         let empty_prior_capability = CapabilitySet::new();
         let ans = single_env_typechecker.expect_type(
@@ -182,15 +195,6 @@ impl<'a> Typechecker<'a> {
         }
     }
 
-    /// Type check a `Template` by a single request environment
-    pub fn typecheck_by_single_request_env<'b>(
-        &'b self,
-        t: &'b Template,
-        request_env: &RequestEnv<'b>,
-    ) -> PolicyCheck {
-        self.single_env_typechecking(request_env, t.id(), &t.condition())
-    }
-
     /// Apply `typecheck_fn` to the given policy in every schema-defined request
     /// environment, and collect all the results.
     ///
@@ -201,10 +205,17 @@ impl<'a> Typechecker<'a> {
         typecheck_fn: F,
     ) -> Vec<(RequestEnv<'b>, C)>
     where
-        F: Fn(&RequestEnv<'b>, &PolicyID, &Expr) -> C,
+        F: Fn(&RequestEnv<'b>, &PolicyID, &Expr, &ValidatorGeneralizedSlotsAnnotation) -> C,
     {
         // compute `.condition()` just once, and cache it here
         let cond = t.condition();
+
+        let generalized_slots_to_validator_type_position = GeneralizedSlotsAnnotation::from_iter(
+            t.generalized_slots_annotation()
+                .map(|(k, v)| (k.clone(), v.clone())),
+        )
+        .into_validator_generalized_slots_annotation(self.schema)
+        .expect("Schema is invalid");
 
         // Validate each (principal, resource) pair with the substituted policy
         // for the corresponding action.
@@ -212,7 +223,12 @@ impl<'a> Typechecker<'a> {
             .iter()
             .flat_map(|unlinked_e| {
                 self.link_request_env(unlinked_e, t).map(|linked_e| {
-                    let check = typecheck_fn(&linked_e, t.id(), &cond);
+                    let check = typecheck_fn(
+                        &linked_e,
+                        t.id(),
+                        &cond,
+                        &generalized_slots_to_validator_type_position,
+                    );
                     (linked_e, check)
                 })
             })
@@ -235,16 +251,15 @@ impl<'a> Typechecker<'a> {
                 context,
                 ..
             } => Box::new(
+                // We only care about the slots that are in the scope, if the slot is not in the type it must be annotated with a type
                 self.possible_slot_links(
-                    t,
-                    SlotId::principal(),
+                    t.principal_constraint().get_slot_in_principal_constraint(),
                     principal,
                     t.principal_constraint().as_inner(),
                 )
                 .flat_map(move |p_slot| {
                     self.possible_slot_links(
-                        t,
-                        SlotId::resource(),
+                        t.resource_constraint().get_slot_in_resource_constraint(),
                         resource,
                         t.resource_constraint().as_inner(),
                     )
@@ -267,12 +282,11 @@ impl<'a> Typechecker<'a> {
     /// only on the scope constraints.
     fn possible_slot_links(
         &self,
-        t: &Template,
-        slot_id: SlotId,
+        slot_id: Option<SlotId>,
         var: &'a EntityType,
         constraint: &PrincipalOrResourceConstraint,
     ) -> Box<dyn Iterator<Item = Option<EntityType>> + 'a> {
-        if t.slots().any(|t_slot| t_slot.id == slot_id) {
+        if slot_id.is_some() {
             let all_entity_types = self.schema.entity_types();
             match constraint {
                 // The condition is `var = ?slot`, so the policy can only apply
@@ -319,6 +333,7 @@ struct SingleEnvTypechecker<'a> {
     policy_id: &'a PolicyID,
     /// The single env which we're performing typechecking for
     request_env: &'a RequestEnv<'a>,
+    generalized_slots_to_validator_type_position: &'a ValidatorGeneralizedSlotsAnnotation,
 }
 
 impl<'a> SingleEnvTypechecker<'a> {
@@ -380,25 +395,41 @@ impl<'a> SingleEnvTypechecker<'a> {
             ExprKind::Unknown(u) => {
                 TypecheckAnswer::fail(ExprBuilder::with_data(None).unknown(u.clone()))
             }
-            // Template Slots, always has to be an entity.
+            // Template Slots
             ExprKind::Slot(slotid) => TypecheckAnswer::success(
-                ExprBuilder::with_data(Some(if slotid.is_principal() {
-                    self.request_env
-                        .principal_slot()
-                        .clone()
-                        .map(Type::named_entity_reference)
-                        .unwrap_or_else(Type::any_entity_reference)
-                } else if slotid.is_resource() {
-                    self.request_env
-                        .resource_slot()
-                        .clone()
-                        .map(Type::named_entity_reference)
-                        .unwrap_or_else(Type::any_entity_reference)
-                } else {
-                    Type::any_entity_reference()
-                }))
+                ExprBuilder::with_data(Some(
+                    if slotid.is_principal()
+                        || self
+                            .generalized_slots_to_validator_type_position
+                            .in_principal_position(slotid)
+                    {
+                        self.request_env
+                            .principal_slot()
+                            .clone()
+                            .map(Type::named_entity_reference)
+                            .unwrap_or_else(Type::any_entity_reference)
+                    } else if slotid.is_resource()
+                        || self
+                            .generalized_slots_to_validator_type_position
+                            .in_resource_position(slotid)
+                    {
+                        self.request_env
+                            .resource_slot()
+                            .clone()
+                            .map(Type::named_entity_reference)
+                            .unwrap_or_else(Type::any_entity_reference)
+                    } else {
+                        match self
+                            .generalized_slots_to_validator_type_position
+                            .get_type(slotid)
+                        {
+                            Some(validator_ty) => validator_ty,
+                            None => Type::any_entity_reference(),
+                        }
+                    },
+                ))
                 .with_same_source_loc(e)
-                .slot(*slotid),
+                .slot(slotid.clone()),
             ),
 
             // Literal booleans get singleton type according to their value.

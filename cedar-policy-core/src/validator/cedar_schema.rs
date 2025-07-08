@@ -17,7 +17,7 @@
 //! The Cedar syntax for schemas
 
 mod ast;
-pub use ast::Path;
+pub use ast::{Annotated, AttrDecl, Path, Type};
 mod err;
 pub mod fmt;
 pub mod parser;
