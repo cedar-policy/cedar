@@ -20,6 +20,7 @@ use crate::ast::EntityUID;
 use crate::entities::json::{
     err::JsonDeserializationError, err::JsonDeserializationErrorContext, EntityUidJson,
 };
+use crate::entities::CedarValueJson;
 use crate::parser::err::parse_errors;
 use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, ToSmolStr};
@@ -168,11 +169,32 @@ pub enum ActionInConstraint {
     },
 }
 
+pub(crate) fn get_entity_uid_json_for_slot_in_scope(
+    slot: ast::SlotId,
+    vals: &HashMap<ast::SlotId, EntityUidJson>,
+    generalized_vals: &HashMap<ast::SlotId, CedarValueJson>,
+) -> Result<EntityUidJson, LinkingError> {
+    if slot.is_generalized_slot() {
+        match generalized_vals.get(&slot) {
+            Some(value) => Ok(value.clone().into_entity_euid_json()?),
+            None => Err(LinkingError::MissedSlot { slot }),
+        }
+    } else {
+        vals.get(&slot)
+            .ok_or(LinkingError::MissedSlot { slot })
+            .cloned()
+    }
+}
+
 impl PrincipalConstraint {
     /// Fill in any slots in the principal constraint using the values in
     /// `vals`. Throws an error if `vals` doesn't contain a necessary mapping,
     /// but does not throw an error if `vals` contains unused mappings.
-    pub fn link(self, vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
+    pub fn link(
+        self,
+        vals: &HashMap<ast::SlotId, EntityUidJson>,
+        generalized_vals: &HashMap<ast::SlotId, CedarValueJson>,
+    ) -> Result<Self, LinkingError> {
         match self {
             PrincipalConstraint::All => Ok(PrincipalConstraint::All),
             PrincipalConstraint::Eq(EqConstraint::Entity { entity }) => {
@@ -181,21 +203,16 @@ impl PrincipalConstraint {
             PrincipalConstraint::In(PrincipalOrResourceInConstraint::Entity { entity }) => Ok(
                 PrincipalConstraint::In(PrincipalOrResourceInConstraint::Entity { entity }),
             ),
-            PrincipalConstraint::Eq(EqConstraint::Slot { slot }) => match vals.get(&slot) {
-                Some(val) => Ok(PrincipalConstraint::Eq(EqConstraint::Entity {
-                    entity: val.clone(),
-                })),
-                None => Err(LinkingError::MissedSlot { slot }),
-            },
+            PrincipalConstraint::Eq(EqConstraint::Slot { slot }) => {
+                let entity = get_entity_uid_json_for_slot_in_scope(slot, vals, generalized_vals)?;
+
+                Ok(PrincipalConstraint::Eq(EqConstraint::Entity { entity }))
+            }
             PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot { slot }) => {
-                match vals.get(&slot) {
-                    Some(val) => Ok(PrincipalConstraint::In(
-                        PrincipalOrResourceInConstraint::Entity {
-                            entity: val.clone(),
-                        },
-                    )),
-                    None => Err(LinkingError::MissedSlot { slot }),
-                }
+                let entity = get_entity_uid_json_for_slot_in_scope(slot, vals, generalized_vals)?;
+                Ok(PrincipalConstraint::In(
+                    PrincipalOrResourceInConstraint::Entity { entity },
+                ))
             }
             e @ PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type: _,
@@ -207,10 +224,7 @@ impl PrincipalConstraint {
             }) => Ok(PrincipalConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type,
                 in_entity: Some(PrincipalOrResourceInConstraint::Entity {
-                    entity: vals
-                        .get(&slot)
-                        .ok_or(LinkingError::MissedSlot { slot })?
-                        .clone(),
+                    entity: get_entity_uid_json_for_slot_in_scope(slot, vals, generalized_vals)?,
                 }),
             })),
         }
@@ -297,7 +311,11 @@ impl ResourceConstraint {
     /// Fill in any slots in the resource constraint using the values in
     /// `vals`. Throws an error if `vals` doesn't contain a necessary mapping,
     /// but does not throw an error if `vals` contains unused mappings.
-    pub fn link(self, vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
+    pub fn link(
+        self,
+        vals: &HashMap<ast::SlotId, EntityUidJson>,
+        generalized_vals: &HashMap<ast::SlotId, CedarValueJson>,
+    ) -> Result<Self, LinkingError> {
         match self {
             ResourceConstraint::All => Ok(ResourceConstraint::All),
             ResourceConstraint::Eq(EqConstraint::Entity { entity }) => {
@@ -306,21 +324,18 @@ impl ResourceConstraint {
             ResourceConstraint::In(PrincipalOrResourceInConstraint::Entity { entity }) => Ok(
                 ResourceConstraint::In(PrincipalOrResourceInConstraint::Entity { entity }),
             ),
-            ResourceConstraint::Eq(EqConstraint::Slot { slot }) => match vals.get(&slot) {
-                Some(val) => Ok(ResourceConstraint::Eq(EqConstraint::Entity {
-                    entity: val.clone(),
-                })),
-                None => Err(LinkingError::MissedSlot { slot }),
-            },
+            ResourceConstraint::Eq(EqConstraint::Slot { slot }) => {
+                let entity = get_entity_uid_json_for_slot_in_scope(slot, vals, generalized_vals)?;
+
+                Ok(ResourceConstraint::In(
+                    PrincipalOrResourceInConstraint::Entity { entity },
+                ))
+            }
             ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot { slot }) => {
-                match vals.get(&slot) {
-                    Some(val) => Ok(ResourceConstraint::In(
-                        PrincipalOrResourceInConstraint::Entity {
-                            entity: val.clone(),
-                        },
-                    )),
-                    None => Err(LinkingError::MissedSlot { slot }),
-                }
+                let entity = get_entity_uid_json_for_slot_in_scope(slot, vals, generalized_vals)?;
+                Ok(ResourceConstraint::In(
+                    PrincipalOrResourceInConstraint::Entity { entity },
+                ))
             }
             e @ ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type: _,
@@ -332,10 +347,7 @@ impl ResourceConstraint {
             }) => Ok(ResourceConstraint::Is(PrincipalOrResourceIsConstraint {
                 entity_type,
                 in_entity: Some(PrincipalOrResourceInConstraint::Entity {
-                    entity: vals
-                        .get(&slot)
-                        .ok_or(LinkingError::MissedSlot { slot })?
-                        .clone(),
+                    entity: get_entity_uid_json_for_slot_in_scope(slot, vals, generalized_vals)?,
                 }),
             })),
         }
@@ -655,11 +667,7 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
                     entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                 })
             }
-            ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::Slot(id, _)) => {
-                let slot = match id {
-                    Some(id) => ast::SlotId::generalized_slot(id),
-                    None => ast::SlotId::principal(),
-                };
+            ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::Slot(slot, _)) => {
                 PrincipalConstraint::Eq(EqConstraint::Slot { slot })
             }
             ast::PrincipalOrResourceConstraint::In(ast::EntityReference::EUID(e)) => {
@@ -667,11 +675,7 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
                     entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                 })
             }
-            ast::PrincipalOrResourceConstraint::In(ast::EntityReference::Slot(id, _)) => {
-                let slot = match id {
-                    Some(id) => ast::SlotId::generalized_slot(id),
-                    None => ast::SlotId::principal(),
-                };
+            ast::PrincipalOrResourceConstraint::In(ast::EntityReference::Slot(slot, _)) => {
                 PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot { slot })
             }
             ast::PrincipalOrResourceConstraint::IsIn(entity_type, euid) => {
@@ -681,11 +685,7 @@ impl From<ast::PrincipalOrResourceConstraint> for PrincipalConstraint {
                         ast::EntityReference::EUID(e) => PrincipalOrResourceInConstraint::Entity {
                             entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                         },
-                        ast::EntityReference::Slot(id, _) => {
-                            let slot = match id {
-                                Some(id) => ast::SlotId::generalized_slot(id),
-                                None => ast::SlotId::principal(),
-                            };
+                        ast::EntityReference::Slot(slot, _) => {
                             PrincipalOrResourceInConstraint::Slot { slot }
                         }
                     }),
@@ -710,11 +710,7 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
                     entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                 })
             }
-            ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::Slot(id, _)) => {
-                let slot = match id {
-                    Some(id) => ast::SlotId::generalized_slot(id),
-                    None => ast::SlotId::resource(),
-                };
+            ast::PrincipalOrResourceConstraint::Eq(ast::EntityReference::Slot(slot, _)) => {
                 ResourceConstraint::Eq(EqConstraint::Slot { slot })
             }
             ast::PrincipalOrResourceConstraint::In(ast::EntityReference::EUID(e)) => {
@@ -722,11 +718,7 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
                     entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                 })
             }
-            ast::PrincipalOrResourceConstraint::In(ast::EntityReference::Slot(id, _)) => {
-                let slot = match id {
-                    Some(id) => ast::SlotId::generalized_slot(id),
-                    None => ast::SlotId::resource(),
-                };
+            ast::PrincipalOrResourceConstraint::In(ast::EntityReference::Slot(slot, _)) => {
                 ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot { slot })
             }
             ast::PrincipalOrResourceConstraint::IsIn(entity_type, euid) => {
@@ -736,12 +728,7 @@ impl From<ast::PrincipalOrResourceConstraint> for ResourceConstraint {
                         ast::EntityReference::EUID(e) => PrincipalOrResourceInConstraint::Entity {
                             entity: EntityUidJson::ImplicitEntityEscape((&*e).into()),
                         },
-                        ast::EntityReference::Slot(id, _) => {
-                            let slot = match id {
-                                Some(id) => ast::SlotId::generalized_slot(id),
-                                None => ast::SlotId::resource(),
-                            };
-
+                        ast::EntityReference::Slot(slot, _) => {
                             PrincipalOrResourceInConstraint::Slot { slot }
                         }
                     }),
@@ -772,10 +759,7 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
             PrincipalConstraint::Eq(EqConstraint::Slot { slot }) => {
                 if slot == ast::SlotId::principal() || slot.is_generalized_slot() {
                     Ok(ast::PrincipalOrResourceConstraint::Eq(
-                        ast::EntityReference::Slot(
-                            slot.extract_id_out_of_generalized_slot().cloned(),
-                            None,
-                        ),
+                        ast::EntityReference::Slot(slot, None),
                     ))
                 } else {
                     Err(Self::Error::InvalidSlotName)
@@ -789,10 +773,7 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
             PrincipalConstraint::In(PrincipalOrResourceInConstraint::Slot { slot }) => {
                 if slot == ast::SlotId::principal() || slot.is_generalized_slot() {
                     Ok(ast::PrincipalOrResourceConstraint::In(
-                        ast::EntityReference::Slot(
-                            slot.extract_id_out_of_generalized_slot().cloned(),
-                            None,
-                        ),
+                        ast::EntityReference::Slot(slot, None),
                     ))
                 } else {
                     Err(Self::Error::InvalidSlotName)
@@ -820,7 +801,7 @@ impl TryFrom<PrincipalConstraint> for ast::PrincipalOrResourceConstraint {
                         Some(PrincipalOrResourceInConstraint::Slot { slot }) => {
                             ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(
                                 Arc::new(entity_type),
-                                slot.extract_id_out_of_generalized_slot().cloned(),
+                                slot,
                             )
                         }
                     })
@@ -844,10 +825,7 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
             ResourceConstraint::Eq(EqConstraint::Slot { slot }) => {
                 if slot == ast::SlotId::resource() || slot.is_generalized_slot() {
                     Ok(ast::PrincipalOrResourceConstraint::Eq(
-                        ast::EntityReference::Slot(
-                            slot.extract_id_out_of_generalized_slot().cloned(),
-                            None,
-                        ),
+                        ast::EntityReference::Slot(slot, None),
                     ))
                 } else {
                     Err(Self::Error::InvalidSlotName)
@@ -861,10 +839,7 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
             ResourceConstraint::In(PrincipalOrResourceInConstraint::Slot { slot }) => {
                 if slot == ast::SlotId::resource() || slot.is_generalized_slot() {
                     Ok(ast::PrincipalOrResourceConstraint::In(
-                        ast::EntityReference::Slot(
-                            slot.extract_id_out_of_generalized_slot().cloned(),
-                            None,
-                        ),
+                        ast::EntityReference::Slot(slot, None),
                     ))
                 } else {
                     Err(Self::Error::InvalidSlotName)
@@ -892,7 +867,7 @@ impl TryFrom<ResourceConstraint> for ast::PrincipalOrResourceConstraint {
                         Some(PrincipalOrResourceInConstraint::Slot { slot }) => {
                             ast::PrincipalOrResourceConstraint::is_entity_type_in_slot(
                                 Arc::new(entity_type),
-                                slot.extract_id_out_of_generalized_slot().cloned(),
+                                slot,
                             )
                         }
                     })

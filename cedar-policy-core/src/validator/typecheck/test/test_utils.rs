@@ -19,6 +19,7 @@
 
 use cool_asserts::assert_matches;
 use itertools::Itertools;
+use std::collections::BTreeMap;
 use std::{collections::HashSet, hash::Hash, sync::Arc};
 
 use crate::ast::{Context, EntityUID, Expr, PolicyID, Request, Template, ACTION_ENTITY_TYPE};
@@ -85,6 +86,8 @@ impl Typechecker<'_> {
     ///
     /// `policy_id`: Policy ID to associate with this `Expr`, for the purposes
     /// of reporting the policy ID in validation errors
+    ///
+    /// Note: This function should not be used to typecheck expressions with generalized templates
     pub(crate) fn typecheck_expr<'a>(
         &self,
         e: &'a Expr,
@@ -112,6 +115,7 @@ impl Typechecker<'_> {
             mode: self.mode,
             policy_id,
             request_env: &request_env,
+            generalized_slots_to_validator_type_position: &BTreeMap::new(),
         };
         let mut type_errors = Vec::new();
         let ans = typechecker.typecheck(&CapabilitySet::new(), e, &mut type_errors);

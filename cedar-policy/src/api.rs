@@ -26,6 +26,7 @@ mod id;
 #[cfg(feature = "entity-manifest")]
 use cedar_policy_core::validator::entity_manifest;
 // TODO (#1157) implement wrappers for these structs before they become public
+use cedar_policy_core::entities::CedarValueJson;
 #[cfg(feature = "entity-manifest")]
 pub use cedar_policy_core::validator::entity_manifest::{
     AccessTrie, EntityManifest, EntityRoot, Fields, RootAccessTrie,
@@ -2762,6 +2763,7 @@ impl PolicySet {
             new_id.clone().into(),
             unwrapped_vals.clone(),
             HashMap::new(),
+            None,
         )?;
 
         // PANIC SAFETY: `lossless.link()` will not fail after `ast.link()` succeeds
@@ -2769,7 +2771,82 @@ impl PolicySet {
         let linked_lossless = template
             .lossless
             .clone()
-            .link(unwrapped_vals.iter().map(|(k, v)| (k.clone(), v)))
+            .link(
+                unwrapped_vals.iter().map(|(k, v)| (k.clone(), v)),
+                HashMap::new(),
+            )
+            // The only error case for `lossless.link()` is a template with
+            // slots which are not filled by the provided values. `ast.link()`
+            // will have already errored if there are any unfilled slots in the
+            // template.
+            .expect("ast.link() didn't fail above, so this shouldn't fail");
+        self.policies.insert(
+            new_id,
+            Policy {
+                ast: linked_ast.clone(),
+                lossless: linked_lossless,
+            },
+        );
+        Ok(())
+    }
+
+    /// Similar to the link function for regular templates, but also
+    /// works for generalized templates
+    pub fn generalized_link(
+        &mut self,
+        template_id: PolicyId,
+        new_id: PolicyId,
+        vals: HashMap<SlotId, EntityUid>,
+        generalized_vals: HashMap<SlotId, RestrictedExpression>,
+        schema: Option<Schema>,
+    ) -> Result<(), PolicySetError> {
+        let unwrapped_vals: HashMap<ast::SlotId, ast::EntityUID> = vals
+            .into_iter()
+            .map(|(key, value)| (key.into(), value.into()))
+            .collect();
+
+        let unwrapped_generalized_vals: HashMap<ast::SlotId, ast::RestrictedExpr> =
+            generalized_vals
+                .into_iter()
+                .map(|(key, value)| (key.into(), value.as_ref().clone()))
+                .collect();
+
+        // Try to get the template with the id we're linking from.  We do this
+        // _before_ calling `self.ast.link` because `link` mutates the policy
+        // set by creating a new link entry in a hashmap. This happens even when
+        // trying to link a static policy, which we want to error on here.
+        let Some(template) = self.templates.get(&template_id) else {
+            return Err(if self.policies.contains_key(&template_id) {
+                policy_set_errors::ExpectedTemplate::new().into()
+            } else {
+                policy_set_errors::LinkingError {
+                    inner: ast::LinkingError::NoSuchTemplate {
+                        id: template_id.into(),
+                    },
+                }
+                .into()
+            });
+        };
+
+        let linked_ast = self.ast.link(
+            template_id.into(),
+            new_id.clone().into(),
+            unwrapped_vals.clone(),
+            unwrapped_generalized_vals.clone(),
+            schema.map(|schema| schema.0).as_ref(),
+        )?;
+
+        // PANIC SAFETY: `lossless.link()` will not fail after `ast.link()` succeeds
+        #[allow(clippy::expect_used)]
+        let linked_lossless = template
+            .lossless
+            .clone()
+            .link(
+                unwrapped_vals.iter().map(|(k, v)| (k.clone(), v)),
+                unwrapped_generalized_vals
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v)),
+            )
             // The only error case for `lossless.link()` is a template with
             // slots which are not filled by the provided values. `ast.link()`
             // will have already errored if there are any unfilled slots in the
@@ -2896,10 +2973,17 @@ fn is_static_or_link(
                 .iter()
                 .map(|(id, euid)| (id.clone(), euid.clone()))
                 .collect();
+            let generalized_values = policy
+                .ast
+                .generalized_env()
+                .iter()
+                .map(|(id, expr)| (id.clone(), expr.clone()))
+                .collect();
             Ok(Either::Right(TemplateLink {
                 new_id: id.into(),
                 template_id: template_id.clone().into(),
                 values,
+                generalized_values,
             }))
         }
         None => policy
@@ -3436,6 +3520,22 @@ impl Policy {
         }
     }
 
+     /// Get the values this `Template` is linked to, expressed as a map from `SlotId` to `RestrictedExpression`.
+    /// If this is a static policy, this will return `None`.
+    pub fn generalized_template_links(&self) -> Option<HashMap<SlotId, RestrictedExpression>> {
+        if self.is_static() {
+            None
+        } else {
+            let wrapped_generalized_vals: HashMap<SlotId, RestrictedExpression> = self
+                .ast
+                .generalized_env()
+                .iter()
+                .map(|(key, value)| ((key.clone()).into(), RestrictedExpression(value.clone())))
+                .collect();
+            Some(wrapped_generalized_vals)
+        }
+    }
+
     /// Get the `Effect` (`Permit` or `Forbid`) for this instance
     pub fn effect(&self) -> Effect {
         self.ast.effect()
@@ -3763,8 +3863,12 @@ impl Policy {
     pub fn to_cedar(&self) -> Option<String> {
         match &self.lossless {
             LosslessPolicy::Empty | LosslessPolicy::Est(_) => Some(self.ast.to_string()),
-            LosslessPolicy::Text { text, slots } => {
-                if slots.is_empty() {
+            LosslessPolicy::Text {
+                text,
+                slots,
+                generalized_slots,
+            } => {
+                if slots.is_empty() && generalized_slots.is_empty() {
                     Some(text.clone())
                 } else {
                     None
@@ -3864,6 +3968,9 @@ pub(crate) enum LosslessPolicy {
         /// this; static policies and (unlinked) templates have an empty map
         /// here
         slots: HashMap<ast::SlotId, ast::EntityUID>,
+        /// For linked policies, map of slot to RestrictedExpr. Only linked
+        /// generalized templates have this.
+        generalized_slots: HashMap<ast::SlotId, ast::RestrictedExpr>,
     },
 }
 
@@ -3873,6 +3980,7 @@ impl LosslessPolicy {
         text.map_or(Self::Empty, |text| Self::Text {
             text: text.into(),
             slots: HashMap::new(),
+            generalized_slots: HashMap::new(),
         })
     }
 
@@ -3885,14 +3993,32 @@ impl LosslessPolicy {
             // Fall back to the `policy` AST if the lossless representation is empty
             Self::Empty => Ok(fallback_est()),
             Self::Est(est) => Ok(est.clone()),
-            Self::Text { text, slots } => {
+            Self::Text {
+                text,
+                slots,
+                generalized_slots,
+            } => {
                 let est =
                     parser::parse_policy_or_template_to_est(text).map_err(ParseErrors::from)?;
-                if slots.is_empty() {
+                if slots.is_empty() && generalized_slots.is_empty() {
                     Ok(est)
                 } else {
                     let unwrapped_vals = slots.iter().map(|(k, v)| (k.clone(), v.into())).collect();
-                    Ok(est.link(&unwrapped_vals)?)
+                    let unwrapped_generalized_vals: Result<
+                        HashMap<ast::SlotId, CedarValueJson>,
+                        _,
+                    > = generalized_slots
+                        .iter()
+                        .map(|(k, v)| -> Result<_, PolicyToJsonError> {
+                            Ok((
+                                k.clone(),
+                                CedarValueJson::from_expr(v.as_borrowed()).map_err(|e| {
+                                    est::LinkingError::UnableToSerializeJSONValueProvided(e)
+                                })?,
+                            ))
+                        })
+                        .collect();
+                    Ok(est.link(&unwrapped_vals, &unwrapped_generalized_vals?)?)
                 }
             }
         }
@@ -3901,6 +4027,7 @@ impl LosslessPolicy {
     fn link<'a>(
         self,
         vals: impl IntoIterator<Item = (ast::SlotId, &'a ast::EntityUID)>,
+        generalized_vals: impl IntoIterator<Item = (ast::SlotId, &'a ast::RestrictedExpr)>,
     ) -> Result<Self, est::LinkingError> {
         match self {
             Self::Empty => Ok(Self::Empty),
@@ -3909,15 +4036,44 @@ impl LosslessPolicy {
                     ast::SlotId,
                     cedar_policy_core::entities::EntityUidJson,
                 > = vals.into_iter().map(|(k, v)| (k, v.into())).collect();
-                Ok(Self::Est(est.link(&unwrapped_est_vals)?))
+                let unwrapped_est_generalized_vals: Result<
+                    HashMap<ast::SlotId, CedarValueJson>,
+                    _,
+                > = generalized_vals
+                    .into_iter()
+                    .map(|(k, v)| -> Result<_, est::LinkingError> {
+                        Ok((
+                            k.clone(),
+                            CedarValueJson::from_expr(v.as_borrowed()).map_err(|e| {
+                                est::LinkingError::UnableToSerializeJSONValueProvided(e)
+                            })?,
+                        ))
+                    })
+                    .collect();
+                Ok(Self::Est(est.link(
+                    &unwrapped_est_vals,
+                    &unwrapped_est_generalized_vals?,
+                )?))
             }
-            Self::Text { text, slots } => {
+            Self::Text {
+                text,
+                slots,
+                generalized_slots,
+            } => {
                 debug_assert!(
-                    slots.is_empty(),
+                    slots.is_empty() && generalized_slots.is_empty(),
                     "shouldn't call link() on an already-linked policy"
                 );
                 let slots = vals.into_iter().map(|(k, v)| (k, v.clone())).collect();
-                Ok(Self::Text { text, slots })
+                let generalized_slots = generalized_vals
+                    .into_iter()
+                    .map(|(k, v)| (k, v.clone()))
+                    .collect();
+                Ok(Self::Text {
+                    text,
+                    slots,
+                    generalized_slots,
+                })
             }
         }
     }
@@ -3933,8 +4089,12 @@ impl LosslessPolicy {
                 Err(e) => write!(f, "<invalid policy: {e}>"),
             },
             Self::Est(est) => write!(f, "{est}"),
-            Self::Text { text, slots } => {
-                if slots.is_empty() {
+            Self::Text {
+                text,
+                slots,
+                generalized_slots,
+            } => {
+                if slots.is_empty() && generalized_slots.is_empty() {
                     write!(f, "{text}")
                 } else {
                     // need to replace placeholders according to `slots`.

@@ -124,8 +124,8 @@ pub(crate) fn schema_symbols(schema_info: &SchemaInfo) -> Option<Vec<DocumentSym
         .collect();
 
     // Create common type symbols
-    let common_type_symbols: Vec<DocumentSymbol> = validator
-        .common_types()
+    let extended_common_type_symbols: Vec<DocumentSymbol> = validator
+        .extended_common_types()
         .filter_map(|ct| {
             ct.name_loc
                 .as_ref()
@@ -144,7 +144,7 @@ pub(crate) fn schema_symbols(schema_info: &SchemaInfo) -> Option<Vec<DocumentSym
     let mut all_other_symbols = Vec::new();
     all_other_symbols.extend(entity_type_symbols);
     all_other_symbols.extend(action_symbols);
-    all_other_symbols.extend(common_type_symbols);
+    all_other_symbols.extend(extended_common_type_symbols);
 
     // Assign symbols to namespaces based on range intersection
     let mut remaining_symbols = Vec::new();

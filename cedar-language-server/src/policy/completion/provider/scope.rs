@@ -87,14 +87,12 @@ fn handle_principal_scope(policy: &Template, info: &ScopeVariableInfo) -> Comple
         | PrincipalOrResourceConstraint::IsIn(_, entity_reference) => create_binary_op_context(
             Op::in_entity(),
             principal_var,
-            entity_reference.into_expr(SlotId::principal()).into(),
+            entity_reference.into_expr().into(),
         ),
 
-        PrincipalOrResourceConstraint::Eq(entity_reference) => create_binary_op_context(
-            Op::eq(),
-            principal_var,
-            entity_reference.into_expr(SlotId::principal()).into(),
-        ),
+        PrincipalOrResourceConstraint::Eq(entity_reference) => {
+            create_binary_op_context(Op::eq(), principal_var, entity_reference.into_expr().into())
+        }
 
         PrincipalOrResourceConstraint::Is(..) => create_is_context(principal_var),
 
@@ -114,14 +112,12 @@ fn handle_resource_scope(policy: &Template, info: &ScopeVariableInfo) -> Complet
         | PrincipalOrResourceConstraint::IsIn(_, entity_reference) => create_binary_op_context(
             Op::in_entity(),
             resource_var,
-            entity_reference.into_expr(SlotId::principal()).into(),
+            entity_reference.into_expr().into(),
         ),
 
-        PrincipalOrResourceConstraint::Eq(entity_reference) => create_binary_op_context(
-            Op::Eq,
-            resource_var,
-            entity_reference.into_expr(SlotId::resource()).into(),
-        ),
+        PrincipalOrResourceConstraint::Eq(entity_reference) => {
+            create_binary_op_context(Op::Eq, resource_var, entity_reference.into_expr().into())
+        }
 
         PrincipalOrResourceConstraint::Is(..) => create_is_context(resource_var),
 

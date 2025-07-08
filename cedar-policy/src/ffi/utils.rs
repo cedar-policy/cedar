@@ -830,22 +830,6 @@ mod test {
             serde_json::from_value(template_json).expect("failed to parse from JSON");
         template.parse(None).expect("failed to convert to template");
 
-        // Invalid syntax
-        let src = "permit(principal == ?foo, action, resource);";
-        let template: Template =
-            serde_json::from_value(json!(src)).expect("failed to parse from JSON");
-        let err = template
-            .parse(None)
-            .expect_err("should have failed to convert to template");
-        expect_err(
-            src,
-            &err,
-            &ExpectedErrorMessageBuilder::error("failed to parse template from string")
-                .source("expected an entity uid or matching template slot, found ?foo instead of ?principal")
-                .exactly_one_underline("?foo")
-                .build(),
-        );
-
         // Static policies cannot be parsed as templates
         let src = "permit(principal == User::\"alice\", action, resource);";
         let template: Template =

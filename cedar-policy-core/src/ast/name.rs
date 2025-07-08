@@ -21,6 +21,7 @@ use miette::Diagnostic;
 use ref_cast::RefCast;
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_with::{serde_as, DisplayFromStr};
 use smol_str::ToSmolStr;
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -283,9 +284,10 @@ impl<'de> Deserialize<'de> for InternalName {
 /// Clone is O(1).
 // This simply wraps a separate enum -- currently [`ValidSlotId`] -- in case we
 // want to generalize later
+#[serde_as]
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct SlotId(pub(crate) ValidSlotId);
+pub struct SlotId(#[serde_as(as = "DisplayFromStr")] pub(crate) ValidSlotId);
 
 impl SlotId {
     /// Get the slot for `principal`
@@ -336,6 +338,14 @@ impl From<PrincipalOrResource> for SlotId {
     }
 }
 
+impl FromStr for SlotId {
+    type Err = ParseErrors;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        crate::parser::parse_slot(s).map(SlotId)
+    }
+}
+
 impl std::fmt::Display for SlotId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -345,9 +355,7 @@ impl std::fmt::Display for SlotId {
 /// Three possible variants for Slots
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub(crate) enum ValidSlotId {
-    #[serde(rename = "?principal")]
     Principal,
-    #[serde(rename = "?resource")]
     Resource,
     GeneralizedSlot(Id), // Slots for generalized templates, for more info see [RFC 98](https://github.com/cedar-policy/rfcs/pull/98).
 }
@@ -360,6 +368,14 @@ impl std::fmt::Display for ValidSlotId {
             ValidSlotId::GeneralizedSlot(id) => id.as_ref(),
         };
         write!(f, "?{s}")
+    }
+}
+
+impl FromStr for ValidSlotId {
+    type Err = ParseErrors;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        crate::parser::parse_slot(s)
     }
 }
 

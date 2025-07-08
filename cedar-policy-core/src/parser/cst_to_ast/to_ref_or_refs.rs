@@ -20,7 +20,7 @@ use super::Result;
 use crate::ast;
 use crate::ast::EntityReference;
 use crate::ast::EntityUID;
-use crate::ast::Id;
+use crate::ast::SlotId;
 use crate::parser::{
     cst::{self, Literal},
     err::{self, ParseErrors, ToASTError, ToASTErrorKind},
@@ -36,7 +36,7 @@ trait RefKind: Sized {
     fn err_str() -> &'static str;
     fn create_single_ref(e: EntityUID) -> Result<Self>;
     fn create_multiple_refs(loc: Option<&Loc>) -> Result<fn(Vec<EntityUID>) -> Self>;
-    fn create_slot(id: Option<Id>, loc: Option<&Loc>) -> Result<Self>;
+    fn create_slot(slot: SlotId, loc: Option<&Loc>) -> Result<Self>;
     #[cfg(feature = "tolerant-ast")]
     fn error_node() -> Self;
 }
@@ -62,7 +62,7 @@ impl RefKind for SingleEntity {
         .into())
     }
 
-    fn create_slot(_id: Option<Id>, loc: Option<&Loc>) -> Result<Self> {
+    fn create_slot(_slot: SlotId, loc: Option<&Loc>) -> Result<Self> {
         Err(ToASTError::new(
             ToASTErrorKind::wrong_entity_argument_one_expected(
                 err::parse_errors::Ref::Single,
@@ -83,8 +83,8 @@ impl RefKind for EntityReference {
         "an entity uid or matching template slot"
     }
 
-    fn create_slot(id: Option<Id>, loc: Option<&Loc>) -> Result<Self> {
-        Ok(EntityReference::Slot(id, loc.into_maybe_loc()))
+    fn create_slot(slot: SlotId, loc: Option<&Loc>) -> Result<Self> {
+        Ok(EntityReference::Slot(slot, loc.into_maybe_loc()))
     }
 
     fn create_single_ref(e: EntityUID) -> Result<Self> {
@@ -120,7 +120,7 @@ impl RefKind for OneOrMultipleRefs {
         "an entity uid or set of entity uids"
     }
 
-    fn create_slot(_id: Option<Id>, loc: Option<&Loc>) -> Result<Self> {
+    fn create_slot(_slot: SlotId, loc: Option<&Loc>) -> Result<Self> {
         Err(ToASTError::new(
             ToASTErrorKind::wrong_entity_argument_two_expected(
                 err::parse_errors::Ref::Single,
@@ -241,9 +241,10 @@ impl Node<Option<cst::Primary>> {
                 // it's the wrong slot. This avoids getting an error
                 // `found ?action instead of ?action` when `action` doesn't
                 // support slots.
-                let slot_ref = T::create_slot(None, self.loc.as_loc_ref())?; // TODO: Currently the only allowed slots are principal & resource, however this will change with generalized slots
+
                 let slot = s.try_as_inner()?;
-                if slot.matches(var) {
+                let slot_ref = T::create_slot(s.try_into()?, self.loc.as_loc_ref())?;
+                if slot.matches(var) || slot.is_generalized() {
                     Ok(slot_ref)
                 } else {
                     Err(self

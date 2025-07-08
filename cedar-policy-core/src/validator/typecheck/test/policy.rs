@@ -107,6 +107,74 @@ fn simple_schema_file() -> json_schema::NamespaceDefinition<RawName> {
     .expect("Expected valid schema")
 }
 
+fn simple_schema_file_1() -> json_schema::NamespaceDefinition<RawName> {
+    serde_json::from_value(serde_json::json!(
+        {
+            "entityTypes": {
+                "Disk": {
+                    "memberOfTypes": [],
+                    "shape": {
+                        "type": "Record",
+                        "additionalAttributes": false,
+                        "attributes": {
+                            "owner": { "type": "String", "required": true}
+                        }
+                    }
+                },
+                "Folder": {
+                    "memberOfTypes": [],
+                    "shape": {
+                        "type": "Record",
+                        "additionalAttributes": false,
+                        "attributes": {
+                            "owner": { "type": "String", "required": true}
+                        }
+                    }
+                },
+                "Document": {
+                    "memberOfTypes": [ "Folder" ],
+                    "shape": {
+                        "type": "Record",
+                        "additionalAttributes": false,
+                        "attributes": {
+                            "owner": { "type": "String", "required": true}
+                        }
+                    }
+                },
+                "Person": {
+                    "memberOfTypes": [],
+                    "shape": {
+                        "type": "Record",
+                        "additionalAttributes": false,
+                        "attributes": {
+                            "age": { "type": "String", "required": false}
+                        }
+                    }
+                }
+            },
+            "commonTypes": {
+                "PersonInfo": {
+                    "type": "Record",
+                    "attributes": {
+                        "name": { "type": "String", "required": false},
+                        "age": { "type": "Long", "required": true},
+                    }
+                }
+            },
+            "actions": {
+                "Navigate": {
+                    "memberOf": [],
+                    "appliesTo": {
+                        "principalTypes": ["Person"],
+                        "resourceTypes": ["Disk", "Folder", "Document"]
+                    }
+                }
+            }
+        }
+    ))
+    .expect("Expected valid schema")
+}
+
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typechecks_permissive_simple_schema(p: impl Into<Arc<Template>>) {
     assert_policy_typechecks_for_mode(simple_schema_file(), p, ValidationMode::Permissive)
@@ -1324,6 +1392,85 @@ mod templates {
                 template.loc().into_maybe_loc(),
                 PolicyID::from_string("policy0"),
             )
+        );
+    }
+}
+
+mod generalized_templates {
+    use super::*;
+
+    #[test]
+    fn generalized_slot_in_scope_and_condition() {
+        assert_policy_typechecks(
+            simple_schema_file_1(),
+            parse_policy_or_template(
+                None,
+                r#"permit(principal == ?person, 
+                action, 
+                resource in ?fs) 
+                when { ?fs.owner == resource.owner };"#,
+            )
+            .unwrap(),
+        );
+    }
+
+    #[test]
+    fn generalized_slot_in_scope_and_condition_with_type_annotation() {
+        assert_policy_typechecks(
+            simple_schema_file_1(),
+            parse_policy_or_template(
+                None,
+                r#"
+              template(?folder: Folder) => 
+              permit(
+              principal == ?principal, 
+              action, 
+              resource in ?resource) when 
+              { resource in ?folder || 
+               (action == Action::"Navigate" && 
+               ?folder in resource) };"#,
+            )
+            .unwrap(),
+        );
+    }
+
+    #[test]
+    fn generalized_slot_in_condition_with_record_type() {
+        assert_policy_typechecks(
+            simple_schema_file_1(),
+            parse_policy_or_template(
+                None,
+                r#"
+              template(?person: { name: String, age: Long }) => 
+              permit(
+              principal,
+              action == Action::"Navigate", 
+              resource) when 
+              { ?person.name == resource.owner && 
+                ?person.age == 18 
+                };"#,
+            )
+            .unwrap(),
+        );
+    }
+
+    #[test]
+    fn generalized_slot_with_common_type_as_type_annotation() {
+        assert_policy_typechecks(
+            simple_schema_file_1(),
+            parse_policy_or_template(
+                None,
+                r#"
+              template(?person: PersonInfo) => 
+              permit(
+              principal,
+              action == Action::"Navigate", 
+              resource) when 
+              { ?person has name && ?person.name == "Alice" ||
+                ?person.age == 8
+                };"#,
+            )
+            .unwrap(),
         );
     }
 }

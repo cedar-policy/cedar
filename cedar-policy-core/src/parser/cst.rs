@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use crate::validator::cedar_schema::Type;
 use smol_str::SmolStr;
 
 // shortcut because we need CST nodes to potentially be empty,
@@ -52,6 +53,8 @@ pub enum Str {
 pub struct PolicyImpl {
     /// Annotations
     pub annotations: Vec<Node<Annotation>>,
+    /// Generalized Slots Type Annotation
+    pub generalized_slots_type_annotation: Option<Node<GeneralizedSlotsTypeAnnotation>>,
     /// policy effect
     pub effect: Node<Ident>,
     /// Variables
@@ -407,4 +410,25 @@ impl Slot {
                 | (Slot::Resource, crate::ast::Var::Resource)
         )
     }
+
+    /// Check if a slot is a generalized slot
+    pub fn is_generalized(&self) -> bool {
+        matches!(self, Slot::Other(_))
+    }
+}
+
+/// SlotType: types for generalized slots
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SlotType {
+    /// slot name
+    pub slot: Node<Slot>,
+    /// type
+    pub ty: Node<Type>,
+}
+
+/// GeneralizedSlotsTypeAnnotation: a vector of pairs consisting of a slot and it's type
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeneralizedSlotsTypeAnnotation {
+    /// a vector of slot and type pairs
+    pub values: Vec<Node<SlotType>>,
 }

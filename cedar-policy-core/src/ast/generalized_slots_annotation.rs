@@ -17,11 +17,17 @@
 use std::collections::BTreeMap;
 
 use crate::ast::SlotId;
-use crate::validator::{json_schema::Type, RawName};
+use crate::extensions::Extensions;
+use crate::validator::{
+    json_schema::Type, types::Type as ValidatorType, RawName, SchemaError, ValidatorSchema,
+};
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use std::fmt;
 
 /// Struct which holds the type & position of a generalized slot
 #[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Debug, Hash, Serialize, Deserialize)]
+#[serde_as]
 pub struct GeneralizedSlotsAnnotation(BTreeMap<SlotId, SlotTypePosition>);
 
 impl GeneralizedSlotsAnnotation {
@@ -43,6 +49,51 @@ impl GeneralizedSlotsAnnotation {
     /// Tell if it's empty
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    /// Given a generalized slots annotation and schema convert it into a BTreeMap from SlotIds to an equivalent form
+    /// with a validator type instead of the JSON Schema type
+    pub fn convert_to_validator_type_position_map(
+        &self,
+        schema: &ValidatorSchema,
+    ) -> Result<BTreeMap<SlotId, (Option<ValidatorType>, Option<ScopePosition>)>, SchemaError> {
+        let mut generalized_slots_to_validator_type = BTreeMap::new();
+        for (slot_id, slot_type_position) in self.0.iter() {
+            match slot_type_position {
+                SlotTypePosition::TyPosition(ty, pos) => {
+                    let validator_ty = schema.json_schema_type_to_validator_type(
+                        ty.clone(),
+                        Extensions::all_available(),
+                    )?;
+
+                    BTreeMap::insert(
+                        &mut generalized_slots_to_validator_type,
+                        slot_id.clone(),
+                        (Some(validator_ty), Some(*pos)),
+                    );
+                }
+                SlotTypePosition::Ty(ty) => {
+                    let validator_ty = schema.json_schema_type_to_validator_type(
+                        ty.clone(),
+                        Extensions::all_available(),
+                    )?;
+
+                    BTreeMap::insert(
+                        &mut generalized_slots_to_validator_type,
+                        slot_id.clone(),
+                        (Some(validator_ty), None),
+                    );
+                }
+                SlotTypePosition::Position(pos) => {
+                    BTreeMap::insert(
+                        &mut generalized_slots_to_validator_type,
+                        slot_id.clone(),
+                        (None, Some(*pos)),
+                    );
+                }
+            }
+        }
+        Ok(generalized_slots_to_validator_type)
     }
 }
 
@@ -82,4 +133,14 @@ pub enum SlotTypePosition {
     Ty(Type<RawName>),
     /// Position of a slot
     Position(ScopePosition),
+}
+
+impl std::fmt::Display for SlotTypePosition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SlotTypePosition::TyPosition(ty, _) => write!(f, "{}", ty),
+            SlotTypePosition::Ty(ty) => write!(f, "{}", ty),
+            _ => Ok(()),
+        }
+    }
 }

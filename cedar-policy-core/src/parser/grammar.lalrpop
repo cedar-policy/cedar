@@ -22,6 +22,9 @@ use lalrpop_util::{ParseError, ErrorRecovery};
 use crate::parser::*;
 use crate::parser::err::{RawErrorRecovery, RawUserError};
 use crate::parser::node::Node;
+use crate::validator::cedar_schema::{Path, Type as SType, AttrDecl, Annotated};
+use crate::ast::{Annotations, Id}; 
+use smol_str::ToSmolStr;
 
 /// `errors` collects generated errors.
 ///
@@ -66,6 +69,12 @@ match {
     "?resource" => RESOURCE_SLOT,
     r"\?[_a-zA-Z][_a-zA-Z0-9]*" => OTHER_SLOT,
 
+    // templates
+    "template",
+    "=>", 
+    "Set" => SET, 
+    "?",
+
     // data input
     r"[_a-zA-Z][_a-zA-Z0-9]*" => IDENTIFIER,
     // The `NUMBER` token is a positive integer.
@@ -104,16 +113,29 @@ Annotation: Node<Option<cst::Annotation>> = {
     <l:@L> "@" <key:AnyIdent> <value: ("(" <Str> ")")?> <r:@R> => Node::with_maybe_source_loc(Some(cst::Annotation{key,value}), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src))))
 }
 
+// SlotType := { Name ':' SType }
+SlotType: Node<Option<cst::SlotType>> = {
+    <l:@L> <slot: Slot> ":" <ty: Type> <r:@R> => {
+        let ty = ty.map(|ty| Some(ty));
+        (Node::with_maybe_source_loc(Some(cst::SlotType{slot, ty}), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))))}, 
+}
+
+// GeneralizedSlotsTypeAnnotation := { 'template' '(' ( SlotType { ',' SlotType } ) ')' '=>' }
+GeneralizedSlotsTypeAnnotation: Node<Option<cst::GeneralizedSlotsTypeAnnotation>> = {
+    <l:@L> "template" "(" <values: Comma<SlotType>> ")" "=>" <r:@R> => Node::with_maybe_source_loc(Some(cst::GeneralizedSlotsTypeAnnotation{ values }), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src))))
+}
+
 // Policy := "label" ('permit' | 'forbid') '(' {VariableDef} ')' {Cond} ;
 pub Policy: Node<Option<cst::Policy>> = {
     <l:@L>
     <annotations:Annotation*>
+    <generalized_slots_type_annotation:GeneralizedSlotsTypeAnnotation?>
     <effect:AnyIdent>
     "(" <variables: Comma<VariableDef>> ")"
     <conds:Cond*>
     ";"
     <r:@R>
-    => Node::with_maybe_source_loc(Some(cst::Policy::Policy(cst::PolicyImpl{ annotations,effect,variables,conds })), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))),
+    => Node::with_maybe_source_loc(Some(cst::Policy::Policy(cst::PolicyImpl{ annotations,generalized_slots_type_annotation,effect,variables,conds })), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> <err:!> ";" <r:@R> => {
         // Tolerant AST creates a valid CST node representing the unparsable policy
         #[cfg(feature = "tolerant-ast")]
@@ -167,6 +189,8 @@ CommonIdent: Node<Option<cst::Ident>> = {
         => Node::with_maybe_source_loc(Some(cst::Ident::Then), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> ELSE <r:@R>
         => Node::with_maybe_source_loc(Some(cst::Ident::Else), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))),
+    <l:@L> <i:SET> <r:@R>
+        => Node::with_maybe_source_loc(Some(cst::Ident::Ident( i.into() )), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> <i:IDENTIFIER> <r:@R>
         => Node::with_maybe_source_loc(Some(cst::Ident::Ident( i.into() )), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))),
 }
@@ -397,13 +421,13 @@ RecInit: Node<Option<cst::RecInit>> = {
         => Node::with_maybe_source_loc(Some(cst::RecInit(e1,e2)), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))),
 }
 
-Slot: Node<Option<cst::Slot>> = {
+pub Slot: Node<Option<cst::Slot>> = {
     <l:@L> PRINCIPAL_SLOT <r:@R>
         => Node::with_maybe_source_loc(Some(cst::Slot::Principal), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> RESOURCE_SLOT <r:@R>
         => Node::with_maybe_source_loc(Some(cst::Slot::Resource), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))),
     <l:@L> <s: OTHER_SLOT> <r:@R>
-        => Node::with_maybe_source_loc(Some(cst::Slot::Other(s.into())), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))),
+        => Node::with_maybe_source_loc(Some(cst::Slot::Other(s[1..s.len()].into())), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))),
 }
 
 // LITERAL   := BOOL | INT | STR
@@ -424,4 +448,52 @@ Literal: Node<Option<cst::Literal>> = {
 Str: Node<Option<cst::Str>> = {
     <l:@L> <s:STRINGLIT> <r:@R>
         => Node::with_maybe_source_loc(Some(cst::Str::String(s[1..(s.len() - 1)].into())), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))),
+}
+
+/* The following grammar was taken from the schema grammar with changes to make it work with the Policy's terminals */ 
+/* Updates in the grammar of types in either location require changes to both files to ensure that the two definitions line up. */
+
+/* 
+AttrDecls can not have annotations in the policy. We also use Cedar Policy's IDENTIFIER terminal here which is able to express more terminals compared with 
+Cedar Schema's Ident terminal. So any Record that can be expressed in Cedar Schema can also be expressed in Cedar Policy modulo the annotation. 
+*/
+AttrDecls: Vec<Node<Annotated<AttrDecl>>> = {
+    <l:@L> <name: IDENTIFIER> <required:"?"?> ":" <ty:Type> ","? <r:@R>
+        =>? {
+            let name = Node::with_maybe_source_loc(name.to_smolstr(), None); 
+            let annotated = Annotated {
+                data: AttrDecl { name, required: required.is_none(), ty}, 
+                annotations: Annotations::new(), 
+            };
+            Ok(vec![Node::with_maybe_source_loc(annotated, maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src))))])
+        },
+    <l:@L> <name: IDENTIFIER> <required:"?"?> ":" <ty:Type> "," <r:@R> <mut ds: AttrDecls>
+        =>? {
+            let name = Node::with_maybe_source_loc(name.to_smolstr(), None); 
+            let annotated = Annotated {
+                data: AttrDecl { name, required: required.is_none(), ty}, 
+                annotations: Annotations::new(), 
+            };
+            ds.insert(0, Node::with_maybe_source_loc(annotated, maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))));
+            Ok(ds)
+        },
+}
+
+/* We convert the Cedar Policy's Name terminal to Cedar Schema's Path terminal. Name is able to express more terminals 
+compared with Path so any type that can be expressed in Cedar Schema can also be expressed in Cedar Policy. */
+pub Type: Node<SType> = {
+    <n:Name>
+        =>? { 
+            let loc = n.loc.clone().into_maybe_loc(); 
+            match Path::try_from(&n) { 
+                Ok(path) => Ok(Node::with_maybe_source_loc(SType::Ident(path), loc)), 
+                Err(e) => Err(ParseError::User {
+                    error: Node::with_maybe_source_loc(format!("Path parse error {e}"), loc),
+                }),
+            }
+        },
+    <l:@L> SET "<" <t:Type> ">" <r:@R>
+        => Node::with_maybe_source_loc(SType::Set(Box::new(t)), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))),
+    <l:@L> "{" <ds:AttrDecls?> "}" <r:@R>
+        => Node::with_maybe_source_loc(SType::Record(ds.unwrap_or_default()), maybe_loc!(keep_src, Loc::new(l..r, Arc::clone(src)))),
 }

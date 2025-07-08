@@ -430,7 +430,6 @@ impl<'e> Evaluator<'e> {
         slots: &SlotEnv,
         generalized_slots: &GeneralizedSlotEnv,
     ) -> Result<PartialValue> {
-        // Chore: Add comment about generalized slot
         stack_size_check()?;
 
         let res = self.partial_interpret_internal(expr, slots, generalized_slots);
@@ -470,7 +469,6 @@ impl<'e> Evaluator<'e> {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
             ExprKind::Slot(id) => {
                 if id.is_generalized_slot() {
-                    // double check if this substituion is valid
                     let restricted_expr = generalized_slots.get(id).ok_or_else(|| {
                         err::EvaluationError::unlinked_slot(id.clone(), loc.into_maybe_loc())
                     })?;
@@ -1203,7 +1201,6 @@ pub(crate) mod test {
         entities::{EntityJsonParser, NoEntitiesSchema, TCComputation},
         parser::{self, parse_expr, parse_policy_or_template, parse_policyset},
         test_utils::{expect_err, ExpectedErrorMessageBuilder},
-        validator::{json_schema, RawName},
     };
 
     use cool_asserts::assert_matches;
@@ -4956,6 +4953,7 @@ pub(crate) mod test {
             PolicyID::from_string("instance"),
             values,
             HashMap::new(),
+            None,
         )
         .expect("Linking failed!");
         let q = Request::new(
@@ -4980,36 +4978,13 @@ pub(crate) mod test {
 
     #[test]
     fn generalized_template_interp() {
-        let prc1 = PrincipalOrResourceConstraint::any();
-        // let read_euid = // Arc::new(EntityUID::with_eid_and_type("Action", "read").unwrap());
-        let ac1 = ActionConstraint::is_eq(EntityUID::with_eid("read"));
-        let prc2 = PrincipalOrResourceConstraint::any();
-
-        let t = Template::new(
-            PolicyID::from_string("template"),
-            None,
-            Annotations::from_iter([]),
-            GeneralizedSlotsAnnotation::from_iter([(
-                SlotId::generalized_slot("body".parse().unwrap()),
-                SlotTypePosition::TyPosition(
-                    json_schema::Type::Type {
-                        ty: json_schema::TypeVariant::EntityOrCommon {
-                            type_name: RawName::new("Long".parse().unwrap(), None),
-                        },
-                        loc: None,
-                    },
-                    ScopePosition::Principal,
-                ),
-            )]),
-            Effect::Permit,
-            PrincipalConstraint::new(prc1),
-            ac1.clone(),
-            ResourceConstraint::new(prc2),
-            Expr::is_eq(
-                Expr::val(8),
-                Expr::slot(SlotId::generalized_slot("body".parse().unwrap())),
-            ),
-        );
+        let t = parse_policy_or_template(
+            Some(PolicyID::from_string("template")),
+            r#"template(?body: Long) => 
+            permit(principal, action, resource) 
+            when { ?body == 8 };"#,
+        )
+        .expect("Parse Error");
 
         let mut pset = PolicySet::new();
         pset.add_template(t)
@@ -5024,6 +4999,7 @@ pub(crate) mod test {
             PolicyID::from_string("instance"),
             values,
             generalized_values,
+            None,
         )
         .expect("Linking failed!");
         let q = Request::new(

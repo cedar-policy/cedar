@@ -47,6 +47,7 @@ use crate::ast::{
 };
 use crate::expr_builder::ExprBuilder;
 use crate::fuzzy_match::fuzzy_search_limited;
+use crate::validator::cedar_schema::to_json_schema;
 use itertools::{Either, Itertools};
 use nonempty::nonempty;
 use nonempty::NonEmpty;
@@ -320,13 +321,11 @@ impl Node<Option<cst::Policy>> {
         // convert scope
         let maybe_scope = policy.extract_scope();
 
-        let maybe_generalized_slots_annotation = Ok(GeneralizedSlotsAnnotation::default());
-
         // convert conditions
         let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
             let (e, is_when) = c.to_expr::<ast::ExprBuilder<()>>()?;
 
-            let slot_errs = e.slots().map(|slot| {
+            let slot_errs = e.principal_or_resource_slots().map(|slot| {
                 ToASTError::new(
                     ToASTErrorKind::slots_in_condition_clause(
                         slot.clone(),
@@ -341,6 +340,33 @@ impl Node<Option<cst::Policy>> {
                 None => Ok(e),
             }
         }));
+
+        // get slots in the scope
+        let (maybe_slot_in_principal, maybe_slot_in_resource) = match &maybe_scope {
+            Ok((p, _, r)) => (
+                p.get_slot_in_principal_constraint(),
+                r.get_slot_in_resource_constraint(),
+            ),
+            Err(_) => (None, None),
+        };
+
+        // maximally get all the slots in the condition, any errors will have already been caught by maybe_cond
+        let cond_slots = policy
+            .conds
+            .iter()
+            .filter_map(|c| match c.to_expr::<ast::ExprBuilder<()>>() {
+                Ok((e, _)) => Some(e),
+                Err(_) => None,
+            })
+            .flat_map(|e| e.slots().collect::<Vec<ast::Slot>>())
+            .collect();
+
+        // get generalized_slots_annotation
+        let maybe_generalized_slots_annotation = policy.get_generalized_slots_annotation(
+            maybe_slot_in_principal.as_ref(),
+            maybe_slot_in_resource.as_ref(),
+            cond_slots,
+        );
 
         let (
             effect,
@@ -432,12 +458,10 @@ impl Node<Option<cst::Policy>> {
         // convert scope
         let maybe_scope = policy.extract_scope_tolerant_ast();
 
-        let maybe_generalized_slots_annotation = Ok(GeneralizedSlotsAnnotation::default());
-
         // convert conditions
         let maybe_conds = ParseErrors::transpose(policy.conds.iter().map(|c| {
             let (e, is_when) = c.to_expr::<ExprWithErrsBuilder<()>>()?;
-            let slot_errs = e.slots().map(|slot| {
+            let slot_errs = e.principal_or_resource_slots().map(|slot| {
                 ToASTError::new(
                     ToASTErrorKind::slots_in_condition_clause(
                         slot.clone(),
@@ -452,6 +476,34 @@ impl Node<Option<cst::Policy>> {
                 None => Ok(e),
             }
         }));
+
+        // get slots in the scope
+        let (maybe_generalized_slot_in_principal, maybe_generalized_slot_in_resource) =
+            match &maybe_scope {
+                Ok((p, _, r)) => (
+                    p.get_slot_in_principal_constraint(),
+                    r.get_slot_in_resource_constraint(),
+                ),
+                Err(_) => (None, None),
+            };
+
+        // maximally get all the slots in the condition, any errors will have already been caught by maybe_cond
+        let cond_slots = policy
+            .conds
+            .iter()
+            .filter_map(|c| match c.to_expr::<ast::ExprBuilder<()>>() {
+                Ok((e, _)) => Some(e),
+                Err(_) => None,
+            })
+            .flat_map(|e| e.slots().collect::<Vec<ast::Slot>>())
+            .collect();
+
+        // get generalized_slots_annotation
+        let maybe_generalized_slots_annotation = policy.get_generalized_slots_annotation(
+            maybe_generalized_slot_in_principal.as_ref(),
+            maybe_generalized_slot_in_resource.as_ref(),
+            cond_slots,
+        );
 
         let (
             effect,
@@ -698,6 +750,167 @@ impl cst::PolicyImpl {
         match ParseErrors::flatten(all_errs) {
             Some(errs) => Err(errs),
             None => Ok(annotations),
+        }
+    }
+
+    /// Get the generalized_slots_annotation by combining position and type information about the generalized slots
+    pub fn get_generalized_slots_annotation(
+        &self,
+        maybe_slot_in_principal: Option<&ast::SlotId>,
+        maybe_slot_in_resource: Option<&ast::SlotId>,
+        slots_in_cond: HashSet<ast::Slot>,
+    ) -> Result<GeneralizedSlotsAnnotation> {
+        let mut generalized_slots_type_position_annotation: BTreeMap<
+            ast::SlotId,
+            ast::SlotTypePosition,
+        > = BTreeMap::new();
+        let mut all_errs: Vec<ParseErrors> = vec![];
+
+        match (maybe_slot_in_principal, maybe_slot_in_resource) {
+            (Some(s1), Some(s2)) if s1 == s2 => all_errs.push(
+                ToASTError::new(
+                    ToASTErrorKind::GeneralizedSlotAppearsMultipleTimesInTheScope(s1.clone()),
+                    None,
+                )
+                .into(),
+            ),
+            (_, _) => (),
+        };
+
+        let generalized_slots_type_annotation = match &self.generalized_slots_type_annotation {
+            Some(n) => n.try_as_inner()?.values.clone(),
+            None => vec![],
+        };
+
+        for node in generalized_slots_type_annotation {
+            let loc = node.loc.clone();
+            let slot_type_pair = match node.try_into_inner() {
+                Ok(slot_type_pair) => slot_type_pair, 
+                Err(e) => { all_errs.push(e.into()); continue; }
+            };
+            let ast_slot = match ast::SlotId::try_from(&slot_type_pair.slot) {
+                Ok(ast_slot) => ast_slot, 
+                Err(e) => { all_errs.push(e.into()); continue; }, 
+            };
+
+            if ast_slot.is_principal() || ast_slot.is_resource() {
+                all_errs.push(
+                    ToASTError::new(
+                        ToASTErrorKind::SlotDoesNotBelongInGeneralizedSlotAnnotation(ast_slot),
+                        loc,
+                    )
+                    .into(),
+                );
+                continue;
+            }
+
+            use std::collections::btree_map::Entry;
+
+            match generalized_slots_type_position_annotation.entry(ast_slot.clone()) {
+                Entry::Occupied(oentry) => {
+                    all_errs.push(
+                        ToASTError::new(
+                            ToASTErrorKind::DuplicateGeneralizedSlotAnnotation(
+                                oentry.key().clone(),
+                            ),
+                            loc,
+                        )
+                        .into(),
+                    );
+                }
+
+                Entry::Vacant(ventry) => {
+                    let ty = match slot_type_pair.ty.try_as_inner() {
+                        Ok(ty) => ty,
+                        Err(e) => {
+                            all_errs.push(e.into());
+                            continue;
+                        }
+                    };
+
+                    let t = to_json_schema::cedar_type_to_json_type(Node {
+                        node: ty.clone(),
+                        loc: None,
+                    });
+
+                    if Some(&ast_slot) == maybe_slot_in_principal {
+                        ventry.insert(ast::SlotTypePosition::TyPosition(
+                            t,
+                            ast::ScopePosition::Principal,
+                        ));
+                    } else if Some(&ast_slot) == maybe_slot_in_resource {
+                        ventry.insert(ast::SlotTypePosition::TyPosition(
+                            t,
+                            ast::ScopePosition::Resource,
+                        ));
+                    } else {
+                        ventry.insert(ast::SlotTypePosition::Ty(t));
+                    }
+                }
+            }
+        }
+
+        if let Some(s) = maybe_slot_in_principal {
+            if s.is_generalized_slot()
+                && !generalized_slots_type_position_annotation.contains_key(s)
+            {
+                BTreeMap::insert(
+                    &mut generalized_slots_type_position_annotation,
+                    s.clone(),
+                    ast::SlotTypePosition::Position(ast::ScopePosition::Principal),
+                );
+            }
+        };
+
+        if let Some(s) = maybe_slot_in_resource {
+            if s.is_generalized_slot()
+                && !generalized_slots_type_position_annotation.contains_key(s)
+            {
+                BTreeMap::insert(
+                    &mut generalized_slots_type_position_annotation,
+                    s.clone(),
+                    ast::SlotTypePosition::Position(ast::ScopePosition::Resource),
+                );
+            }
+        };
+
+        for slot in generalized_slots_type_position_annotation.keys() {
+            if (Some(slot) != maybe_slot_in_principal)
+                && (Some(slot) != maybe_slot_in_resource)
+                && !(slots_in_cond).contains(&ast::Slot {
+                    id: slot.clone(),
+                    loc: None,
+                })
+            {
+                all_errs.push(
+                    ToASTError::new(
+                        ToASTErrorKind::GeneralizedSlotIsAnnotatedNotUsed(slot.clone()),
+                        None,
+                    )
+                    .into(),
+                )
+            }
+        }
+
+        for slot in slots_in_cond {
+            if slot.id.is_generalized_slot()
+                && (Some(&slot.id) != maybe_slot_in_principal)
+                && (Some(&slot.id) != maybe_slot_in_resource)
+                && !(generalized_slots_type_position_annotation.contains_key(&slot.id))
+            {
+                all_errs.push(ToASTError::new(
+                    ToASTErrorKind::slots_in_condition_clause_not_in_generalized_slots_annotation(
+                        slot.clone(),
+                    ),
+                    slot.loc,
+                )
+                .into())
+            }
+        }
+
+        match ParseErrors::flatten(all_errs) {
+            Some(errs) => Err(errs),
+            None => Ok(generalized_slots_type_position_annotation.into()),
         }
     }
 }
@@ -1134,7 +1347,7 @@ impl Node<Option<cst::Cond>> {
     /// `true` if the cond is a `when` clause, `false` if it is an `unless`
     /// clause. (The returned `expr` is already adjusted for this, the `bool` is
     /// for information only.)
-    fn to_expr<Build: ExprBuilder>(&self) -> Result<(Build::Expr, bool)> {
+    pub fn to_expr<Build: ExprBuilder>(&self) -> Result<(Build::Expr, bool)> {
         let cond = self.try_as_inner()?;
         let is_when = cond.cond.to_cond_is_when()?;
 
@@ -2131,24 +2344,38 @@ impl Node<Option<cst::Primary>> {
 
 impl Node<Option<cst::Slot>> {
     fn into_expr<Build: ExprBuilder>(self) -> Result<Build::Expr> {
-        match self.try_as_inner()?.try_into() {
+        match (&self).try_into() {
             Ok(slot_id) => Ok(Build::new()
                 .with_maybe_source_loc(self.loc.as_loc_ref())
                 .slot(slot_id)),
-            Err(e) => Err(self.to_ast_err(e).into()),
+            Err(e) => Err(e),
         }
     }
 }
 
-impl TryFrom<&cst::Slot> for ast::SlotId {
-    type Error = ToASTErrorKind;
-
-    fn try_from(slot: &cst::Slot) -> std::result::Result<Self, Self::Error> {
+impl TryFrom<&Node<Option<cst::Slot>>> for ast::ValidSlotId {
+    type Error = ParseErrors;
+    fn try_from(node: &Node<Option<cst::Slot>>) -> std::result::Result<Self, Self::Error> {
+        let slot = node.try_as_inner()?;
         match slot {
-            cst::Slot::Principal => Ok(ast::SlotId::principal()),
-            cst::Slot::Resource => Ok(ast::SlotId::resource()),
-            cst::Slot::Other(slot) => Err(ToASTErrorKind::InvalidSlot(slot.clone())),
+            cst::Slot::Principal => Ok(ast::ValidSlotId::Principal),
+            cst::Slot::Resource => Ok(ast::ValidSlotId::Resource),
+            cst::Slot::Other(s) => match s.as_ref() {
+                "action" | "context" => Err(ToASTError::new(
+                    ToASTErrorKind::ReservedSlotName(slot.to_string().to_smolstr()),
+                    node.loc.clone(),
+                )
+                .into()),
+                _ => Ok(ast::ValidSlotId::GeneralizedSlot(s.parse()?)),
+            },
         }
+    }
+}
+
+impl TryFrom<&Node<Option<cst::Slot>>> for ast::SlotId {
+    type Error = ParseErrors;
+    fn try_from(slot: &Node<Option<cst::Slot>>) -> std::result::Result<Self, Self::Error> {
+        slot.try_into().map(ast::SlotId)
     }
 }
 
@@ -2541,6 +2768,29 @@ mod tests {
         let result = text_to_cst::parse_policy(text)
             .expect("failed parser")
             .to_policy(ast::PolicyID::from_string("id"));
+        match result {
+            Ok(policy) => {
+                panic!("conversion to AST should have failed, but succeeded with:\n{policy}")
+            }
+            Err(errs) => errs,
+        }
+    }
+
+    #[track_caller]
+    fn assert_parse_template_succeeds(text: &str) -> ast::Template {
+        text_to_cst::parse_policy(text)
+            .expect("failed parser")
+            .to_template(ast::PolicyID::from_string("id"))
+            .unwrap_or_else(|errs| {
+                panic!("failed conversion to AST:\n{:?}", miette::Report::new(errs))
+            })
+    }
+
+    #[track_caller]
+    fn assert_parse_template_fails(text: &str) -> ParseErrors {
+        let result = text_to_cst::parse_policy(text)
+            .expect("failed parser")
+            .to_template(ast::PolicyID::from_string("id"));
         match result {
             Ok(policy) => {
                 panic!("conversion to AST should have failed, but succeeded with:\n{policy}")
@@ -4294,7 +4544,7 @@ mod tests {
                 r#"permit(principal is User in ?principal, action, resource);"#,
                 PrincipalConstraint::is_entity_type_in_slot(
                     Arc::new("User".parse().unwrap()),
-                    None,
+                    ast::SlotId::principal(),
                 ),
                 ActionConstraint::any(),
                 ResourceConstraint::any(),
@@ -4320,7 +4570,7 @@ mod tests {
                 ActionConstraint::any(),
                 ResourceConstraint::is_entity_type_in_slot(
                     Arc::new("Folder".parse().unwrap()),
-                    None,
+                    ast::SlotId::resource(),
                 ),
             ),
         ] {
@@ -4774,14 +5024,6 @@ mod tests {
                 r#"permit(principal in ?resource, action, resource);"#,
                 ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?resource instead of ?principal").exactly_one_underline("?resource").build(),
             ),
-            (
-                r#"permit(principal == ?foo, action, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?foo instead of ?principal").exactly_one_underline("?foo").build(),
-            ),
-            (
-                r#"permit(principal in ?foo, action, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?foo instead of ?principal").exactly_one_underline("?foo").build(),
-            ),
 
             (
                 r#"permit(principal, action, resource == ?principal);"#,
@@ -4792,29 +5034,25 @@ mod tests {
                 ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?principal instead of ?resource").exactly_one_underline("?principal").build(),
             ),
             (
-                r#"permit(principal, action, resource == ?baz);"#,
-                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?baz instead of ?resource").exactly_one_underline("?baz").build(),
-            ),
-            (
-                r#"permit(principal, action, resource in ?baz);"#,
-                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?baz instead of ?resource").exactly_one_underline("?baz").build(),
-            ),
-            (
                 r#"permit(principal, action, resource) when { principal == ?foo};"#,
                 ExpectedErrorMessageBuilder::error(
-                    "`?foo` is not a valid template slot",
+                    "found template slot ?foo in the condition clause but it does not appear in the scope nor does it have a type annotation",
                 ).help(
-                    "a template slot may only be `?principal` or `?resource`",
+                    "slots that do not appear in the scope and appear in the condition clause require a type annotation",
                 ).exactly_one_underline("?foo").build(),
             ),
 
             (
                 r#"permit(principal, action == ?action, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?action").build(),
+                ExpectedErrorMessageBuilder::error("?action is not a valid slot name").exactly_one_underline("?action").build(),
             ),
             (
                 r#"permit(principal, action in ?action, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?action").build(),
+                ExpectedErrorMessageBuilder::error("?action is not a valid slot name").exactly_one_underline("?action").build(),
+            ),
+            (
+                r#"permit(principal, action in ?generalized, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?generalized").build(),
             ),
             (
                 r#"permit(principal, action == ?principal, resource);"#,
@@ -5640,6 +5878,213 @@ mod tests {
         );
     }
 
+    #[test]
+    fn generalized_slots_annotation() {
+        let txt = r#"
+        template(?age: Long) =>
+        permit(principal, action, resource) when {
+          ?age == 5
+        };
+        "#;
+        assert_parse_template_succeeds(txt);
+
+        let txt = r#"
+        template(?age: Long, ?age: String) =>
+        permit(principal, action, resource) when {
+          ?age == 5
+        };
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        template(?age: Long, ?age: Long) =>
+        permit(principal, action, resource) when {
+          ?age == 5
+        };
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        template(?age: Long) =>
+        permit(principal, action, resource) when {
+          ?invalid == 5
+        };
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        permit(principal, action, resource) when {
+          ?invalid == 5
+        };
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        template(?age: Long, ?age: Long) =>
+        permit(principal, action, resource) when {
+          ?invalid == 5
+        };
+        "#;
+        assert_parse_template_fails(txt);
+    }
+
+    #[test]
+    fn generalized_slots_in_the_scope_can_have_optional_type_annotation() {
+        let txt = r#"
+        permit(principal, action, resource == ?car) when {
+          ?car.permitted
+        };
+        "#;
+        assert_parse_template_succeeds(txt);
+
+        let txt = r#"
+        template(?car: Vehicle) =>
+        permit(principal, action, resource == ?car) when {
+          ?car.permitted
+        };
+        "#;
+        assert_parse_template_succeeds(txt);
+    }
+
+    #[test]
+    fn generalized_slot_can_be_duplicated_in_the_cond() {
+        let txt = r#"
+        template(?age: Long) =>
+        permit(principal, action, resource) when {
+          ?age == 8 || ?age == 5 
+        };
+        "#;
+        assert_parse_template_succeeds(txt);
+    }
+
+    #[test]
+    fn special_identifiers_can_not_be_used_as_generalized_slot_names() {
+        let txt = r#"
+        template(?action: Long, ?context: Long) =>
+        permit(principal, action, resource);
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        permit(principal == ?action, action, resource);
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        permit(principal, action, resource == ?context);
+        "#;
+        assert_parse_template_fails(txt);
+    }
+
+    #[test]
+    fn generalized_slots_annotation_can_not_have_duplicate_slots() {
+        let txt = r#"
+        template(?age: Long, ?age: Long) =>
+        permit(principal, action, resource) unless {
+          ?age == 8
+        };
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        template(?age: Long, ?age: String) =>
+        permit(principal, action, resource); 
+        "#;
+        assert_parse_template_fails(txt);
+    }
+
+    #[test]
+    fn generalized_slot_can_not_be_duplicated_in_scope() {
+        let txt = r#"
+        permit(principal == ?age, action, resource == ?age);
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        template(?age: Long) =>
+        forbid(principal == ?age, action, resource == ?age);
+        "#;
+        assert_parse_template_fails(txt);
+    }
+
+    #[test]
+    fn generalized_slot_in_annotation_must_be_used() {
+        let txt = r#"
+        template(?temp: Long) => 
+        permit(principal, action, resource); 
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        template(?temp: Long, ?rand: String) => 
+        permit(principal, action, resource); 
+        "#;
+        assert_parse_template_fails(txt);
+    }
+
+    #[test]
+    fn generalized_slot_in_cond_not_in_scope_no_type() {
+        let txt = r#"
+        permit(principal, action, resource) unless {
+            ?cond 
+        }; 
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        template(?value: Long) => 
+        permit(principal, action, resource) when {
+            ?value == 8 && ?cond
+        }; 
+        "#;
+        assert_parse_template_fails(txt);
+    }
+
+    #[test]
+    fn generalized_slot_annotations_can_not_be_principal_or_resource() {
+        let txt = r#"
+        template(?principal: University::Department) => 
+        permit(principal == ?principal, action, resource); 
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        template(?resource: University::Department) => 
+        permit(principal, action, resource == ?resource); 
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        template(?principal: University::Department, ?resource: University::Department) => 
+        permit(principal == ?principal, action, resource == ?resource); 
+        "#;
+        assert_parse_template_fails(txt);
+
+        let txt = r#"
+        template(?principal: Long) => 
+        permit(principal, action, resource) when {
+            ?principal == 8
+        };"#;
+        assert_parse_template_fails(txt);
+    }
+
+    #[test]
+    fn generalized_slot_annotations_can_be_similiar_to_principal_or_resource() {
+        let txt = r#"
+        template(?principals: University::Department, ?resources: University::Department) => 
+        permit(principal == ?principals, action, resource == ?resources); 
+        "#;
+        assert_parse_template_succeeds(txt);
+    }
+
+    #[test]
+    fn flipped_principal_resource_in_the_scope_is_not_valid() {
+        let txt = r#"
+        permit(principal == ?resource, action, resource == ?principal); 
+        "#;
+        assert_parse_template_fails(txt);
+    }
+
     #[cfg(feature = "tolerant-ast")]
     #[track_caller]
     fn assert_parse_policy_allows_errors(text: &str) -> ast::StaticPolicy {
@@ -6083,14 +6528,6 @@ mod tests {
                 r#"permit(principal in ?resource, action, resource);"#,
                 ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?resource instead of ?principal").exactly_one_underline("?resource").build(),
             ),
-            (
-                r#"permit(principal == ?foo, action, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?foo instead of ?principal").exactly_one_underline("?foo").build(),
-            ),
-            (
-                r#"permit(principal in ?foo, action, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?foo instead of ?principal").exactly_one_underline("?foo").build(),
-            ),
 
             (
                 r#"permit(principal, action, resource == ?principal);"#,
@@ -6101,29 +6538,25 @@ mod tests {
                 ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?principal instead of ?resource").exactly_one_underline("?principal").build(),
             ),
             (
-                r#"permit(principal, action, resource == ?baz);"#,
-                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?baz instead of ?resource").exactly_one_underline("?baz").build(),
-            ),
-            (
-                r#"permit(principal, action, resource in ?baz);"#,
-                ExpectedErrorMessageBuilder::error("expected an entity uid or matching template slot, found ?baz instead of ?resource").exactly_one_underline("?baz").build(),
-            ),
-            (
                 r#"permit(principal, action, resource) when { principal == ?foo};"#,
                 ExpectedErrorMessageBuilder::error(
-                    "`?foo` is not a valid template slot",
+                    "found template slot ?foo in the condition clause but it does not appear in the scope nor does it have a type annotation",
                 ).help(
-                    "a template slot may only be `?principal` or `?resource`",
+                    "slots that do not appear in the scope and appear in the condition clause require a type annotation",
                 ).exactly_one_underline("?foo").build(),
             ),
 
             (
                 r#"permit(principal, action == ?action, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid, found template slot").exactly_one_underline("?action").build(),
+                ExpectedErrorMessageBuilder::error("?action is not a valid slot name").exactly_one_underline("?action").build(),
             ),
             (
                 r#"permit(principal, action in ?action, resource);"#,
-                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?action").build(),
+                ExpectedErrorMessageBuilder::error("?action is not a valid slot name").exactly_one_underline("?action").build(),
+            ),
+            (
+                r#"permit(principal, action in ?generalized, resource);"#,
+                ExpectedErrorMessageBuilder::error("expected single entity uid or set of entity uids, found template slot").exactly_one_underline("?generalized").build(),
             ),
             (
                 r#"permit(principal, action == ?principal, resource);"#,
