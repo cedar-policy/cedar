@@ -51,6 +51,11 @@ use crate::validator::{
 /// data is required.
 /// It stores the request type, access dag, and access terms.
 ///
+/// Each access term stores a data path, starting from a cedar variable or literal.
+/// Access paths include requests for entity attributes, tags, and ancestors.
+/// Data not mentioned by [`AccessPaths`] can be omitted, including fields of records or entity attributes.
+/// See [`AccessPath`] for more details.
+///
 /// This can be used to load data only necessary data
 /// from a backing store into an [`Entities`] object.
 /// Suggested usage options
@@ -212,6 +217,7 @@ impl RequestTypeTerms {
 /// The [`EntityManifest`] can be used redirectly to load data,
 /// or be used with the (unreleased) [`EntityLoader`] API.
 ///
+/// See [`RequestTypeTerms`] for more details.
 ///
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
@@ -259,6 +265,7 @@ pub struct AccessDag {
 }
 
 /// Stores a set of access terms.
+///
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
@@ -278,11 +285,17 @@ impl IntoIterator for AccessTerms {
     }
 }
 
-/// Represents a term of data involving a sequence of
+/// Represents a piece of requested data involving a sequence of
 /// attribute or tag accesses, ending in a cedar variable or literal.
+/// All subpaths must also be included in the entity store.
+///
+///
 /// Internally represented as a single integer into a backing store
 /// (a directed acyclic graph).
 /// Hashing an [`AccessTerm`] is extremely cheap, so resulting data can be cached.
+///
+/// To match on this [`AccessTerm`], turn it into a [`AccessTermVariant`] with the [`AccessTerm::get_variant`] method.
+///
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
@@ -293,8 +306,11 @@ pub struct AccessTerm {
     id: usize,
 }
 
-/// Turn an [`AccessTerm`] into a [`AccessTermVariant`] in order to perform pattern matching.
 /// Stores the access term's constructor and children.
+///
+/// Includes leaf nodes (literals, variables, and strings)
+/// as well as attribute accesses, tag accesses, and ancestor accesses.
+///
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
