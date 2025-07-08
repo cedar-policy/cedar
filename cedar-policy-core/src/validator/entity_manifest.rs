@@ -336,10 +336,10 @@ impl AccessTerm {
     /// Like `get_variant`, but asserts that the term is in the store.
     /// We use this internally because we know terms that come from the same
     /// [`RequestTypeTerms`] are guaranteed to be in the store.
-    pub(crate) fn get_variant_internal<'store>(
+    pub(crate) fn get_variant_internal(
         self,
-        store: &'store AccessDag,
-    ) -> &'store AccessTermVariant {
+        store: &AccessDag,
+    ) -> &AccessTermVariant {
         // PANIC SAFETY: This function is only called on terms that are in the store.
         #[allow(clippy::unwrap_used)]
         self.get_variant(store).unwrap()
