@@ -173,7 +173,7 @@ pub open spec fn get_attr(v: Value, a: Attr, es: Entities) -> SpecResult<Value> 
 }
 
 pub open spec fn evaluate(x: Expr, req: Request, es: Entities) -> SpecResult<Value>
-    decreases x
+    decreases x via evaluate_decreases
 {
     match x {
         Expr::Lit { p } => Ok(Value::Prim { p }),
@@ -268,7 +268,15 @@ pub open spec fn evaluate(x: Expr, req: Request, es: Entities) -> SpecResult<Val
             }
         },
         Expr::Set { ls } => {
-            match seq_map_result_all(ls, |x| evaluate(x, req, es)) {
+            let vs_r = seq_map_result_all(ls, |lx: Expr| {
+                // Needed to prove termination
+                if ls.contains(lx) {
+                    evaluate(lx, req, es)
+                } else {
+                    arbitrary()
+                }
+            });
+            match vs_r {
                 Ok(vs) => Ok(Value::Set { s: FiniteSet::from_seq(vs) }),
                 Err(err) => Err(err)
             }
@@ -277,7 +285,14 @@ pub open spec fn evaluate(x: Expr, req: Request, es: Entities) -> SpecResult<Val
             // TODO: this doesn't guarantee which map entry's error will be returned, but does guarantee
             // that if any element in the map results in error, then some error will be returned.
             // This is analogous to the property checked by DRT, but may not be strong enough to verify the impl
-            let entries_evaluated_rs = map.map_values(|x: Expr| evaluate(x, req, es));
+            let entries_evaluated_rs = map.map_values(|mx: Expr| {
+                // Needed to prove termination
+                if map.dom().finite() && map.contains_value(mx) {
+                    evaluate(mx, req, es)
+                } else {
+                    arbitrary()
+                }
+            });
             if entries_evaluated_rs.values().any(|vr: SpecResult<Value>| vr is Err) {
                 // return one of the errors in the set
                 entries_evaluated_rs.values().filter(|vr: SpecResult<Value>| vr is Err).choose()
@@ -289,6 +304,24 @@ pub open spec fn evaluate(x: Expr, req: Request, es: Entities) -> SpecResult<Val
         },
         // TODO: case for ExtFun call
     }
+}
+
+
+#[via_fn]
+proof fn evaluate_decreases(x: Expr, req: Request, es: Entities) {
+    match x {
+        Expr::Set { ls } => {
+            assert(forall |lx: Expr| ls.contains(lx) ==> decreases_to!(ls => lx));
+        }
+        Expr::Record { map } => {
+            assert forall |mx: Expr| map.dom().finite() && map.contains_value(mx) implies decreases_to!(map => mx) by {
+                assert(exists |k: Attr| #[trigger] map.contains_key(k) && #[trigger] map[k] == mx);
+                let k = choose |k: Attr| #[trigger] map.contains_key(k) && #[trigger] map[k] == mx;
+                assert(decreases_to!(map => map[k]));
+            }
+        },
+        _ => {}
+    };
 }
 
 }
