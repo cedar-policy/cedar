@@ -250,6 +250,10 @@ pub struct AccessDag {
     /// indexes the `manifest_store`.
     /// This allows us to de-duplicate equivalent access terms using the "hash cons"
     /// programming trick.
+    ///
+    /// INVARIANT: For any (variant, term) such that `manifest_hash_cons[variant] = term`, `manifest_store[term.id] = variant`. The converse is also true.
+    /// INVARIANT: Two [`AccessTerm`]s are equal iff they expand to the same term.
+    /// This invariant is maintained because we always check if the term exists already before making a new id.
     #[serde_as(as = "Vec<(_, _)>")]
     pub(crate) manifest_hash_cons: HashMap<AccessTermVariant, AccessTerm>,
     /// The backing store of access terms in the entity manifest.
@@ -510,25 +514,25 @@ impl EntityManifest {
 
 impl AccessTerm {
     /// If there are no children, this is a leaf node
-    pub(crate) fn is_leaf(&self, store: &AccessDag) -> bool {
+    pub(crate) fn is_leaf(self, store: &AccessDag) -> bool {
         self.children(store).is_empty()
     }
 
     /// Get the immediate children of this term
-    pub(crate) fn children(&self, store: &AccessDag) -> Vec<AccessTerm> {
+    pub(crate) fn children(self, store: &AccessDag) -> Vec<AccessTerm> {
         // PANIC SAFETY: This function is only called on terms that are in the store.
         #[allow(clippy::unwrap_used)]
         let variant = self.get_variant(store).unwrap();
         // Return children based on the variant
         match variant {
             AccessTermVariant::Attribute { of, .. } => {
-                vec![of.clone()]
+                vec![*of]
             }
             AccessTermVariant::Tag { of, tag } => {
-                vec![of.clone(), tag.clone()]
+                vec![*of, *tag]
             }
             AccessTermVariant::Ancestor { of, ancestor } => {
-                vec![of.clone(), ancestor.clone()]
+                vec![*of, *ancestor]
             }
             AccessTermVariant::Literal(_) => vec![],
             AccessTermVariant::Var(_) => vec![],
@@ -623,7 +627,7 @@ pub fn compute_entity_manifest(
             let mut per_request = manifest
                 .per_action
                 .remove(&request_type)
-                .unwrap_or(RequestTypeTerms::new(request_type.clone()));
+                .unwrap_or_else(|| RequestTypeTerms::new(request_type.clone()));
 
             match policy_check {
                 PolicyCheck::Success(typechecked_expr) => {

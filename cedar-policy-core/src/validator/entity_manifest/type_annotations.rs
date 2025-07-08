@@ -69,6 +69,8 @@ impl RequestTypeTerms {
 
     /// Helper method to type a single term.
     /// When the type does not exist in the schema, it returns `None`.
+    /// A type may not exist in the schema, for example
+    /// when using the `has` operator.
     fn type_term(
         &self,
         variant: &AccessTermVariant,
@@ -77,7 +79,7 @@ impl RequestTypeTerms {
     ) -> Result<Option<Type>, EntityManifestTypecheckError> {
         let res = match variant {
             AccessTermVariant::Var(var) => {
-                // Type the variable based on its kind
+                // Type the variable based on the request type.
                 let ty = match var {
                     Var::Action => {
                         Type::euid_literal(&request_type.action, schema).ok_or_else(|| {
@@ -142,7 +144,7 @@ impl RequestTypeTerms {
                             attr_type.attr_type.clone()
                         } else {
                             // The attribute was not found, but this can happen
-                            // for example with `has` statements on types without the attribute.
+                            // with `has` statements on types without the attribute.
                             // In this case, we return None to indicate that the attribute is not present.
                             return Ok(None);
                         }
