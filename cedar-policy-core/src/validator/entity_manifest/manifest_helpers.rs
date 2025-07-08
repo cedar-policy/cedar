@@ -1,4 +1,4 @@
-//! Helper types and functions for using the entity manifest with the [`SimpleEntityLoader`]
+//! Helper types and functions for using the entity manifest with the [`EntityLoader`]
 //!
 //! These helpers are packaged as a [`EntityLoadingContext`], which stores information about the entity DAG to enable efficient loading.
 
@@ -320,7 +320,7 @@ impl AccessTrie {
     }
 }
 
-/// A context for loading entities using the [`SimpleEntityLoader`] API.
+/// A context for loading entities using the [`EntityLoader`] API.
 /// This struct encapsulates all the data needed for the entity loading process.
 #[derive(Debug)]
 pub(crate) struct EntityLoadingContext<'a> {

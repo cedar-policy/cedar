@@ -40,7 +40,6 @@ pub mod slicing;
 mod type_annotations;
 
 use crate::validator::entity_manifest::analysis::analyze_expr_access_paths as analyze_expr_access_terms;
-// Re-export types from human_format module
 use crate::validator::Validator;
 use crate::validator::{
     typecheck::{PolicyCheck, Typechecker},
@@ -50,8 +49,16 @@ use crate::validator::{
 
 /// For a given request type, stores information about what
 /// data is required.
-/// It stores the request type,
-/// access dag, and access terms.
+/// It stores the request type, access dag, and access terms.
+///
+/// This can be used to load data only necessary data
+/// from a backing store into an [`Entities`] object.
+/// Suggested usage options
+///   - load each [`AccessTerm`] from [`AccessTerms`] separately,
+///   - take advantage or shared sub-terms and load all the access terms at once
+///   - load data in batches, traversing the access terms bottom-up
+///   - avoid using this directly and instead use the [`EntityLoader`] API.
+///
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
 // when adding public methods.
@@ -201,6 +208,10 @@ impl RequestTypeTerms {
 ///
 /// For each request type, the [`EntityManifest`] stores
 /// a [`RequestTypeTerms`] containing the data terms needed for that request type.
+///
+/// The [`EntityManifest`] can be used redirectly to load data,
+/// or be used with the (unreleased) [`EntityLoader`] API.
+///
 ///
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
