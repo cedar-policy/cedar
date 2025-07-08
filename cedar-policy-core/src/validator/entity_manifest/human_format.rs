@@ -198,11 +198,6 @@ impl HumanEntityManifest {
     pub(crate) fn to_json_string(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
     }
-
-    /// Create a `HumanEntityManifest` from a JSON string
-    pub(crate) fn from_json_str(json: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(json)
-    }
 }
 
 impl EntityManifest {
@@ -240,22 +235,6 @@ impl EntityManifest {
             // return an error, you used an access term with the wrong request type
             Err(super::AccessTermNotFoundError { path_id: term.id })
         }
-    }
-
-    /// Convert this `EntityManifest` to a human-readable JSON string
-    pub fn to_human_json_string(&self) -> Result<String, serde_json::Error> {
-        let human = self.to_human_format();
-        serde_json::to_string_pretty(&human)
-    }
-
-    /// Create an `EntityManifest` from a human-readable JSON string
-    #[cfg(test)]
-    pub(crate) fn from_human_json_str(
-        json: &str,
-        schema: &ValidatorSchema,
-    ) -> Result<Self, HumanToManifestConversionError> {
-        let human: HumanEntityManifest = serde_json::from_str(json)?;
-        human.to_entity_manifest(schema)
     }
 }
 
