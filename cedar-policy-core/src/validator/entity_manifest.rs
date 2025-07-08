@@ -224,6 +224,7 @@ pub struct EntityManifest {
 /// or a record in another entity.
 ///
 /// After construction, the dag is annotated with the types of all of the access terms.
+#[doc = include_str!("../../experimental_warning.md")]
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -336,10 +337,7 @@ impl AccessTerm {
     /// Like `get_variant`, but asserts that the term is in the store.
     /// We use this internally because we know terms that come from the same
     /// [`RequestTypeTerms`] are guaranteed to be in the store.
-    pub(crate) fn get_variant_internal(
-        self,
-        store: &AccessDag,
-    ) -> &AccessTermVariant {
+    pub(crate) fn get_variant_internal(self, store: &AccessDag) -> &AccessTermVariant {
         // PANIC SAFETY: This function is only called on terms that are in the store.
         #[allow(clippy::unwrap_used)]
         self.get_variant(store).unwrap()
@@ -359,8 +357,7 @@ impl AccessDag {
         let term = AccessTerm { id };
 
         // Add the variant to the hash_cons map
-        self.manifest_hash_cons
-            .insert(variant.clone(), term);
+        self.manifest_hash_cons.insert(variant.clone(), term);
 
         // Add the variant to the manifest_store
         self.manifest_store.push(variant);
@@ -371,11 +368,8 @@ impl AccessDag {
 }
 
 /// A mapping from terms in one manifest to terms in another manifest
-// CAUTION: this type is publicly exported in `cedar-policy`.
-// Don't make fields `pub`, don't make breaking changes, and use caution
-// when adding public methods.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TermMapping {
+pub(crate) struct TermMapping {
     /// Maps from source term IDs to target term IDs
     pub(crate) term_map: HashMap<usize, usize>,
 }
@@ -388,14 +382,14 @@ impl Default for TermMapping {
 
 impl TermMapping {
     /// Create a new empty term mapping
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             term_map: HashMap::new(),
         }
     }
 
     /// Map a term from the source manifest to the target manifest
-    pub fn map_term(&self, term: AccessTerm) -> Option<AccessTerm> {
+    pub(crate) fn map_term(&self, term: AccessTerm) -> Option<AccessTerm> {
         self.term_map.get(&term.id).map(|&id| AccessTerm { id })
     }
 }
