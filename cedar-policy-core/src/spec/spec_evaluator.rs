@@ -314,11 +314,7 @@ proof fn evaluate_decreases(x: Expr, req: Request, es: Entities) {
             assert(forall |lx: Expr| ls.contains(lx) ==> decreases_to!(ls => lx));
         }
         Expr::Record { map } => {
-            assert forall |mx: Expr| map.dom().finite() && map.contains_value(mx) implies decreases_to!(map => mx) by {
-                assert(exists |k: Attr| #[trigger] map.contains_key(k) && #[trigger] map[k] == mx);
-                let k = choose |k: Attr| #[trigger] map.contains_key(k) && #[trigger] map[k] == mx;
-                assert(decreases_to!(map => map[k]));
-            }
+            assert(forall |mx: Expr| map.dom().finite() && map.contains_value(mx) ==> decreases_to!(map => mx));
         },
         _ => {}
     };
