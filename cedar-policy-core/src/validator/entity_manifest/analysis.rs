@@ -203,9 +203,13 @@ impl WrappedAccessTerms {
         store: &mut AccessDag,
     ) -> Rc<Self> {
         // compute cross product of the access terms and the tag terms
+        // PANIC SAFETY: after typechecking, wrapped access paths are well-typed wrt the expressions
+        #[allow(clippy::expect_used)]
         let of_access_terms = self.returned_access_terms().expect(
             "Tag access terms should not be record or set literals, typechecker should prevent this",
         );
+        // PANIC SAFETY: after typechecking, wrapped access paths are well-typed wrt the expressions
+        #[allow(clippy::expect_used)]
         let tag_access_terms = tag_terms
             .returned_access_terms()
             .expect("Tag access terms should not be record or set literals, typechecker should prevent this");
@@ -261,6 +265,7 @@ impl WrappedAccessTerms {
                     self
                 }
             }
+            // PANIC SAFETY: after typechecking, wrapped access paths are well-typed wrt the expressions
             #[allow(clippy::panic)]
             WrappedAccessTerms::SetLiteral(_) => {
                 panic!("Attempted to dereference a set literal.")
@@ -516,6 +521,7 @@ pub(crate) fn analyze_expr_access_paths(
                 .as_ref()
                 .expect("Expected annotated types after typechecking");
 
+            // PANIC SAFETY: Typechecking succeeded, type annotations should be present
             #[allow(clippy::expect_used)]
             let ty2 = arg2
                 .data()
