@@ -33,12 +33,12 @@ use crate::validator::entity_manifest::err::PathExpressionParseError;
 /// A human-readable format for entity manifests.
 /// Currently used only for testing.
 ///
-/// Stores access paths using a subset of cedar expressions.
+/// Stores access terms using a subset of cedar expressions.
 /// The cedar expressions have this grammar:
-/// AccessPathExpr = Expr::Lit(literal)
-///                  | Expr::Var(variable)
-///                  | <path>.field
-///                  | <path>.getTag(<path>)
+/// accessterm = literal
+///        | variable
+///        | <accessterm>.field
+///        | <accessterm>.getTag(<accessterm>)
 #[doc = include_str!("../../../experimental_warning.md")]
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
