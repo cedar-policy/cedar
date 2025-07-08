@@ -47,6 +47,7 @@ pub enum EntityManifestError {
     #[error(transparent)]
     PartialExpression(#[from] PartialExpressionError),
     /// An error expression was encountered
+    #[cfg(feature = "tolerant-ast")]
     #[error(transparent)]
     ErrorExpression(#[from] ErrorExpressionError),
 }
