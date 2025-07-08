@@ -26,9 +26,9 @@ use serde_with::serde_as;
 use super::{AccessDag, AccessTerm, AccessTermVariant, EntityManifest, RequestTypeTerms};
 use crate::validator::ValidatorSchema;
 // Import errors directly
-use crate::validator::entity_manifest::errors::HumanToManifestConversionError;
+use crate::validator::entity_manifest::err::HumanToManifestConversionError;
 
-use crate::validator::entity_manifest::errors::PathExpressionParseError;
+use crate::validator::entity_manifest::err::PathExpressionParseError;
 
 /// A human-readable format for entity manifests.
 /// Currently used only for testing.

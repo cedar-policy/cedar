@@ -3,12 +3,12 @@ use std::{collections::HashMap, rc::Rc};
 use smol_str::SmolStr;
 
 #[cfg(feature = "tolerant-ast")]
-use crate::validator::entity_manifest::errors::ErrorExpressionError;
+use crate::validator::entity_manifest::err::ErrorExpressionError;
 use crate::{
     ast::{EntityUID, Expr},
     validator::{
         entity_manifest::{
-            errors::PartialExpressionError, AccessDag, AccessTerm, AccessTermVariant, AccessTerms,
+            err::PartialExpressionError, AccessDag, AccessTerm, AccessTermVariant, AccessTerms,
             EntityManifestError,
         },
         types::{EntityRecordKind, Type},

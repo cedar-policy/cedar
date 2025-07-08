@@ -19,7 +19,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::ast::{EntityUID, PolicySet, RequestType, Var};
-use crate::validator::entity_manifest::errors::{
+use crate::validator::entity_manifest::err::{
     AccessTermNotFoundError, EntityManifestError, EntityManifestFromJsonError, PartialRequestError,
 };
 use serde::{Deserialize, Serialize};
@@ -31,7 +31,7 @@ pub(crate) mod analysis;
 mod entity_manifest_tests;
 #[cfg(test)]
 mod entity_slice_tests;
-pub mod errors;
+pub mod err;
 #[cfg(test)]
 mod human_format;
 mod loader;

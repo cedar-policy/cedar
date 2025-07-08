@@ -25,7 +25,7 @@ use crate::validator::{
     ValidatorSchema,
 };
 // Import errors directly
-use crate::validator::entity_manifest::errors::{
+use crate::validator::entity_manifest::err::{
     EntityManifestTypecheckError, ExpectedEntityHaveTagTypeError, ExpectedEntityOrRecordTypeError,
     ExpectedEntityTypeError, MismatchedMissingEntityError, MismatchedNotStrictSchemaError,
 };

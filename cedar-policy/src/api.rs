@@ -27,9 +27,7 @@ mod id;
 use cedar_policy_core::validator::entity_manifest;
 // TODO (#1157) implement wrappers for these structs before they become public
 #[cfg(feature = "entity-manifest")]
-pub use cedar_policy_core::validator::entity_manifest::{
-    AccessDag, AccessTrie, EntityManifest, EntityRoot, Fields,
-};
+pub use cedar_policy_core::validator::entity_manifest::{AccessDag, EntityManifest, RequestTypeTerms, AccessTerms, AccessTerm, AccessTermVariant};
 use cedar_policy_core::validator::json_schema;
 use cedar_policy_core::validator::typecheck::{PolicyCheck, Typechecker};
 pub use id::*;

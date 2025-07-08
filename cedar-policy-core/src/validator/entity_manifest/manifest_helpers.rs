@@ -12,14 +12,14 @@ use smol_str::SmolStr;
 use crate::{
     ast::EntityUID,
     validator::entity_manifest::{
-        errors::{EntitySliceError, ResidualEncounteredError},
+        err::{EntitySliceError, ResidualEncounteredError},
         loader::{EntityLoader, EntityRequest, EntityRequests},
         AccessTerm, AccessTermVariant, RequestTypeTerms,
     },
 };
 use crate::{
     ast::{Entity, Literal, PartialValue, Request, Value, ValueKind},
-    validator::entity_manifest::errors::{
+    validator::entity_manifest::err::{
         ConflictingEntityDataError, ExpectedEntityError, ExpectedStringError,
     },
 };

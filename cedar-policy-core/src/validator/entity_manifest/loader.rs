@@ -29,13 +29,13 @@ use crate::{
     entities::{Entities, NoEntitiesSchema, TCComputation},
     extensions::Extensions,
     validator::entity_manifest::{
-        errors::{ExpectedEntityError, ExpectedEntityOrEntitySetError},
+        err::{ExpectedEntityError, ExpectedEntityOrEntitySetError},
         manifest_helpers::{AccessTrie, EntityLoadingContext},
         AccessTermVariant, EntityManifest, RequestTypeTerms,
     },
 };
 
-use crate::validator::entity_manifest::errors::{EntitySliceError, PartialRequestError};
+use crate::validator::entity_manifest::err::{EntitySliceError, PartialRequestError};
 
 /// A request that an entity be loaded.
 /// Entities this entity references need not be loaded, as they will be requested separately.

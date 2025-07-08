@@ -12,7 +12,7 @@ use crate::{
 use smol_str::SmolStr;
 
 // Import errors directly
-use crate::validator::entity_manifest::errors::{
+use crate::validator::entity_manifest::err::{
     EntityFieldMissingError, EntityMissingError, EntitySliceError, EntityTagMissingError,
     ExpectedEntityError, ExpectedEntityOrRecordError, ExpectedStringError, PartialContextError,
     PartialEntityError, PartialRequestError, RecordFieldMissingError,
