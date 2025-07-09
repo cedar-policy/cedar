@@ -16,7 +16,7 @@
 
 use cedar_policy_core::validator::ValidatorSchema;
 use itertools::Itertools;
-use lsp_types::{
+use tower_lsp_server::lsp_types::{
     CompletionItem, CompletionItemKind, Documentation, InsertTextFormat, MarkupContent, MarkupKind,
 };
 
@@ -134,7 +134,7 @@ impl<'a> AttributeAndSchema<'a> {
     }
 }
 
-impl<'a> From<AttributeAndSchema<'a>> for lsp_types::CompletionItem {
+impl<'a> From<AttributeAndSchema<'a>> for tower_lsp_server::lsp_types::CompletionItem {
     fn from(attr: AttributeAndSchema<'a>) -> Self {
         Self {
             kind: Some(CompletionItemKind::FIELD),
