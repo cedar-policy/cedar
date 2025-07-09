@@ -150,6 +150,16 @@ fn simple_schema_file_1() -> json_schema::NamespaceDefinition<RawName> {
                             "age": { "type": "String", "required": false}
                         }
                     }
+                },
+                "Long": { 
+                    "memberOfTypes": [],
+                    "shape": {
+                        "type": "Record",
+                        "additionalAttributes": false,
+                        "attributes": {
+                            "age": { "type": "String", "required": true}
+                        }
+                    }
                 }
             },
             "commonTypes": {
@@ -1469,6 +1479,39 @@ mod generalized_templates {
               { ?person has name && ?person.name == "Alice" ||
                 ?person.age == 8
                 };"#,
+            )
+            .unwrap(),
+        );
+    }
+
+    #[test]
+    fn generalized_slot_with_shadowing_of_primitive_type() {
+        assert_policy_typechecks(
+            simple_schema_file_1(),
+            parse_policy_or_template(
+                None,
+                r#"
+              template(?person: Long) => 
+              permit(
+              principal,
+              action == Action::"Navigate", 
+              resource) when 
+              { ?person.age == "8" };"#,
+            )
+            .unwrap(),
+        );
+
+        assert_policy_typechecks(
+            simple_schema_file_1(),
+            parse_policy_or_template(
+                None,
+                r#"
+              template(?person: __cedar::Long) => 
+              permit(
+              principal,
+              action == Action::"Navigate", 
+              resource) when 
+              { ?person == 8 };"#,
             )
             .unwrap(),
         );
