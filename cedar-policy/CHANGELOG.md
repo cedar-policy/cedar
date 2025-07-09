@@ -10,8 +10,17 @@ The "Cedar Language Version" refers to the language version as documented in the
 
 Starting with version 3.2.4, changes marked with a star (*) are _language breaking changes_, meaning that they have the potential to affect users of Cedar, beyond users of the `cedar-policy` Rust crate. Changes marked with a star change the behavior of a Cedar parser, the authorization engine, or policy validator.
 
-## [Unreleased]
-Cedar Language Version: TBD
+## Unreleased
+
+### Added
+
+- Added the `raw-parsing` feature flag which provides alternative parsing APIs (`parse_raw`) for
+  `PolicySet`, `Policy`, and `Template`. These APIs don't retain source code information, trading detailed error
+  reporting for reduced memory usage and faster parsing. The feature is only intended for use with raw parsing
+  APIs, as regular parsing performance is degraded when the `raw-parsing` feature is enabled.
+
+## [4.5.0] - 2025-06-30
+Cedar Language Version: 4.4
 
 ### Added
 
@@ -24,10 +33,6 @@ Cedar Language Version: TBD
    and `RestrictedExpression::new_datetime` (#1614)
 - Added a function to be able to split a policy set parsed from a single string into its component static
   policies and templates. The relevant function is `policy_set_text_to_parts` in the `ffi` module (#1629).
-- Added the `raw-parsing` feature flag which provides alternative parsing APIs (`parse_raw`) for
-  `PolicySet`, `Policy`, and `Template`. These APIs don't retain source code information, trading detailed error
-  reporting for reduced memory usage and faster parsing. The feature is only intended for use with raw parsing
-  APIs, as regular parsing performance is degraded when the `raw-parsing` feature is enabled.
 - Implemented [RFC 71 (trailing commas)](https://github.com/cedar-policy/rfcs/blob/main/text/0071-trailing-commas.md)
   for Cedar policy files. (#1606)
 
@@ -902,7 +907,9 @@ Cedar Language Version: 2.0
 Cedar Language Version: 2.0
 - Initial release of `cedar-policy`.
 
-[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.4.0...main
+[Unreleased]: https://github.com/cedar-policy/cedar/compare/v4.5.0...main
+[4.5.0]: https://github.com/cedar-policy/cedar/compare/v4.4.1...v4.5.0
+[4.4.1]: https://github.com/cedar-policy/cedar/compare/v4.4.0...v4.4.1
 [4.4.0]: https://github.com/cedar-policy/cedar/compare/v4.3.3...v4.4.0
 [4.3.3]: https://github.com/cedar-policy/cedar/compare/v4.3.2...v4.3.3
 [4.3.2]: https://github.com/cedar-policy/cedar/compare/v4.3.1...v4.3.2

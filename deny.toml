@@ -1,7 +1,4 @@
 [licenses]
-unlicensed = "deny"
-copyleft = "deny"
-default = "deny"
 unused-allowed-license = "allow"
 confidence-threshold = 0.95
 allow = [

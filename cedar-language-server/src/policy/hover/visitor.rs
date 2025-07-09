@@ -49,11 +49,11 @@ use super::ToHover;
 /// and determine what documentation to display.
 pub(crate) struct HoverVisitor<'a> {
     token_under_cursor: Token<'a>,
-    doc_context: &'a DocumentContext,
+    doc_context: &'a DocumentContext<'a>,
 }
 
 impl<'a> HoverVisitor<'a> {
-    pub(crate) fn new(cx: &'a DocumentContext) -> Self {
+    pub(crate) fn new(cx: &'a DocumentContext<'_>) -> Self {
         HoverVisitor {
             token_under_cursor: cx.get_token_under_cursor().unwrap_or_else(|| {
                 Token::Word(cx.get_char_at_position().unwrap_or_default().to_string())
@@ -127,7 +127,7 @@ impl ExprVisitor for HoverVisitor<'_> {
             return expr
                 .expr_kind()
                 .get_type(self.doc_context)
-                .and_then(|ty| ty.attribute_type(attr, self.doc_context.schema.as_deref()))
+                .and_then(|ty| ty.attribute_type(attr, self.doc_context.schema()))
                 .and_then(|ty| ty.to_hover(self.doc_context));
         }
 
@@ -237,7 +237,7 @@ impl ExprVisitor for HoverVisitor<'_> {
             return expr
                 .expr_kind()
                 .get_type(self.doc_context)
-                .and_then(|ty| ty.attribute_type(attr, self.doc_context.schema.as_deref()))
+                .and_then(|ty| ty.attribute_type(attr, self.doc_context.schema()))
                 .and_then(|ty| ty.to_hover(self.doc_context));
         }
 

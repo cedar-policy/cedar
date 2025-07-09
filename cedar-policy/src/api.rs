@@ -75,7 +75,7 @@ pub(crate) mod version {
         LazyLock::new(|| env!("CARGO_PKG_VERSION").parse().unwrap());
     // Cedar language version
     // The patch version field may be unnecessary
-    static LANG_VERSION: LazyLock<Version> = LazyLock::new(|| Version::new(4, 3, 0));
+    static LANG_VERSION: LazyLock<Version> = LazyLock::new(|| Version::new(4, 4, 0));
 
     /// Get the Cedar SDK Semantic Versioning version
     #[allow(clippy::module_name_repetitions)]
@@ -4132,6 +4132,12 @@ impl FromStr for Expression {
         ast::Expr::from_str(expression)
             .map(Expression)
             .map_err(Into::into)
+    }
+}
+
+impl std::fmt::Display for Expression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &self.0)
     }
 }
 

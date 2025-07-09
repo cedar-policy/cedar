@@ -30,20 +30,20 @@ use super::{
 
 #[derive(Debug, Clone)]
 pub(crate) struct TypeInferenceContext<'a> {
-    pub(crate) document_context: &'a DocumentContext,
+    pub(crate) document_context: &'a DocumentContext<'a>,
     base_type: Option<CedarTypeKind>,
     attr_path: Vec<String>,
 }
 
-impl<'a> From<&'a DocumentContext> for TypeInferenceContext<'a> {
-    fn from(value: &'a DocumentContext) -> Self {
+impl<'a> From<&'a DocumentContext<'_>> for TypeInferenceContext<'a> {
+    fn from(value: &'a DocumentContext<'_>) -> Self {
         TypeInferenceContext::new(value)
     }
 }
 
 impl<'a> TypeInferenceContext<'a> {
     #[must_use]
-    pub(crate) fn new(document_context: &'a DocumentContext) -> Self {
+    pub(crate) fn new(document_context: &'a DocumentContext<'_>) -> Self {
         Self {
             document_context,
             base_type: None,
@@ -61,7 +61,7 @@ impl<'a> TypeInferenceContext<'a> {
 
     #[must_use]
     pub(crate) fn get_base_type_attrs(&'a self) -> Option<AttributeCollection<'a>> {
-        let schema = self.document_context.schema.as_deref()?;
+        let schema = self.document_context.schema()?;
         let base_type = self.base_type.as_ref()?;
 
         match base_type {
@@ -159,7 +159,7 @@ impl<'a> TypeInferenceContext<'a> {
         initial_attrs: AttributeCollection<'a>,
     ) -> Vec<AttributeInfo<'a>> {
         // Early return if we have no schema or empty path
-        let Some(schema) = self.document_context.schema.as_deref() else {
+        let Some(schema) = self.document_context.schema() else {
             return vec![];
         };
 
@@ -346,7 +346,7 @@ impl<'a> AttributeCollection<'a> {
 /// and other language features in the Cedar language server.
 pub(crate) trait GetType {
     /// Gets the Cedar type of this expression or component.
-    fn get_type(&self, cx: &DocumentContext) -> Option<CedarTypeKind>;
+    fn get_type(&self, cx: &DocumentContext<'_>) -> Option<CedarTypeKind>;
     fn get_type_with_cx(&self, cx: &mut TypeInferenceContext<'_>) -> Option<CedarTypeKind> {
         self.get_type(cx.document_context)
     }

@@ -323,7 +323,7 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy"
-version = "4.4.0"
+version = "4.5.0"
 dependencies = [
  "cedar-policy-core",
  "cedar-policy-formatter",
@@ -354,7 +354,7 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy-cli"
-version = "4.4.0"
+version = "4.5.0"
 dependencies = [
  "assert_cmd",
  "cedar-policy",
@@ -363,6 +363,7 @@ dependencies = [
  "glob",
  "graphviz-rust",
  "miette",
+ "owo-colors",
  "predicates",
  "rstest",
  "semver",
@@ -374,7 +375,7 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy-core"
-version = "4.4.0"
+version = "4.5.0"
 dependencies = [
  "arbitrary",
  "chrono",
@@ -405,7 +406,7 @@ dependencies = [
 
 [[package]]
 name = "cedar-policy-formatter"
-version = "4.4.0"
+version = "4.5.0"
 dependencies = [
  "cedar-policy-core",
  "insta",
@@ -420,7 +421,7 @@ dependencies = [
 
 [[package]]
 name = "cedar-testing"
-version = "4.4.0"
+version = "4.5.0"
 dependencies = [
  "assert_cmd",
  "cedar-policy",
@@ -433,7 +434,7 @@ dependencies = [
 
 [[package]]
 name = "cedar-wasm"
-version = "4.4.0"
+version = "4.5.0"
 dependencies = [
  "cedar-policy",
  "cedar-policy-core",
@@ -1138,6 +1139,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
+name = "hermit-abi"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
+
+[[package]]
 name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1359,6 +1366,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "is-terminal"
+version = "0.4.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e04d7f318608d35d4b61ddd75cbdaee86b023ebe2bd5a66ee0915f0bf93095a9"
+dependencies = [
+ "hermit-abi",
+ "libc",
+ "windows-sys",
+]
+
+[[package]]
 name = "is_ci"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1568,7 +1586,7 @@ dependencies = [
  "miette-derive",
  "owo-colors",
  "serde",
- "supports-color",
+ "supports-color 3.0.2",
  "supports-hyperlinks",
  "supports-unicode",
  "terminal_size",
@@ -1713,6 +1731,10 @@ name = "owo-colors"
 version = "4.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26995317201fa17f3656c36716aed4a7c81743a9634ac4c99c0eeda495db0cec"
+dependencies = [
+ "supports-color 2.1.0",
+ "supports-color 3.0.2",
+]
 
 [[package]]
 name = "parking_lot"
@@ -2622,6 +2644,16 @@ name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
+name = "supports-color"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6398cde53adc3c4557306a96ce67b302968513830a77a95b2b17305d9719a89"
+dependencies = [
+ "is-terminal",
+ "is_ci",
+]
 
 [[package]]
 name = "supports-color"

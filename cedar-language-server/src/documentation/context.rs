@@ -50,14 +50,14 @@ impl ToDocumentationString for ContextDocumentation {
     }
 }
 
-impl From<&DocumentContext> for ContextDocumentation {
-    fn from(value: &DocumentContext) -> Self {
+impl From<&DocumentContext<'_>> for ContextDocumentation {
+    fn from(value: &DocumentContext<'_>) -> Self {
         Self::new(Some(value.resolve_context_type()))
     }
 }
 
-impl From<Option<&DocumentContext>> for ContextDocumentation {
-    fn from(value: Option<&DocumentContext>) -> Self {
+impl From<Option<&DocumentContext<'_>>> for ContextDocumentation {
+    fn from(value: Option<&DocumentContext<'_>>) -> Self {
         value.map(Into::into).unwrap_or_default()
     }
 }
