@@ -371,11 +371,6 @@ pub enum JsonSerializationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ExtnCall0Arguments(ExtnCall0Arguments),
-    /// Extension-function calls with 2 or more arguments are not currently
-    /// supported in our JSON format.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ExtnCall2OrMoreArguments(ExtnCall2OrMoreArguments),
     /// Encountered a `Record` which can't be serialized to JSON because it
     /// contains a key which is reserved as a JSON escape.
     #[error(transparent)]
@@ -399,10 +394,6 @@ impl JsonSerializationError {
         Self::ExtnCall0Arguments(ExtnCall0Arguments { func })
     }
 
-    pub(crate) fn call_2_or_more_args(func: Name) -> Self {
-        Self::ExtnCall2OrMoreArguments(ExtnCall2OrMoreArguments { func })
-    }
-
     pub(crate) fn reserved_key(key: impl Into<SmolStr>) -> Self {
         Self::ReservedKey(ReservedKey { key: key.into() })
     }
@@ -424,15 +415,6 @@ impl JsonSerializationError {
 ))]
 pub struct ExtnCall0Arguments {
     /// Name of the function which was called with 0 arguments
-    func: Name,
-}
-
-/// Error type for extension functions called w/ 2+ arguments
-#[derive(Debug, Error, Diagnostic)]
-#[error("unsupported call to `{}` with 2 or more arguments", .func)]
-#[diagnostic(help("extension function calls with 2 or more arguments are not currently supported in our JSON format"))]
-pub struct ExtnCall2OrMoreArguments {
-    /// Name of the function called w/ 2 or more arguments
     func: Name,
 }
 

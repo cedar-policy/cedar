@@ -22,7 +22,7 @@ use crate::ast::Infallible;
 use crate::ast::{self, BoundedDisplay, EntityUID};
 use crate::entities::json::{
     err::EscapeKind, err::JsonDeserializationError, err::JsonDeserializationErrorContext,
-    CedarValueJson, FnAndArg,
+    CedarValueJson, FnAndArgs,
 };
 use crate::expr_builder::ExprBuilder;
 use crate::extensions::Extensions;
@@ -1125,7 +1125,7 @@ fn display_cedarvaluejson(
         }
         CedarValueJson::ExprEscape { __expr } => write!(f, "({__expr})"),
         CedarValueJson::ExtnEscape {
-            __extn: FnAndArg { ext_fn, arg },
+            __extn: FnAndArgs::Single { ext_fn, arg },
         } => {
             // search for the name and callstyle
             let style = Extensions::all_available().all_funcs().find_map(|f| {
@@ -1144,6 +1144,51 @@ fn display_cedarvaluejson(
                 Some(ast::CallStyle::FunctionStyle) | None => {
                     write!(f, "{ext_fn}(")?;
                     display_cedarvaluejson(f, arg, n)?;
+                    write!(f, ")")?;
+                    Ok(())
+                }
+            }
+        }
+        CedarValueJson::ExtnEscape {
+            __extn: FnAndArgs::Multi { ext_fn, args },
+        } => {
+            // search for the name and callstyle
+            let style = Extensions::all_available().all_funcs().find_map(|f| {
+                if &f.name().to_smolstr() == ext_fn {
+                    Some(f.style())
+                } else {
+                    None
+                }
+            });
+            match style {
+                Some(ast::CallStyle::MethodStyle) => {
+                    display_cedarvaluejson(f, &args[0], n)?;
+                    write!(f, ".{ext_fn}(")?;
+                    match &args[1..] {
+                        [] => {}
+                        [args @ .., last] => {
+                            for arg in args {
+                                display_cedarvaluejson(f, arg, n)?;
+                                write!(f, ", ")?;
+                            }
+                            display_cedarvaluejson(f, last, n)?;
+                        }
+                    }
+                    write!(f, ")")?;
+                    Ok(())
+                }
+                Some(ast::CallStyle::FunctionStyle) | None => {
+                    write!(f, "{ext_fn}(")?;
+                    match &args[..] {
+                        [] => {}
+                        [args @ .., last] => {
+                            for arg in args {
+                                display_cedarvaluejson(f, arg, n)?;
+                                write!(f, ", ")?;
+                            }
+                            display_cedarvaluejson(f, last, n)?;
+                        }
+                    }
                     write!(f, ")")?;
                     Ok(())
                 }

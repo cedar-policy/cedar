@@ -31,8 +31,8 @@ use json::err::JsonSerializationError;
 
 pub use json::{
     AllEntitiesNoAttrsSchema, AttributeType, CedarValueJson, ContextJsonParser, ContextSchema,
-    EntityJson, EntityJsonParser, EntityTypeDescription, EntityUidJson, FnAndArg, NoEntitiesSchema,
-    NoStaticContext, Schema, SchemaType, TypeAndId,
+    EntityJson, EntityJsonParser, EntityTypeDescription, EntityUidJson, FnAndArgs,
+    NoEntitiesSchema, NoStaticContext, Schema, SchemaType, TypeAndId,
 };
 
 use conformance::EntitySchemaConformanceChecker;
