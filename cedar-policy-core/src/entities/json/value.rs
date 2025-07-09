@@ -348,7 +348,7 @@ pub enum FnAndArgs {
         #[serde(rename = "fn")]
         #[cfg_attr(feature = "wasm", tsify(type = "string"))]
         ext_fn: SmolStr,
-        /// Argument to that constructor
+        /// Arguments to that constructor
         args: Vec<CedarValueJson>,
     },
 }

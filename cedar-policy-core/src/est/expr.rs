@@ -1162,8 +1162,12 @@ fn display_cedarvaluejson(
             });
             match style {
                 Some(ast::CallStyle::MethodStyle) => {
+                    // PANIC SAFETY: method-style calls must have more than one argument
+                    #[allow(clippy::indexing_slicing)]
                     display_cedarvaluejson(f, &args[0], n)?;
                     write!(f, ".{ext_fn}(")?;
+                    // PANIC SAFETY: method-style calls must have more than one argument
+                    #[allow(clippy::indexing_slicing)]
                     match &args[1..] {
                         [] => {}
                         [args @ .., last] => {
