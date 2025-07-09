@@ -61,7 +61,7 @@ pub struct Expr<T = ()> {
     data: T,
 }
 
-clone_spec_for!(Expr);
+clone_spec_for!(Expr<T>, T:Clone);
 
 impl<T> View for Expr<T> {
     type V = spec_ast::Expr;
@@ -73,9 +73,6 @@ impl<T> View for Expr<T> {
     // }
 }
 
-
-
-} // verus!
 
 /// The possible expression variants. This enum should be matched on by code
 /// recursively traversing the AST.
@@ -187,6 +184,10 @@ pub enum ExprKind<T = ()> {
     //     error_kind: AstExprErrorKind,
     // },
 }
+
+
+
+} // verus!
 
 impl From<Value> for Expr {
     fn from(v: Value) -> Self {
@@ -1567,6 +1568,21 @@ pub enum Var {
     Resource,
     /// the Context of the given request
     Context,
+}
+
+clone_spec_for!(Var);
+
+impl View for Var {
+    type V = spec_ast::Var;
+    #[verifier::inline]
+    open spec fn view(&self) -> spec_ast::Var {
+        match self {
+            Var::Principal => spec_ast::Var::Principal,
+            Var::Action => spec_ast::Var::Action,
+            Var::Resource => spec_ast::Var::Resource,
+            Var::Context => spec_ast::Var::Context,
+        }
+    }
 }
 
 }

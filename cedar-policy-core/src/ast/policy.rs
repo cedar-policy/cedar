@@ -102,6 +102,8 @@ pub struct Template {
     slots: Vec<Slot>,
 }
 
+
+
 } // verus!
 
 impl From<Template> for TemplateBody {
@@ -256,14 +258,21 @@ impl Template {
         self.body.annotations_arc()
     }
 
+    verus! {
+
     /// Get the condition expression of this template.
     ///
     /// This will be a conjunction of the template's scope constraints (on
     /// principal, resource, and action); the template's "when" conditions; and
     /// the negation of each of the template's "unless" conditions.
-    pub fn condition(&self) -> Expr {
+    #[verifier::external_body]
+    pub fn condition(&self) -> (expr: Expr)
+        // ensures expr@ == self@.to_expr()
+    {
         self.body.condition()
     }
+
+    } // verus!
 
     /// List of open slots in this template
     pub fn slots(&self) -> impl Iterator<Item = &Slot> {
@@ -588,6 +597,7 @@ impl Policy {
     verus! {
 
     /// Get the expression that represents this policy.
+    #[verifier::external_body]
     pub fn condition(&self) -> (expr: Expr)
         ensures expr@ == self@.to_expr()
     {
@@ -1673,6 +1683,8 @@ impl TryFrom<Var> for PrincipalOrResource {
     }
 }
 
+// verus! {
+
 /// Represents the constraints for principals and resources.
 /// Can either not constrain, or constrain via `==` or `in` for a single entity literal.
 #[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
@@ -1688,6 +1700,23 @@ pub enum PrincipalOrResourceConstraint {
     /// Type constraint with a hierarchy constraint
     IsIn(Arc<EntityType>, EntityReference),
 }
+
+// clone_spec_for!(PrincipalOrResourceConstraint);
+
+// impl View for PrincipalOrResourceConstraint {
+//     type V = spec_ast::Scope;
+//     open spec fn view(&self) -> spec_ast::Scope {
+//         match self {
+//             PrincipalOrResourceConstraint::Any => spec_ast::Scope::Any,
+//             PrincipalOrResourceConstraint::In(_) => todo!(),
+//             PrincipalOrResourceConstraint::Eq(_) => todo!(),
+//             PrincipalOrResourceConstraint::Is(_) => todo!(),
+//             PrincipalOrResourceConstraint::IsIn(_, _) => todo!(),
+//         }
+//     }
+// }
+
+// } // verus!
 
 impl PrincipalOrResourceConstraint {
     /// Unconstrained.

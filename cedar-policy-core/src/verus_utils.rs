@@ -39,6 +39,12 @@ macro_rules! clone_spec_for {
                 ensures this@ == other@;
         }
     };
+    ($type:ty, $($generic:ident $(: $bound:path)?),*) => {
+        verus! {
+            pub assume_specification<$($generic $(: $bound)?)*>[ <$type as Clone>::clone ](this: &$type) -> (other: $type)
+                ensures this@ == other@;
+        }
+    };
 }
 #[allow(unused_imports)]
 pub(crate) use clone_spec_for;

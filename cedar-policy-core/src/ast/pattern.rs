@@ -15,6 +15,7 @@
  */
 
 use std::sync::Arc;
+use vstd::prelude::*;
 
 /// Represent an element in a pattern literal (the RHS of the like operation)
 #[derive(Hash, Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,12 +27,22 @@ pub enum PatternElem {
     Wildcard,
 }
 
+verus! {
+
 /// Represent a pattern literal (the RHS of the like operator)
 /// Also provides an implementation of the Display trait as well as a wildcard matching method.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[verifier::external_derive]
+#[verifier::external_body]
 pub struct Pattern {
     /// A vector of pattern elements
     elems: Arc<Vec<PatternElem>>,
+}
+
+// don't yet want to declare View on Pattern, so we don't use `clone_spec_for!`
+pub assume_specification[<Pattern as Clone>::clone](this: &Pattern) -> (other: Pattern)
+    ensures this == other;
+
 }
 
 impl Pattern {

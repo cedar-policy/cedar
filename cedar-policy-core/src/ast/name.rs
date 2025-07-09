@@ -301,13 +301,22 @@ impl<'de> Deserialize<'de> for InternalName {
     }
 }
 
+verus! {
+
 /// Identifier for a slot
 /// Clone is O(1).
 // This simply wraps a separate enum -- currently [`ValidSlotId`] -- in case we
 // want to generalize later
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
+#[verifier::external_derive]
 pub struct SlotId(pub(crate) ValidSlotId);
+
+// don't want to declare View on SlotId, so we don't use `clone_spec_for!`
+pub assume_specification[<SlotId as Clone>::clone](this: &SlotId) -> (other: SlotId)
+    ensures this == other;
+
+} // verus!
 
 impl SlotId {
     /// Get the slot for `principal`
@@ -346,13 +355,18 @@ impl std::fmt::Display for SlotId {
     }
 }
 
+verus! {
+
 /// Two possible variants for Slots
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[verifier::external_derive]
 pub(crate) enum ValidSlotId {
     #[serde(rename = "?principal")]
     Principal,
     #[serde(rename = "?resource")]
     Resource,
+}
+
 }
 
 impl std::fmt::Display for ValidSlotId {
@@ -412,6 +426,8 @@ impl View for Name {
         self.0.view()
     }
 }
+
+clone_spec_for!(Name);
 
 }
 

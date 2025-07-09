@@ -14,9 +14,16 @@
  * limitations under the License.
  */
 
+use crate::spec::*;
+use crate::verus_utils::*;
+use vstd::prelude::*;
+
+verus! {
+
 /// Built-in operators with exactly one argument
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+#[verifier::external_derive]
 pub enum UnaryOp {
     /// Logical negation
     ///
@@ -32,6 +39,23 @@ pub enum UnaryOp {
     IsEmpty,
 }
 
+clone_spec_for!(UnaryOp);
+
+impl View for UnaryOp {
+    type V = spec_ast::UnaryOp;
+
+    #[verifier::inline]
+    open spec fn view(&self) -> spec_ast::UnaryOp {
+        match self {
+            UnaryOp::Not => spec_ast::UnaryOp::Not,
+            UnaryOp::Neg => spec_ast::UnaryOp::Neg,
+            UnaryOp::IsEmpty => spec_ast::UnaryOp::IsEmpty,
+        }
+    }
+}
+
+} // verus!
+
 impl std::fmt::Display for UnaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -42,8 +66,11 @@ impl std::fmt::Display for UnaryOp {
     }
 }
 
+verus! {
+
 /// Built-in operators with exactly two arguments
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[verifier::external_derive]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum BinaryOp {
     /// Equality
@@ -111,6 +138,33 @@ pub enum BinaryOp {
     /// First argument must have Entity type, second argument must have String type.
     HasTag,
 }
+
+clone_spec_for!(BinaryOp);
+
+impl View for BinaryOp {
+    type V = spec_ast::BinaryOp;
+
+    #[verifier::inline]
+    open spec fn view(&self) -> spec_ast::BinaryOp {
+        match self {
+            BinaryOp::Eq => spec_ast::BinaryOp::Eq,
+            BinaryOp::Less => spec_ast::BinaryOp::Less,
+            BinaryOp::LessEq => spec_ast::BinaryOp::LessEq,
+            BinaryOp::Add => spec_ast::BinaryOp::Add,
+            BinaryOp::Sub => spec_ast::BinaryOp::Sub,
+            BinaryOp::Mul => spec_ast::BinaryOp::Mul,
+            BinaryOp::In => spec_ast::BinaryOp::Mem,
+            BinaryOp::Contains => spec_ast::BinaryOp::Contains,
+            BinaryOp::ContainsAll => spec_ast::BinaryOp::ContainsAll,
+            BinaryOp::ContainsAny => spec_ast::BinaryOp::ContainsAny,
+            BinaryOp::GetTag => spec_ast::BinaryOp::GetTag,
+            BinaryOp::HasTag => spec_ast::BinaryOp::HasTag,
+        }
+    }
+
+}
+
+} // verus!
 
 impl std::fmt::Display for BinaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -57,6 +57,7 @@ static ENTITY_UID_ERROR_STR: &str = "EntityUID::Error";
 pub static ACTION_ENTITY_TYPE: &str = "Action";
 
 verus! {
+
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
 #[verifier::external_derive]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -80,6 +81,8 @@ impl View for EntityType {
         }
     }
 }
+
+clone_spec_for!(EntityType);
 
 }
 
