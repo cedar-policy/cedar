@@ -379,13 +379,6 @@ impl From<cedar_policy_core::entities::Entities> for Entities {
     }
 }
 
-#[doc(hidden)]
-impl From<Entities> for cedar_policy_core::entities::Entities {
-    fn from(entities: Entities) -> Self {
-        entities.0
-    }
-}
-
 use entities_errors::EntitiesError;
 
 impl Entities {
@@ -1511,7 +1504,7 @@ impl
     }
 }
 
-#[doc(hidden)] // because this converts to a private/internal type
+#[doc(hidden)] // because this converts from a private/internal type
 impl
     TryFrom<
         cedar_policy_core::validator::json_schema::Fragment<cedar_policy_core::validator::RawName>,
