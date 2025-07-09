@@ -379,6 +379,13 @@ impl From<cedar_policy_core::entities::Entities> for Entities {
     }
 }
 
+#[doc(hidden)]
+impl From<Entities> for cedar_policy_core::entities::Entities {
+    fn from(entities: Entities) -> Self {
+        entities.0
+    }
+}
+
 use entities_errors::EntitiesError;
 
 impl Entities {
@@ -1501,6 +1508,25 @@ impl
         cedar_policy_core::validator::ConditionalName,
     > {
         &self.value
+    }
+}
+
+#[doc(hidden)] // because this converts to a private/internal type
+impl
+    TryFrom<
+        cedar_policy_core::validator::json_schema::Fragment<cedar_policy_core::validator::RawName>,
+    > for SchemaFragment
+{
+    type Error = SchemaError;
+    fn try_from(
+        json_frag: cedar_policy_core::validator::json_schema::Fragment<
+            cedar_policy_core::validator::RawName,
+        >,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self {
+            value: json_frag.clone().try_into()?,
+            lossless: json_frag,
+        })
     }
 }
 
@@ -4951,6 +4977,34 @@ impl From<ast::Value> for EvalResult {
         }
     }
 }
+
+#[doc(hidden)]
+#[allow(clippy::fallible_impl_from)]
+impl From<EvalResult> for Expression {
+    fn from(res: EvalResult) -> Self {
+        match res {
+            EvalResult::Bool(b) => Self::new_bool(b),
+            EvalResult::Long(l) => Self::new_long(l),
+            EvalResult::String(s) => Self::new_string(s),
+            EvalResult::EntityUid(eid) => {
+                Self::from(ast::Expr::from(ast::Value::from(ast::EntityUID::from(eid))))
+            }
+            EvalResult::Set(set) => Self::new_set(set.iter().cloned().map(Self::from)),
+            EvalResult::Record(r) => {
+                // PANIC SAFETY: record originates from EvalResult so should not panic when reconstructing as an Expression
+                #[allow(clippy::unwrap_used)]
+                Self::new_record(r.iter().map(|(k, v)| (k.clone(), Self::from(v.clone())))).unwrap()
+            }
+            EvalResult::ExtensionValue(s) => {
+                // PANIC SAFETY: the string s is constructed using RestrictedExpr::to_string() so should not panic when being parsed back into a RestrictedExpr
+                #[allow(clippy::unwrap_used)]
+                let expr: ast::Expr = ast::RestrictedExpr::from_str(&s).unwrap().into();
+                Self::from(expr)
+            }
+        }
+    }
+}
+
 impl std::fmt::Display for EvalResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
