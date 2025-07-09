@@ -17,10 +17,10 @@
 #![allow(clippy::use_self)]
 
 use super::models;
-use cedar_policy_core::validator::{json_schema, types, RawName};
-use cedar_policy_core::{ast, est, parser::IntoMaybeLoc};
+use cedar_policy_core::validator::{types, ValidatorType};
+use cedar_policy_core::{ast, parser::IntoMaybeLoc};
 use nonempty::NonEmpty;
-use smol_str::{SmolStr, ToSmolStr};
+use smol_str::SmolStr;
 use std::collections::{BTreeMap, HashMap};
 
 impl From<&cedar_policy_core::validator::ValidatorSchema> for models::Schema {
@@ -28,6 +28,13 @@ impl From<&cedar_policy_core::validator::ValidatorSchema> for models::Schema {
         Self {
             entity_decls: v.entity_types().map(models::EntityDecl::from).collect(),
             action_decls: v.action_ids().map(models::ActionDecl::from).collect(),
+            common_decls: v
+                .common_types()
+                .map(|(k, v)| models::CommonDecl {
+                    name: Some(models::Name::from(k)),
+                    validator_type: Some(models::Type::from(&v.ty)),
+                })
+                .collect(),
         }
     }
 }
@@ -43,6 +50,19 @@ impl From<&models::Schema> for cedar_policy_core::validator::ValidatorSchema {
             v.action_decls
                 .iter()
                 .map(cedar_policy_core::validator::ValidatorActionId::from),
+            v.common_decls.iter().map(|common_decl| {
+                (
+                    ast::InternalName::from(
+                        common_decl.name.as_ref().expect("name field should exist"),
+                    ),
+                    ValidatorType::new(types::Type::from(
+                        common_decl
+                            .validator_type
+                            .as_ref()
+                            .expect("type field should exist"),
+                    )),
+                )
+            }),
         )
     }
 }
@@ -57,7 +77,9 @@ impl From<&cedar_policy_core::validator::ValidationMode> for models::ValidationM
                 models::ValidationMode::Permissive
             }
             #[cfg(feature = "partial-validate")]
-            cedar_policy_core::validator::ValidationMode::Partial => unimplemented!(),
+            cedar_policy_core::validator::ValidationMode::Partial => {
+                models::ValidationMode::Partial
+            }
         }
     }
 }
@@ -68,6 +90,14 @@ impl From<&models::ValidationMode> for cedar_policy_core::validator::ValidationM
             models::ValidationMode::Strict => cedar_policy_core::validator::ValidationMode::Strict,
             models::ValidationMode::Permissive => {
                 cedar_policy_core::validator::ValidationMode::Permissive
+            }
+            #[cfg(feature = "partial-validate")]
+            models::ValidationMode::Partial => {
+                cedar_policy_core::validator::ValidationMode::Partial
+            }
+            #[cfg(not(feature = "partial-validate"))]
+            models::ValidationMode::Partial => {
+                panic!("Protobuf specifies partial validation, but `partial-validate` feature not enabled in this build")
             }
         }
     }
@@ -289,7 +319,6 @@ impl From<&models::AttributeType> for types::AttributeType {
                 v.attr_type.as_ref().expect("attr_type field should exist"),
             ),
             is_required: v.is_required,
-            #[cfg(feature = "extended-schema")]
             loc: None,
         }
     }
@@ -300,111 +329,6 @@ impl From<&types::AttributeType> for models::AttributeType {
         Self {
             attr_type: Some(models::Type::from(&v.attr_type)),
             is_required: v.is_required,
-        }
-    }
-}
-
-impl From<&models::TemplateType> for json_schema::Type<RawName> {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
-    fn from(v: &models::TemplateType) -> Self {
-        let ty_variant = match &v.data.as_ref().expect("data field should exist") {
-            models::template_type::Data::Other(t) => json_schema::TypeVariant::EntityOrCommon {
-                type_name: RawName::from(t),
-            },
-            models::template_type::Data::SetElem(t) => json_schema::TypeVariant::Set {
-                element: Box::new(json_schema::Type::from(&**t)),
-            },
-            models::template_type::Data::Record(s) => {
-                json_schema::TypeVariant::Record(template_model_to_attributes(&s.attrs))
-            }
-        };
-        json_schema::Type::Type {
-            ty: ty_variant,
-            loc: None,
-        }
-    }
-}
-
-// PANIC SAFETY: experimental feature
-#[allow(clippy::fallible_impl_from)]
-impl From<&json_schema::Type<RawName>> for models::TemplateType {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used, clippy::panic)]
-    fn from(v: &json_schema::Type<RawName>) -> Self {
-        match v {
-            json_schema::Type::Type { ty, loc: _ } => match &ty {
-                json_schema::TypeVariant::Record(r) => {
-                    let record: models::template_type::Record = models::template_type::Record {
-                        attrs: template_attributes_to_model(r),
-                    };
-                    Self {
-                        data: Some(models::template_type::Data::Record(record)),
-                    }
-                }
-                json_schema::TypeVariant::EntityOrCommon { type_name } => Self {
-                    data: Some(models::template_type::Data::Other(models::Name::from(
-                        type_name,
-                    ))),
-                },
-                json_schema::TypeVariant::Set { element } => Self {
-                    data: Some(models::template_type::Data::SetElem(Box::new(
-                        models::TemplateType::from(&**element),
-                    ))),
-                },
-                _ => panic!("TypeVariant<RawName> should not have any other fields"),
-            },
-            json_schema::Type::CommonTypeRef { .. } => {
-                panic!("Type<RawName> should not have any other fields")
-            }
-        }
-    }
-}
-
-fn template_model_to_attributes(
-    v: &HashMap<String, models::AttributeTemplateType>,
-) -> json_schema::RecordType<RawName> {
-    json_schema::RecordType {
-        attributes: v
-            .iter()
-            .map(|(key, value)| (key.to_smolstr(), json_schema::TypeOfAttribute::from(value)))
-            .collect(),
-        additional_attributes: false,
-    }
-}
-
-fn template_attributes_to_model(
-    v: &json_schema::RecordType<RawName>,
-) -> HashMap<String, models::AttributeTemplateType> {
-    v.attributes
-        .iter()
-        .map(|(key, value)| (key.to_string(), models::AttributeTemplateType::from(value)))
-        .collect()
-}
-
-impl From<&models::AttributeTemplateType> for json_schema::TypeOfAttribute<RawName> {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::unwrap_used)]
-    fn from(v: &models::AttributeTemplateType) -> Self {
-        let ty: json_schema::Type<RawName> = json_schema::Type::from(v.attr_type.as_ref().unwrap());
-        let annotations = est::Annotations::default();
-        let required = v.is_required;
-
-        Self {
-            ty,
-            annotations,
-            required,
-            #[cfg(feature = "extended-schema")]
-            loc: None,
-        }
-    }
-}
-
-impl From<&json_schema::TypeOfAttribute<RawName>> for models::AttributeTemplateType {
-    fn from(v: &json_schema::TypeOfAttribute<RawName>) -> Self {
-        Self {
-            attr_type: Some(models::TemplateType::from(&v.ty)),
-            is_required: v.required,
         }
     }
 }

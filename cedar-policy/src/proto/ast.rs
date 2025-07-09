@@ -17,9 +17,9 @@
 #![allow(clippy::use_self)]
 
 use super::models;
-use cedar_policy_core::validator::RawName;
 use cedar_policy_core::{
-    ast, evaluator::RestrictedEvaluator, extensions::Extensions, FromNormalizedStr,
+    ast, evaluator::RestrictedEvaluator, extensions::Extensions, validator::RawName,
+    FromNormalizedStr,
 };
 use smol_str::ToSmolStr;
 use std::{collections::HashSet, sync::Arc};
@@ -516,17 +516,12 @@ impl From<&ast::Literal> for models::expr::Literal {
     }
 }
 
-#[allow(clippy::fallible_impl_from)]
 impl From<&models::SlotId> for ast::SlotId {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used, clippy::unwrap_used)]
     fn from(v: &models::SlotId) -> Self {
         match v.data.as_ref().expect("data field should exist") {
             models::slot_id::Data::Principal(_) => ast::SlotId::principal(),
             models::slot_id::Data::Resource(_) => ast::SlotId::resource(),
-            models::slot_id::Data::GeneralizedSlot(s) => {
-                ast::SlotId::generalized_slot(ast::Id::from_normalized_str(s).unwrap())
-            }
+            models::slot_id::Data::GeneralizedSlot(s) => s.parse().expect("invalid slot name"),
         }
     }
 }
@@ -535,7 +530,7 @@ impl From<&models::SlotId> for ast::SlotId {
 #[allow(clippy::fallible_impl_from)]
 impl From<&ast::SlotId> for models::SlotId {
     // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
+    #[allow(clippy::panic)]
     fn from(v: &ast::SlotId) -> Self {
         if v.is_principal() {
             Self {
@@ -550,10 +545,8 @@ impl From<&ast::SlotId> for models::SlotId {
                 )),
             }
         } else {
-            // It must be a generalized slot
-            let id = v.extract_id_out_of_generalized_slot().expect("Invariant: Every key in generalized values must be a generalized slot and every generalized slot has an Id");
             Self {
-                data: Some(models::slot_id::Data::GeneralizedSlot(id.to_string())),
+                data: Some(models::slot_id::Data::GeneralizedSlot(v.to_string())),
             }
         }
     }
@@ -742,12 +735,6 @@ mod test {
         assert_eq!(
             orig_slot2,
             ast::SlotId::from(&models::SlotId::from(&orig_slot2))
-        );
-
-        let orig_slot3 = ast::SlotId::generalized_slot("generalized".parse().unwrap());
-        assert_eq!(
-            orig_slot3,
-            ast::SlotId::from(&models::SlotId::from(&orig_slot3))
         );
     }
 

@@ -113,7 +113,7 @@ impl SlotTypePosition {
                     .json_schema_type_to_validator_type(ty.clone(), Extensions::all_available())?;
                 Ok(ValidatorSlotTypePosition::Ty(validator_ty))
             }
-            Self::Position(pos) => Ok(ValidatorSlotTypePosition::Position(pos.clone())),
+            Self::Position(pos) => Ok(ValidatorSlotTypePosition::Position(*pos)),
         }
     }
 }

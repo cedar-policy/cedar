@@ -116,15 +116,10 @@ message TemplateBody {
 // an EntityReference may either be an EntityUid or a Slot.
 message EntityReference {
     oneof data {
-        Slot slot = 1;
         EntityUid euid = 2;
-    }
-
-    message Slot {
-        optional string slot = 2;
+        SlotId slot = 3;
     }
 }
-
 
 message PrincipalOrResourceConstraint {
     oneof data {

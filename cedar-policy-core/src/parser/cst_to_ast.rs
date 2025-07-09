@@ -794,7 +794,7 @@ impl cst::PolicyImpl {
             let ast_slot = match ast::SlotId::try_from(&slot_type_pair.slot) {
                 Ok(ast_slot) => ast_slot,
                 Err(e) => {
-                    all_errs.push(e.into());
+                    all_errs.push(e);
                     continue;
                 }
             };

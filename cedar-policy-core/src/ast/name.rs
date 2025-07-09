@@ -319,14 +319,6 @@ impl SlotId {
     pub fn is_generalized_slot(&self) -> bool {
         matches!(self, Self(ValidSlotId::GeneralizedSlot(_)))
     }
-
-    /// Returns the id if the slot is a `generalized slot`
-    pub fn extract_id_out_of_generalized_slot(&self) -> Option<&Id> {
-        match self {
-            Self(ValidSlotId::GeneralizedSlot(id)) => Some(id),
-            _ => None,
-        }
-    }
 }
 
 impl From<PrincipalOrResource> for SlotId {

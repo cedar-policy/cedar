@@ -93,6 +93,36 @@ impl TryFrom<&models::PolicySet> for api::PolicySet {
     }
 }
 
+#[allow(clippy::use_self)]
+impl From<&api::ValidationMode> for models::ValidationMode {
+    fn from(v: &api::ValidationMode) -> Self {
+        match v {
+            api::ValidationMode::Strict => models::ValidationMode::Strict,
+            #[cfg(feature = "permissive-validate")]
+            api::ValidationMode::Permissive => models::ValidationMode::Permissive,
+            #[cfg(feature = "partial-validate")]
+            api::ValidationMode::Partial => models::ValidationMode::Partial,
+        }
+    }
+}
+
+#[allow(clippy::use_self)]
+impl From<&models::ValidationMode> for api::ValidationMode {
+    fn from(v: &models::ValidationMode) -> Self {
+        match v {
+            models::ValidationMode::Strict => api::ValidationMode::Strict,
+            #[cfg(feature = "permissive-validate")]
+            models::ValidationMode::Permissive => api::ValidationMode::Permissive,
+            #[cfg(not(feature = "permissive-validate"))]
+            models::ValidationMode::Permissive => panic!("Protobuf specifies permissive validation, but `permissive-validate` feature not enabled in this build"),
+            #[cfg(feature = "partial-validate")]
+            models::ValidationMode::Partial => api::ValidationMode::Partial,
+            #[cfg(not(feature = "partial-validate"))]
+            models::ValidationMode::Partial => panic!("Protobuf specifies partial validation, but `partial-validate` feature not enabled in this build"),
+        }
+    }
+}
+
 /// Macro that implements `traits::Protobuf` for cases where From<> conversions
 /// exist both ways between the api type `$api` and the protobuf model type `$model`
 macro_rules! standard_protobuf_impl {

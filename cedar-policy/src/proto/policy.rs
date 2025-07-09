@@ -24,9 +24,13 @@ use cedar_policy_core::{
 };
 use std::collections::HashMap;
 
+use cedar_policy_core::est;
+use cedar_policy_core::validator::RawName;
+use smol_str::ToSmolStr;
+
 impl From<&models::Policy> for ast::LiteralPolicy {
     // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used, clippy::unwrap_used)]
+    #[allow(clippy::expect_used)]
     fn from(v: &models::Policy) -> Self {
         let mut values: ast::SlotEnv = HashMap::new();
         if v.principal_euid.is_some() {
@@ -53,8 +57,8 @@ impl From<&models::Policy> for ast::LiteralPolicy {
         let mut generalized_values: ast::GeneralizedSlotEnv = HashMap::new();
         for (key, value) in &v.generalized_values {
             generalized_values.insert(
-                ast::SlotId::generalized_slot(ast::Id::from_normalized_str(key).unwrap()),
-                ast::RestrictedExpr::new(ast::Expr::from(value)).expect("binding is not a value"),
+                key.parse().expect("invalid slot name"),
+                ast::RestrictedExpr::new(ast::Expr::from(value)).expect("invalid value"),
             );
         }
 
@@ -82,21 +86,14 @@ impl TryFrom<&models::Policy> for ast::Policy {
 }
 
 impl From<&ast::LiteralPolicy> for models::Policy {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
     fn from(v: &ast::LiteralPolicy) -> Self {
-        let generalized_values: HashMap<String, models::Expr> = v
+        let generalized_values = v
             .generalized_values()
             .iter()
             .map(|(key, value)| {
                 let expr = ast::Expr::from(value.clone());
-                let models_expr= models::Expr::from(&expr);
-                (
-                    key.extract_id_out_of_generalized_slot()
-                        .expect("Invariant: Every key in generalized values must be a generalized slot and every generalized slot has an Id")
-                        .to_string(),
-                    models_expr,
-                )
+                let models_expr = models::Expr::from(&expr);
+                (key.to_string(), models_expr)
             })
             .collect();
 
@@ -120,21 +117,14 @@ impl From<&ast::LiteralPolicy> for models::Policy {
 }
 
 impl From<&ast::Policy> for models::Policy {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
     fn from(v: &ast::Policy) -> Self {
-        let generalized_values: HashMap<String, models::Expr> = v
+        let generalized_values = v
             .generalized_env()
             .iter()
             .map(|(key, value)| {
-                let expr= ast::Expr::from(value.clone());
+                let expr = ast::Expr::from(value.clone());
                 let models_expr = models::Expr::from(&expr);
-                (
-                    key.extract_id_out_of_generalized_slot()
-                        .expect("Invariant: Every key in generalized values must be a generalized slot and every generalized slot has an Id")
-                        .to_string(),
-                    models_expr,
-                )
+                (key.to_string(), models_expr)
             })
             .collect();
 
@@ -183,21 +173,123 @@ impl From<&ast::ScopePosition> for models::slot_type_position::ScopePosition {
     }
 }
 
+impl From<&models::TemplateType> for json_schema::Type<RawName> {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used)]
+    fn from(v: &models::TemplateType) -> Self {
+        let ty_variant = match &v.data.as_ref().expect("data field should exist") {
+            models::template_type::Data::Other(t) => json_schema::TypeVariant::EntityOrCommon {
+                type_name: RawName::from(t),
+            },
+            models::template_type::Data::SetElem(t) => json_schema::TypeVariant::Set {
+                element: Box::new(json_schema::Type::from(&**t)),
+            },
+            models::template_type::Data::Record(s) => {
+                json_schema::TypeVariant::Record(template_model_to_attributes(&s.attrs))
+            }
+        };
+        json_schema::Type::Type {
+            ty: ty_variant,
+            loc: None,
+        }
+    }
+}
+
+// PANIC SAFETY: experimental feature
+#[allow(clippy::fallible_impl_from)]
+impl From<&json_schema::Type<RawName>> for models::TemplateType {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::expect_used, clippy::panic)]
+    fn from(v: &json_schema::Type<RawName>) -> Self {
+        match v {
+            json_schema::Type::Type { ty, loc: _ } => match &ty {
+                json_schema::TypeVariant::Record(r) => {
+                    let record: models::template_type::Record = models::template_type::Record {
+                        attrs: template_attributes_to_model(r),
+                    };
+                    Self {
+                        data: Some(models::template_type::Data::Record(record)),
+                    }
+                }
+                json_schema::TypeVariant::EntityOrCommon { type_name } => Self {
+                    data: Some(models::template_type::Data::Other(models::Name::from(
+                        type_name,
+                    ))),
+                },
+                json_schema::TypeVariant::Set { element } => Self {
+                    data: Some(models::template_type::Data::SetElem(Box::new(
+                        models::TemplateType::from(&**element),
+                    ))),
+                },
+                _ => panic!("TypeVariant<RawName> should not have any other fields"),
+            },
+            json_schema::Type::CommonTypeRef { .. } => {
+                panic!("Type<RawName> should not have any other fields")
+            }
+        }
+    }
+}
+
+fn template_model_to_attributes(
+    v: &HashMap<String, models::AttributeTemplateType>,
+) -> json_schema::RecordType<RawName> {
+    json_schema::RecordType {
+        attributes: v
+            .iter()
+            .map(|(key, value)| (key.to_smolstr(), json_schema::TypeOfAttribute::from(value)))
+            .collect(),
+        additional_attributes: false,
+    }
+}
+
+fn template_attributes_to_model(
+    v: &json_schema::RecordType<RawName>,
+) -> HashMap<String, models::AttributeTemplateType> {
+    v.attributes
+        .iter()
+        .map(|(key, value)| (key.to_string(), models::AttributeTemplateType::from(value)))
+        .collect()
+}
+
+impl From<&models::AttributeTemplateType> for json_schema::TypeOfAttribute<RawName> {
+    // PANIC SAFETY: experimental feature
+    #[allow(clippy::unwrap_used)]
+    fn from(v: &models::AttributeTemplateType) -> Self {
+        let ty: json_schema::Type<RawName> = json_schema::Type::from(v.attr_type.as_ref().unwrap());
+        let annotations = est::Annotations::default();
+        let required = v.is_required;
+
+        Self {
+            ty,
+            annotations,
+            required,
+            // #[cfg(feature = "extended-schema")]
+            loc: None,
+        }
+    }
+}
+
+impl From<&json_schema::TypeOfAttribute<RawName>> for models::AttributeTemplateType {
+    fn from(v: &json_schema::TypeOfAttribute<RawName>) -> Self {
+        Self {
+            attr_type: Some(models::TemplateType::from(&v.ty)),
+            is_required: v.required,
+        }
+    }
+}
+
 impl From<&models::SlotTypePosition> for ast::SlotTypePosition {
     // PANIC SAFETY: experimental feature
     #[allow(clippy::panic, clippy::unwrap_used)]
     fn from(v: &models::SlotTypePosition) -> Self {
-        let ty = v.ty.clone().map(|v| json_schema::Type::from(&v));
+        let ty = v.ty.clone().map(|ty| json_schema::Type::from(&ty));
         let pos = (v.pos)
             .map(|v| (&models::slot_type_position::ScopePosition::try_from(v).unwrap()).into());
 
         match (ty, pos) {
-            (Some(ty), Some(pos)) => ast::SlotTypePosition::TyPosition(ty, pos),
-            (Some(ty), None) => ast::SlotTypePosition::Ty(ty),
-            (None, Some(pos)) => ast::SlotTypePosition::Position(pos),
-            (None, None) => panic!(
-                "All generalized slots either must be in the scope or have a type assigned to it"
-            ),
+            (Some(ty), _) => ast::SlotTypePosition::Ty(ty),
+            (_, Some(pos)) => ast::SlotTypePosition::Position(pos),
+            (None, None) => panic!("generalized slot must have either a type or scope assigned"),
         }
     }
 }
@@ -205,14 +297,6 @@ impl From<&models::SlotTypePosition> for ast::SlotTypePosition {
 impl From<&ast::SlotTypePosition> for models::SlotTypePosition {
     fn from(v: &ast::SlotTypePosition) -> Self {
         match v {
-            ast::SlotTypePosition::TyPosition(ty, pos) => {
-                let ty = models::TemplateType::from(ty);
-                let pos = models::slot_type_position::ScopePosition::from(pos);
-                Self {
-                    ty: Some(ty),
-                    pos: Some(pos.into()),
-                }
-            }
             ast::SlotTypePosition::Ty(ty) => {
                 let ty = models::TemplateType::from(ty);
                 Self {
@@ -240,7 +324,7 @@ impl From<&models::TemplateBody> for ast::TemplateBody {
             .iter()
             .map(|(key, value)| {
                 (
-                    ast::SlotId::generalized_slot(ast::Id::from_normalized_str(key).unwrap()),
+                    key.parse().expect("invalid slot name"),
                     ast::SlotTypePosition::from(value),
                 )
             })
@@ -288,8 +372,6 @@ impl From<&models::TemplateBody> for ast::TemplateBody {
 }
 
 impl From<&ast::TemplateBody> for models::TemplateBody {
-    // PANIC SAFETY: experimental feature
-    #[allow(clippy::expect_used)]
     fn from(v: &ast::TemplateBody) -> Self {
         let annotations: HashMap<String, String> = v
             .annotations()
@@ -298,7 +380,7 @@ impl From<&ast::TemplateBody> for models::TemplateBody {
 
         let generalized_slots_annotation: HashMap<String, models::SlotTypePosition> = v
             .generalized_slots_annotation()
-            .map(|(k, v)| (k.extract_id_out_of_generalized_slot().expect("Invariant: Every key in generalized values must be a generalized slot and every generalized slot has an Id").to_string(), models::SlotTypePosition::from(v)))
+            .map(|(k, v)| (k.to_string(), models::SlotTypePosition::from(v)))
             .collect();
 
         Self {
@@ -358,17 +440,7 @@ impl From<&models::EntityReference> for ast::EntityReference {
     fn from(v: &models::EntityReference) -> Self {
         match v.data.as_ref().expect("data field should exist") {
             models::entity_reference::Data::Slot(slot) => {
-                slot.slot
-                    .as_ref()
-                    .map_or(ast::EntityReference::Slot(None, None), |id| {
-                        ast::EntityReference::Slot(
-                            Some(
-                                ast::Id::from_normalized_str(id)
-                                    .expect("the string provided is not a valid identifier"),
-                            ),
-                            None,
-                        )
-                    })
+                ast::EntityReference::Slot(ast::SlotId::from(slot), None)
             }
             models::entity_reference::Data::Euid(euid) => {
                 ast::EntityReference::euid(ast::EntityUID::from(euid).into())
@@ -385,20 +457,11 @@ impl From<&ast::EntityReference> for models::EntityReference {
                     models::EntityUid::from(euid.as_ref()),
                 )),
             },
-            ast::EntityReference::Slot(id, _) => id.as_ref().map_or(
-                Self {
-                    data: Some(models::entity_reference::Data::Slot(
-                        models::entity_reference::Slot { slot: None },
-                    )),
-                },
-                |id| Self {
-                    data: Some(models::entity_reference::Data::Slot(
-                        models::entity_reference::Slot {
-                            slot: Some(id.to_string()),
-                        },
-                    )),
-                },
-            ),
+            ast::EntityReference::Slot(slot, _) => Self {
+                data: Some(models::entity_reference::Data::Slot(models::SlotId::from(
+                    slot,
+                ))),
+            },
         }
     }
 }
@@ -629,7 +692,6 @@ impl TryFrom<&models::PolicySet> for ast::PolicySet {
 
 #[cfg(test)]
 mod test {
-    use cedar_policy_core::validator::RawName;
     use std::sync::Arc;
 
     use super::*;
@@ -697,16 +759,9 @@ mod test {
             ast::EntityReference::from(&models::EntityReference::from(&er1))
         );
         assert_eq!(
-            ast::EntityReference::Slot(None, None),
+            ast::EntityReference::Slot(ast::SlotId::principal(), None),
             ast::EntityReference::from(&models::EntityReference::from(
-                &ast::EntityReference::Slot(None, None)
-            ))
-        );
-
-        assert_eq!(
-            ast::EntityReference::Slot(Some("id".parse().unwrap()), None),
-            ast::EntityReference::from(&models::EntityReference::from(
-                &ast::EntityReference::Slot(Some(("id").parse().unwrap()), None)
+                &ast::EntityReference::Slot(ast::SlotId::principal(), None)
             ))
         );
 
@@ -813,7 +868,7 @@ mod test {
             ast::TemplateBody::from(&models::TemplateBody::from(&tb))
         );
 
-        let prc1 = ast::PrincipalOrResourceConstraint::is_eq_slot("scope1".parse().ok());
+        let prc1 = ast::PrincipalOrResourceConstraint::is_eq_slot("?user".parse().unwrap());
 
         assert_eq!(
             prc1,
@@ -822,7 +877,7 @@ mod test {
             ))
         );
 
-        let prc2 = ast::PrincipalOrResourceConstraint::is_eq_slot("scope2".parse().ok());
+        let prc2 = ast::PrincipalOrResourceConstraint::is_eq_slot("?photo".parse().unwrap());
 
         assert_eq!(
             prc2,
@@ -855,19 +910,16 @@ mod test {
                     }),
                 ),
                 (
-                    ast::SlotId::generalized_slot("scope1".parse().unwrap()),
-                    ast::SlotTypePosition::TyPosition(
-                        json_schema::Type::Type {
-                            ty: json_schema::TypeVariant::EntityOrCommon {
-                                type_name: RawName::new("Long".parse().unwrap(), None),
-                            },
-                            loc: None,
+                    ast::SlotId::generalized_slot("user".parse().unwrap()),
+                    ast::SlotTypePosition::Ty(json_schema::Type::Type {
+                        ty: json_schema::TypeVariant::EntityOrCommon {
+                            type_name: RawName::new("Long".parse().unwrap(), None),
                         },
-                        ast::ScopePosition::Principal,
-                    ),
+                        loc: None,
+                    }),
                 ),
                 (
-                    ast::SlotId::generalized_slot("scope2".parse().unwrap()),
+                    ast::SlotId::generalized_slot("photo".parse().unwrap()),
                     ast::SlotTypePosition::Position(ast::ScopePosition::Principal),
                 ),
             ]),
@@ -895,19 +947,7 @@ mod test {
                 ast::SlotId::principal(),
                 ast::EntityUID::with_eid_and_type("A", "eid").unwrap(),
             )]),
-            HashMap::from_iter([
-                (
-                    ast::SlotId::generalized_slot("generalized".parse().unwrap()),
-                    ast::RestrictedExpr::val(true),
-                ),
-                (
-                    ast::SlotId::generalized_slot("scope".parse().unwrap()),
-                    ast::RestrictedExpr::new(ast::Expr::val(
-                        ast::EntityUID::with_eid_and_type("A", "eid").unwrap(),
-                    ))
-                    .unwrap(),
-                ),
-            ]),
+            HashMap::from_iter([]),
         );
         assert_eq!(
             policy,
@@ -959,7 +999,7 @@ mod test {
             )]),
             ast::GeneralizedSlotsAnnotation::from_iter([]),
             ast::Effect::Permit,
-            ast::PrincipalConstraint::is_eq_slot(None),
+            ast::PrincipalConstraint::is_eq_slot(ast::SlotId::principal()),
             ast::ActionConstraint::Eq(
                 ast::EntityUID::with_eid_and_type("Action", "read")
                     .unwrap()
@@ -1000,6 +1040,7 @@ mod test {
                 ast::EntityUID::with_eid_and_type("A", "friend").unwrap(),
             )]),
             HashMap::from_iter([]),
+            None,
         )
         .unwrap();
         let mut mps = models::PolicySet::from(&ps);
@@ -1031,7 +1072,7 @@ mod test {
             )]),
             ast::GeneralizedSlotsAnnotation::from_iter([]),
             ast::Effect::Permit,
-            ast::PrincipalConstraint::is_eq_slot(None),
+            ast::PrincipalConstraint::is_eq_slot(ast::SlotId::principal()),
             ast::ActionConstraint::Eq(
                 ast::EntityUID::with_eid_and_type("Action", "read")
                     .unwrap()
@@ -1072,6 +1113,7 @@ mod test {
                 ast::EntityUID::with_eid_and_type("A", "friend").unwrap(),
             )]),
             HashMap::from_iter([]),
+            None,
         )
         .unwrap();
         let mut mps = models::PolicySet::from(&ps);

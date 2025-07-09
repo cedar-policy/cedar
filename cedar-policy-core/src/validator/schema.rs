@@ -157,7 +157,8 @@ impl ValidatorSchemaFragment<ConditionalName, ConditionalName> {
 #[derive(Clone, Debug, Educe)]
 #[educe(Eq, PartialEq)]
 pub struct ValidatorType {
-    ty: Type,
+    /// Type field
+    pub ty: Type,
     #[cfg(feature = "extended-schema")]
     loc: MaybeLoc,
 }
@@ -1041,6 +1042,11 @@ impl ValidatorSchema {
     /// An iterator over the common type names in the schema.
     pub fn common_type_names(&self) -> impl Iterator<Item = &InternalName> {
         self.common_types.keys()
+    }
+
+    /// An iterator over the common types in the schema.
+    pub fn common_types(&self) -> impl Iterator<Item = (&InternalName, &ValidatorType)> {
+        self.common_types.iter()
     }
 
     /// An iterator over the `ValidatorEntityType`s in the schema.

@@ -23,6 +23,7 @@ import "core.proto";
 message Schema {
     repeated EntityDecl entity_decls = 1;
     repeated ActionDecl action_decls = 2;
+    repeated CommonDecl common_decls = 3; 
 }
 
 // the protobuf EntityDecl message contains all of the schema's
@@ -43,6 +44,11 @@ message ActionDecl {
     map<string, AttributeType> context = 4;
     repeated cedar_policy_core.Name principal_types = 5;
     repeated cedar_policy_core.Name resource_types = 6;
+}
+
+message CommonDecl {
+    cedar_policy_core.Name name = 1;
+    Type validator_type = 2; 
 }
 
 message Type {
@@ -79,4 +85,5 @@ message AttributeType {
 enum ValidationMode {
     Strict = 0;
     Permissive = 1;
+    Partial = 2;
 }
