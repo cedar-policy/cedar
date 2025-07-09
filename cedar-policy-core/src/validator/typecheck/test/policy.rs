@@ -1451,13 +1451,13 @@ mod generalized_templates {
             parse_policy_or_template(
                 None,
                 r#"
-              template(?person: { name: String, age: Long }) => 
+              template(?person: { name: String, age: Bool }) => 
               permit(
               principal,
               action == Action::"Navigate", 
               resource) when 
               { ?person.name == resource.owner && 
-                ?person.age == 18 
+                ?person.age == true
                 };"#,
             )
             .unwrap(),
