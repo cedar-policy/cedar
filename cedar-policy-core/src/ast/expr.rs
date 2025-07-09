@@ -21,6 +21,8 @@ use crate::{
     expr_builder::{self, ExprBuilder as _},
     extensions::Extensions,
     parser::{err::ParseErrors, Loc},
+    spec::*,
+    verus_utils::*,
 };
 use educe::Educe;
 use miette::Diagnostic;
@@ -35,8 +37,12 @@ use std::{
 };
 use thiserror::Error;
 
+use vstd::prelude::*;
+
 #[cfg(feature = "wasm")]
 extern crate tsify;
+
+verus! {
 
 /// Internal AST for expressions used by the policy evaluator.
 /// This structure is a wrapper around an `ExprKind`, which is the expression
@@ -46,6 +52,7 @@ extern crate tsify;
 /// Cloning is O(1).
 #[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq, Hash)]
+#[verifier::external_derive]
 pub struct Expr<T = ()> {
     expr_kind: ExprKind<T>,
     #[educe(PartialEq(ignore))]
@@ -53,6 +60,22 @@ pub struct Expr<T = ()> {
     source_loc: Option<Loc>,
     data: T,
 }
+
+clone_spec_for!(Expr);
+
+impl<T> View for Expr<T> {
+    type V = spec_ast::Expr;
+
+    uninterp spec fn view(&self) -> spec_ast::Expr;
+    // #[verifier::inline]
+    // open spec fn view(&self) -> spec_ast::Expr {
+    //     self.expr_kind.view()
+    // }
+}
+
+
+
+} // verus!
 
 /// The possible expression variants. This enum should be matched on by code
 /// recursively traversing the AST.
@@ -157,12 +180,12 @@ pub enum ExprKind<T = ()> {
     Set(Arc<Vec<Expr<T>>>),
     /// Anonymous record (whose elements may be arbitrary expressions)
     Record(Arc<BTreeMap<SmolStr, Expr<T>>>),
-    #[cfg(feature = "tolerant-ast")]
-    /// Error expression - allows us to continue parsing even when we have errors
-    Error {
-        /// Type of error that led to the failure
-        error_kind: AstExprErrorKind,
-    },
+    // #[cfg(feature = "tolerant-ast")]
+    // /// Error expression - allows us to continue parsing even when we have errors
+    // Error {
+    //     /// Type of error that led to the failure
+    //     error_kind: AstExprErrorKind,
+    // },
 }
 
 impl From<Value> for Expr {
@@ -1526,12 +1549,15 @@ impl<T> Expr<T> {
     }
 }
 
+verus! {
+
 /// AST variables
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+#[verifier::external_derive]
 pub enum Var {
     /// the Principal of the given request
     Principal,
@@ -1541,6 +1567,8 @@ pub enum Var {
     Resource,
     /// the Context of the given request
     Context,
+}
+
 }
 
 impl From<PrincipalOrResource> for Var {

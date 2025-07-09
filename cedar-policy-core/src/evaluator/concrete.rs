@@ -174,7 +174,11 @@ impl<'e> Evaluator<'e> {
     /// all errors are set properly before returning them from
     /// `interpret()`.
     #[allow(clippy::cognitive_complexity)]
-    fn interpret_internal(&self, expr: &Expr, slots: &SlotEnv) -> Result<Value> {
+    fn interpret_internal(&self, expr: &Expr, slots: &SlotEnv) -> Result<Value>
+// ensures
+        //     result matches Ok(r) ==> spec_evaluator(expr@, ...) matches Ok(r_spec) && r@ == r_spec,
+        //     result is Err ==> spec_evaluator(expr@, ...) is Err
+    {
         let loc = expr.source_loc(); // the `loc` describing the location of the entire expression
         match expr.expr_kind() {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
@@ -183,18 +187,9 @@ impl<'e> Evaluator<'e> {
                 .ok_or_else(|| err::EvaluationError::unlinked_slot(*id, loc.cloned()))
                 .map(|euid| Value::from(euid.clone())),
             ExprKind::Var(v) => match v {
-                Var::Principal => self
-                    .principal
-                    .evaluate_concrete(*v)
-                    .ok_or(err::EvaluationError::non_value(expr.clone())),
-                Var::Action => self
-                    .action
-                    .evaluate_concrete(*v)
-                    .ok_or(err::EvaluationError::non_value(expr.clone())),
-                Var::Resource => self
-                    .resource
-                    .evaluate_concrete(*v)
-                    .ok_or(err::EvaluationError::non_value(expr.clone())),
+                Var::Principal => Ok(self.principal.evaluate_concrete(*v)),
+                Var::Action => Ok(self.action.evaluate_concrete(*v)),
+                Var::Resource => Ok(self.resource.evaluate_concrete(*v)),
                 Var::Context => self
                     .context
                     .clone()

@@ -52,7 +52,7 @@ pub enum Literal {
 
 impl View for Literal {
     type V = spec_ast::Prim;
-    closed spec fn view(&self) -> Self::V {
+    open spec fn view(&self) -> Self::V {
         match self {
             Self::Bool(b) => spec_ast::Prim::Bool { b: *b },
             Self::Long(i) => spec_ast::Prim::Int { i: *i },

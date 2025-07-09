@@ -119,6 +119,17 @@ impl Value {
         }
     }
 
+    verus! {
+
+    // Like `new`, but specialized for Verus
+    pub fn new_from_euid(value: EntityUID, loc: Option<Loc>) -> (res: Self)
+        ensures res@ == spec_ast::Value::entity_uid(value@)
+    {
+        Self { value: ValueKind::Lit(Literal::EntityUID(Arc::new(value))), loc }
+    }
+
+    }
+
     /// Create a set with the given `Value`s as elements
     pub fn set(vals: impl IntoIterator<Item = Value>, loc: Option<Loc>) -> Self {
         Self {

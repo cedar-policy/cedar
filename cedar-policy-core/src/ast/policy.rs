@@ -585,9 +585,15 @@ impl Policy {
         self.template.non_scope_constraints_arc()
     }
 
+    verus! {
+
     /// Get the expression that represents this policy.
-    pub fn condition(&self) -> Expr {
+    pub fn condition(&self) -> (expr: Expr)
+        ensures expr@ == self@.to_expr()
+    {
         self.template.condition()
+    }
+
     }
 
     /// Get the mapping from SlotIds to EntityUIDs for this policy. (This will

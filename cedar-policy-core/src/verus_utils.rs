@@ -23,6 +23,7 @@ use smol_str::SmolStr;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::hash::Hash;
+use std::sync::Arc;
 #[cfg(verus_keep_ghost)]
 #[allow(unused_imports)]
 use vstd::std_specs::hash::*;
@@ -106,6 +107,10 @@ pub trait BTreeMapView {
 //     type V = Map<K::V, V::V>;
 //     uninterp spec fn view(&self) -> Self::V; // plan to just axiomatize it for now
 // }
+
+pub assume_specification<T: Clone, A: std::alloc::Allocator>[Arc::unwrap_or_clone](arc: Arc<T, A>) -> (inner: T)
+    ensures inner == arc;
+
 
 } // verus!
 
