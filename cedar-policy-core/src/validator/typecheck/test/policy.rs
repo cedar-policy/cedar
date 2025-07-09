@@ -151,7 +151,7 @@ fn simple_schema_file_1() -> json_schema::NamespaceDefinition<RawName> {
                         }
                     }
                 },
-                "Long": { 
+                "Long": {
                     "memberOfTypes": [],
                     "shape": {
                         "type": "Record",

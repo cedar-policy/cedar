@@ -826,20 +826,18 @@ impl cst::PolicyImpl {
                 }
 
                 Entry::Vacant(ventry) => {
-                    let ty = match slot_type_pair.ty.try_as_inner() {
-                        Ok(ty) => ty,
+                    match slot_type_pair.ty.try_as_inner() {
+                        Ok(ty) => {
+                            let t = to_json_schema::cedar_type_to_json_type(Node {
+                                node: ty.clone(),
+                                loc: None,
+                            });
+                            ventry.insert(ast::SlotTypePosition::Ty(t));
+                        }
                         Err(e) => {
                             all_errs.push(e.into());
-                            continue;
                         }
                     };
-
-                    let t = to_json_schema::cedar_type_to_json_type(Node {
-                        node: ty.clone(),
-                        loc: None,
-                    });
-
-                    ventry.insert(ast::SlotTypePosition::Ty(t));
                 }
             }
         }
