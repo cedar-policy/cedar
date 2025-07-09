@@ -577,7 +577,17 @@ impl CedarValueJson {
                     arg: Box::new((*arg).sub_entity_literals(mapping)?),
                 },
             }),
-            CedarValueJson::ExtnEscape { .. } => todo!(),
+            CedarValueJson::ExtnEscape {
+                __extn: FnAndArgs::Multi { ext_fn, args },
+            } => Ok(CedarValueJson::ExtnEscape {
+                __extn: FnAndArgs::Multi {
+                    ext_fn,
+                    args: args
+                        .into_iter()
+                        .map(|arg| arg.sub_entity_literals(mapping))
+                        .collect::<Result<Vec<_>, _>>()?,
+                },
+            }),
             v @ CedarValueJson::Bool(_) => Ok(v),
             v @ CedarValueJson::Long(_) => Ok(v),
             v @ CedarValueJson::String(_) => Ok(v),
