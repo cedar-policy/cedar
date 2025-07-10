@@ -5007,6 +5007,7 @@ pub use tpe::*;
 
 #[cfg(feature = "tpe")]
 mod tpe {
+    use cedar_policy_core::authorizer::Decision;
     use cedar_policy_core::tpe;
     use cedar_policy_core::{
         ast::{self, RequestSchema},
@@ -5093,6 +5094,55 @@ mod tpe {
     }
 
     impl Residuals<'_> {
+        /// Perform conditional authorization
+        pub fn is_authorized(&self) -> Option<Decision> {
+            // Scan forbid policies and see if any of them is guaranteed to
+            // match (i.e., its condition is `true`)
+            for p in self
+                .ps
+                .policies()
+                .filter(|p| p.effect() == ast::Effect::Forbid)
+            {
+                if matches!(
+                    p.ast.condition().expr_kind(),
+                    ast::ExprKind::Lit(ast::Literal::Bool(true))
+                ) {
+                    return Some(Decision::Deny);
+                }
+            }
+            if self
+                .ps
+                .policies()
+                .filter(|p| p.effect() == ast::Effect::Forbid)
+                .all(|p| {
+                    matches!(
+                        p.ast.condition().expr_kind(),
+                        ast::ExprKind::Lit(ast::Literal::Bool(false))
+                    )
+                })
+            {
+                // Scan permit policies and see if any of them is guaranteed to
+                // match (i.e., its condition is `true`)
+                for p in self
+                    .ps
+                    .policies()
+                    .filter(|p| p.effect() == ast::Effect::Permit)
+                {
+                    if matches!(
+                        p.ast.condition().expr_kind(),
+                        ast::ExprKind::Lit(ast::Literal::Bool(true))
+                    ) {
+                        return Some(Decision::Allow);
+                    }
+                }
+                None
+            } else {
+                // We can't make any concrete decision because forbid
+                // policies contain unknown
+                None
+            }
+        }
+
         /// Get residual policies
         pub fn residuals(&self) -> impl Iterator<Item = &Policy> {
             self.ps.policies()
@@ -5121,6 +5171,7 @@ mod tpe {
             Ok(authorizer.is_authorized(&request, &self.ps, &entities))
         }
     }
+
     impl PolicySet {
         /// Perform type-aware partial evaluation on this [`PolicySet`]
         /// If successful, the result is a [`PolicySet`] containing residual
