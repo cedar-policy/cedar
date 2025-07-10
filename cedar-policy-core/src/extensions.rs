@@ -35,9 +35,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 use self::extension_function_lookup_errors::FuncDoesNotExistError;
-use self::extension_initialization_errors::{
-    FuncMultiplyDefinedError, MultipleConstructorsSameSignatureError,
-};
+use self::extension_initialization_errors::FuncMultiplyDefinedError;
 
 lazy_static::lazy_static! {
     static ref ALL_AVAILABLE_EXTENSION_OBJECTS: Vec<Extension> = vec![
@@ -56,7 +54,6 @@ lazy_static::lazy_static! {
     static ref EXTENSIONS_NONE : Extensions<'static> = Extensions {
         extensions: &[],
         functions: HashMap::new(),
-        single_arg_constructors: HashMap::new(),
     };
 }
 
@@ -73,10 +70,6 @@ pub struct Extensions<'a> {
     /// extension function lookup that at most one extension function exists
     /// for a name. This should also make the lookup more efficient.
     functions: HashMap<&'a Name, &'a ExtensionFunction>,
-    /// All single argument extension function constructors, indexed by their
-    /// return type. Built ahead of time so that we know each constructor has
-    /// a unique return type.
-    single_arg_constructors: HashMap<&'a SchemaType, &'a ExtensionFunction>,
 }
 
 impl Extensions<'static> {
@@ -119,22 +112,9 @@ impl<'a> Extensions<'a> {
         )
         .map_err(|name| FuncMultiplyDefinedError { name: name.clone() })?;
 
-        // Build the constructor map, ensuring that no constructors share a return type
-        let single_arg_constructors = util::collect_no_duplicates(
-            extensions
-                .iter()
-                .flat_map(|e| e.funcs())
-                .filter(|f| f.is_constructor() && f.arg_types().len() == 1)
-                .filter_map(|f| f.return_type().map(|return_type| (return_type, f))),
-        )
-        .map_err(|return_type| MultipleConstructorsSameSignatureError {
-            return_type: Box::new(return_type.clone()),
-        })?;
-
         Ok(Extensions {
             extensions,
             functions,
-            single_arg_constructors,
         })
     }
 
@@ -174,14 +154,13 @@ impl<'a> Extensions<'a> {
         self.extensions.iter().flat_map(|ext| ext.funcs())
     }
 
-    /// Lookup a single-argument constructor by its return type and argument type.
-    ///
-    /// `None` means no constructor has that signature.
-    pub(crate) fn lookup_single_arg_constructor(
+    /// Lookup constructors
+    pub(crate) fn lookup_constructors<'b>(
         &self,
-        return_type: &SchemaType,
-    ) -> Option<&ExtensionFunction> {
-        self.single_arg_constructors.get(return_type).copied()
+        return_type: &'b SchemaType,
+    ) -> impl Iterator<Item = &'a ExtensionFunction> + use<'a, 'b> {
+        self.all_funcs()
+            .filter(|func| func.is_constructor() && func.return_type() == Some(return_type))
     }
 }
 

@@ -640,6 +640,7 @@ pub fn extension() -> Extension {
                 Box::new(datetime_from_str),
                 datetime_type.clone(),
                 SchemaType::String,
+                true,
             ),
             ExtensionFunction::unary(
                 constants::DURATION_CONSTRUCTOR_NAME.clone(),
@@ -647,6 +648,7 @@ pub fn extension() -> Extension {
                 Box::new(duration_from_str),
                 duration_type.clone(),
                 SchemaType::String,
+                true,
             ),
             ExtensionFunction::binary(
                 constants::OFFSET_METHOD_NAME.clone(),
@@ -654,6 +656,7 @@ pub fn extension() -> Extension {
                 Box::new(offset),
                 datetime_type.clone(),
                 (datetime_type.clone(), duration_type.clone()),
+                true,
             ),
             ExtensionFunction::binary(
                 constants::DURATION_SINCE_NAME.clone(),
@@ -661,6 +664,7 @@ pub fn extension() -> Extension {
                 Box::new(duration_since),
                 duration_type.clone(),
                 (datetime_type.clone(), duration_type.clone()),
+                false,
             ),
             ExtensionFunction::unary(
                 constants::TO_DATE_NAME.clone(),
@@ -668,6 +672,7 @@ pub fn extension() -> Extension {
                 Box::new(to_date),
                 datetime_type.clone(),
                 datetime_type.clone(),
+                false,
             ),
             ExtensionFunction::unary(
                 constants::TO_TIME_NAME.clone(),
@@ -675,6 +680,7 @@ pub fn extension() -> Extension {
                 Box::new(to_time),
                 duration_type.clone(),
                 datetime_type,
+                false,
             ),
             ExtensionFunction::unary(
                 constants::TO_MILLISECONDS_NAME.clone(),
@@ -682,6 +688,7 @@ pub fn extension() -> Extension {
                 Box::new(|value| duration_method(value, Duration::to_milliseconds)),
                 SchemaType::Long,
                 duration_type.clone(),
+                false,
             ),
             ExtensionFunction::unary(
                 constants::TO_SECONDS_NAME.clone(),
@@ -689,6 +696,7 @@ pub fn extension() -> Extension {
                 Box::new(|value| duration_method(value, Duration::to_seconds)),
                 SchemaType::Long,
                 duration_type.clone(),
+                false,
             ),
             ExtensionFunction::unary(
                 constants::TO_MINUTES_NAME.clone(),
@@ -696,6 +704,7 @@ pub fn extension() -> Extension {
                 Box::new(|value| duration_method(value, Duration::to_minutes)),
                 SchemaType::Long,
                 duration_type.clone(),
+                false,
             ),
             ExtensionFunction::unary(
                 constants::TO_HOURS_NAME.clone(),
@@ -703,6 +712,7 @@ pub fn extension() -> Extension {
                 Box::new(|value| duration_method(value, Duration::to_hours)),
                 SchemaType::Long,
                 duration_type.clone(),
+                false,
             ),
             ExtensionFunction::unary(
                 constants::TO_DAYS_NAME.clone(),
@@ -710,6 +720,7 @@ pub fn extension() -> Extension {
                 Box::new(|value| duration_method(value, Duration::to_days)),
                 SchemaType::Long,
                 duration_type,
+                false,
             ),
         ],
         [

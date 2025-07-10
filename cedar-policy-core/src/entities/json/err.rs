@@ -23,6 +23,7 @@ use crate::ast::{
 };
 use crate::entities::conformance::err::EntitySchemaConformanceError;
 use crate::entities::{Name, ReservedNameError};
+use crate::extensions::ExtensionFunctionLookupError;
 use crate::parser::err::ParseErrors;
 use either::Either;
 use itertools::Itertools;
@@ -85,6 +86,10 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     MissingImpliedConstructor(MissingImpliedConstructor),
+    /// Failed to look up an extension function
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    FailedExtensionFunctionLookup(#[from] ExtensionFunctionLookupError),
     /// The same key appears two or more times in a single record
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -165,16 +170,6 @@ impl JsonDeserializationError {
         got: Either<serde_json::Value, Expr>,
     ) -> Self {
         Self::ExpectedLiteralEntityRef(ExpectedLiteralEntityRef {
-            ctx: Box::new(ctx),
-            got: Box::new(got),
-        })
-    }
-
-    pub(crate) fn expected_extn_value(
-        ctx: JsonDeserializationErrorContext,
-        got: Either<serde_json::Value, Expr>,
-    ) -> Self {
-        Self::ExpectedExtnValue(ExpectedExtnValue {
             ctx: Box::new(ctx),
             got: Box::new(got),
         })

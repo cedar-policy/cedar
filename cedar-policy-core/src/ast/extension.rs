@@ -153,6 +153,8 @@ pub struct ExtensionFunction {
     return_type: Option<SchemaType>,
     /// The argument types that this function expects, as `SchemaType`s.
     arg_types: Vec<SchemaType>,
+    /// If it's a constructor
+    is_constructor: bool,
 }
 
 impl ExtensionFunction {
@@ -163,6 +165,7 @@ impl ExtensionFunction {
         func: ExtensionFunctionObject,
         return_type: Option<SchemaType>,
         arg_types: Vec<SchemaType>,
+        is_constructor: bool,
     ) -> Self {
         Self {
             name,
@@ -170,6 +173,7 @@ impl ExtensionFunction {
             func,
             return_type,
             arg_types,
+            is_constructor,
         }
     }
 
@@ -179,6 +183,7 @@ impl ExtensionFunction {
         style: CallStyle,
         func: NullaryExtensionFunctionObject,
         return_type: SchemaType,
+        is_constructor: bool,
     ) -> Self {
         Self::new(
             name.clone(),
@@ -197,6 +202,7 @@ impl ExtensionFunction {
             }),
             Some(return_type),
             vec![],
+            is_constructor,
         )
     }
 
@@ -207,6 +213,7 @@ impl ExtensionFunction {
         style: CallStyle,
         func: UnaryExtensionFunctionObject,
         arg_type: SchemaType,
+        is_constructor: bool,
     ) -> Self {
         Self::new(
             name.clone(),
@@ -222,6 +229,7 @@ impl ExtensionFunction {
             }),
             None,
             vec![arg_type],
+            is_constructor,
         )
     }
 
@@ -233,6 +241,7 @@ impl ExtensionFunction {
         func: UnaryExtensionFunctionObject,
         return_type: SchemaType,
         arg_type: SchemaType,
+        is_constructor: bool,
     ) -> Self {
         Self::new(
             name.clone(),
@@ -248,6 +257,7 @@ impl ExtensionFunction {
             }),
             Some(return_type),
             vec![arg_type],
+            is_constructor,
         )
     }
 
@@ -259,6 +269,7 @@ impl ExtensionFunction {
         func: BinaryExtensionFunctionObject,
         return_type: SchemaType,
         arg_types: (SchemaType, SchemaType),
+        is_constructor: bool,
     ) -> Self {
         Self::new(
             name.clone(),
@@ -274,6 +285,7 @@ impl ExtensionFunction {
             }),
             Some(return_type),
             vec![arg_types.0, arg_types.1],
+            is_constructor,
         )
     }
 
@@ -285,6 +297,7 @@ impl ExtensionFunction {
         func: TernaryExtensionFunctionObject,
         return_type: SchemaType,
         arg_types: (SchemaType, SchemaType, SchemaType),
+        is_constructor: bool,
     ) -> Self {
         Self::new(
             name.clone(),
@@ -300,6 +313,7 @@ impl ExtensionFunction {
             }),
             Some(return_type),
             vec![arg_types.0, arg_types.1, arg_types.2],
+            is_constructor,
         )
     }
 
@@ -330,10 +344,7 @@ impl ExtensionFunction {
     /// Currently, the only impact of this is that non-constructors are not
     /// accessible in the JSON format (entities/json.rs).
     pub fn is_constructor(&self) -> bool {
-        // return type is an extension type
-        matches!(self.return_type(), Some(SchemaType::Extension { .. }))
-        // no argument is an extension type
-        && !self.arg_types().iter().any(|ty| matches!(ty, SchemaType::Extension { .. }))
+        return self.is_constructor;
     }
 
     /// Call the `ExtensionFunction` with the given args
