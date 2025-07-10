@@ -102,7 +102,14 @@ pub struct Template {
     slots: Vec<Slot>,
 }
 
-
+impl Template {
+    #[verifier::inline]
+    pub open spec fn view_with_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> spec_ast::Policy {
+        match self.body {
+            TemplateBody::TemplateBody(b) => b.view_with_slot_env(slot_env)
+        }
+    }
+}
 
 } // verus!
 
@@ -456,7 +463,11 @@ pub struct Policy {
 
 impl View for Policy {
     type V = spec_ast::Policy;
-    uninterp spec fn view(&self) -> Self::V;
+
+    #[verifier::opaque]
+    open spec fn view(&self) -> Self::V {
+        (*self.template).view_with_slot_env(self.values@.map_values(|e: EntityUID| e@))
+    }
 }
 
 }
@@ -599,7 +610,7 @@ impl Policy {
     /// Get the expression that represents this policy.
     #[verifier::external_body]
     pub fn condition(&self) -> (expr: Expr)
-        ensures expr@ == self@.to_expr()
+        ensures expr.view_with_slot_env(self.values@.map_values(|e: EntityUID| e@)) == self@.to_expr()
     {
         self.template.condition()
     }
@@ -685,8 +696,13 @@ impl std::fmt::Display for Policy {
     }
 }
 
+verus! {
+
 /// Map from Slot Ids to Entity UIDs which fill the slots
 pub type SlotEnv = HashMap<SlotId, EntityUID>;
+
+
+}
 
 /// Represents either a static policy or a template linked policy.
 ///
@@ -1058,6 +1074,19 @@ pub struct TemplateBodyImpl {
     /// This will be a conjunction of the policy's `when` conditions and the
     /// negation of each of the policy's `unless` conditions.
     non_scope_constraints: Arc<Expr>,
+}
+
+impl TemplateBodyImpl {
+    pub open spec fn view_with_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> spec_ast::Policy {
+        spec_ast::Policy {
+            id: self.id@,
+            effect: self.effect@,
+            principal_scope: self.principal_constraint.view_with_slot_env(slot_env),
+            action_scope: self.action_constraint.view_with_slot_env(slot_env),
+            resource_scope: self.resource_constraint.view_with_slot_env(slot_env),
+            condition: self.non_scope_constraints.view_with_slot_env(slot_env)
+        }
+    }
 }
 
 // impl View for TemplateBodyImpl {

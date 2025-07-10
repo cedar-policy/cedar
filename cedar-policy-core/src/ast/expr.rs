@@ -61,22 +61,23 @@ pub struct Expr<T = ()> {
     data: T,
 }
 
-clone_spec_for!(Expr<T>, T:Clone);
+// clone_spec_for!(Expr<T>, T:Clone);
+pub assume_specification<T:Clone>[<Expr<T> as Clone>::clone](this: &Expr<T>) -> (other: Expr<T>)
+    ensures forall |slot_env: Map<SlotId, spec_ast::EntityUID>|
+                this.view_with_slot_env(slot_env) == other.view_with_slot_env(slot_env);
 
-impl<T> View for Expr<T> {
-    type V = spec_ast::Expr;
 
-    uninterp spec fn view(&self) -> spec_ast::Expr;
-    // #[verifier::inline]
-    // open spec fn view(&self) -> spec_ast::Expr {
-    //     self.expr_kind.view()
-    // }
+impl<T> Expr<T> {
+    // We can't write `impl View for ExprKind`, since we also need to pass in the SlotEnv to fill in slots
+    pub open spec fn view_with_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> spec_ast::Expr {
+        self.expr_kind.view_with_slot_env(slot_env)
+    }
 }
-
 
 /// The possible expression variants. This enum should be matched on by code
 /// recursively traversing the AST.
 #[derive(Hash, Debug, Clone, PartialEq, Eq)]
+#[verifier::external_derive]
 pub enum ExprKind<T = ()> {
     /// Literal value
     Lit(Literal),
@@ -185,7 +186,98 @@ pub enum ExprKind<T = ()> {
     // },
 }
 
+// Since we can't write `impl<K:View, V:View> BTreeMapView for BTreeMap<K,V>` or similar,
+// we have to just implement BTreeMapView manually for each monomorphized BTreeMap we want
+impl<T> BTreeMapView for BTreeMap<SmolStr, Expr<T>> {
+    type V = Map<Seq<char>, Expr<T>>;
+    uninterp spec fn view(&self) -> Self::V; // plan to just axiomatize it for now
+}
 
+impl<T> ExprKind<T> {
+    // We can't write `impl View for ExprKind`, since we also need to pass in the SlotEnv to fill in slots
+    pub open spec fn view_with_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> spec_ast::Expr
+        decreases self
+    {
+        match self {
+            ExprKind::Lit(lit) => spec_ast::Expr::lit(lit@),
+            ExprKind::Var(var) => spec_ast::Expr::var(var@),
+            ExprKind::Slot(slot) => {
+                match slot_env.get(*slot) {
+                    Some(uid) => spec_ast::Expr::lit(spec_ast::Prim::entity_uid(uid)),
+                    None => arbitrary() // should not happen due to "values total map" invariant
+                }
+            },
+            ExprKind::If { test_expr, then_expr, else_expr } => {
+                spec_ast::Expr::Ite {
+                    cond: Box::new(test_expr.view_with_slot_env(slot_env)),
+                    then_expr: Box::new(then_expr.view_with_slot_env(slot_env)),
+                    else_expr: Box::new(else_expr.view_with_slot_env(slot_env)),
+                }
+            },
+            ExprKind::And { left, right } => {
+                spec_ast::Expr::And {
+                    a: Box::new(left.view_with_slot_env(slot_env)),
+                    b: Box::new(right.view_with_slot_env(slot_env)),
+                }
+            },
+            ExprKind::Or { left, right } => {
+                spec_ast::Expr::Or {
+                    a: Box::new(left.view_with_slot_env(slot_env)),
+                    b: Box::new(right.view_with_slot_env(slot_env)),
+                }
+            },
+            ExprKind::UnaryApp { op, arg } => {
+                spec_ast::Expr::UnaryApp {
+                    uop: op@,
+                    expr: Box::new(arg.view_with_slot_env(slot_env)),
+                }
+            },
+            ExprKind::BinaryApp { op, arg1, arg2 } => {
+                spec_ast::Expr::BinaryApp {
+                    bop: op@,
+                    a: Box::new(arg1.view_with_slot_env(slot_env)),
+                    b: Box::new(arg2.view_with_slot_env(slot_env)),
+                }
+            },
+            ExprKind::ExtensionFunctionApp { fn_name, args } => {
+                // TODO(Pratap): support extension functions
+                arbitrary()
+            },
+            ExprKind::GetAttr { expr, attr } => {
+                spec_ast::Expr::GetAttr {
+                    expr: Box::new(expr.view_with_slot_env(slot_env)),
+                    attr: attr@,
+                }
+            },
+            ExprKind::HasAttr { expr, attr } => {
+                spec_ast::Expr::HasAttr {
+                    expr: Box::new(expr.view_with_slot_env(slot_env)),
+                    attr: attr@,
+                }
+            },
+            ExprKind::Like { expr, pattern } => {
+                // TODO(Pratap): support patterns, something like:
+                // spec_ast::Expr::UnaryApp {
+                //     uop: spec_ast::UnaryOp::Like { p: pattern@ },
+                //     expr: expr@
+                // }
+                arbitrary()
+            },
+            ExprKind::Is { expr, entity_type } => {
+                spec_ast::Expr::UnaryApp {
+                    uop: spec_ast::UnaryOp::Is { ety: entity_type@ },
+                    expr: Box::new(expr.view_with_slot_env(slot_env)),
+                }
+            },
+            ExprKind::Set(exprs) => {
+                spec_ast::Expr::Set { ls: exprs@.map_values(|e:Expr<T>| e.view_with_slot_env(slot_env)) }
+            },
+            ExprKind::Record(map) => {
+                spec_ast::Expr::Record { map: (**map)@.map_values(|e:Expr<T>| e.view_with_slot_env(slot_env)) }
+            }
+        }
+    }
+}
 
 } // verus!
 
