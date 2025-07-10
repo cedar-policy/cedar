@@ -2104,6 +2104,50 @@ mod json_parsing_tests {
             );
         });
     }
+
+    #[test]
+    fn multi_arg_ext_func_calls() {
+        let eparser: EntityJsonParser<'_, '_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+
+        let json = serde_json::json!(
+            {
+                "uid": { "type": "User", "id": "alice "},
+                    "attrs": {
+                        "time": { "__extn": { "fn": "offset", "args": [{ "__extn": { "fn": "datetime", "arg": "1970-01-01" }}, { "__extn": { "fn": "duration", "arg": "1h" } }]}}
+                    },
+                    "parents": []
+            }
+        );
+
+        assert_matches!(eparser.single_from_json_value(json), Ok(entity) => {
+            assert_matches!(entity.get("time"), Some(PartialValue::Value(Value { value: ValueKind::ExtensionValue(v), .. })) => {
+                assert_eq!(v.func, "offset".parse().unwrap());
+                assert_eq!(v.args[0].to_string(), r#"datetime("1970-01-01")"#);
+                assert_eq!(v.args[1].to_string(), r#"duration("3600000ms")"#);
+            });
+        });
+
+        // It appears that additional attributes are simply ignored
+        // PR #1697 doesn't alter this behavior
+        let json = serde_json::json!(
+            {
+                "uid": { "type": "User", "id": "alice "},
+                    "attrs": {
+                        "time": { "__extn": { "fn": "offset", "args": [{ "__extn": { "fn": "datetime", "arg": "1970-01-01" }}, { "__extn": { "fn": "duration", "arg": "1h" } }], "aaargs": 42}}
+                    },
+                    "parents": []
+            }
+        );
+
+        assert_matches!(eparser.single_from_json_value(json), Ok(entity) => {
+            assert_matches!(entity.get("time"), Some(PartialValue::Value(Value { value: ValueKind::ExtensionValue(v), .. })) => {
+                assert_eq!(v.func, "offset".parse().unwrap());
+                assert_eq!(v.args[0].to_string(), r#"datetime("1970-01-01")"#);
+                assert_eq!(v.args[1].to_string(), r#"duration("3600000ms")"#);
+            });
+        });
+    }
 }
 
 // PANIC SAFETY: Unit Test Code
@@ -2514,6 +2558,9 @@ mod schema_based_parsing_tests {
                     .collect(),
                     open_attrs: false,
                 }),
+                "start_date" => Some(SchemaType::Extension {
+                    name: Name::parse_unqualified_name("datetime").expect("valid"),
+                }),
                 _ => None,
             }
         }
@@ -2576,7 +2623,11 @@ mod schema_based_parsing_tests {
                         "home_ip": "222.222.222.101",
                         "work_ip": { "fn": "ip", "arg": "2.2.2.0/24" },
                         "trust_score": "5.7",
-                        "tricky": { "type": "Employee", "id": "34FB87" }
+                        "tricky": { "type": "Employee", "id": "34FB87" },
+                        "start_date": { "fn": "offset", "args": [
+                            {"fn": "datetime", "arg": "1970-01-01"},
+                            {"fn": "duration", "arg": "1h"}
+                        ]}
                     },
                     "parents": [],
                     "tags": {
