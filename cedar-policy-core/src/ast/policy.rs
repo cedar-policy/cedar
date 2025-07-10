@@ -92,7 +92,6 @@ verus! {
 /// Note that this "template" may have no slots, in which case this `Template` represents a static policy
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
 #[verifier::external_derive]
-#[verifier::external_body]
 pub struct Template {
     body: TemplateBody,
     /// INVARIANT (slot cache correctness): This Vec must contain _all_ of the open slots in `body`
@@ -103,8 +102,7 @@ pub struct Template {
 }
 
 impl Template {
-    #[verifier::inline]
-    pub open spec fn view_with_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> spec_ast::Policy {
+    pub closed spec fn view_with_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> spec_ast::Policy {
         match self.body {
             TemplateBody::TemplateBody(b) => b.view_with_slot_env(slot_env)
         }
@@ -444,7 +442,6 @@ verus! {
 /// by converting to/from LiteralPolicy
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[verifier::external_derive]
-#[verifier::external_body]
 pub struct Policy {
     /// Reference to the template
     template: Arc<Template>,
@@ -461,11 +458,16 @@ pub struct Policy {
     values: HashMap<SlotId, EntityUID>,
 }
 
+impl Policy {
+    pub closed spec fn spec_slot_env(&self) -> Map<SlotId, spec_ast::EntityUID> {
+        self.values@.map_values(|e: EntityUID| e@)
+    }
+}
+
 impl View for Policy {
     type V = spec_ast::Policy;
 
-    #[verifier::opaque]
-    open spec fn view(&self) -> Self::V {
+    closed spec fn view(&self) -> Self::V {
         (*self.template).view_with_slot_env(self.values@.map_values(|e: EntityUID| e@))
     }
 }
@@ -610,7 +612,7 @@ impl Policy {
     /// Get the expression that represents this policy.
     #[verifier::external_body]
     pub fn condition(&self) -> (expr: Expr)
-        ensures expr.view_with_slot_env(self.values@.map_values(|e: EntityUID| e@)) == self@.to_expr()
+        ensures expr.view_with_slot_env(self.spec_slot_env()) == self@.to_expr()
     {
         self.template.condition()
     }
@@ -1042,7 +1044,6 @@ verus! {
 /// slots) and static policies (in which case it contains zero slots).
 #[derive(Educe, Clone, Debug)]
 #[educe(PartialEq, Eq, Hash)]
-#[verifier::external_body]
 #[verifier::external_derive]
 pub struct TemplateBodyImpl {
     /// ID of this policy
@@ -1077,45 +1078,32 @@ pub struct TemplateBodyImpl {
 }
 
 impl TemplateBodyImpl {
-    pub open spec fn view_with_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> spec_ast::Policy {
+    pub closed spec fn view_with_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> spec_ast::Policy {
         spec_ast::Policy {
             id: self.id@,
             effect: self.effect@,
-            principal_scope: self.principal_constraint.view_with_slot_env(slot_env),
-            action_scope: self.action_constraint.view_with_slot_env(slot_env),
-            resource_scope: self.resource_constraint.view_with_slot_env(slot_env),
+            principal_scope: self.principal_constraint@,
+            action_scope: self.action_constraint@,
+            resource_scope: self.resource_constraint@,
             condition: self.non_scope_constraints.view_with_slot_env(slot_env)
         }
     }
 }
 
-// impl View for TemplateBodyImpl {
-//     type V = spec_ast::Policy;
-//     open spec fn view(&self) -> Self::V {
-//         spec_ast::Policy {
-//             id: self.id.view(),
-//             effect: self.effect.view(),
-//             principal_scope: self.principal_constraint.view(),
-//             action_scope: self.action_constraint.view(),
-//             resource_scope: self.resource_constraint.view(),
-//             condition: self.non_scope_constraints.view(),
-//         }
-//     }
-// }
-
-} // verus!
 
 /// Policy datatype. This is used for both templates (in which case it contains
 /// slots) and static policies (in which case it contains zero slots).
-// TODO: Verus can't handle the feature-flag-gated variants
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
+#[verifier::external_derive]
 pub enum TemplateBody {
     /// Represents a valid template body
     TemplateBody(TemplateBodyImpl),
-    #[cfg(feature = "tolerant-ast")]
-    /// Represents a policy that failed to parse
-    TemplateBodyError(PolicyID, Option<Loc>),
+    // #[cfg(feature = "tolerant-ast")]
+    // /// Represents a policy that failed to parse
+    // TemplateBodyError(PolicyID, Option<Loc>),
 }
+
+} // verus!
 
 impl TemplateBody {
     /// Get the `Id` of this policy.
@@ -1403,10 +1391,24 @@ impl std::fmt::Display for TemplateBody {
     }
 }
 
+verus! {
+
 /// Template constraint on principal scope variables
 #[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
+#[verifier::external_derive]
 pub struct PrincipalConstraint {
     pub(crate) constraint: PrincipalOrResourceConstraint,
+}
+
+impl View for PrincipalConstraint {
+    type V = spec_ast::PrincipalScope;
+    closed spec fn view(&self) -> Self::V {
+        spec_ast::PrincipalScope {
+            principal_scope: self.constraint@
+        }
+    }
+}
+
 }
 
 impl PrincipalConstraint {
@@ -1510,10 +1512,24 @@ impl std::fmt::Display for PrincipalConstraint {
     }
 }
 
+verus! {
+
 /// Template constraint on resource scope variables
 #[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
+#[verifier::external_derive]
 pub struct ResourceConstraint {
     pub(crate) constraint: PrincipalOrResourceConstraint,
+}
+
+impl View for ResourceConstraint {
+    type V = spec_ast::ResourceScope;
+    closed spec fn view(&self) -> Self::V {
+        spec_ast::ResourceScope {
+            resource_scope: self.constraint@
+        }
+    }
+}
+
 }
 
 impl ResourceConstraint {
@@ -1617,9 +1633,12 @@ impl std::fmt::Display for ResourceConstraint {
     }
 }
 
+verus! {
+
 /// A reference to an EntityUID that may be a Slot
 #[derive(Educe, Clone, Debug, Eq)]
 #[educe(Hash, PartialEq, PartialOrd, Ord)]
+#[verifier::external_derive]
 pub enum EntityReference {
     /// Reference to a literal EUID
     EUID(Arc<EntityUID>),
@@ -1630,6 +1649,8 @@ pub enum EntityReference {
         #[educe(Hash(ignore))]
         Option<Loc>,
     ),
+}
+
 }
 
 impl EntityReference {
@@ -1712,11 +1733,12 @@ impl TryFrom<Var> for PrincipalOrResource {
     }
 }
 
-// verus! {
+verus! {
 
 /// Represents the constraints for principals and resources.
 /// Can either not constrain, or constrain via `==` or `in` for a single entity literal.
 #[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
+#[verifier::external_derive]
 pub enum PrincipalOrResourceConstraint {
     /// Unconstrained
     Any,
@@ -1732,20 +1754,21 @@ pub enum PrincipalOrResourceConstraint {
 
 // clone_spec_for!(PrincipalOrResourceConstraint);
 
-// impl View for PrincipalOrResourceConstraint {
-//     type V = spec_ast::Scope;
-//     open spec fn view(&self) -> spec_ast::Scope {
-//         match self {
-//             PrincipalOrResourceConstraint::Any => spec_ast::Scope::Any,
-//             PrincipalOrResourceConstraint::In(_) => todo!(),
-//             PrincipalOrResourceConstraint::Eq(_) => todo!(),
-//             PrincipalOrResourceConstraint::Is(_) => todo!(),
-//             PrincipalOrResourceConstraint::IsIn(_, _) => todo!(),
-//         }
-//     }
-// }
+impl View for PrincipalOrResourceConstraint {
+    type V = spec_ast::Scope;
+    uninterp spec fn view(&self) -> Self::V;
+    // open spec fn view(&self) -> Self::V {
+    //     match self {
+    //         PrincipalOrResourceConstraint::Any => spec_ast::Scope::Any,
+    //         PrincipalOrResourceConstraint::In(e) => todo!(),
+    //         PrincipalOrResourceConstraint::Eq(e) => todo!(),
+    //         PrincipalOrResourceConstraint::Is(ety) => todo!(),
+    //         PrincipalOrResourceConstraint::IsIn(ety, e) => todo!(),
+    //     }
+    // }
+}
 
-// } // verus!
+} // verus!
 
 impl PrincipalOrResourceConstraint {
     /// Unconstrained.
@@ -1858,9 +1881,12 @@ impl PrincipalOrResourceConstraint {
     }
 }
 
+verus! {
+
 /// Constraint for action scope variables.
 /// Action variables can be constrained to be in any variable in a list.
 #[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
+#[verifier::external_derive]
 pub enum ActionConstraint {
     /// Unconstrained
     Any,
@@ -1872,6 +1898,28 @@ pub enum ActionConstraint {
     /// Error node representing an action constraint that failed to parse
     ErrorConstraint,
 }
+
+impl View for ActionConstraint {
+    type V = spec_ast::ActionScope;
+
+    open spec fn view(&self) -> Self::V {
+        match self {
+            ActionConstraint::Any => spec_ast::ActionScope::ActionScope {
+                scope: spec_ast::Scope::Any,
+            },
+            ActionConstraint::In(euids) => spec_ast::ActionScope::ActionInAny {
+                ls: euids@.map_values(|euid: Arc<EntityUID>| euid.view()),
+            },
+            ActionConstraint::Eq(euid) => spec_ast::ActionScope::ActionScope {
+                scope: spec_ast::Scope::Eq { entity: euid.view() }
+            },
+            // #[cfg(feature = "tolerant-ast")]
+            // ActionConstraint::ErrorConstraint => spec_ast::ActionScope::Error,
+        }
+    }
+}
+
+} // verus!
 
 impl std::fmt::Display for ActionConstraint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

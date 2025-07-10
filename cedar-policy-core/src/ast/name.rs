@@ -379,9 +379,12 @@ impl std::fmt::Display for ValidSlotId {
     }
 }
 
+verus! {
+
 /// [`SlotId`] plus a source location
 #[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq, Hash)]
+#[verifier::external_derive]
 pub struct Slot {
     /// [`SlotId`]
     pub id: SlotId,
@@ -389,6 +392,8 @@ pub struct Slot {
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
     pub loc: Option<Loc>,
+}
+
 }
 
 #[cfg(test)]

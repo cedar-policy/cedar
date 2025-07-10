@@ -69,7 +69,9 @@ pub assume_specification<T:Clone>[<Expr<T> as Clone>::clone](this: &Expr<T>) -> 
 
 impl<T> Expr<T> {
     // We can't write `impl View for ExprKind`, since we also need to pass in the SlotEnv to fill in slots
-    pub open spec fn view_with_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> spec_ast::Expr {
+    pub closed spec fn view_with_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> spec_ast::Expr
+        decreases self // TODO: why is this required?
+    {
         self.expr_kind.view_with_slot_env(slot_env)
     }
 }
@@ -196,7 +198,7 @@ impl<T> BTreeMapView for BTreeMap<SmolStr, Expr<T>> {
 impl<T> ExprKind<T> {
     // We can't write `impl View for ExprKind`, since we also need to pass in the SlotEnv to fill in slots
     pub open spec fn view_with_slot_env(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) -> spec_ast::Expr
-        decreases self
+        decreases self via Self::expr_kind_view_with_slot_env_decreases
     {
         match self {
             ExprKind::Lit(lit) => spec_ast::Expr::lit(lit@),
@@ -259,7 +261,7 @@ impl<T> ExprKind<T> {
                 // TODO(Pratap): support patterns, something like:
                 // spec_ast::Expr::UnaryApp {
                 //     uop: spec_ast::UnaryOp::Like { p: pattern@ },
-                //     expr: expr@
+                //     expr: Box::new(expr.view_with_slot_env(slot_env))
                 // }
                 arbitrary()
             },
@@ -270,12 +272,38 @@ impl<T> ExprKind<T> {
                 }
             },
             ExprKind::Set(exprs) => {
-                spec_ast::Expr::Set { ls: exprs@.map_values(|e:Expr<T>| e.view_with_slot_env(slot_env)) }
+                spec_ast::Expr::Set { ls: exprs@.map_values(|e:Expr<T>| {
+                    if exprs@.contains(e) {
+                        e.view_with_slot_env(slot_env)
+                    } else {
+                        arbitrary()
+                    }
+                })}
             },
             ExprKind::Record(map) => {
-                spec_ast::Expr::Record { map: (**map)@.map_values(|e:Expr<T>| e.view_with_slot_env(slot_env)) }
+                spec_ast::Expr::Record { map: map@.map_values(|e:Expr<T>| {
+                    if map@.dom().finite() && map@.contains_value(e) {
+                        e.view_with_slot_env(slot_env)
+                    } else {
+                        arbitrary()
+                    }
+                })}
             }
         }
+    }
+
+    #[via_fn]
+    proof fn expr_kind_view_with_slot_env_decreases(&self, slot_env: Map<SlotId, spec_ast::EntityUID>) {
+        match self {
+            ExprKind::Set(exprs) => {
+                assert(forall |e: Expr<T>| exprs@.contains(e) ==> decreases_to!(exprs => e));
+            }
+            ExprKind::Record(map) => {
+                assert(decreases_to!(map => map@)); // TODO does this need to be an axiom?
+                assert(forall |e: Expr<T>| map@.dom().finite() && map@.contains_value(e) ==> decreases_to!(map@ => e));
+            },
+            _ => {}
+        };
     }
 }
 

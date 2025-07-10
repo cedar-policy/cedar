@@ -183,7 +183,7 @@ pub enum Var {
 
 impl Var {
     #[verifier::inline]
-    pub open spec fn eqEntityUID(self, uid: EntityUID) -> Expr {
+    pub open spec fn eq_entity_uid(self, uid: EntityUID) -> Expr {
         Expr::BinaryApp {
             bop: BinaryOp::Eq,
             a: Box::new(Expr::var(self)),
@@ -192,7 +192,7 @@ impl Var {
     }
 
     #[verifier::inline]
-    pub open spec fn inEntityUID(self, uid: EntityUID) -> Expr {
+    pub open spec fn in_entity_uid(self, uid: EntityUID) -> Expr {
         Expr::BinaryApp {
             bop: BinaryOp::Mem,
             a: Box::new(Expr::var(self)),
@@ -201,7 +201,7 @@ impl Var {
     }
 
     #[verifier::inline]
-    pub open spec fn isEntityType(self, ety: EntityType) -> Expr {
+    pub open spec fn is_entity_type(self, ety: EntityType) -> Expr {
         Expr::UnaryApp {
             uop: UnaryOp::Is { ety },
             expr: Box::new(Expr::var(self)),
@@ -311,10 +311,10 @@ impl Scope {
     pub open spec fn to_expr(self, v: Var) -> Expr {
         match self {
             Scope::Any => Expr::lit(Prim::pbool(true)),
-            Scope::Eq { entity: uid } => v.eqEntityUID(uid),
-            Scope::Mem { entity: uid } => v.inEntityUID(uid),
-            Scope::Is { ety: ety } => v.isEntityType(ety),
-            Scope::IsMem { ety: ety, entity: uid } => Expr::and(v.isEntityType(ety), v.inEntityUID(uid)),
+            Scope::Eq { entity: uid } => v.eq_entity_uid(uid),
+            Scope::Mem { entity: uid } => v.in_entity_uid(uid),
+            Scope::Is { ety: ety } => v.is_entity_type(ety),
+            Scope::IsMem { ety: ety, entity: uid } => Expr::and(v.is_entity_type(ety), v.in_entity_uid(uid)),
         }
     }
 }
@@ -365,38 +365,38 @@ impl ActionScope {
 
 pub type PolicyID = Seq<char>;
 
-pub enum ConditionKind {
-    When,
-    Unless
-}
+// pub enum ConditionKind {
+//     When,
+//     Unless
+// }
 
-pub struct Condition {
-    pub kind: ConditionKind,
-    pub body: Expr
-}
+// pub struct Condition {
+//     pub kind: ConditionKind,
+//     pub body: Expr
+// }
 
-impl Condition {
-    #[verifier::inline]
-    pub open spec fn to_expr(self) -> Expr {
-        match self.kind {
-            ConditionKind::When => self.body,
-            ConditionKind::Unless => Expr::UnaryApp {
-                uop: UnaryOp::Not,
-                expr: Box::new(self.body)
-            }
-        }
-    }
-}
+// impl Condition {
+//     #[verifier::inline]
+//     pub open spec fn to_expr(self) -> Expr {
+//         match self.kind {
+//             ConditionKind::When => self.body,
+//             ConditionKind::Unless => Expr::UnaryApp {
+//                 uop: UnaryOp::Not,
+//                 expr: Box::new(self.body)
+//             }
+//         }
+//     }
+// }
 
-pub type Conditions = Seq<Condition>;
+// pub type Conditions = Seq<Condition>;
 
-// Can't write `impl Conditions` since `Conditions` is a type synonym
-#[verifier::inline]
-pub open spec fn conditions_to_expr(conditions: Conditions) -> Expr {
-    conditions.fold_right(
-        |c:Condition, expr:Expr| Expr::and(c.to_expr(), expr),
-        Expr::lit(Prim::pbool(true)))
-}
+// // Can't write `impl Conditions` since `Conditions` is a type synonym
+// #[verifier::inline]
+// pub open spec fn conditions_to_expr(conditions: Conditions) -> Expr {
+//     conditions.fold_right(
+//         |c:Condition, expr:Expr| Expr::and(c.to_expr(), expr),
+//         Expr::lit(Prim::pbool(true)))
+// }
 
 pub struct Policy {
     pub id: PolicyID,
@@ -404,7 +404,9 @@ pub struct Policy {
     pub principal_scope: PrincipalScope,
     pub action_scope: ActionScope,
     pub resource_scope: ResourceScope,
-    pub condition: Conditions,
+    // Different from Lean spec, because in Rust the conversion from `when/unless`
+    // clauses to a single expression happens in the parser
+    pub condition: Expr,
 }
 
 impl Policy {
@@ -416,7 +418,7 @@ impl Policy {
                 self.action_scope.to_expr(),
                 Expr::and(
                     self.resource_scope.to_expr(),
-                    conditions_to_expr(self.condition))))
+                    self.condition)))
     }
 }
 
