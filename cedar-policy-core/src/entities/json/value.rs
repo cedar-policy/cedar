@@ -701,7 +701,72 @@ impl<'e> ValueParser<'e> {
             // convert that into an extension-function-call `RestrictedExpr`
             Some(SchemaType::Extension { ref name, .. }) => {
                 let extjson: ExtnValueJson = serde_json::from_value(val)?;
-                self.extn_value_json_into_rexpr(extjson, name.clone(), ctx)
+                let func = self.extensions.func(name).unwrap();
+                let arg_types = func.arg_types();
+                match extjson {
+                    ExtnValueJson::ExplicitExprEscape { .. } => {
+                        Err(JsonDeserializationError::ExprTag(Box::new(ctx())))
+                    }
+                    ExtnValueJson::ExplicitExtnEscape { __extn }
+                    | ExtnValueJson::ImplicitExtnEscape(__extn) => match (arg_types, __extn) {
+                        ([arg_type], FnAndArgs::Single { ext_fn, arg }) => {
+                            Ok(RestrictedExpr::call_extension_fn(
+                                name.clone(),
+                                std::iter::once(self.val_into_restricted_expr(
+                                    serde_json::to_value(arg).unwrap(),
+                                    Some(arg_type),
+                                    ctx,
+                                )?),
+                            ))
+                        }
+                        (arg_types, FnAndArgs::Multi { ext_fn, args }) => {
+                            Ok(RestrictedExpr::call_extension_fn(
+                                name.clone(),
+                                arg_types
+                                    .into_iter()
+                                    .zip(args.iter())
+                                    .map(|(arg_type, arg)| {
+                                        self.val_into_restricted_expr(
+                                            serde_json::to_value(arg).unwrap(),
+                                            Some(arg_type),
+                                            ctx.clone(),
+                                        )
+                                    })
+                                    .collect::<Result<Vec<_>, _>>()?,
+                            ))
+                        }
+                        (_, _) => todo!(),
+                    },
+                    ExtnValueJson::ImplicitConstructor(val) => match (arg_types, val) {
+                        ([], _) => todo!(),
+                        ([arg_type], arg) => Ok(RestrictedExpr::call_extension_fn(
+                            name.clone(),
+                            std::iter::once(self.val_into_restricted_expr(
+                                serde_json::to_value(arg).unwrap(),
+                                Some(arg_type),
+                                ctx,
+                            )?),
+                        )),
+                        (arg_types, CedarValueJson::Set(args)) => {
+                            Ok(RestrictedExpr::call_extension_fn(
+                                name.clone(),
+                                arg_types
+                                    .into_iter()
+                                    .zip(args.iter())
+                                    .map(|(arg_type, arg)| {
+                                        self.val_into_restricted_expr(
+                                            serde_json::to_value(arg).unwrap(),
+                                            Some(arg_type),
+                                            ctx.clone(),
+                                        )
+                                    })
+                                    .collect::<Result<Vec<_>, _>>()?,
+                            ))
+                        }
+                        (_, _) => todo!(),
+                    },
+                }
+                //self.extn_value_json_into_rexpr(extjson, name.clone(), ctx)
             }
             // The expected type is a set type. No special parsing rules apply, but
             // we need to parse the elements according to the expected element type
