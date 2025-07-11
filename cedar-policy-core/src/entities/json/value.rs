@@ -755,8 +755,7 @@ impl<'e> ValueParser<'e> {
                             .filter(|f| f.arg_types().len() == 1)
                             .next()
                         {
-                            // PANIC SAFETY: we've concluded above that it has
-                            // one arugment
+                            // PANIC SAFETY: we've concluded above that it has one arugment
                             #[allow(clippy::indexing_slicing)]
                             Ok(RestrictedExpr::call_extension_fn(
                                 constructor.name().clone(),
