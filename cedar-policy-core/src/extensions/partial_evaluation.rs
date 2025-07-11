@@ -40,7 +40,6 @@ pub fn extension() -> Extension {
             CallStyle::FunctionStyle,
             Box::new(create_new_unknown),
             SchemaType::String,
-            true,
         )],
         std::iter::empty(),
     )

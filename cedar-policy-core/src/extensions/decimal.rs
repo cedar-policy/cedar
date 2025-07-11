@@ -279,7 +279,6 @@ pub fn extension() -> Extension {
                 Box::new(decimal_from_str),
                 decimal_type.clone(),
                 SchemaType::String,
-                true,
             ),
             ExtensionFunction::binary(
                 constants::LESS_THAN.clone(),
@@ -287,7 +286,6 @@ pub fn extension() -> Extension {
                 Box::new(decimal_lt),
                 SchemaType::Bool,
                 (decimal_type.clone(), decimal_type.clone()),
-                false,
             ),
             ExtensionFunction::binary(
                 constants::LESS_THAN_OR_EQUAL.clone(),
@@ -295,7 +293,6 @@ pub fn extension() -> Extension {
                 Box::new(decimal_le),
                 SchemaType::Bool,
                 (decimal_type.clone(), decimal_type.clone()),
-                false,
             ),
             ExtensionFunction::binary(
                 constants::GREATER_THAN.clone(),
@@ -303,7 +300,6 @@ pub fn extension() -> Extension {
                 Box::new(decimal_gt),
                 SchemaType::Bool,
                 (decimal_type.clone(), decimal_type.clone()),
-                false,
             ),
             ExtensionFunction::binary(
                 constants::GREATER_THAN_OR_EQUAL.clone(),
@@ -311,7 +307,6 @@ pub fn extension() -> Extension {
                 Box::new(decimal_ge),
                 SchemaType::Bool,
                 (decimal_type.clone(), decimal_type),
-                false,
             ),
         ],
         std::iter::empty(),
@@ -365,33 +360,33 @@ mod tests {
                 &Name::parse_unqualified_name("decimal").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("lessThan").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("lessThanOrEqual")
                     .expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("greaterThan").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("greaterThanOrEqual")
                     .expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor(),);
+            .is_single_arg_constructor(),);
     }
 
     #[test]

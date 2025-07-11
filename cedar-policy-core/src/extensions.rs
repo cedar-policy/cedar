@@ -30,6 +30,7 @@ use std::collections::HashMap;
 
 use crate::ast::{Extension, ExtensionFunction, Name};
 use crate::entities::SchemaType;
+use crate::extensions::extension_initialization_errors::MultipleConstructorsSameSignatureError;
 use crate::parser::{AsLocRef, IntoMaybeLoc, Loc, MaybeLoc};
 use miette::Diagnostic;
 use thiserror::Error;
@@ -54,6 +55,7 @@ lazy_static::lazy_static! {
     static ref EXTENSIONS_NONE : Extensions<'static> = Extensions {
         extensions: &[],
         functions: HashMap::new(),
+        single_arg_constructors: HashMap::new(),
     };
 }
 
@@ -70,6 +72,10 @@ pub struct Extensions<'a> {
     /// extension function lookup that at most one extension function exists
     /// for a name. This should also make the lookup more efficient.
     functions: HashMap<&'a Name, &'a ExtensionFunction>,
+    /// All single argument extension function constructors, indexed by their
+    /// return type. Built ahead of time so that we know each constructor has
+    /// a unique return type.
+    single_arg_constructors: HashMap<&'a SchemaType, &'a ExtensionFunction>,
 }
 
 impl Extensions<'static> {
@@ -112,9 +118,22 @@ impl<'a> Extensions<'a> {
         )
         .map_err(|name| FuncMultiplyDefinedError { name: name.clone() })?;
 
+        // Build the constructor map, ensuring that no constructors share a return type
+        let single_arg_constructors = util::collect_no_duplicates(
+            extensions
+                .iter()
+                .flat_map(|e| e.funcs())
+                .filter(|f| f.is_single_arg_constructor())
+                .filter_map(|f| f.return_type().map(|return_type| (return_type, f))),
+        )
+        .map_err(|return_type| MultipleConstructorsSameSignatureError {
+            return_type: Box::new(return_type.clone()),
+        })?;
+
         Ok(Extensions {
             extensions,
             functions,
+            single_arg_constructors,
         })
     }
 
@@ -155,12 +174,11 @@ impl<'a> Extensions<'a> {
     }
 
     /// Lookup constructors
-    pub(crate) fn lookup_constructors<'b>(
+    pub(crate) fn lookup_single_arg_constructor<'b>(
         &self,
-        return_type: &'b SchemaType,
-    ) -> impl Iterator<Item = &'a ExtensionFunction> + use<'a, 'b> {
-        self.all_funcs()
-            .filter(|func| func.is_constructor() && func.return_type() == Some(return_type))
+        return_type: &SchemaType,
+    ) -> Option<&ExtensionFunction> {
+        self.single_arg_constructors.get(return_type).copied()
     }
 }
 

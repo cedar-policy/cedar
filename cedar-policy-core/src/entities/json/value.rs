@@ -423,6 +423,7 @@ impl CedarValueJson {
                     __extn: FnAndArgs::Single {
                         ext_fn: fn_name.to_smolstr(),
                         arg: Box::new(CedarValueJson::from_expr(
+                            // assuming the invariant holds for `expr`, it must also hold here
                             BorrowedRestrictedExpr::new_unchecked(arg),
                         )?),
                     },
@@ -718,7 +719,13 @@ impl<'e> ValueParser<'e> {
                         )?;
                         let arg_types = func.arg_types();
                         let args = __extn.args();
-                        // TODO: check the lengths of `arg_types` and `args`
+                        if args.len() != arg_types.len() {
+                            return Err(JsonDeserializationError::incorrect_num_of_arguments(
+                                arg_types.len(),
+                                args.len(),
+                                __extn.fn_str(),
+                            ));
+                        }
                         Ok(RestrictedExpr::call_extension_fn(
                             func.name().clone(),
                             arg_types
@@ -748,12 +755,9 @@ impl<'e> ValueParser<'e> {
                         // distinguish two cases where there are
                         // multiple arguments and where there is one
                         // argument of a set type
-                        // TODO: revert changes to single constructors
                         if let Some(constructor) = self
                             .extensions
-                            .lookup_constructors(&expected_return_type.clone())
-                            .filter(|f| f.arg_types().len() == 1)
-                            .next()
+                            .lookup_single_arg_constructor(&expected_return_type)
                         {
                             // PANIC SAFETY: we've concluded above that it has one arugment
                             #[allow(clippy::indexing_slicing)]

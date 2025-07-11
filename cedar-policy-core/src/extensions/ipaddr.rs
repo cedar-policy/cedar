@@ -402,7 +402,6 @@ pub fn extension() -> Extension {
                 Box::new(ip_from_str),
                 ipaddr_type.clone(),
                 SchemaType::String,
-                true,
             ),
             ExtensionFunction::unary(
                 names::IS_IPV4.clone(),
@@ -410,7 +409,6 @@ pub fn extension() -> Extension {
                 Box::new(is_ipv4),
                 SchemaType::Bool,
                 ipaddr_type.clone(),
-                false,
             ),
             ExtensionFunction::unary(
                 names::IS_IPV6.clone(),
@@ -418,7 +416,6 @@ pub fn extension() -> Extension {
                 Box::new(is_ipv6),
                 SchemaType::Bool,
                 ipaddr_type.clone(),
-                false,
             ),
             ExtensionFunction::unary(
                 names::IS_LOOPBACK.clone(),
@@ -426,7 +423,6 @@ pub fn extension() -> Extension {
                 Box::new(is_loopback),
                 SchemaType::Bool,
                 ipaddr_type.clone(),
-                false,
             ),
             ExtensionFunction::unary(
                 names::IS_MULTICAST.clone(),
@@ -434,7 +430,6 @@ pub fn extension() -> Extension {
                 Box::new(is_multicast),
                 SchemaType::Bool,
                 ipaddr_type.clone(),
-                false,
             ),
             ExtensionFunction::binary(
                 names::IS_IN_RANGE.clone(),
@@ -442,7 +437,6 @@ pub fn extension() -> Extension {
                 Box::new(is_in_range),
                 SchemaType::Bool,
                 (ipaddr_type.clone(), ipaddr_type),
-                false,
             ),
         ],
         std::iter::empty(),
@@ -491,37 +485,37 @@ mod tests {
         assert!(ext
             .get_func(&Name::parse_unqualified_name("ip").expect("should be a valid identifier"))
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("isIpv4").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("isIpv6").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("isLoopback").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("isMulticast").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor());
+            .is_single_arg_constructor());
         assert!(!ext
             .get_func(
                 &Name::parse_unqualified_name("isInRange").expect("should be a valid identifier")
             )
             .expect("function should exist")
-            .is_constructor(),);
+            .is_single_arg_constructor(),);
     }
 
     #[test]

@@ -28,7 +28,7 @@ use crate::parser::err::ParseErrors;
 use either::Either;
 use itertools::Itertools;
 use miette::Diagnostic;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use thiserror::Error;
 
 /// Escape kind
@@ -86,6 +86,11 @@ pub enum JsonDeserializationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     MissingImpliedConstructor(MissingImpliedConstructor),
+    /// Incorrect number of arguments of an extension function are provided
+    /// during schema-based parsing
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    IncorrectNumOfArguments(IncorrectNumOfArguments),
     /// Failed to look up an extension function
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -189,6 +194,18 @@ impl JsonDeserializationError {
         })
     }
 
+    pub(crate) fn incorrect_num_of_arguments(
+        expected_arg_num: usize,
+        provided_arg_num: usize,
+        func_name: &str,
+    ) -> Self {
+        Self::IncorrectNumOfArguments(IncorrectNumOfArguments {
+            expected_arg_num,
+            provided_arg_num,
+            func_name: func_name.to_smolstr(),
+        })
+    }
+
     pub(crate) fn duplicate_key(
         ctx: JsonDeserializationErrorContext,
         key: impl Into<SmolStr>,
@@ -282,6 +299,18 @@ pub struct MissingImpliedConstructor {
     ctx: Box<JsonDeserializationErrorContext>,
     /// return type of the constructor we were looking for
     return_type: Box<SchemaType>,
+}
+
+#[derive(Debug, Error, Diagnostic)]
+#[error("expected {expected_arg_num} arguments for function {func_name} but {provided_arg_num} arguments are provided")]
+/// Error type for incorrect extension function argument number
+pub struct IncorrectNumOfArguments {
+    /// Expected number of arguments
+    expected_arg_num: usize,
+    /// Provided number of argument
+    provided_arg_num: usize,
+    /// Function name
+    func_name: SmolStr,
 }
 
 #[derive(Debug, Error, Diagnostic)]
