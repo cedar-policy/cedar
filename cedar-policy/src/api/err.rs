@@ -29,10 +29,9 @@ pub use cedar_policy_core::extensions::{
 };
 pub use cedar_policy_core::validator::cedar_schema::{schema_warnings, SchemaWarning};
 #[cfg(feature = "entity-manifest")]
-pub use cedar_policy_core::validator::entity_manifest::slicing::EntitySliceError;
-#[cfg(feature = "entity-manifest")]
 use cedar_policy_core::validator::entity_manifest::{
-    self, PartialExpressionError, PartialRequestError, UnsupportedCedarFeatureError,
+    self,
+    err::{ErrorExpressionError, PartialExpressionError, PartialRequestError},
 };
 pub use cedar_policy_core::validator::{schema_errors, SchemaError};
 use cedar_policy_core::{ast, authorizer, est};
@@ -1274,7 +1273,6 @@ pub enum EntityManifestError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Entities(#[from] EntitiesError),
-
     /// The request was partial
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -1283,24 +1281,24 @@ pub enum EntityManifestError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     PartialExpression(#[from] PartialExpressionError),
-    /// Encounters unsupported Cedar feature
+    /// A policy contained an error expression
     #[error(transparent)]
     #[diagnostic(transparent)]
-    UnsupportedCedarFeature(#[from] UnsupportedCedarFeatureError),
+    ErrorExpression(ErrorExpressionError),
 }
 
 #[cfg(feature = "entity-manifest")]
-impl From<entity_manifest::EntityManifestError> for EntityManifestError {
-    fn from(e: entity_manifest::EntityManifestError) -> Self {
+impl From<entity_manifest::err::EntityManifestError> for EntityManifestError {
+    fn from(e: entity_manifest::err::EntityManifestError) -> Self {
         match e {
-            entity_manifest::EntityManifestError::Validation(e) => Self::Validation(e.into()),
-            entity_manifest::EntityManifestError::Entities(e) => Self::Entities(e),
-            entity_manifest::EntityManifestError::PartialRequest(e) => Self::PartialRequest(e),
-            entity_manifest::EntityManifestError::PartialExpression(e) => {
+            entity_manifest::err::EntityManifestError::Validation(e) => Self::Validation(e.into()),
+            entity_manifest::err::EntityManifestError::Entities(e) => Self::Entities(e),
+            entity_manifest::err::EntityManifestError::PartialRequest(e) => Self::PartialRequest(e),
+            entity_manifest::err::EntityManifestError::PartialExpression(e) => {
                 Self::PartialExpression(e)
             }
-            entity_manifest::EntityManifestError::UnsupportedCedarFeature(e) => {
-                Self::UnsupportedCedarFeature(e)
+            entity_manifest::err::EntityManifestError::ErrorExpression(error_expression_error) => {
+                Self::ErrorExpression(error_expression_error)
             }
         }
     }
